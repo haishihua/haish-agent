@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 
 const projectsFile = () => path.join(app.getPath('userData'), 'projects.json');
 const webRoot = () => path.join(app.getAppPath(), 'app-web');
+const apiBase = () => (process.env.HAISH_API_BASE || 'http://47.97.24.242').replace(/\/+$/, '');
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -22,9 +23,28 @@ protocol.registerSchemesAsPrivileged([
   }
 ]);
 
+async function proxyApiRequest(request: Request, url: URL): Promise<Response> {
+  const targetUrl = `${apiBase()}${url.pathname}${url.search}`;
+  const headers = new Headers(request.headers);
+  headers.delete('host');
+  headers.delete('origin');
+  headers.delete('referer');
+  const body = request.method === 'GET' || request.method === 'HEAD'
+    ? undefined
+    : Buffer.from(await request.arrayBuffer());
+  return net.fetch(targetUrl, {
+    method: request.method,
+    headers,
+    body
+  });
+}
+
 function registerWebProtocol(): void {
-  protocol.handle('haish', (request) => {
+  protocol.handle('haish', async (request) => {
     const url = new URL(request.url);
+    if (url.pathname.startsWith('/api/')) {
+      return proxyApiRequest(request, url);
+    }
     const normalizedPath = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
     const relativePath = normalizedPath.replace(/^\/+/, '');
     const filePath = path.join(webRoot(), relativePath);
