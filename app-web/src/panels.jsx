@@ -889,6 +889,7 @@ function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
 window.LiveFeedPanel = LiveFeedPanel;
 
 const MODEL_OPTIONS = [
+  { id: 'deepseek-ai/DeepSeek-V3.2', label: 'deepseek-v3.2' },
   { id: 'openAi/gpt-5.5', label: 'gpt5.5' },
   { id: 'anthropic/opus4.7', label: 'opus4.7' },
   { id: 'deepseek-ai/DeepSeek-V4-Flash', label: 'deepseek-v4-flash' },
@@ -896,6 +897,30 @@ const MODEL_OPTIONS = [
   { id: 'Pro/zai-org/GLM-5.1', label: 'glm-5.1' },
   { id: 'Pro/MiniMaxAI/MiniMax-M2.5', label: 'MiniMax-M2.5' },
 ];
+
+// 按 provider 分组的模型清单。后端 /api/llm/provider 探测当前生效 provider，
+// 前端按 key 选对应清单；拿不到或未登记的统一兜底到 openai 桶（也就是目前
+// 的硅基流动那套）。
+const PROVIDER_MODEL_CATALOG = {
+  openai: {
+    options: MODEL_OPTIONS,
+    defaultModelId: 'deepseek-ai/DeepSeek-V3.2',
+  },
+  deepseek: {
+    options: [
+      { id: 'deepseek-v4-flash', label: 'deepseek-v4-flash' },
+      { id: 'deepseek-v4-pro', label: 'deepseek-v4-pro' },
+    ],
+    defaultModelId: 'deepseek-v4-flash',
+  },
+};
+
+function resolveModelCatalog(provider) {
+  if (provider && PROVIDER_MODEL_CATALOG[provider]) return PROVIDER_MODEL_CATALOG[provider];
+  return PROVIDER_MODEL_CATALOG.openai;
+}
+
+window.resolveModelCatalog = resolveModelCatalog;
 
 const DEFAULT_REASONING_EFFORT = 'high';
 const REASONING_EFFORT_OPTIONS = [
@@ -1179,9 +1204,17 @@ async function copyTextToClipboard(text) {
   }
 }
 
-function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, contextUsage, workspacePath, activeTaskText }) {
+function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, contextUsage, workspacePath, activeTaskText, modelOptions, defaultModelId }) {
+  const resolvedOptions = (Array.isArray(modelOptions) && modelOptions.length > 0) ? modelOptions : MODEL_OPTIONS;
+  const resolvedDefaultModelId = defaultModelId || 'Pro/zai-org/GLM-5.1';
   const [v, setV] = React.useState('');
-  const [modelId, setModelId] = React.useState('Pro/zai-org/GLM-5.1');
+  const [modelId, setModelId] = React.useState(resolvedDefaultModelId);
+
+  React.useEffect(() => {
+    if (!resolvedOptions.find((o) => o.id === modelId)) {
+      setModelId(resolvedDefaultModelId);
+    }
+  }, [resolvedOptions, resolvedDefaultModelId]);
   const [reasoningEffort, setReasoningEffort] = React.useState(DEFAULT_REASONING_EFFORT);
   const taRef = React.useRef(null);
   const fileRef = React.useRef(null);
@@ -1316,7 +1349,7 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
           <ModelPicker
             value={modelId}
             reasoningEffort={reasoningEffort}
-            options={MODEL_OPTIONS}
+            options={resolvedOptions}
             onChange={setModelId}
             onReasoningChange={setReasoningEffort}
             disabled={disabled}
@@ -1696,10 +1729,20 @@ function ChatPanel({
   workspacePath,
   activeTaskText,
   now,
+  modelOptions,
+  defaultModelId,
 }) {
+  const resolvedOptions = (Array.isArray(modelOptions) && modelOptions.length > 0) ? modelOptions : MODEL_OPTIONS;
+  const resolvedDefaultModelId = defaultModelId || 'Pro/zai-org/GLM-5.1';
   const [draft, setDraft] = React.useState('');
-  const [modelId, setModelId] = React.useState('Pro/zai-org/GLM-5.1');
+  const [modelId, setModelId] = React.useState(resolvedDefaultModelId);
   const [reasoningEffort, setReasoningEffort] = React.useState(DEFAULT_REASONING_EFFORT);
+
+  React.useEffect(() => {
+    if (!resolvedOptions.find((o) => o.id === modelId)) {
+      setModelId(resolvedDefaultModelId);
+    }
+  }, [resolvedOptions, resolvedDefaultModelId]);
   const listRef = React.useRef(null);
   const inputRef = React.useRef(null);
   const fileRef = React.useRef(null);
@@ -1854,7 +1897,7 @@ function ChatPanel({
             <ModelPicker
               value={modelId}
               reasoningEffort={reasoningEffort}
-              options={MODEL_OPTIONS}
+              options={resolvedOptions}
               onChange={setModelId}
               onReasoningChange={setReasoningEffort}
               disabled={disabled}

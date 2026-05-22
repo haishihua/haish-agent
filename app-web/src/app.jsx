@@ -1558,6 +1558,7 @@ function App() {
   const [composerAttachment, setComposerAttachment] = useState(null);
   const [uploadState, setUploadState] = useState({ active: false, fileName: '' });
   const [toast, setToast] = useState(null);
+  const [activeProvider, setActiveProvider] = useState('openai');
 
   const stageRef = useRef(null);
   const abortRef = useRef(false);
@@ -1598,6 +1599,25 @@ function App() {
   const worldTaskStateRef = useRef(worldTaskState);
   const userIdRef = useRef(getOrCreateUserId());
   const toastTimerRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/api/llm/provider`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data || !data.provider) return;
+        setActiveProvider(String(data.provider));
+      })
+      .catch((error) => console.warn('failed to fetch active provider', error));
+    return () => { cancelled = true; };
+  }, []);
+
+  const modelCatalog = useMemo(
+    () => (window.resolveModelCatalog ? window.resolveModelCatalog(activeProvider) : null),
+    [activeProvider],
+  );
+  const modelOptions = modelCatalog?.options;
+  const defaultModelId = modelCatalog?.defaultModelId;
 
   useEffect(() => { npcStatesRef.current = npcStates; }, [npcStates]);
   useEffect(() => { worldTaskStateRef.current = worldTaskState; }, [worldTaskState]);
@@ -4131,6 +4151,8 @@ function App() {
                     workspacePath={localWorkspace.path}
                     activeTaskText={activeTaskText}
                     now={now}
+                    modelOptions={modelOptions}
+                    defaultModelId={defaultModelId}
                   />
                 </div>
                 <window.BottomNav active={activeTab} onChange={setActiveTab} />
@@ -4142,7 +4164,7 @@ function App() {
                     MAP_W={MAP_W}
                     MAP_H={MAP_H}
                     onViewChange={setMapView}
-                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy} disabled={busy || uploadState.active || calibrationMode || !conversationReady || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} activeTaskText={activeTaskText} />}
+                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy} disabled={busy || uploadState.active || calibrationMode || !conversationReady || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} />}
                   >
                     <div ref={stageRef} className="office-map">
                       {calibrationMode && calibrationTarget === 'routes' && selectedRouteId && <window.CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}

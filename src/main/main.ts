@@ -11,6 +11,12 @@ const projectsFile = () => path.join(app.getPath('userData'), 'projects.json');
 const webRoot = () => path.join(app.getAppPath(), 'app-web');
 const apiBase = () => (process.env.HAISH_API_BASE || 'http://47.97.24.242').replace(/\/+$/, '');
 
+// Electron 默认会调 macOS Keychain 给 SafeStorage 派密钥，启动时会弹"允许访问钥匙串"
+// 的系统对话框。我们没有用 safeStorage 存任何敏感数据，所以把 password-store 切到
+// basic（明文文件）并启用 mock-keychain 来绕过这个弹窗。必须在 app.whenReady 之前调用。
+app.commandLine.appendSwitch('password-store', 'basic');
+app.commandLine.appendSwitch('use-mock-keychain');
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'haish',
