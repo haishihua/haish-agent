@@ -1,0 +1,58 @@
+{
+  "name": "haish-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Haish desktop app for local project access and cloud agent coordination.",
+  "main": "dist-electron/main/main.js",
+  "author": "Haish",
+  "productName": "Haish",
+  "type": "module",
+  "scripts": {
+    "dev": "tsc -p tsconfig.electron.json && electron .",
+    "build": "tsc --noEmit && tsc -p tsconfig.electron.json",
+    "start": "electron .",
+    "pack:mac": "npm run build && electron-builder --mac dir",
+    "dist:mac": "npm run build && electron-builder --mac dmg zip",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit"
+  },
+  "build": {
+    "appId": "com.haish.agent",
+    "productName": "Haish",
+    "artifactName": "Haish-${version}-${arch}.${ext}",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "app-web/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "dmg": {
+      "artifactName": "Haish-${version}-${arch}.${ext}"
+    }
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.5.2",
+    "concurrently": "^9.1.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "wait-on": "^8.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "electron": "^42.2.0",
+    "electron-builder": "^26.8.1"
+  }
+}
