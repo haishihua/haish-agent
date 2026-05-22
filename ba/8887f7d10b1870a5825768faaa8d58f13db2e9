@@ -1,0 +1,21 @@
+src/main/main.ts
+  s_2d94950bdc3df5::t_bb1ee063abe12d 12,26-41,43,45-47
+src/preload/preload.ts
+  s_2d94950bdc3df5::t_bb1ee063abe12d 6,13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "ba8887f7d10b1870a5825768faaa8d58f13db2e9",
+  "prompts": {},
+  "sessions": {
+    "s_2d94950bdc3df5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e4a9c-2708-7133-b2f0-a53f41dad900",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
