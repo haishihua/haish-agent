@@ -1,0 +1,32 @@
+app-web/src/app.jsx
+  s_41a38e68de1015::t_f72f402589e7d7 1561
+  s_41a38e68de1015::t_ac4287d36c50eb 1603-1621
+  s_41a38e68de1015::t_11fbde459347e7 4167
+  s_41a38e68de1015::t_f905488f4af87a 4154-4155
+src/main/main.ts
+  s_41a38e68de1015::t_13f82336699b7a 14-19
+app-web/src/panels.jsx
+  s_41a38e68de1015::t_55b6ff5d6c269a 892
+  s_41a38e68de1015::t_e3b11d1361ed9e 1900
+  s_41a38e68de1015::t_4f4eed37a92cf6 901-906,908-924
+  s_41a38e68de1015::t_6c961a30ba2735 1207-1209,1211-1217
+  s_41a38e68de1015::t_cb472cb262732c 907
+  s_41a38e68de1015::t_c9aebcff791c66 1732-1733,1735-1736,1738,1740-1745
+  s_41a38e68de1015::t_b0a8bd8efd39ff 1352
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "d2a0d0884b173226858a084d61f26d88656ef197",
+  "prompts": {},
+  "sessions": {
+    "s_41a38e68de1015": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f8dc162-a680-465d-9ef5-e1f54c4ab7f5",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
