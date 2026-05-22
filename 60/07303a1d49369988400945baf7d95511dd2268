@@ -1,0 +1,19 @@
+.gitignore
+  s_2d94950bdc3df5::t_212d1192894b42 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "6007303a1d49369988400945baf7d95511dd2268",
+  "prompts": {},
+  "sessions": {
+    "s_2d94950bdc3df5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e4a9c-2708-7133-b2f0-a53f41dad900",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
