@@ -1,0 +1,21 @@
+app-web/styles.css
+  s_2d94950bdc3df5::t_a7e133c17e5795 170-178,182,187-220,297,304-314
+src/main/main.ts
+  s_2d94950bdc3df5::t_a7e133c17e5795 63-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "adcef859f04ed03e6e4ec5205fa170ba8632f048",
+  "prompts": {},
+  "sessions": {
+    "s_2d94950bdc3df5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e4a9c-2708-7133-b2f0-a53f41dad900",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
