@@ -60,6 +60,8 @@ function createWindow(): void {
     minHeight: 640,
     title: 'Haish',
     backgroundColor: '#080b12',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 22, y: 22 },
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
