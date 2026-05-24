@@ -23,9 +23,26 @@ export type ReadFileResult = {
   encoding: 'utf8';
 };
 
+export type LocalRuntimeStatus = 'idle' | 'starting' | 'ready' | 'failed' | 'stopped';
+
+export type LocalRuntimeState = {
+  status: LocalRuntimeStatus;
+  baseUrl: string;
+  pid?: number;
+  message?: string;
+};
+
+export type WindowVisualState = {
+  fullScreen: boolean;
+  maximized: boolean;
+};
+
 export type HaishDesktopApi = {
   platform: NodeJS.Platform;
   apiBase: string;
+  getRuntimeStatus: () => Promise<LocalRuntimeState>;
+  getWindowState: () => Promise<WindowVisualState>;
+  onWindowStateChange: (callback: (state: WindowVisualState) => void) => () => void;
   pickProjectDirectory: () => Promise<DirectoryPickResult>;
   listProjects: () => Promise<LocalProject[]>;
   listDirectory: (projectId: string, relativePath?: string) => Promise<FileEntry[]>;

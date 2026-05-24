@@ -3,13 +3,18 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { DirectoryPickResult, FileEntry, LocalProject, ReadFileResult } from '../shared/haish-api.js';
+import { ensureLocalRuntime, getLocalRuntimeState, startLocalRuntime, stopLocalRuntime } from './local-runtime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const projectsFile = () => path.join(app.getPath('userData'), 'projects.json');
 const webRoot = () => path.join(app.getAppPath(), 'app-web');
-const apiBase = () => (process.env.HAISH_API_BASE || 'http://47.97.24.242').replace(/\/+$/, '');
+const runtimePaths = () => ({
+  userDataPath: app.getPath('userData'),
+  resourcesPath: process.resourcesPath,
+  isPackaged: app.isPackaged,
+});
 
 // Electron 默认会调 macOS Keychain 给 SafeStorage 派密钥，启动时会弹"允许访问钥匙串"
 // 的系统对话框。我们没有用 safeStorage 存任何敏感数据，所以把 password-store 切到
@@ -30,7 +35,18 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 async function proxyApiRequest(request: Request, url: URL): Promise<Response> {
-  const targetUrl = `${apiBase()}${url.pathname}${url.search}`;
+  let runtime;
+  try {
+    runtime = await ensureLocalRuntime(runtimePaths());
+  } catch (error) {
+    return Response.json(
+      {
+        detail: `Local runtime is unavailable: ${String((error as Error)?.message || error)}`,
+      },
+      { status: 503 },
+    );
+  }
+  const targetUrl = `${runtime.baseUrl}${url.pathname}${url.search}`;
   const headers = new Headers(request.headers);
   headers.delete('host');
   headers.delete('origin');
@@ -58,12 +74,23 @@ function registerWebProtocol(): void {
   });
 }
 
+function getWindowVisualState(window: BrowserWindow) {
+  return {
+    fullScreen: window.isFullScreen(),
+    maximized: window.isMaximized(),
+  };
+}
+
+function publishWindowVisualState(window: BrowserWindow): void {
+  window.webContents.send('window:state', getWindowVisualState(window));
+}
+
 function createWindow(): void {
   const window = new BrowserWindow({
-    width: 1180,
-    height: 780,
-    minWidth: 960,
-    minHeight: 640,
+    width: 1280,
+    height: 800,
+    minWidth: 1280,
+    minHeight: 760,
     title: 'Haish',
     backgroundColor: '#080b12',
     titleBarStyle: 'hiddenInset',
@@ -80,6 +107,12 @@ function createWindow(): void {
     shell.openExternal(url).catch(() => undefined);
     return { action: 'deny' };
   });
+  window.on('enter-full-screen', () => publishWindowVisualState(window));
+  window.on('leave-full-screen', () => publishWindowVisualState(window));
+  window.on('maximize', () => publishWindowVisualState(window));
+  window.on('unmaximize', () => publishWindowVisualState(window));
+  window.on('restore', () => publishWindowVisualState(window));
+  window.webContents.once('did-finish-load', () => publishWindowVisualState(window));
 
   window.loadURL('haish://app/index.html').catch((error) => console.error('Failed to load Haish UI:', error));
 }
@@ -149,6 +182,12 @@ ipcMain.handle('project:pick-directory', async (): Promise<DirectoryPickResult> 
 
 ipcMain.handle('project:list', async (): Promise<LocalProject[]> => readProjects());
 
+ipcMain.handle('runtime:status', async () => getLocalRuntimeState());
+ipcMain.handle('window:state', (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  return window ? getWindowVisualState(window) : { fullScreen: false, maximized: false };
+});
+
 ipcMain.handle('fs:list-directory', async (_event, projectId: string, relativePath = ''): Promise<FileEntry[]> => {
   const target = await resolveInsideProject(projectId, relativePath);
   const entries = await fs.readdir(target, { withFileTypes: true });
@@ -185,6 +224,9 @@ ipcMain.handle('fs:read-file', async (_event, projectId: string, relativePath: s
 
 app.whenReady().then(() => {
   app.setName('Haish');
+  startLocalRuntime(runtimePaths()).catch((error) => {
+    console.error('Failed to start local Haish runtime:', error);
+  });
   registerWebProtocol();
   createWindow();
   app.on('activate', () => {
@@ -198,4 +240,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  stopLocalRuntime();
 });

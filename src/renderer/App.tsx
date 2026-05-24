@@ -73,7 +73,7 @@ export function App() {
           <div className="logo">H</div>
           <div>
             <h1>Haish</h1>
-            <p>Desktop bridge</p>
+            <p>Local runtime</p>
           </div>
         </div>
         <button className="primary-button" onClick={addProject}>Add Project</button>
@@ -124,7 +124,7 @@ export function App() {
                 <pre>{preview.content}</pre>
               </>
             ) : (
-              <p className="empty">Select a small text file to preview the local bridge.</p>
+              <p className="empty">Select a small text file to preview the local runtime.</p>
             )}
           </section>
         </div>

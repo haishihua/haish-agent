@@ -366,7 +366,7 @@ function resolveApiBase() {
 const API_BASE = resolveApiBase();
 const USER_STORAGE_KEY = 'agent_world_user_id';
 const CONVERSATION_STORAGE_KEY = 'agent_world_conversation_id';
-const WORKSPACE_STORAGE_KEY = 'agent_world_workspaces_v1';
+const WORKSPACE_STORAGE_KEY = 'agent_world_workspaces_v2';
 const CONTEXT_USAGE_STORAGE_KEY = 'agent_world_context_usage_v1';
 const DEFAULT_CONTEXT_TOTAL_TOKENS = 128000;
 const RESTORED_CONTEXT_BASE_TOKENS = 4200;
@@ -531,8 +531,6 @@ function loadStoredWorkspaceState() {
         name: isDefault ? DEFAULT_PROJECT_NAME : (project.name || project.workspaceLabel || 'Custom project'),
         workspacePath: isDefault ? null : (project.workspacePath || null),
         workspaceLabel: isDefault ? null : (project.workspaceLabel || project.name || null),
-        desktopLocal: isDefault ? false : Boolean(project.desktopLocal),
-        desktopProjectId: isDefault ? null : (project.desktopProjectId || null),
         removable: !isDefault,
         expanded: project.expanded !== false,
         conversations: Array.isArray(project.conversations)
@@ -672,8 +670,6 @@ function workspaceStateWithConversationDetail(state, detail, activate = true) {
   const workspacePath = String(detail?.workspace_path || '').trim();
   const projectId = projectIdForWorkspacePath(workspacePath);
   const projectLabel = detail?.workspace_label || projectNameFromPath(workspacePath);
-  const desktopLocal = Boolean(detail?.desktop_local);
-  const desktopProjectId = detail?.desktop_project_id || null;
   let projectFound = false;
   let conversationFound = false;
   const projects = state.projects.map((project) => {
@@ -688,8 +684,6 @@ function workspaceStateWithConversationDetail(state, detail, activate = true) {
       ...project,
       workspacePath: projectId === DEFAULT_PROJECT_ID ? null : workspacePath,
       workspaceLabel: projectId === DEFAULT_PROJECT_ID ? null : projectLabel,
-      desktopLocal: projectId === DEFAULT_PROJECT_ID ? false : (desktopLocal || Boolean(project.desktopLocal)),
-      desktopProjectId: projectId === DEFAULT_PROJECT_ID ? null : (desktopProjectId || project.desktopProjectId || null),
       expanded: true,
       conversations: conversationFound
         ? conversations
@@ -703,8 +697,6 @@ function workspaceStateWithConversationDetail(state, detail, activate = true) {
       name: projectId === DEFAULT_PROJECT_ID ? DEFAULT_PROJECT_NAME : projectLabel,
       workspacePath: projectId === DEFAULT_PROJECT_ID ? null : workspacePath,
       workspaceLabel: projectId === DEFAULT_PROJECT_ID ? null : projectLabel,
-      desktopLocal: projectId === DEFAULT_PROJECT_ID ? false : desktopLocal,
-      desktopProjectId: projectId === DEFAULT_PROJECT_ID ? null : desktopProjectId,
       removable: projectId !== DEFAULT_PROJECT_ID,
       expanded: true,
       conversations: [conversationDetailToWorkspaceConversation(detail)],
@@ -1559,6 +1551,7 @@ function App() {
   const [uploadState, setUploadState] = useState({ active: false, fileName: '' });
   const [toast, setToast] = useState(null);
   const [activeProvider, setActiveProvider] = useState('openai');
+  const [providerLoading, setProviderLoading] = useState(true);
 
   const stageRef = useRef(null);
   const abortRef = useRef(false);
@@ -1599,6 +1592,7 @@ function App() {
   const worldTaskStateRef = useRef(worldTaskState);
   const userIdRef = useRef(getOrCreateUserId());
   const toastTimerRef = useRef(null);
+  const conversationActivationSeqRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -1608,8 +1602,33 @@ function App() {
         if (cancelled || !data || !data.provider) return;
         setActiveProvider(String(data.provider));
       })
-      .catch((error) => console.warn('failed to fetch active provider', error));
+      .catch((error) => console.warn('failed to fetch active provider', error))
+      .finally(() => {
+        if (!cancelled) setProviderLoading(false);
+      });
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cleanup = null;
+    let cancelled = false;
+    const applyWindowState = (state) => {
+      // 只有真正的 fullScreen 会隐藏 macOS 红黄绿按钮；maximize (zoom) 不会，
+      // 所以 maximize 时仍要保留 topbar 左侧让位空间，否则 logo 被按钮压住。
+      const chromeFree = Boolean(state?.fullScreen);
+      document.body.classList.toggle('window-chrome-free', chromeFree);
+    };
+    window.haish?.getWindowState?.()
+      .then((state) => {
+        if (!cancelled) applyWindowState(state);
+      })
+      .catch(() => undefined);
+    cleanup = window.haish?.onWindowStateChange?.(applyWindowState) || null;
+    return () => {
+      cancelled = true;
+      cleanup?.();
+      document.body.classList.remove('window-chrome-free');
+    };
   }, []);
 
   const modelCatalog = useMemo(
@@ -1624,9 +1643,18 @@ function App() {
   useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
   useEffect(() => { saveWorkspaceState(workspaceState); }, [workspaceState]);
 
-  async function restoreLatestTaskRuntime(taskId) {
+  function invalidateConversationActivation() {
+    conversationActivationSeqRef.current += 1;
+    return conversationActivationSeqRef.current;
+  }
+
+  function isConversationActivationCurrent(seq) {
+    return conversationActivationSeqRef.current === seq;
+  }
+
+  async function restoreLatestTaskRuntime(taskId, isCurrentActivation = () => true) {
     if (!taskId) {
-      setAgentLive({});
+      if (isCurrentActivation()) setAgentLive({});
       return;
     }
     const response = await fetch(`${API_BASE}/api/tasks/${taskId}`, {
@@ -1639,6 +1667,7 @@ function App() {
       throw new Error(`task restore failed: ${response.status}`);
     }
     const task = await response.json();
+    if (!isCurrentActivation()) return;
     const events = normalizeWorldEvents(task.events);
     const normalizedTask = { ...task, events };
     updateWorldTaskState((state) => ({
@@ -1666,6 +1695,7 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+    const bootstrapActivationSeq = conversationActivationSeqRef.current;
     (async () => {
       try {
         const storedConversationIds = getWorkspaceConversationIds(workspaceState);
@@ -1682,6 +1712,7 @@ function App() {
           details = restoredDetails.filter(Boolean);
         }
         if (details.length === 0) {
+          if (!isConversationActivationCurrent(bootstrapActivationSeq)) return;
           const createResponse = await fetch(`${API_BASE}/api/conversations`, {
             method: 'POST',
             headers: buildApiHeaders(),
@@ -1692,7 +1723,7 @@ function App() {
           }
           details = [await createResponse.json()];
         }
-        if (cancelled) return;
+        if (cancelled || !isConversationActivationCurrent(bootstrapActivationSeq)) return;
         const storedConversationId = getStoredConversationId();
         const previousWorkspaceState = storedConversationIds.length > 0
           ? {
@@ -1773,6 +1804,8 @@ function App() {
 
   async function activateConversationDetail(detail, { restoreLatest = true } = {}) {
     if (!detail?.conversation_id) return;
+    const activationSeq = invalidateConversationActivation();
+    const isCurrentActivation = () => isConversationActivationCurrent(activationSeq);
     // 切走前先把当前 conversation 的实时 worldTaskState flush 回
     // workspaceState[当前 conversation].tasks。否则切到别的会话后，旧会话
     // sidebar 节点会回退到上一次 activate 时拉到的 detail.tasks 快照，刚跑
@@ -1797,6 +1830,7 @@ function App() {
         })),
       };
     });
+    if (!isCurrentActivation()) return;
     const restoredConversationId = detail.conversation_id;
     const restoredTasks = Array.isArray(detail.tasks) ? detail.tasks : [];
     const latestTaskId = detail.last_task_id || (restoredTasks.length ? restoredTasks[restoredTasks.length - 1].task_id : null);
@@ -1821,13 +1855,14 @@ function App() {
     });
     if (restoreLatest && latestTaskId) {
       try {
-        await restoreLatestTaskRuntime(latestTaskId);
+        await restoreLatestTaskRuntime(latestTaskId, isCurrentActivation);
       } catch (error) {
+        if (!isCurrentActivation()) return;
         console.error('latest task restore failed', error);
         setAgentLive({});
       }
     } else {
-      setAgentLive({});
+      if (isCurrentActivation()) setAgentLive({});
     }
   }
 
@@ -3703,6 +3738,7 @@ function App() {
   }
 
   async function handleSelectConversation(projectId, nextConversationId) {
+    const requestSeq = invalidateConversationActivation();
     if (!nextConversationId || nextConversationId === conversationId) {
       setWorkspaceState((state) => ({
         ...state,
@@ -3712,6 +3748,7 @@ function App() {
       return;
     }
     const detail = await fetchConversationDetail(nextConversationId);
+    if (!isConversationActivationCurrent(requestSeq)) return;
     await activateConversationDetail(detail);
   }
 
@@ -3768,15 +3805,6 @@ function App() {
       throw new Error(`conversation create failed: ${createResponse.status}`);
     }
     let detail = await createResponse.json();
-    if (project?.desktopLocal) {
-      return {
-        ...detail,
-        workspace_path: project.workspacePath,
-        workspace_label: project.workspaceLabel || project.name,
-        desktop_local: true,
-        desktop_project_id: project.desktopProjectId || null,
-      };
-    }
     if (project?.workspacePath) {
       const updateResponse = await fetch(`${API_BASE}/api/conversations/${detail.conversation_id}`, {
         method: 'PATCH',
@@ -3792,34 +3820,29 @@ function App() {
   }
 
   async function handleAddConversation(projectId) {
+    const requestSeq = invalidateConversationActivation();
     const project = workspaceState.projects.find((item) => item.id === projectId) || workspaceState.projects[0];
     const detail = await createConversationInProject(project, project?.id === DEFAULT_PROJECT_ID ? DEFAULT_SESSION_NAME : 'New Conversation');
+    if (!isConversationActivationCurrent(requestSeq)) return;
     await activateConversationDetail(detail, { restoreLatest: false });
   }
 
   async function handleAddProject() {
+    const requestSeq = invalidateConversationActivation();
     if (window.haish?.pickProjectDirectory) {
       const pickResult = await window.haish.pickProjectDirectory();
       if (pickResult?.canceled || !pickResult?.project) {
         showToast('info', 'workspace selection cancelled');
         return;
       }
-      const createResponse = await fetch(`${API_BASE}/api/conversations`, {
-        method: 'POST',
-        headers: buildApiHeaders(),
-        body: JSON.stringify({ title: DEFAULT_SESSION_NAME }),
-      });
-      if (!createResponse.ok) {
-        throw new Error(`project conversation create failed: ${createResponse.status}`);
-      }
-      const created = await createResponse.json();
-      const detail = {
-        ...created,
-        workspace_path: pickResult.project.rootPath,
-        workspace_label: pickResult.project.name,
-        desktop_local: true,
-        desktop_project_id: pickResult.project.id,
-      };
+      const detail = await createConversationInProject({
+        id: projectIdForWorkspacePath(pickResult.project.rootPath),
+        type: 'custom',
+        name: pickResult.project.name,
+        workspacePath: pickResult.project.rootPath,
+        workspaceLabel: pickResult.project.name,
+      }, DEFAULT_SESSION_NAME);
+      if (!isConversationActivationCurrent(requestSeq)) return;
       await activateConversationDetail(detail, { restoreLatest: false });
       showToast('success', `local workspace set: ${pickResult.project.name}`);
       return;
@@ -3863,6 +3886,7 @@ function App() {
       showToast('info', 'workspace selection cancelled');
       return;
     }
+    if (!isConversationActivationCurrent(requestSeq)) return;
     await activateConversationDetail(detail, { restoreLatest: false });
   }
 
@@ -4153,6 +4177,7 @@ function App() {
                     now={now}
                     modelOptions={modelOptions}
                     defaultModelId={defaultModelId}
+                    modelLoading={providerLoading}
                   />
                 </div>
                 <window.BottomNav active={activeTab} onChange={setActiveTab} />
@@ -4164,7 +4189,7 @@ function App() {
                     MAP_W={MAP_W}
                     MAP_H={MAP_H}
                     onViewChange={setMapView}
-                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy} disabled={busy || uploadState.active || calibrationMode || !conversationReady || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} />}
+                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy} disabled={busy || uploadState.active || calibrationMode || !conversationReady || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} />}
                   >
                     <div ref={stageRef} className="office-map">
                       {calibrationMode && calibrationTarget === 'routes' && selectedRouteId && <window.CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}

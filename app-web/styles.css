@@ -223,7 +223,7 @@ svg { image-rendering: auto; shape-rendering: geometricPrecision; }
 .app-body {
   position:relative;
   display:grid;
-  grid-template-columns: clamp(300px, 18vw, 390px) 1fr clamp(300px, 18vw, 378px);
+  grid-template-columns: clamp(280px, 18vw, 360px) minmax(320px, 1fr) clamp(340px, 21vw, 420px);
   min-height: 0;
   overflow: hidden;
   gap: 8px;
@@ -257,14 +257,22 @@ svg { image-rendering: auto; shape-rendering: geometricPrecision; }
 
 .app-body > * {
   position: relative;
+  min-width: 0;
 }
 
 .app-center-stage,
 .app-tab-stage {
+  position: relative;
   min-height: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 0;
+}
+.app-center-stage {
+  min-width: 0;
+  overflow: hidden;
+  isolation: isolate;
+  z-index: 10;
 }
 
 .app-tab-stage {
@@ -293,8 +301,12 @@ svg { image-rendering: auto; shape-rendering: geometricPrecision; }
 
 /* ============ Top Bar ============ */
 .app-topbar {
-  display:flex; align-items:center; justify-content:space-between;
-  padding: 0 16px 0 88px;
+  --topbar-left-space: 92px;
+  display:grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items:center;
+  column-gap: 16px;
+  padding: 0 16px 0 var(--topbar-left-space);
   background: linear-gradient(180deg, rgba(10,15,24,0.34), rgba(9,13,20,0.18));
   border-top: 1px solid rgba(170, 205, 255, 0.08);
   border-bottom: 1px solid rgba(170, 205, 255, 0.05);
@@ -302,6 +314,10 @@ svg { image-rendering: auto; shape-rendering: geometricPrecision; }
   -webkit-backdrop-filter: blur(18px) saturate(116%);
   z-index: 30;
   -webkit-app-region: drag;
+  transition: padding-left 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+body.window-chrome-free .app-topbar {
+  --topbar-left-space: 27px;
 }
 .topbar-brand,
 .topbar-actions,
@@ -314,12 +330,22 @@ select,
   -webkit-app-region: no-drag;
 }
 .topbar-brand {
-  display:flex; align-items:center; gap: 12px;
-  transform: translateY(2px);
+  min-width: 0;
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  justify-self: start;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-topbar {
+    transition: none;
+  }
 }
 .topbar-logo {
-  width: 42px; height: 42px;
-  border-radius: 13px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 12px;
   border: 1px solid rgba(193, 220, 255, 0.18);
   background-color: rgba(249, 250, 255, 0.98);
   background-image: url('assets/ui/penguin_logo_user.png');
@@ -343,13 +369,16 @@ select,
   font-size: 15px;
   color: var(--gold);
   text-shadow: 0 1px 0 rgba(18, 22, 34, 0.9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .topbar-actions {
+  justify-self: end;
   display:flex; align-items:center; gap: 12px;
   font-family:'JetBrains Mono', monospace;
   font-size: 12px;
   color: var(--dim);
-  transform: translateY(2px);
 }
 .topbar-clock {
   font-variant-numeric: tabular-nums;
@@ -1309,6 +1338,19 @@ select,
 .chat-composer .model-picker.is-open .model-picker-caret {
   transform: rotate(225deg) translateY(-2px);
 }
+.chat-composer .model-picker-loading,
+.task-delegation .model-picker-loading {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(228, 233, 255, 0.34);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: modelPickerSpin .72s linear infinite;
+}
+@keyframes modelPickerSpin {
+  to { transform: rotate(360deg); }
+}
 .chat-composer .model-picker-menu {
   position: absolute;
   left: 0;
@@ -1525,6 +1567,7 @@ select,
   line-height: inherit;
   color: inherit;
   max-width: 100%;
+  min-width: 0;
   overflow: hidden;
 }
 .chat-stream-text {
@@ -1587,6 +1630,7 @@ select,
   border-radius: 10px;
   display:flex; flex-direction:column;
   min-height: 0;
+  min-width: 0;
   z-index: 20;
   overflow: hidden;
   isolation: isolate;
@@ -1597,6 +1641,7 @@ select,
 }
 .side-panel.right {
   border: 1px solid rgba(176, 206, 255, 0.09);
+  z-index: 30;
 }
 .side-panel::before {
   content:"";
@@ -2476,6 +2521,7 @@ select,
 .live-card {
   display:flex;
   gap: 12px;
+  min-width: 0;
   padding: 14px 14px 13px;
   border: 1px solid rgba(70,85,115,0.65);
   background: linear-gradient(180deg, rgba(22,26,39,0.96), rgba(18,21,32,0.98));
@@ -2513,12 +2559,15 @@ select,
 .live-card .body .row {
   display:flex; justify-content: space-between; align-items: baseline;
   gap: 6px;
+  min-width: 0;
 }
 .live-card .body .name {
   font-family:'Zpix', monospace;
   font-size: 14px;
   color: #d2d8eb;
   letter-spacing: 0.5px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .live-card .body .name.agent-gojo { color: #5ba6ff; }
 .live-card .body .name.agent-guts { color: #5ba6ff; }
@@ -2917,11 +2966,18 @@ select,
 
 /* ============ Map Viewport ============ */
 .map-viewport {
+  --task-panel-edge-x: 12px;
+  --task-panel-padding-x: 14px;
+  --task-input-right-edge: calc(var(--task-panel-edge-x) + var(--task-panel-padding-x));
   position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   background: linear-gradient(180deg, #090b11, #07080d);
   border: 1px solid rgba(176, 206, 255, 0.13);
   border-radius: 10px;
+  isolation: isolate;
   box-shadow:
     0 12px 28px rgba(0, 0, 0, 0.18);
 }
@@ -3063,7 +3119,8 @@ select,
 /* Zoom controls */
 .zoom-controls {
   position: absolute;
-  top: 20px; right: 18px;
+  top: 16px;
+  right: var(--task-panel-edge-x);
   z-index: 50;
   display: flex; flex-direction: column; gap: 4px;
 }
@@ -3137,12 +3194,13 @@ select,
 /* ============ Task Delegation (overlay) ============ */
 .task-delegation {
   position: absolute;
-  left: 12px; right: 12px;
+  left: var(--task-panel-edge-x);
+  right: var(--task-panel-edge-x);
   bottom: 10px;
   background: linear-gradient(180deg, rgba(17,24,36,0.22), rgba(11,17,27,0.12));
   border: 1px solid rgba(176, 206, 255, 0.1);
   border-radius: 10px;
-  padding: 10px 14px 10px;
+  padding: 10px var(--task-panel-padding-x) 10px;
   z-index: 60;
   box-shadow:
     0 10px 22px rgba(0,0,0,0.12);
@@ -3594,7 +3652,7 @@ select,
 .chat-composer .model-picker-flyout,
 .task-delegation .model-picker-flyout {
   position: absolute;
-  left: calc(100% + 8px);
+  left: calc(100% - 1px);
   bottom: 0;
   display: none;
   min-width: 190px;
@@ -4968,6 +5026,9 @@ select,
   line-height: 1.8;
   letter-spacing: 0.3px;
   text-shadow: 0 0 6px rgba(255, 255, 255, 0.1);
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .md-root .md-h {
   color: #ffffff;
@@ -5033,6 +5094,9 @@ select,
   border-radius: 2px;
   font-size: 0.9em;
   color: #fff;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .md-root .md-table {
   border-collapse: separate;
@@ -5041,12 +5105,19 @@ select,
   margin: 0 0 16px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
 }
 .md-root .md-table th, .md-root .md-table td {
   padding: 7px 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   text-align: left;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: top;
+  min-width: 0;
 }
 .md-root .md-table th { color: #ffffff; font-weight: 600; }
 .md-root .md-table td { color: rgba(255, 255, 255, 0.86); }
@@ -5185,15 +5256,22 @@ select,
 @keyframes blink { 0%,100%{opacity:.5;} 50%{opacity:1;} }
 
 @media (max-width: 1280px) {
-  .app-body { grid-template-columns: 240px 1fr 240px; }
+  .app-body { grid-template-columns: 240px minmax(320px, 1fr) 240px; }
+  .map-viewport {
+    --task-panel-edge-x: 14px;
+  }
   .task-delegation {
-    left: 14px;
-    right: 14px;
+    left: var(--task-panel-edge-x);
+    right: var(--task-panel-edge-x);
     bottom: 14px;
   }
 }
 @media (max-width: 1024px) {
-  .app-body { grid-template-columns: 220px 1fr 220px; }
+  .app-body { grid-template-columns: 220px minmax(320px, 1fr) 220px; }
+  .zoom-controls button {
+    width: 36px;
+    height: 40px;
+  }
   .task-delegation textarea { height: 22px; min-height: 22px; }
   .topbar-title { font-size: 12px; }
 }

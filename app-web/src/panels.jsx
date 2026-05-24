@@ -930,7 +930,7 @@ const REASONING_EFFORT_OPTIONS = [
   { id: 'xhigh', label: 'xhigh' },
 ];
 
-function ModelPicker({ value, reasoningEffort, options, reasoningOptions = REASONING_EFFORT_OPTIONS, onChange, onReasoningChange, disabled }) {
+function ModelPicker({ value, reasoningEffort, options, reasoningOptions = REASONING_EFFORT_OPTIONS, onChange, onReasoningChange, disabled, loading = false }) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef(null);
   const current = options.find((o) => o.id === value) || options[0];
@@ -955,19 +955,19 @@ function ModelPicker({ value, reasoningEffort, options, reasoningOptions = REASO
   }, [open]);
 
   return (
-    <div className={`model-picker ${open ? 'is-open' : ''}`} ref={rootRef}>
+    <div className={`model-picker ${open ? 'is-open' : ''} ${loading ? 'is-loading' : ''}`} ref={rootRef}>
       <button
         type="button"
         className="model-picker-trigger"
-        onClick={() => { if (!disabled) setOpen((o) => !o); }}
+        onClick={() => { if (!disabled && !loading) setOpen((o) => !o); }}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Select model"
-        title={`${currentReasoning ? currentReasoning.id : ''} · ${current ? current.id : ''}`}
+        title={loading ? 'Loading provider models...' : `${currentReasoning ? currentReasoning.id : ''} · ${current ? current.id : ''}`}
       >
         <span className="model-picker-value">{currentReasoning ? currentReasoning.label : ''} · {current ? current.label : ''}</span>
-        <span className="model-picker-caret" aria-hidden="true" />
+        <span className={loading ? 'model-picker-loading' : 'model-picker-caret'} aria-hidden="true" />
       </button>
       {open ? (
         <div className="model-picker-menu" role="listbox">
@@ -1204,7 +1204,7 @@ async function copyTextToClipboard(text) {
   }
 }
 
-function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, contextUsage, workspacePath, activeTaskText, modelOptions, defaultModelId }) {
+function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, contextUsage, workspacePath, activeTaskText, modelOptions, defaultModelId, modelLoading = false }) {
   const resolvedOptions = (Array.isArray(modelOptions) && modelOptions.length > 0) ? modelOptions : MODEL_OPTIONS;
   const resolvedDefaultModelId = defaultModelId || 'Pro/zai-org/GLM-5.1';
   const [v, setV] = React.useState('');
@@ -1353,6 +1353,7 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
             onChange={setModelId}
             onReasoningChange={setReasoningEffort}
             disabled={disabled}
+            loading={modelLoading}
           />
         </div>
         <PortalTooltip text={contextTooltip} position="above" multiline>
@@ -1731,6 +1732,7 @@ function ChatPanel({
   now,
   modelOptions,
   defaultModelId,
+  modelLoading = false,
 }) {
   const resolvedOptions = (Array.isArray(modelOptions) && modelOptions.length > 0) ? modelOptions : MODEL_OPTIONS;
   const resolvedDefaultModelId = defaultModelId || 'Pro/zai-org/GLM-5.1';
@@ -1901,6 +1903,7 @@ function ChatPanel({
               onChange={setModelId}
               onReasoningChange={setReasoningEffort}
               disabled={disabled}
+              loading={modelLoading}
             />
           </div>
           <div className="chat-composer-submit">

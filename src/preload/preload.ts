@@ -1,9 +1,24 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { DirectoryPickResult, FileEntry, HaishDesktopApi, LocalProject, ReadFileResult } from '../shared/haish-api.js';
+import type {
+  DirectoryPickResult,
+  FileEntry,
+  HaishDesktopApi,
+  LocalProject,
+  LocalRuntimeState,
+  ReadFileResult,
+  WindowVisualState,
+} from '../shared/haish-api.js';
 
 const api: HaishDesktopApi = {
   platform: process.platform,
   apiBase: '',
+  getRuntimeStatus: () => ipcRenderer.invoke('runtime:status') as Promise<LocalRuntimeState>,
+  getWindowState: () => ipcRenderer.invoke('window:state') as Promise<WindowVisualState>,
+  onWindowStateChange: (callback: (state: WindowVisualState) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: WindowVisualState) => callback(state);
+    ipcRenderer.on('window:state', listener);
+    return () => ipcRenderer.removeListener('window:state', listener);
+  },
   pickProjectDirectory: () => ipcRenderer.invoke('project:pick-directory') as Promise<DirectoryPickResult>,
   listProjects: () => ipcRenderer.invoke('project:list') as Promise<LocalProject[]>,
   listDirectory: (projectId: string, relativePath = '') => ipcRenderer.invoke('fs:list-directory', projectId, relativePath) as Promise<FileEntry[]>,

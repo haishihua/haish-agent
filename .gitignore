@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-electron/
+build/runtime/
 release/
 .DS_Store
 .env

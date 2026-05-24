@@ -2,7 +2,7 @@
   "name": "haish-agent",
   "version": "0.1.0",
   "private": true,
-  "description": "Haish desktop app for local project access and cloud agent coordination.",
+  "description": "Haish desktop app with a local agent runtime.",
   "main": "dist-electron/main/main.js",
   "author": "Haish",
   "productName": "Haish",
@@ -10,9 +10,12 @@
   "scripts": {
     "dev": "tsc -p tsconfig.electron.json && electron .",
     "build": "tsc --noEmit && tsc -p tsconfig.electron.json",
+    "build:runtime": "node scripts/build-runtime.mjs",
     "start": "electron .",
-    "pack:mac": "npm run build && electron-builder --mac dir",
-    "dist:mac": "npm run build && electron-builder --mac dmg zip",
+    "pack:mac": "npm run build && npm run build:runtime && electron-builder --mac dir",
+    "dist:mac": "npm run build && npm run build:runtime && electron-builder --mac dmg zip",
+    "check:mac-release": "node scripts/check-mac-release.mjs",
+    "dist:mac:release": "npm run check:mac-release && npm run build && npm run build:runtime && electron-builder --mac dmg zip --config.forceCodeSigning=true",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit"
   },
   "build": {
@@ -28,8 +31,31 @@
       "dist-electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "build/runtime/haishihua-agent-core",
+        "to": "haishihua-agent-core",
+        "filter": [
+          "**/*",
+          "!**/.git/**",
+          "!**/.idea/**",
+          "!**/.pytest_cache/**",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!**/*.pyo",
+          "!**/.agent-world-web.log"
+        ]
+      }
+    ],
     "mac": {
       "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements/entitlements.mac.plist",
+      "entitlementsInherit": "entitlements/entitlements.mac.inherit.plist",
+      "signIgnore": [
+        "/Contents/Resources/haishihua-agent-core/.*\\.py$"
+      ],
+      "notarize": true,
       "target": [
         "dmg",
         "zip"
@@ -54,5 +80,10 @@
     "@types/react-dom": "^19.1.5",
     "electron": "^42.2.0",
     "electron-builder": "^26.8.1"
+  },
+  "overrides": {
+    "@electron/osx-sign": {
+      "isbinaryfile": "^5.0.7"
+    }
   }
 }
