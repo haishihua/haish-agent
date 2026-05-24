@@ -1,0 +1,109 @@
+package.json
+  s_27a0affac69f0b::t_af1d6f12bde98e 34-35,37-44,46-49
+  s_27a0affac69f0b::t_c9b57ee9c79181 13,15-16,36,45
+  s_bd6a75e48247c9::t_4825b77d1cc44d 55-57
+  s_bd6a75e48247c9::t_1fee9ca274a491 17-18
+  s_bd6a75e48247c9::t_2a06812c5e02cb 53-54
+  s_27a0affac69f0b::t_6a65aa8268f2b2 5
+  s_bd6a75e48247c9::t_d06d736acb6c9d 52,58
+  s_bd6a75e48247c9::t_25dafce38bdb4d 83-87
+app-web/src/panels.jsx
+  s_27a0affac69f0b::t_d0998ca568b488 933,958,962,967,970
+  s_27a0affac69f0b::t_1acc78610989fd 1207,1356
+  s_27a0affac69f0b::t_6dcc166d162d2c 1735,1906
+app-web/src/app.jsx
+  s_27a0affac69f0b::t_458d986d4098f7 1595,1646-1655,1657,1670,1698,1715,1726,1807-1808,1833,1858,1860,1865,3741,3751,3823,3826,3831,3845,3889
+  s_948c8844767f93::t_c9c5d2a061ca74 1616-1618
+  s_27a0affac69f0b::t_6a02c64e75a2f2 369
+  s_27a0affac69f0b::t_1748601843f48c 3838-3844
+  s_27a0affac69f0b::t_ddaa6b643f1dca 1554,1605-1608,1612-1615,1619-1631,4180,4192
+entitlements/entitlements.mac.plist
+  s_bd6a75e48247c9::t_2a06812c5e02cb 1-12
+entitlements/entitlements.mac.inherit.plist
+  s_bd6a75e48247c9::t_2a06812c5e02cb 1-12
+src/main/main.ts
+  s_27a0affac69f0b::t_bc7b37501a2933 6,38-49,185,190,227-229,244-246
+  s_27a0affac69f0b::t_a850a4b8ae74f9 92-93
+  s_27a0affac69f0b::t_f30ae5b582f0d3 13-17
+  s_948c8844767f93::t_f78781a70c57e7 90-91
+  s_27a0affac69f0b::t_2990c9413be078 110-114
+  s_27a0affac69f0b::t_93f83ee2fb496b 186-189
+  s_27a0affac69f0b::t_0b0355c18bbbf5 77-87,115
+src/main/local-runtime.ts
+  s_bd6a75e48247c9::t_5155d32acf9190 23,41-48,148,157,159
+  s_27a0affac69f0b::t_9b64091f03f20a 17-18,22,49-57,147
+  s_27a0affac69f0b::t_c77a3343740db8 1-16,19-21,24-40,58-63,101-146,149-156,158,160-170,172-225
+  s_27a0affac69f0b::t_2a03fb547f1446 64-86,88-89,92-93,95,97-100
+  s_27a0affac69f0b::t_1bec32772748ca 87,90-91,94,96,171
+src/renderer/App.tsx
+  s_27a0affac69f0b::t_6a65aa8268f2b2 76,127
+.gitignore
+  s_27a0affac69f0b::t_980f3518345b8b 4
+src/shared/haish-api.ts
+  s_27a0affac69f0b::t_0fad13b5108453 26-34,43
+  s_27a0affac69f0b::t_6cd754227c1dd1 35-39,44-45
+scripts/build-runtime.mjs
+  s_27a0affac69f0b::t_5225bc367c2a57 1-13,18-19,21-54,56-70,77-99,113-124,130-134,136-147,149,177-180
+  s_bd6a75e48247c9::t_6b797a88fb78f0 169-170,173-174
+  s_27a0affac69f0b::t_6cf5c244ab2708 20,55,71-76
+  s_bd6a75e48247c9::t_5155d32acf9190 14-17,100-112,125-129,135,148,150-168,171-172,175-176
+docs/local-agent-runtime-architecture.md
+  s_27a0affac69f0b::t_d451e22d363fff 480-484,539,562,564,575,578-580,587-588,593,597-598,601,652-653,659-665
+  s_27a0affac69f0b::t_225fd94b6f79ee 111,120,124,126-131,133-134,207-210,212-215,219,245
+  s_27a0affac69f0b::t_be7a2ee0da0dbd 9,23,25-33,46-47,50,59-60
+  s_27a0affac69f0b::t_3656d52fd82776 1-8,10-22,24,34-45,48-49,51-58,61-110,112-119,121-123,125,132,135-206,211,216-218,220-244,246-479,485-538,540-561,563,565-574,576-577,581-586,589-592,594-596,599-600,602-651,654-658,666-683
+README.md
+  s_27a0affac69f0b::t_6a65aa8268f2b2 10,38-40
+src/preload/preload.ts
+  s_27a0affac69f0b::t_3d6b14298df8fd 2-8,10,15
+  s_27a0affac69f0b::t_e038b0cde0ad89 9,16-21
+app-web/styles.css
+  s_27a0affac69f0b::t_98c60d8864bbce 226,265,271-275,1633,1644
+  s_27a0affac69f0b::t_ca8ad15223cca3 2969-2971,5260-5261,5264-5265
+  s_27a0affac69f0b::t_efbf8e8221d178 320
+  s_27a0affac69f0b::t_8485180d108048 3197-3198,3203
+  s_27a0affac69f0b::t_479b273ca44ed7 305-308,333-337,345-348,372-374,377
+  s_27a0affac69f0b::t_862c0d6b07e542 1570,5029-5031,5097-5099,5108-5110,5116-5120
+  s_27a0affac69f0b::t_b654cc5b9b2ec5 2524,2562,2569-2570
+  s_27a0affac69f0b::t_abd1ef22771fdf 3655
+  s_27a0affac69f0b::t_8798c0536356e8 3122,5259,5262,5270-5274
+  s_27a0affac69f0b::t_a3b4b75526e554 304,309,317,338-342
+  s_27a0affac69f0b::t_6d045f61fae3e0 2973-2975,2980
+  s_27a0affac69f0b::t_fe037fc76319c9 1341-1353
+  s_948c8844767f93::t_c67d7b1f18b6a1 3123
+  s_27a0affac69f0b::t_ceaf7f2a4ae279 260,318-319
+scripts/check-mac-release.mjs
+  s_bd6a75e48247c9::t_1fee9ca274a491 1-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "70baded189b41e6a763d4ee2de46b9904926fa41",
+  "prompts": {},
+  "sessions": {
+    "s_27a0affac69f0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e4f44-a650-73d0-ba0e-831e8b8f02f8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    },
+    "s_948c8844767f93": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb57cbc9-86bd-4a41-aad7-a9bf23173100",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    },
+    "s_bd6a75e48247c9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e53a6-199e-7450-91a5-4164bf6cacc5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
