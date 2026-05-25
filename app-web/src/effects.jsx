@@ -155,12 +155,16 @@ function parseMarkdown(src) {
     // Ordered list
     if (/^\d+\.\s+/.test(line)) {
       const items = [];
-      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^\d+\.\s+/, ''));
+      let start = 1;
+      while (i < lines.length) {
+        const itemMatch = lines[i].match(/^(\d+)\.\s+(.*)$/);
+        if (!itemMatch) break;
+        if (items.length === 0) start = Number(itemMatch[1]) || 1;
+        items.push(itemMatch[2]);
         i++;
       }
       nodes.push(
-        <ol key={`ol-${key++}`} className="md-ol">
+        <ol key={`ol-${key++}`} className="md-ol" start={start}>
           {items.map((it, idx) => <li key={idx}>{inlineMarkdown(it)}</li>)}
         </ol>
       );
