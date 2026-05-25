@@ -15,6 +15,8 @@ const WALK_MIN_DURATION_BY_ACTOR = {
   guts: 210,
 };
 const SCENE_WAIT_TIMEOUT_MS = 45000;
+const CONVERSATION_BOOTSTRAP_MAX_ATTEMPTS = 8;
+const CONVERSATION_BOOTSTRAP_RETRY_DELAY_MS = 2000;
 const THINKING_PULSE_INTERVAL_MS = 1000;
 const POSE_DEBUG_DEFAULTS = { pose: 'idle', dir: 'front', movement: 'idle' };
 const POSE_DEBUG_OPTIONS = [
@@ -720,6 +722,29 @@ function buildApiHeaders() {
     'Content-Type': 'application/json',
     'X-Agent-User-Id': getOrCreateUserId(),
   };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function createConversationWithRetry(payload, isCurrentActivation) {
+  let lastStatus = null;
+  for (let attempt = 1; attempt <= CONVERSATION_BOOTSTRAP_MAX_ATTEMPTS; attempt += 1) {
+    if (!isCurrentActivation()) return null;
+    const response = await fetch(`${API_BASE}/api/conversations`, {
+      method: 'POST',
+      headers: buildApiHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (response.ok) return response.json();
+    lastStatus = response.status;
+    if (response.status !== 503 || attempt === CONVERSATION_BOOTSTRAP_MAX_ATTEMPTS) {
+      break;
+    }
+    await sleep(CONVERSATION_BOOTSTRAP_RETRY_DELAY_MS);
+  }
+  throw new Error(`conversation bootstrap failed: ${lastStatus || 'unknown'}`);
 }
 
 function createEmptyWorldTaskState() {
@@ -1713,15 +1738,12 @@ function App() {
         }
         if (details.length === 0) {
           if (!isConversationActivationCurrent(bootstrapActivationSeq)) return;
-          const createResponse = await fetch(`${API_BASE}/api/conversations`, {
-            method: 'POST',
-            headers: buildApiHeaders(),
-            body: JSON.stringify({ title: DEFAULT_SESSION_NAME }),
-          });
-          if (!createResponse.ok) {
-            throw new Error(`conversation bootstrap failed: ${createResponse.status}`);
-          }
-          details = [await createResponse.json()];
+          const created = await createConversationWithRetry(
+            { title: DEFAULT_SESSION_NAME },
+            () => isConversationActivationCurrent(bootstrapActivationSeq),
+          );
+          if (!created) return;
+          details = [created];
         }
         if (cancelled || !isConversationActivationCurrent(bootstrapActivationSeq)) return;
         const storedConversationId = getStoredConversationId();

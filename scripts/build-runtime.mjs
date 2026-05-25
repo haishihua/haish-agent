@@ -110,6 +110,43 @@ function writeRuntimeLauncher() {
   );
 }
 
+function removeInstalledRuntimePackage(venvPython) {
+  spawnSync(venvPython, ['-m', 'pip', 'uninstall', '-y', 'haishihua-agent-core'], {
+    cwd: appRoot,
+    env: {
+      ...process.env,
+      PIP_DISABLE_PIP_VERSION_CHECK: '1',
+      PYTHONDONTWRITEBYTECODE: '1',
+    },
+    stdio: 'inherit',
+  });
+
+  const sitePackages = spawnSync(
+    venvPython,
+    ['-c', 'import site; print(site.getsitepackages()[0])'],
+    {
+      cwd: appRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PIP_DISABLE_PIP_VERSION_CHECK: '1',
+        PYTHONDONTWRITEBYTECODE: '1',
+      },
+    },
+  ).stdout.trim();
+  if (!sitePackages) return;
+  fs.rmSync(path.join(sitePackages, 'haishihua_agent_core'), { recursive: true, force: true });
+  for (const entry of fs.readdirSync(sitePackages)) {
+    if (/^haishihua_agent_core-.*\.(dist-info|egg-info)$/.test(entry)) {
+      fs.rmSync(path.join(sitePackages, entry), { recursive: true, force: true });
+    }
+  }
+}
+
+function removeSourceBuildArtifacts() {
+  fs.rmSync(path.join(sourceRoot, 'build'), { recursive: true, force: true });
+}
+
 function main() {
   if (!fs.existsSync(path.join(sourceRoot, 'pyproject.toml'))) {
     throw new Error(`Runtime source is missing pyproject.toml: ${sourceRoot}`);
@@ -145,7 +182,9 @@ function main() {
     'python-multipart',
     'uvicorn',
   ]);
-  run(venvPython, ['-m', 'pip', 'install', sourceRoot]);
+  removeSourceBuildArtifacts();
+  removeInstalledRuntimePackage(venvPython);
+  run(venvPython, ['-m', 'pip', 'install', '--no-cache-dir', '--force-reinstall', '--no-deps', sourceRoot]);
   pruneRuntime();
   writeRuntimeLauncher();
   run(venvPython, [

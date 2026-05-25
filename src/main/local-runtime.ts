@@ -21,7 +21,7 @@ type RuntimePaths = {
 const DEFAULT_RUNTIME_REPO = '/Users/zhanruitao/py-project/haishihua-agent-core';
 const BUNDLED_RUNTIME_DIR = 'haishihua-agent-core';
 const BUNDLED_RUNTIME_EXECUTABLE = path.join('bin', 'haish-runtime', 'haish-runtime');
-const START_TIMEOUT_MS = 20_000;
+const START_TIMEOUT_MS = 60_000;
 
 let child: ChildProcessWithoutNullStreams | null = null;
 let state: LocalRuntimeState = { status: 'idle', baseUrl: '' };
