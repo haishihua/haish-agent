@@ -1,0 +1,20 @@
+src/main/local-runtime.ts
+  s_e64fcdc0684bdd::t_baa8d9d9ca340d 91,93,98-100
+  s_e64fcdc0684bdd::t_194831cb6bef1a 95-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "b2488df4d5899845d4dae692bd2ed95f1d012fd0",
+  "prompts": {},
+  "sessions": {
+    "s_e64fcdc0684bdd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e5e6f-740c-71e0-8725-b94a6f6f1cff",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
