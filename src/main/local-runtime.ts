@@ -88,9 +88,16 @@ function runtimeEnv(paths: RuntimePaths, runtimeRepo: string): NodeJS.ProcessEnv
   const envFile = process.env.HAISH_LOCAL_RUNTIME_ENV_FILE
     || path.join(paths.userDataPath, 'runtime.env');
   const bundledEnvFile = path.join(runtimeRepo, '.env');
+  const bundledMcpConfig = path.join(runtimeRepo, 'mcp.json');
   const pythonPath = path.join(runtimeRepo, 'src');
-  return {
+  const baseEnv = {
     ...process.env,
+    ...(!process.env.HAISHIHUA_MCP_CONFIG && fs.existsSync(bundledMcpConfig)
+      ? { HAISHIHUA_MCP_CONFIG: bundledMcpConfig }
+      : {}),
+  };
+  return {
+    ...baseEnv,
     ...parseEnvFile(bundledEnvFile),
     ...parseEnvFile(envFile),
     PYTHONPATH: process.env.PYTHONPATH ? `${pythonPath}${path.delimiter}${process.env.PYTHONPATH}` : pythonPath,
