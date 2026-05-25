@@ -1,0 +1,20 @@
+app-web/src/effects.jsx
+  s_e64fcdc0684bdd::t_f3fb349e8901c2 158-159,161-163,167
+  s_e64fcdc0684bdd::t_8abce8246532d1 160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "44830e337b9bdba2f7688a4ee28bc9731027035d",
+  "prompts": {},
+  "sessions": {
+    "s_e64fcdc0684bdd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e5e6f-740c-71e0-8725-b94a6f6f1cff",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
