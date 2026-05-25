@@ -1,0 +1,24 @@
+scripts/build-runtime.mjs
+  s_e64fcdc0684bdd::t_fff70e3182ea4f 113-145,186
+  s_e64fcdc0684bdd::t_b6be1ec14a8592 146-149,185,187
+src/main/local-runtime.ts
+  s_e64fcdc0684bdd::t_2bb48f24621916 24
+app-web/src/app.jsx
+  s_e64fcdc0684bdd::t_b55e87f5caedeb 18-19,727-749,1741-1746
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "b1a1aa8ecb8cb20a6837bbc0bddd1075f3db2146",
+  "prompts": {},
+  "sessions": {
+    "s_e64fcdc0684bdd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e5e6f-740c-71e0-8725-b94a6f6f1cff",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
