@@ -40,6 +40,7 @@ export type WindowVisualState = {
 export type HaishDesktopApi = {
   platform: NodeJS.Platform;
   apiBase: string;
+  homePath: string;
   getRuntimeStatus: () => Promise<LocalRuntimeState>;
   getWindowState: () => Promise<WindowVisualState>;
   onWindowStateChange: (callback: (state: WindowVisualState) => void) => () => void;

@@ -375,7 +375,7 @@ const RESTORED_CONTEXT_BASE_TOKENS = 4200;
 const DEFAULT_PROJECT_ID = 'default-project';
 const DEFAULT_PROJECT_NAME = 'Default project';
 const DEFAULT_SESSION_NAME = 'Default Session';
-const DEFAULT_CONVERSATION_NAMES = new Set([DEFAULT_SESSION_NAME, 'New Chat', 'Untitled Chat']);
+const DEFAULT_CONVERSATION_NAMES = new Set([DEFAULT_SESSION_NAME, 'New Chat', 'New Conversation', 'Untitled Chat']);
 
 function normalizeContextUsage(value, fallbackConversationId = null) {
   const usedTokens = Math.max(0, Math.round(Number(value?.usedTokens ?? value?.used_tokens ?? 0) || 0));
@@ -586,7 +586,9 @@ function projectNameFromPath(workspacePath, fallback = 'Custom project') {
 
 function isDefaultConversationName(name) {
   const normalized = String(name || '').trim();
-  return DEFAULT_CONVERSATION_NAMES.has(normalized) || /^New Chat \d+$/.test(normalized);
+  return DEFAULT_CONVERSATION_NAMES.has(normalized)
+    || /^New Chat \d+$/.test(normalized)
+    || /^New Conversation \d+$/.test(normalized);
 }
 
 function titleFromTaskText(text, maxLength = 48) {
@@ -596,9 +598,14 @@ function titleFromTaskText(text, maxLength = 48) {
 }
 
 function conversationDetailToWorkspaceConversation(detail, previousConversation = null) {
+  const detailName = detail.title || detail.label || '';
+  const previousName = previousConversation?.name || '';
+  const shouldKeepLocalTitle = isDefaultConversationName(detailName)
+    && previousName
+    && !isDefaultConversationName(previousName);
   return {
     id: detail.conversation_id,
-    name: detail.title || detail.label || DEFAULT_SESSION_NAME,
+    name: shouldKeepLocalTitle ? previousName : (detailName || previousName || DEFAULT_SESSION_NAME),
     tasks: Array.isArray(detail.tasks) ? detail.tasks.map(taskSummaryToRuntimeTask) : [],
     expanded: previousConversation?.expanded !== false,
     tasksExpanded: Boolean(previousConversation?.tasksExpanded),
@@ -717,6 +724,14 @@ function findProjectByConversationId(state, conversationId) {
   )) || null;
 }
 
+function findConversationById(state, conversationId) {
+  for (const project of state.projects || []) {
+    const conversation = (project.conversations || []).find((item) => item.id === conversationId);
+    if (conversation) return conversation;
+  }
+  return null;
+}
+
 function buildApiHeaders() {
   return {
     'Content-Type': 'application/json',
@@ -792,6 +807,7 @@ function sortTaskIdsForRestore(tasks, lastTaskId) {
 
 function createPendingTaskDraft(text, attachment) {
   return {
+    id: generateHexId(),
     title: text,
     description: defaultQuestDescription(text),
     createdAt: Date.now(),
@@ -1575,7 +1591,9 @@ function App() {
   const [composerAttachment, setComposerAttachment] = useState(null);
   const [uploadState, setUploadState] = useState({ active: false, fileName: '' });
   const [toast, setToast] = useState(null);
-  const [activeProvider, setActiveProvider] = useState('openai');
+  const [modelCatalog, setModelCatalog] = useState(() => (
+    window.resolveModelCatalog ? window.resolveModelCatalog('openai') : null
+  ));
   const [providerLoading, setProviderLoading] = useState(true);
 
   const stageRef = useRef(null);
@@ -1598,9 +1616,12 @@ function App() {
   const [meetDrafts, setMeetDrafts] = useState(() => clonePointMap(window.MEET_POINTS));
   const [copiedCoords, setCopiedCoords] = useState(false);
   const activeTaskIdRef = useRef(null);
+  const activeRunIdRef = useRef(null);
+  const cancelledRunIdsRef = useRef(new Set());
   const fetchAbortRef = useRef(null);
   const answerBufferRef = useRef('');
   const chatFinalizedTaskIdsRef = useRef(new Set());
+  const userCancelledTaskIdsRef = useRef(new Set());
   const pendingPresentationTaskIdsRef = useRef(new Set());
   const sceneRuntimeRef = useRef({
     pending: [],
@@ -1621,13 +1642,18 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/api/llm/provider`)
+    fetch(`${API_BASE}/api/llm/models`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (cancelled || !data || !data.provider) return;
-        setActiveProvider(String(data.provider));
+        if (cancelled || !data) return;
+        if (Array.isArray(data.models) && data.models.length > 0) {
+          setModelCatalog({
+            options: data.models,
+            defaultModelId: data.default_model || data.models[0].id,
+          });
+        }
       })
-      .catch((error) => console.warn('failed to fetch active provider', error))
+      .catch((error) => console.warn('failed to fetch provider models', error))
       .finally(() => {
         if (!cancelled) setProviderLoading(false);
       });
@@ -1656,10 +1682,6 @@ function App() {
     };
   }, []);
 
-  const modelCatalog = useMemo(
-    () => (window.resolveModelCatalog ? window.resolveModelCatalog(activeProvider) : null),
-    [activeProvider],
-  );
   const modelOptions = modelCatalog?.options;
   const defaultModelId = modelCatalog?.defaultModelId;
 
@@ -1818,8 +1840,14 @@ function App() {
   function applyConversationSnapshot(detail) {
     if (!detail) return;
     setConversationAttachments(Array.isArray(detail.attachments) ? detail.attachments : []);
+    const workspacePath = detail.current_working_dir
+      || detail.current_workdir
+      || detail.cwd
+      || detail.workspace_path
+      || window.haish?.homePath
+      || null;
     setLocalWorkspace({
-      path: detail.workspace_path || null,
+      path: workspacePath,
       label: detail.workspace_label || null,
     });
   }
@@ -1904,6 +1932,9 @@ function App() {
   function ensureTaskForEvent(event) {
     const taskId = event.task_id || activeTaskIdRef.current || worldTaskStateRef.current.activeTaskId;
     if (!taskId) return null;
+    if (userCancelledTaskIdsRef.current.has(taskId)) {
+      return null;
+    }
 
     updateWorldTaskState((state) => {
       const existingTask = state.tasksById[taskId];
@@ -3214,29 +3245,71 @@ function App() {
     });
   }
 
-  async function readNdjsonStream(response, onEvent) {
+  async function cancelActiveConversationTask(nextConversationId) {
+    if (!nextConversationId) return null;
+    return fetch(`${API_BASE}/api/conversations/${nextConversationId}/tasks/cancel`, {
+      method: 'POST',
+      headers: {
+        'X-Agent-User-Id': userIdRef.current,
+      },
+    });
+  }
+
+  async function updateConversationTitle(conversationId, title) {
+    const trimmed = String(title || '').trim();
+    if (!conversationId || !trimmed) return null;
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, {
+      method: 'PATCH',
+      headers: buildApiHeaders(),
+      body: JSON.stringify({ title: trimmed }),
+    });
+    if (!response.ok) {
+      throw new Error(`conversation title update failed: ${response.status}`);
+    }
+    return response.json();
+  }
+
+  async function readNdjsonStream(response, onEvent, signal) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = '';
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let newlineIndex = buffer.indexOf('\n');
-      while (newlineIndex >= 0) {
-        const line = buffer.slice(0, newlineIndex).trim();
-        buffer = buffer.slice(newlineIndex + 1);
-        if (line) {
-          const event = normalizeWorldEvent(JSON.parse(line));
-          if (event) onEvent(event);
-        }
-        newlineIndex = buffer.indexOf('\n');
-      }
+    const cancelReader = () => {
+      reader.cancel().catch(() => undefined);
+    };
+    if (signal?.aborted) {
+      await reader.cancel().catch(() => undefined);
+      return;
     }
-    const tail = buffer.trim();
-    if (tail) {
-      const event = normalizeWorldEvent(JSON.parse(tail));
-      if (event) onEvent(event);
+    signal?.addEventListener?.('abort', cancelReader, { once: true });
+    let buffer = '';
+    try {
+      while (true) {
+        if (signal?.aborted) return;
+        const { value, done } = await reader.read();
+        if (done || signal?.aborted) break;
+        buffer += decoder.decode(value, { stream: true });
+        let newlineIndex = buffer.indexOf('\n');
+        while (newlineIndex >= 0) {
+          if (signal?.aborted) return;
+          const line = buffer.slice(0, newlineIndex).trim();
+          buffer = buffer.slice(newlineIndex + 1);
+          if (line) {
+            const event = normalizeWorldEvent(JSON.parse(line));
+            if (event && !signal?.aborted) onEvent(event);
+          }
+          newlineIndex = buffer.indexOf('\n');
+        }
+      }
+      if (signal?.aborted) return;
+      const tail = buffer.trim();
+      if (tail) {
+        const event = normalizeWorldEvent(JSON.parse(tail));
+        if (event && !signal?.aborted) onEvent(event);
+      }
+    } catch (error) {
+      if (signal?.aborted || error?.name === 'AbortError') return;
+      throw error;
+    } finally {
+      signal?.removeEventListener?.('abort', cancelReader);
     }
   }
 
@@ -3578,6 +3651,10 @@ function App() {
     if (!conversationId) {
       throw new Error('conversation is not ready');
     }
+    const runId = pendingTask.id || generateHexId();
+    pendingTask.id = runId;
+    activeRunIdRef.current = runId;
+    cancelledRunIdsRef.current.delete(runId);
     abortRef.current = false;
     answerBufferRef.current = '';
     setBusy(true);
@@ -3643,6 +3720,8 @@ function App() {
         options: {
           provider: pendingTask.requestedProvider || 'auto',
           model_id: pendingTask.requestedModelId || null,
+          // Fallback when no per-task choice exists. Matches DEFAULT_REASONING_EFFORT
+          // in panels.jsx — kept in sync so request payload mirrors UI default.
           reasoning_effort: pendingTask.requestedReasoningEffort || 'high',
           use_history: true,
         },
@@ -3654,32 +3733,56 @@ function App() {
     }
 
     await readNdjsonStream(response, (event) => {
+      if (
+        controller.signal.aborted
+        || abortRef.current
+        || activeRunIdRef.current !== runId
+        || cancelledRunIdsRef.current.has(runId)
+      ) {
+        return;
+      }
       if (event.task_id && !chatFinalizedTaskIdsRef.current.has(event.task_id)) {
         activeTaskIdRef.current = event.task_id;
       }
       applyWorldEvent(event);
-    });
+    }, controller.signal);
   }
 
-  async function handleStop() {
-    if (!busy) return;
+  function handleStop() {
+    const currentTaskState = worldTaskStateRef.current;
+    const taskId = activeTaskIdRef.current || currentTaskState.activeTaskId || null;
+    const runId = activeRunIdRef.current;
+    const hasActiveRun = busy || taskId || currentTaskState.pendingTask || fetchAbortRef.current;
+    if (!hasActiveRun) return;
     abortRef.current = true;
-    fetchAbortRef.current?.abort?.();
-    if (activeTaskIdRef.current) {
-      try {
-        await cancelActiveTask(activeTaskIdRef.current);
-      } catch (error) {
+    if (runId) cancelledRunIdsRef.current.add(runId);
+    if (taskId) {
+      userCancelledTaskIdsRef.current.add(taskId);
+      cancelActiveTask(taskId).catch((error) => {
         console.error('cancel failed', error);
-      }
+      });
+    } else {
+      cancelActiveConversationTask(conversationId).catch((error) => {
+        console.error('conversation cancel failed', error);
+      });
+    }
+    fetchAbortRef.current?.abort?.();
+    if (taskId) {
       // 关键：把 taskId 加入 finalized set，让 applyWorldEvent 早退，
       // 避免后续 in-flight 的 SSE 事件把 status 从 'cancelled' 改回 'running'。
-      chatFinalizedTaskIdsRef.current.add(activeTaskIdRef.current);
-      updateTaskById(activeTaskIdRef.current, (task) => applyTerminalTaskState(task, 'cancelled', { aborted: true }));
-      completeTaskAgents(activeTaskIdRef.current, 'cancelled');
-      dropPendingSceneItems(activeTaskIdRef.current);
+      chatFinalizedTaskIdsRef.current.add(taskId);
+      updateTaskById(taskId, (task) => applyTerminalTaskState(task, 'cancelled', { aborted: true }));
+      updateWorldTaskState((state) => ({
+        ...state,
+        activeTaskId: null,
+        pendingTask: null,
+        taskOrder: state.taskOrder.includes(taskId) ? state.taskOrder : [...state.taskOrder, taskId],
+      }));
+      dropPendingSceneItems(taskId);
     } else {
       updateWorldTaskState((state) => ({
         ...state,
+        activeTaskId: null,
         pendingTask: state.pendingTask
           ? applyTerminalTaskState(state.pendingTask, 'cancelled', { aborted: true })
           : null,
@@ -3687,6 +3790,7 @@ function App() {
       dropPendingSceneItems();
     }
     activeTaskIdRef.current = null;
+    activeRunIdRef.current = null;
     fetchAbortRef.current = null;
     updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
     resetSceneActors();
@@ -3696,9 +3800,18 @@ function App() {
   function handleDeploy(text, attachment, modelId, reasoningEffort) {
     const pendingTask = createPendingTaskDraft(text, attachment);
     pendingTask.requestedModelId = modelId || '';
+    // Match DEFAULT_REASONING_EFFORT in panels.jsx (kept in sync).
     pendingTask.requestedReasoningEffort = reasoningEffort || 'high';
     pendingTask.requestedProvider = 'auto';
     pendingTask.originViewMode = viewModeRef.current || viewMode;
+    const nextConversationTitle = titleFromTaskText(text);
+    const currentConversation = findConversationById(workspaceState, conversationId);
+    const shouldUpdateConversationTitle = Boolean(
+      nextConversationTitle
+      && currentConversation
+      && isDefaultConversationName(currentConversation.name)
+      && (currentConversation.tasks || []).length === 0
+    );
     setComposerAttachment(null);
     setWorkspaceState((state) => ({
       ...state,
@@ -3714,6 +3827,15 @@ function App() {
         }),
       })),
     }));
+    if (shouldUpdateConversationTitle) {
+      updateConversationTitle(conversationId, nextConversationTitle)
+        .then((detail) => {
+          if (detail) {
+            setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, false));
+          }
+        })
+        .catch((error) => console.warn('conversation title update skipped:', error));
+    }
     updateWorldTaskState((state) => ({
       ...state,
       pendingTask,
@@ -3755,6 +3877,7 @@ function App() {
         completeTaskAgents(activeTaskIdRef.current, 'failed');
       }
       activeTaskIdRef.current = null;
+      activeRunIdRef.current = null;
       fetchAbortRef.current = null;
     });
   }
@@ -4048,17 +4171,18 @@ function App() {
       .filter(Boolean);
     for (const task of orderedTasks) {
       const taskId = task.taskId || task.id || task.title;
+      const status = normalizeTaskStatus(task.status);
+      if (status === 'cancelled' && task.aborted) continue;
       if (task.title) {
         rows.push({
           id: `${taskId}-user`,
           role: 'user',
           text: task.title,
-          status: normalizeTaskStatus(task.status),
+          status,
           createdAt: task.createdAt,
           completedAt: task.completedAt,
         });
       }
-      const status = normalizeTaskStatus(task.status);
       const answer = String(task.answerText || '').trim();
       const progress = String(task.chatStreamText || '').trim();
       const error = String(task.error || '').trim();
@@ -4095,6 +4219,7 @@ function App() {
     if (worldTaskState.pendingTask && !worldTaskState.activeTaskId) {
       const pendingStatus = normalizeTaskStatus(worldTaskState.pendingTask.status);
       const pendingError = String(worldTaskState.pendingTask.error || '').trim();
+      if (pendingStatus === 'cancelled' && worldTaskState.pendingTask.aborted) return rows;
       rows.push({
         id: `${worldTaskState.pendingTask.id || 'pending'}-user`,
         role: 'user',
@@ -4184,6 +4309,7 @@ function App() {
               <div className="app-chat-stage">
                 <div className="app-chat-main">
                   <window.ChatPanel
+                    conversationId={conversationId}
                     messages={chatMessages}
                     running={busy}
                     disabled={busy || uploadState.active || calibrationMode || !conversationReady || !!conversationError}
@@ -4195,6 +4321,7 @@ function App() {
                     uploading={uploadState.active}
                     contextUsage={contextUsage}
                     workspacePath={localWorkspace.path}
+                    homePath={window.haish?.homePath || ''}
                     activeTaskText={activeTaskText}
                     now={now}
                     modelOptions={modelOptions}
@@ -4211,7 +4338,7 @@ function App() {
                     MAP_W={MAP_W}
                     MAP_H={MAP_H}
                     onViewChange={setMapView}
-                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy} disabled={busy || uploadState.active || calibrationMode || !conversationReady || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} />}
+                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy} disabled={busy || uploadState.active || calibrationMode || !conversationReady || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} />}
                   >
                     <div ref={stageRef} className="office-map">
                       {calibrationMode && calibrationTarget === 'routes' && selectedRouteId && <window.CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}

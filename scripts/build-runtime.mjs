@@ -22,7 +22,6 @@ const runtimeFiles = [
   'README.md',
   'mcp.json',
   'src',
-  '.skills',
 ];
 
 function run(cmd, args, options = {}) {
@@ -57,6 +56,32 @@ function copyRuntimeFile(name) {
       return true;
     },
   });
+}
+
+function copySkillTree(fromRoot, toRoot) {
+  if (!fs.existsSync(fromRoot)) return;
+  fs.mkdirSync(toRoot, { recursive: true });
+  for (const entry of fs.readdirSync(fromRoot)) {
+    const from = path.join(fromRoot, entry);
+    if (!fs.statSync(from).isDirectory()) continue;
+    if (!fs.existsSync(path.join(from, 'SKILL.md'))) continue;
+    fs.cpSync(from, path.join(toRoot, entry), {
+      recursive: true,
+      force: true,
+      filter: (src) => {
+        const base = path.basename(src);
+        if (base === '__pycache__' || base === '.pytest_cache') return false;
+        if (base.endsWith('.pyc') || base.endsWith('.pyo')) return false;
+        return true;
+      },
+    });
+  }
+}
+
+function bundleSystemSkills() {
+  const runtimeSystemSkillsRoot = path.join(runtimeRoot, '.skills-src');
+  copySkillTree(path.join(sourceRoot, '.skills'), runtimeSystemSkillsRoot);
+  copySkillTree(path.join(sourceRoot, 'skills'), runtimeSystemSkillsRoot);
 }
 
 function pruneRuntime() {
@@ -157,6 +182,7 @@ function main() {
   for (const file of runtimeFiles) {
     copyRuntimeFile(file);
   }
+  bundleSystemSkills();
 
   const python = process.env.HAISH_RUNTIME_BUILD_PYTHON || 'python3';
   fs.rmSync(buildVenvPath, { recursive: true, force: true });

@@ -12,6 +12,7 @@ import type {
 const api: HaishDesktopApi = {
   platform: process.platform,
   apiBase: '',
+  homePath: process.env.HOME || '',
   getRuntimeStatus: () => ipcRenderer.invoke('runtime:status') as Promise<LocalRuntimeState>,
   getWindowState: () => ipcRenderer.invoke('window:state') as Promise<WindowVisualState>,
   onWindowStateChange: (callback: (state: WindowVisualState) => void) => {

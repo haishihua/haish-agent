@@ -66,6 +66,31 @@ svg { image-rendering: auto; shape-rendering: geometricPrecision; }
 .ico-attach          { -webkit-mask-image: url("assets/ui/icons/attach-file.png");     mask-image: url("assets/ui/icons/attach-file.png"); width: 16px; height: 16px; }
 .ico-deploy          { -webkit-mask-image: url("assets/ui/icons/deploy.png");          mask-image: url("assets/ui/icons/deploy.png"); width: 18px; height: 18px; }
 .ico-stop            { -webkit-mask-image: url("assets/ui/icons/stop.png");            mask-image: url("assets/ui/icons/stop.png"); width: 18px; height: 18px; }
+.ico-preview         { -webkit-mask-image: url("assets/ui/icons/preview.png"); mask-image: url("assets/ui/icons/preview.png"); width: 19px; height: 19px; background-color: currentColor; filter: drop-shadow(0 0 1px rgba(255,255,255,0.22)); }
+.ico-stop-cancel {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffb21b 0%, #ffa20a 54%, #f19000 100%);
+  box-shadow: inset 0 1px 0 rgba(255,232,160,0.72), 0 0 6px rgba(255,162,10,0.32);
+}
+.ico-stop-cancel::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: #fffdf8;
+  box-shadow: 0 0 2px rgba(255,255,255,0.65);
+}
+.stop-cancel-svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  filter: drop-shadow(0 0 5px rgba(239,191,100,0.3));
+}
 .ico-local           { -webkit-mask-image: url("assets/ui/icons/monitor.png");         mask-image: url("assets/ui/icons/monitor.png"); width: 16px; height: 16px; }
 .ico-folder-plus-circle { -webkit-mask-image: url("assets/ui/icons/folder-plus-circle.png"); mask-image: url("assets/ui/icons/folder-plus-circle.png"); width: 18px; height: 18px; }
 .ico-folder          { -webkit-mask-image: url("assets/ui/icons/folder.png");          mask-image: url("assets/ui/icons/folder.png"); width: 18px; height: 18px; }
@@ -1449,24 +1474,17 @@ select,
   filter: drop-shadow(0 0 6px rgba(239,191,100,0.22));
 }
 .chat-composer .context-usage-icon {
-  /* 之前用 #03050a 作为「未使用」色，跟 chat-composer 深色背景重合，0% 时
-     整个图标几乎不可见。这里把未使用色换成亮灰、已使用色换成 gold，并加粗
-     外描白边，保证任何使用率下都能看清。task-delegation 那套保持原样。 */
   --context-used: 0%;
   width: 20px;
   height: 20px;
   display: inline-block;
-  background: conic-gradient(var(--gold, #efbf64) 0 var(--context-used), #cdd4e6 var(--context-used) 100%);
+  background: conic-gradient(var(--gold, #efbf64) 0 var(--context-used), #ffffff var(--context-used) 100%);
   -webkit-mask: url("assets/ui/icons/color-palette.png") center / contain no-repeat;
           mask: url("assets/ui/icons/color-palette.png") center / contain no-repeat;
   image-rendering: auto;
   filter:
     drop-shadow(0 0 1px rgba(255,255,255,0.95))
-    drop-shadow(1px 0 0 rgba(255,255,255,0.85))
-    drop-shadow(-1px 0 0 rgba(255,255,255,0.85))
-    drop-shadow(0 1px 0 rgba(255,255,255,0.85))
-    drop-shadow(0 -1px 0 rgba(255,255,255,0.85))
-    drop-shadow(0 0 6px rgba(176,206,255,0.35));
+    drop-shadow(0 0 7px rgba(255,255,255,0.18));
 }
 .chat-composer .td-file-chip {
   padding: 0 9px;
@@ -2286,13 +2304,14 @@ select,
 .conversation-task-status-icon.failed {
   color: #ff7d8e;
 }
-.conversation-task-status-icon.cancelled,
-.conversation-task-status-icon.pending {
-  color: #8b93a9;
-  opacity: 0.76;
+.conversation-task-status-icon.cancelled {
+  color: #ffa20a;
+  opacity: 1;
+  filter: drop-shadow(0 0 5px rgba(239,191,100,0.28));
 }
 .conversation-task-status-icon.pending {
   color: #8fb3ff;
+  opacity: 0.76;
 }
 .conversation-task-status-icon.pending .ico-loading {
   animation: live-loading-spin 1s linear infinite;
@@ -2635,10 +2654,10 @@ select,
   box-shadow: 0 0 10px rgba(255, 125, 142, 0.16), 0 0 0 2px rgba(8, 14, 24, 0.78);
 }
 .live-activity-icon.cancelled {
-  color: #c0cadf;
-  border-color: rgba(192, 202, 223, 0.38);
-  background: rgba(66, 74, 90, 0.55);
-  box-shadow: 0 0 10px rgba(192, 202, 223, 0.12), 0 0 0 2px rgba(8, 14, 24, 0.78);
+  color: var(--gold);
+  border-color: rgba(239, 191, 100, 0.48);
+  background: rgba(84, 58, 16, 0.46);
+  box-shadow: 0 0 10px rgba(239, 191, 100, 0.18), 0 0 0 2px rgba(8, 14, 24, 0.78);
 }
 .live-activity-icon.pending {
   color: #8fb3ff;
@@ -2653,6 +2672,10 @@ select,
 .live-activity-icon .ico {
   width: 14px;
   height: 14px;
+}
+.live-activity-icon.cancelled .ico-stop-cancel {
+  width: 18px;
+  height: 18px;
 }
 .live-activity-copy {
   min-width: 0;
@@ -3709,10 +3732,13 @@ select,
   width: 22px;
   height: 22px;
   display: inline-block;
-  background: conic-gradient(#8d95a6 0 var(--context-used), #03050a var(--context-used) 100%);
+  background: conic-gradient(var(--gold, #efbf64) 0 var(--context-used), #ffffff var(--context-used) 100%);
   -webkit-mask: url("assets/ui/icons/color-palette.png") center / contain no-repeat;
           mask: url("assets/ui/icons/color-palette.png") center / contain no-repeat;
   image-rendering: auto;
+  filter:
+    drop-shadow(0 0 1px rgba(255,255,255,0.95))
+    drop-shadow(0 0 7px rgba(255,255,255,0.18));
 }
 
 .task-delegation .deploy-btn {

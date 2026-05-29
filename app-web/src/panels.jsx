@@ -89,12 +89,7 @@ function TopBar({ now, viewMode = 'world', onToggleViewMode, calibrationActive =
       </div>
       <div className="topbar-actions">
         <button type="button" className="topbar-icon" title="Network">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
-            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
-            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
-            <line x1="12" y1="20" x2="12.01" y2="20"/>
-          </svg>
+          <span className="ico ico-preview" aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -383,6 +378,15 @@ function ConversationAction({ label, icon, onClick, disabled = false }) {
   );
 }
 
+function StopCancelIcon() {
+  return (
+    <svg className="stop-cancel-svg" viewBox="0 0 18 18" aria-hidden="true">
+      <circle cx="9" cy="9" r="8" fill="#ffa20a" />
+      <rect x="6" y="6" width="6" height="6" rx="1.5" fill="#fffdf8" />
+    </svg>
+  );
+}
+
 function TaskStatusIcon({ statusClass }) {
   if (statusClass === 'done') {
     return <span className="conversation-task-status-icon done"><span className="ico ico-check-success" aria-hidden="true" /></span>;
@@ -391,7 +395,7 @@ function TaskStatusIcon({ statusClass }) {
     return <span className="conversation-task-status-icon failed"><span className="ico ico-close" aria-hidden="true" /></span>;
   }
   if (statusClass === 'cancelled') {
-    return <span className="conversation-task-status-icon cancelled"><span className="ico ico-close" aria-hidden="true" /></span>;
+    return <span className="conversation-task-status-icon cancelled"><StopCancelIcon /></span>;
   }
   return <span className="conversation-task-status-icon pending"><span className="ico ico-loading" aria-hidden="true" /></span>;
 }
@@ -741,7 +745,7 @@ function LiveActivityStatusIcon({ status }) {
     return <span className="live-activity-icon failed"><span className="ico ico-close" aria-hidden="true" /></span>;
   }
   if (normalized === 'cancelled') {
-    return <span className="live-activity-icon cancelled"><span className="ico ico-close" aria-hidden="true" /></span>;
+    return <span className="live-activity-icon cancelled"><StopCancelIcon /></span>;
   }
   return <span className="live-activity-icon pending"><span className="ico ico-loading" aria-hidden="true" /></span>;
 }
@@ -889,22 +893,16 @@ function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
 window.LiveFeedPanel = LiveFeedPanel;
 
 const MODEL_OPTIONS = [
-  { id: 'deepseek-ai/DeepSeek-V3.2', label: 'deepseek-v3.2' },
-  { id: 'openAi/gpt-5.5', label: 'gpt5.5' },
-  { id: 'anthropic/opus4.7', label: 'opus4.7' },
-  { id: 'deepseek-ai/DeepSeek-V4-Flash', label: 'deepseek-v4-flash' },
-  { id: 'Pro/moonshotai/Kimi-K2.6', label: 'kimi-k2.6' },
-  { id: 'Pro/zai-org/GLM-5.1', label: 'glm-5.1' },
-  { id: 'Pro/MiniMaxAI/MiniMax-M2.5', label: 'MiniMax-M2.5' },
+  { id: 'gpt-5.5', label: 'gpt5.5' },
+  { id: 'gpt-5.4', label: 'gpt5.4' },
 ];
 
 // 按 provider 分组的模型清单。后端 /api/llm/provider 探测当前生效 provider，
-// 前端按 key 选对应清单；拿不到或未登记的统一兜底到 openai 桶（也就是目前
-// 的硅基流动那套）。
+// 前端按 key 选对应清单；拿不到或未登记的统一兜底到 openai 桶。
 const PROVIDER_MODEL_CATALOG = {
   openai: {
     options: MODEL_OPTIONS,
-    defaultModelId: 'deepseek-ai/DeepSeek-V3.2',
+    defaultModelId: 'gpt-5.5',
   },
   deepseek: {
     options: [
@@ -922,6 +920,7 @@ function resolveModelCatalog(provider) {
 
 window.resolveModelCatalog = resolveModelCatalog;
 
+// Kept in sync with the backend default reasoning effort.
 const DEFAULT_REASONING_EFFORT = 'high';
 const REASONING_EFFORT_OPTIONS = [
   { id: 'low', label: 'low' },
@@ -1046,17 +1045,48 @@ function ModelPicker({ value, reasoningEffort, options, reasoningOptions = REASO
 window.ModelPicker = ModelPicker;
 
 function isAbsolutePathLike(value) {
-  return value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value);
+  return value.startsWith('/') || value === '~' || value.startsWith('~/') || /^[A-Za-z]:[\\/]/.test(value);
 }
 
-function joinWorkspacePath(workspacePath, relativePath) {
-  const base = String(workspacePath || '').trim().replace(/\/+$/, '');
-  const rel = String(relativePath || '').trim().replace(/^\.?\//, '');
-  if (!base || !rel) return rel;
-  return `${base}/${rel}`;
+function normalizeFsPath(value, homePath = '') {
+  const raw = String(value || '').trim().replace(/\\/g, '/');
+  const normalizedHome = String(homePath || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
+  const expanded = normalizedHome && (raw === '~' || raw.startsWith('~/'))
+    ? `${normalizedHome}${raw.slice(1)}`
+    : raw;
+  return expanded.replace(/\/+$/, '');
 }
 
-function normalizePastedPathLine(line, workspacePath, forceAbsolute = false) {
+function basenameFromPath(value) {
+  const normalized = normalizeFsPath(value);
+  if (!normalized) return '';
+  const parts = normalized.split('/').filter(Boolean);
+  return parts[parts.length - 1] || normalized;
+}
+
+function workspaceRelativePath(filePath, workspacePath, homePath = '') {
+  const normalizedFile = normalizeFsPath(filePath, homePath);
+  if (!normalizedFile) return '';
+  const normalizedWorkspace = normalizeFsPath(workspacePath || homePath, homePath);
+  if (!normalizedWorkspace) return basenameFromPath(normalizedFile);
+  if (normalizedFile === normalizedWorkspace) return basenameFromPath(normalizedFile);
+  const prefix = `${normalizedWorkspace}/`;
+  if (normalizedFile.startsWith(prefix)) return normalizedFile.slice(prefix.length);
+  return basenameFromPath(normalizedFile);
+}
+
+function stripWorkspaceNamePrefix(relativePath, workspacePath, homePath = '') {
+  const normalized = normalizeFsPath(relativePath, homePath).replace(/^\.\/+/, '');
+  if (!normalized) return '';
+  const workspaceName = basenameFromPath(workspacePath || homePath);
+  if (!workspaceName || !normalized.includes('/')) return normalized;
+  const parts = normalized.split('/').filter(Boolean);
+  if (parts[0] === workspaceName && parts.length > 1) return parts.slice(1).join('/');
+  return normalized;
+}
+
+function normalizePastedPathLine(line, workspacePath, options = {}) {
+  const homePath = options.homePath || '';
   let text = String(line || '').trim();
   if (!text) return '';
   if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
@@ -1069,14 +1099,12 @@ function normalizePastedPathLine(line, workspacePath, forceAbsolute = false) {
       text = text.replace(/^file:\/\//, '');
     }
   }
-  if (isAbsolutePathLike(text)) return text;
-  if (forceAbsolute || text.startsWith('./') || text.startsWith('../') || text.includes('/')) {
-    return joinWorkspacePath(workspacePath, text);
-  }
-  return text;
+  if (isAbsolutePathLike(text)) return workspaceRelativePath(text, workspacePath, homePath);
+  const relativePath = stripWorkspaceNamePrefix(text, workspacePath, homePath);
+  return options.filePaste && !normalizeFsPath(workspacePath || homePath, homePath) ? basenameFromPath(relativePath) : relativePath;
 }
 
-function normalizePastedPathText(text, workspacePath) {
+function normalizePastedPathText(text, workspacePath, homePath = '') {
   const raw = String(text || '');
   const lines = raw.split(/\r?\n/);
   const shouldNormalize = lines.every((line) => {
@@ -1089,16 +1117,26 @@ function normalizePastedPathText(text, workspacePath) {
       || (item.includes('/') && !/\s/.test(item));
   });
   if (!shouldNormalize) return '';
-  const normalized = lines.map((line) => normalizePastedPathLine(line, workspacePath)).join('\n');
+  const normalized = lines.map((line) => normalizePastedPathLine(line, workspacePath, { homePath })).join('\n');
   return normalized === raw ? '' : normalized;
 }
 
-function clipboardFilesToPathText(files, workspacePath) {
+function clipboardFilesToPathText(files, workspacePath, homePath = '') {
   return Array.from(files || [])
     .map((file) => {
-      const rawPath = file?.path || file?.webkitRelativePath || file?.name || '';
-      return normalizePastedPathLine(rawPath, workspacePath, true);
+      const rawPath = file?.path || file?.webkitRelativePath || '';
+      return normalizePastedPathLine(rawPath, workspacePath, { filePaste: true, homePath });
     })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function clipboardUriListToPathText(uriList, workspacePath, homePath = '') {
+  return String(uriList || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+    .map((line) => normalizePastedPathLine(line, workspacePath, { filePaste: true, homePath }))
     .filter(Boolean)
     .join('\n');
 }
@@ -1114,12 +1152,13 @@ function insertTextAtSelection(value, insertText, selectionStart, selectionEnd, 
   return `${prefix}${spacerBefore}${insertText}${spacerAfter}${suffix}`.slice(0, maxLength);
 }
 
-function handlePathPaste(event, currentValue, setValue, workspacePath, maxLength = 500) {
+function handlePathPaste(event, currentValue, setValue, workspacePath, homePath = '', maxLength = 500) {
   const clipboard = event.clipboardData;
   if (!clipboard) return;
-  const fileText = clipboardFilesToPathText(clipboard.files, workspacePath);
+  const uriText = clipboardUriListToPathText(clipboard.getData('text/uri-list'), workspacePath, homePath);
+  const fileText = clipboardFilesToPathText(clipboard.files, workspacePath, homePath);
   const plainText = clipboard.getData('text/plain');
-  const normalizedText = fileText || normalizePastedPathText(plainText, workspacePath);
+  const normalizedText = uriText || fileText || normalizePastedPathText(plainText, workspacePath, homePath);
   if (!normalizedText) return;
   event.preventDefault();
   const target = event.currentTarget;
@@ -1204,9 +1243,9 @@ async function copyTextToClipboard(text) {
   }
 }
 
-function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, contextUsage, workspacePath, activeTaskText, modelOptions, defaultModelId, modelLoading = false }) {
+function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, contextUsage, workspacePath, homePath, activeTaskText, modelOptions, defaultModelId, modelLoading = false }) {
   const resolvedOptions = (Array.isArray(modelOptions) && modelOptions.length > 0) ? modelOptions : MODEL_OPTIONS;
-  const resolvedDefaultModelId = defaultModelId || 'Pro/zai-org/GLM-5.1';
+  const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
   const [v, setV] = React.useState('');
   const [modelId, setModelId] = React.useState(resolvedDefaultModelId);
 
@@ -1218,6 +1257,7 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
   const [reasoningEffort, setReasoningEffort] = React.useState(DEFAULT_REASONING_EFFORT);
   const taRef = React.useRef(null);
   const fileRef = React.useRef(null);
+  const suppressSubmitUntilRef = React.useRef(0);
   const usedTokens = Math.max(0, Math.round(Number(contextUsage?.usedTokens) || 0));
   const totalTokens = Math.max(1, Math.round(Number(contextUsage?.totalTokens) || 128000));
   const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (usedTokens / totalTokens)));
@@ -1254,6 +1294,18 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
     restoreActiveTaskText();
   }
 
+  function handleStopPress(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    suppressSubmitUntilRef.current = Date.now() + 700;
+    stopAndRestore();
+  }
+
+  function handleStopKey(event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    handleStopPress(event);
+  }
+
   React.useEffect(() => {
     if (!running) return undefined;
     function handleEscape(event) {
@@ -1267,6 +1319,7 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
 
   function submit(e) {
     e?.preventDefault();
+    if (Date.now() < suppressSubmitUntilRef.current) return;
     if (!v.trim() || disabled) return;
     onDeploy(v.trim(), attachment, modelId, reasoningEffort);
     setV('');
@@ -1299,7 +1352,7 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
           rows={1}
           value={v}
           onChange={e => setV(e.target.value)}
-          onPaste={e => handlePathPaste(e, v, setV, workspacePath, 500)}
+          onPaste={e => handlePathPaste(e, v, setV, workspacePath, homePath, 500)}
           onKeyDown={e => {
             if (e.key === 'Escape' && running && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -1370,7 +1423,8 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
           <button
             type="button"
             className="deploy-btn stop icon-only"
-            onClick={onStop}
+            onMouseDown={handleStopPress}
+            onKeyDown={handleStopKey}
             aria-label="Stop"
             data-tooltip="Stop"
             data-tooltip-pos="above"
@@ -1717,6 +1771,7 @@ function ChatMessageRow({ message, now }) {
 }
 
 function ChatPanel({
+  conversationId,
   messages = [],
   running = false,
   disabled = false,
@@ -1728,6 +1783,7 @@ function ChatPanel({
   uploading,
   contextUsage,
   workspacePath,
+  homePath,
   activeTaskText,
   now,
   modelOptions,
@@ -1735,7 +1791,7 @@ function ChatPanel({
   modelLoading = false,
 }) {
   const resolvedOptions = (Array.isArray(modelOptions) && modelOptions.length > 0) ? modelOptions : MODEL_OPTIONS;
-  const resolvedDefaultModelId = defaultModelId || 'Pro/zai-org/GLM-5.1';
+  const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
   const [draft, setDraft] = React.useState('');
   const [modelId, setModelId] = React.useState(resolvedDefaultModelId);
   const [reasoningEffort, setReasoningEffort] = React.useState(DEFAULT_REASONING_EFFORT);
@@ -1748,6 +1804,10 @@ function ChatPanel({
   const listRef = React.useRef(null);
   const inputRef = React.useRef(null);
   const fileRef = React.useRef(null);
+  const suppressSubmitUntilRef = React.useRef(0);
+  const shouldAutoScrollRef = React.useRef(true);
+  const lastMessageCountRef = React.useRef(messages.length);
+  const lastConversationIdRef = React.useRef(conversationId || null);
   const usedTokens = Math.max(0, Math.round(Number(contextUsage?.usedTokens) || 0));
   const totalTokens = Math.max(1, Math.round(Number(contextUsage?.totalTokens) || 128000));
   const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (usedTokens / totalTokens)));
@@ -1762,11 +1822,30 @@ function ChatPanel({
     '--context-used': `${visibleContextRatio * 100}%`,
   };
 
+  function isMessageListNearBottom(el) {
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= 48;
+  }
+
+  function handleMessageListScroll(event) {
+    shouldAutoScrollRef.current = isMessageListNearBottom(event.currentTarget);
+  }
+
   React.useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages, running]);
+    const normalizedConversationId = conversationId || null;
+    if (normalizedConversationId !== lastConversationIdRef.current || messages.length < lastMessageCountRef.current) {
+      shouldAutoScrollRef.current = true;
+    }
+    lastConversationIdRef.current = normalizedConversationId;
+    lastMessageCountRef.current = messages.length;
+    if (!shouldAutoScrollRef.current) return;
+    requestAnimationFrame(() => {
+      if (listRef.current) {
+        listRef.current.scrollTop = listRef.current.scrollHeight;
+      }
+    });
+  }, [conversationId, messages, running]);
 
   React.useLayoutEffect(() => {
     const el = inputRef.current;
@@ -1790,6 +1869,18 @@ function ChatPanel({
     restoreActiveTaskText();
   }
 
+  function handleStopPress(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    suppressSubmitUntilRef.current = Date.now() + 700;
+    stopAndRestore();
+  }
+
+  function handleStopKey(event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    handleStopPress(event);
+  }
+
   React.useEffect(() => {
     if (!running) return undefined;
     function handleEscape(event) {
@@ -1803,6 +1894,7 @@ function ChatPanel({
 
   function submit(e) {
     e?.preventDefault();
+    if (Date.now() < suppressSubmitUntilRef.current) return;
     const text = draft.trim();
     if (!text || disabled) return;
     onSend?.(text, attachment, modelId, reasoningEffort);
@@ -1824,7 +1916,7 @@ function ChatPanel({
 
   return (
     <section className="chat-workspace" aria-label="Chat">
-      <div ref={listRef} className="chat-message-list">
+      <div ref={listRef} className="chat-message-list" onScroll={handleMessageListScroll}>
         {messages.length === 0 ? (
           <div className="chat-empty">
             <div className="chat-empty-illustration" aria-hidden="true">
@@ -1848,7 +1940,7 @@ function ChatPanel({
           rows={1}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          onPaste={(event) => handlePathPaste(event, draft, setDraft, workspacePath, 500)}
+          onPaste={(event) => handlePathPaste(event, draft, setDraft, workspacePath, homePath, 500)}
           onKeyDown={(event) => {
             if (event.key === 'Escape' && running && !event.nativeEvent.isComposing) {
               event.preventDefault();
@@ -1918,7 +2010,7 @@ function ChatPanel({
               </button>
             </PortalTooltip>
             {running ? (
-              <button type="button" className="chat-send stop" onClick={onStop} aria-label="Stop">
+              <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Stop">
                 <span className="ico ico-stop" aria-hidden="true" />
               </button>
             ) : (
