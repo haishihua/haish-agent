@@ -5,24 +5,39 @@ function PortalTooltip({ text, position = 'below', multiline = false, children }
   const [visible, setVisible] = React.useState(false);
   const [coords, setCoords] = React.useState(null);
   const triggerRef = React.useRef(null);
+  const bubbleRef = React.useRef(null);
 
   const computeCoords = React.useCallback(() => {
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
+    const triggerCenter = r.left + r.width / 2;
+    // Clamp to viewport so the tooltip doesn't get cut off at the screen edges.
+    const margin = 8;
+    const bubbleW = bubbleRef.current?.offsetWidth || 0;
+    const halfW = bubbleW / 2;
+    const minX = margin + halfW;
+    const maxX = window.innerWidth - margin - halfW;
+    const x = bubbleW > 0
+      ? Math.min(Math.max(triggerCenter, minX), maxX)
+      : triggerCenter;
     setCoords({
-      x: r.left + r.width / 2,
+      x,
       y: position === 'above' ? r.top - 8 : r.bottom + 8,
+      arrow: triggerCenter - x, // px offset from bubble center to actual trigger
     });
   }, [position]);
 
   React.useEffect(() => {
     if (!visible) return undefined;
     computeCoords();
+    // After the bubble mounts we may need to re-clamp once its width is known.
+    const raf = requestAnimationFrame(computeCoords);
     const onScroll = () => computeCoords();
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', onScroll);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', onScroll);
     };
@@ -40,8 +55,9 @@ function PortalTooltip({ text, position = 'below', multiline = false, children }
   const portalNode = (visible && coords && text)
     ? ReactDOM.createPortal(
         <div
+          ref={bubbleRef}
           className={`portal-tooltip portal-tooltip-${position}${multiline ? ' is-multiline' : ''}`}
-          style={{ left: coords.x, top: coords.y }}
+          style={{ left: coords.x, top: coords.y, '--arrow-offset': `${coords.arrow}px` }}
           role="tooltip"
         >
           {text}
@@ -88,33 +104,37 @@ function TopBar({ now, viewMode = 'world', onToggleViewMode, calibrationActive =
         <div className="topbar-title">HAISH AGENT</div>
       </div>
       <div className="topbar-actions">
-        <button type="button" className="topbar-icon" title="Network">
-          <span className="ico ico-preview" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={`topbar-icon topbar-mode-toggle ${chatMode ? 'active' : ''}`}
-          title={chatMode ? 'Agent World Mode' : 'Chat Mode'}
-          aria-label={chatMode ? 'Switch to Agent World Mode' : 'Switch to Chat Mode'}
-          aria-pressed={chatMode}
-          onClick={onToggleViewMode}
-        >
-          <span className={`ico ${chatMode ? 'ico-robot' : 'ico-bubble-chat'}`} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={`topbar-icon ${calibrationActive ? 'active' : ''}`}
-          title={calibrationActive ? 'Exit calibration' : 'Settings'}
-          aria-label={calibrationActive ? 'Exit calibration' : 'Settings'}
-          aria-pressed={calibrationActive}
-          onClick={onToggleCalibration}
-          disabled={calibrationDisabled}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
-        </button>
+        <PortalTooltip text="Documents" position="below">
+          <button type="button" className="topbar-icon" aria-label="Documents">
+            <span className="ico ico-preview" aria-hidden="true" />
+          </button>
+        </PortalTooltip>
+        <PortalTooltip text={chatMode ? 'Agent World Mode' : 'Chat Mode'} position="below">
+          <button
+            type="button"
+            className={`topbar-icon topbar-mode-toggle ${chatMode ? 'active' : ''}`}
+            aria-label={chatMode ? 'Switch to Agent World Mode' : 'Switch to Chat Mode'}
+            aria-pressed={chatMode}
+            onClick={onToggleViewMode}
+          >
+            <span className={`ico ${chatMode ? 'ico-robot' : 'ico-bubble-chat'}`} aria-hidden="true" />
+          </button>
+        </PortalTooltip>
+        <PortalTooltip text={calibrationActive ? 'Exit calibration' : 'Settings'} position="below">
+          <button
+            type="button"
+            className={`topbar-icon ${calibrationActive ? 'active' : ''}`}
+            aria-label={calibrationActive ? 'Exit calibration' : 'Settings'}
+            aria-pressed={calibrationActive}
+            onClick={onToggleCalibration}
+            disabled={calibrationDisabled}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+        </PortalTooltip>
       </div>
     </div>
   );
@@ -263,18 +283,18 @@ function TaskFilterDropdown({ value, onChange }) {
 
   return (
     <div className="filter-pill-wrap" ref={wrapRef}>
-      <button
-        type="button"
-        className={`filter-pill icon-only ${open ? 'open' : ''}`}
-        onClick={() => setOpen(o => !o)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={`Filter: ${current.label}`}
-        data-tooltip={current.label}
-        data-tooltip-pos="below"
-      >
-        <span className="ico ico-task-filter" aria-hidden="true" />
-      </button>
+      <PortalTooltip text={open ? '' : current.label} position="below">
+        <button
+          type="button"
+          className={`filter-pill icon-only ${open ? 'open' : ''}`}
+          onClick={() => setOpen(o => !o)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={`Filter: ${current.label}`}
+        >
+          <span className="ico ico-task-filter" aria-hidden="true" />
+        </button>
+      </PortalTooltip>
       {open && (
         <div className="filter-menu" role="listbox">
           {TASK_FILTERS.map(opt => (
@@ -363,18 +383,19 @@ function PanelIcon({ name }) {
   return null;
 }
 
-function ConversationAction({ label, icon, onClick, disabled = false }) {
+function ConversationAction({ label, icon, onClick, disabled = false, tooltipPosition = 'above' }) {
   return (
-    <button
-      type="button"
-      className="conversation-icon-btn"
-      title={label}
-      aria-label={label}
-      onClick={(event) => { event.stopPropagation(); onClick?.(); }}
-      disabled={disabled}
-    >
-      <span className={`ico ico-${icon}`} aria-hidden="true" />
-    </button>
+    <PortalTooltip text={label} position={tooltipPosition}>
+      <button
+        type="button"
+        className="conversation-icon-btn"
+        aria-label={label}
+        onClick={(event) => { event.stopPropagation(); onClick?.(); }}
+        disabled={disabled}
+      >
+        <span className={`ico ico-${icon}`} aria-hidden="true" />
+      </button>
+    </PortalTooltip>
   );
 }
 
@@ -413,17 +434,16 @@ function TaskRecordCompact({ task, now, onOpenReport }) {
           <div className="conversation-task-title" title={task.title || ''}>{task.title || 'Untitled task'}</div>
         </div>
         {hasReport && (
-          <button
-            type="button"
-            className="conversation-report-btn"
-            title="View report"
-            aria-label="View report"
-            data-tooltip="View report"
-            data-tooltip-pos="above"
-            onClick={(event) => { event.stopPropagation(); onOpenReport?.(task); }}
-          >
-            <span className="ico ico-report" aria-hidden="true" />
-          </button>
+          <PortalTooltip text="View report" position="above">
+            <button
+              type="button"
+              className="conversation-report-btn"
+              aria-label="View report"
+              onClick={(event) => { event.stopPropagation(); onOpenReport?.(task); }}
+            >
+              <span className="ico ico-report" aria-hidden="true" />
+            </button>
+          </PortalTooltip>
         )}
       </div>
     </div>
@@ -580,7 +600,16 @@ function ProjectNode({
         </button>
         <span className="project-name" title={project.workspacePath || project.name}>{project.name}</span>
         <span className="conversation-actions">
-          {project.removable && <ConversationAction label="Remove project" icon="trash" onClick={() => onRemoveProject(project)} />}
+          <ConversationAction
+            label="New Conversation"
+            icon="multiple"
+            tooltipPosition="below"
+            onClick={() => {
+              if (!project.expanded) onToggleProject(project.id);
+              onAddConversation(project.id);
+            }}
+          />
+          {project.removable && <ConversationAction label="Remove project" icon="trash" tooltipPosition="below" onClick={() => onRemoveProject(project)} />}
         </span>
       </div>
 
@@ -601,14 +630,6 @@ function ProjectNode({
               onOpenTaskReport={onOpenTaskReport}
             />
           ))}
-          <button
-            type="button"
-            className="conversation-add-row"
-            onClick={() => onAddConversation(project.id)}
-          >
-            <span className="ico ico-multiple" aria-hidden="true" />
-            New Conversation
-          </button>
         </div>
       )}
     </div>
@@ -751,18 +772,16 @@ function LiveActivityStatusIcon({ status }) {
 }
 
 function LiveActivityRow({ entry }) {
+  const desc = entry.description || '';
   return (
     <div className={`live-activity-row status-${normalizeLiveStatus(entry.status)}`}>
       <LiveActivityStatusIcon status={entry.status} />
       <div className="live-activity-copy">
-        <div
-          className="live-activity-desc"
-          title={entry.description || ''}
-          data-tooltip={entry.description || ''}
-          data-tooltip-pos="above"
-        >
-          {entry.description || entry.tag || 'Working'}
-        </div>
+        <PortalTooltip text={desc} position="above" multiline>
+          <div className="live-activity-desc">
+            {desc || entry.tag || 'Working'}
+          </div>
+        </PortalTooltip>
       </div>
     </div>
   );
@@ -1185,12 +1204,8 @@ function formatContextTokens(value) {
   return `${Math.round(thousands)}k`;
 }
 
-function formatContextPercent(value, usedTokens) {
-  const percent = Math.max(0, Number(value) || 0) * 100;
-  if (!usedTokens || percent === 0) return '0';
-  if (percent < 0.1) return '<0.1';
-  if (percent < 10) return percent.toFixed(1).replace(/\.0$/, '');
-  return String(Math.round(percent));
+function formatContextUsageLabel(usedTokens, totalTokens) {
+  return `Context: ${formatContextTokens(usedTokens)} / ${formatContextTokens(totalTokens)}`;
 }
 
 function formatElapsedDuration(start, end) {
@@ -1261,13 +1276,8 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
   const usedTokens = Math.max(0, Math.round(Number(contextUsage?.usedTokens) || 0));
   const totalTokens = Math.max(1, Math.round(Number(contextUsage?.totalTokens) || 128000));
   const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (usedTokens / totalTokens)));
-  const contextPercent = formatContextPercent(contextRatio, usedTokens);
   const visibleContextRatio = usedTokens > 0 ? Math.max(contextRatio, 0.01) : 0;
-  const contextTooltip = [
-    `Context: ${contextPercent}% used`,
-    `Used ${formatContextTokens(usedTokens)} tokens of ${formatContextTokens(totalTokens)}`,
-    'Context will be compressed automatically when full',
-  ].join('\n');
+  const contextTooltip = formatContextUsageLabel(usedTokens, totalTokens);
   const contextRingStyle = {
     '--context-used': `${visibleContextRatio * 100}%`,
   };
@@ -1370,17 +1380,17 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
       </div>
       <div className="td-actions">
         <div className="td-tools">
-          <button
-            type="button"
-            className="td-btn td-btn-attach icon-only"
-            onClick={pickFile}
-            disabled={disabled}
-            aria-label="Attach File"
-            data-tooltip="Attach File"
-            data-tooltip-pos="above"
-          >
-            <span className="ico ico-attach" aria-hidden="true" />
-          </button>
+          <PortalTooltip text="Attach File" position="above">
+            <button
+              type="button"
+              className="td-btn td-btn-attach icon-only"
+              onClick={pickFile}
+              disabled={disabled}
+              aria-label="Attach File"
+            >
+              <span className="ico ico-attach" aria-hidden="true" />
+            </button>
+          </PortalTooltip>
           <input
             ref={fileRef}
             type="file"
@@ -1409,7 +1419,7 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
             loading={modelLoading}
           />
         </div>
-        <PortalTooltip text={contextTooltip} position="above" multiline>
+        <PortalTooltip text={contextTooltip} position="above">
           <button
             type="button"
             className={`context-usage-btn icon-only ${contextUsage?.compressed ? 'compressed' : ''}`}
@@ -1420,28 +1430,28 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
           </button>
         </PortalTooltip>
         {running ? (
-          <button
-            type="button"
-            className="deploy-btn stop icon-only"
-            onMouseDown={handleStopPress}
-            onKeyDown={handleStopKey}
-            aria-label="Stop"
-            data-tooltip="Stop"
-            data-tooltip-pos="above"
-          >
-            <span className="ico ico-stop" aria-hidden="true" />
-          </button>
+          <PortalTooltip text="Stop" position="above">
+            <button
+              type="button"
+              className="deploy-btn stop icon-only"
+              onMouseDown={handleStopPress}
+              onKeyDown={handleStopKey}
+              aria-label="Stop"
+            >
+              <span className="ico ico-stop" aria-hidden="true" />
+            </button>
+          </PortalTooltip>
         ) : (
-          <button
-            className="deploy-btn icon-only"
-            onClick={submit}
-            disabled={disabled || !v.trim()}
-            aria-label="Deploy"
-            data-tooltip="Deploy"
-            data-tooltip-pos="above"
-          >
-            <span className="ico ico-deploy" aria-hidden="true" />
-          </button>
+          <PortalTooltip text="Deploy" position="above">
+            <button
+              className="deploy-btn icon-only"
+              onClick={submit}
+              disabled={disabled || !v.trim()}
+              aria-label="Deploy"
+            >
+              <span className="ico ico-deploy" aria-hidden="true" />
+            </button>
+          </PortalTooltip>
         )}
       </div>
     </div>
@@ -1469,7 +1479,43 @@ const CATEGORY_LABEL = {
 function resolveToolIconClass(toolName, defaultClass) {
   const name = String(toolName || '').toLowerCase();
   if (!name) return defaultClass;
-  if (name.includes('rag') || name.includes('knowledge') || name.includes('retrieve')
+  if (name === 'workspace_artifact') {
+    return 'ico-workspace-artifact';
+  }
+  if (name === 'visual_inspect') {
+    return 'ico-visual-inspect';
+  }
+  if (name === 'terminal') {
+    return 'ico-terminal';
+  }
+  if (name === 'copy_file') {
+    return 'ico-copy-file';
+  }
+  if (name === 'create_dir') {
+    return 'ico-create-dir';
+  }
+  if (name === 'delete_file') {
+    return 'ico-delete-file';
+  }
+  if (name === 'list_dir') {
+    return 'ico-list-dir';
+  }
+  if (name === 'glob_files') {
+    return 'ico-glob-files';
+  }
+  if (name.includes('checkpoint') || name.includes('rollback')) {
+    return 'ico-checkpoint';
+  }
+  if (name.includes('background_process')) {
+    return 'ico-background-process';
+  }
+  if (name.startsWith('note_')) {
+    return 'ico-note';
+  }
+  if (name === 'search_text') {
+    return 'ico-search-text';
+  }
+  if (name.startsWith('document_') || name.includes('rag') || name.includes('knowledge') || name.includes('retrieve')
       || name.includes('vector') || name.includes('embed')) {
     return 'ico-rag';
   }
@@ -1529,11 +1575,8 @@ function ChatTimelineToolNode({ item }) {
   const status = item.status || 'pending';
   const category = item.category || 'tool';
   const defaultIconClass = CATEGORY_ICON_CLASS[category] || CATEGORY_ICON_CLASS.tool;
-  // skill/mcp/subagent 三个分类的图标固定，不被工具名覆盖；
-  // 普通 tool 才看工具名挑专属 icon（如 web_search → 地球）。
-  const iconClass = category === 'tool'
-    ? resolveToolIconClass(item.toolName, defaultIconClass)
-    : defaultIconClass;
+  // 先按 toolName 匹配专属 icon；匹配不到再退回 skill/mcp/subagent 分类图标。
+  const iconClass = resolveToolIconClass(item.toolName, defaultIconClass);
   const categoryLabel = CATEGORY_LABEL[category] || 'Tool';
   const hasInput = Boolean(item.inputSummary);
   const hasOutput = Boolean(item.outputSummary);
@@ -1575,31 +1618,17 @@ function ChatTimelineToolNode({ item }) {
 }
 
 function ChatTimelineMetaNode({ item }) {
-  const [open, setOpen] = React.useState(false);
-  const details = Array.isArray(item.details) ? item.details : [];
-  const hasDetails = details.length > 0;
   return (
     <div className={`chat-timeline-meta status-${item.status || 'done'}`}>
       <button
         type="button"
         className="chat-timeline-meta-head"
-        onClick={() => hasDetails && setOpen((value) => !value)}
-        aria-expanded={open}
-        disabled={!hasDetails}
+        aria-expanded="false"
+        disabled
       >
-        <ChatTimelineChevron open={open} />
+        <span className={`chat-timeline-status status-${item.status || 'done'}`} aria-hidden="true" />
         <span className="chat-timeline-meta-label">{item.summary || 'Thinking…'}</span>
-        {hasDetails ? (
-          <span className="chat-timeline-meta-count">{details.length}</span>
-        ) : null}
       </button>
-      {open && hasDetails ? (
-        <ul className="chat-timeline-meta-body">
-          {details.map((line, index) => (
-            <li key={index}>{line}</li>
-          ))}
-        </ul>
-      ) : null}
     </div>
   );
 }
@@ -1811,13 +1840,8 @@ function ChatPanel({
   const usedTokens = Math.max(0, Math.round(Number(contextUsage?.usedTokens) || 0));
   const totalTokens = Math.max(1, Math.round(Number(contextUsage?.totalTokens) || 128000));
   const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (usedTokens / totalTokens)));
-  const contextPercent = formatContextPercent(contextRatio, usedTokens);
   const visibleContextRatio = usedTokens > 0 ? Math.max(contextRatio, 0.01) : 0;
-  const contextTooltip = [
-    `Context: ${contextPercent}% used`,
-    `Used ${formatContextTokens(usedTokens)} tokens of ${formatContextTokens(totalTokens)}`,
-    'Context will be compressed automatically when full',
-  ].join('\n');
+  const contextTooltip = formatContextUsageLabel(usedTokens, totalTokens);
   const contextRingStyle = {
     '--context-used': `${visibleContextRatio * 100}%`,
   };
@@ -1959,17 +1983,17 @@ function ChatPanel({
         />
         <div className="chat-composer-actions">
           <div className="chat-composer-tools">
-            <button
-              type="button"
-              className="chat-tool-btn chat-tool-attach icon-only"
-              onClick={pickFile}
-              disabled={disabled}
-              aria-label="Attach File"
-              data-tooltip="Attach File"
-              data-tooltip-pos="above"
-            >
-              <span className="ico ico-attach" aria-hidden="true" />
-            </button>
+            <PortalTooltip text="Attach File" position="above">
+              <button
+                type="button"
+                className="chat-tool-btn chat-tool-attach icon-only"
+                onClick={pickFile}
+                disabled={disabled}
+                aria-label="Attach File"
+              >
+                <span className="ico ico-attach" aria-hidden="true" />
+              </button>
+            </PortalTooltip>
             <input
               ref={fileRef}
               type="file"
@@ -1999,7 +2023,7 @@ function ChatPanel({
             />
           </div>
           <div className="chat-composer-submit">
-            <PortalTooltip text={contextTooltip} position="above" multiline>
+            <PortalTooltip text={contextTooltip} position="above">
               <button
                 type="button"
                 className={`context-usage-btn icon-only ${contextUsage?.compressed ? 'compressed' : ''}`}

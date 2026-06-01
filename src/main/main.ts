@@ -22,6 +22,13 @@ const runtimePaths = () => ({
 app.commandLine.appendSwitch('password-store', 'basic');
 app.commandLine.appendSwitch('use-mock-keychain');
 
+// dev (`npm run dev`) 与已安装的 `/Applications/Haish.app` 都用 productName "Haish"，
+// 默认共享同一个 ~/Library/Application Support/Haish 目录，导致 projects.json、
+// runtime workdir 互相串数据。在未打包时把 userData 隔离到独立目录。
+if (!app.isPackaged) {
+  app.setPath('userData', path.join(app.getPath('appData'), 'Haish (Dev)'));
+}
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'haish',
@@ -92,7 +99,15 @@ function createWindow(): void {
     minWidth: 1280,
     minHeight: 760,
     title: 'Haish',
-    backgroundColor: '#080b12',
+    // 透明窗口 + NSVisualEffectView vibrancy：macOS 用原生材质画窗口边缘与圆角，
+    // 去掉 framed 窗口自带的顶部 1px 亮边。html/body 已用不透明 #05060b 覆盖，
+    // 内部内容不会被 vibrancy 染色，只有 OS 圆角裁掉的边缘才用到系统材质。
+    backgroundColor: '#00000000',
+    transparent: true,
+    hasShadow: true,
+    roundedCorners: true,
+    vibrancy: 'under-window',
+    visualEffectState: 'active',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 22, y: 22 },
     webPreferences: {

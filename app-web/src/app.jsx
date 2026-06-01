@@ -18,6 +18,7 @@ const SCENE_WAIT_TIMEOUT_MS = 45000;
 const CONVERSATION_BOOTSTRAP_MAX_ATTEMPTS = 8;
 const CONVERSATION_BOOTSTRAP_RETRY_DELAY_MS = 2000;
 const THINKING_PULSE_INTERVAL_MS = 1000;
+const STREAM_EVENT_BATCH_MS = 80;
 const POSE_DEBUG_DEFAULTS = { pose: 'idle', dir: 'front', movement: 'idle' };
 const POSE_DEBUG_OPTIONS = [
   { key: 'idle', label: 'Idle' },
@@ -86,6 +87,8 @@ const PROVIDER_ACTOR_MAP = {
 
 const WORLD_EVENT_ROUTE_MAP = {
   'agent_gateway_received': { actor: 'guts', bubble: 'Task received. Selecting the provider.' },
+  'context_compaction_started': { actor: 'okabe', kind: 'llm', bubble: 'Auto-Compacting context' },
+  'context_compaction_completed': { actor: 'okabe', kind: 'llm', bubble: 'Auto-Compacting context' },
   'tool_manager_received': { actor: 'lelouch', kind: 'deliver', bubble: 'Tool request received. Dispatching now.' },
   'tool_dispatched:levi': { actor: 'lelouch', route: 'lelouchToLevi', target: 'levi', kind: 'deliver', bubble: 'Local tools, take this task.' },
   'tool_dispatched:itachi': { actor: 'lelouch', route: 'lelouchToItachi', target: 'itachi', kind: 'deliver', bubble: 'External tools, execute this request.' },
@@ -103,8 +106,11 @@ const WORLD_SCENE_EVENT_TYPES = new Set([
   'user_message_received',
   'agent_gateway_received',
   'provider_selected',
+  'context_compaction_started',
+  'context_compaction_completed',
   'llm_thinking_started',
   'llm_thinking_completed',
+  'agent_progress_delta',
   'llm_tool_call_requested',
   'tool_dispatched',
   'tool_executor_started',
@@ -147,6 +153,7 @@ const PROVIDER_SCENE_EVENT_TYPES = new Set([
   'provider_selected',
   'llm_thinking_started',
   'llm_thinking_completed',
+  'agent_progress_delta',
   'llm_tool_call_requested',
   'llm_answer_delta',
   'llm_final_answer',
@@ -161,8 +168,11 @@ const WORLD_EVENT_TAG_MAP = {
   user_message_received: 'RECEIVED',
   agent_gateway_received: 'THINKING',
   provider_selected: 'ROUTING',
+  context_compaction_started: 'CONTEXT',
+  context_compaction_completed: 'CONTEXT',
   llm_thinking_started: 'THINKING',
   llm_thinking_completed: 'READY',
+  agent_progress_delta: 'PROGRESS',
   llm_tool_call_requested: 'TOOL',
   tool_manager_received: 'RECEIVED',
   tool_dispatched: 'DISPATCH',
@@ -378,15 +388,16 @@ const DEFAULT_SESSION_NAME = 'Default Session';
 const DEFAULT_CONVERSATION_NAMES = new Set([DEFAULT_SESSION_NAME, 'New Chat', 'New Conversation', 'Untitled Chat']);
 
 function normalizeContextUsage(value, fallbackConversationId = null) {
-  const usedTokens = Math.max(0, Math.round(Number(value?.usedTokens ?? value?.used_tokens ?? 0) || 0));
-  const totalTokens = Math.max(1, Math.round(Number(value?.totalTokens ?? value?.total_tokens ?? value?.effective_budget ?? DEFAULT_CONTEXT_TOTAL_TOKENS) || DEFAULT_CONTEXT_TOTAL_TOKENS));
+  const rawUsedTokens = Math.max(0, Math.round(Number(value?.contextUsedTokens ?? value?.context_used_tokens ?? value?.usedTokens ?? value?.used_tokens ?? 0) || 0));
+  const totalTokens = Math.max(1, Math.round(Number(value?.contextTotalTokens ?? value?.context_total_tokens ?? value?.totalTokens ?? value?.total_tokens ?? value?.effective_budget ?? DEFAULT_CONTEXT_TOTAL_TOKENS) || DEFAULT_CONTEXT_TOTAL_TOKENS));
+  const usedTokens = rawUsedTokens > totalTokens ? 0 : rawUsedTokens;
   const compressedCount = Math.max(0, Math.round(Number(value?.compressedCount ?? value?.compressed_count ?? 0) || 0));
   return {
     conversationId: value?.conversationId || value?.conversation_id || fallbackConversationId || null,
     usedTokens,
     totalTokens,
     ratio: Math.max(0, Math.min(1, totalTokens > 0 ? usedTokens / totalTokens : 0)),
-    compressed: Boolean(value?.compressed) || compressedCount > 0 || usedTokens >= totalTokens,
+    compressed: Boolean(value?.compressed) || compressedCount > 0,
     compressedCount,
     updatedAt: value?.updatedAt || value?.updated_at || null,
   };
@@ -956,6 +967,7 @@ function buildAgentLiveSnapshot(task, events) {
 
 function getLiveEventStatus(eventType) {
   if (eventType === 'agent_gateway_received'
+    || eventType === 'context_compaction_started'
     || eventType === 'llm_thinking_started'
     || eventType === 'llm_tool_call_requested'
     || eventType === 'tool_manager_received'
@@ -1115,6 +1127,7 @@ function runtimeTaskToQuest(task) {
 
 function getChatProgressLine(event) {
   const toolName = event.tool_name || event.toolName || 'tool';
+  const eventData = event.data || event.payload?.data || event.payload || event;
   switch (event.type) {
     case 'user_message_received':
       return 'Task received.';
@@ -1122,6 +1135,10 @@ function getChatProgressLine(event) {
       return 'Preparing the agent route.';
     case 'provider_selected':
       return `Model selected: ${event.provider || event.provider_key || 'auto'}.`;
+    case 'context_compaction_started':
+      return 'Auto-Compacting context';
+    case 'context_compaction_completed':
+      return 'Auto-Compacting context';
     case 'llm_thinking_started':
       return 'Assistant is reasoning.';
     case 'llm_thinking_completed':
@@ -1251,6 +1268,8 @@ const TIMELINE_META_EVENT_TYPES = new Set([
   'user_message_received',
   'agent_gateway_received',
   'provider_selected',
+  'context_compaction_started',
+  'context_compaction_completed',
   'context_usage_updated',
   'tool_budget_applied',
   'llm_thinking_started',
@@ -1258,6 +1277,7 @@ const TIMELINE_META_EVENT_TYPES = new Set([
 ]);
 
 function formatMetaDetail(event) {
+  const eventData = event.data || event.payload?.data || event.payload || event;
   switch (event.type) {
     case 'user_message_received':
       return 'Task accepted into the session.';
@@ -1268,7 +1288,14 @@ function formatMetaDetail(event) {
       const model = event.model ? ` · ${event.model}` : '';
       return `Model · ${provider}${model}`;
     }
+    case 'context_compaction_started': {
+      return 'Auto-Compacting context';
+    }
+    case 'context_compaction_completed': {
+      return 'Auto-Compacting context';
+    }
     case 'context_usage_updated': {
+      if (event.source === 'provider_usage' && event.context_used_tokens == null) return '';
       const used = formatTraceTokens(event.usedTokens);
       const total = formatTraceTokens(event.totalTokens);
       if (!used && !total) return '';
@@ -1325,6 +1352,7 @@ function buildChatTimeline(task, taskStatus) {
   let thinkingBuf = '';
   let thinkingSegmentIndex = 0;
   let currentSkillItem = null;
+  let currentCompactionItem = null;
   const seenToolIds = new Set();
 
   const flushThinking = (streaming = false) => {
@@ -1359,13 +1387,47 @@ function buildChatTimeline(task, taskStatus) {
   for (const event of events) {
     const type = event.type;
     if (type === 'llm_thinking_delta') {
+      continue;
+    }
+    if (type === 'context_compaction_started' || type === 'context_compaction_completed') {
+      flushThinking(false);
       if (textBuf.trim()) flushText();
-      thinkingBuf += eventDeltaText(event);
+      if (type === 'context_compaction_completed') {
+        if (currentCompactionItem) {
+          currentCompactionItem.status = 'done';
+        } else {
+          items.push({
+            kind: 'meta',
+            id: event.event_id || `meta-${items.length}`,
+            summary: 'Auto-Compacting context',
+            details: [],
+            status: 'done',
+          });
+        }
+        currentCompactionItem = null;
+      } else {
+        currentCompactionItem = {
+          kind: 'meta',
+          id: event.event_id || `meta-${items.length}`,
+          summary: 'Auto-Compacting context',
+          details: [],
+          status: 'running',
+        };
+        items.push(currentCompactionItem);
+      }
+      currentSkillItem = null;
       continue;
     }
     if (type === 'llm_answer_delta') {
       flushThinking(false);
       textBuf += event.message || '';
+      continue;
+    }
+    if (type === 'agent_progress_delta') {
+      flushThinking(false);
+      if (textBuf.trim()) flushText();
+      textBuf += event.message || '';
+      flushText();
       continue;
     }
     if (type === 'llm_tool_call_requested') {
@@ -1617,6 +1679,7 @@ function App() {
   const [copiedCoords, setCopiedCoords] = useState(false);
   const activeTaskIdRef = useRef(null);
   const activeRunIdRef = useRef(null);
+  const conversationIdRef = useRef(null);
   const cancelledRunIdsRef = useRef(new Set());
   const fetchAbortRef = useRef(null);
   const answerBufferRef = useRef('');
@@ -1688,6 +1751,7 @@ function App() {
   useEffect(() => { npcStatesRef.current = npcStates; }, [npcStates]);
   useEffect(() => { worldTaskStateRef.current = worldTaskState; }, [worldTaskState]);
   useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
+  useEffect(() => { conversationIdRef.current = conversationId; }, [conversationId]);
   useEffect(() => { saveWorkspaceState(workspaceState); }, [workspaceState]);
 
   function invalidateConversationActivation() {
@@ -1852,6 +1916,17 @@ function App() {
     });
   }
 
+  function detachActiveRunFromCurrentConversation() {
+    activeRunIdRef.current = null;
+    activeTaskIdRef.current = null;
+    fetchAbortRef.current = null;
+    answerBufferRef.current = '';
+    setBusy(false);
+    setUploadState({ active: false, fileName: '' });
+    dropPendingSceneItems();
+    resetSceneActors();
+  }
+
   async function activateConversationDetail(detail, { restoreLatest = true } = {}) {
     if (!detail?.conversation_id) return;
     const activationSeq = invalidateConversationActivation();
@@ -1882,6 +1957,10 @@ function App() {
     });
     if (!isCurrentActivation()) return;
     const restoredConversationId = detail.conversation_id;
+    if (conversationIdRef.current && conversationIdRef.current !== restoredConversationId) {
+      detachActiveRunFromCurrentConversation();
+    }
+    conversationIdRef.current = restoredConversationId;
     const restoredTasks = Array.isArray(detail.tasks) ? detail.tasks : [];
     const latestTaskId = detail.last_task_id || (restoredTasks.length ? restoredTasks[restoredTasks.length - 1].task_id : null);
     const nextContextUsage = mergeContextUsage(
@@ -1930,6 +2009,11 @@ function App() {
   }
 
   function ensureTaskForEvent(event) {
+    const eventConversationId = event.conversation_id || null;
+    const currentConversationId = conversationIdRef.current;
+    if (eventConversationId && currentConversationId && eventConversationId !== currentConversationId) {
+      return null;
+    }
     const taskId = event.task_id || activeTaskIdRef.current || worldTaskStateRef.current.activeTaskId;
     if (!taskId) return null;
     if (userCancelledTaskIdsRef.current.has(taskId)) {
@@ -1967,6 +2051,10 @@ function App() {
     updateWorldTaskState((state) => {
       const task = state.tasksById[taskId];
       if (!task) return state;
+      const currentConversationId = conversationIdRef.current;
+      if (task.conversationId && currentConversationId && task.conversationId !== currentConversationId) {
+        return state;
+      }
       const nextTask = typeof updater === 'function' ? updater(task) : { ...task, ...updater };
       return {
         ...state,
@@ -2034,6 +2122,7 @@ function App() {
   }
 
   function appendTaskEvent(taskId, event) {
+    if (event.type === 'llm_thinking_delta') return;
     updateTaskById(taskId, (task) => ({
       ...task,
       loopIndex: Math.max(task.loopIndex || 0, event.loop_index || 0),
@@ -2813,7 +2902,7 @@ function App() {
 
     const bubble = event.type === 'provider_selected'
       ? providerMeta.label
-      : event.message || event.delta || routeConfig?.bubble || '';
+      : event.message || event.data?.message || event.payload?.message || event.delta || routeConfig?.bubble || '';
     const kind = event.kind || routeConfig?.kind || WORLD_KIND_MAP[actor] || 'deliver';
     const action = { kind, label: getWorldEventTag(event.type, kind) };
     const markSceneLive = (liveActor, description, tag = action.label, liveKind = kind, liveStatus = getLiveEventStatus(event.type)) => {
@@ -2873,6 +2962,24 @@ function App() {
       setActorIdle(providerMeta.actor);
       await returnActorHome('guts', route.slice(0, -1).reverse());
       updateNpc(providerMeta.actor, { dir: 'front' });
+      return;
+    }
+
+    if (event.type === 'context_compaction_started') {
+      const compactionBubble = 'Auto-Compacting context';
+      markSceneLive(providerMeta.actor, compactionBubble, 'CONTEXT', 'llm', 'pending');
+      setActorActive(providerMeta.actor, {
+        kind: 'llm',
+        bubble: compactionBubble,
+        thinking: true,
+      });
+      return;
+    }
+
+    if (event.type === 'context_compaction_completed') {
+      const compactionBubble = 'Auto-Compacting context';
+      markSceneLive(providerMeta.actor, compactionBubble, 'CONTEXT', 'llm', 'done');
+      setActorIdle(providerMeta.actor);
       return;
     }
 
@@ -3314,6 +3421,14 @@ function App() {
   }
 
   function applyWorldEvent(event) {
+    if (event.type === 'llm_thinking_delta') {
+      return;
+    }
+    const eventConversationId = event.conversation_id || null;
+    const currentConversationId = conversationIdRef.current;
+    if (eventConversationId && currentConversationId && eventConversationId !== currentConversationId) {
+      return;
+    }
     const taskId = ensureTaskForEvent(event);
     if (!taskId) return;
     if (
@@ -3339,8 +3454,13 @@ function App() {
 
     switch (event.type) {
       case 'context_usage_updated': {
+        if (event.source === 'provider_usage' && event.context_used_tokens == null) {
+          break;
+        }
         const nextContextUsage = normalizeContextUsage({
           conversationId: event.conversation_id || conversationId,
+          contextUsedTokens: event.context_used_tokens,
+          contextTotalTokens: event.context_total_tokens,
           usedTokens: event.used_tokens,
           totalTokens: event.total_tokens,
           compressed: event.compressed,
@@ -3382,6 +3502,26 @@ function App() {
         }));
         break;
       }
+      case 'context_compaction_started': {
+        updateTaskById(taskId, (run) => ({
+          ...run,
+          status: 'running',
+          stage: 'in_progress',
+          loopIndex,
+          providerState: run.providerState ? { ...run.providerState, state: 'compressing_context' } : run.providerState,
+        }));
+        break;
+      }
+      case 'context_compaction_completed': {
+        updateTaskById(taskId, (run) => ({
+          ...run,
+          status: 'running',
+          stage: 'in_progress',
+          loopIndex,
+          providerState: run.providerState ? { ...run.providerState, state: 'ready' } : run.providerState,
+        }));
+        break;
+      }
       case 'llm_thinking_started': {
         updateTaskById(taskId, (run) => ({
           ...run,
@@ -3392,6 +3532,15 @@ function App() {
         break;
       }
       case 'llm_thinking_delta': {
+        updateTaskById(taskId, (run) => ({
+          ...run,
+          stage: 'in_progress',
+          loopIndex,
+          providerState: run.providerState ? { ...run.providerState, state: 'thinking' } : run.providerState,
+        }));
+        break;
+      }
+      case 'agent_progress_delta': {
         updateTaskById(taskId, (run) => ({
           ...run,
           stage: 'in_progress',
@@ -3648,7 +3797,8 @@ function App() {
   }
 
   async function executeQuest(pendingTask) {
-    if (!conversationId) {
+    const runConversationId = conversationIdRef.current || conversationId;
+    if (!runConversationId) {
       throw new Error('conversation is not ready');
     }
     const runId = pendingTask.id || generateHexId();
@@ -3674,6 +3824,9 @@ function App() {
       setUploadState({ active: true, fileName: uploadName });
       try {
         const payload = await uploadAttachment(pendingTask.attachment.file, uploadController.signal);
+        if (activeRunIdRef.current !== runId || conversationIdRef.current !== runConversationId) {
+          return;
+        }
         const nextAttachment = {
           name: payload?.attachment?.file_name || uploadName,
           size: payload?.attachment?.size_bytes ?? pendingTask.attachment.size,
@@ -3682,7 +3835,7 @@ function App() {
           documentId: payload?.attachment?.document_id || payload?.document?.id || null,
           attachmentId: payload?.attachment?.attachment_id || null,
           title: payload?.attachment?.title || pendingTask.attachment.name || uploadName,
-          conversationId: payload?.attachment?.conversation_id || conversationId,
+          conversationId: payload?.attachment?.conversation_id || runConversationId,
         };
         pendingTask.attachment = { ...pendingTask.attachment, ...nextAttachment };
         applyConversationSnapshot(payload?.conversation || null);
@@ -3703,7 +3856,7 @@ function App() {
 
     const controller = new AbortController();
     fetchAbortRef.current = controller;
-    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/tasks/stream`, {
+    const response = await fetch(`${API_BASE}/api/conversations/${runConversationId}/tasks/stream`, {
       method: 'POST',
       headers: buildApiHeaders(),
       body: JSON.stringify({
@@ -3732,20 +3885,42 @@ function App() {
       throw new Error(`world stream failed: ${response.status}`);
     }
 
-    await readNdjsonStream(response, (event) => {
-      if (
-        controller.signal.aborted
-        || abortRef.current
-        || activeRunIdRef.current !== runId
-        || cancelledRunIdsRef.current.has(runId)
-      ) {
-        return;
+    const queuedEvents = [];
+    let flushTimer = null;
+    const flushQueuedEvents = () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
       }
-      if (event.task_id && !chatFinalizedTaskIdsRef.current.has(event.task_id)) {
-        activeTaskIdRef.current = event.task_id;
+      const batch = queuedEvents.splice(0);
+      for (const event of batch) {
+        if (
+          controller.signal.aborted
+          || abortRef.current
+          || activeRunIdRef.current !== runId
+          || cancelledRunIdsRef.current.has(runId)
+          || conversationIdRef.current !== runConversationId
+          || (event.conversation_id && event.conversation_id !== runConversationId)
+        ) {
+          continue;
+        }
+        if (event.task_id && !chatFinalizedTaskIdsRef.current.has(event.task_id)) {
+          activeTaskIdRef.current = event.task_id;
+        }
+        applyWorldEvent(event);
       }
-      applyWorldEvent(event);
-    }, controller.signal);
+    };
+    const queueWorldEvent = (event) => {
+      queuedEvents.push(event);
+      if (!flushTimer) {
+        flushTimer = setTimeout(flushQueuedEvents, STREAM_EVENT_BATCH_MS);
+      }
+    };
+    try {
+      await readNdjsonStream(response, queueWorldEvent, controller.signal);
+    } finally {
+      flushQueuedEvents();
+    }
   }
 
   function handleStop() {
@@ -3841,6 +4016,9 @@ function App() {
       pendingTask,
     }));
     executeQuest(pendingTask).catch((error) => {
+      if (activeRunIdRef.current !== pendingTask.id) {
+        return;
+      }
       if (abortRef.current || error?.name === 'AbortError') {
         return;
       }
