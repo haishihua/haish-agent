@@ -245,7 +245,9 @@ function TaskRecordCard({ quest, now }) {
   return (
     <div className="task-record-card">
       <div className="trc-head">
-        <div className="trc-title" title={quest.title || ''}>{formatTaskCardTitle(quest.title)}</div>
+        <PortalTooltip text={quest.title || ''} position="above" multiline>
+          <div className="trc-title">{formatTaskCardTitle(quest.title)}</div>
+        </PortalTooltip>
       </div>
       <StageTrack stage={stage} status={status} />
       <div className="trc-foot">
@@ -431,7 +433,9 @@ function TaskRecordCompact({ task, now, onOpenReport }) {
       <div className="conversation-task-main">
         <TaskStatusIcon statusClass={pill.className} />
         <div className="conversation-task-copy">
-          <div className="conversation-task-title" title={task.title || ''}>{task.title || 'Untitled task'}</div>
+          <PortalTooltip text={task.title || ''} position="above" multiline>
+            <div className="conversation-task-title">{task.title || 'Untitled task'}</div>
+          </PortalTooltip>
         </div>
         {hasReport && (
           <PortalTooltip text="View report" position="above">
@@ -505,6 +509,7 @@ function ConversationNode({
   conversation,
   active,
   now,
+  taskPreviewLimit = 5,
   onSelectConversation,
   onToggleConversation,
   onToggleConversationTasks,
@@ -513,8 +518,9 @@ function ConversationNode({
   onOpenTaskReport,
 }) {
   const tasks = conversation.tasks || [];
-  const visibleTasks = conversation.tasksExpanded ? tasks.slice().reverse() : tasks.slice(-5).reverse();
-  const hiddenCount = Math.max(0, tasks.length - 5);
+  const visibleLimit = Math.max(1, Number(taskPreviewLimit) || 5);
+  const visibleTasks = conversation.tasksExpanded ? tasks.slice().reverse() : tasks.slice(-visibleLimit).reverse();
+  const hiddenCount = Math.max(0, tasks.length - visibleLimit);
 
   return (
     <div className={`conversation-node ${active ? 'active' : ''}`}>
@@ -534,7 +540,9 @@ function ConversationNode({
         >
           <span className={`ico ${conversation.expanded ? 'ico-comment-alt-dots' : 'ico-mobile-message'}`} aria-hidden="true" />
         </button>
-        <span className="conversation-name" title={conversation.name || ''}>{conversation.name}</span>
+        <PortalTooltip text={conversation.name || ''} position="above">
+          <span className="conversation-name">{conversation.name}</span>
+        </PortalTooltip>
         <span className="conversation-actions">
           <ConversationAction label="Rename conversation" icon="pen-field" onClick={() => onRequestRenameConversation(project, conversation)} />
           <ConversationAction label="Delete conversation" icon="trash" onClick={() => onRequestDeleteConversation(project, conversation)} />
@@ -577,6 +585,7 @@ function ProjectNode({
   onRequestDeleteConversation,
   onRequestRenameConversation,
   onOpenTaskReport,
+  taskPreviewLimit = 5,
 }) {
   const isActiveProject = workspaceState.activeProjectId === project.id;
 
@@ -598,7 +607,9 @@ function ProjectNode({
         >
           <span className={`ico ${project.expanded ? 'ico-folder-open' : 'ico-folder'}`} aria-hidden="true" />
         </button>
-        <span className="project-name" title={project.workspacePath || project.name}>{project.name}</span>
+        <PortalTooltip text={project.workspacePath || project.name || ''} position="below" multiline>
+          <span className="project-name">{project.name}</span>
+        </PortalTooltip>
         <span className="conversation-actions">
           <ConversationAction
             label="New Conversation"
@@ -622,6 +633,7 @@ function ProjectNode({
               conversation={conversation}
               active={isActiveProject && workspaceState.activeConversationId === conversation.id}
               now={now}
+              taskPreviewLimit={taskPreviewLimit}
               onSelectConversation={onSelectConversation}
               onToggleConversation={onToggleConversation}
               onToggleConversationTasks={onToggleConversationTasks}
@@ -651,6 +663,7 @@ function ConversationsPanel({
   onDeleteConversation,
   onRenameConversation,
   onOpenTaskReport,
+  taskPreviewLimit = 5,
 }) {
   const [panelRef, panelWidth] = usePanelWidth();
   const [dialog, setDialog] = React.useState(null);
@@ -709,6 +722,7 @@ function ConversationsPanel({
             project={project}
             workspaceState={workspaceState}
             now={now}
+            taskPreviewLimit={taskPreviewLimit}
             onSelectProject={onSelectProject}
             onToggleProject={onToggleProject}
             onRemoveProject={requestRemoveProject}
@@ -974,19 +988,23 @@ function ModelPicker({ value, reasoningEffort, options, reasoningOptions = REASO
 
   return (
     <div className={`model-picker ${open ? 'is-open' : ''} ${loading ? 'is-loading' : ''}`} ref={rootRef}>
-      <button
-        type="button"
-        className="model-picker-trigger"
-        onClick={() => { if (!disabled && !loading) setOpen((o) => !o); }}
-        disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label="Select model"
-        title={loading ? 'Loading provider models...' : `${currentReasoning ? currentReasoning.id : ''} · ${current ? current.id : ''}`}
+      <PortalTooltip
+        text={open ? '' : (loading ? 'Loading provider models...' : `${currentReasoning ? currentReasoning.id : ''} · ${current ? current.id : ''}`)}
+        position="above"
       >
-        <span className="model-picker-value">{currentReasoning ? currentReasoning.label : ''} · {current ? current.label : ''}</span>
-        <span className={loading ? 'model-picker-loading' : 'model-picker-caret'} aria-hidden="true" />
-      </button>
+        <button
+          type="button"
+          className="model-picker-trigger"
+          onClick={() => { if (!disabled && !loading) setOpen((o) => !o); }}
+          disabled={disabled}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label="Select model"
+        >
+          <span className="model-picker-value">{currentReasoning ? currentReasoning.label : ''} · {current ? current.label : ''}</span>
+          <span className={loading ? 'model-picker-loading' : 'model-picker-caret'} aria-hidden="true" />
+        </button>
+      </PortalTooltip>
       {open ? (
         <div className="model-picker-menu" role="listbox">
           <div className="model-picker-header">thinking</div>
@@ -1362,7 +1380,7 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
           rows={1}
           value={v}
           onChange={e => setV(e.target.value)}
-          onPaste={e => handlePathPaste(e, v, setV, workspacePath, homePath, 500)}
+          onPaste={e => handlePathPaste(e, v, setV, workspacePath, homePath, 5000)}
           onKeyDown={e => {
             if (e.key === 'Escape' && running && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -1374,9 +1392,9 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
           }}
           placeholder={uploading ? 'Document is processing. Please wait...' : disabled ? 'Agents are currently busy executing...' : 'Describe the task you want to delegate...'}
           disabled={disabled}
-          maxLength={500}
+          maxLength={5000}
         />
-        <div className="char-count">{v.length} / 500</div>
+        <div className="char-count">{v.length} / 5000</div>
       </div>
       <div className="td-actions">
         <div className="td-tools">
@@ -1402,12 +1420,14 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
             }}
           />
           {attachment && (
-            <div className={`td-file-chip ${uploading ? 'uploading' : attachment.uploaded ? 'ready' : ''}`} title={attachment.name}>
-              <span className="name">{attachment.name}</span>
-              {uploading ? <span className="td-upload-spinner" aria-hidden="true" /> : null}
-              <span className="status">{uploading ? 'Processing' : attachment.uploaded ? 'Uploaded' : 'Pending'}</span>
-              <button type="button" className="x" onClick={clearFile} aria-label="Remove file" disabled={uploading}>×</button>
-            </div>
+            <PortalTooltip text={attachment.name || ''} position="above">
+              <div className={`td-file-chip ${uploading ? 'uploading' : attachment.uploaded ? 'ready' : ''}`}>
+                <span className="name">{attachment.name}</span>
+                {uploading ? <span className="td-upload-spinner" aria-hidden="true" /> : null}
+                <span className="status">{uploading ? 'Processing' : attachment.uploaded ? 'Uploaded' : 'Pending'}</span>
+                <button type="button" className="x" onClick={clearFile} aria-label="Remove file" disabled={uploading}>×</button>
+              </div>
+            </PortalTooltip>
           )}
           <ModelPicker
             value={modelId}
@@ -1482,8 +1502,11 @@ function resolveToolIconClass(toolName, defaultClass) {
   if (name === 'workspace_artifact') {
     return 'ico-workspace-artifact';
   }
-  if (name === 'visual_inspect') {
+  if (name === 'vision_analyze' || name === 'visual_inspect') {
     return 'ico-visual-inspect';
+  }
+  if (name === 'image_describe') {
+    return 'ico-image-describe';
   }
   if (name === 'terminal') {
     return 'ico-terminal';
@@ -1570,21 +1593,795 @@ function ChatTimelineChevron({ open }) {
   );
 }
 
+const TOOL_READ_NAMES = new Set(['read_file', 'search_text', 'glob_files', 'list_dir']);
+const TOOL_DIFF_NAMES = new Set(['write_file', 'edit_file', 'apply_patch']);
+const TOOL_CHANGE_NAMES = new Set([
+  'write_file',
+  'edit_file',
+  'apply_patch',
+  'create_file',
+  'delete_file',
+  'copy_file',
+  'create_dir',
+]);
+const TOOL_SHELL_NAMES = new Set([
+  'terminal',
+  'start_background_process',
+  'background_process_status',
+  'read_background_process_output',
+  'stop_background_process',
+  'list_background_processes',
+]);
+const TOOL_PROCESS_NAMES = new Set([
+  'dispatch_sub_agent',
+  'sub_agent',
+  'subagent',
+  'vision_analyze',
+  'visual_inspect',
+  'image_describe',
+]);
+const TOOL_BLOCK_LIMIT = 16000;
+const TOOL_SHELL_TAIL_LINES = 80;
+const TOOL_SHELL_TAIL_CHARS = 8192;
+const TOOL_JSON_STRING_LIMIT = 2000;
+const TOOL_JSON_ARRAY_LIMIT = 20;
+const TOOL_JSON_DEPTH_LIMIT = 4;
+const TOOL_SUMMARY_VALUE_LIMIT = 420;
+const TOOL_JSON_OMIT_KEYS = new Set([
+  'meta',
+  'metadata',
+  'limits',
+  'references',
+  'raw',
+  'raw_content',
+  'html',
+  'base64',
+  'bytes',
+  'image',
+  'images',
+  'screenshot',
+  'trace',
+  'debug',
+  'stack',
+  'tool_input',
+  'tool_output',
+  'tool_response',
+  'tool_call',
+  'tool_call_id',
+]);
+const TOOL_ARTIFACT_KEEP_KEYS = new Set([
+  'preview',
+  'output',
+  'content',
+  'text',
+  'stdout',
+  'stderr',
+  'log_preview',
+]);
+function compactToolText(value, limit = TOOL_BLOCK_LIMIT) {
+  const text = String(value ?? '');
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit - 24)}\n... output truncated ...`;
+}
+
+function stableJson(value) {
+  try {
+    return compactToolText(JSON.stringify(value, null, 2));
+  } catch {
+    return compactToolText(String(value ?? ''));
+  }
+}
+
+function compactToolValue(value, limit = TOOL_SUMMARY_VALUE_LIMIT) {
+  if (value == null) return '';
+  const text = typeof value === 'string' ? value : stableJson(value);
+  return truncateToolString(text.replace(/\n{3,}/g, '\n\n').trim(), limit);
+}
+
+function truncateToolString(value, limit = TOOL_JSON_STRING_LIMIT) {
+  const text = String(value ?? '');
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit - 18)}... truncated ...`;
+}
+
+function tailToolOutput(value) {
+  const text = String(value ?? '');
+  if (!text.trim()) return 'No output.';
+  const lineTail = text.split('\n').slice(-TOOL_SHELL_TAIL_LINES).join('\n');
+  if (lineTail.length <= TOOL_SHELL_TAIL_CHARS) {
+    return lineTail.length < text.length
+      ? `... output truncated, showing tail ...\n${lineTail}`
+      : lineTail;
+  }
+  return `... output truncated, showing tail ...\n${lineTail.slice(-TOOL_SHELL_TAIL_CHARS)}`;
+}
+
+function summarizeProgressEvents(events) {
+  if (!Array.isArray(events)) return [];
+  return events
+    .map((event) => {
+      if (!event) return '';
+      const state = String(event.state || '').trim();
+      const summary = compactToolValue(event.summary || event.outputSummary || event.inputSummary || event.message, 760);
+      if (!summary) return '';
+      return state ? `${state}: ${summary}` : summary;
+    })
+    .filter(Boolean);
+}
+
+function sanitizeToolJson(value, depth = 0, keyName = '') {
+  if (value == null || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'string') return truncateToolString(value);
+  if (depth >= TOOL_JSON_DEPTH_LIMIT) return '[Object truncated]';
+  if (Array.isArray(value)) {
+    const items = value.slice(0, TOOL_JSON_ARRAY_LIMIT).map((item) => sanitizeToolJson(item, depth + 1));
+    if (value.length > TOOL_JSON_ARRAY_LIMIT) {
+      items.push(`... ${value.length - TOOL_JSON_ARRAY_LIMIT} more item(s) ...`);
+    }
+    return items;
+  }
+  if (typeof value !== 'object') return truncateToolString(value);
+  const key = String(keyName || '').toLowerCase();
+  if (key === 'artifacts') {
+    const artifacts = {};
+    Object.entries(value).forEach(([artifactKey, artifactValue]) => {
+      if (!TOOL_ARTIFACT_KEEP_KEYS.has(String(artifactKey).toLowerCase())) return;
+      artifacts[artifactKey] = sanitizeToolJson(artifactValue, depth + 1, artifactKey);
+    });
+    return Object.keys(artifacts).length ? artifacts : undefined;
+  }
+  const result = {};
+  Object.entries(value).forEach(([entryKey, entryValue]) => {
+    const normalizedKey = String(entryKey).toLowerCase();
+    if (TOOL_JSON_OMIT_KEYS.has(normalizedKey)) return;
+    const sanitized = sanitizeToolJson(entryValue, depth + 1, entryKey);
+    if (sanitized !== undefined) result[entryKey] = sanitized;
+  });
+  return result;
+}
+
+function compactToolJsonPayload(input, output) {
+  const payload = {};
+  if (input) payload.input = sanitizeToolJson(input);
+  if (output) {
+    if (output && typeof output === 'object') {
+      payload.output = sanitizeToolJson({
+        status: output.status,
+        result_state: output.result_state,
+        summary: output.summary,
+        subject: output.subject,
+        data: output.data,
+        artifacts: output.artifacts,
+        error: output.error,
+      });
+    } else {
+      payload.output = sanitizeToolJson(output);
+    }
+  }
+  return payload;
+}
+
+function isEmptyToolJsonValue(value) {
+  if (value == null) return true;
+  if (typeof value === 'string') return value.trim().length === 0;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value).length === 0;
+  return false;
+}
+
+function toolJsonText(value, limit = TOOL_BLOCK_LIMIT) {
+  if (value == null || value === '') return '';
+  const sanitized = sanitizeToolJson(value);
+  if (isEmptyToolJsonValue(sanitized)) return '';
+  return compactToolText(JSON.stringify(sanitized, null, 2), limit);
+}
+
+function outputJsonText(output) {
+  if (output == null || output === '') return '';
+  if (output && typeof output === 'object') {
+    const payload = compactToolJsonPayload(undefined, output);
+    return toolJsonText(payload.output || sanitizeToolJson(output));
+  }
+  return toolJsonText(output);
+}
+
+function normalizeToolName(toolName) {
+  return String(toolName || '').trim().toLowerCase();
+}
+
+function toolPlainObject(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (text.startsWith('{') && text.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(text);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+  }
+  return {};
+}
+
+function firstToolDisplayValue(...values) {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'string' && !value.trim()) continue;
+    return value;
+  }
+  return '';
+}
+
+function isRawToolResponseText(value) {
+  return String(value || '').trimStart().startsWith('TOOL_RESPONSE');
+}
+
+function isVisualProcessTool(name) {
+  return name === 'vision_analyze'
+    || name === 'visual_inspect'
+    || name === 'image_describe'
+    || name === 'acceptance_check'
+    || name.includes('visual')
+    || name.includes('vision');
+}
+
+function isProcessTool(item, name) {
+  return item.category === 'subagent' || TOOL_PROCESS_NAMES.has(name) || isVisualProcessTool(name);
+}
+
+function getToolSubject(item) {
+  const response = toolPlainObject(item.toolResponse);
+  const subject = toolPlainObject(response.subject);
+  const input = toolPlainObject(item.toolInput);
+  return {
+    ...input,
+    ...subject,
+  };
+}
+
+function firstToolPath(item) {
+  const subject = getToolSubject(item);
+  if (subject.path) return String(subject.path);
+  if (subject.source_path && subject.destination_path) return `${subject.source_path} -> ${subject.destination_path}`;
+  if (subject.destination_path) return String(subject.destination_path);
+  if (subject.source_path) return String(subject.source_path);
+  if (subject.pattern) return String(subject.pattern);
+  if (subject.query) return String(subject.query);
+  if (subject.command) return String(subject.command);
+  return '';
+}
+
+function toolStreamTextForEvent(event, item) {
+  const type = String(event?.type || '');
+  const text = compactToolValue(event?.summary || event?.message || event?.outputSummary || event?.inputSummary, TOOL_BLOCK_LIMIT);
+  const normalizedText = text.trim().toLowerCase();
+  if (type === 'llm_tool_call_requested') return '';
+  if (type === 'tool_manager_received') return '';
+  if (type === 'tool_dispatched') return '';
+  if (type === 'tool_executor_started') return '';
+  if (normalizedText === 'queued') return '';
+  if (normalizedText === 'dispatched') return '';
+  if (normalizedText === `${normalizeToolName(item.toolName)} started`) return '';
+  if (normalizedText === `${toolActionLabel(item).toLowerCase()} started`) return '';
+  if (normalizedText === 'the tool request has reached the tool manager.') return '';
+  if (normalizedText === 'dispatched to internal tool executor.') return '';
+  return text;
+}
+
+function buildToolStreamLines(item) {
+  const lines = [];
+  const events = Array.isArray(item.progressEvents) ? item.progressEvents : [];
+  events.forEach((event, index) => {
+    const text = toolStreamTextForEvent(event, item);
+    if (!text) return;
+    const last = lines[lines.length - 1];
+    if (last && last.text === text) return;
+    lines.push({
+      id: event.id || `${event.type || 'event'}-${index}`,
+      state: event.state || event.type || '',
+      text,
+    });
+  });
+  if (!lines.length && item.outputSummary) {
+    lines.push({ id: 'output-summary', state: 'completed', text: compactToolValue(item.outputSummary, TOOL_BLOCK_LIMIT) });
+  }
+  return lines;
+}
+
+function extractProcessResultText(item) {
+  const response = toolPlainObject(item.toolResponse);
+  const data = toolPlainObject(response.data);
+  const verdict = toolPlainObject(data.verdict);
+  const report = toolPlainObject(data.report);
+  const error = toolPlainObject(response.error);
+  // 不再截断 finalText：sub-agent / vision 完成答案需要完整展示。
+  return compactToolValue(firstToolDisplayValue(
+    data.answer,
+    data.final_answer,
+    verdict.summary,
+    report.summary,
+    data.summary,
+    response.summary,
+    error.message,
+    item.outputSummary,
+  ), TOOL_BLOCK_LIMIT);
+}
+
+function extractTerminalOutput(item, response, artifacts, data) {
+  const rawToolOutput = isRawToolResponseText(item.toolOutput) ? '' : item.toolOutput;
+  return firstToolDisplayValue(
+    artifacts.output,
+    artifacts.content,
+    artifacts.text,
+    artifacts.stdout,
+    data.stdout,
+    data.output,
+    rawToolOutput,
+  );
+}
+
+function toolDisplayOutput(item) {
+  if (item.toolResponse) return item.toolResponse;
+  if (isRawToolResponseText(item.toolOutput)) return item.outputSummary || undefined;
+  return item.toolOutput || item.outputSummary || undefined;
+}
+
+function toolLineDelta(item, diffText) {
+  const data = item.toolResponse && typeof item.toolResponse === 'object' && item.toolResponse.data
+    ? item.toolResponse.data
+    : {};
+  const explicitAdded = Number(data.added_lines);
+  const explicitRemoved = Number(data.removed_lines);
+  if (Number.isFinite(explicitAdded) || Number.isFinite(explicitRemoved)) {
+    return {
+      added: Number.isFinite(explicitAdded) ? explicitAdded : 0,
+      removed: Number.isFinite(explicitRemoved) ? explicitRemoved : 0,
+    };
+  }
+  let added = 0;
+  let removed = 0;
+  String(diffText || '').split('\n').forEach((line) => {
+    if (line.startsWith('+++') || line.startsWith('---')) return;
+    if (line.startsWith('+')) added += 1;
+    if (line.startsWith('-')) removed += 1;
+  });
+  return { added, removed };
+}
+
+function getToolDiff(item) {
+  const response = item.toolResponse && typeof item.toolResponse === 'object' ? item.toolResponse : {};
+  const artifacts = response.artifacts && typeof response.artifacts === 'object' ? response.artifacts : {};
+  const data = response.data && typeof response.data === 'object' ? response.data : {};
+  return artifacts.diff || data.diff || artifacts.unified_diff || '';
+}
+
+function toolActionLabel(item) {
+  const name = normalizeToolName(item.toolName);
+  if (name === 'write_file') return 'Wrote';
+  if (name === 'edit_file') return 'Edited';
+  if (name === 'apply_patch') return 'Patched';
+  if (name === 'create_file') return 'Created';
+  if (name === 'delete_file') return 'Deleted';
+  if (name === 'copy_file') return 'Copied';
+  if (name === 'create_dir') return 'Created dir';
+  if (name === 'read_file') return 'Read';
+  if (name === 'search_text') return 'Search text';
+  if (name === 'glob_files') return 'Glob files';
+  if (name === 'list_dir') return 'List dir';
+  if (name === 'terminal') return 'Shell';
+  if (name === 'start_background_process') return 'Start background process';
+  if (name === 'read_background_process_output') return 'Read background output';
+  if (name === 'stop_background_process') return 'Stop background process';
+  if (name === 'background_process_status') return 'Background process status';
+  if (name === 'list_background_processes') return 'List background processes';
+  return item.label || item.toolName || 'Tool';
+}
+
+function extractProcessChatMeta(item, name) {
+  const input = toolPlainObject(item.toolInput);
+  const task = firstToolDisplayValue(
+    input.task,
+    input.prompt,
+    input.message,
+    input.query,
+    input.question,
+    input.instruction,
+    input.description,
+    input.user_message,
+  );
+  const role = firstToolDisplayValue(
+    input.role,
+    input.agent_name,
+    input.agent,
+    input.sub_agent,
+    input.subagent,
+    input.name,
+  );
+  const systemPrompt = firstToolDisplayValue(
+    input.system_prompt,
+    input.system,
+    input.systemPrompt,
+    input.persona,
+    input.instructions,
+  );
+  const isVision = isVisualProcessTool(name);
+  const mediaPath = isVision
+    ? firstToolDisplayValue(input.media_path, input.image_path, input.path, input.image, input.file)
+    : '';
+  const visionMode = isVision ? firstToolDisplayValue(input.mode, input.task_type) : '';
+  return {
+    task: task ? String(task) : '',
+    role: role ? String(role) : '',
+    systemPrompt: systemPrompt ? String(systemPrompt) : '',
+    mediaPath: mediaPath ? String(mediaPath) : '',
+    visionMode: visionMode ? String(visionMode) : '',
+    isVision,
+  };
+}
+
+function buildToolView(item) {
+  const name = normalizeToolName(item.toolName);
+  const path = firstToolPath(item);
+  if (isProcessTool(item, name)) {
+    const output = toolDisplayOutput(item);
+    const streamLines = buildToolStreamLines(item);
+    const finalText = extractProcessResultText(item);
+    const chatMeta = extractProcessChatMeta(item, name);
+    return {
+      mode: 'process',
+      label: item.category === 'subagent'
+        ? (item.label || item.toolName || 'Sub-agent')
+        : (item.label || toolActionLabel(item)),
+      requestJson: toolJsonText(item.toolInput),
+      streamLines,
+      finalText,
+      defaultOpen: true,
+      task: chatMeta.task,
+      role: chatMeta.role,
+      systemPrompt: chatMeta.systemPrompt,
+      mediaPath: chatMeta.mediaPath,
+      visionMode: chatMeta.visionMode,
+      isVision: chatMeta.isVision,
+      isRunning: (item.status || '') === 'running',
+    };
+  }
+  if (TOOL_DIFF_NAMES.has(name)) {
+    const diff = getToolDiff(item);
+    const { added, removed } = toolLineDelta(item, diff);
+    return {
+      mode: 'diff',
+      label: `${toolActionLabel(item)} ${path || item.label || name} (+${added} -${removed})`,
+      body: diff ? compactToolText(diff) : '',
+    };
+  }
+  if (TOOL_CHANGE_NAMES.has(name)) {
+    const output = toolDisplayOutput(item);
+    const jsonPayload = compactToolJsonPayload(
+      item.toolInput || undefined,
+      output,
+    );
+    return {
+      mode: 'json',
+      label: [toolActionLabel(item), path].filter(Boolean).join(' ') || item.label,
+      requestJson: toolJsonText(item.toolInput),
+      responseJson: outputJsonText(output),
+      body: (jsonPayload.input || jsonPayload.output) ? stableJson(jsonPayload) : '',
+    };
+  }
+  if (TOOL_READ_NAMES.has(name)) {
+    return {
+      mode: 'read',
+      label: [toolActionLabel(item), path].filter(Boolean).join(' ') || item.label,
+      body: '',
+    };
+  }
+  if (TOOL_SHELL_NAMES.has(name)) {
+    const response = toolPlainObject(item.toolResponse);
+    const subject = toolPlainObject(response.subject);
+    const artifacts = toolPlainObject(response.artifacts);
+    const data = toolPlainObject(response.data);
+    const diagnostics = toolPlainObject(artifacts.diagnostics);
+    const error = toolPlainObject(response.error);
+    const input = toolPlainObject(item.toolInput);
+    const command = subject.command || input.command || input.cmd || '';
+    const cwd = subject.cwd || input.working_dir || '';
+    const output = extractTerminalOutput(item, response, artifacts, data);
+    const stderr = firstToolDisplayValue(artifacts.stderr, data.stderr);
+    const fallback = firstToolDisplayValue(error.message, response.summary, item.outputSummary);
+    const exitCode = firstToolDisplayValue(error.exit_code, data.exit_code, diagnostics.exit_code);
+    return {
+      mode: 'terminal',
+      label: command ? `${toolActionLabel(item)} ${command}` : toolActionLabel(item),
+      command,
+      cwd,
+      requestJson: toolJsonText(item.toolInput),
+      responseJson: outputJsonText(response),
+      stdout: output || command ? (output ? tailToolOutput(output) : compactToolValue(fallback, 1200)) : '',
+      stderr: stderr ? tailToolOutput(stderr) : '',
+      exitCode,
+      running: item.status === 'running' || item.status === 'pending',
+      defaultOpen: true,
+    };
+  }
+  const output = toolDisplayOutput(item);
+  const jsonPayload = compactToolJsonPayload(
+    item.toolInput || undefined,
+    output,
+  );
+  return {
+    mode: 'json',
+    label: item.label || item.toolName || 'Tool',
+    requestJson: toolJsonText(item.toolInput),
+    responseJson: outputJsonText(output),
+    body: (jsonPayload.input || jsonPayload.output) ? stableJson(jsonPayload) : '',
+  };
+}
+
+function ChatTimelineToolBody({ view }) {
+  if (view.mode === 'terminal') {
+    const hasTerminalContent = Boolean(view.command || view.stdout || view.stderr || view.running);
+    return (
+      <>
+        {hasTerminalContent ? (
+          <div className="chat-terminal-frame">
+            <div className="chat-terminal-bar">
+              <span className="chat-terminal-dots" aria-hidden="true"><span /><span /><span /></span>
+              {view.cwd ? <span className="chat-terminal-cwd">{view.cwd}</span> : null}
+              {view.running || (view.exitCode !== undefined && view.exitCode !== '') ? (
+                <span className={`chat-terminal-state ${view.running ? 'running' : ''}`}>
+                  {view.running ? 'running' : `exit ${view.exitCode}`}
+                </span>
+              ) : null}
+            </div>
+            {view.command ? (
+              <div className="chat-terminal-command">
+                <span className="chat-terminal-prompt">$</span>
+                <span>{view.command}</span>
+              </div>
+            ) : null}
+            {view.stdout ? <pre className="chat-terminal-output">{view.stdout}</pre> : null}
+            {view.stderr ? <pre className="chat-terminal-output stderr">{view.stderr}</pre> : null}
+            {view.running && !view.stdout && !view.stderr ? (
+              <div className="chat-terminal-waiting">Waiting for output<span className="chat-terminal-cursor" aria-hidden="true" /></div>
+            ) : null}
+          </div>
+        ) : null}
+        {!hasTerminalContent ? <ChatJsonPair requestJson={view.requestJson} responseJson={view.responseJson} /> : null}
+      </>
+    );
+  }
+  if (view.mode === 'process') {
+    return <ChatProcessConversation view={view} />;
+  }
+  if (view.mode === 'diff') {
+    if (!view.body) return null;
+    return (
+      <pre className="chat-timeline-tool-code diff">
+        {view.body.split('\n').map((line, index) => {
+          const kind = line.startsWith('+') && !line.startsWith('+++')
+            ? 'add'
+            : line.startsWith('-') && !line.startsWith('---')
+              ? 'remove'
+              : line.startsWith('@@')
+                ? 'hunk'
+                : 'context';
+          return <span key={index} className={`chat-tool-diff-line ${kind}`}>{line || ' '}</span>;
+        })}
+      </pre>
+    );
+  }
+  if (view.mode === 'json') {
+    return <ChatJsonPair requestJson={view.requestJson} responseJson={view.responseJson || view.body} />;
+  }
+  return null;
+}
+
+function ChatJsonBlock({ text, compact = false }) {
+  if (!text) return null;
+  return (
+    <pre className={`chat-json-block ${compact ? 'compact' : ''}`}>
+      {text}
+    </pre>
+  );
+}
+
+function ChatJsonPair({ requestJson, responseJson }) {
+  if (!requestJson && !responseJson) return null;
+  const segments = [];
+  if (requestJson) segments.push({ id: 'request', label: 'Request', text: requestJson });
+  if (responseJson) segments.push({ id: 'response', label: 'Response', text: responseJson });
+  const defaultId = responseJson ? 'response' : 'request';
+  const [activeId, setActiveId] = React.useState(defaultId);
+  const active = segments.find((seg) => seg.id === activeId) || segments[0];
+  if (!active) return null;
+  return (
+    <div className="chat-json-card">
+      {segments.length > 1 ? (
+        <div className="chat-json-segments" role="tablist">
+          {segments.map((seg) => (
+            <button
+              key={seg.id}
+              type="button"
+              role="tab"
+              aria-selected={seg.id === active.id}
+              className={`chat-json-segment ${seg.id === active.id ? 'is-active' : ''}`}
+              onClick={() => setActiveId(seg.id)}
+            >
+              {seg.label}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="chat-json-card-head">
+          <span className="chat-json-card-title">{active.label}</span>
+        </div>
+      )}
+      <pre className="chat-json-card-body">{active.text}</pre>
+    </div>
+  );
+}
+
+function chatProcessFileName(path) {
+  if (!path) return '';
+  const segments = String(path).split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] || path;
+}
+
+function ChatImsgCollapsible({ children, maxHeight = 360 }) {
+  const bodyRef = React.useRef(null);
+  const [expanded, setExpanded] = React.useState(false);
+  const [overflows, setOverflows] = React.useState(false);
+  React.useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return undefined;
+    const check = () => {
+      const overflow = el.scrollHeight > el.clientHeight + 2;
+      setOverflows((prev) => (prev === overflow ? prev : overflow));
+    };
+    check();
+    const ro = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(check) : null;
+    if (ro) ro.observe(el);
+    return () => { if (ro) ro.disconnect(); };
+  }, [children, expanded]);
+  const showToggle = overflows || expanded;
+  return (
+    <div className={`chat-imsg-collapsible ${expanded ? 'is-expanded' : ''} ${overflows && !expanded ? 'is-collapsed' : ''}`}>
+      <div
+        ref={bodyRef}
+        className="chat-imsg-collapsible-body"
+        style={expanded ? null : { maxHeight: `${maxHeight}px` }}
+      >
+        {children}
+      </div>
+      {showToggle ? (
+        <button
+          type="button"
+          className="chat-imsg-show-toggle"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? '收起' : '查看全部'}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function ChatProcessConversation({ view }) {
+  const hasPrompt = Boolean(view.task || view.role || view.systemPrompt || view.mediaPath);
+  const hasStream = Array.isArray(view.streamLines) && view.streamLines.length > 0;
+  const hasFinal = Boolean(view.finalText);
+  if (!hasPrompt && !hasStream && !hasFinal && !view.requestJson) {
+    return null;
+  }
+  const fileName = chatProcessFileName(view.mediaPath);
+  const fields = [];
+  if (view.role) fields.push({ label: 'Role', value: view.role });
+  if (view.systemPrompt) fields.push({ label: 'System Prompt', value: view.systemPrompt, multiline: true, markdown: true });
+  if (view.task) fields.push({ label: 'Task', value: view.task, multiline: true, markdown: true });
+  const renderSubContent = () => {
+    if (hasFinal) {
+      const inner = view.isVision
+        ? <div className="chat-imsg-plain">{view.finalText}</div>
+        : <window.Markdown source={view.finalText} />;
+      return <ChatImsgCollapsible maxHeight={360}>{inner}</ChatImsgCollapsible>;
+    }
+    if (hasStream) {
+      return (
+        <ChatImsgCollapsible maxHeight={360}>
+          {view.streamLines.map((row) => (
+            <div key={row.id} className={`chat-imsg-stream-line ${row.state || ''}`}>
+              {row.text}
+            </div>
+          ))}
+          {view.isRunning ? <span className="chat-imsg-cursor" aria-hidden="true" /> : null}
+        </ChatImsgCollapsible>
+      );
+    }
+    return (
+      <span className="chat-imsg-thinking">
+        <span className="chat-imsg-dot" />
+        <span className="chat-imsg-dot" />
+        <span className="chat-imsg-dot" />
+      </span>
+    );
+  };
+  const showSub = hasStream || hasFinal || view.isRunning;
+  const subState = hasFinal ? 'final' : (hasStream ? 'stream' : 'thinking');
+  return (
+    <div className="chat-imsg">
+      {hasPrompt ? (
+        <div className="chat-imsg-row from-main">
+          <div className="chat-imsg-bubble main">
+            {view.mediaPath ? (
+              <div className="chat-imsg-attachment" title={view.mediaPath}>
+                <span className="chat-imsg-attachment-icon ico ico-image-describe" aria-hidden="true" />
+                <span className="chat-imsg-attachment-name">{fileName}</span>
+                {view.visionMode ? (
+                  <span className="chat-imsg-attachment-mode">{view.visionMode}</span>
+                ) : null}
+              </div>
+            ) : null}
+            {fields.length > 0 ? (
+              <div className="chat-imsg-fields">
+                {fields.map((field) => (
+                  <div key={field.label} className={`chat-imsg-field ${field.multiline ? 'is-multiline' : ''}`}>
+                    <div className="chat-imsg-field-label">{field.label}</div>
+                    <div className={`chat-imsg-field-value ${field.markdown ? 'is-md' : ''}`}>
+                      {field.markdown ? <window.Markdown source={String(field.value || '')} /> : field.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {showSub ? (
+        <div className="chat-imsg-row from-sub">
+          <div className={`chat-imsg-bubble sub ${subState}`}>
+            {renderSubContent()}
+          </div>
+        </div>
+      ) : null}
+
+      {!hasPrompt && !showSub && view.requestJson ? (
+        <ChatJsonBlock text={view.requestJson} compact />
+      ) : null}
+    </div>
+  );
+}
+
 function ChatTimelineToolNode({ item }) {
-  const [open, setOpen] = React.useState(false);
   const status = item.status || 'pending';
   const category = item.category || 'tool';
   const defaultIconClass = CATEGORY_ICON_CLASS[category] || CATEGORY_ICON_CLASS.tool;
   // 先按 toolName 匹配专属 icon；匹配不到再退回 skill/mcp/subagent 分类图标。
   const iconClass = resolveToolIconClass(item.toolName, defaultIconClass);
   const categoryLabel = CATEGORY_LABEL[category] || 'Tool';
-  const hasInput = Boolean(item.inputSummary);
-  const hasOutput = Boolean(item.outputSummary);
+  const view = buildToolView(item);
+  const [open, setOpen] = React.useState(Boolean(view.defaultOpen));
+  React.useEffect(() => {
+    if (view.defaultOpen || status === 'running') setOpen(true);
+  }, [view.defaultOpen, status]);
+  const fallbackLines = view.mode === 'read'
+    ? []
+    : [item.inputSummary, item.outputSummary].filter(Boolean).slice(0, 2);
   const hasChildren = Array.isArray(item.children) && item.children.length > 0;
-  const hasBody = hasInput || hasOutput || hasChildren;
-  const bodyLines = [item.inputSummary, item.outputSummary].filter(Boolean).slice(0, 2);
+  const hasBody = Boolean(view.body)
+    || Boolean(view.command)
+    || Boolean(view.stdout)
+    || Boolean(view.stderr)
+    || Boolean(view.requestJson)
+    || Boolean(view.responseJson)
+    || (Array.isArray(view.streamLines) && view.streamLines.length > 0)
+    || Boolean(view.finalText)
+    || fallbackLines.length > 0
+    || hasChildren;
   return (
-    <div className={`chat-timeline-tool category-${category} status-${status}`}>
+    <div className={`chat-timeline-tool category-${category} status-${status} mode-${view.mode}`}>
       <button
         type="button"
         className="chat-timeline-tool-head"
@@ -1594,14 +2391,15 @@ function ChatTimelineToolNode({ item }) {
       >
         <span className={`chat-timeline-status status-${status}`} aria-hidden="true" />
         <span className={`ico ${iconClass}`} aria-label={categoryLabel} role="img" />
-        <span className="chat-timeline-tool-name">{item.label}</span>
+        <span className="chat-timeline-tool-name">{view.label}</span>
         {hasBody ? (
           <ChatTimelineChevron open={open} />
         ) : null}
       </button>
       {open && hasBody ? (
         <div className="chat-timeline-tool-body">
-          {bodyLines.map((line, index) => (
+          {view.mode !== 'read' ? <ChatTimelineToolBody view={view} /> : null}
+          {view.mode === 'read' && fallbackLines.map((line, index) => (
             <div key={index} className="chat-timeline-tool-line">{line}</div>
           ))}
           {hasChildren ? (
@@ -1618,8 +2416,9 @@ function ChatTimelineToolNode({ item }) {
 }
 
 function ChatTimelineMetaNode({ item }) {
+  const isContextCompaction = String(item.summary || '').toLowerCase() === 'auto-compacting context';
   return (
-    <div className={`chat-timeline-meta status-${item.status || 'done'}`}>
+    <div className={`chat-timeline-meta status-${item.status || 'done'} ${isContextCompaction ? 'is-compaction' : ''}`}>
       <button
         type="button"
         className="chat-timeline-meta-head"
@@ -1627,6 +2426,7 @@ function ChatTimelineMetaNode({ item }) {
         disabled
       >
         <span className={`chat-timeline-status status-${item.status || 'done'}`} aria-hidden="true" />
+        {isContextCompaction ? <span className="chat-timeline-compaction-icon" aria-hidden="true" /> : null}
         <span className="chat-timeline-meta-label">{item.summary || 'Thinking…'}</span>
       </button>
     </div>
@@ -1708,7 +2508,7 @@ function ChatTimelineCollapsed({ onExpand, label = 'Trace', expanded = false }) 
   );
 }
 
-function ChatMessageRow({ message, now }) {
+function ChatMessageRow({ message, now, onPreviewImage }) {
   const timeline = Array.isArray(message.traceTimeline) ? message.traceTimeline : [];
   const hasTimeline = timeline.length > 0;
   const isAgent = message.role === 'agent';
@@ -1746,8 +2546,35 @@ function ChatMessageRow({ message, now }) {
     copyTimerRef.current = setTimeout(() => setCopied(false), 1200);
   }
 
+  const messageImages = Array.isArray(message.images)
+    ? message.images.filter((img) => img && (img.previewUrl || img.path))
+    : [];
+
   return (
     <div className={`chat-message-row ${message.role}`}>
+      {messageImages.length > 0 && (
+        <div className="chat-message-images" aria-label="Attached images">
+          {messageImages.map((img, idx) => (
+            <div key={img.image_id || `${idx}`} className="chat-message-image">
+              <button
+                type="button"
+                className="chat-message-image-button"
+                onClick={() => onPreviewImage?.({
+                  src: img.previewUrl || img.path,
+                  title: img.name || img.path || 'Attached image',
+                })}
+                aria-label="Preview attached image"
+              >
+                {img.previewUrl ? (
+                  <img src={img.previewUrl} alt="" draggable={false} />
+                ) : (
+                  <span className="chat-message-image-fallback" aria-hidden="true">▦</span>
+                )}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className={`chat-bubble ${message.status || ''}`}>
         <div className="chat-bubble-meta">
           <span className="chat-bubble-meta-main">
@@ -1778,26 +2605,108 @@ function ChatMessageRow({ message, now }) {
               : <span className="chat-stream-text">{message.text || ''}</span>}
           </div>
         ) : null}
-        {(messageClock || copyText) ? (
-          <div className="chat-bubble-footer">
-            {messageClock ? <span className="chat-bubble-clock">{messageClock}</span> : null}
-            {copyText ? (
+      </div>
+      {(messageClock || copyText) ? (
+        <div className="chat-message-actions">
+          {messageClock ? <span className="chat-bubble-clock">{messageClock}</span> : null}
+          {copyText ? (
+            <PortalTooltip text={copied ? 'Copied' : 'Copy'} position="above">
               <button
                 type="button"
                 className={`chat-bubble-copy ${copied ? 'copied' : ''}`}
                 onClick={handleCopy}
                 aria-label={copied ? 'Copied' : 'Copy message'}
-                title={copied ? 'Copied' : 'Copy'}
               >
                 <span className="ico-copy-message" aria-hidden="true" />
               </button>
-            ) : null}
-          </div>
-        ) : null}
+            </PortalTooltip>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ImagePreviewOverlay({ image, onClose }) {
+  const [scale, setScale] = React.useState(1);
+  const src = image?.src || '';
+  const title = image?.title || 'image';
+
+  React.useEffect(() => {
+    if (!image) return undefined;
+    setScale(1);
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose?.();
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [image, onClose]);
+
+  if (!image || !src) return null;
+
+  function adjustScale(delta) {
+    setScale((value) => Math.max(0.25, Math.min(3, Number((value + delta).toFixed(2)))));
+  }
+
+  function downloadImage() {
+    const link = document.createElement('a');
+    link.href = src;
+    link.download = String(title).split('/').pop() || 'image';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  return (
+    <div
+      className="image-preview-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Image preview"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose?.();
+      }}
+    >
+      <div className="image-preview-toolbar" aria-label="Image preview actions">
+        <button type="button" className="image-preview-action" onClick={downloadImage} aria-label="Download image">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3v10" />
+            <path d="m7 9 5 5 5-5" />
+            <path d="M5 20h14" />
+          </svg>
+        </button>
+        <button type="button" className="image-preview-action image-preview-close" onClick={onClose} aria-label="Close preview">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      </div>
+      <div className="image-preview-stage">
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          style={{ transform: `scale(${scale})` }}
+        />
+      </div>
+      <div className="image-preview-zoom" aria-label="Image zoom controls">
+        <button type="button" onClick={() => adjustScale(-0.1)} aria-label="Zoom out">-</button>
+        <span>{Math.round(scale * 100)}%</span>
+        <button type="button" onClick={() => adjustScale(0.1)} aria-label="Zoom in">+</button>
       </div>
     </div>
   );
 }
+
+const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const CHAT_IMAGE_MAX_COUNT = 4;
+const CHAT_IMAGE_ACCEPTED_MIME = new Set([
+  'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
+]);
 
 function ChatPanel({
   conversationId,
@@ -1808,6 +2717,7 @@ function ChatPanel({
   onStop,
   onSelectFile,
   onClearFile,
+  onUploadImage,
   attachment,
   uploading,
   contextUsage,
@@ -1824,6 +2734,115 @@ function ChatPanel({
   const [draft, setDraft] = React.useState('');
   const [modelId, setModelId] = React.useState(resolvedDefaultModelId);
   const [reasoningEffort, setReasoningEffort] = React.useState(DEFAULT_REASONING_EFFORT);
+  const [composerImages, setComposerImages] = React.useState([]);
+  const [previewImage, setPreviewImage] = React.useState(null);
+  const closeImagePreview = React.useCallback(() => setPreviewImage(null), []);
+  const composerImagesRef = React.useRef([]);
+  React.useEffect(() => { composerImagesRef.current = composerImages; }, [composerImages]);
+
+  // Clean up blob URLs + reset draft images when switching conversations.
+  React.useEffect(() => {
+    return () => {
+      composerImagesRef.current.forEach((img) => {
+        if (img.previewUrl) URL.revokeObjectURL(img.previewUrl);
+      });
+    };
+  }, [conversationId]);
+  React.useEffect(() => {
+    setComposerImages([]);
+  }, [conversationId]);
+
+  async function attachImageFile(file) {
+    if (!file) return;
+    if (!CHAT_IMAGE_ACCEPTED_MIME.has((file.type || '').toLowerCase())) {
+      console.warn('Unsupported image type', file.type);
+      return;
+    }
+    if (file.size > CHAT_IMAGE_MAX_BYTES) {
+      const draft = {
+        id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        previewUrl: '',
+        uploading: false,
+        error: `File too large (>${Math.round(CHAT_IMAGE_MAX_BYTES / 1024 / 1024)}MB)`,
+      };
+      setComposerImages((prev) => [...prev, draft]);
+      return;
+    }
+    if (composerImagesRef.current.length >= CHAT_IMAGE_MAX_COUNT) {
+      console.warn(`Image limit reached (${CHAT_IMAGE_MAX_COUNT})`);
+      return;
+    }
+
+    const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const previewUrl = URL.createObjectURL(file);
+    setComposerImages((prev) => [...prev, { id, file, previewUrl, uploading: true }]);
+
+    try {
+      const result = await onUploadImage?.(file);
+      if (!result || !result.image_id) {
+        throw new Error('Upload response missing image_id');
+      }
+      setComposerImages((prev) => prev.map((img) =>
+        img.id === id
+          ? { ...img, uploading: false, imageId: result.image_id, path: result.path, mime: result.mime, sizeBytes: result.size_bytes }
+          : img,
+      ));
+    } catch (error) {
+      console.error('Chat image upload failed', error);
+      setComposerImages((prev) => prev.map((img) =>
+        img.id === id ? { ...img, uploading: false, error: String(error?.message || error) } : img,
+      ));
+    }
+  }
+
+  function removeComposerImage(id) {
+    setComposerImages((prev) => {
+      const target = prev.find((img) => img.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((img) => img.id !== id);
+    });
+  }
+
+  function handleComposerPaste(event) {
+    const items = Array.from(event.clipboardData?.items || []);
+    const imageFiles = items
+      .filter((it) => it.kind === 'file' && (it.type || '').toLowerCase().startsWith('image/'))
+      .map((it) => it.getAsFile())
+      .filter(Boolean);
+
+    if (imageFiles.length === 0) {
+      // Fall through to existing path-paste behavior.
+      handlePathPaste(event, draft, setDraft, workspacePath, homePath, 5000);
+      return;
+    }
+    event.preventDefault();
+    imageFiles.forEach((file) => attachImageFile(file));
+  }
+
+  function handleComposerDrop(event) {
+    const files = Array.from(event.dataTransfer?.files || [])
+      .filter((file) => (file.type || '').toLowerCase().startsWith('image/'));
+    if (!files.length) return;
+    event.preventDefault();
+    files.forEach((file) => attachImageFile(file));
+  }
+
+  function handleComposerDragOver(event) {
+    if (Array.from(event.dataTransfer?.items || []).some((it) => it.kind === 'file')) {
+      event.preventDefault();
+    }
+  }
+
+  const imagesUploading = composerImages.some((img) => img.uploading);
+  const openImagePreview = React.useCallback((image) => {
+    const src = image?.src || image?.previewUrl || image?.path || '';
+    if (!src) return;
+    setPreviewImage({
+      src,
+      title: image?.title || image?.name || image?.path || 'image',
+    });
+  }, []);
 
   React.useEffect(() => {
     if (!resolvedOptions.find((o) => o.id === modelId)) {
@@ -1921,9 +2940,23 @@ function ChatPanel({
     if (Date.now() < suppressSubmitUntilRef.current) return;
     const text = draft.trim();
     if (!text || disabled) return;
-    onSend?.(text, attachment, modelId, reasoningEffort);
+    // Block while any pasted image is still uploading.
+    if (imagesUploading) return;
+    const readyImages = composerImages
+      .filter((img) => img.imageId && !img.error)
+      .map((img) => ({
+        image_id: img.imageId,
+        path: img.path,
+        mime: img.mime,
+        previewUrl: img.previewUrl || null,
+      }));
+    onSend?.(text, attachment, modelId, reasoningEffort, readyImages);
     setDraft('');
     onClearFile?.();
+    // Ownership of the blob URLs transfers to the rendered chat message; the
+    // unmount cleanup at the conversationId boundary will revoke them. Do NOT
+    // revoke here, or the just-sent thumbnail goes blank.
+    setComposerImages([]);
     if (fileRef.current) fileRef.current.value = '';
   }
 
@@ -1955,16 +2988,60 @@ function ChatPanel({
             <div className="chat-empty-copy">Drop a task, a question, or a loose idea. I'll take it from there.</div>
           </div>
         ) : messages.map((message) => (
-          <ChatMessageRow key={message.id} message={message} now={now} />
+          <ChatMessageRow key={message.id} message={message} now={now} onPreviewImage={openImagePreview} />
         ))}
       </div>
-      <form className="chat-composer" onSubmit={submit}>
+      <form
+        className="chat-composer"
+        onSubmit={submit}
+        onDragOver={handleComposerDragOver}
+        onDrop={handleComposerDrop}
+      >
+        {composerImages.length > 0 && (
+          <div className="chat-composer-images" aria-label="Pasted images">
+            {composerImages.map((img) => (
+              <PortalTooltip
+                key={img.id}
+                text={img.error || (img.uploading ? 'Uploading...' : (img.file?.name || 'image'))}
+                position="above"
+              >
+                <div
+                  className={`chat-composer-image-chip ${img.uploading ? 'is-uploading' : ''} ${img.error ? 'has-error' : ''}`}
+                >
+                  <button
+                    type="button"
+                    className="chat-composer-image-preview-button"
+                    onClick={() => openImagePreview({
+                      src: img.previewUrl || img.path,
+                      title: img.file?.name || img.path || 'Pasted image',
+                    })}
+                    disabled={!img.previewUrl && !img.path}
+                    aria-label="Preview pasted image"
+                  >
+                    {img.previewUrl ? (
+                      <img src={img.previewUrl} alt="" draggable={false} />
+                    ) : (
+                      <span className="chat-composer-image-fallback" aria-hidden="true">!</span>
+                    )}
+                  </button>
+                  {img.uploading && <span className="chat-composer-image-spinner" aria-hidden="true" />}
+                  <button
+                    type="button"
+                    className="chat-composer-image-remove"
+                    onClick={() => removeComposerImage(img.id)}
+                    aria-label="Remove image"
+                  >×</button>
+                </div>
+              </PortalTooltip>
+            ))}
+          </div>
+        )}
         <textarea
           ref={inputRef}
           rows={1}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          onPaste={(event) => handlePathPaste(event, draft, setDraft, workspacePath, homePath, 500)}
+          onPaste={handleComposerPaste}
           onKeyDown={(event) => {
             if (event.key === 'Escape' && running && !event.nativeEvent.isComposing) {
               event.preventDefault();
@@ -1979,7 +3056,7 @@ function ChatPanel({
           }}
           placeholder={disabled ? 'Assistant is currently processing...' : 'Ask, draft, or delegate...'}
           disabled={disabled}
-          maxLength={500}
+          maxLength={5000}
         />
         <div className="chat-composer-actions">
           <div className="chat-composer-tools">
@@ -2005,12 +3082,14 @@ function ChatPanel({
               }}
             />
             {attachment && (
-              <div className={`td-file-chip ${uploading ? 'uploading' : attachment.uploaded ? 'ready' : ''}`} title={attachment.name}>
-                <span className="name">{attachment.name}</span>
-                {uploading ? <span className="td-upload-spinner" aria-hidden="true" /> : null}
-                <span className="status">{uploading ? 'Processing' : attachment.uploaded ? 'Uploaded' : 'Pending'}</span>
-                <button type="button" className="x" onClick={clearFile} aria-label="Remove file" disabled={uploading}>×</button>
-              </div>
+              <PortalTooltip text={attachment.name || ''} position="above">
+                <div className={`td-file-chip ${uploading ? 'uploading' : attachment.uploaded ? 'ready' : ''}`}>
+                  <span className="name">{attachment.name}</span>
+                  {uploading ? <span className="td-upload-spinner" aria-hidden="true" /> : null}
+                  <span className="status">{uploading ? 'Processing' : attachment.uploaded ? 'Uploaded' : 'Pending'}</span>
+                  <button type="button" className="x" onClick={clearFile} aria-label="Remove file" disabled={uploading}>×</button>
+                </div>
+              </PortalTooltip>
             )}
             <ModelPicker
               value={modelId}
@@ -2045,6 +3124,7 @@ function ChatPanel({
           </div>
         </div>
       </form>
+      <ImagePreviewOverlay image={previewImage} onClose={closeImagePreview} />
     </section>
   );
 }

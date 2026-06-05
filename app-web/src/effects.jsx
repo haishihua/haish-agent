@@ -197,6 +197,13 @@ function parseMarkdown(src) {
       continue;
     }
 
+    // Horizontal rule: --- / *** / ___ (3+, optional leading spaces)
+    if (/^[ ]{0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+      nodes.push(<hr key={`hr-${key++}`} className="md-hr" />);
+      i++;
+      continue;
+    }
+
     // Paragraph (gather contiguous non-special lines)
     const paraLines = [line];
     i++;
@@ -204,6 +211,7 @@ function parseMarkdown(src) {
       i < lines.length &&
       lines[i].trim() !== '' &&
       !/^(#{1,6}\s|>|[-*+]\s|\d+\.\s|```)/.test(lines[i]) &&
+      !/^[ ]{0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i]) &&
       !(lines[i].includes('|') && i + 1 < lines.length && isTableSep(lines[i + 1]))
     ) {
       paraLines.push(lines[i]);

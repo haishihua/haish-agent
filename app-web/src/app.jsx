@@ -136,9 +136,17 @@ const SCENE_TERMINAL_EVENT_TYPES = new Set([
 
 const CHAT_FINAL_FOLLOWUP_EVENT_TYPES = new Set([
   'agent_gateway_reported',
+  'context_compaction_started',
+  'context_compaction_completed',
+  'context_usage_updated',
   'run_finished',
   'run_error',
   'run_cancelled',
+]);
+
+const STREAM_IMMEDIATE_EVENT_TYPES = new Set([
+  'context_compaction_started',
+  'context_compaction_completed',
 ]);
 
 const SCENE_CATCHUP_TOOL_EVENT_TYPES = new Set([
@@ -213,7 +221,8 @@ function sceneKeyForWorldEvent(event, executorActorId) {
 }
 
 function defaultQuestDescription(text) {
-  return text ? `Triggered by user input: ${text}` : 'Triggered by user input.';
+  const displayText = stripChatImageAugmentation(text).text;
+  return displayText ? `Triggered by user input: ${displayText}` : 'Triggered by user input.';
 }
 
 function summarizeText(text, limit = 88) {
@@ -280,6 +289,13 @@ function normalizeWorldEvent(raw) {
     actor_id: raw.actor_id ?? payload.actor_id ?? null,
     executor_role: raw.executor_role ?? payload.executor_role ?? null,
     executor_actor_id: raw.executor_actor_id ?? payload.executor_actor_id ?? null,
+    usedTokens: raw.usedTokens ?? payload.usedTokens ?? raw.used_tokens ?? payload.used_tokens ?? null,
+    totalTokens: raw.totalTokens ?? payload.totalTokens ?? raw.total_tokens ?? payload.total_tokens ?? null,
+    context_used_tokens: raw.context_used_tokens ?? payload.context_used_tokens ?? raw.used_tokens ?? payload.used_tokens ?? null,
+    context_total_tokens: raw.context_total_tokens ?? payload.context_total_tokens ?? raw.total_tokens ?? payload.total_tokens ?? null,
+    compressed_count: raw.compressed_count ?? payload.compressed_count ?? 0,
+    compressed: Boolean(raw.compressed ?? payload.compressed),
+    source: raw.source ?? payload.source ?? null,
     payload,
     created_at: raw.created_at || payload.created_at || timestamp,
     timestamp,
@@ -308,6 +324,9 @@ function worldEventToRuntimeLog(event) {
     executorActorId: event.executor_actor_id || null,
     inputSummary: event.input_summary || '',
     outputSummary: event.output_summary || '',
+    toolInput: event.tool_input || null,
+    toolResponse: event.tool_response || null,
+    toolOutput: event.tool_output || '',
     skillName: event.skill_name || '',
     skillPath: event.skill_path || '',
     provider: event.provider || null,
@@ -512,7 +531,6 @@ function createDefaultProject() {
     workspacePath: null,
     workspaceLabel: null,
     removable: false,
-    expanded: true,
     conversations: [],
   };
 }
@@ -545,23 +563,30 @@ function loadStoredWorkspaceState() {
         workspacePath: isDefault ? null : (project.workspacePath || null),
         workspaceLabel: isDefault ? null : (project.workspaceLabel || project.name || null),
         removable: !isDefault,
-        expanded: project.expanded !== false,
+        // `userExpanded` is the sole source of truth for sidebar expansion.
+        // Activation handlers set it to true on the active project / conversation;
+        // chevron toggle flips it; everything else remains in whatever state the
+        // user last left it. We intentionally drop the legacy `expanded` field
+        // on load so old snapshots don't carry forward "every project expanded".
+        userExpanded: typeof project.userExpanded === 'boolean' ? project.userExpanded : undefined,
         conversations: Array.isArray(project.conversations)
           ? project.conversations.map((conversation) => ({
             id: conversation.id,
             name: conversation.name || DEFAULT_SESSION_NAME,
             tasks: Array.isArray(conversation.tasks) ? conversation.tasks : [],
-            expanded: conversation.expanded !== false,
+            createdAt: conversation.createdAt || conversation.created_at || null,
+            updatedAt: conversation.updatedAt || conversation.updated_at || null,
+            userExpanded: typeof conversation.userExpanded === 'boolean' ? conversation.userExpanded : undefined,
             tasksExpanded: Boolean(conversation.tasksExpanded),
           })).filter((conversation) => conversation.id)
           : [],
       };
     });
-    return {
+    return normalizeWorkspaceOrdering({
       projects,
       activeProjectId: parsed.activeProjectId || DEFAULT_PROJECT_ID,
       activeConversationId: parsed.activeConversationId || getStoredConversationId(),
-    };
+    });
   } catch (error) {
     console.warn('Failed to load workspace state:', error);
     return createEmptyWorkspaceState();
@@ -603,9 +628,209 @@ function isDefaultConversationName(name) {
 }
 
 function titleFromTaskText(text, maxLength = 48) {
-  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  const normalized = stripChatImageAugmentation(text).text.replace(/\s+/g, ' ').trim();
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function stripChatImageAugmentation(value) {
+  const raw = String(value || '');
+  const imageRefs = [];
+  const withoutMarkers = raw.replace(/^\s*\[user attached image #(\d+):\s*([^\]]+)\]\s*$/gim, (_match, index, path) => {
+    const cleanPath = String(path || '').trim();
+    if (cleanPath) {
+      imageRefs.push({
+        image_id: `restored-image-${index}-${cleanPath}`,
+        path: cleanPath,
+        mime: null,
+      });
+    }
+    return '';
+  });
+  const hintIndex = withoutMarkers.search(/\n*\s*The user attached the image\(s\) above\./i);
+  const text = (hintIndex >= 0 ? withoutMarkers.slice(0, hintIndex) : withoutMarkers)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return { text, imageRefs };
+}
+
+function chatImagePreviewUrl(ref, conversationId, ownerId = '') {
+  const existing = String(ref?.previewUrl || '').trim();
+  if (existing) return existing;
+  const path = String(ref?.path || '').trim();
+  if (!path || !conversationId) return '';
+  if (/^(blob:|data:|https?:|file:)/i.test(path)) return path;
+  const params = new URLSearchParams({ image_path: path });
+  if (ownerId) params.set('owner_id', ownerId);
+  return `${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}/messages/images/preview?${params.toString()}`;
+}
+
+function normalizeChatImageRefs(refs, conversationId, ownerId = '') {
+  return (Array.isArray(refs) ? refs : [])
+    .filter((ref) => ref && (ref.path || ref.previewUrl))
+    .map((ref, index) => ({
+      image_id: ref.image_id || ref.imageId || `image-${index}`,
+      path: ref.path || '',
+      mime: ref.mime || null,
+      previewUrl: chatImagePreviewUrl(ref, conversationId, ownerId),
+    }));
+}
+
+function mergeChatImageRefs(...groups) {
+  const seen = new Set();
+  const merged = [];
+  groups.flat().forEach((ref) => {
+    if (!ref) return;
+    const key = ref.image_id || ref.path || ref.previewUrl;
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    merged.push(ref);
+  });
+  return merged;
+}
+
+function chatImageFallbacksByTaskIdFromMessages(messages, conversationId, ownerId = '') {
+  const map = new Map();
+  for (const message of Array.isArray(messages) ? messages : []) {
+    if (!message || message.role !== 'user' || !message.task_id) continue;
+    const parsed = stripChatImageAugmentation(message.content);
+    if (parsed.imageRefs.length === 0) continue;
+    const existing = map.get(message.task_id) || [];
+    map.set(
+      message.task_id,
+      normalizeChatImageRefs(mergeChatImageRefs(existing, parsed.imageRefs), conversationId, ownerId),
+    );
+  }
+  return map;
+}
+
+function timestampValue(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function taskUpdatedTimestamp(task) {
+  if (!task) return 0;
+  return Math.max(
+    timestampValue(task.updatedAt),
+    timestampValue(task.updated_at),
+    timestampValue(task.completedAt),
+    timestampValue(task.completed_at),
+    timestampValue(task.createdAt),
+    timestampValue(task.created_at),
+  );
+}
+
+function conversationUpdatedTimestamp(conversation) {
+  if (!conversation) return 0;
+  const taskUpdatedAt = Array.isArray(conversation.tasks)
+    ? conversation.tasks.reduce((latest, task) => Math.max(latest, taskUpdatedTimestamp(task)), 0)
+    : 0;
+  return Math.max(
+    timestampValue(conversation.updatedAt),
+    timestampValue(conversation.updated_at),
+    timestampValue(conversation.createdAt),
+    timestampValue(conversation.created_at),
+    taskUpdatedAt,
+  );
+}
+
+function projectUpdatedTimestamp(project) {
+  if (!project) return 0;
+  const conversationUpdatedAt = Array.isArray(project.conversations)
+    ? project.conversations.reduce((latest, conversation) => Math.max(latest, conversationUpdatedTimestamp(conversation)), 0)
+    : 0;
+  return Math.max(
+    timestampValue(project.updatedAt),
+    timestampValue(project.updated_at),
+    timestampValue(project.createdAt),
+    timestampValue(project.created_at),
+    conversationUpdatedAt,
+  );
+}
+
+function withDefaultExpansion(project) {
+  // The sidebar expansion is purely user-driven now: `userExpanded` is the
+  // single source of truth. Activation handlers below set it to true on the
+  // newly-selected project / conversation; the chevron toggle flips it; an
+  // item the user has never touched stays collapsed. This stops the
+  // previously-active project from auto-collapsing the moment the user
+  // navigates to another conversation — the regression the user reported as
+  // "click a project and the other projects/conversations get folded up".
+  const conversations = Array.isArray(project.conversations)
+    ? project.conversations.map((conversation) => {
+      const tasks = Array.isArray(conversation.tasks) ? conversation.tasks : [];
+      return {
+        ...conversation,
+        tasks,
+        updatedAt: conversationUpdatedTimestamp({ ...conversation, tasks }) || conversation.updatedAt || null,
+        expanded: conversation.userExpanded === true,
+        tasksExpanded: Boolean(conversation.tasksExpanded),
+      };
+    })
+    : [];
+  return {
+    ...project,
+    conversations,
+    updatedAt: projectUpdatedTimestamp({ ...project, conversations }) || project.updatedAt || null,
+    expanded: project.userExpanded === true,
+  };
+}
+
+function conversationHasActiveTask(conversation) {
+  const tasks = Array.isArray(conversation?.tasks) ? conversation.tasks : [];
+  return tasks.some((task) => isTaskActuallyActive(task));
+}
+
+function isTaskActuallyActive(task) {
+  const status = String(task?.status || '').toLowerCase();
+  if (status !== 'running' && status !== 'queued') return false;
+  // Server status alone is unreliable: a task may have already streamed
+  // its answer and finished from the user's perspective, but the
+  // persisted status wasn't transitioned (the user-facing symptom is
+  // "no task is running but composer is locked"). Stronger "done"
+  // signals override the raw running/queued state.
+  if (task?.completedAt || task?.completed_at) return false;
+  const answer = task?.answerText ?? task?.answer_text;
+  if (typeof answer === 'string' && answer.trim().length > 0) return false;
+  return true;
+}
+
+function normalizeWorkspaceOrdering(state) {
+  const activeProjectId = state?.activeProjectId || DEFAULT_PROJECT_ID;
+  const activeConversationId = state?.activeConversationId || getStoredConversationId();
+  // Sidebar ordering policy (matches the UX brief):
+  //   - Conversations: any conversation with a running/queued task floats
+  //     to the top of its project. Among ties (and among conversations
+  //     with no active task), order by updatedAt desc. Active highlighting
+  //     is a visual concern handled in panels.jsx — it does NOT participate
+  //     in ordering, so clicking around does not reshuffle the list.
+  //   - Projects: pure updatedAt desc. The "click project = jump to top"
+  //     behavior was explicitly removed; project order is now stable until
+  //     real activity (a task / message) changes updatedAt.
+  const projects = (Array.isArray(state?.projects) ? state.projects : [])
+    .map((project) => withDefaultExpansion(project))
+    .map((project) => ({
+      ...project,
+      conversations: [...project.conversations].sort((a, b) => {
+        const aActive = conversationHasActiveTask(a);
+        const bActive = conversationHasActiveTask(b);
+        if (aActive && !bActive) return -1;
+        if (bActive && !aActive) return 1;
+        return conversationUpdatedTimestamp(b) - conversationUpdatedTimestamp(a);
+      }),
+    }))
+    .sort((a, b) => projectUpdatedTimestamp(b) - projectUpdatedTimestamp(a));
+  return {
+    ...(state || {}),
+    projects: projects.length ? projects : [createDefaultProject()],
+    activeProjectId,
+    activeConversationId,
+  };
 }
 
 function conversationDetailToWorkspaceConversation(detail, previousConversation = null) {
@@ -618,7 +843,13 @@ function conversationDetailToWorkspaceConversation(detail, previousConversation 
     id: detail.conversation_id,
     name: shouldKeepLocalTitle ? previousName : (detailName || previousName || DEFAULT_SESSION_NAME),
     tasks: Array.isArray(detail.tasks) ? detail.tasks.map(taskSummaryToRuntimeTask) : [],
-    expanded: previousConversation?.expanded !== false,
+    createdAt: detail.created_at || previousConversation?.createdAt || null,
+    updatedAt: detail.updated_at || detail.last_message_at || previousConversation?.updatedAt || null,
+    // Preserve the user's explicit toggle when present; otherwise leave it
+    // undefined and let withDefaultExpansion compute expanded from activeness.
+    userExpanded: typeof previousConversation?.userExpanded === 'boolean'
+      ? previousConversation.userExpanded
+      : undefined,
     tasksExpanded: Boolean(previousConversation?.tasksExpanded),
   };
 }
@@ -655,7 +886,9 @@ function buildWorkspaceStateFromConversationDetails(details, previousState) {
         workspacePath,
         workspaceLabel: label,
         removable: true,
-        expanded: previousProject?.expanded !== false,
+        userExpanded: typeof previousProject?.userExpanded === 'boolean'
+          ? previousProject.userExpanded
+          : undefined,
         conversations: [],
       });
     }
@@ -679,11 +912,11 @@ function buildWorkspaceStateFromConversationDetails(details, previousState) {
     project.conversations.some((conversation) => conversation.id === activeConversationId)
   )) || fallbackProject;
 
-  return {
+  return normalizeWorkspaceOrdering({
     projects,
     activeProjectId: activeProject.id,
     activeConversationId,
-  };
+  });
 }
 
 function workspaceStateWithConversationDetail(state, detail, activate = true) {
@@ -698,16 +931,26 @@ function workspaceStateWithConversationDetail(state, detail, activate = true) {
     const conversations = project.conversations.map((conversation) => {
       if (conversation.id !== detail.conversation_id) return conversation;
       conversationFound = true;
-      return conversationDetailToWorkspaceConversation(detail, conversation);
+      const merged = conversationDetailToWorkspaceConversation(detail, conversation);
+      // Activation expands the project + the conversation being activated.
+      // We do not touch any sibling conversation's userExpanded, so others
+      // stay in whatever state the user last left them in.
+      return activate ? { ...merged, userExpanded: true } : merged;
     });
     return {
       ...project,
       workspacePath: projectId === DEFAULT_PROJECT_ID ? null : workspacePath,
       workspaceLabel: projectId === DEFAULT_PROJECT_ID ? null : projectLabel,
-      expanded: true,
+      userExpanded: activate ? true : project.userExpanded,
       conversations: conversationFound
         ? conversations
-        : [...conversations, conversationDetailToWorkspaceConversation(detail)],
+        : [
+            ...conversations,
+            (() => {
+              const fresh = conversationDetailToWorkspaceConversation(detail);
+              return activate ? { ...fresh, userExpanded: true } : fresh;
+            })(),
+          ],
     };
   });
   if (!projectFound) {
@@ -718,15 +961,91 @@ function workspaceStateWithConversationDetail(state, detail, activate = true) {
       workspacePath: projectId === DEFAULT_PROJECT_ID ? null : workspacePath,
       workspaceLabel: projectId === DEFAULT_PROJECT_ID ? null : projectLabel,
       removable: projectId !== DEFAULT_PROJECT_ID,
-      expanded: true,
-      conversations: [conversationDetailToWorkspaceConversation(detail)],
+      userExpanded: activate ? true : undefined,
+      conversations: [
+        (() => {
+          const fresh = conversationDetailToWorkspaceConversation(detail);
+          return activate ? { ...fresh, userExpanded: true } : fresh;
+        })(),
+      ],
     });
   }
-  return {
+  return normalizeWorkspaceOrdering({
     projects,
     activeProjectId: activate ? projectId : state.activeProjectId,
     activeConversationId: activate ? detail.conversation_id : state.activeConversationId,
-  };
+  });
+}
+
+function workspaceStateWithTouchedConversation(state, conversationId, patch = {}) {
+  if (!conversationId) return normalizeWorkspaceOrdering(state);
+  const now = Date.now();
+  const definedPatch = Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined)
+  );
+  let nextActiveProjectId = state.activeProjectId;
+  const projects = state.projects.map((project) => {
+    const hasConversation = project.conversations.some((conversation) => conversation.id === conversationId);
+    if (hasConversation) nextActiveProjectId = project.id;
+    return {
+      ...project,
+      updatedAt: hasConversation ? now : project.updatedAt,
+      conversations: project.conversations.map((conversation) => (
+        conversation.id === conversationId
+          ? {
+              ...conversation,
+              ...definedPatch,
+              tasks: Array.isArray(definedPatch.tasks) ? definedPatch.tasks : (Array.isArray(conversation.tasks) ? conversation.tasks : []),
+              updatedAt: now,
+            }
+          : conversation
+      )),
+    };
+  });
+  return normalizeWorkspaceOrdering({
+    ...state,
+    projects,
+    activeProjectId: nextActiveProjectId,
+    activeConversationId: conversationId,
+  });
+}
+
+function workspaceStateWithConversationRuntimeTask(state, conversationId, nextTask) {
+  const taskKey = nextTask?.taskId || nextTask?.id;
+  if (!conversationId || !taskKey) return state;
+  const taskTimestamp = taskUpdatedTimestamp(nextTask) || Date.now();
+  let updated = false;
+  const projects = state.projects.map((project) => {
+    let projectTouched = false;
+    const conversations = project.conversations.map((conversation) => {
+      if (conversation.id !== conversationId) return conversation;
+      projectTouched = true;
+      const tasks = Array.isArray(conversation.tasks) ? conversation.tasks : [];
+      let found = false;
+      const nextTasks = tasks.map((task) => {
+        const currentKey = task?.taskId || task?.id;
+        if (currentKey !== taskKey) return task;
+        found = true;
+        updated = true;
+        return { ...task, ...nextTask };
+      });
+      if (!found) {
+        updated = true;
+        nextTasks.push(nextTask);
+      }
+      return {
+        ...conversation,
+        tasks: nextTasks,
+        updatedAt: Math.max(timestampValue(conversation.updatedAt), taskTimestamp),
+      };
+    });
+    return {
+      ...project,
+      updatedAt: projectTouched ? Math.max(timestampValue(project.updatedAt), taskTimestamp) : project.updatedAt,
+      conversations,
+    };
+  });
+  return updated ? normalizeWorkspaceOrdering({ ...state, projects }) : state;
 }
 
 function findProjectByConversationId(state, conversationId) {
@@ -801,6 +1120,7 @@ function applyTerminalTaskState(task, status, options = {}) {
     ...task,
     status: normalized,
     stage: 'done',
+    updatedAt: now,
     completedAt: task.completedAt || now,
     error: options.error ?? task.error ?? null,
     aborted: options.aborted ?? task.aborted ?? normalized === 'cancelled',
@@ -816,31 +1136,43 @@ function sortTaskIdsForRestore(tasks, lastTaskId) {
   return [...ordered.filter((taskId) => taskId !== lastTaskId), lastTaskId];
 }
 
-function createPendingTaskDraft(text, attachment) {
+function createPendingTaskDraft(text, attachment, imageAttachments) {
+  const now = Date.now();
+  const displayText = stripChatImageAugmentation(text).text || String(text || '').trim();
   return {
     id: generateHexId(),
-    title: text,
-    description: defaultQuestDescription(text),
-    createdAt: Date.now(),
+    title: displayText,
+    description: defaultQuestDescription(displayText),
+    createdAt: now,
+    updatedAt: now,
     stage: 'assigned',
     status: 'queued',
     assignedTo: 'guts',
     assignedToLabel: 'Assistant',
     requestedProvider: 'auto',
     attachment: attachment ? { ...attachment } : null,
+    imageAttachments: Array.isArray(imageAttachments)
+      ? imageAttachments.map((ref) => ({ ...ref }))
+      : [],
     originViewMode: 'world',
   };
 }
 
 function buildWorldTaskRecord(event, pendingTask) {
+  const pendingImages = Array.isArray(pendingTask?.imageAttachments)
+    ? pendingTask.imageAttachments.map((ref) => ({ ...ref }))
+    : [];
+  const fallbackTitle = stripChatImageAugmentation(pendingTask?.title || event.message || '').text || 'Task';
   return {
     taskId: event.task_id,
     conversationId: event.conversation_id || null,
-    title: pendingTask?.title || event.message || 'Task',
-    description: pendingTask?.description || defaultQuestDescription(pendingTask?.title || event.message || ''),
+    title: fallbackTitle,
+    description: pendingTask?.description || defaultQuestDescription(fallbackTitle),
     status: 'queued',
     stage: 'assigned',
     createdAt: pendingTask?.createdAt || Date.now(),
+    updatedAt: pendingTask?.updatedAt || pendingTask?.createdAt || Date.now(),
+    imageAttachments: pendingImages,
     completedAt: null,
     assignedTo: 'guts',
     assignedToLabel: 'Assistant',
@@ -872,23 +1204,35 @@ function buildWorldTaskRecord(event, pendingTask) {
   };
 }
 
-function taskSummaryToRuntimeTask(task) {
+function taskSummaryToRuntimeTask(task, fallbackImageAttachments = [], ownerId = '') {
   const taskAttachments = Array.isArray(task.attachments)
     ? task.attachments.map((attachment) => ({ ...attachment, uploaded: true }))
     : [];
+  const titleParts = stripChatImageAugmentation(task.title);
+  const descriptionParts = stripChatImageAugmentation(task.description);
+  const imageAttachments = normalizeChatImageRefs(
+    mergeChatImageRefs(task.image_attachments || task.imageAttachments || [], fallbackImageAttachments, titleParts.imageRefs, descriptionParts.imageRefs),
+    task.conversation_id,
+    ownerId,
+  );
+  const title = titleParts.text || String(task.title || '').trim() || 'Task';
   return {
     taskId: task.task_id,
     conversationId: task.conversation_id,
-    title: task.title,
-    description: task.description,
+    title,
+    description: descriptionParts.text || defaultQuestDescription(title),
     status: task.status,
     stage: task.stage,
     createdAt: task.created_at ? Date.parse(task.created_at) || Date.now() : Date.now(),
+    updatedAt: task.updated_at
+      ? Date.parse(task.updated_at) || null
+      : (task.completed_at ? Date.parse(task.completed_at) || null : null),
     completedAt: task.completed_at ? Date.parse(task.completed_at) || null : null,
     assignedTo: 'guts',
     assignedToLabel: 'Assistant',
     attachment: taskAttachments[0] || null,
     attachments: taskAttachments,
+    imageAttachments,
     loopIndex: 0,
     activeRole: null,
     provider: task.provider,
@@ -914,11 +1258,12 @@ function taskSummaryToRuntimeTask(task) {
   };
 }
 
-function taskDetailToRuntimeTask(task, previousTask = null) {
+function taskDetailToRuntimeTask(task, previousTask = null, ownerId = '') {
   const events = normalizeWorldEvents(task.events);
+  const summaryTask = taskSummaryToRuntimeTask(task, previousTask?.imageAttachments || [], ownerId);
   const nextTask = {
-    ...(previousTask || taskSummaryToRuntimeTask(task)),
-    ...taskSummaryToRuntimeTask(task),
+    ...(previousTask || summaryTask),
+    ...summaryTask,
     loopIndex: getLoopIndexFromWorldEvents(events),
     activeRole: getActiveRoleFromWorldEvents(events),
     eventLog: events.map(worldEventToRuntimeLog),
@@ -1114,6 +1459,7 @@ function runtimeTaskToQuest(task) {
     stepIdx: task.loopIndex || 0,
     totalSteps: task.loopIndex || 0,
     createdAt: task.createdAt,
+    updatedAt: taskUpdatedTimestamp(task) || task.createdAt,
     completedAt: task.completedAt,
     stage: task.stage,
     assignedTo: task.assignedTo,
@@ -1220,10 +1566,23 @@ function getToolTraceSection(item) {
 
 function getToolTraceStatus(state, fallbackStatus = 'running') {
   const normalized = String(state || '').toLowerCase();
+  const fallback = normalizeTaskStatus(fallbackStatus);
   if (normalized === 'returned' || normalized === 'completed' || normalized === 'done') return 'done';
   if (normalized === 'failed' || normalized === 'error') return 'failed';
-  if (normalized === 'running' || normalized === 'dispatched' || normalized === 'received' || normalized === 'requested') return 'running';
-  const fallback = normalizeTaskStatus(fallbackStatus);
+  // In-flight states: when the surrounding task has already finished, the
+  // call's "still running" marker cannot be true anymore — it just means the
+  // matching tool_executor_completed / tool_result_returned event was never
+  // recorded (or this timeline was rebuilt before those events were merged).
+  // Defer to the terminal task status instead of rendering a permanent
+  // yellow indicator. This is the safety net that catches the "switch away
+  // and back → all tool calls yellow" regression even if the buildChatTimeline
+  // event-pairing logic ever misses a callId.
+  if (normalized === 'running' || normalized === 'dispatched' || normalized === 'received' || normalized === 'requested') {
+    if (fallback === 'done') return 'done';
+    if (fallback === 'failed') return 'failed';
+    if (fallback === 'cancelled') return 'cancelled';
+    return 'running';
+  }
   if (fallback === 'done') return 'done';
   if (fallback === 'failed') return 'failed';
   return 'pending';
@@ -1295,7 +1654,7 @@ function formatMetaDetail(event) {
       return 'Auto-Compacting context';
     }
     case 'context_usage_updated': {
-      if (event.source === 'provider_usage' && event.context_used_tokens == null) return '';
+      if (event.source === 'provider_usage' && event.context_used_tokens == null && event.usedTokens == null) return '';
       const used = formatTraceTokens(event.usedTokens);
       const total = formatTraceTokens(event.totalTokens);
       if (!used && !total) return '';
@@ -1336,6 +1695,30 @@ function timelineToolLabel(call, category) {
   return chatTraceToolName(call.toolName);
 }
 
+function toolProgressSummary(event) {
+  const toolName = chatTraceToolName(event.toolName);
+  const message = String(event.message || '').trim();
+  switch (event.type) {
+    case 'llm_tool_call_requested':
+      return event.inputSummary || message || `${toolName} requested.`;
+    case 'tool_manager_received':
+      return message || 'Tool Manager accepted the request.';
+    case 'tool_dispatched':
+      return message || `Dispatched to ${event.executorRole || event.target || 'executor'}.`;
+    case 'tool_executor_started':
+      return message || `${toolName} started.`;
+    case 'tool_executor_completed':
+      return event.outputSummary || message || `${toolName} completed.`;
+    case 'tool_result_returned':
+      return event.outputSummary || message || `${toolName} returned results.`;
+    case 'tool_executor_failed':
+    case 'tool_executor_error':
+      return message || `${toolName} failed.`;
+    default:
+      return message || event.inputSummary || event.outputSummary || '';
+  }
+}
+
 function buildChatTimeline(task, taskStatus) {
   const events = Array.isArray(task?.eventLog) ? task.eventLog : [];
   const toolCalls = Array.isArray(task?.toolCalls) ? task.toolCalls : [];
@@ -1354,6 +1737,59 @@ function buildChatTimeline(task, taskStatus) {
   let currentSkillItem = null;
   let currentCompactionItem = null;
   const seenToolIds = new Set();
+  // Track per-callId tool item so completion / failure events can update the
+  // existing entry in place. Without this the entry is created at
+  // llm_tool_call_requested time with status="running" and is NEVER updated,
+  // which is what caused the "all tool calls yellow" regression after a
+  // tab-switch round-trip rebuilds the timeline from the event log alone.
+  const toolItemsByCallId = new Map();
+  const canNestToolChildren = (toolItem) => {
+    if (!toolItem) return false;
+    const status = String(toolItem.status || '').toLowerCase();
+    return status === 'pending' || status === 'running';
+  };
+  const appendToolProgress = (toolItem, event, state = '') => {
+    if (!toolItem || !event) return;
+    const summary = toolProgressSummary(event);
+    if (!summary) return;
+    const progressEvents = Array.isArray(toolItem.progressEvents)
+      ? toolItem.progressEvents
+      : [];
+    const last = progressEvents[progressEvents.length - 1];
+    if (last && last.type === event.type && last.summary === summary) return;
+    progressEvents.push({
+      id: `${toolItem.id}-${event.type}-${progressEvents.length}`,
+      type: event.type,
+      state,
+      summary,
+      message: event.message || '',
+      inputSummary: event.inputSummary || '',
+      outputSummary: event.outputSummary || '',
+      timestamp: event.timestamp || null,
+    });
+    toolItem.progressEvents = progressEvents;
+  };
+  const appendToolProgressByEvent = (event, state = '') => {
+    const callId = event?.callId || '';
+    if (!callId) return;
+    const toolItem = toolItemsByCallId.get(callId);
+    if (!toolItem) return;
+    appendToolProgress(toolItem, event, state);
+  };
+  const finalizeToolItem = (callId, terminalState, event = null) => {
+    if (!callId) return;
+    const toolItem = toolItemsByCallId.get(callId);
+    if (!toolItem) return;
+    toolItem.status = getToolTraceStatus(terminalState, finalStatus);
+    if (toolItem === currentSkillItem && !canNestToolChildren(toolItem)) {
+      currentSkillItem = null;
+    }
+    if (!event) return;
+    toolItem.outputSummary = event.outputSummary || toolItem.outputSummary || '';
+    toolItem.toolResponse = event.toolResponse || toolItem.toolResponse || null;
+    toolItem.toolOutput = event.toolOutput || toolItem.toolOutput || '';
+    appendToolProgress(toolItem, event, terminalState);
+  };
 
   const flushThinking = (streaming = false) => {
     const value = thinkingBuf;
@@ -1446,32 +1882,67 @@ function buildChatTimeline(task, taskStatus) {
         executorActorId: event.executorActorId,
         inputSummary: event.inputSummary,
         outputSummary: '',
+        toolInput: event.toolInput || null,
+        toolResponse: event.toolResponse || null,
+        toolOutput: event.toolOutput || '',
+        message: event.message || '',
         state: 'requested',
-        message: event.message,
       };
       const category = categorizeToolCall(call);
       const label = timelineToolLabel(call, category);
       const toolItem = {
         kind: 'tool',
         id: callId || `tool-${seenToolIds.size}`,
+        callId,
         category,
         label,
         toolName: call.toolName || '',
         inputSummary: call.inputSummary || '',
         outputSummary: call.outputSummary || '',
+        toolInput: call.toolInput || null,
+        toolResponse: call.toolResponse || null,
+        toolOutput: call.toolOutput || '',
+        message: call.message || '',
         executor: call.executorRole || call.executorActorId || call.toolGroup || '',
         status: getToolTraceStatus(call.state, finalStatus),
         children: [],
+        progressEvents: [],
       };
-      if (callId) seenToolIds.add(callId);
+      appendToolProgress(toolItem, event, 'requested');
+      if (callId) {
+        seenToolIds.add(callId);
+        toolItemsByCallId.set(callId, toolItem);
+      }
       if (category === 'skill') {
         items.push(toolItem);
-        currentSkillItem = toolItem;
-      } else if (currentSkillItem) {
+        currentSkillItem = canNestToolChildren(toolItem) ? toolItem : null;
+      } else if (canNestToolChildren(currentSkillItem)) {
         currentSkillItem.children.push(toolItem);
       } else {
         items.push(toolItem);
       }
+      continue;
+    }
+    if (type === 'tool_manager_received' || type === 'tool_dispatched' || type === 'tool_executor_started') {
+      appendToolProgressByEvent(
+        event,
+        type === 'tool_executor_started'
+          ? 'running'
+          : type === 'tool_dispatched'
+            ? 'dispatched'
+            : 'received',
+      );
+      continue;
+    }
+    if (type === 'tool_executor_completed' || type === 'tool_result_returned') {
+      // Tool finished cleanly: flip the existing tool item to done. We do not
+      // touch text / thinking buffers because these completion events
+      // intentionally come after the tool's matching request event.
+      finalizeToolItem(event.callId || '', 'completed', event);
+      continue;
+    }
+    if (type === 'tool_executor_failed' || type === 'tool_executor_error') {
+      finalizeToolItem(event.callId || '', 'failed');
       continue;
     }
     // 元事件（user_message_received / agent_gateway_received / provider_selected /
@@ -1507,15 +1978,20 @@ function buildChatTimeline(task, taskStatus) {
       toolName: call.toolName || '',
       inputSummary: call.inputSummary || '',
       outputSummary: call.outputSummary || '',
+      toolInput: call.toolInput || null,
+      toolResponse: call.toolResponse || null,
+      toolOutput: call.toolOutput || '',
+      message: call.message || '',
       executor: call.executorRole || call.executorActorId || call.toolGroup || '',
       status: getToolTraceStatus(call.state, finalStatus),
       children: [],
+      progressEvents: [],
     };
     seenToolIds.add(call.callId);
     if (category === 'skill') {
       items.push(toolItem);
-      currentSkillItem = toolItem;
-    } else if (currentSkillItem) {
+      currentSkillItem = canNestToolChildren(toolItem) ? toolItem : null;
+    } else if (canNestToolChildren(currentSkillItem)) {
       currentSkillItem.children.push(toolItem);
     } else {
       items.push(toolItem);
@@ -1566,6 +2042,7 @@ function pendingTaskToQuest(pendingTask) {
     stepIdx: 0,
     totalSteps: 0,
     createdAt: pendingTask.createdAt,
+    updatedAt: pendingTask.updatedAt || pendingTask.createdAt,
     completedAt: pendingTask.completedAt || null,
     stage: pendingTask.stage,
     assignedTo: pendingTask.assignedTo,
@@ -1685,6 +2162,7 @@ function App() {
   const answerBufferRef = useRef('');
   const chatFinalizedTaskIdsRef = useRef(new Set());
   const userCancelledTaskIdsRef = useRef(new Set());
+  const taskImageAttachmentsRef = useRef(new Map());
   const pendingPresentationTaskIdsRef = useRef(new Set());
   const sceneRuntimeRef = useRef({
     pending: [],
@@ -1763,11 +2241,8 @@ function App() {
     return conversationActivationSeqRef.current === seq;
   }
 
-  async function restoreLatestTaskRuntime(taskId, isCurrentActivation = () => true) {
-    if (!taskId) {
-      if (isCurrentActivation()) setAgentLive({});
-      return;
-    }
+  async function fetchTaskRuntimeDetail(taskId) {
+    if (!taskId) return null;
     const response = await fetch(`${API_BASE}/api/tasks/${taskId}`, {
       method: 'GET',
       headers: {
@@ -1778,17 +2253,55 @@ function App() {
       throw new Error(`task restore failed: ${response.status}`);
     }
     const task = await response.json();
-    if (!isCurrentActivation()) return;
     const events = normalizeWorldEvents(task.events);
-    const normalizedTask = { ...task, events };
+    return { normalizedTask: { ...task, events }, events };
+  }
+
+  async function restoreTaskRuntime(taskId, { isCurrentActivation = () => true, updateLiveSnapshot = false } = {}) {
+    const detail = await fetchTaskRuntimeDetail(taskId);
+    if (!detail || !isCurrentActivation()) return;
+    const { normalizedTask, events } = detail;
     updateWorldTaskState((state) => ({
       ...state,
       tasksById: {
         ...state.tasksById,
-        [taskId]: taskDetailToRuntimeTask(normalizedTask, state.tasksById[taskId] || null),
+        [taskId]: taskDetailToRuntimeTask(normalizedTask, state.tasksById[taskId] || null, userIdRef.current),
       },
     }));
-    setAgentLive(buildAgentLiveSnapshot(normalizedTask, events));
+    if (updateLiveSnapshot) {
+      setAgentLive(buildAgentLiveSnapshot(normalizedTask, events));
+    }
+  }
+
+  async function restoreLatestTaskRuntime(taskId, isCurrentActivation = () => true) {
+    if (!taskId) {
+      if (isCurrentActivation()) setAgentLive({});
+      return;
+    }
+    await restoreTaskRuntime(taskId, { isCurrentActivation, updateLiveSnapshot: true });
+  }
+
+  async function restoreConversationTaskRuntimes(taskIds, latestTaskId, isCurrentActivation = () => true) {
+    const uniqueTaskIds = [...new Set((Array.isArray(taskIds) ? taskIds : []).filter(Boolean))];
+    const restorePromises = [];
+    if (latestTaskId && uniqueTaskIds.includes(latestTaskId)) {
+      restorePromises.push(restoreLatestTaskRuntime(latestTaskId, isCurrentActivation));
+    } else if (isCurrentActivation()) {
+      setAgentLive({});
+    }
+    const detailTaskIds = uniqueTaskIds.filter((taskId) => taskId !== latestTaskId);
+    restorePromises.push(
+      ...detailTaskIds.map((taskId) => restoreTaskRuntime(taskId, { isCurrentActivation }))
+    );
+    const results = await Promise.allSettled(restorePromises);
+    results.forEach((result, index) => {
+      if (result.status === 'rejected' && isCurrentActivation()) {
+        const skippedTaskId = index === 0 && latestTaskId && uniqueTaskIds.includes(latestTaskId)
+          ? latestTaskId
+          : detailTaskIds[latestTaskId && uniqueTaskIds.includes(latestTaskId) ? index - 1 : index];
+        console.warn(`task detail restore skipped: ${skippedTaskId}`, result.reason);
+      }
+    });
   }
 
   useEffect(() => {
@@ -1887,8 +2400,23 @@ function App() {
     setWorldTaskState((state) => {
       const next = updater(state);
       worldTaskStateRef.current = next;
+      cacheTaskImageAttachments(next);
       return next;
     });
+  }
+
+  function cacheTaskImageAttachments(state) {
+    const entries = [
+      ...Object.values(state?.tasksById || {}),
+      state?.pendingTask,
+    ].filter(Boolean);
+    for (const task of entries) {
+      const taskId = task.taskId || task.id;
+      const images = Array.isArray(task.imageAttachments) ? task.imageAttachments : [];
+      if (taskId && images.length > 0) {
+        taskImageAttachmentsRef.current.set(taskId, images.map((image) => ({ ...image })));
+      }
+    }
   }
 
   function showToast(kind, message) {
@@ -1943,17 +2471,21 @@ function App() {
         .map((taskId) => snapshot.tasksById[taskId])
         .filter(Boolean);
       if (currentTasks.length === 0) return state;
-      return {
+      const now = Date.now();
+      return normalizeWorkspaceOrdering({
         ...state,
         projects: state.projects.map((project) => ({
           ...project,
+          updatedAt: project.conversations.some((conversation) => conversation.id === previousId)
+            ? now
+            : project.updatedAt,
           conversations: project.conversations.map((conversation) =>
             conversation.id === previousId
-              ? { ...conversation, tasks: currentTasks }
+              ? { ...conversation, tasks: currentTasks, updatedAt: now }
               : conversation,
           ),
         })),
-      };
+      });
     });
     if (!isCurrentActivation()) return;
     const restoredConversationId = detail.conversation_id;
@@ -1962,6 +2494,7 @@ function App() {
     }
     conversationIdRef.current = restoredConversationId;
     const restoredTasks = Array.isArray(detail.tasks) ? detail.tasks : [];
+    const messageImageFallbacks = chatImageFallbacksByTaskIdFromMessages(detail.messages, restoredConversationId, userIdRef.current);
     const latestTaskId = detail.last_task_id || (restoredTasks.length ? restoredTasks[restoredTasks.length - 1].task_id : null);
     const nextContextUsage = mergeContextUsage(
       loadStoredContextUsage(restoredConversationId),
@@ -1974,17 +2507,34 @@ function App() {
     applyConversationSnapshot(detail);
     resetSceneActors();
     setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
-    setWorldTaskState({
+    const nextWorldTaskState = {
       activeTaskId: null,
       pendingTask: null,
       taskOrder: sortTaskIdsForRestore(restoredTasks, latestTaskId),
       tasksById: Object.fromEntries(
-        restoredTasks.map((task) => [task.task_id, taskSummaryToRuntimeTask(task)])
+        restoredTasks.map((task) => [
+          task.task_id,
+          taskSummaryToRuntimeTask(
+            task,
+            mergeChatImageRefs(
+              taskImageAttachmentsRef.current.get(task.task_id) || [],
+              messageImageFallbacks.get(task.task_id) || [],
+            ),
+            userIdRef.current,
+          ),
+        ])
       ),
-    });
-    if (restoreLatest && latestTaskId) {
+    };
+    worldTaskStateRef.current = nextWorldTaskState;
+    cacheTaskImageAttachments(nextWorldTaskState);
+    setWorldTaskState(nextWorldTaskState);
+    if (restoreLatest && restoredTasks.length > 0) {
       try {
-        await restoreLatestTaskRuntime(latestTaskId, isCurrentActivation);
+        await restoreConversationTaskRuntimes(
+          restoredTasks.map((task) => task.task_id),
+          latestTaskId,
+          isCurrentActivation,
+        );
       } catch (error) {
         if (!isCurrentActivation()) return;
         console.error('latest task restore failed', error);
@@ -2024,6 +2574,7 @@ function App() {
       const existingTask = state.tasksById[taskId];
       const pendingTask = state.pendingTask;
       const baseTask = existingTask || buildWorldTaskRecord(event, pendingTask);
+      const updatedAt = timestampValue(event.created_at) || timestampValue(event.timestamp) || Date.now();
       return {
         ...state,
         activeTaskId: taskId,
@@ -2037,6 +2588,7 @@ function App() {
             conversationId: event.conversation_id || baseTask.conversationId,
             loopIndex: Math.max(baseTask.loopIndex || 0, event.loop_index || 0),
             activeRole: event.actor || baseTask.activeRole,
+            updatedAt,
           },
         },
       };
@@ -2060,7 +2612,10 @@ function App() {
         ...state,
         tasksById: {
           ...state.tasksById,
-          [taskId]: nextTask,
+          [taskId]: {
+            ...nextTask,
+            updatedAt: Date.now(),
+          },
         },
       };
     });
@@ -3272,6 +3827,34 @@ function App() {
     return response.json();
   }
 
+  async function uploadChatImage(file, signal) {
+    if (!file || !conversationId) {
+      throw new Error('No active conversation.');
+    }
+    const formData = new FormData();
+    formData.append('conversation_id', conversationId);
+    formData.append('file', file);
+    const response = await fetch(`${API_BASE}/api/messages/images`, {
+      method: 'POST',
+      headers: {
+        'X-Agent-User-Id': userIdRef.current,
+      },
+      body: formData,
+      signal,
+    });
+    if (!response.ok) {
+      let detail = '';
+      try {
+        const payload = await response.json();
+        detail = String(payload?.detail || '');
+      } catch (error) {
+        detail = '';
+      }
+      throw new Error(detail || `image upload failed: ${response.status}`);
+    }
+    return response.json();
+  }
+
   async function pickLocalWorkspace() {
     if (!conversationId) return;
     const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/workspace/pick`, {
@@ -3454,15 +4037,15 @@ function App() {
 
     switch (event.type) {
       case 'context_usage_updated': {
-        if (event.source === 'provider_usage' && event.context_used_tokens == null) {
+        if (event.source === 'provider_usage' && event.context_used_tokens == null && event.usedTokens == null) {
           break;
         }
         const nextContextUsage = normalizeContextUsage({
           conversationId: event.conversation_id || conversationId,
           contextUsedTokens: event.context_used_tokens,
           contextTotalTokens: event.context_total_tokens,
-          usedTokens: event.used_tokens,
-          totalTokens: event.total_tokens,
+          usedTokens: event.usedTokens ?? event.used_tokens,
+          totalTokens: event.totalTokens ?? event.total_tokens,
           compressed: event.compressed,
           compressedCount: event.compressed_count,
           updatedAt: event.created_at || event.timestamp || new Date().toISOString(),
@@ -3564,17 +4147,20 @@ function App() {
             toolCalls: upsertToolCall(run.toolCalls, event.call_id, {
               callId: event.call_id,
               loopIndex,
-              toolGroup: event.tool_group || 'external',
-              kind: event.kind || 'tool',
-              toolName: event.tool_name || 'unknown',
+            toolGroup: event.tool_group || 'external',
+            kind: event.kind || 'tool',
+            toolName: event.tool_name || 'unknown',
               executorRole: event.executor_role || null,
               executorActorId: event.executor_actor_id || null,
               skillName: event.skill_name || '',
               skillPath: event.skill_path || '',
-              state: 'requested',
-              inputSummary: event.input_summary || '',
-              message: event.message || '',
-            }),
+            state: 'requested',
+            inputSummary: event.input_summary || '',
+            toolInput: event.tool_input || null,
+            toolResponse: event.tool_response || null,
+            toolOutput: event.tool_output || '',
+            message: event.message || '',
+          }),
           }));
         break;
       }
@@ -3615,6 +4201,9 @@ function App() {
               // 不携带 input_summary 时，patch 里的 undefined 会通过 spread 把已设值覆盖回 undefined。
               inputSummary: event.input_summary || existingToolCall?.inputSummary || '',
               outputSummary: event.output_summary || existingToolCall?.outputSummary || '',
+              toolInput: event.tool_input || existingToolCall?.toolInput || null,
+              toolResponse: event.tool_response || existingToolCall?.toolResponse || null,
+              toolOutput: event.tool_output || existingToolCall?.toolOutput || '',
               message: event.message || existingToolCall?.message || '',
             }),
           };
@@ -3732,6 +4321,11 @@ function App() {
           const hasPresentationPending = pendingPresentationTaskIdsRef.current.has(taskId)
             || !!run.presentationPending;
           const persistedTask = event.task || null;
+          const persistedImages = normalizeChatImageRefs(
+            persistedTask?.image_attachments || persistedTask?.imageAttachments || [],
+            persistedTask?.conversation_id || event.conversation_id || run.conversationId,
+            userIdRef.current,
+          );
           const terminalStatus = normalizeTaskStatus(
             persistedTask?.status
             || event.status
@@ -3748,6 +4342,7 @@ function App() {
             ...terminalBase,
             taskId: persistedTask?.task_id || run.taskId,
             conversationId: persistedTask?.conversation_id || event.conversation_id || run.conversationId,
+            title: stripChatImageAugmentation(persistedTask?.title || run.title).text || run.title,
             status: terminalStatus,
             stage: terminalStatus === 'done'
               ? (hasPresentationPending ? (persistedTask?.stage || run.stage) : (persistedTask?.stage || 'done'))
@@ -3767,6 +4362,7 @@ function App() {
             attachments: Array.isArray(persistedTask?.attachments)
               ? persistedTask.attachments.map((attachment) => ({ ...attachment, uploaded: true }))
               : run.attachments,
+            imageAttachments: persistedImages.length > 0 ? persistedImages : run.imageAttachments,
             answerText: chatFinalizedTaskIdsRef.current.has(taskId) && run.answerText
               ? run.answerText
               : (persistedTask?.answer_text || (terminalStatus === 'done' ? (toDisplayText(event.message) || run.answerText) : run.answerText)),
@@ -3870,6 +4466,7 @@ function App() {
           attachment_id: pendingTask.attachment.attachmentId || null,
           document_id: pendingTask.attachment.documentId || null,
         }] : [],
+        image_attachments: Array.isArray(pendingTask.imageAttachments) ? pendingTask.imageAttachments : [],
         options: {
           provider: pendingTask.requestedProvider || 'auto',
           model_id: pendingTask.requestedModelId || null,
@@ -3911,6 +4508,12 @@ function App() {
       }
     };
     const queueWorldEvent = (event) => {
+      if (STREAM_IMMEDIATE_EVENT_TYPES.has(event.type)) {
+        flushQueuedEvents();
+        queuedEvents.push(event);
+        flushQueuedEvents();
+        return;
+      }
       queuedEvents.push(event);
       if (!flushTimer) {
         flushTimer = setTimeout(flushQueuedEvents, STREAM_EVENT_BATCH_MS);
@@ -3925,7 +4528,27 @@ function App() {
 
   function handleStop() {
     const currentTaskState = worldTaskStateRef.current;
-    const taskId = activeTaskIdRef.current || currentTaskState.activeTaskId || null;
+    let taskId = activeTaskIdRef.current || currentTaskState.activeTaskId || null;
+    // After a switch-away → switch-back round-trip, the local refs
+    // (activeRunIdRef / activeTaskIdRef / fetchAbortRef) are all cleared by
+    // detachActiveRunFromCurrentConversation, so the old "do nothing if no
+    // local taskId" path makes stop a no-op even though the server task is
+    // still running. Fall back to the latest running/queued task we know
+    // about locally so we can at least call the server cancel endpoint.
+    if (!taskId) {
+      const tasksById = currentTaskState.tasksById || {};
+      const candidates = Object.values(tasksById).filter((task) => {
+        const status = String(task?.status || '').toLowerCase();
+        if (status !== 'running' && status !== 'queued') return false;
+        if (task?.completedAt) return false;
+        const answer = task?.answerText;
+        if (typeof answer === 'string' && answer.trim().length > 0) return false;
+        return true;
+      });
+      candidates.sort((a, b) => taskUpdatedTimestamp(b) - taskUpdatedTimestamp(a));
+      const fallback = candidates[0];
+      if (fallback?.taskId) taskId = fallback.taskId;
+    }
     const runId = activeRunIdRef.current;
     const hasActiveRun = busy || taskId || currentTaskState.pendingTask || fetchAbortRef.current;
     if (!hasActiveRun) return;
@@ -3972,13 +4595,24 @@ function App() {
     setBusy(false);
   }
 
-  function handleDeploy(text, attachment, modelId, reasoningEffort) {
-    const pendingTask = createPendingTaskDraft(text, attachment);
+  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments) {
+    const sanitizedImageAttachments = Array.isArray(imageAttachments)
+      ? imageAttachments
+          .filter((ref) => ref && ref.image_id && ref.path)
+          .map((ref) => ({
+            image_id: ref.image_id,
+            path: ref.path,
+            mime: ref.mime || null,
+            previewUrl: ref.previewUrl || null,
+          }))
+      : [];
+    const pendingTask = createPendingTaskDraft(text, attachment, sanitizedImageAttachments);
     pendingTask.requestedModelId = modelId || '';
     // Match DEFAULT_REASONING_EFFORT in panels.jsx (kept in sync).
     pendingTask.requestedReasoningEffort = reasoningEffort || 'high';
     pendingTask.requestedProvider = 'auto';
     pendingTask.originViewMode = viewModeRef.current || viewMode;
+    pendingTask.imageAttachments = sanitizedImageAttachments;
     const nextConversationTitle = titleFromTaskText(text);
     const currentConversation = findConversationById(workspaceState, conversationId);
     const shouldUpdateConversationTitle = Boolean(
@@ -3988,20 +4622,21 @@ function App() {
       && (currentConversation.tasks || []).length === 0
     );
     setComposerAttachment(null);
-    setWorkspaceState((state) => ({
-      ...state,
-      projects: state.projects.map((project) => ({
-        ...project,
-        conversations: project.conversations.map((conversation) => {
-          if (conversation.id !== conversationId) return conversation;
-          if (!isDefaultConversationName(conversation.name) || (conversation.tasks || []).length > 0) {
-            return conversation;
-          }
-          const nextTitle = titleFromTaskText(text);
-          return nextTitle ? { ...conversation, name: nextTitle, title: nextTitle } : conversation;
-        }),
-      })),
-    }));
+    setWorkspaceState((state) => {
+      const currentTasks = [
+        ...worldTaskStateRef.current.taskOrder
+          .map((taskId) => worldTaskStateRef.current.tasksById[taskId])
+          .filter(Boolean),
+        pendingTask,
+      ];
+      return workspaceStateWithTouchedConversation(state, conversationId, {
+        tasks: currentTasks,
+        // No explicit `expanded`: the touched conversation becomes active and
+        // withDefaultExpansion auto-expands the active conversation with tasks.
+        name: shouldUpdateConversationTitle ? nextConversationTitle : undefined,
+        title: shouldUpdateConversationTitle ? nextConversationTitle : undefined,
+      });
+    });
     if (shouldUpdateConversationTitle) {
       updateConversationTitle(conversationId, nextConversationTitle)
         .then((detail) => {
@@ -4062,14 +4697,34 @@ function App() {
 
   async function handleSelectConversation(projectId, nextConversationId) {
     const requestSeq = invalidateConversationActivation();
+    // Activation policy: clicking a project or a conversation flips that
+    // item's userExpanded=true so it shows expanded — and ONLY that item.
+    // We deliberately do not touch any other project / conversation's
+    // userExpanded, so previously-opened ones stay open. This kills the
+    // "click around and everything else folds up" regression.
+    const stampActivation = (state) => ({
+      ...state,
+      activeProjectId: projectId,
+      activeConversationId: nextConversationId,
+      projects: state.projects.map((project) => {
+        if (project.id !== projectId) return project;
+        const projectWithExpanded = { ...project, userExpanded: true };
+        if (!nextConversationId) return projectWithExpanded;
+        return {
+          ...projectWithExpanded,
+          conversations: project.conversations.map((conversation) => (
+            conversation.id === nextConversationId
+              ? { ...conversation, userExpanded: true }
+              : conversation
+          )),
+        };
+      }),
+    });
     if (!nextConversationId || nextConversationId === conversationId) {
-      setWorkspaceState((state) => ({
-        ...state,
-        activeProjectId: projectId,
-        activeConversationId: nextConversationId,
-      }));
+      setWorkspaceState((state) => normalizeWorkspaceOrdering(stampActivation(state)));
       return;
     }
+    setWorkspaceState((state) => normalizeWorkspaceOrdering(stampActivation(state)));
     const detail = await fetchConversationDetail(nextConversationId);
     if (!isConversationActivationCurrent(requestSeq)) return;
     await activateConversationDetail(detail);
@@ -4086,28 +4741,33 @@ function App() {
   }
 
   function handleToggleProject(projectId) {
-    setWorkspaceState((state) => ({
+    // Persist the user's explicit intent via `userExpanded`. The displayed
+    // `expanded` is recomputed by withDefaultExpansion; we flip relative to
+    // the currently displayed value so the click does what the user sees.
+    setWorkspaceState((state) => normalizeWorkspaceOrdering({
       ...state,
       projects: state.projects.map((project) => (
-        project.id === projectId ? { ...project, expanded: !project.expanded } : project
+        project.id === projectId ? { ...project, userExpanded: !project.expanded } : project
       )),
     }));
   }
 
   function handleToggleConversation(projectId, nextConversationId) {
-    setWorkspaceState((state) => ({
+    setWorkspaceState((state) => normalizeWorkspaceOrdering({
       ...state,
       projects: state.projects.map((project) => project.id === projectId ? {
         ...project,
         conversations: project.conversations.map((conversation) => (
-          conversation.id === nextConversationId ? { ...conversation, expanded: !conversation.expanded } : conversation
+          conversation.id === nextConversationId
+            ? { ...conversation, userExpanded: !conversation.expanded }
+            : conversation
         )),
       } : project),
     }));
   }
 
   function handleToggleConversationTasks(projectId, nextConversationId) {
-    setWorkspaceState((state) => ({
+    setWorkspaceState((state) => normalizeWorkspaceOrdering({
       ...state,
       projects: state.projects.map((project) => project.id === projectId ? {
         ...project,
@@ -4228,7 +4888,7 @@ function App() {
     let fallbackConversation = project.conversations.find((conversation) => conversation.id !== nextConversationId);
     if (!fallbackConversation) {
       const detail = await createConversationInProject(project, project.id === DEFAULT_PROJECT_ID ? DEFAULT_SESSION_NAME : 'New Conversation');
-      setWorkspaceState((state) => ({
+      setWorkspaceState((state) => normalizeWorkspaceOrdering({
         ...state,
         projects: state.projects.map((item) => item.id === projectId ? {
           ...item,
@@ -4238,7 +4898,7 @@ function App() {
       await activateConversationDetail(detail, { restoreLatest: false });
       return;
     }
-    setWorkspaceState((state) => ({
+    setWorkspaceState((state) => normalizeWorkspaceOrdering({
       ...state,
       projects: state.projects.map((item) => item.id === projectId ? {
         ...item,
@@ -4277,12 +4937,12 @@ function App() {
         'X-Agent-User-Id': userIdRef.current,
       },
     })));
-    const nextState = {
+    const nextState = normalizeWorkspaceOrdering({
       ...workspaceState,
       projects: workspaceState.projects.filter((item) => item.id !== projectId),
       activeProjectId: DEFAULT_PROJECT_ID,
       activeConversationId: null,
-    };
+    });
     setWorkspaceState(nextState);
     const defaultProject = nextState.projects.find((item) => item.id === DEFAULT_PROJECT_ID) || createDefaultProject();
     if (defaultProject.conversations[0]) {
@@ -4313,15 +4973,141 @@ function App() {
       ? [...confirmedTasks, pendingTaskToQuest(worldTaskState.pendingTask)]
       : confirmedTasks;
   }, [worldTaskState]);
-  const panelWorkspaceState = useMemo(() => ({
+  const panelWorkspaceState = useMemo(() => normalizeWorkspaceOrdering({
     ...workspaceState,
+    activeConversationId: conversationId || workspaceState.activeConversationId,
     projects: workspaceState.projects.map((project) => ({
       ...project,
       conversations: project.conversations.map((item) => (
-        item.id === conversationId ? { ...item, tasks: quests } : item
+        item.id === conversationId
+          ? {
+              ...item,
+              tasks: quests,
+              // expanded is recomputed downstream by withDefaultExpansion from
+              // (userExpanded ?? isActive). We only need to merge tasks here.
+              updatedAt: quests.reduce((latest, task) => Math.max(latest, taskUpdatedTimestamp(task)), item.updatedAt || 0),
+            }
+          : item
       )),
     })),
   }), [workspaceState, conversationId, quests]);
+  // True when the currently-viewed conversation has at least one task in
+  // `running` / `queued` state. Drives both the composer disabled state and
+  // the polling loop below — so a running task in this conversation always
+  // blocks input and keeps the UI in sync, regardless of whether THIS client
+  // is the one who started the run (the previous logic only ever consulted
+  // local `busy`, which is false after a tab-switch round-trip).
+  const currentConversationActive = useMemo(() => {
+    if (!conversationId) return false;
+    for (const project of panelWorkspaceState.projects) {
+      const conversation = project.conversations.find((item) => item.id === conversationId);
+      if (conversation) return conversationHasActiveTask(conversation);
+    }
+    return false;
+  }, [panelWorkspaceState, conversationId]);
+  // If there's a running/queued task in the currently-viewed conversation,
+  // expose its taskId so the polling effect below can refresh it. We pick
+  // the *latest* running task by updatedAt — in practice there's only ever
+  // one, but be defensive in case the backend ever pipelines.
+  const activeTaskIdForPolling = useMemo(() => {
+    if (!currentConversationActive) return null;
+    for (const project of panelWorkspaceState.projects) {
+      const conversation = project.conversations.find((item) => item.id === conversationId);
+      if (!conversation) continue;
+      const tasks = Array.isArray(conversation.tasks) ? conversation.tasks : [];
+      const candidates = tasks
+        .filter((task) => isTaskActuallyActive(task))
+        .sort((a, b) => taskUpdatedTimestamp(b) - taskUpdatedTimestamp(a));
+      const top = candidates[0];
+      return top?.taskId || top?.id || null;
+    }
+    return null;
+  }, [currentConversationActive, panelWorkspaceState, conversationId]);
+  const backgroundTaskPollTargets = useMemo(() => {
+    const targets = [];
+    const seen = new Set();
+    for (const project of panelWorkspaceState.projects || []) {
+      for (const conversation of project.conversations || []) {
+        if (!conversation?.id || conversation.id === conversationId) continue;
+        const tasks = Array.isArray(conversation.tasks) ? conversation.tasks : [];
+        for (const task of tasks) {
+          if (!isTaskActuallyActive(task)) continue;
+          const taskId = task.taskId || task.id;
+          if (!taskId) continue;
+          const key = `${conversation.id}:${taskId}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          targets.push({
+            conversationId: conversation.id,
+            taskId,
+          });
+        }
+      }
+    }
+    return targets.sort((a, b) => `${a.conversationId}:${a.taskId}`.localeCompare(`${b.conversationId}:${b.taskId}`));
+  }, [panelWorkspaceState, conversationId]);
+  const backgroundTaskPollKey = useMemo(
+    () => backgroundTaskPollTargets.map((target) => `${target.conversationId}:${target.taskId}`).join('|'),
+    [backgroundTaskPollTargets],
+  );
+  // Polling loop: when the active conversation has a running task that THIS
+  // client did not start, GET /api/tasks/{id} every 2s so the chat timeline
+  // and task progress catch up. Bails as soon as the task transitions to a
+  // terminal state — currentConversationActive flips false, the effect
+  // re-runs with `activeTaskIdForPolling === null`, and we stop polling.
+  // We deliberately skip this loop when activeRunIdRef.current is set, because
+  // that means the per-message stream is already feeding live events from
+  // this client; polling on top would double-process the same events.
+  useEffect(() => {
+    if (!activeTaskIdForPolling) return undefined;
+    if (activeRunIdRef.current) return undefined;
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) return;
+      restoreLatestTaskRuntime(activeTaskIdForPolling).catch((error) => {
+        console.warn('task poll failed', error);
+      });
+    };
+    // Fire once immediately so the user sees fresh state on switch-back
+    // without waiting for the first 2s interval.
+    tick();
+    const timer = setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTaskIdForPolling]);
+  useEffect(() => {
+    if (!backgroundTaskPollKey) return undefined;
+    let cancelled = false;
+    const targets = backgroundTaskPollTargets;
+    const tick = () => {
+      if (cancelled) return;
+      targets.forEach(({ conversationId: targetConversationId, taskId }) => {
+        fetchTaskRuntimeDetail(taskId)
+          .then((detail) => {
+            if (cancelled || !detail) return;
+            setWorkspaceState((state) => {
+              const conversation = findConversationById(state, targetConversationId);
+              const previousTask = (conversation?.tasks || []).find((task) => (task.taskId || task.id) === taskId) || null;
+              const nextTask = taskDetailToRuntimeTask(detail.normalizedTask, previousTask, userIdRef.current);
+              return workspaceStateWithConversationRuntimeTask(state, targetConversationId, nextTask);
+            });
+          })
+          .catch((error) => {
+            if (!cancelled) console.warn('background task poll failed', error);
+          });
+      });
+    };
+    tick();
+    const timer = setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backgroundTaskPollKey]);
   const currentTask = useMemo(() => {
     if (worldTaskState.activeTaskId && worldTaskState.tasksById[worldTaskState.activeTaskId]) {
       return worldTaskState.tasksById[worldTaskState.activeTaskId];
@@ -4332,6 +5118,20 @@ function App() {
     const latestTaskId = worldTaskState.taskOrder[worldTaskState.taskOrder.length - 1];
     return latestTaskId ? worldTaskState.tasksById[latestTaskId] || null : null;
   }, [worldTaskState]);
+  useEffect(() => {
+    const activeTaskId = worldTaskState.activeTaskId || activeTaskIdRef.current;
+    if (!activeTaskId || !currentTask) return;
+    if (isTaskActuallyActive(currentTask)) return;
+    if (!busy && !currentConversationActive) return;
+    setBusy(false);
+    activeTaskIdRef.current = null;
+    fetchAbortRef.current = null;
+    updateWorldTaskState((state) => (
+      state.activeTaskId === activeTaskId
+        ? { ...state, activeTaskId: null }
+        : state
+    ));
+  }, [busy, currentConversationActive, currentTask, worldTaskState.activeTaskId]);
   const activeTaskText = useMemo(() => {
     const activeTaskId = worldTaskState.activeTaskId || activeTaskIdRef.current;
     if (activeTaskId && worldTaskState.tasksById[activeTaskId]?.title) {
@@ -4350,7 +5150,10 @@ function App() {
     for (const task of orderedTasks) {
       const taskId = task.taskId || task.id || task.title;
       const status = normalizeTaskStatus(task.status);
-      if (status === 'cancelled' && task.aborted) continue;
+      // Cancelled tasks stay in chat history: if the LLM produced no streaming
+      // output the agent bubble falls back to "Task was cancelled."; if it did
+      // produce data the partial answer is shown. Either way the user message
+      // is preserved so the conversation timeline doesn't disappear.
       if (task.title) {
         rows.push({
           id: `${taskId}-user`,
@@ -4359,6 +5162,7 @@ function App() {
           status,
           createdAt: task.createdAt,
           completedAt: task.completedAt,
+          images: Array.isArray(task.imageAttachments) ? task.imageAttachments : [],
         });
       }
       const answer = String(task.answerText || '').trim();
@@ -4397,7 +5201,9 @@ function App() {
     if (worldTaskState.pendingTask && !worldTaskState.activeTaskId) {
       const pendingStatus = normalizeTaskStatus(worldTaskState.pendingTask.status);
       const pendingError = String(worldTaskState.pendingTask.error || '').trim();
-      if (pendingStatus === 'cancelled' && worldTaskState.pendingTask.aborted) return rows;
+      // Same policy as the task loop above — keep cancelled pending tasks
+      // visible so the user can see their cancelled request + the agent's
+      // "Task was cancelled." marker.
       rows.push({
         id: `${worldTaskState.pendingTask.id || 'pending'}-user`,
         role: 'user',
@@ -4405,6 +5211,9 @@ function App() {
         status: pendingStatus,
         createdAt: worldTaskState.pendingTask.createdAt,
         completedAt: worldTaskState.pendingTask.completedAt,
+        images: Array.isArray(worldTaskState.pendingTask.imageAttachments)
+          ? worldTaskState.pendingTask.imageAttachments
+          : [],
       });
       if (pendingError || pendingStatus === 'failed' || pendingStatus === 'cancelled' || pendingStatus === 'running' || pendingStatus === 'queued') {
         const pendingStreaming = (pendingStatus === 'running' || pendingStatus === 'queued') && !pendingError;
@@ -4482,6 +5291,7 @@ function App() {
               onDeleteConversation={(projectId, nextConversationId) => { handleDeleteConversation(projectId, nextConversationId).catch((error) => { console.error('conversation delete failed', error); showToast('error', String(error?.message || error)); }); }}
               onRenameConversation={(projectId, nextConversationId, title) => { handleRenameConversation(projectId, nextConversationId, title).catch((error) => { console.error('conversation rename failed', error); showToast('error', String(error?.message || error)); }); }}
               onOpenTaskReport={handleOpenTaskReport}
+              taskPreviewLimit={viewMode === 'chat' ? 3 : 5}
             />
             {viewMode === 'chat' ? (
               <div className="app-chat-stage">
@@ -4489,12 +5299,13 @@ function App() {
                   <window.ChatPanel
                     conversationId={conversationId}
                     messages={chatMessages}
-                    running={busy}
-                    disabled={busy || uploadState.active || calibrationMode || !conversationReady || !!conversationError}
-                    onSend={(text, attachment, modelId, reasoningEffort) => handleDeploy(text, attachment, modelId, reasoningEffort)}
+                    running={busy || currentConversationActive}
+                    disabled={busy || currentConversationActive || uploadState.active || calibrationMode || !conversationReady || !!conversationError}
+                    onSend={(text, attachment, modelId, reasoningEffort, imageAttachments) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments)}
                     onStop={handleStop}
                     onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }}
                     onClearFile={handleAttachmentClear}
+                    onUploadImage={uploadChatImage}
                     attachment={composerAttachment}
                     uploading={uploadState.active}
                     contextUsage={contextUsage}
@@ -4505,30 +5316,28 @@ function App() {
                     modelOptions={modelOptions}
                     defaultModelId={defaultModelId}
                     modelLoading={providerLoading}
-                  />
-                </div>
-                <window.BottomNav active={activeTab} onChange={setActiveTab} />
-              </div>
-            ) : (
-              <>
+	                  />
+	                </div>
+	              </div>
+	            ) : (
+	              <>
                 <div className="app-center-stage">
                   <window.MapViewport
                     MAP_W={MAP_W}
                     MAP_H={MAP_H}
                     onViewChange={setMapView}
-                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy} disabled={busy || uploadState.active || calibrationMode || !conversationReady || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} />}
+                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={busy || currentConversationActive || uploadState.active || calibrationMode || !conversationReady || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} />}
                   >
                     <div ref={stageRef} className="office-map">
                       {calibrationMode && calibrationTarget === 'routes' && selectedRouteId && <window.CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}
                       {Object.keys(window.STATIONS).map(id => <window.NPC key={id} id={id} state={npcStates[id]} spriteConfig={getCharPoseConfig(id)} mapW={MAP_W} mapH={MAP_H} showLabel={true} interactive={calibrationMode && !busy && calibrationTarget === 'stations'} selected={(selectedMarkerId === id && calibrationTarget === 'stations') || (selectedPoseNpcId === id && calibrationTarget === 'poses')} showDebug={calibrationMode && (calibrationTarget === 'stations' || (calibrationTarget === 'poses' && selectedPoseNpcId === id))} debugText={calibrationTarget === 'poses' ? `${(npcStates[id]?.poseDebug?.pose || 'idle').toUpperCase()} · ${(npcStates[id]?.poseDebug?.dir || 'front').toUpperCase()}` : `${(stationDrafts[id]?.x??0).toFixed(3)}, ${(stationDrafts[id]?.y??0).toFixed(3)}`} onPointerDown={(npcId, e) => handleMarkerPointerDown('stations', npcId, e)} />)}
                       {calibrationMode && calibrationTarget === 'routes' && activeIds.map((id, index) => <window.CalibrationPoint key={`${calibrationTarget}-${id}`} id={id} point={activeDrafts[id]} mapW={MAP_W} mapH={MAP_H} kind={resolvePointTarget(id)==='meet'?'meet':'nav'} selected={selectedMarkerId===id} showDebug={true} badgeText={index+1} onPointerDown={(pId, e) => handleMarkerPointerDown(calibrationTarget, pId, e)} />)}
                       <div className="fx-layer">{bursts.map(b => <div key={b.id} className="fx-ring" style={{ left: b.x, top: b.y, borderColor: b.color, boxShadow: `0 0 12px ${b.color}` }} />)}</div>
-                    </div>
-                  </window.MapViewport>
-                  <window.BottomNav active={activeTab} onChange={setActiveTab} />
-                </div>
-                <window.LiveFeedPanel agentLive={agentLive} now={now} extensionStyle={rightPanelExtensionStyle} currentTask={currentTask} />
-              </>
+	                    </div>
+	                  </window.MapViewport>
+	                </div>
+	                <window.LiveFeedPanel agentLive={agentLive} now={now} extensionStyle={rightPanelExtensionStyle} currentTask={currentTask} />
+	              </>
             )}
           </>
         ) : (
