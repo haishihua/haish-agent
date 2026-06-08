@@ -127,9 +127,7 @@ async function waitForRuntime(baseUrl: string, timeoutMs: number): Promise<void>
   let lastError: unknown = null;
   while (Date.now() - startedAt < timeoutMs) {
     try {
-      const response = await fetch(`${baseUrl}/api/conversations`, {
-        headers: { 'X-Agent-User-Id': 'haish-runtime-healthcheck' },
-      });
+      const response = await fetch(`${baseUrl}/api/llm/models`);
       if (response.ok) {
         return;
       }

@@ -648,6 +648,58 @@ function ProjectNode({
   );
 }
 
+function UserSessionFooter({ authUser, onLogout }) {
+  const [open, setOpen] = React.useState(false);
+  const wrapRef = React.useRef(null);
+  const displayName = authUser?.display_name || authUser?.username || 'User';
+  const email = authUser?.email || '';
+
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (event) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div className={`user-session-footer${open ? ' open' : ''}`} ref={wrapRef}>
+      <button
+        type="button"
+        className="user-session-row"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <span className="user-avatar" aria-hidden="true">
+          <img src="assets/ui/avatar_default.png" alt="" draggable={false} />
+        </span>
+        <span className="user-meta">
+          <span className="user-name">{displayName}</span>
+          {email ? <span className="user-email">{email}</span> : null}
+        </span>
+        <svg className={`user-chevron${open ? ' rot' : ''}`} viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M2.5 4.5 L6 8 L9.5 4.5" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? (
+        <div className="user-session-menu" role="menu">
+          <button
+            type="button"
+            className="user-session-signout"
+            role="menuitem"
+            onClick={() => { setOpen(false); onLogout && onLogout(); }}
+          >
+            <span className="logout-icon" aria-hidden="true" />
+            <span>Sign out</span>
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ConversationsPanel({
   workspaceState,
   now,
@@ -664,6 +716,8 @@ function ConversationsPanel({
   onRenameConversation,
   onOpenTaskReport,
   taskPreviewLimit = 5,
+  authUser,
+  onLogout,
 }) {
   const [panelRef, panelWidth] = usePanelWidth();
   const [dialog, setDialog] = React.useState(null);
@@ -736,6 +790,7 @@ function ConversationsPanel({
           />
         ))}
       </div>
+      {authUser ? <UserSessionFooter authUser={authUser} onLogout={onLogout} /> : null}
       <ConversationDialog dialog={dialog} onCancel={() => setDialog(null)} />
     </div>
   );
@@ -2037,7 +2092,7 @@ function buildToolView(item) {
       requestJson: toolJsonText(item.toolInput),
       streamLines,
       finalText,
-      defaultOpen: true,
+      defaultOpen: false,
       task: chatMeta.task,
       role: chatMeta.role,
       systemPrompt: chatMeta.systemPrompt,
@@ -2102,7 +2157,7 @@ function buildToolView(item) {
       stderr: stderr ? tailToolOutput(stderr) : '',
       exitCode,
       running: item.status === 'running' || item.status === 'pending',
-      defaultOpen: true,
+      defaultOpen: false,
     };
   }
   const output = toolDisplayOutput(item);
@@ -2363,9 +2418,6 @@ function ChatTimelineToolNode({ item }) {
   const categoryLabel = CATEGORY_LABEL[category] || 'Tool';
   const view = buildToolView(item);
   const [open, setOpen] = React.useState(Boolean(view.defaultOpen));
-  React.useEffect(() => {
-    if (view.defaultOpen || status === 'running') setOpen(true);
-  }, [view.defaultOpen, status]);
   const fallbackLines = view.mode === 'read'
     ? []
     : [item.inputSummary, item.outputSummary].filter(Boolean).slice(0, 2);

@@ -395,16 +395,239 @@ function resolveApiBase() {
 }
 
 const API_BASE = resolveApiBase();
-const USER_STORAGE_KEY = 'agent_world_user_id';
 const CONVERSATION_STORAGE_KEY = 'agent_world_conversation_id';
 const WORKSPACE_STORAGE_KEY = 'agent_world_workspaces_v2';
 const CONTEXT_USAGE_STORAGE_KEY = 'agent_world_context_usage_v1';
+const AUTH_SESSION_STORAGE_KEY = 'haish_auth_session_v1';
 const DEFAULT_CONTEXT_TOTAL_TOKENS = 128000;
 const RESTORED_CONTEXT_BASE_TOKENS = 4200;
 const DEFAULT_PROJECT_ID = 'default-project';
 const DEFAULT_PROJECT_NAME = 'Default project';
 const DEFAULT_SESSION_NAME = 'Default Session';
 const DEFAULT_CONVERSATION_NAMES = new Set([DEFAULT_SESSION_NAME, 'New Chat', 'New Conversation', 'Untitled Chat']);
+
+function readStoredJson(storage, key) {
+  try {
+    const raw = storage?.getItem?.(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function clearStoredAuthSession() {
+  window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+  window.sessionStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+}
+
+function loadStoredAuthSession() {
+  const localSession = readStoredJson(window.localStorage, AUTH_SESSION_STORAGE_KEY);
+  if (localSession?.accessToken || localSession?.refreshToken) return { ...localSession, remember: true };
+  const sessionSession = readStoredJson(window.sessionStorage, AUTH_SESSION_STORAGE_KEY);
+  if (sessionSession?.accessToken || sessionSession?.refreshToken) return { ...sessionSession, remember: false };
+  return null;
+}
+
+let authMemorySession = loadStoredAuthSession();
+let authRefreshPromise = null;
+
+function normalizeAuthPayload(payload, remember = true) {
+  const accessToken = String(payload?.access_token || payload?.accessToken || '').trim();
+  const refreshToken = String(payload?.refresh_token || payload?.refreshToken || '').trim();
+  if (!accessToken || !refreshToken) {
+    throw new Error('Authentication response did not include tokens.');
+  }
+  const expiresIn = Number(payload?.expires_in || payload?.expiresIn || 0) || 0;
+  return {
+    accessToken,
+    refreshToken,
+    tokenType: String(payload?.token_type || payload?.tokenType || 'bearer').toLowerCase(),
+    expiresAt: expiresIn > 0 ? Date.now() + expiresIn * 1000 : null,
+    user: payload?.user || null,
+    remember: Boolean(remember),
+  };
+}
+
+function saveAuthSession(payload, remember = true) {
+  const session = normalizeAuthPayload(payload, remember);
+  authMemorySession = session;
+  clearStoredAuthSession();
+  const storage = session.remember ? window.localStorage : window.sessionStorage;
+  storage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(session));
+  return session;
+}
+
+function updateAuthSessionUser(user) {
+  if (!authMemorySession) return null;
+  authMemorySession = { ...authMemorySession, user };
+  clearStoredAuthSession();
+  const storage = authMemorySession.remember ? window.localStorage : window.sessionStorage;
+  storage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(authMemorySession));
+  return authMemorySession;
+}
+
+function clearAuthSession({ notify = true } = {}) {
+  authMemorySession = null;
+  clearStoredAuthSession();
+  if (notify) {
+    window.dispatchEvent(new CustomEvent('haish-auth-expired'));
+  }
+}
+
+function getAuthAccessToken() {
+  return String(authMemorySession?.accessToken || '').trim();
+}
+
+function getAuthRefreshToken() {
+  return String(authMemorySession?.refreshToken || '').trim();
+}
+
+function buildAuthHeaders(extraHeaders = {}, { json = true } = {}) {
+  const headers = new Headers(extraHeaders || {});
+  if (json && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  const token = getAuthAccessToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  return Object.fromEntries(headers.entries());
+}
+
+function withAuthInit(init = {}, options = {}) {
+  const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
+  return {
+    ...init,
+    headers: buildAuthHeaders(init.headers, { json: options.json !== false && !isFormData }),
+  };
+}
+
+function buildApiHeaders(extraHeaders = {}) {
+  return buildAuthHeaders(extraHeaders);
+}
+
+function dispatchAuthExpired() {
+  clearAuthSession({ notify: true });
+}
+
+async function parseResponseMessage(response, fallback) {
+  try {
+    const payload = await response.json();
+    const detail = payload?.detail;
+    if (typeof detail === 'string' && detail.trim()) return detail.trim();
+    if (Array.isArray(detail) && detail.length > 0) {
+      return detail.map((item) => item?.msg || item?.message || String(item)).join(' ');
+    }
+    if (typeof payload?.message === 'string' && payload.message.trim()) return payload.message.trim();
+  } catch (error) {
+    // Keep the fallback when the server returns an empty or non-JSON response.
+  }
+  return fallback;
+}
+
+async function refreshAuthSession() {
+  if (authRefreshPromise) return authRefreshPromise;
+  authRefreshPromise = (async () => {
+    const refreshToken = getAuthRefreshToken();
+    if (!refreshToken) throw new Error('No refresh token is available.');
+    const remember = authMemorySession?.remember ?? true;
+    const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!response.ok) {
+      const message = await parseResponseMessage(response, `refresh failed: ${response.status}`);
+      clearAuthSession({ notify: false });
+      throw new Error(message);
+    }
+    const payload = await response.json();
+    return saveAuthSession(payload, remember);
+  })().finally(() => {
+    authRefreshPromise = null;
+  });
+  return authRefreshPromise;
+}
+
+async function authFetch(input, init = {}, options = {}) {
+  const response = await fetch(input, withAuthInit(init, options));
+  if (response.status !== 401 || options.skipRefresh) return response;
+  if (!getAuthRefreshToken()) return response;
+  try {
+    await refreshAuthSession();
+  } catch (error) {
+    dispatchAuthExpired();
+    return response;
+  }
+  if (init.signal?.aborted) return response;
+  return fetch(input, withAuthInit(init, options));
+}
+
+async function requestAuthJson(path, payload) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const message = await parseResponseMessage(response, `request failed: ${response.status}`);
+    throw new Error(message);
+  }
+  return response.json();
+}
+
+function accountToRegisterPayload(account, password) {
+  const normalized = String(account || '').trim();
+  const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized);
+  const baseName = isEmail ? normalized.split('@', 1)[0] : normalized;
+  return {
+    username: isEmail ? undefined : normalized,
+    email: isEmail ? normalized : undefined,
+    password,
+    display_name: baseName || 'User',
+  };
+}
+
+async function loginWithPassword(account, password, remember) {
+  const payload = await requestAuthJson('/api/auth/login', { account, password });
+  return saveAuthSession(payload, remember);
+}
+
+async function registerWithPassword(account, password, remember) {
+  const payload = await requestAuthJson('/api/auth/register', accountToRegisterPayload(account, password));
+  return saveAuthSession(payload, remember);
+}
+
+async function registerNewAccount({ userName, email, password }, remember) {
+  const trimmedName = String(userName || '').trim();
+  const trimmedEmail = String(email || '').trim();
+  const payload = await requestAuthJson('/api/auth/register', {
+    username: trimmedName || undefined,
+    email: trimmedEmail || undefined,
+    password,
+    display_name: trimmedName || (trimmedEmail ? trimmedEmail.split('@', 1)[0] : 'User'),
+  });
+  return saveAuthSession(payload, remember);
+}
+
+async function fetchCurrentAuthUser() {
+  const response = await authFetch(`${API_BASE}/api/auth/me`, { method: 'GET' }, { json: false });
+  if (!response.ok) {
+    const message = await parseResponseMessage(response, `session check failed: ${response.status}`);
+    throw new Error(message);
+  }
+  const user = await response.json();
+  updateAuthSessionUser(user);
+  return user;
+}
+
+async function logoutCurrentSession() {
+  const refreshToken = getAuthRefreshToken();
+  if (refreshToken) {
+    await fetch(`${API_BASE}/api/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    }).catch(() => undefined);
+  }
+  clearAuthSession({ notify: false });
+}
 
 function normalizeContextUsage(value, fallbackConversationId = null) {
   const rawUsedTokens = Math.max(0, Math.round(Number(value?.contextUsedTokens ?? value?.context_used_tokens ?? value?.usedTokens ?? value?.used_tokens ?? 0) || 0));
@@ -501,14 +724,6 @@ function generateHexId() {
     return window.crypto.randomUUID().replace(/-/g, '');
   }
   return `${Date.now().toString(16)}${Math.random().toString(16).slice(2, 18)}`;
-}
-
-function getOrCreateUserId() {
-  const existing = String(window.localStorage.getItem(USER_STORAGE_KEY) || '').trim();
-  if (existing) return existing;
-  const next = generateHexId();
-  window.localStorage.setItem(USER_STORAGE_KEY, next);
-  return next;
 }
 
 function getStoredConversationId() {
@@ -665,15 +880,25 @@ function chatImagePreviewUrl(ref, conversationId, ownerId = '') {
   return `${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}/messages/images/preview?${params.toString()}`;
 }
 
+function isProtectedChatImagePreviewUrl(value) {
+  const url = String(value || '');
+  return url.includes('/api/conversations/') && url.includes('/messages/images/preview');
+}
+
 function normalizeChatImageRefs(refs, conversationId, ownerId = '') {
   return (Array.isArray(refs) ? refs : [])
     .filter((ref) => ref && (ref.path || ref.previewUrl))
-    .map((ref, index) => ({
-      image_id: ref.image_id || ref.imageId || `image-${index}`,
-      path: ref.path || '',
-      mime: ref.mime || null,
-      previewUrl: chatImagePreviewUrl(ref, conversationId, ownerId),
-    }));
+    .map((ref, index) => {
+      const previewUrl = chatImagePreviewUrl(ref, conversationId, ownerId);
+      const authPreviewUrl = isProtectedChatImagePreviewUrl(previewUrl) ? previewUrl : '';
+      return {
+        image_id: ref.image_id || ref.imageId || `image-${index}`,
+        path: ref.path || '',
+        mime: ref.mime || null,
+        previewUrl: authPreviewUrl ? '' : previewUrl,
+        authPreviewUrl,
+      };
+    });
 }
 
 function mergeChatImageRefs(...groups) {
@@ -1062,13 +1287,6 @@ function findConversationById(state, conversationId) {
   return null;
 }
 
-function buildApiHeaders() {
-  return {
-    'Content-Type': 'application/json',
-    'X-Agent-User-Id': getOrCreateUserId(),
-  };
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1077,7 +1295,7 @@ async function createConversationWithRetry(payload, isCurrentActivation) {
   let lastStatus = null;
   for (let attempt = 1; attempt <= CONVERSATION_BOOTSTRAP_MAX_ATTEMPTS; attempt += 1) {
     if (!isCurrentActivation()) return null;
-    const response = await fetch(`${API_BASE}/api/conversations`, {
+    const response = await authFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: buildApiHeaders(),
       body: JSON.stringify(payload),
@@ -2102,12 +2320,408 @@ function serializePoseConfigMap(ids, getConfig) {
   return `const POSE_CONFIG_OVERRIDES = {\n${rows}\n};`;
 }
 
-function App() {
+function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = '', errorKey = 0 }) {
+  const [account, setAccount] = useState('');
+  const [userName, setUserName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [remember, setRemember] = useState(true);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [localError, setLocalError] = useState('');
+  const [localErrorKey, setLocalErrorKey] = useState(0);
+  const [authToast, setAuthToast] = useState(null);
+  const isRegister = mode === 'register';
+  const primaryLabel = isRegister ? 'Create account' : 'Sign in';
+  const secondaryLabel = isRegister ? 'Sign in' : 'Create account';
+
+  const clearLocalValidation = () => {
+    setLocalError('');
+    setAuthToast(null);
+  };
+
+  useEffect(() => {
+    const message = localError || error;
+    if (!message) {
+      setAuthToast(null);
+      return undefined;
+    }
+    const nextToast = {
+      id: `${errorKey}-${localErrorKey}-${Date.now()}`,
+      message,
+    };
+    setAuthToast(nextToast);
+    const timer = setTimeout(() => {
+      setAuthToast((current) => (current?.id === nextToast.id ? null : current));
+    }, 3200);
+    return () => clearTimeout(timer);
+  }, [localError, error, errorKey, localErrorKey]);
+
+  const submit = (event) => {
+    event.preventDefault();
+    clearLocalValidation();
+    if (isRegister) {
+      const missingRegisterFields = {
+        userName: !userName.trim(),
+        email: !email.trim(),
+        password: !password,
+        confirmPassword: !confirmPassword,
+        terms: !agreedToTerms,
+      };
+      if (Object.values(missingRegisterFields).some(Boolean)) {
+        setLocalError('Please complete all required fields.');
+        setLocalErrorKey((current) => current + 1);
+        return;
+      }
+      if (password !== confirmPassword) {
+        setLocalError("Passwords don't match.");
+        setLocalErrorKey((current) => current + 1);
+        return;
+      }
+      onSubmit({
+        mode,
+        userName: userName.trim(),
+        email: email.trim(),
+        password,
+      });
+    } else {
+      const missingLoginFields = {
+        account: !account.trim(),
+        password: !password,
+      };
+      if (missingLoginFields.account || missingLoginFields.password) {
+        const message = missingLoginFields.account && missingLoginFields.password
+          ? 'Enter your account and password to sign in.'
+          : missingLoginFields.account
+            ? 'Enter your account or email to sign in.'
+            : 'Enter your password to sign in.';
+        setLocalError(message);
+        setLocalErrorKey((current) => current + 1);
+        return;
+      }
+      onSubmit({
+        mode,
+        account: account.trim(),
+        password,
+        remember,
+      });
+    }
+  };
+
+  const displayError = authToast?.message || '';
+
+  return (
+    <div className={`auth-shell auth-shell-${mode}`}>
+      <div className="app-topbar auth-topbar" aria-hidden="true">
+        <div className="topbar-brand">
+          <div className="topbar-logo" />
+          <div className="topbar-title">HAISH AGENT</div>
+        </div>
+      </div>
+      <div className="auth-hero">
+        <div className="auth-hero-copy">
+          <span>Your AI work assistant</span>
+          <h1>The More It Works,<br />the Smarter It Gets.</h1>
+          <p>Your agent learns from every interaction and continuously improves for you.</p>
+        </div>
+        <img className="auth-hero-image" src="assets/auth/login-hero.png?v=2" alt="" aria-hidden="true" draggable={false} />
+      </div>
+
+      <section className={displayError ? 'auth-card auth-card--shake' : 'auth-card'} key={displayError ? `auth-card-${errorKey}-${localErrorKey}-${displayError}` : 'auth-card'} aria-label="Account authentication">
+        <div className="auth-card-head">
+          <h2>{isRegister ? 'Create account' : 'Welcome back'}</h2>
+          <p>{isRegister ? 'Set up your account and get started.' : 'Sign in to continue to your workspace.'}</p>
+        </div>
+        {isRegister ? null : (
+          <div className="auth-tabs" role="tablist" aria-label="Sign in method">
+            <button type="button" className="active" role="tab" aria-selected="true">Account login</button>
+          </div>
+        )}
+
+        <form className="auth-form" onSubmit={submit} noValidate>
+          {isRegister ? (
+            <>
+              <label className="auth-field auth-field--user">
+                <span>User name</span>
+                <input
+                  value={userName}
+                  onChange={(event) => {
+                    setUserName(event.target.value);
+                    clearLocalValidation();
+                  }}
+                  placeholder="Enter your user name"
+                  autoComplete="username"
+                  disabled={submitting}
+                  required
+                />
+              </label>
+
+              <label className="auth-field auth-field--mail">
+                <span>Email</span>
+                <input
+                  value={email}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    clearLocalValidation();
+                  }}
+                  placeholder="name@company.com"
+                  type="email"
+                  autoComplete="email"
+                  disabled={submitting}
+                  required
+                />
+              </label>
+
+              <label className="auth-field auth-field--lock">
+                <span>Password</span>
+                <input
+                  value={password}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    clearLocalValidation();
+                  }}
+                  placeholder="Enter your password"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  disabled={submitting}
+                  required
+                />
+              </label>
+
+              <label className="auth-field auth-field--lock">
+                <span>Confirm password</span>
+                <input
+                  value={confirmPassword}
+                  onChange={(event) => {
+                    setConfirmPassword(event.target.value);
+                    clearLocalValidation();
+                  }}
+                  placeholder="Confirm your password"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  disabled={submitting}
+                  required
+                />
+              </label>
+
+              <label className="auth-terms">
+                <input
+                  type="checkbox"
+                  checked={agreedToTerms}
+                  onChange={(event) => {
+                    setAgreedToTerms(event.target.checked);
+                    clearLocalValidation();
+                  }}
+                  disabled={submitting}
+                  required
+                />
+                <span>
+                  I agree to the <a href="#" onClick={(e) => e.preventDefault()}>Terms</a> and <a href="#" onClick={(e) => e.preventDefault()}>Privacy Policy</a>
+                </span>
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="auth-field auth-field--mail">
+                <span>Account / Email</span>
+                <input
+                  value={account}
+                  onChange={(event) => {
+                    setAccount(event.target.value);
+                    clearLocalValidation();
+                  }}
+                  placeholder="name@company.com"
+                  autoComplete="username"
+                  disabled={submitting}
+                  required
+                />
+              </label>
+
+              <label className="auth-field auth-field--lock">
+                <span>Password</span>
+                <input
+                  value={password}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    clearLocalValidation();
+                  }}
+                  placeholder="Enter password"
+                  type="password"
+                  autoComplete="current-password"
+                  minLength={1}
+                  disabled={submitting}
+                  required
+                />
+              </label>
+
+              <div className="auth-row">
+                <label className="auth-remember">
+                  <input
+                    type="checkbox"
+                    checked={remember}
+                    onChange={(event) => setRemember(event.target.checked)}
+                    disabled={submitting}
+                  />
+                  <span>Remember me</span>
+                </label>
+                <button type="button" className="auth-link" disabled>Forgot password?</button>
+              </div>
+            </>
+          )}
+
+          <button type="submit" className="auth-primary" disabled={submitting}>
+            {submitting ? (
+              <>
+                <span>{isRegister ? 'Creating account...' : 'Signing in...'}</span>
+                <span className="auth-loading-icon" aria-hidden="true" />
+              </>
+            ) : primaryLabel}
+          </button>
+
+          <div className="auth-mode-switch">
+            <span>{isRegister ? 'Already have an account?' : "Don't have an account?"}</span>
+            <button
+              type="button"
+              onClick={() => onModeChange(isRegister ? 'login' : 'register')}
+              disabled={submitting}
+            >
+              {secondaryLabel}
+            </button>
+          </div>
+        </form>
+
+        <div className="auth-divider"><span>Or continue with</span></div>
+        <div className="auth-socials">
+          <button type="button" disabled>
+            <svg className="auth-social-icon auth-social-github" viewBox="0 0 98 96" aria-hidden="true">
+              <path fill="currentColor" fillRule="evenodd" clipRule="evenodd" d="M48.85 0C21.88 0 0 22.28 0 49.76c0 21.98 14 40.62 33.43 47.2 2.44.45 3.34-1.08 3.34-2.39 0-1.18-.04-4.3-.07-8.44-13.6 3.01-16.47-6.68-16.47-6.68-2.22-5.75-5.43-7.28-5.43-7.28-4.44-3.09.34-3.03.34-3.03 4.9.35 7.49 5.13 7.49 5.13 4.36 7.61 11.43 5.41 14.21 4.14.44-3.22 1.7-5.41 3.1-6.65-10.86-1.26-22.28-5.53-22.28-24.62 0-5.44 1.91-9.88 5.03-13.36-.5-1.26-2.18-6.33.48-13.18 0 0 4.1-1.34 13.43 5.1a45.74 45.74 0 0 1 24.46 0c9.33-6.44 13.42-5.1 13.42-5.1 2.67 6.85.99 11.92.49 13.18 3.13 3.48 5.02 7.92 5.02 13.36 0 19.14-11.44 23.35-22.34 24.58 1.75 1.54 3.32 4.58 3.32 9.24 0 6.66-.06 12.04-.06 13.67 0 1.32.88 2.87 3.36 2.38C84 90.36 98 71.73 98 49.76 98 22.28 76.13 0 48.85 0Z" />
+            </svg>
+            <span>GitHub</span>
+          </button>
+          <button type="button" disabled>
+            <svg className="auth-social-icon auth-social-google" viewBox="0 0 48 48" aria-hidden="true">
+              <path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.52h11.84a10.12 10.12 0 0 1-4.4 6.64v5.52h7.12c4.16-3.84 6.56-9.48 6.56-16.18Z" />
+              <path fill="#34A853" d="M24 46c5.94 0 10.92-1.96 14.56-5.32l-7.12-5.52c-1.98 1.32-4.5 2.1-7.44 2.1-5.72 0-10.56-3.86-12.3-9.04H4.34v5.7A22 22 0 0 0 24 46Z" />
+              <path fill="#FBBC05" d="M11.7 28.22A13.2 13.2 0 0 1 11 24c0-1.46.25-2.88.7-4.22v-5.7H4.34A22 22 0 0 0 2 24c0 3.55.85 6.9 2.34 9.92l7.36-5.7Z" />
+              <path fill="#EA4335" d="M24 10.74c3.23 0 6.12 1.11 8.4 3.28l6.32-6.32C34.9 4.15 29.92 2 24 2A22 22 0 0 0 4.34 14.08l7.36 5.7c1.74-5.18 6.58-9.04 12.3-9.04Z" />
+            </svg>
+            <span>Google</span>
+          </button>
+        </div>
+      </section>
+
+      {authToast ? (
+        <div className="auth-toast auth-toast-error" role="alert" aria-live="assertive" key={authToast.id}>
+          <span className="auth-toast-icon" aria-hidden="true" />
+          <span className="auth-toast-message">{authToast.message}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AuthGate() {
+  const [session, setSession] = useState(authMemorySession);
+  const [mode, setMode] = useState('login');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [errorKey, setErrorKey] = useState(0);
+  const [postAuthToast, setPostAuthToast] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const markSignedOut = (message = '') => {
+      if (cancelled) return;
+      setSession(null);
+      if (message) setError(message);
+    };
+    const handleExpired = () => markSignedOut('Session expired. Sign in again.');
+
+    window.addEventListener('haish-auth-expired', handleExpired);
+    (async () => {
+      if (!authMemorySession?.accessToken && !authMemorySession?.refreshToken) {
+        markSignedOut();
+        return;
+      }
+      try {
+        const user = await fetchCurrentAuthUser();
+        if (cancelled) return;
+        setSession({ ...authMemorySession, user });
+        setError('');
+      } catch (authError) {
+        clearAuthSession({ notify: false });
+        markSignedOut('Please sign in to continue.');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('haish-auth-expired', handleExpired);
+    };
+  }, []);
+
+  const handleSubmit = async (formData) => {
+    setSubmitting(true);
+    setError('');
+    try {
+      let nextSession;
+      if (formData.mode === 'register') {
+        nextSession = await registerNewAccount({
+          userName: formData.userName,
+          email: formData.email,
+          password: formData.password,
+        }, true);
+      } else {
+        nextSession = await loginWithPassword(formData.account, formData.password, formData.remember);
+        setPostAuthToast({
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          kind: 'success',
+          message: 'Login successful',
+        });
+      }
+      setSession(nextSession);
+      setMode('login');
+    } catch (authError) {
+      setError(formData.mode === 'login' ? 'Incorrect account or password. Try again.' : String(authError?.message || authError));
+      setErrorKey((current) => current + 1);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await logoutCurrentSession();
+    setSession(null);
+    setMode('login');
+    setError('');
+  };
+
+  if (!session?.accessToken) {
+    return (
+      <AuthScreen
+        mode={mode}
+        onModeChange={(nextMode) => {
+          setMode(nextMode);
+          setError('');
+        }}
+        onSubmit={handleSubmit}
+        submitting={submitting}
+        error={error}
+        errorKey={errorKey}
+      />
+    );
+  }
+  return <App authUser={session.user} onLogout={handleLogout} initialToast={postAuthToast} />;
+}
+
+function App({ authUser = null, onLogout = () => undefined, initialToast = null }) {
   const [worldTaskState, setWorldTaskState] = useState(() => createEmptyWorldTaskState());
   const [workspaceState, setWorkspaceState] = useState(() => loadStoredWorkspaceState());
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [viewMode, setViewMode] = useState('world');
-  const viewModeRef = useRef('world');
+  const [viewMode, setViewMode] = useState('chat');
+  const viewModeRef = useRef('chat');
   const [npcStates, setNpcStates] = useState(() => {
     const s = {};
     for (const id of Object.keys(window.STATIONS)) {
@@ -2164,6 +2778,8 @@ function App() {
   const userCancelledTaskIdsRef = useRef(new Set());
   const taskImageAttachmentsRef = useRef(new Map());
   const pendingPresentationTaskIdsRef = useRef(new Set());
+  const previewObjectUrlCacheRef = useRef(new Map());
+  const previewMountedRef = useRef(true);
   const sceneRuntimeRef = useRef({
     pending: [],
     running: false,
@@ -2177,13 +2793,14 @@ function App() {
     thinkingPulseTimers: new Map(),
   });
   const worldTaskStateRef = useRef(worldTaskState);
-  const userIdRef = useRef(getOrCreateUserId());
+  const userIdRef = useRef(authUser?.id || '');
   const toastTimerRef = useRef(null);
+  const initialToastIdRef = useRef(null);
   const conversationActivationSeqRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/api/llm/models`)
+    authFetch(`${API_BASE}/api/llm/models`, { method: 'GET' }, { json: false })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
@@ -2230,7 +2847,75 @@ function App() {
   useEffect(() => { worldTaskStateRef.current = worldTaskState; }, [worldTaskState]);
   useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
   useEffect(() => { conversationIdRef.current = conversationId; }, [conversationId]);
+  useEffect(() => { userIdRef.current = authUser?.id || ''; }, [authUser?.id]);
   useEffect(() => { saveWorkspaceState(workspaceState); }, [workspaceState]);
+  useEffect(() => () => {
+    previewMountedRef.current = false;
+    for (const entry of previewObjectUrlCacheRef.current.values()) {
+      if (entry?.url) URL.revokeObjectURL(entry.url);
+    }
+    previewObjectUrlCacheRef.current.clear();
+  }, []);
+
+  function applyHydratedImagePreview(authPreviewUrl, previewUrl) {
+    updateWorldTaskState((state) => {
+      let changed = false;
+      const hydrateTask = (task) => {
+        if (!task || !Array.isArray(task.imageAttachments)) return task;
+        const imageAttachments = task.imageAttachments.map((ref) => {
+          if (ref?.authPreviewUrl !== authPreviewUrl || ref.previewUrl) return ref;
+          changed = true;
+          return { ...ref, previewUrl };
+        });
+        return imageAttachments === task.imageAttachments ? task : { ...task, imageAttachments };
+      };
+      const tasksById = Object.fromEntries(
+        Object.entries(state.tasksById || {}).map(([taskId, task]) => [taskId, hydrateTask(task)]),
+      );
+      const pendingTask = hydrateTask(state.pendingTask);
+      return changed ? { ...state, tasksById, pendingTask } : state;
+    });
+  }
+
+  useEffect(() => {
+    const refs = [];
+    const collect = (task) => {
+      if (!task || !Array.isArray(task.imageAttachments)) return;
+      task.imageAttachments.forEach((ref) => {
+        if (ref?.authPreviewUrl && !ref.previewUrl) refs.push(ref.authPreviewUrl);
+      });
+    };
+    Object.values(worldTaskState.tasksById || {}).forEach(collect);
+    collect(worldTaskState.pendingTask);
+
+    refs.forEach((authPreviewUrl) => {
+      const cached = previewObjectUrlCacheRef.current.get(authPreviewUrl);
+      if (cached?.status === 'ready' && cached.url) {
+        applyHydratedImagePreview(authPreviewUrl, cached.url);
+        return;
+      }
+      if (cached?.status === 'loading') return;
+      previewObjectUrlCacheRef.current.set(authPreviewUrl, { status: 'loading', url: '' });
+      authFetch(authPreviewUrl, { method: 'GET' }, { json: false })
+        .then((response) => {
+          if (!response.ok) throw new Error(`image preview failed: ${response.status}`);
+          return response.blob();
+        })
+        .then((blob) => {
+          const objectUrl = URL.createObjectURL(blob);
+          previewObjectUrlCacheRef.current.set(authPreviewUrl, { status: 'ready', url: objectUrl });
+          if (!previewMountedRef.current) {
+            URL.revokeObjectURL(objectUrl);
+            return;
+          }
+          applyHydratedImagePreview(authPreviewUrl, objectUrl);
+        })
+        .catch((error) => {
+          previewObjectUrlCacheRef.current.delete(authPreviewUrl);
+          console.warn('image preview fetch failed', error);
+        });
+    });
+  }, [worldTaskState]);
 
   function invalidateConversationActivation() {
     conversationActivationSeqRef.current += 1;
@@ -2243,12 +2928,9 @@ function App() {
 
   async function fetchTaskRuntimeDetail(taskId) {
     if (!taskId) return null;
-    const response = await fetch(`${API_BASE}/api/tasks/${taskId}`, {
+    const response = await authFetch(`${API_BASE}/api/tasks/${taskId}`, {
       method: 'GET',
-      headers: {
-        'X-Agent-User-Id': userIdRef.current,
-      },
-    });
+    }, { json: false });
     if (!response.ok) {
       throw new Error(`task restore failed: ${response.status}`);
     }
@@ -2316,6 +2998,12 @@ function App() {
   useEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!initialToast || initialToastIdRef.current === initialToast.id) return;
+    initialToastIdRef.current = initialToast.id;
+    showToast(initialToast.kind, initialToast.message);
+  }, [initialToast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2546,12 +3234,9 @@ function App() {
   }
 
   async function fetchConversationDetail(nextConversationId) {
-    const detailResponse = await fetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
+    const detailResponse = await authFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
       method: 'GET',
-      headers: {
-        'X-Agent-User-Id': userIdRef.current,
-      },
-    });
+    }, { json: false });
     if (!detailResponse.ok) {
       throw new Error(`conversation restore failed: ${detailResponse.status}`);
     }
@@ -3813,11 +4498,8 @@ function App() {
     const formData = new FormData();
     formData.append('conversation_id', conversationId);
     formData.append('file', file);
-    const response = await fetch(`${API_BASE}/api/documents/upload`, {
+    const response = await authFetch(`${API_BASE}/api/documents/upload`, {
       method: 'POST',
-      headers: {
-        'X-Agent-User-Id': userIdRef.current,
-      },
       body: formData,
       signal,
     });
@@ -3834,11 +4516,8 @@ function App() {
     const formData = new FormData();
     formData.append('conversation_id', conversationId);
     formData.append('file', file);
-    const response = await fetch(`${API_BASE}/api/messages/images`, {
+    const response = await authFetch(`${API_BASE}/api/messages/images`, {
       method: 'POST',
-      headers: {
-        'X-Agent-User-Id': userIdRef.current,
-      },
       body: formData,
       signal,
     });
@@ -3857,11 +4536,8 @@ function App() {
 
   async function pickLocalWorkspace() {
     if (!conversationId) return;
-    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/workspace/pick`, {
+    const response = await authFetch(`${API_BASE}/api/conversations/${conversationId}/workspace/pick`, {
       method: 'POST',
-      headers: {
-        'X-Agent-User-Id': userIdRef.current,
-      },
     });
     if (response.status === 409) {
       showToast('info', 'local workspace selection cancelled');
@@ -3927,28 +4603,22 @@ function App() {
   }
 
   async function cancelActiveTask(taskId) {
-    return fetch(`${API_BASE}/api/tasks/${taskId}/cancel`, {
+    return authFetch(`${API_BASE}/api/tasks/${taskId}/cancel`, {
       method: 'POST',
-      headers: {
-        'X-Agent-User-Id': userIdRef.current,
-      },
     });
   }
 
   async function cancelActiveConversationTask(nextConversationId) {
     if (!nextConversationId) return null;
-    return fetch(`${API_BASE}/api/conversations/${nextConversationId}/tasks/cancel`, {
+    return authFetch(`${API_BASE}/api/conversations/${nextConversationId}/tasks/cancel`, {
       method: 'POST',
-      headers: {
-        'X-Agent-User-Id': userIdRef.current,
-      },
     });
   }
 
   async function updateConversationTitle(conversationId, title) {
     const trimmed = String(title || '').trim();
     if (!conversationId || !trimmed) return null;
-    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, {
+    const response = await authFetch(`${API_BASE}/api/conversations/${conversationId}`, {
       method: 'PATCH',
       headers: buildApiHeaders(),
       body: JSON.stringify({ title: trimmed }),
@@ -4452,7 +5122,7 @@ function App() {
 
     const controller = new AbortController();
     fetchAbortRef.current = controller;
-    const response = await fetch(`${API_BASE}/api/conversations/${runConversationId}/tasks/stream`, {
+    const response = await authFetch(`${API_BASE}/api/conversations/${runConversationId}/tasks/stream`, {
       method: 'POST',
       headers: buildApiHeaders(),
       body: JSON.stringify({
@@ -4779,7 +5449,7 @@ function App() {
   }
 
   async function createConversationInProject(project, title) {
-    const createResponse = await fetch(`${API_BASE}/api/conversations`, {
+    const createResponse = await authFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: buildApiHeaders(),
       body: JSON.stringify({ title }),
@@ -4789,7 +5459,7 @@ function App() {
     }
     let detail = await createResponse.json();
     if (project?.workspacePath) {
-      const updateResponse = await fetch(`${API_BASE}/api/conversations/${detail.conversation_id}`, {
+      const updateResponse = await authFetch(`${API_BASE}/api/conversations/${detail.conversation_id}`, {
         method: 'PATCH',
         headers: buildApiHeaders(),
         body: JSON.stringify({ workspace_path: project.workspacePath }),
@@ -4830,7 +5500,7 @@ function App() {
       showToast('success', `local workspace set: ${pickResult.project.name}`);
       return;
     }
-    const createResponse = await fetch(`${API_BASE}/api/conversations`, {
+    const createResponse = await authFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: buildApiHeaders(),
       body: JSON.stringify({ title: DEFAULT_SESSION_NAME }),
@@ -4839,18 +5509,12 @@ function App() {
       throw new Error(`project conversation create failed: ${createResponse.status}`);
     }
     const created = await createResponse.json();
-    const pickResponse = await fetch(`${API_BASE}/api/conversations/${created.conversation_id}/workspace/pick`, {
+    const pickResponse = await authFetch(`${API_BASE}/api/conversations/${created.conversation_id}/workspace/pick`, {
       method: 'POST',
-      headers: {
-        'X-Agent-User-Id': userIdRef.current,
-      },
     });
     if (pickResponse.status === 409) {
-      await fetch(`${API_BASE}/api/conversations/${created.conversation_id}`, {
+      await authFetch(`${API_BASE}/api/conversations/${created.conversation_id}`, {
         method: 'DELETE',
-        headers: {
-          'X-Agent-User-Id': userIdRef.current,
-        },
       });
       showToast('info', 'workspace selection cancelled');
       return;
@@ -4860,11 +5524,8 @@ function App() {
     }
     const detail = await pickResponse.json();
     if (!detail.workspace_path) {
-      await fetch(`${API_BASE}/api/conversations/${created.conversation_id}`, {
+      await authFetch(`${API_BASE}/api/conversations/${created.conversation_id}`, {
         method: 'DELETE',
-        headers: {
-          'X-Agent-User-Id': userIdRef.current,
-        },
       });
       showToast('info', 'workspace selection cancelled');
       return;
@@ -4876,11 +5537,8 @@ function App() {
   async function handleDeleteConversation(projectId, nextConversationId) {
     const project = workspaceState.projects.find((item) => item.id === projectId);
     if (!project) return;
-    const response = await fetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
+    const response = await authFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
       method: 'DELETE',
-      headers: {
-        'X-Agent-User-Id': userIdRef.current,
-      },
     });
     if (!response.ok && response.status !== 404) {
       throw new Error(`conversation delete failed: ${response.status}`);
@@ -4913,7 +5571,7 @@ function App() {
   async function handleRenameConversation(projectId, nextConversationId, title) {
     const trimmed = String(title || '').trim();
     if (!trimmed) return;
-    const response = await fetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
+    const response = await authFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
       method: 'PATCH',
       headers: buildApiHeaders(),
       body: JSON.stringify({ title: trimmed }),
@@ -4931,11 +5589,8 @@ function App() {
   async function handleRemoveProject(projectId) {
     const project = workspaceState.projects.find((item) => item.id === projectId);
     if (!project?.removable) return;
-    await Promise.all(project.conversations.map((item) => fetch(`${API_BASE}/api/conversations/${item.id}`, {
+    await Promise.all(project.conversations.map((item) => authFetch(`${API_BASE}/api/conversations/${item.id}`, {
       method: 'DELETE',
-      headers: {
-        'X-Agent-User-Id': userIdRef.current,
-      },
     })));
     const nextState = normalizeWorkspaceOrdering({
       ...workspaceState,
@@ -5279,6 +5934,8 @@ function App() {
             <window.ConversationsPanel
               workspaceState={panelWorkspaceState}
               now={now}
+              authUser={authUser}
+              onLogout={onLogout}
               extensionStyle={leftPanelExtensionStyle}
               onAddProject={() => { handleAddProject().catch((error) => { console.error('project add failed', error); showToast('error', String(error?.message || error)); }); }}
               onSelectProject={(projectId) => { handleSelectProject(projectId).catch((error) => { console.error('project select failed', error); showToast('error', String(error?.message || error)); }); }}
@@ -5528,7 +6185,7 @@ function App() {
         <div className={`app-toast app-toast-${toast.kind}`} role="status" aria-live="polite">
           {toast.kind === 'success'
             ? <span className="app-toast-icon app-toast-icon-success" aria-hidden="true" />
-            : <span className="app-toast-icon app-toast-icon-error" aria-hidden="true">!</span>}
+            : <span className="app-toast-icon app-toast-icon-error" aria-hidden="true" />}
           <span className="app-toast-message">{toast.message}</span>
         </div>
       )}
@@ -5538,4 +6195,4 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+ReactDOM.createRoot(document.getElementById('root')).render(<AuthGate />);
