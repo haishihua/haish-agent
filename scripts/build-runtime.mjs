@@ -58,32 +58,6 @@ function copyRuntimeFile(name) {
   });
 }
 
-function copySkillTree(fromRoot, toRoot) {
-  if (!fs.existsSync(fromRoot)) return;
-  fs.mkdirSync(toRoot, { recursive: true });
-  for (const entry of fs.readdirSync(fromRoot)) {
-    const from = path.join(fromRoot, entry);
-    if (!fs.statSync(from).isDirectory()) continue;
-    if (!fs.existsSync(path.join(from, 'SKILL.md'))) continue;
-    fs.cpSync(from, path.join(toRoot, entry), {
-      recursive: true,
-      force: true,
-      filter: (src) => {
-        const base = path.basename(src);
-        if (base === '__pycache__' || base === '.pytest_cache') return false;
-        if (base.endsWith('.pyc') || base.endsWith('.pyo')) return false;
-        return true;
-      },
-    });
-  }
-}
-
-function bundleSystemSkills() {
-  const runtimeSystemSkillsRoot = path.join(runtimeRoot, '.skills-src');
-  copySkillTree(path.join(sourceRoot, '.skills'), runtimeSystemSkillsRoot);
-  copySkillTree(path.join(sourceRoot, 'skills'), runtimeSystemSkillsRoot);
-}
-
 function pruneRuntime() {
   const removableNames = new Set([
     '__pycache__',
@@ -182,7 +156,8 @@ function main() {
   for (const file of runtimeFiles) {
     copyRuntimeFile(file);
   }
-  bundleSystemSkills();
+  // Bundled skills now ship as package data under src/haishihua_agent_core/skills/
+  // and are picked up by PyInstaller's collect_data_files. No extra copy here.
 
   const python = process.env.HAISH_RUNTIME_BUILD_PYTHON || 'python3';
   fs.rmSync(buildVenvPath, { recursive: true, force: true });

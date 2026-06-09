@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export type LocalRuntimeStatus = 'idle' | 'starting' | 'ready' | 'failed' | 'stopped';
 
@@ -18,10 +19,23 @@ type RuntimePaths = {
   isPackaged: boolean;
 };
 
-const DEFAULT_RUNTIME_REPO = '/Users/zhanruitao/py-project/haishihua-agent-core';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// dist-electron/main/local-runtime.js -> repo root
+const PROJECT_ROOT = path.resolve(__dirname, '../..');
+
 const BUNDLED_RUNTIME_DIR = 'haishihua-agent-core';
 const BUNDLED_RUNTIME_EXECUTABLE = path.join('bin', 'haish-runtime', 'haish-runtime');
 const START_TIMEOUT_MS = 60_000;
+
+// Dev-mode lookup order for the Python backend repo (haishihua-agent-core):
+//   1. HAISH_LOCAL_RUNTIME_CWD env var (explicit override)
+//   2. ../haishihua-agent-core sibling of this repo
+//   3. ./haishihua-agent-core inside this repo
+const DEV_RUNTIME_REPO_CANDIDATES = [
+  path.resolve(PROJECT_ROOT, '..', 'haishihua-agent-core'),
+  path.resolve(PROJECT_ROOT, 'haishihua-agent-core'),
+];
 
 let child: ChildProcessWithoutNullStreams | null = null;
 let state: LocalRuntimeState = { status: 'idle', baseUrl: '' };
@@ -54,7 +68,17 @@ function runtimeRepoPath(paths: RuntimePaths): string {
   if (paths.isPackaged && fs.existsSync(bundledRuntime)) {
     return bundledRuntime;
   }
-  return DEFAULT_RUNTIME_REPO;
+  for (const candidate of DEV_RUNTIME_REPO_CANDIDATES) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  throw new Error(
+    'Could not locate the Haish Python backend (haishihua-agent-core). '
+    + `Looked for: ${DEV_RUNTIME_REPO_CANDIDATES.join(', ')}. `
+    + 'Clone the haishihua-agent-core repo next to this project, or set '
+    + 'HAISH_LOCAL_RUNTIME_CWD to its absolute path.',
+  );
 }
 
 function runtimeWorkdir(userDataPath: string): string {
