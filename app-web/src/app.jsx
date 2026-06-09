@@ -746,6 +746,8 @@ function createDefaultProject() {
     workspacePath: null,
     workspaceLabel: null,
     removable: false,
+    createdAt: null,
+    updatedAt: null,
     conversations: [],
   };
 }
@@ -778,6 +780,8 @@ function loadStoredWorkspaceState() {
         workspacePath: isDefault ? null : (project.workspacePath || null),
         workspaceLabel: isDefault ? null : (project.workspaceLabel || project.name || null),
         removable: !isDefault,
+        createdAt: project.createdAt || project.created_at || null,
+        updatedAt: project.updatedAt || project.updated_at || null,
         // `userExpanded` is the sole source of truth for sidebar expansion.
         // Activation handlers set it to true on the active project / conversation;
         // chevron toggle flips it; everything else remains in whatever state the
@@ -978,6 +982,26 @@ function projectUpdatedTimestamp(project) {
   );
 }
 
+function inferProjectCreatedAt(project) {
+  const directCreatedAt = project?.createdAt || project?.created_at;
+  if (timestampValue(directCreatedAt)) return directCreatedAt;
+  const conversations = Array.isArray(project?.conversations) ? project.conversations : [];
+  let earliest = null;
+  for (const conversation of conversations) {
+    const createdAt = conversation?.createdAt || conversation?.created_at;
+    const timestamp = timestampValue(createdAt);
+    if (!timestamp) continue;
+    if (!earliest || timestamp < earliest.timestamp) {
+      earliest = { timestamp, createdAt };
+    }
+  }
+  return earliest?.createdAt || null;
+}
+
+function projectCreatedTimestamp(project) {
+  return timestampValue(inferProjectCreatedAt(project));
+}
+
 function withDefaultExpansion(project) {
   // The sidebar expansion is purely user-driven now: `userExpanded` is the
   // single source of truth. Activation handlers below set it to true on the
@@ -1001,6 +1025,7 @@ function withDefaultExpansion(project) {
   return {
     ...project,
     conversations,
+    createdAt: inferProjectCreatedAt({ ...project, conversations }),
     updatedAt: projectUpdatedTimestamp({ ...project, conversations }) || project.updatedAt || null,
     expanded: project.userExpanded === true,
   };
@@ -1034,9 +1059,8 @@ function normalizeWorkspaceOrdering(state) {
   //     with no active task), order by updatedAt desc. Active highlighting
   //     is a visual concern handled in panels.jsx — it does NOT participate
   //     in ordering, so clicking around does not reshuffle the list.
-  //   - Projects: pure updatedAt desc. The "click project = jump to top"
-  //     behavior was explicitly removed; project order is now stable until
-  //     real activity (a task / message) changes updatedAt.
+  //   - Projects: createdAt desc. Active project and later activity never
+  //     participate in project ordering.
   const projects = (Array.isArray(state?.projects) ? state.projects : [])
     .map((project) => withDefaultExpansion(project))
     .map((project) => ({
@@ -1049,7 +1073,7 @@ function normalizeWorkspaceOrdering(state) {
         return conversationUpdatedTimestamp(b) - conversationUpdatedTimestamp(a);
       }),
     }))
-    .sort((a, b) => projectUpdatedTimestamp(b) - projectUpdatedTimestamp(a));
+    .sort((a, b) => projectCreatedTimestamp(b) - projectCreatedTimestamp(a));
   return {
     ...(state || {}),
     projects: projects.length ? projects : [createDefaultProject()],
@@ -1094,6 +1118,8 @@ function buildWorkspaceStateFromConversationDetails(details, previousState) {
     workspacePath: null,
     workspaceLabel: null,
     removable: false,
+    createdAt: previousProjects.get(DEFAULT_PROJECT_ID)?.createdAt || null,
+    updatedAt: previousProjects.get(DEFAULT_PROJECT_ID)?.updatedAt || null,
     conversations: [],
   });
 
@@ -1111,6 +1137,8 @@ function buildWorkspaceStateFromConversationDetails(details, previousState) {
         workspacePath,
         workspaceLabel: label,
         removable: true,
+        createdAt: previousProject?.createdAt || null,
+        updatedAt: previousProject?.updatedAt || null,
         userExpanded: typeof previousProject?.userExpanded === 'boolean'
           ? previousProject.userExpanded
           : undefined,
@@ -1186,6 +1214,8 @@ function workspaceStateWithConversationDetail(state, detail, activate = true) {
       workspacePath: projectId === DEFAULT_PROJECT_ID ? null : workspacePath,
       workspaceLabel: projectId === DEFAULT_PROJECT_ID ? null : projectLabel,
       removable: projectId !== DEFAULT_PROJECT_ID,
+      createdAt: detail.created_at || new Date().toISOString(),
+      updatedAt: detail.updated_at || detail.last_message_at || new Date().toISOString(),
       userExpanded: activate ? true : undefined,
       conversations: [
         (() => {
@@ -2326,11 +2356,17 @@ function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [localError, setLocalError] = useState('');
   const [localErrorKey, setLocalErrorKey] = useState(0);
   const [authToast, setAuthToast] = useState(null);
+  const [touchedFields, setTouchedFields] = useState({
+    userName: false,
+    password: false,
+  });
   const isRegister = mode === 'register';
   const primaryLabel = isRegister ? 'Create account' : 'Sign in';
   const secondaryLabel = isRegister ? 'Sign in' : 'Create account';
@@ -2339,6 +2375,44 @@ function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = 
     setLocalError('');
     setAuthToast(null);
   };
+
+  const markFieldTouched = (field) => {
+    setTouchedFields((current) => ({ ...current, [field]: true }));
+  };
+
+  const userNameError = isRegister && touchedFields.userName && userName.trim() && userName.trim().length < 3
+    ? 'User name must be at least 3 characters.'
+    : '';
+  const passwordError = isRegister && touchedFields.password && password && password.length < 8
+    ? 'Password must be at least 8 characters.'
+    : '';
+
+  const renderPasswordToggle = (visible, onToggle, label) => (
+    <button
+      type="button"
+      className="auth-password-toggle"
+      onClick={onToggle}
+      aria-label={visible ? `Hide ${label}` : `Show ${label}`}
+      aria-pressed={visible}
+      disabled={submitting}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        {visible ? (
+          <>
+            <path d="M3 3l18 18" />
+            <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+            <path d="M9.9 4.4A10.7 10.7 0 0 1 12 4c6.5 0 10 8 10 8a18.7 18.7 0 0 1-3.1 4.4" />
+            <path d="M6.5 6.5C3.6 8.5 2 12 2 12s3.5 8 10 8a10.7 10.7 0 0 0 4.3-.9" />
+          </>
+        ) : (
+          <>
+            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
+            <circle cx="12" cy="12" r="3" />
+          </>
+        )}
+      </svg>
+    </button>
+  );
 
   useEffect(() => {
     const message = localError || error;
@@ -2370,6 +2444,18 @@ function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = 
       };
       if (Object.values(missingRegisterFields).some(Boolean)) {
         setLocalError('Please complete all required fields.');
+        setLocalErrorKey((current) => current + 1);
+        return;
+      }
+      const nextUserNameError = userName.trim().length < 3;
+      const nextPasswordError = password.length < 8;
+      if (nextUserNameError || nextPasswordError) {
+        setTouchedFields((current) => ({
+          ...current,
+          userName: true,
+          password: true,
+        }));
+        setLocalError('Please fix the highlighted fields.');
         setLocalErrorKey((current) => current + 1);
         return;
       }
@@ -2441,7 +2527,7 @@ function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = 
         <form className="auth-form" onSubmit={submit} noValidate>
           {isRegister ? (
             <>
-              <label className="auth-field auth-field--user">
+              <label className={`auth-field auth-field--user${userNameError ? ' auth-field--invalid' : ''}`}>
                 <span>User name</span>
                 <input
                   value={userName}
@@ -2449,11 +2535,15 @@ function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = 
                     setUserName(event.target.value);
                     clearLocalValidation();
                   }}
+                  onBlur={() => markFieldTouched('userName')}
+                  aria-invalid={Boolean(userNameError)}
+                  aria-describedby={userNameError ? 'auth-user-name-error' : undefined}
                   placeholder="Enter your user name"
                   autoComplete="username"
                   disabled={submitting}
                   required
                 />
+                {userNameError ? <span className="auth-field-error" id="auth-user-name-error">{userNameError}</span> : null}
               </label>
 
               <label className="auth-field auth-field--mail">
@@ -2472,7 +2562,7 @@ function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = 
                 />
               </label>
 
-              <label className="auth-field auth-field--lock">
+              <label className={`auth-field auth-field--lock${passwordError ? ' auth-field--invalid' : ''}`}>
                 <span>Password</span>
                 <input
                   value={password}
@@ -2480,13 +2570,18 @@ function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = 
                     setPassword(event.target.value);
                     clearLocalValidation();
                   }}
+                  onBlur={() => markFieldTouched('password')}
+                  aria-invalid={Boolean(passwordError)}
+                  aria-describedby={passwordError ? 'auth-password-error' : undefined}
                   placeholder="Enter your password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="new-password"
                   minLength={8}
                   disabled={submitting}
                   required
                 />
+                {renderPasswordToggle(showPassword, () => setShowPassword((current) => !current), 'password')}
+                {passwordError ? <span className="auth-field-error" id="auth-password-error">{passwordError}</span> : null}
               </label>
 
               <label className="auth-field auth-field--lock">
@@ -2498,12 +2593,13 @@ function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = 
                     clearLocalValidation();
                   }}
                   placeholder="Confirm your password"
-                  type="password"
+                  type={showConfirmPassword ? 'text' : 'password'}
                   autoComplete="new-password"
                   minLength={8}
                   disabled={submitting}
                   required
                 />
+                {renderPasswordToggle(showConfirmPassword, () => setShowConfirmPassword((current) => !current), 'confirm password')}
               </label>
 
               <label className="auth-terms">
@@ -2548,12 +2644,13 @@ function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = 
                     clearLocalValidation();
                   }}
                   placeholder="Enter password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   minLength={1}
                   disabled={submitting}
                   required
                 />
+                {renderPasswordToggle(showPassword, () => setShowPassword((current) => !current), 'password')}
               </label>
 
               <div className="auth-row">

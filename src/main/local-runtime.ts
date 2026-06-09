@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +25,7 @@ const __dirname = path.dirname(__filename);
 // dist-electron/main/local-runtime.js -> repo root
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 
+const LEGACY_DEFAULT_RUNTIME_REPO = '/Users/zhanruitao/py-project/haishihua-agent-core';
 const BUNDLED_RUNTIME_DIR = 'haishihua-agent-core';
 const BUNDLED_RUNTIME_EXECUTABLE = path.join('bin', 'haish-runtime', 'haish-runtime');
 const START_TIMEOUT_MS = 60_000;
@@ -35,6 +37,9 @@ const START_TIMEOUT_MS = 60_000;
 const DEV_RUNTIME_REPO_CANDIDATES = [
   path.resolve(PROJECT_ROOT, '..', 'haishihua-agent-core'),
   path.resolve(PROJECT_ROOT, 'haishihua-agent-core'),
+  path.join(os.homedir(), 'Desktop', BUNDLED_RUNTIME_DIR),
+  path.join(os.homedir(), 'Desktop', '打工人', BUNDLED_RUNTIME_DIR),
+  LEGACY_DEFAULT_RUNTIME_REPO,
 ];
 
 let child: ChildProcessWithoutNullStreams | null = null;
@@ -45,9 +50,17 @@ function choosePython(runtimeRepo: string): string {
   if (process.env.HAISH_LOCAL_RUNTIME_PYTHON) {
     return process.env.HAISH_LOCAL_RUNTIME_PYTHON;
   }
-  const venvPython = path.join(runtimeRepo, '.venv/bin/python');
-  if (fs.existsSync(venvPython)) {
-    return venvPython;
+  const candidates = [
+    path.join(runtimeRepo, '.venv/bin/python3'),
+    path.join(runtimeRepo, '.venv/bin/python'),
+    '/opt/homebrew/bin/python3',
+    '/usr/local/bin/python3',
+    '/usr/bin/python3',
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
   }
   return 'python3';
 }
@@ -69,7 +82,10 @@ function runtimeRepoPath(paths: RuntimePaths): string {
     return bundledRuntime;
   }
   for (const candidate of DEV_RUNTIME_REPO_CANDIDATES) {
-    if (fs.existsSync(candidate)) {
+    if (
+      fs.existsSync(path.join(candidate, 'pyproject.toml'))
+      && fs.existsSync(path.join(candidate, 'src', 'haishihua_agent_core'))
+    ) {
       return candidate;
     }
   }
@@ -201,6 +217,12 @@ export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRunti
       },
     );
 
+    child.on('error', (error) => {
+      const message = `Local runtime failed to launch: ${error.message}`;
+      state = { status: 'failed', baseUrl, message };
+      child = null;
+      startPromise = null;
+    });
     child.stdout.on('data', (chunk) => {
       console.log(`[haish-runtime] ${String(chunk).trimEnd()}`);
     });
@@ -222,7 +244,7 @@ export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRunti
       return state;
     } catch (error) {
       const message = String((error as Error)?.message || error);
-      child.kill();
+      child?.kill();
       state = { status: 'failed', baseUrl, message };
       throw new Error(`Local runtime failed to start: ${message}`);
     } finally {
