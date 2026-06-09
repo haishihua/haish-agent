@@ -1,0 +1,32 @@
+README.md
+  s_b444cab77a572a::t_72e46eed768502 17-42,44,49-71
+src/main/local-runtime.ts
+  s_b444cab77a572a::t_259c77e47db25d 5,22-26,31-38
+  s_b444cab77a572a::t_ed8d436853cd06 71-81
+scripts/build-runtime.mjs
+  s_1476e35a83d13f::t_88f8f220fea210 159-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "c27cec69b002bb594a194ebc1236d0c6f6716b3f",
+  "prompts": {},
+  "sessions": {
+    "s_1476e35a83d13f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "55a7e870-d794-422b-bc00-ef1c781901ea",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    },
+    "s_b444cab77a572a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51ece2ed-17b7-4994-97bb-485630e5fc0c",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
