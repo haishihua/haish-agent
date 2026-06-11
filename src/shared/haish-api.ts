@@ -48,6 +48,7 @@ export type HaishDesktopApi = {
   listProjects: () => Promise<LocalProject[]>;
   listDirectory: (projectId: string, relativePath?: string) => Promise<FileEntry[]>;
   readFile: (projectId: string, relativePath: string) => Promise<ReadFileResult>;
+  getPathForFile: (file: File) => string;
 };
 
 declare global {

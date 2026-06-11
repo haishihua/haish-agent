@@ -1017,6 +1017,159 @@ const REASONING_EFFORT_OPTIONS = [
   { id: 'xhigh', label: 'xhigh' },
 ];
 
+const APPROVAL_MODE_OPTIONS = [
+  { id: 'strict', label: 'Request Approval', icon: 'ask-for-help.png',   desc: 'Ask before every write or network op' },
+  { id: 'smart',  label: 'Auto Approve',     icon: 'generative.png',     desc: 'Allow safe ops, ask on risk' },
+  { id: 'full',   label: 'Full Access',      icon: 'cyber-security.png', desc: 'Allow everything without prompting' },
+];
+
+function resolveApprovalApiBase() {
+  if (typeof window !== 'undefined') {
+    const explicit = String(window.AGENT_WORLD_API_BASE || '').trim();
+    if (explicit) return explicit.replace(/\/$/, '');
+  }
+  return '';
+}
+
+function ApprovalModePicker({ disabled = false }) {
+  const [open, setOpen] = React.useState(false);
+  const [mode, setMode] = React.useState('smart');
+  const [loaded, setLoaded] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const rootRef = React.useRef(null);
+  const API = resolveApprovalApiBase();
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch(`${API}/api/approvals/state`, { cache: 'no-store' });
+        if (!resp.ok) throw new Error('state fetch failed');
+        const data = await resp.json();
+        if (!cancelled && data && typeof data.mode === 'string') {
+          setMode(data.mode);
+        }
+      } catch (_) {
+        // backend may not be ready; fall back to smart
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    function handleDocMouseDown(event) {
+      if (rootRef.current && !rootRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+    function handleKey(event) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', handleDocMouseDown);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleDocMouseDown);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [open]);
+
+  async function changeMode(next) {
+    if (next === mode || busy) { setOpen(false); return; }
+    const prev = mode;
+    setMode(next);
+    setOpen(false);
+    setBusy(true);
+    try {
+      const resp = await fetch(`${API}/api/approvals/mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: next }),
+      });
+      if (!resp.ok) throw new Error(`set mode failed: ${resp.status}`);
+    } catch (err) {
+      console.warn('[approval-mode] failed to set mode, reverting', err);
+      setMode(prev);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const current = APPROVAL_MODE_OPTIONS.find((o) => o.id === mode) || APPROVAL_MODE_OPTIONS[1];
+
+  return (
+    <div className={`approval-mode-picker ${open ? 'is-open' : ''} ${loaded ? '' : 'is-loading'}`} ref={rootRef}>
+      <PortalTooltip text={open ? '' : `Approval mode · ${current.label}`} position="above">
+        <button
+          type="button"
+          className="approval-mode-trigger"
+          onClick={() => { if (!disabled) setOpen((o) => !o); }}
+          disabled={disabled}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label="Approval mode"
+        >
+          <span
+            className="approval-mode-icon"
+            style={{
+              WebkitMaskImage: `url("assets/ui/icons/${current.icon}")`,
+              maskImage: `url("assets/ui/icons/${current.icon}")`,
+            }}
+            aria-hidden="true"
+          />
+          <span className="approval-mode-label">{current.label}</span>
+          <span className="approval-mode-caret" aria-hidden="true" />
+        </button>
+      </PortalTooltip>
+      {open ? (
+        <div className="approval-mode-menu" role="listbox">
+          <div className="approval-mode-header">approval mode</div>
+          <div className="approval-mode-list">
+            {APPROVAL_MODE_OPTIONS.map((opt) => {
+              const active = opt.id === mode;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  className={`approval-mode-option ${active ? 'is-active' : ''}`}
+                  onClick={() => changeMode(opt.id)}
+                  title={opt.desc}
+                >
+                  <span
+                    className="approval-mode-option-icon"
+                    style={{
+                      WebkitMaskImage: `url("assets/ui/icons/${opt.icon}")`,
+                      maskImage: `url("assets/ui/icons/${opt.icon}")`,
+                    }}
+                    aria-hidden="true"
+                  />
+                  <span className="approval-mode-option-text">
+                    <span className="approval-mode-option-label">{opt.label}</span>
+                    <span className="approval-mode-option-desc">{opt.desc}</span>
+                  </span>
+                  {active ? (
+                    <span className="approval-mode-check" aria-hidden="true">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                           strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3.2,8.6 6.6,12 13,4.8" />
+                      </svg>
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+window.ApprovalModePicker = ApprovalModePicker;
+
 function ModelPicker({ value, reasoningEffort, options, reasoningOptions = REASONING_EFFORT_OPTIONS, onChange, onReasoningChange, disabled, loading = false }) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef(null);
@@ -1160,11 +1313,11 @@ function workspaceRelativePath(filePath, workspacePath, homePath = '') {
   const normalizedFile = normalizeFsPath(filePath, homePath);
   if (!normalizedFile) return '';
   const normalizedWorkspace = normalizeFsPath(workspacePath || homePath, homePath);
-  if (!normalizedWorkspace) return basenameFromPath(normalizedFile);
+  if (!normalizedWorkspace) return normalizedFile;
   if (normalizedFile === normalizedWorkspace) return basenameFromPath(normalizedFile);
   const prefix = `${normalizedWorkspace}/`;
   if (normalizedFile.startsWith(prefix)) return normalizedFile.slice(prefix.length);
-  return basenameFromPath(normalizedFile);
+  return normalizedFile;
 }
 
 function stripWorkspaceNamePrefix(relativePath, workspacePath, homePath = '') {
@@ -1216,7 +1369,14 @@ function normalizePastedPathText(text, workspacePath, homePath = '') {
 function clipboardFilesToPathText(files, workspacePath, homePath = '') {
   return Array.from(files || [])
     .map((file) => {
-      const rawPath = file?.path || file?.webkitRelativePath || '';
+      const nativePath = (() => {
+        try {
+          return window.haish?.getPathForFile?.(file) || '';
+        } catch (_) {
+          return '';
+        }
+      })();
+      const rawPath = nativePath || file?.path || file?.webkitRelativePath || '';
       return normalizePastedPathLine(rawPath, workspacePath, { filePaste: true, homePath });
     })
     .filter(Boolean)
@@ -1484,6 +1644,19 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
               </div>
             </PortalTooltip>
           )}
+          <ApprovalModePicker />
+        </div>
+        <div className="td-submit-cluster">
+          <PortalTooltip text={contextTooltip} position="above">
+            <button
+              type="button"
+              className={`context-usage-btn icon-only ${contextUsage?.compressed ? 'compressed' : ''}`}
+              aria-label={contextTooltip}
+              aria-disabled="true"
+            >
+              <span className="context-usage-icon" style={contextRingStyle} aria-hidden="true" />
+            </button>
+          </PortalTooltip>
           <ModelPicker
             value={modelId}
             reasoningEffort={reasoningEffort}
@@ -1493,41 +1666,31 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
             disabled={disabled}
             loading={modelLoading}
           />
+          {running ? (
+            <PortalTooltip text="Stop" position="above">
+              <button
+                type="button"
+                className="deploy-btn stop icon-only"
+                onMouseDown={handleStopPress}
+                onKeyDown={handleStopKey}
+                aria-label="Stop"
+              >
+                <span className="ico ico-stop" aria-hidden="true" />
+              </button>
+            </PortalTooltip>
+          ) : (
+            <PortalTooltip text="Deploy" position="above">
+              <button
+                className="deploy-btn icon-only"
+                onClick={submit}
+                disabled={disabled || !v.trim()}
+                aria-label="Deploy"
+              >
+                <span className="ico ico-deploy" aria-hidden="true" />
+              </button>
+            </PortalTooltip>
+          )}
         </div>
-        <PortalTooltip text={contextTooltip} position="above">
-          <button
-            type="button"
-            className={`context-usage-btn icon-only ${contextUsage?.compressed ? 'compressed' : ''}`}
-            aria-label={contextTooltip}
-            aria-disabled="true"
-          >
-            <span className="context-usage-icon" style={contextRingStyle} aria-hidden="true" />
-          </button>
-        </PortalTooltip>
-        {running ? (
-          <PortalTooltip text="Stop" position="above">
-            <button
-              type="button"
-              className="deploy-btn stop icon-only"
-              onMouseDown={handleStopPress}
-              onKeyDown={handleStopKey}
-              aria-label="Stop"
-            >
-              <span className="ico ico-stop" aria-hidden="true" />
-            </button>
-          </PortalTooltip>
-        ) : (
-          <PortalTooltip text="Deploy" position="above">
-            <button
-              className="deploy-btn icon-only"
-              onClick={submit}
-              disabled={disabled || !v.trim()}
-              aria-label="Deploy"
-            >
-              <span className="ico ico-deploy" aria-hidden="true" />
-            </button>
-          </PortalTooltip>
-        )}
       </div>
     </div>
   );
@@ -2316,7 +2479,7 @@ function ChatImsgCollapsible({ children, maxHeight = 360 }) {
           className="chat-imsg-show-toggle"
           onClick={() => setExpanded((v) => !v)}
         >
-          {expanded ? '收起' : '查看全部'}
+          {expanded ? 'Collapse' : 'View All'}
         </button>
       ) : null}
     </div>
@@ -3143,15 +3306,7 @@ function ChatPanel({
                 </div>
               </PortalTooltip>
             )}
-            <ModelPicker
-              value={modelId}
-              reasoningEffort={reasoningEffort}
-              options={resolvedOptions}
-              onChange={setModelId}
-              onReasoningChange={setReasoningEffort}
-              disabled={disabled}
-              loading={modelLoading}
-            />
+            <ApprovalModePicker />
           </div>
           <div className="chat-composer-submit">
             <PortalTooltip text={contextTooltip} position="above">
@@ -3164,6 +3319,15 @@ function ChatPanel({
                 <span className="context-usage-icon" style={contextRingStyle} aria-hidden="true" />
               </button>
             </PortalTooltip>
+            <ModelPicker
+              value={modelId}
+              reasoningEffort={reasoningEffort}
+              options={resolvedOptions}
+              onChange={setModelId}
+              onReasoningChange={setReasoningEffort}
+              disabled={disabled}
+              loading={modelLoading}
+            />
             {running ? (
               <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Stop">
                 <span className="ico ico-stop" aria-hidden="true" />

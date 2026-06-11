@@ -2894,6 +2894,19 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   const toastTimerRef = useRef(null);
   const initialToastIdRef = useRef(null);
   const conversationActivationSeqRef = useRef(0);
+  // Per-conversation runtime store. Each entry tracks the live state for a
+  // single conversation's task run so multiple conversations can stream in
+  // parallel without stepping on each other. The displayed React state
+  // (`worldTaskState`, `busy`) and the legacy single-instance refs
+  // (`activeRunIdRef` etc.) are mirrors of whichever runtime corresponds to
+  // the currently-shown conversation. See `getRuntime` / `syncDisplayedRuntime`.
+  const runtimesRef = useRef(new Map());
+  // While an SSE flush is happening this holds the conversation id that owns
+  // the in-flight stream. Setters consult it before falling back to
+  // `conversationIdRef.current`, so events from a now-backgrounded conversation
+  // still write to *its* runtime (not the one currently shown). Acts as an
+  // implicit dynamic context — set on flush enter, cleared on flush exit.
+  const streamTargetConvIdRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -3037,6 +3050,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   async function restoreTaskRuntime(taskId, { isCurrentActivation = () => true, updateLiveSnapshot = false } = {}) {
+    if (!isCurrentActivation()) return;
     const detail = await fetchTaskRuntimeDetail(taskId);
     if (!detail || !isCurrentActivation()) return;
     const { normalizedTask, events } = detail;
@@ -3062,25 +3076,28 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 
   async function restoreConversationTaskRuntimes(taskIds, latestTaskId, isCurrentActivation = () => true) {
     const uniqueTaskIds = [...new Set((Array.isArray(taskIds) ? taskIds : []).filter(Boolean))];
-    const restorePromises = [];
     if (latestTaskId && uniqueTaskIds.includes(latestTaskId)) {
-      restorePromises.push(restoreLatestTaskRuntime(latestTaskId, isCurrentActivation));
+      try {
+        await restoreLatestTaskRuntime(latestTaskId, isCurrentActivation);
+      } catch (error) {
+        if (isCurrentActivation()) {
+          console.warn(`task detail restore skipped: ${latestTaskId}`, error);
+        }
+      }
     } else if (isCurrentActivation()) {
       setAgentLive({});
     }
     const detailTaskIds = uniqueTaskIds.filter((taskId) => taskId !== latestTaskId);
-    restorePromises.push(
-      ...detailTaskIds.map((taskId) => restoreTaskRuntime(taskId, { isCurrentActivation }))
-    );
-    const results = await Promise.allSettled(restorePromises);
-    results.forEach((result, index) => {
-      if (result.status === 'rejected' && isCurrentActivation()) {
-        const skippedTaskId = index === 0 && latestTaskId && uniqueTaskIds.includes(latestTaskId)
-          ? latestTaskId
-          : detailTaskIds[latestTaskId && uniqueTaskIds.includes(latestTaskId) ? index - 1 : index];
-        console.warn(`task detail restore skipped: ${skippedTaskId}`, result.reason);
+    for (const taskId of detailTaskIds) {
+      if (!isCurrentActivation()) return;
+      try {
+        await restoreTaskRuntime(taskId, { isCurrentActivation });
+      } catch (error) {
+        if (isCurrentActivation()) {
+          console.warn(`task detail restore skipped: ${taskId}`, error);
+        }
       }
-    });
+    }
   }
 
   useEffect(() => {
@@ -3181,12 +3198,115 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     });
   }
 
-  function updateWorldTaskState(updater) {
-    setWorldTaskState((state) => {
-      const next = updater(state);
-      worldTaskStateRef.current = next;
-      cacheTaskImageAttachments(next);
-      return next;
+  function createEmptyRuntime() {
+    return {
+      worldTaskState: createEmptyWorldTaskState(),
+      busy: false,
+      activeRunId: null,
+      activeTaskId: null,
+      fetchController: null,
+      answerBuffer: '',
+      cancelledRunIds: new Set(),
+    };
+  }
+
+  function getRuntime(convId, { create = false } = {}) {
+    if (!convId) return null;
+    const map = runtimesRef.current;
+    let rt = map.get(convId);
+    if (!rt && create) {
+      rt = createEmptyRuntime();
+      map.set(convId, rt);
+    }
+    return rt || null;
+  }
+
+  // Mutate a conversation's runtime in place. If `convId` is the conversation
+  // currently shown in the UI, also mirror the relevant fields to the displayed
+  // React state + legacy refs so existing render paths keep working.
+  function mutateRuntime(convId, mutator) {
+    if (!convId) return null;
+    const rt = getRuntime(convId, { create: true });
+    mutator(rt);
+    if (convId === conversationIdRef.current) {
+      syncDisplayedRuntime(rt);
+    }
+    return rt;
+  }
+
+  // Snapshot a runtime's task state into the displayed React state + refs.
+  // Called on conversation switch and after every mutation that targeted the
+  // currently-shown conversation.
+  function syncDisplayedRuntime(rt) {
+    if (!rt) return;
+    activeRunIdRef.current = rt.activeRunId;
+    activeTaskIdRef.current = rt.activeTaskId;
+    fetchAbortRef.current = rt.fetchController;
+    answerBufferRef.current = rt.answerBuffer;
+    cancelledRunIdsRef.current = rt.cancelledRunIds;
+    worldTaskStateRef.current = rt.worldTaskState;
+    cacheTaskImageAttachments(rt.worldTaskState);
+    setWorldTaskState(rt.worldTaskState);
+    setBusy(rt.busy);
+  }
+
+  function activeRuntimeTargetConvId(explicit) {
+    return explicit || streamTargetConvIdRef.current || conversationIdRef.current;
+  }
+
+  function setRuntimeBusy(value, explicit = null) {
+    const cid = activeRuntimeTargetConvId(explicit);
+    if (cid) mutateRuntime(cid, (rt) => { rt.busy = value; });
+    else setBusy(value);
+  }
+  function setRuntimeActiveTaskId(value, explicit = null) {
+    const cid = activeRuntimeTargetConvId(explicit);
+    if (cid) mutateRuntime(cid, (rt) => { rt.activeTaskId = value; });
+    else activeTaskIdRef.current = value;
+  }
+  function setRuntimeActiveRunId(value, explicit = null) {
+    const cid = activeRuntimeTargetConvId(explicit);
+    if (cid) mutateRuntime(cid, (rt) => { rt.activeRunId = value; });
+    else activeRunIdRef.current = value;
+  }
+  function setRuntimeFetchController(value, explicit = null) {
+    const cid = activeRuntimeTargetConvId(explicit);
+    if (cid) mutateRuntime(cid, (rt) => { rt.fetchController = value; });
+    else fetchAbortRef.current = value;
+  }
+  function setRuntimeAnswerBuffer(value, explicit = null) {
+    const cid = activeRuntimeTargetConvId(explicit);
+    if (cid) mutateRuntime(cid, (rt) => { rt.answerBuffer = value; });
+    else answerBufferRef.current = value;
+  }
+  function readRuntimeAnswerBuffer(explicit = null) {
+    const cid = activeRuntimeTargetConvId(explicit);
+    if (cid) {
+      const rt = getRuntime(cid);
+      if (rt) return rt.answerBuffer;
+    }
+    return answerBufferRef.current;
+  }
+
+  // `targetConvId` (optional) lets SSE handlers route their write to the
+  // conversation that owns the in-flight stream, even if the user has since
+  // switched to a different conversation. When omitted, writes use the stream
+  // context (if set) or fall back to the currently-shown conversation.
+  function updateWorldTaskState(updater, targetConvId = null) {
+    const convId = activeRuntimeTargetConvId(targetConvId);
+    if (!convId) {
+      // No active conversation context — fall back to legacy single-state path
+      // so we don't drop the write (rare, mostly during early bootstrap).
+      setWorldTaskState((state) => {
+        const next = updater(state);
+        worldTaskStateRef.current = next;
+        cacheTaskImageAttachments(next);
+        return next;
+      });
+      return;
+    }
+    mutateRuntime(convId, (rt) => {
+      rt.worldTaskState = updater(rt.worldTaskState);
     });
   }
 
@@ -3229,12 +3349,15 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     });
   }
 
+  // Called when the user navigates AWAY from a conversation. Previously this
+  // wiped the global refs + busy state — which had the side effect of killing
+  // any in-flight stream for the conversation being left. With per-conversation
+  // runtimes, leaving is now a pure-display operation: the leaving runtime is
+  // preserved (its stream keeps running in the background), we only reset the
+  // ambient UI bits that don't belong to any conversation (upload chrome,
+  // scene actors). The displayed React state will be re-synced when the new
+  // conversation activates via `syncDisplayedRuntime`.
   function detachActiveRunFromCurrentConversation() {
-    activeRunIdRef.current = null;
-    activeTaskIdRef.current = null;
-    fetchAbortRef.current = null;
-    answerBufferRef.current = '';
-    setBusy(false);
     setUploadState({ active: false, fileName: '' });
     dropPendingSceneItems();
     resetSceneActors();
@@ -3242,6 +3365,10 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 
   async function activateConversationDetail(detail, { restoreLatest = true } = {}) {
     if (!detail?.conversation_id) return;
+    // Race model (matches f2ee298 baseline): every activate bumps the
+    // activation seq; any awaited work that resumes after a newer activation
+    // started will see its seq invalidated and bail. handleSelect{Conversation,
+    // Project,...} also use the same seq for fetch-stage cancellation.
     const activationSeq = invalidateConversationActivation();
     const isCurrentActivation = () => isConversationActivationCurrent(activationSeq);
     // 切走前先把当前 conversation 的实时 worldTaskState flush 回
@@ -3251,7 +3378,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     setWorkspaceState((state) => {
       const previousId = state.activeConversationId;
       if (!previousId || previousId === detail.conversation_id) return state;
-      const snapshot = worldTaskStateRef.current;
+      const previousRuntime = getRuntime(previousId);
+      const snapshot = previousRuntime ? previousRuntime.worldTaskState : worldTaskStateRef.current;
       const currentTasks = snapshot.taskOrder
         .map((taskId) => snapshot.tasksById[taskId])
         .filter(Boolean);
@@ -3292,27 +3420,49 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     applyConversationSnapshot(detail);
     resetSceneActors();
     setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
-    const nextWorldTaskState = {
-      activeTaskId: null,
-      pendingTask: null,
-      taskOrder: sortTaskIdsForRestore(restoredTasks, latestTaskId),
-      tasksById: Object.fromEntries(
-        restoredTasks.map((task) => [
-          task.task_id,
-          taskSummaryToRuntimeTask(
-            task,
-            mergeChatImageRefs(
-              taskImageAttachmentsRef.current.get(task.task_id) || [],
-              messageImageFallbacks.get(task.task_id) || [],
+
+    // If the conversation we're switching INTO already has a runtime with a
+    // live stream, don't blow away its in-flight state — just bring the
+    // display up to date with whatever the runtime currently holds. Otherwise
+    // (no runtime or a fully-quiescent one) we rebuild the world state from
+    // the freshly-fetched detail and seed/refresh the runtime accordingly.
+    const incomingRuntime = getRuntime(restoredConversationId);
+    const incomingHasInflight = Boolean(
+      incomingRuntime && (incomingRuntime.busy || incomingRuntime.activeRunId || incomingRuntime.fetchController)
+    );
+
+    if (incomingHasInflight) {
+      syncDisplayedRuntime(incomingRuntime);
+    } else {
+      const nextWorldTaskState = {
+        activeTaskId: null,
+        pendingTask: null,
+        taskOrder: sortTaskIdsForRestore(restoredTasks, latestTaskId),
+        tasksById: Object.fromEntries(
+          restoredTasks.map((task) => [
+            task.task_id,
+            taskSummaryToRuntimeTask(
+              task,
+              mergeChatImageRefs(
+                taskImageAttachmentsRef.current.get(task.task_id) || [],
+                messageImageFallbacks.get(task.task_id) || [],
+              ),
+              userIdRef.current,
             ),
-            userIdRef.current,
-          ),
-        ])
-      ),
-    };
-    worldTaskStateRef.current = nextWorldTaskState;
-    cacheTaskImageAttachments(nextWorldTaskState);
-    setWorldTaskState(nextWorldTaskState);
+          ])
+        ),
+      };
+      mutateRuntime(restoredConversationId, (rt) => {
+        rt.worldTaskState = nextWorldTaskState;
+        rt.busy = false;
+        rt.activeRunId = null;
+        rt.activeTaskId = null;
+        rt.fetchController = null;
+        rt.answerBuffer = '';
+        rt.cancelledRunIds = new Set();
+      });
+    }
+
     if (restoreLatest && restoredTasks.length > 0) {
       try {
         await restoreConversationTaskRuntimes(
@@ -3340,13 +3490,17 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     return detailResponse.json();
   }
 
-  function ensureTaskForEvent(event) {
+  function ensureTaskForEvent(event, targetConvId = null) {
     const eventConversationId = event.conversation_id || null;
-    const currentConversationId = conversationIdRef.current;
-    if (eventConversationId && currentConversationId && eventConversationId !== currentConversationId) {
+    const ownerConvId = targetConvId || conversationIdRef.current;
+    if (eventConversationId && ownerConvId && eventConversationId !== ownerConvId) {
       return null;
     }
-    const taskId = event.task_id || activeTaskIdRef.current || worldTaskStateRef.current.activeTaskId;
+    const ownerRuntime = ownerConvId ? getRuntime(ownerConvId) : null;
+    const seedActiveTaskId = ownerRuntime
+      ? ownerRuntime.activeTaskId || ownerRuntime.worldTaskState.activeTaskId
+      : activeTaskIdRef.current || worldTaskStateRef.current.activeTaskId;
+    const taskId = event.task_id || seedActiveTaskId;
     if (!taskId) return null;
     if (userCancelledTaskIdsRef.current.has(taskId)) {
       return null;
@@ -3374,19 +3528,23 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           },
         },
       };
-    });
+    }, ownerConvId);
 
-    activeTaskIdRef.current = taskId;
+    if (ownerConvId) {
+      mutateRuntime(ownerConvId, (rt) => { rt.activeTaskId = taskId; });
+    } else {
+      activeTaskIdRef.current = taskId;
+    }
     return taskId;
   }
 
-  function updateTaskById(taskId, updater) {
+  function updateTaskById(taskId, updater, targetConvId = null) {
     if (!taskId) return;
     updateWorldTaskState((state) => {
       const task = state.tasksById[taskId];
       if (!task) return state;
-      const currentConversationId = conversationIdRef.current;
-      if (task.conversationId && currentConversationId && task.conversationId !== currentConversationId) {
+      const expectedConvId = activeRuntimeTargetConvId(targetConvId);
+      if (task.conversationId && expectedConvId && task.conversationId !== expectedConvId) {
         return state;
       }
       const nextTask = typeof updater === 'function' ? updater(task) : { ...task, ...updater };
@@ -3400,7 +3558,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           },
         },
       };
-    });
+    }, targetConvId);
   }
 
   function getTaskById(taskId) {
@@ -3731,20 +3889,22 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   function finalizeTaskPresentation(taskId, resultText) {
     if (!taskId) return;
     pendingPresentationTaskIdsRef.current.delete(taskId);
-    updateTaskById(taskId, (task) => ({
-      ...task,
-      status: ['failed', 'cancelled', 'aborted'].includes(task.status) ? normalizeTaskStatus(task.status) : 'done',
+    const task = getTaskById(taskId);
+    const taskConvId = task?.conversationId || null;
+    updateTaskById(taskId, (run) => ({
+      ...run,
+      status: ['failed', 'cancelled', 'aborted'].includes(run.status) ? normalizeTaskStatus(run.status) : 'done',
       stage: 'done',
-      completedAt: task.completedAt || Date.now(),
-      answerText: resultText || task.answerText,
+      completedAt: run.completedAt || Date.now(),
+      answerText: resultText || run.answerText,
       presentationPending: false,
       serverFinished: true,
       sceneCatchup: false,
-    }));
-    updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
-    setBusy(false);
-    activeTaskIdRef.current = null;
-    fetchAbortRef.current = null;
+    }), taskConvId);
+    updateWorldTaskState((state) => ({ ...state, activeTaskId: null }), taskConvId);
+    setRuntimeBusy(false, taskConvId);
+    setRuntimeActiveTaskId(null, taskConvId);
+    setRuntimeFetchController(null, taskConvId);
     dropPendingSceneItems(taskId);
     resetSceneActors();
     completeTaskAgents(taskId, 'done');
@@ -4658,7 +4818,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   async function handleAttachmentSelect(file) {
     if (!file || !conversationId) return;
     const uploadController = new AbortController();
-    fetchAbortRef.current = uploadController;
+    setRuntimeFetchController(uploadController, conversationId);
     setComposerAttachment({
       name: file.name,
       size: file.size,
@@ -4688,8 +4848,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       }
       throw error;
     } finally {
-      if (fetchAbortRef.current === uploadController) {
-        fetchAbortRef.current = null;
+      const rt = getRuntime(conversationId);
+      if (rt && rt.fetchController === uploadController) {
+        setRuntimeFetchController(null, conversationId);
       }
       setUploadState({ active: false, fileName: '' });
     }
@@ -4770,16 +4931,16 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     }
   }
 
-  function applyWorldEvent(event) {
+  function applyWorldEvent(event, targetConvId = null) {
     if (event.type === 'llm_thinking_delta') {
       return;
     }
     const eventConversationId = event.conversation_id || null;
-    const currentConversationId = conversationIdRef.current;
-    if (eventConversationId && currentConversationId && eventConversationId !== currentConversationId) {
+    const ownerConvId = activeRuntimeTargetConvId(targetConvId);
+    if (eventConversationId && ownerConvId && eventConversationId !== ownerConvId) {
       return;
     }
-    const taskId = ensureTaskForEvent(event);
+    const taskId = ensureTaskForEvent(event, ownerConvId);
     if (!taskId) return;
     if (
       chatFinalizedTaskIdsRef.current.has(taskId)
@@ -4980,20 +5141,20 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         if (chatFinalizedTaskIdsRef.current.has(taskId) || getTaskById(taskId)?.serverFinished) {
           break;
         }
-        answerBufferRef.current = appendAnswerDelta(
-          answerBufferRef.current,
+        setRuntimeAnswerBuffer(appendAnswerDelta(
+          readRuntimeAnswerBuffer(),
           event.delta || event.text || event.content_delta || ''
-        );
+        ));
         updateTaskById(taskId, (run) => ({
           ...run,
-          answerText: answerBufferRef.current,
+          answerText: readRuntimeAnswerBuffer(),
           chatStreamText: run.chatStreamText,
           loopIndex,
         }));
         break;
       }
       case 'llm_final_answer': {
-        answerBufferRef.current = event.content || answerBufferRef.current;
+        setRuntimeAnswerBuffer(event.content || readRuntimeAnswerBuffer());
         if (isChatOriginTask(taskId)) {
           chatFinalizedTaskIdsRef.current.add(taskId);
           updateTaskById(taskId, (run) => ({
@@ -5002,15 +5163,15 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
             stage: 'done',
             completedAt: run.completedAt || Date.now(),
             loopIndex,
-            answerText: answerBufferRef.current,
+            answerText: readRuntimeAnswerBuffer(),
             presentationPending: false,
             serverFinished: true,
             sceneCatchup: false,
             providerState: run.providerState ? { ...run.providerState, state: 'completed' } : run.providerState,
           }));
           updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
-          setBusy(false);
-          activeTaskIdRef.current = null;
+          setRuntimeBusy(false);
+          setRuntimeActiveTaskId(null);
           completeTaskAgents(taskId, 'done');
           break;
         }
@@ -5018,7 +5179,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           ...run,
           stage: 'check',
           loopIndex,
-          answerText: answerBufferRef.current,
+          answerText: readRuntimeAnswerBuffer(),
           providerState: run.providerState ? { ...run.providerState, state: 'completed' } : run.providerState,
         }));
         break;
@@ -5032,15 +5193,15 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
             status: 'done',
             stage: 'done',
             completedAt: run.completedAt || Date.now(),
-            answerText: run.answerText || event.content || answerBufferRef.current,
+            answerText: run.answerText || event.content || readRuntimeAnswerBuffer(),
             presentationPending: false,
             serverFinished: true,
             sceneCatchup: false,
           }));
           updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
-          setBusy(false);
-          activeTaskIdRef.current = null;
-          fetchAbortRef.current = null;
+          setRuntimeBusy(false);
+          setRuntimeActiveTaskId(null);
+          setRuntimeFetchController(null);
           dropPendingSceneItems(taskId);
           completeTaskAgents(taskId, 'done');
           break;
@@ -5050,7 +5211,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           ...run,
           stage: 'check',
           loopIndex,
-          answerText: event.content || answerBufferRef.current,
+          answerText: event.content || readRuntimeAnswerBuffer(),
           presentationPending: true,
         }));
         break;
@@ -5059,9 +5220,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         chatFinalizedTaskIdsRef.current.add(taskId);
         updateTaskById(taskId, (run) => applyTerminalTaskState(run, 'cancelled', { aborted: true }));
         updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
-        setBusy(false);
-        activeTaskIdRef.current = null;
-        fetchAbortRef.current = null;
+        setRuntimeBusy(false);
+        setRuntimeActiveTaskId(null);
+        setRuntimeFetchController(null);
         dropPendingSceneItems(taskId);
         resetSceneActors();
         completeTaskAgents(taskId, 'cancelled');
@@ -5074,9 +5235,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           aborted: false,
         }));
         updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
-        setBusy(false);
-        activeTaskIdRef.current = null;
-        fetchAbortRef.current = null;
+        setRuntimeBusy(false);
+        setRuntimeActiveTaskId(null);
+        setRuntimeFetchController(null);
         dropPendingSceneItems(taskId);
         resetSceneActors();
         completeTaskAgents(taskId, 'failed');
@@ -5143,9 +5304,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           break;
         }
         updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
-        setBusy(false);
-        activeTaskIdRef.current = null;
-        fetchAbortRef.current = null;
+        setRuntimeBusy(false);
+        setRuntimeActiveTaskId(null);
+        setRuntimeFetchController(null);
         dropPendingSceneItems(taskId);
         resetSceneActors();
         completeTaskAgents(taskId, getTaskById(taskId)?.status || event.status || 'done');
@@ -5166,11 +5327,14 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     }
     const runId = pendingTask.id || generateHexId();
     pendingTask.id = runId;
-    activeRunIdRef.current = runId;
-    cancelledRunIdsRef.current.delete(runId);
+    // Ensure the runtime exists and prime its run-local state.
+    mutateRuntime(runConversationId, (rt) => {
+      rt.activeRunId = runId;
+      rt.cancelledRunIds.delete(runId);
+      rt.answerBuffer = '';
+      rt.busy = true;
+    });
     abortRef.current = false;
-    answerBufferRef.current = '';
-    setBusy(true);
     updateWorldTaskState((state) => ({
       ...state,
       pendingTask: {
@@ -5178,16 +5342,17 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         status: 'running',
         stage: 'assigned',
       },
-    }));
+    }), runConversationId);
 
     if (pendingTask.attachment?.file && !pendingTask.attachment?.uploaded) {
       const uploadController = new AbortController();
       const uploadName = pendingTask.attachment.name || pendingTask.attachment.file.name || 'document';
-      fetchAbortRef.current = uploadController;
+      setRuntimeFetchController(uploadController, runConversationId);
       setUploadState({ active: true, fileName: uploadName });
       try {
         const payload = await uploadAttachment(pendingTask.attachment.file, uploadController.signal);
-        if (activeRunIdRef.current !== runId || conversationIdRef.current !== runConversationId) {
+        const runRuntimeForGuard = getRuntime(runConversationId);
+        if (!runRuntimeForGuard || runRuntimeForGuard.activeRunId !== runId) {
           return;
         }
         const nextAttachment = {
@@ -5210,15 +5375,16 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         }
         throw error;
       } finally {
-        if (fetchAbortRef.current === uploadController) {
-          fetchAbortRef.current = null;
+        const guardRt = getRuntime(runConversationId);
+        if (guardRt && guardRt.fetchController === uploadController) {
+          setRuntimeFetchController(null, runConversationId);
         }
         setUploadState({ active: false, fileName: '' });
       }
     }
 
     const controller = new AbortController();
-    fetchAbortRef.current = controller;
+    setRuntimeFetchController(controller, runConversationId);
     const response = await authFetch(`${API_BASE}/api/conversations/${runConversationId}/tasks/stream`, {
       method: 'POST',
       headers: buildApiHeaders(),
@@ -5251,27 +5417,33 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 
     const queuedEvents = [];
     let flushTimer = null;
+    const runRuntime = getRuntime(runConversationId, { create: true });
     const flushQueuedEvents = () => {
       if (flushTimer) {
         clearTimeout(flushTimer);
         flushTimer = null;
       }
       const batch = queuedEvents.splice(0);
-      for (const event of batch) {
-        if (
-          controller.signal.aborted
-          || abortRef.current
-          || activeRunIdRef.current !== runId
-          || cancelledRunIdsRef.current.has(runId)
-          || conversationIdRef.current !== runConversationId
-          || (event.conversation_id && event.conversation_id !== runConversationId)
-        ) {
-          continue;
+      const previousTarget = streamTargetConvIdRef.current;
+      streamTargetConvIdRef.current = runConversationId;
+      try {
+        for (const event of batch) {
+          if (
+            controller.signal.aborted
+            || abortRef.current
+            || runRuntime.activeRunId !== runId
+            || runRuntime.cancelledRunIds.has(runId)
+            || (event.conversation_id && event.conversation_id !== runConversationId)
+          ) {
+            continue;
+          }
+          if (event.task_id && !chatFinalizedTaskIdsRef.current.has(event.task_id)) {
+            setRuntimeActiveTaskId(event.task_id, runConversationId);
+          }
+          applyWorldEvent(event, runConversationId);
         }
-        if (event.task_id && !chatFinalizedTaskIdsRef.current.has(event.task_id)) {
-          activeTaskIdRef.current = event.task_id;
-        }
-        applyWorldEvent(event);
+      } finally {
+        streamTargetConvIdRef.current = previousTarget;
       }
     };
     const queueWorldEvent = (event) => {
@@ -5294,14 +5466,14 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function handleStop() {
-    const currentTaskState = worldTaskStateRef.current;
-    let taskId = activeTaskIdRef.current || currentTaskState.activeTaskId || null;
-    // After a switch-away → switch-back round-trip, the local refs
-    // (activeRunIdRef / activeTaskIdRef / fetchAbortRef) are all cleared by
-    // detachActiveRunFromCurrentConversation, so the old "do nothing if no
-    // local taskId" path makes stop a no-op even though the server task is
-    // still running. Fall back to the latest running/queued task we know
-    // about locally so we can at least call the server cancel endpoint.
+    // Stop targets the currently-shown conversation only — other backgrounded
+    // conversations continue running. All ref/state reads scope to its runtime.
+    const targetConvId = conversationIdRef.current;
+    const targetRuntime = targetConvId ? getRuntime(targetConvId) : null;
+    const currentTaskState = targetRuntime ? targetRuntime.worldTaskState : worldTaskStateRef.current;
+    let taskId = (targetRuntime ? targetRuntime.activeTaskId : activeTaskIdRef.current)
+      || currentTaskState.activeTaskId
+      || null;
     if (!taskId) {
       const tasksById = currentTaskState.tasksById || {};
       const candidates = Object.values(tasksById).filter((task) => {
@@ -5316,33 +5488,35 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       const fallback = candidates[0];
       if (fallback?.taskId) taskId = fallback.taskId;
     }
-    const runId = activeRunIdRef.current;
-    const hasActiveRun = busy || taskId || currentTaskState.pendingTask || fetchAbortRef.current;
+    const runId = targetRuntime ? targetRuntime.activeRunId : activeRunIdRef.current;
+    const controllerToAbort = targetRuntime ? targetRuntime.fetchController : fetchAbortRef.current;
+    const runtimeBusy = targetRuntime ? targetRuntime.busy : busy;
+    const hasActiveRun = runtimeBusy || taskId || currentTaskState.pendingTask || controllerToAbort;
     if (!hasActiveRun) return;
     abortRef.current = true;
-    if (runId) cancelledRunIdsRef.current.add(runId);
+    if (runId && targetRuntime) targetRuntime.cancelledRunIds.add(runId);
     if (taskId) {
       userCancelledTaskIdsRef.current.add(taskId);
       cancelActiveTask(taskId).catch((error) => {
         console.error('cancel failed', error);
       });
     } else {
-      cancelActiveConversationTask(conversationId).catch((error) => {
+      cancelActiveConversationTask(targetConvId).catch((error) => {
         console.error('conversation cancel failed', error);
       });
     }
-    fetchAbortRef.current?.abort?.();
+    controllerToAbort?.abort?.();
     if (taskId) {
       // 关键：把 taskId 加入 finalized set，让 applyWorldEvent 早退，
       // 避免后续 in-flight 的 SSE 事件把 status 从 'cancelled' 改回 'running'。
       chatFinalizedTaskIdsRef.current.add(taskId);
-      updateTaskById(taskId, (task) => applyTerminalTaskState(task, 'cancelled', { aborted: true }));
+      updateTaskById(taskId, (task) => applyTerminalTaskState(task, 'cancelled', { aborted: true }), targetConvId);
       updateWorldTaskState((state) => ({
         ...state,
         activeTaskId: null,
         pendingTask: null,
         taskOrder: state.taskOrder.includes(taskId) ? state.taskOrder : [...state.taskOrder, taskId],
-      }));
+      }), targetConvId);
       dropPendingSceneItems(taskId);
     } else {
       updateWorldTaskState((state) => ({
@@ -5351,15 +5525,23 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         pendingTask: state.pendingTask
           ? applyTerminalTaskState(state.pendingTask, 'cancelled', { aborted: true })
           : null,
-      }));
+      }), targetConvId);
       dropPendingSceneItems();
     }
-    activeTaskIdRef.current = null;
-    activeRunIdRef.current = null;
-    fetchAbortRef.current = null;
-    updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
+    if (targetConvId) {
+      mutateRuntime(targetConvId, (rt) => {
+        rt.activeTaskId = null;
+        rt.activeRunId = null;
+        rt.fetchController = null;
+        rt.busy = false;
+      });
+    } else {
+      activeTaskIdRef.current = null;
+      activeRunIdRef.current = null;
+      fetchAbortRef.current = null;
+      setBusy(false);
+    }
     resetSceneActors();
-    setBusy(false);
   }
 
   function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments) {
@@ -5416,9 +5598,13 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     updateWorldTaskState((state) => ({
       ...state,
       pendingTask,
-    }));
+    }), conversationId);
+    const deployConvId = conversationId;
     executeQuest(pendingTask).catch((error) => {
-      if (activeRunIdRef.current !== pendingTask.id) {
+      // The failure belongs to the conversation that owns this pendingTask,
+      // not whichever conversation is currently shown.
+      const deployRuntime = getRuntime(deployConvId);
+      if (deployRuntime && deployRuntime.activeRunId !== pendingTask.id) {
         return;
       }
       if (abortRef.current || error?.name === 'AbortError') {
@@ -5426,15 +5612,16 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       }
       console.error(error);
       const errorMessage = String(error?.message || error);
-      if (activeTaskIdRef.current) {
-        chatFinalizedTaskIdsRef.current.add(activeTaskIdRef.current);
-        updateTaskById(activeTaskIdRef.current, (task) => ({
+      const ownedTaskId = deployRuntime ? deployRuntime.activeTaskId : activeTaskIdRef.current;
+      if (ownedTaskId) {
+        chatFinalizedTaskIdsRef.current.add(ownedTaskId);
+        updateTaskById(ownedTaskId, (task) => ({
           ...applyTerminalTaskState(task, 'failed', {
             error: errorMessage,
             aborted: false,
           }),
-        }));
-        updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
+        }), deployConvId);
+        updateWorldTaskState((state) => ({ ...state, activeTaskId: null }), deployConvId);
       } else {
         updateWorldTaskState((state) => ({
           ...state,
@@ -5444,21 +5631,21 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
                 aborted: false,
               })
             : null,
-        }));
+        }), deployConvId);
       }
-      setBusy(false);
-      if (activeTaskIdRef.current) {
-        dropPendingSceneItems(activeTaskIdRef.current);
+      setRuntimeBusy(false, deployConvId);
+      if (ownedTaskId) {
+        dropPendingSceneItems(ownedTaskId);
       } else {
         dropPendingSceneItems();
       }
       resetSceneActors();
-      if (activeTaskIdRef.current) {
-        completeTaskAgents(activeTaskIdRef.current, 'failed');
+      if (ownedTaskId) {
+        completeTaskAgents(ownedTaskId, 'failed');
       }
-      activeTaskIdRef.current = null;
-      activeRunIdRef.current = null;
-      fetchAbortRef.current = null;
+      setRuntimeActiveTaskId(null, deployConvId);
+      setRuntimeActiveRunId(null, deployConvId);
+      setRuntimeFetchController(null, deployConvId);
     });
   }
 
@@ -5725,9 +5912,15 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       ? [...confirmedTasks, pendingTaskToQuest(worldTaskState.pendingTask)]
       : confirmedTasks;
   }, [worldTaskState]);
+  const selectedConversationId = workspaceState.activeConversationId || null;
+  const conversationSelectionPending = Boolean(
+    selectedConversationId
+    && conversationId
+    && selectedConversationId !== conversationId
+  );
   const panelWorkspaceState = useMemo(() => normalizeWorkspaceOrdering({
     ...workspaceState,
-    activeConversationId: conversationId || workspaceState.activeConversationId,
+    activeConversationId: workspaceState.activeConversationId,
     projects: workspaceState.projects.map((project) => ({
       ...project,
       conversations: project.conversations.map((item) => (
@@ -5875,9 +6068,11 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     if (!activeTaskId || !currentTask) return;
     if (isTaskActuallyActive(currentTask)) return;
     if (!busy && !currentConversationActive) return;
-    setBusy(false);
-    activeTaskIdRef.current = null;
-    fetchAbortRef.current = null;
+    // This sanity reset only ever applies to the conversation currently shown
+    // — `worldTaskState` is the mirror of the displayed runtime.
+    setRuntimeBusy(false);
+    setRuntimeActiveTaskId(null);
+    setRuntimeFetchController(null);
     updateWorldTaskState((state) => (
       state.activeTaskId === activeTaskId
         ? { ...state, activeTaskId: null }
@@ -6054,7 +6249,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
                     conversationId={conversationId}
                     messages={chatMessages}
                     running={busy || currentConversationActive}
-                    disabled={busy || currentConversationActive || uploadState.active || calibrationMode || !conversationReady || !!conversationError}
+                    disabled={busy || currentConversationActive || uploadState.active || calibrationMode || !conversationReady || conversationSelectionPending || !!conversationError}
                     onSend={(text, attachment, modelId, reasoningEffort, imageAttachments) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments)}
                     onStop={handleStop}
                     onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }}
@@ -6080,7 +6275,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
                     MAP_W={MAP_W}
                     MAP_H={MAP_H}
                     onViewChange={setMapView}
-                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={busy || currentConversationActive || uploadState.active || calibrationMode || !conversationReady || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} />}
+                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={busy || currentConversationActive || uploadState.active || calibrationMode || !conversationReady || conversationSelectionPending || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} />}
                   >
                     <div ref={stageRef} className="office-map">
                       {calibrationMode && calibrationTarget === 'routes' && selectedRouteId && <window.CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}

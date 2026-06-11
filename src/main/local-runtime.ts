@@ -29,6 +29,9 @@ const LEGACY_DEFAULT_RUNTIME_REPO = '/Users/zhanruitao/py-project/haishihua-agen
 const BUNDLED_RUNTIME_DIR = 'haishihua-agent-core';
 const BUNDLED_RUNTIME_EXECUTABLE = path.join('bin', 'haish-runtime', 'haish-runtime');
 const START_TIMEOUT_MS = 60_000;
+// Python 后端及其 MCP 子进程（含 Chromium）退出窗口。SIGTERM 后等
+// 这么久还没退就 SIGKILL，防止 Electron quit 后残留 Chrome 占内存。
+const SHUTDOWN_GRACE_MS = 5_000;
 
 // Dev-mode lookup order for the Python backend repo (haishihua-agent-core):
 //   1. HAISH_LOCAL_RUNTIME_CWD env var (explicit override)
@@ -266,11 +269,46 @@ export function getLocalRuntimeState(): LocalRuntimeState {
   return state;
 }
 
-export function stopLocalRuntime(): void {
+export async function stopLocalRuntime(): Promise<void> {
   state = { ...state, status: 'stopped' };
-  if (child && !child.killed) {
-    child.kill();
-  }
+  const current = child;
   child = null;
   startPromise = null;
+  if (!current || current.exitCode !== null || current.signalCode !== null) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(killTimer);
+      clearTimeout(reapTimer);
+      resolve();
+    };
+
+    current.once('exit', finish);
+
+    try {
+      current.kill('SIGTERM');
+    } catch {
+      finish();
+      return;
+    }
+
+    // SIGTERM 没在窗口内生效就升级到 SIGKILL，再给 500ms 让 OS 回收。
+    const killTimer = setTimeout(() => {
+      if (settled) return;
+      if (current.exitCode === null && current.signalCode === null) {
+        try {
+          current.kill('SIGKILL');
+        } catch {
+          // 已经死了
+        }
+      }
+    }, SHUTDOWN_GRACE_MS);
+
+    const reapTimer = setTimeout(finish, SHUTDOWN_GRACE_MS + 500);
+  });
 }

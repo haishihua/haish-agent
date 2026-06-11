@@ -5497,11 +5497,33 @@ select,
   display: block;
 }
 
+/* ModelPicker sits on the right side of the composer footer (chat + bot), so
+   its dropdown must open toward the left to avoid being clipped by the window. */
+.chat-composer-submit .model-picker-menu,
+.td-submit-cluster .model-picker-menu {
+  left: auto;
+  right: 0;
+}
+.chat-composer-submit .model-picker-flyout,
+.td-submit-cluster .model-picker-flyout {
+  left: auto;
+  right: calc(100% - 1px);
+}
+
+/* TaskDelegation submit cluster: groups context-usage + ModelPicker + deploy
+   button on the right side of td-actions, mirroring chat composer layout. */
+.task-delegation .td-submit-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
 .task-delegation .context-usage-btn {
   --context-used: 0%;
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -5532,8 +5554,8 @@ select,
 }
 .task-delegation .context-usage-icon {
   --context-used: 0%;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   display: inline-block;
   background: conic-gradient(var(--gold, #efbf64) 0 var(--context-used), #ffffff var(--context-used) 100%);
   -webkit-mask: url("assets/ui/icons/color-palette.png") center / contain no-repeat;
@@ -7079,4 +7101,178 @@ select,
   }
   .task-delegation textarea { height: 22px; min-height: 22px; }
   .topbar-title { font-size: 12px; }
+}
+
+/* ===== Approval Mode Picker (next to attach icon in composer) ===== */
+.approval-mode-picker {
+  position: relative;
+  flex-shrink: 0;
+}
+.approval-mode-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px 0 10px;
+  border: 1px solid rgba(72,83,109,0.82);
+  background: linear-gradient(180deg, #171d2d, #121724);
+  color: var(--ink);
+  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: 10px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+.approval-mode-trigger:hover,
+.approval-mode-picker.is-open .approval-mode-trigger {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.approval-mode-trigger:focus-visible {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px rgba(239,191,100,0.32);
+}
+.approval-mode-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.approval-mode-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;       mask-repeat: no-repeat;
+  -webkit-mask-position: center;        mask-position: center;
+  -webkit-mask-size: contain;           mask-size: contain;
+  image-rendering: auto;
+  vertical-align: middle;
+  color: rgba(218,221,239,0.88);
+  transition: color 0.12s ease;
+}
+.approval-mode-trigger:hover .approval-mode-icon,
+.approval-mode-picker.is-open .approval-mode-icon {
+  color: var(--gold);
+}
+.approval-mode-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.approval-mode-caret {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.14s ease;
+}
+.approval-mode-picker.is-open .approval-mode-caret {
+  transform: rotate(225deg) translateY(-2px);
+}
+.approval-mode-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  min-width: 280px;
+  padding: 6px;
+  border: 1px solid rgba(239,191,100,0.42);
+  background: linear-gradient(180deg, #1a2030, #11151f);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.56);
+  border-radius: 12px;
+  z-index: 30;
+}
+.approval-mode-header {
+  padding: 5px 10px 6px;
+  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(218,221,239,0.5);
+  border-bottom: 1px dashed rgba(72,83,109,0.55);
+  margin-bottom: 4px;
+}
+.approval-mode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.approval-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.approval-mode-option:hover {
+  background: rgba(239,191,100,0.14);
+  color: var(--gold);
+}
+.approval-mode-option.is-active {
+  color: var(--gold);
+}
+.approval-mode-option-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;       mask-repeat: no-repeat;
+  -webkit-mask-position: center;        mask-position: center;
+  -webkit-mask-size: contain;           mask-size: contain;
+  image-rendering: auto;
+  vertical-align: middle;
+  color: rgba(218,221,239,0.88);
+  transition: color 0.1s ease;
+}
+.approval-mode-option:hover .approval-mode-option-icon,
+.approval-mode-option.is-active .approval-mode-option-icon {
+  color: var(--gold);
+}
+.approval-mode-option-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.approval-mode-option-label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+.approval-mode-option-desc {
+  font-size: 11px;
+  font-weight: 400;
+  color: rgba(218,221,239,0.55);
+  line-height: 1.2;
+}
+.approval-mode-option.is-active .approval-mode-option-desc,
+.approval-mode-option:hover .approval-mode-option-desc {
+  color: rgba(239,191,100,0.7);
+}
+.approval-mode-check {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--gold);
+}
+.approval-mode-check svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }

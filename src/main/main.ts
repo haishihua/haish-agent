@@ -257,6 +257,14 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
-  stopLocalRuntime();
+let runtimeStopInFlight = false;
+app.on('before-quit', (event) => {
+  if (runtimeStopInFlight) {
+    return;
+  }
+  runtimeStopInFlight = true;
+  event.preventDefault();
+  stopLocalRuntime()
+    .catch((error) => console.error('Failed to stop local Haish runtime cleanly:', error))
+    .finally(() => app.quit());
 });

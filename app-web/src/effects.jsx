@@ -308,10 +308,10 @@ function HollowPurple({ open, title, result, onClose }) {
           </section>
           <div className="iv-actions">
             <button type="button" className="iv-btn iv-btn-close" onClick={onClose}>
-              关闭
+              Close
             </button>
             <button type="button" className="iv-btn iv-btn-export" onClick={() => exportReport(title, result)}>
-              导出
+              Export
             </button>
           </div>
         </div>
