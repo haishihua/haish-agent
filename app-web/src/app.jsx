@@ -1929,6 +1929,194 @@ function categorizeToolCall(call) {
   return 'tool';
 }
 
+// Known compound MCP server prefixes that contain underscores. Without this
+// list a name like `chrome_devtools_navigate_page` would get bucketed under
+// "chrome" instead of "chrome devtools". Single-token prefixes (`context7`,
+// `sketch`, etc.) just fall through to the first-token fallback.
+const KNOWN_MCP_COMPOUND_PREFIXES = ['chrome_devtools'];
+
+function mcpServerNameFromToolName(toolName) {
+  const s = String(toolName || '').toLowerCase().trim();
+  if (!s) return 'mcp';
+  // Strip dispatch control suffixes first (mcp_control_tool_name on the
+  // backend: `<prefix>_call` / `<prefix>_list_tools` / `<prefix>_activate`).
+  for (const suffix of ['_list_tools', '_activate', '_call']) {
+    if (s.endsWith(suffix)) return s.slice(0, -suffix.length).replace(/_/g, ' ');
+  }
+  for (const prefix of KNOWN_MCP_COMPOUND_PREFIXES) {
+    if (s === prefix || s.startsWith(`${prefix}_`)) return prefix.replace(/_/g, ' ');
+  }
+  // Default: server prefix is the first underscore-separated token.
+  return s.split('_')[0] || 'mcp';
+}
+
+// Bucket each tool into a verb-based summary entry so a run of consecutive
+// tools can be collapsed into "read 3 files · executed 2 commands · used
+// chrome devtools 11 tools" without enumerating every chip. `verbPast` is
+// shown after the group's run finishes (`status === 'done' / 'failed' /
+// 'cancelled'`); `verbPresent` (present continuous) shows while at least one
+// tool in the group is still in flight, so the chip reads "using chrome
+// devtools 4 tools" → "used chrome devtools 4 tools" as it transitions.
+function classifyToolForGroup(item) {
+  const category = item?.category || 'tool';
+  const name = String(item?.toolName || '').toLowerCase();
+  const fileUnit = { unitSingular: 'file', unitPlural: 'files' };
+  // 名字命中的专属规则优先于 category。某些工具（如 vision_analyze）后端
+  // toolGroup="external"/category="mcp"，但语义上不该被并进 "used vision 1
+  // tool"——它处理图像/视频，应该单独成 "visualized 1 image"。
+  if (name === 'read_file' || name === 'list_dir' || name === 'cat_file'
+      || name === 'view_file' || name === 'open_file' || name.includes('read_text')) {
+    return { bucket: 'read', verbPast: 'read', verbPresent: 'reading', subject: '', ...fileUnit };
+  }
+  if (name === 'write_file' || name === 'create_file' || name === 'save_file') {
+    return { bucket: 'wrote', verbPast: 'wrote', verbPresent: 'writing', subject: '', ...fileUnit };
+  }
+  if (name === 'edit_file' || name === 'apply_diff' || name.includes('patch')) {
+    return { bucket: 'edited', verbPast: 'edited', verbPresent: 'editing', subject: '', ...fileUnit };
+  }
+  if (name === 'delete_file' || name === 'remove_file') {
+    return { bucket: 'deleted', verbPast: 'deleted', verbPresent: 'deleting', subject: '', ...fileUnit };
+  }
+  if (name === 'copy_file' || name === 'move_file' || name === 'rename_file' || name === 'create_dir') {
+    return { bucket: 'managed', verbPast: 'managed', verbPresent: 'managing', subject: '', ...fileUnit };
+  }
+  if (name === 'glob_files' || name === 'search_text' || name === 'grep'
+      || (name.includes('search') && !name.includes('web'))) {
+    return { bucket: 'searched', verbPast: 'searched', verbPresent: 'searching', subject: '', unitSingular: 'time', unitPlural: 'times' };
+  }
+  if (name === 'terminal' || name.includes('background_process')) {
+    return { bucket: 'executed', verbPast: 'executed', verbPresent: 'executing', subject: '', unitSingular: 'command', unitPlural: 'commands' };
+  }
+  if (name === 'vision_analyze' || name === 'visual_inspect' || name === 'image_describe'
+      || name === 'video_analyze' || name.startsWith('vision_') || name.startsWith('visual_')) {
+    return { bucket: 'visualized', verbPast: 'visualized', verbPresent: 'visualizing', subject: '', unitSingular: 'image', unitPlural: 'images' };
+  }
+  if (name.includes('web') || name.includes('fetch') || name.includes('http') || name.endsWith('_url')) {
+    return { bucket: 'fetched', verbPast: 'fetched', verbPresent: 'fetching', subject: '', unitSingular: 'page', unitPlural: 'pages' };
+  }
+  if (name.includes('memory') || name.includes('remember') || name.includes('recall') || name.startsWith('note_')) {
+    return { bucket: 'noted', verbPast: 'recorded', verbPresent: 'recording', subject: '', unitSingular: 'note', unitPlural: 'notes' };
+  }
+  if (name.includes('checkpoint') || name.includes('rollback')) {
+    return { bucket: 'snapshot', verbPast: 'snapshotted', verbPresent: 'snapshotting', subject: '', unitSingular: 'checkpoint', unitPlural: 'checkpoints' };
+  }
+  if (name.startsWith('document_') || name.includes('rag') || name.includes('knowledge')
+      || name.includes('retrieve') || name.includes('vector') || name.includes('embed')) {
+    return { bucket: 'queried', verbPast: 'queried', verbPresent: 'querying', subject: 'knowledge', unitSingular: 'time', unitPlural: 'times' };
+  }
+  // category 兜底：MCP 工具按 server 聚合。
+  if (category === 'mcp') {
+    const server = mcpServerNameFromToolName(name);
+    return {
+      bucket: `mcp:${server}`,
+      verbPast: 'used',
+      verbPresent: 'using',
+      subject: server,
+      unitSingular: 'tool',
+      unitPlural: 'tools',
+    };
+  }
+  return { bucket: 'other', verbPast: 'used', verbPresent: 'using', subject: '', unitSingular: 'tool', unitPlural: 'tools' };
+}
+
+function summarizeToolGroup(tools, status = 'done') {
+  const buckets = new Map();
+  for (const tool of tools) {
+    const meta = classifyToolForGroup(tool);
+    const prev = buckets.get(meta.bucket);
+    if (prev) {
+      prev.count += 1;
+    } else {
+      buckets.set(meta.bucket, { ...meta, count: 1 });
+    }
+  }
+  // Any in-flight tool in the run → present continuous ("using" / "reading").
+  // Otherwise → past tense ("used" / "read"). Keeps the chip reading naturally
+  // as it transitions live.
+  const inFlight = status === 'running' || status === 'pending';
+  const renderEntry = (e) => {
+    const unit = e.count === 1 ? e.unitSingular : e.unitPlural;
+    const verb = inFlight ? e.verbPresent : e.verbPast;
+    if (e.bucket && e.bucket.startsWith('mcp:')) {
+      // "using chrome devtools 11 tools" / "used chrome devtools 11 tools"
+      return `${verb} ${e.subject} ${e.count} ${unit}`.replace(/\s+/g, ' ').trim();
+    }
+    if (e.subject) {
+      return `${verb} ${e.count} ${unit} ${e.subject}`.trim();
+    }
+    return `${verb} ${e.count} ${unit}`;
+  };
+  const orderedKeys = [
+    'read', 'wrote', 'edited', 'deleted', 'managed',
+    'searched', 'executed', 'fetched', 'visualized',
+    'noted', 'snapshot', 'queried',
+  ];
+  const parts = [];
+  for (const key of orderedKeys) {
+    if (buckets.has(key)) parts.push(renderEntry(buckets.get(key)));
+  }
+  const mcpKeys = [...buckets.keys()].filter((k) => k.startsWith('mcp:')).sort();
+  for (const k of mcpKeys) parts.push(renderEntry(buckets.get(k)));
+  if (buckets.has('other')) parts.push(renderEntry(buckets.get('other')));
+  return parts.join(' · ');
+}
+
+function aggregateGroupStatus(tools) {
+  let anyRunning = false;
+  let anyFailed = false;
+  let anyPending = false;
+  for (const t of tools) {
+    const s = String(t?.status || '').toLowerCase();
+    if (s === 'running') anyRunning = true;
+    else if (s === 'failed') anyFailed = true;
+    else if (s === 'pending') anyPending = true;
+  }
+  if (anyRunning) return 'running';
+  if (anyFailed) return 'failed';
+  if (anyPending) return 'pending';
+  return 'done';
+}
+
+// Walk a built timeline and collapse runs of consecutive tool chips (≥ 2) into
+// a single `tool_group` item. Skills and sub-agents are left untouched —
+// skills carry nested children that need their own affordance, sub-agents
+// are distinct narrative moments.
+function groupConsecutiveTools(items) {
+  const result = [];
+  const isGroupable = (it) => (
+    it && it.kind === 'tool'
+    && it.category !== 'skill'
+    && it.category !== 'subagent'
+  );
+  let groupIdx = 0;
+  let i = 0;
+  while (i < items.length) {
+    if (!isGroupable(items[i])) {
+      result.push(items[i]);
+      i += 1;
+      continue;
+    }
+    let j = i + 1;
+    while (j < items.length && isGroupable(items[j])) j += 1;
+    const run = items.slice(i, j);
+    if (run.length >= 2) {
+      const groupStatus = aggregateGroupStatus(run);
+      result.push({
+        kind: 'tool_group',
+        id: `tool-group-${groupIdx}`,
+        summary: summarizeToolGroup(run, groupStatus),
+        tools: run,
+        status: groupStatus,
+      });
+      groupIdx += 1;
+    } else {
+      result.push(run[0]);
+    }
+    i = j;
+  }
+  return result;
+}
+
 function timelineToolLabel(call, category) {
   if (category === 'skill') {
     return skillDisplayName({
@@ -2278,7 +2466,10 @@ function buildChatTimeline(task, taskStatus) {
   // No "Preparing…" / "Queued…" placeholder——空时间线就让外面的 streaming 活动指示器
   // 单独承担"任务进行中"的视觉反馈，避免连续显示两条无内容信息。
 
-  return { items };
+  // 折叠"两段文本之间"的连续工具调用为单行聚合 chip。聊天阅读时关心解决思路
+  // (text + thinking)，不关心 read_file / chrome_devtools_* 反复的细节；想看
+  // 单条工具调用时点开 chip 还能看到原来的 ChatTimelineToolNode 列表。
+  return { items: groupConsecutiveTools(items) };
 }
 
 function pendingTaskToQuest(pendingTask) {

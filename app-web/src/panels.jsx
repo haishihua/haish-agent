@@ -2630,6 +2630,40 @@ function ChatTimelineToolNode({ item }) {
   );
 }
 
+// Collapsed view of a run of consecutive tool calls. Looks like a regular
+// tool chip (same .chat-timeline-tool-head border / pill) but the label is a
+// verb-counted summary like "read 3 files · executed 2 commands · used
+// chrome devtools 11 tools". Click expands to the original per-tool chips.
+function ChatTimelineToolGroup({ item }) {
+  const [open, setOpen] = React.useState(false);
+  const status = item.status || 'done';
+  const tools = Array.isArray(item.tools) ? item.tools : [];
+  const summary = item.summary || `used ${tools.length} tools`;
+  return (
+    <div className={`chat-timeline-tool category-tool status-${status} is-group`}>
+      <button
+        type="button"
+        className="chat-timeline-tool-head"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+      >
+        <span className={`chat-timeline-status status-${status}`} aria-hidden="true" />
+        <span className="ico ico-tool" aria-label="Tools" role="img" />
+        <span className="chat-timeline-tool-name">{summary}</span>
+        <span className="chat-timeline-tool-group-count">{tools.length}</span>
+        <ChatTimelineChevron open={open} />
+      </button>
+      {open ? (
+        <div className="chat-timeline-tool-group-body">
+          {tools.map((tool) => (
+            <ChatTimelineToolNode key={tool.id} item={tool} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ChatTimelineMetaNode({ item }) {
   const isContextCompaction = String(item.summary || '').toLowerCase() === 'auto-compacting context';
   return (
@@ -2695,6 +2729,9 @@ function ChatAgentTimeline({ items = [], streaming = false }) {
         }
         if (item.kind === 'tool') {
           return <ChatTimelineToolNode key={item.id} item={item} />;
+        }
+        if (item.kind === 'tool_group') {
+          return <ChatTimelineToolGroup key={item.id} item={item} />;
         }
         if (item.kind === 'thinking') {
           return <ChatTimelineThinkingNode key={item.id} item={item} />;

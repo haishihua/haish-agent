@@ -28,7 +28,11 @@ const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const LEGACY_DEFAULT_RUNTIME_REPO = '/Users/zhanruitao/py-project/haishihua-agent-core';
 const BUNDLED_RUNTIME_DIR = 'haishihua-agent-core';
 const BUNDLED_RUNTIME_EXECUTABLE = path.join('bin', 'haish-runtime', 'haish-runtime');
-const START_TIMEOUT_MS = 60_000;
+// Local runtime startup measured 30-40s on a clean machine (heavy Python
+// import graph + session/state deserialization from the workdir). Doubled
+// from 60s to give headroom under load / large saved state, so we don't
+// kill a backend that's just slow to reach ready.
+const START_TIMEOUT_MS = 120_000;
 // Python 后端及其 MCP 子进程（含 Chromium）退出窗口。SIGTERM 后等
 // 这么久还没退就 SIGKILL，防止 Electron quit 后残留 Chrome 占内存。
 const SHUTDOWN_GRACE_MS = 5_000;
