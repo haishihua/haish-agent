@@ -1664,7 +1664,9 @@ select,
   width: fit-content;
   padding: 4px 8px;
   background: rgba(20,28,48,0.42);
-  border: 1px solid rgba(138,166,209,0.18);
+  /* Border stays gold regardless of status — meta chip shares the same
+   * gold-pill identity as tool chips. Status semantics live on the dot only. */
+  border: 1px solid rgba(239,191,100,0.28);
   border-radius: 6px;
   color: rgba(220,227,244,0.9);
   font-family: 'JetBrains Mono', monospace;
@@ -1672,16 +1674,6 @@ select,
   min-width: 0;
   cursor: default;
   text-align: left;
-}
-.chat-timeline-meta.status-pending .chat-timeline-meta-head,
-.chat-timeline-meta.status-running .chat-timeline-meta-head {
-  border-color: rgba(239,191,100,0.28);
-}
-.chat-timeline-meta.status-done .chat-timeline-meta-head {
-  border-color: rgba(54,211,159,0.24);
-}
-.chat-timeline-meta.status-failed .chat-timeline-meta-head {
-  border-color: rgba(255,97,122,0.34);
 }
 .chat-timeline-meta-head:disabled { cursor: default; opacity: 1; }
 .chat-timeline-meta-head:hover:not(:disabled) { color: rgba(220,227,244,0.9); }
@@ -1828,7 +1820,9 @@ select,
   max-width: 100%;
   padding: 4px 8px;
   background: rgba(20,28,48,0.42);
-  border: 1px solid rgba(138,166,209,0.18);
+  /* Border stays gold regardless of status — chip identity is the gold pill,
+   * status semantics live on the dot only. */
+  border: 1px solid rgba(239,191,100,0.28);
   border-radius: 6px;
   color: rgba(220,227,244,0.9);
   font-family: 'JetBrains Mono', monospace;
@@ -1840,27 +1834,16 @@ select,
 .chat-timeline-tool-head:disabled {
   cursor: default;
 }
-.chat-timeline-tool.status-pending .chat-timeline-tool-head,
-.chat-timeline-tool.status-running .chat-timeline-tool-head {
-  border-color: rgba(239,191,100,0.28);
-}
-.chat-timeline-tool.status-done .chat-timeline-tool-head {
-  border-color: rgba(54,211,159,0.24);
-}
-.chat-timeline-tool.status-failed .chat-timeline-tool-head {
-  border-color: rgba(255,97,122,0.34);
-}
 .chat-timeline-status {
   flex: 0 0 7px;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: rgba(129,146,180,0.8);
-}
-.chat-timeline-status.status-pending {
   background: var(--gold);
   box-shadow: 0 0 6px rgba(239,191,100,0.24);
 }
+/* 圆点三色语义：pending/running 金色（running 叠加脉动）、done 绿色、failed 红色、
+ * cancelled 灰色。边框统一金色，状态语义只承载在圆点上。 */
 .chat-timeline-status.status-running {
   background: var(--gold);
   animation: chatPulse 1.15s ease-out infinite;
@@ -1872,6 +1855,10 @@ select,
 .chat-timeline-status.status-failed {
   background: #ff617a;
   box-shadow: 0 0 6px rgba(255,97,122,0.28);
+}
+.chat-timeline-status.status-cancelled {
+  background: rgba(138,166,209,0.55);
+  box-shadow: none;
 }
 .chat-timeline-tool-kind {
   padding: 1px 6px;
@@ -1979,25 +1966,7 @@ select,
 .chat-timeline-tool-code.json {
   color: rgba(191,204,230,0.9);
 }
-.chat-timeline-tool.mode-terminal .chat-timeline-tool-head,
-.chat-timeline-tool.mode-process .chat-timeline-tool-head {
-  border-color: rgba(239,191,100,0.3);
-}
-/* status 比 mode 优先：terminal/process chip 完成后必须切回绿色，失败切红色，
- * 不能因为 mode-terminal 的默认黄边盖掉 done/failed 语义。pending/running
- * 时仍由上面的 mode 默认黄色生效。 */
-.chat-timeline-tool.mode-terminal.status-done .chat-timeline-tool-head,
-.chat-timeline-tool.mode-process.status-done .chat-timeline-tool-head {
-  border-color: rgba(54,211,159,0.24);
-}
-.chat-timeline-tool.mode-terminal.status-failed .chat-timeline-tool-head,
-.chat-timeline-tool.mode-process.status-failed .chat-timeline-tool-head {
-  border-color: rgba(255,97,122,0.34);
-}
-.chat-timeline-tool.mode-terminal.status-cancelled .chat-timeline-tool-head,
-.chat-timeline-tool.mode-process.status-cancelled .chat-timeline-tool-head {
-  border-color: rgba(138,166,209,0.18);
-}
+/* terminal / process mode 不再单独覆盖边框——全局边框已经统一成金色。 */
 /* ============ macOS-style terminal frame ============
    Design philosophy: clean window chrome, centered title, refined
    traffic-light controls, layered shadows, and SF Mono typography. */

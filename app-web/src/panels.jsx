@@ -2639,6 +2639,9 @@ function ChatTimelineToolGroup({ item }) {
   const status = item.status || 'done';
   const tools = Array.isArray(item.tools) ? item.tools : [];
   const summary = item.summary || `used ${tools.length} tools`;
+  // 当 bucket > 3 时 summary 已被裁成 "...+N more"；full 是未裁的完整摘要，
+  // 挂在 title 上鼠标 hover 看全。
+  const fullSummary = item.summaryFull || summary;
   return (
     <div className={`chat-timeline-tool category-tool status-${status} is-group`}>
       <button
@@ -2646,6 +2649,7 @@ function ChatTimelineToolGroup({ item }) {
         className="chat-timeline-tool-head"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
+        title={fullSummary !== summary ? fullSummary : undefined}
       >
         <span className={`chat-timeline-status status-${status}`} aria-hidden="true" />
         <span className="ico ico-tool" aria-label="Tools" role="img" />

@@ -2058,7 +2058,20 @@ function summarizeToolGroup(tools, status = 'done') {
   const mcpKeys = [...buckets.keys()].filter((k) => k.startsWith('mcp:')).sort();
   for (const k of mcpKeys) parts.push(renderEntry(buckets.get(k)));
   if (buckets.has('other')) parts.push(renderEntry(buckets.get('other')));
-  return parts.join(' · ');
+  // Cap visible bucket entries at 3; overflow collapses into "+N more" so the
+  // chip stays single-line. Full breakdown is still reachable via the tooltip
+  // attribute on the head + the click-to-expand list below.
+  const MAX_VISIBLE = 3;
+  if (parts.length > MAX_VISIBLE) {
+    const visible = parts.slice(0, MAX_VISIBLE);
+    const hidden = parts.length - MAX_VISIBLE;
+    return {
+      short: `${visible.join(' · ')} · +${hidden} more`,
+      full: parts.join(' · '),
+    };
+  }
+  const joined = parts.join(' · ');
+  return { short: joined, full: joined };
 }
 
 function aggregateGroupStatus(tools) {
@@ -2101,10 +2114,12 @@ function groupConsecutiveTools(items) {
     const run = items.slice(i, j);
     if (run.length >= 2) {
       const groupStatus = aggregateGroupStatus(run);
+      const summary = summarizeToolGroup(run, groupStatus);
       result.push({
         kind: 'tool_group',
         id: `tool-group-${groupIdx}`,
-        summary: summarizeToolGroup(run, groupStatus),
+        summary: summary.short,
+        summaryFull: summary.full,
         tools: run,
         status: groupStatus,
       });
