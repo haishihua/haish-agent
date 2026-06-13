@@ -1,0 +1,27 @@
+app-web/src/app.jsx
+  s_d6f470a969ea8b::t_af2afbee9a166f 2061-2074
+  s_d6f470a969ea8b::t_98f05a5368a1af 2117,2121-2122
+app-web/src/panels.jsx
+  s_d6f470a969ea8b::t_6486fd04b0543f 2642-2644,2652
+app-web/styles.css
+  s_d6f470a969ea8b::t_cc0ad80b5a1e3e 1823-1825,1859-1861
+  s_d6f470a969ea8b::t_cf94df849a5960 1969
+  s_d6f470a969ea8b::t_72a8c98d2c7a6b 1845-1846
+  s_d6f470a969ea8b::t_43cb3d859f82ed 1667-1669
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "cfdb736813a9cc8bc6fe166f0e16aa34184a262c",
+  "prompts": {},
+  "sessions": {
+    "s_d6f470a969ea8b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "995c6add-add8-4c1c-9e33-f3cc68232300",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
