@@ -1,0 +1,48 @@
+app-web/src/app.jsx
+  s_599219db43cd10::t_3b04e73e4ef79c 5106,5881-5883
+  s_599219db43cd10::t_faef7e7aeb3e96 3807-3813,3837,3841,3846,3977,3980-3982,4022,4031,4140,4143-4144,4164-4165,4180,4194-4195,4201,4214,4637,4639,4983-4992,5612,5628
+  s_b444cab77a572a::t_818920f4f1e68f 3463-3502
+  s_599219db43cd10::t_bed2af205f9091 5136-5158,5164-5179
+  s_599219db43cd10::t_1f98bf89e015e8 5277,5279,5287-5290,6140-6141,6194-6202
+  s_599219db43cd10::t_e48528feca1460 3604,5074-5075,5077,5086,5095,5097-5101,5103-5105,5111,5113,5893-5894
+  s_2d59b3a05b7729::t_bdec45519bcef6 3050
+  s_599219db43cd10::t_76d1cb1d1623d8 5159-5163
+  s_599219db43cd10::t_041dabe5d92d1c 5008-5009,5011,5632-5633,5662,5867-5871,5880,5898,5907,5918-5919
+  s_599219db43cd10::t_3e80211442a310 5024-5025,5029
+app-web/src/panels.jsx
+  s_2d59b3a05b7729::t_e04ac48cfb07f2 989-991,999
+  s_2d59b3a05b7729::t_5b420e4d671b07 1221,1256,1296,1539,1611,3033,3246
+  s_2d59b3a05b7729::t_7fc6a5958e0edc 983,988,992-996,1001,1005-1036,1047-1049
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "cd76b7fe5b464821a5d53393a1524564169f53f5",
+  "prompts": {},
+  "sessions": {
+    "s_2d59b3a05b7729": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ec971-5714-7a71-812d-b21023b148b5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    },
+    "s_599219db43cd10": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ec0b1-b4b8-77d3-ba71-cdf6287831ce",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    },
+    "s_b444cab77a572a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51ece2ed-17b7-4994-97bb-485630e5fc0c",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
