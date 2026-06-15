@@ -980,17 +980,59 @@ function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
 }
 window.LiveFeedPanel = LiveFeedPanel;
 
-const MODEL_OPTIONS = [
+const OPENAI_CODEX_MODEL_OPTIONS = [
   { id: 'gpt-5.5', label: 'gpt5.5' },
   { id: 'gpt-5.4', label: 'gpt5.4' },
 ];
 
-// 按 provider 分组的模型清单。后端 /api/llm/provider 探测当前生效 provider，
-// 前端按 key 选对应清单；拿不到或未登记的统一兜底到 openai 桶。
+const ANTHROPIC_CLAUDE_MODEL_OPTIONS = [
+  { id: 'claude-opus-4-8', label: 'opus4.8' },
+  { id: 'claude-opus-4-7', label: 'opus4.7' },
+  { id: 'claude-sonnet-4-6', label: 'sonnet4.6' },
+];
+
+const MODEL_OPTIONS = [
+  ...OPENAI_CODEX_MODEL_OPTIONS,
+  ...ANTHROPIC_CLAUDE_MODEL_OPTIONS,
+];
+
+// OAuth 模型只通过 model_id 下发；provider 由后端 resolver 基于 model_id 判定。
 const PROVIDER_MODEL_CATALOG = {
-  openai: {
+  oauth: {
     options: MODEL_OPTIONS,
     defaultModelId: 'gpt-5.5',
+  },
+  openai: {
+    options: OPENAI_CODEX_MODEL_OPTIONS,
+    defaultModelId: 'gpt-5.5',
+  },
+  codex: {
+    options: OPENAI_CODEX_MODEL_OPTIONS,
+    defaultModelId: 'gpt-5.5',
+  },
+  'openai/codex': {
+    options: OPENAI_CODEX_MODEL_OPTIONS,
+    defaultModelId: 'gpt-5.5',
+  },
+  openai_codex_oauth: {
+    options: OPENAI_CODEX_MODEL_OPTIONS,
+    defaultModelId: 'gpt-5.5',
+  },
+  anthropic: {
+    options: ANTHROPIC_CLAUDE_MODEL_OPTIONS,
+    defaultModelId: 'claude-opus-4-8',
+  },
+  claude: {
+    options: ANTHROPIC_CLAUDE_MODEL_OPTIONS,
+    defaultModelId: 'claude-opus-4-8',
+  },
+  'anthropic/claude': {
+    options: ANTHROPIC_CLAUDE_MODEL_OPTIONS,
+    defaultModelId: 'claude-opus-4-8',
+  },
+  anthropic_oauth: {
+    options: ANTHROPIC_CLAUDE_MODEL_OPTIONS,
+    defaultModelId: 'claude-opus-4-8',
   },
   deepseek: {
     options: [
@@ -1002,8 +1044,9 @@ const PROVIDER_MODEL_CATALOG = {
 };
 
 function resolveModelCatalog(provider) {
-  if (provider && PROVIDER_MODEL_CATALOG[provider]) return PROVIDER_MODEL_CATALOG[provider];
-  return PROVIDER_MODEL_CATALOG.openai;
+  const normalized = String(provider || '').trim().toLowerCase();
+  if (normalized && PROVIDER_MODEL_CATALOG[normalized]) return PROVIDER_MODEL_CATALOG[normalized];
+  return PROVIDER_MODEL_CATALOG.oauth;
 }
 
 window.resolveModelCatalog = resolveModelCatalog;
@@ -1175,6 +1218,7 @@ function ModelPicker({ value, reasoningEffort, options, reasoningOptions = REASO
   const rootRef = React.useRef(null);
   const current = options.find((o) => o.id === value) || options[0];
   const currentReasoning = reasoningOptions.find((o) => o.id === reasoningEffort) || reasoningOptions.find((o) => o.id === DEFAULT_REASONING_EFFORT) || reasoningOptions[0];
+  const modelLabel = current ? current.label : (loading ? 'loading' : 'unavailable');
 
   React.useEffect(() => {
     if (!open) return undefined;
@@ -1209,7 +1253,7 @@ function ModelPicker({ value, reasoningEffort, options, reasoningOptions = REASO
           aria-expanded={open}
           aria-label="Select model"
         >
-          <span className="model-picker-value">{currentReasoning ? currentReasoning.label : ''} · {current ? current.label : ''}</span>
+          <span className="model-picker-value">{currentReasoning ? currentReasoning.label : ''} · {modelLabel}</span>
           <span className={loading ? 'model-picker-loading' : 'model-picker-caret'} aria-hidden="true" />
         </button>
       </PortalTooltip>
@@ -1249,7 +1293,7 @@ function ModelPicker({ value, reasoningEffort, options, reasoningOptions = REASO
               title={current ? current.id : ''}
               aria-haspopup="listbox"
             >
-              <span className="model-picker-option-label">{current ? current.label : ''}</span>
+              <span className="model-picker-option-label">{modelLabel}</span>
               <span className="model-picker-subcaret" aria-hidden="true" />
             </button>
             <div className="model-picker-flyout" role="listbox" aria-label="model">
@@ -1492,7 +1536,7 @@ async function copyTextToClipboard(text) {
 }
 
 function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, contextUsage, workspacePath, homePath, activeTaskText, modelOptions, defaultModelId, modelLoading = false }) {
-  const resolvedOptions = (Array.isArray(modelOptions) && modelOptions.length > 0) ? modelOptions : MODEL_OPTIONS;
+  const resolvedOptions = Array.isArray(modelOptions) ? modelOptions : MODEL_OPTIONS;
   const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
   const [v, setV] = React.useState('');
   const [modelId, setModelId] = React.useState(resolvedDefaultModelId);
@@ -1564,6 +1608,7 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
     e?.preventDefault();
     if (Date.now() < suppressSubmitUntilRef.current) return;
     if (!v.trim() || disabled) return;
+    if (modelLoading || !resolvedOptions.some((o) => o.id === modelId)) return;
     onDeploy(v.trim(), attachment, modelId, reasoningEffort);
     setV('');
     onClearFile?.();
@@ -2985,7 +3030,7 @@ function ChatPanel({
   defaultModelId,
   modelLoading = false,
 }) {
-  const resolvedOptions = (Array.isArray(modelOptions) && modelOptions.length > 0) ? modelOptions : MODEL_OPTIONS;
+  const resolvedOptions = Array.isArray(modelOptions) ? modelOptions : MODEL_OPTIONS;
   const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
   const [draft, setDraft] = React.useState('');
   const [modelId, setModelId] = React.useState(resolvedDefaultModelId);
@@ -3198,6 +3243,7 @@ function ChatPanel({
     if (!text || disabled) return;
     // Block while any pasted image is still uploading.
     if (imagesUploading) return;
+    if (modelLoading || !resolvedOptions.some((o) => o.id === modelId)) return;
     const readyImages = composerImages
       .filter((img) => img.imageId && !img.error)
       .map((img) => ({

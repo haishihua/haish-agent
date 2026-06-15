@@ -3047,9 +3047,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   const [composerAttachment, setComposerAttachment] = useState(null);
   const [uploadState, setUploadState] = useState({ active: false, fileName: '' });
   const [toast, setToast] = useState(null);
-  const [modelCatalog, setModelCatalog] = useState(() => (
-    window.resolveModelCatalog ? window.resolveModelCatalog('openai') : null
-  ));
+  const [modelCatalog, setModelCatalog] = useState(() => ({ options: [], defaultModelId: '' }));
   const [providerLoading, setProviderLoading] = useState(true);
 
   const stageRef = useRef(null);
@@ -3462,8 +3460,46 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 
   function setRuntimeBusy(value, explicit = null) {
     const cid = activeRuntimeTargetConvId(explicit);
-    if (cid) mutateRuntime(cid, (rt) => { rt.busy = value; });
-    else setBusy(value);
+    if (cid) {
+      mutateRuntime(cid, (rt) => { rt.busy = value; });
+      // Task just finished (or was cancelled/errored) — mirror the runtime's
+      // task state back into workspaceState so the sidebar entry for THIS
+      // conversation reflects the new "done" status, even when the user is
+      // currently viewing a different conversation. Otherwise the spinner
+      // next to the backgrounded conversation never goes away until the user
+      // navigates into it and triggers a re-fetch.
+      if (value === false) flushRuntimeTasksToWorkspace(cid);
+    } else {
+      setBusy(value);
+    }
+  }
+
+  function flushRuntimeTasksToWorkspace(convId) {
+    if (!convId) return;
+    const rt = runtimesRef.current.get(convId);
+    if (!rt) return;
+    const snapshot = rt.worldTaskState;
+    const taskOrder = Array.isArray(snapshot?.taskOrder) ? snapshot.taskOrder : [];
+    const tasksById = snapshot?.tasksById || {};
+    const currentTasks = taskOrder.map((taskId) => tasksById[taskId]).filter(Boolean);
+    if (currentTasks.length === 0) return;
+    setWorkspaceState((state) => {
+      let touched = false;
+      const projects = state.projects.map((project) => {
+        if (!project.conversations.some((c) => c.id === convId)) return project;
+        touched = true;
+        const now = Date.now();
+        return {
+          ...project,
+          updatedAt: now,
+          conversations: project.conversations.map((c) => (
+            c.id === convId ? { ...c, tasks: currentTasks, updatedAt: now } : c
+          )),
+        };
+      });
+      if (!touched) return state;
+      return normalizeWorkspaceOrdering({ ...state, projects });
+    });
   }
   function setRuntimeActiveTaskId(value, explicit = null) {
     const cid = activeRuntimeTargetConvId(explicit);
@@ -3565,6 +3601,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   // conversation activates via `syncDisplayedRuntime`.
   function detachActiveRunFromCurrentConversation() {
     setUploadState({ active: false, fileName: '' });
+    setComposerAttachment(null);
     dropPendingSceneItems();
     resetSceneActors();
   }
@@ -3767,8 +3804,13 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     }, targetConvId);
   }
 
-  function getTaskById(taskId) {
-    return taskId ? worldTaskStateRef.current.tasksById[taskId] || null : null;
+  function getTaskById(taskId, targetConvId = null) {
+    if (!taskId) return null;
+    const convId = activeRuntimeTargetConvId(targetConvId);
+    const runtime = convId ? getRuntime(convId) : null;
+    return runtime?.worldTaskState?.tasksById?.[taskId]
+      || worldTaskStateRef.current.tasksById[taskId]
+      || null;
   }
 
   function resolveScenePlaybackContext(event, task = null) {
@@ -3792,15 +3834,16 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     };
   }
 
-  function buildSceneItem(event, taskId) {
+  function buildSceneItem(event, taskId, targetConvId = null) {
     if (!event || !taskId) return null;
     const runtime = sceneRuntimeRef.current;
     runtime.seq += 1;
-    const task = getTaskById(taskId);
+    const task = getTaskById(taskId, targetConvId);
     const context = resolveScenePlaybackContext(event, task);
     return {
       queueId: `scene-${runtime.seq}`,
       taskId,
+      conversationId: targetConvId || event.conversation_id || task?.conversationId || null,
       event,
       eventType: event.type,
       callId: event.call_id || null,
@@ -3931,10 +3974,12 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     return null;
   }
 
-  function compactPendingSceneItems(taskId) {
+  function compactPendingSceneItems(taskId, targetConvId = null) {
     const runtime = sceneRuntimeRef.current;
     if (!taskId || !runtime.pending.length) return;
-    const targetItems = runtime.pending.filter((item) => item.taskId === taskId);
+    const targetItems = runtime.pending.filter((item) => (
+      item.taskId === taskId && (!targetConvId || item.conversationId === targetConvId)
+    ));
     if (!targetItems.length) return;
 
     const keepIds = new Set();
@@ -3974,7 +4019,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     const compacted = targetItems.filter((item) => keepIds.has(item.queueId));
     let inserted = false;
     runtime.pending = runtime.pending.flatMap((item) => {
-      if (item.taskId !== taskId) return [item];
+      if (item.taskId !== taskId || (targetConvId && item.conversationId !== targetConvId)) return [item];
       if (inserted) return [];
       inserted = true;
       return compacted;
@@ -3983,7 +4028,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     updateTaskById(taskId, (task) => ({
       ...task,
       sceneCatchup: true,
-    }));
+    }), targetConvId);
   }
 
   function markAgentLive(actor, payload) {
@@ -4092,11 +4137,11 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     });
   }
 
-  function finalizeTaskPresentation(taskId, resultText) {
+  function finalizeTaskPresentation(taskId, resultText, targetConvId = null) {
     if (!taskId) return;
     pendingPresentationTaskIdsRef.current.delete(taskId);
-    const task = getTaskById(taskId);
-    const taskConvId = task?.conversationId || null;
+    const task = getTaskById(taskId, targetConvId);
+    const taskConvId = targetConvId || task?.conversationId || null;
     updateTaskById(taskId, (run) => ({
       ...run,
       status: ['failed', 'cancelled', 'aborted'].includes(run.status) ? normalizeTaskStatus(run.status) : 'done',
@@ -4116,8 +4161,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     completeTaskAgents(taskId, 'done');
   }
 
-  function isChatOriginTask(taskId) {
-    const task = getTaskById(taskId);
+  function isChatOriginTask(taskId, targetConvId = null) {
+    const task = getTaskById(taskId, targetConvId);
     return task?.originViewMode === 'chat' || viewModeRef.current === 'chat';
   }
 
@@ -4132,7 +4177,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         const item = runtime.pending.shift();
         if (!item) continue;
         runtime.activeItem = item;
-        await playWorldEventScene(item.event, item.taskId);
+        await playWorldEventScene(item.event, item.taskId, item.conversationId || null);
       }
       runtime.activeItem = null;
       runtime.running = false;
@@ -4146,14 +4191,14 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     return runtime.currentPromise;
   }
 
-  function enqueueSceneEvent(event, taskId) {
-    const item = buildSceneItem(event, taskId);
+  function enqueueSceneEvent(event, taskId, targetConvId = null) {
+    const item = buildSceneItem(event, taskId, targetConvId);
     if (!item) return Promise.resolve();
     sceneRuntimeRef.current.pending.push(item);
     return pumpSceneQueue();
   }
 
-  function scheduleSceneEvent(event, taskId) {
+  function scheduleSceneEvent(event, taskId, targetConvId = null) {
     if (event.type === 'llm_thinking_completed') {
       rememberSceneCompletion('thinking', event, taskId);
       return Promise.resolve();
@@ -4166,7 +4211,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       rememberSceneCompletion('tool', event, taskId);
       return Promise.resolve();
     }
-    return enqueueSceneEvent(event, taskId);
+    return enqueueSceneEvent(event, taskId, targetConvId);
   }
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -4589,9 +4634,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     }
   }
 
-  async function playWorldEventScene(event, taskId) {
+  async function playWorldEventScene(event, taskId, targetConvId = null) {
     if (!taskId) return;
-    const run = getTaskById(taskId);
+    const run = getTaskById(taskId, targetConvId);
     const providerMeta = resolveProviderMeta(event, run);
     const actorId = event.actor_id || WORLD_ROLE_TO_ACTOR[event.actor];
     const targetActorId = event.target_actor_id || WORLD_ROLE_TO_ACTOR[event.target];
@@ -4935,12 +4980,16 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         pushBurst(npcStatesRef.current.gojo?.pos || window.STATIONS.gojo, window.KIND_COLORS?.llm || '#efbf64');
         await sleep(760);
         setActorIdle('gojo');
-        setHollow({
-          title: getTaskById(taskId)?.title || event.message || 'Final Report',
-          result: event.content || getTaskById(taskId)?.answerText || answerBufferRef.current,
-          taskId,
-        });
-        finalizeTaskPresentation(taskId, event.content || getTaskById(taskId)?.answerText || answerBufferRef.current);
+        const finalTask = getTaskById(taskId, targetConvId);
+        const finalResult = event.content || finalTask?.answerText || answerBufferRef.current;
+        if (!targetConvId || targetConvId === conversationIdRef.current) {
+          setHollow({
+            title: finalTask?.title || event.message || 'Final Report',
+            result: finalResult,
+            taskId,
+          });
+        }
+        finalizeTaskPresentation(taskId, finalResult, targetConvId);
       } else if (returnRouteName) {
         await sleep(120);
         await returnActorHome(actor, returnRouteName, actor === 'itachi' ? { preferSideWalk: true } : {});
@@ -4956,10 +5005,10 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     updateNpc(actor, { action: null, bubble: null, busy: false, thinking: false });
   }
 
-  async function uploadAttachment(file, signal) {
-    if (!file || !conversationId) return null;
+  async function uploadAttachment(file, signal, targetConversationId = conversationId) {
+    if (!file || !targetConversationId) return null;
     const formData = new FormData();
-    formData.append('conversation_id', conversationId);
+    formData.append('conversation_id', targetConversationId);
     formData.append('file', file);
     const response = await authFetch(`${API_BASE}/api/documents/upload`, {
       method: 'POST',
@@ -4972,12 +5021,12 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     return response.json();
   }
 
-  async function uploadChatImage(file, signal) {
-    if (!file || !conversationId) {
+  async function uploadChatImage(file, signal, targetConversationId = conversationIdRef.current || conversationId) {
+    if (!file || !targetConversationId) {
       throw new Error('No active conversation.');
     }
     const formData = new FormData();
-    formData.append('conversation_id', conversationId);
+    formData.append('conversation_id', targetConversationId);
     formData.append('file', file);
     const response = await authFetch(`${API_BASE}/api/messages/images`, {
       method: 'POST',
@@ -5022,9 +5071,10 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   async function handleAttachmentSelect(file) {
-    if (!file || !conversationId) return;
+    const targetConversationId = conversationIdRef.current || conversationId;
+    if (!file || !targetConversationId) return;
     const uploadController = new AbortController();
-    setRuntimeFetchController(uploadController, conversationId);
+    setRuntimeFetchController(uploadController, targetConversationId);
     setComposerAttachment({
       name: file.name,
       size: file.size,
@@ -5033,7 +5083,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     });
     setUploadState({ active: true, fileName: file.name });
     try {
-      const payload = await uploadAttachment(file, uploadController.signal);
+      const payload = await uploadAttachment(file, uploadController.signal, targetConversationId);
       const nextAttachment = {
         name: payload?.attachment?.file_name || file.name,
         size: payload?.attachment?.size_bytes ?? file.size,
@@ -5042,21 +5092,25 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         documentId: payload?.attachment?.document_id || payload?.document?.id || null,
         attachmentId: payload?.attachment?.attachment_id || null,
         title: payload?.attachment?.title || file.name,
-        conversationId: payload?.attachment?.conversation_id || conversationId,
+        conversationId: payload?.attachment?.conversation_id || targetConversationId,
       };
-      applyConversationSnapshot(payload?.conversation || null);
-      setComposerAttachment(nextAttachment);
-      showToast('success', `document uploaded: ${String(file.name || '').toLowerCase()}`);
+      if (conversationIdRef.current === targetConversationId) {
+        applyConversationSnapshot(payload?.conversation || null);
+        setComposerAttachment(nextAttachment);
+        showToast('success', `document uploaded: ${String(file.name || '').toLowerCase()}`);
+      }
     } catch (error) {
-      setComposerAttachment(null);
-      if (!(abortRef.current || error?.name === 'AbortError')) {
+      if (conversationIdRef.current === targetConversationId) {
+        setComposerAttachment(null);
+      }
+      if (conversationIdRef.current === targetConversationId && !(abortRef.current || error?.name === 'AbortError')) {
         showToast('error', `upload failed: ${String(file.name || '').toLowerCase()}`);
       }
       throw error;
     } finally {
-      const rt = getRuntime(conversationId);
+      const rt = getRuntime(targetConversationId);
       if (rt && rt.fetchController === uploadController) {
-        setRuntimeFetchController(null, conversationId);
+        setRuntimeFetchController(null, targetConversationId);
       }
       setUploadState({ active: false, fileName: '' });
     }
@@ -5077,6 +5131,52 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     return authFetch(`${API_BASE}/api/conversations/${nextConversationId}/tasks/cancel`, {
       method: 'POST',
     });
+  }
+
+  function activeTaskIdFromConversationSnapshot(conversation) {
+    const candidates = (conversation?.tasks || []).filter((task) => isTaskActuallyActive(task));
+    candidates.sort((a, b) => taskUpdatedTimestamp(b) - taskUpdatedTimestamp(a));
+    const task = candidates[0];
+    return task?.taskId || task?.task_id || task?.id || null;
+  }
+
+  async function stopConversationRuntimeBeforeDelete(nextConversationId, conversationSnapshot = null) {
+    if (!nextConversationId) return;
+    const targetRuntime = getRuntime(nextConversationId);
+    const taskState = targetRuntime?.worldTaskState || null;
+    const taskId = targetRuntime?.activeTaskId
+      || taskState?.activeTaskId
+      || activeTaskIdFromConversationSnapshot(conversationSnapshot);
+    const runId = targetRuntime?.activeRunId || null;
+    if (runId && targetRuntime) targetRuntime.cancelledRunIds.add(runId);
+    if (taskId) {
+      userCancelledTaskIdsRef.current.add(taskId);
+      chatFinalizedTaskIdsRef.current.add(taskId);
+    }
+    targetRuntime?.fetchController?.abort?.();
+    if (targetRuntime) {
+      mutateRuntime(nextConversationId, (rt) => {
+        rt.worldTaskState = {
+          ...rt.worldTaskState,
+          activeTaskId: null,
+          pendingTask: null,
+        };
+        rt.activeTaskId = null;
+        rt.activeRunId = null;
+        rt.fetchController = null;
+        rt.busy = false;
+      });
+    }
+    try {
+      if (taskId) {
+        await cancelActiveTask(taskId);
+      } else {
+        await cancelActiveConversationTask(nextConversationId);
+      }
+    } catch (error) {
+      console.warn('conversation cleanup before delete skipped:', error);
+    }
+    runtimesRef.current.delete(nextConversationId);
   }
 
   async function updateConversationTitle(conversationId, title) {
@@ -5174,8 +5274,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         if (event.source === 'provider_usage' && event.context_used_tokens == null && event.usedTokens == null) {
           break;
         }
+        const usageConversationId = event.conversation_id || ownerConvId || conversationId;
         const nextContextUsage = normalizeContextUsage({
-          conversationId: event.conversation_id || conversationId,
+          conversationId: usageConversationId,
           contextUsedTokens: event.context_used_tokens,
           contextTotalTokens: event.context_total_tokens,
           usedTokens: event.usedTokens ?? event.used_tokens,
@@ -5183,8 +5284,10 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           compressed: event.compressed,
           compressedCount: event.compressed_count,
           updatedAt: event.created_at || event.timestamp || new Date().toISOString(),
-        }, conversationId);
-        setContextUsage(nextContextUsage);
+        }, usageConversationId);
+        if (!ownerConvId || ownerConvId === conversationIdRef.current) {
+          setContextUsage(nextContextUsage);
+        }
         saveStoredContextUsage(nextContextUsage);
         break;
       }
@@ -5506,7 +5609,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           };
         });
         if (shouldWaitForPresentation && !isChatOriginTask(taskId)) {
-          compactPendingSceneItems(taskId);
+          compactPendingSceneItems(taskId, ownerConvId);
           break;
         }
         updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
@@ -5522,12 +5625,12 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     }
 
     if (WORLD_SCENE_EVENT_TYPES.has(event.type) && !isChatOriginTask(taskId)) {
-      scheduleSceneEvent(event, taskId);
+      scheduleSceneEvent(event, taskId, ownerConvId);
     }
   }
 
-  async function executeQuest(pendingTask) {
-    const runConversationId = conversationIdRef.current || conversationId;
+  async function executeQuest(pendingTask, targetConversationId) {
+    const runConversationId = targetConversationId;
     if (!runConversationId) {
       throw new Error('conversation is not ready');
     }
@@ -5556,7 +5659,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       setRuntimeFetchController(uploadController, runConversationId);
       setUploadState({ active: true, fileName: uploadName });
       try {
-        const payload = await uploadAttachment(pendingTask.attachment.file, uploadController.signal);
+        const payload = await uploadAttachment(pendingTask.attachment.file, uploadController.signal, runConversationId);
         const runRuntimeForGuard = getRuntime(runConversationId);
         if (!runRuntimeForGuard || runRuntimeForGuard.activeRunId !== runId) {
           return;
@@ -5761,6 +5864,11 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
             previewUrl: ref.previewUrl || null,
           }))
       : [];
+    const deployConvId = conversationIdRef.current || conversationId;
+    if (!deployConvId) {
+      showToast('error', 'conversation is not ready');
+      return;
+    }
     const pendingTask = createPendingTaskDraft(text, attachment, sanitizedImageAttachments);
     pendingTask.requestedModelId = modelId || '';
     // Match DEFAULT_REASONING_EFFORT in panels.jsx (kept in sync).
@@ -5769,7 +5877,10 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     pendingTask.originViewMode = viewModeRef.current || viewMode;
     pendingTask.imageAttachments = sanitizedImageAttachments;
     const nextConversationTitle = titleFromTaskText(text);
-    const currentConversation = findConversationById(workspaceState, conversationId);
+    const currentConversation = findConversationById(workspaceState, deployConvId);
+    const deployTaskState = getRuntime(deployConvId)?.worldTaskState
+      || worldTaskStateRef.current
+      || createEmptyWorldTaskState();
     const shouldUpdateConversationTitle = Boolean(
       nextConversationTitle
       && currentConversation
@@ -5779,12 +5890,12 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     setComposerAttachment(null);
     setWorkspaceState((state) => {
       const currentTasks = [
-        ...worldTaskStateRef.current.taskOrder
-          .map((taskId) => worldTaskStateRef.current.tasksById[taskId])
+        ...deployTaskState.taskOrder
+          .map((taskId) => deployTaskState.tasksById[taskId])
           .filter(Boolean),
         pendingTask,
       ];
-      return workspaceStateWithTouchedConversation(state, conversationId, {
+      return workspaceStateWithTouchedConversation(state, deployConvId, {
         tasks: currentTasks,
         // No explicit `expanded`: the touched conversation becomes active and
         // withDefaultExpansion auto-expands the active conversation with tasks.
@@ -5793,7 +5904,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       });
     });
     if (shouldUpdateConversationTitle) {
-      updateConversationTitle(conversationId, nextConversationTitle)
+      updateConversationTitle(deployConvId, nextConversationTitle)
         .then((detail) => {
           if (detail) {
             setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, false));
@@ -5804,9 +5915,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     updateWorldTaskState((state) => ({
       ...state,
       pendingTask,
-    }), conversationId);
-    const deployConvId = conversationId;
-    executeQuest(pendingTask).catch((error) => {
+    }), deployConvId);
+    executeQuest(pendingTask, deployConvId).catch((error) => {
       // The failure belongs to the conversation that owns this pendingTask,
       // not whichever conversation is currently shown.
       const deployRuntime = getRuntime(deployConvId);
@@ -6027,6 +6137,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   async function handleDeleteConversation(projectId, nextConversationId) {
     const project = workspaceState.projects.find((item) => item.id === projectId);
     if (!project) return;
+    const conversationToDelete = project.conversations.find((conversation) => conversation.id === nextConversationId) || null;
+    await stopConversationRuntimeBeforeDelete(nextConversationId, conversationToDelete);
     const response = await authFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
       method: 'DELETE',
     });
@@ -6079,9 +6191,15 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   async function handleRemoveProject(projectId) {
     const project = workspaceState.projects.find((item) => item.id === projectId);
     if (!project?.removable) return;
-    await Promise.all(project.conversations.map((item) => authFetch(`${API_BASE}/api/conversations/${item.id}`, {
-      method: 'DELETE',
-    })));
+    await Promise.all(project.conversations.map((item) => stopConversationRuntimeBeforeDelete(item.id, item)));
+    await Promise.all(project.conversations.map(async (item) => {
+      const response = await authFetch(`${API_BASE}/api/conversations/${item.id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`conversation delete failed: ${response.status}`);
+      }
+    }));
     const nextState = normalizeWorkspaceOrdering({
       ...workspaceState,
       projects: workspaceState.projects.filter((item) => item.id !== projectId),
