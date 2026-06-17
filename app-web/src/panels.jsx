@@ -1801,6 +1801,9 @@ function resolveToolIconClass(toolName, defaultClass) {
   if (name === 'search_text') {
     return 'ico-search-text';
   }
+  if (name === 'edit_file' || name === 'replace_lines' || name === 'multi_edit' || name === 'apply_patch') {
+    return 'ico-file-write';
+  }
   if (name.startsWith('document_') || name.includes('rag') || name.includes('knowledge') || name.includes('retrieve')
       || name.includes('vector') || name.includes('embed')) {
     return 'ico-rag';
@@ -1811,8 +1814,7 @@ function resolveToolIconClass(toolName, defaultClass) {
   if (name.includes('weather') || name.includes('forecast') || name.includes('temperature')) {
     return 'ico-weather';
   }
-  if (name.includes('write') || name.includes('edit_file') || name.includes('create_file')
-      || name.includes('save_file') || name.includes('patch')) {
+  if (name.includes('write') || name.includes('create_file') || name.includes('save_file') || name.includes('patch')) {
     return 'ico-file-write';
   }
   if (name.includes('read_file') || name.includes('read_text') || name.includes('open_file')
@@ -1857,10 +1859,12 @@ function ChatTimelineChevron({ open }) {
 }
 
 const TOOL_READ_NAMES = new Set(['read_file', 'search_text', 'glob_files', 'list_dir']);
-const TOOL_DIFF_NAMES = new Set(['write_file', 'edit_file', 'apply_patch']);
+const TOOL_DIFF_NAMES = new Set(['write_file', 'edit_file', 'replace_lines', 'multi_edit', 'apply_patch']);
 const TOOL_CHANGE_NAMES = new Set([
   'write_file',
   'edit_file',
+  'replace_lines',
+  'multi_edit',
   'apply_patch',
   'create_file',
   'delete_file',
@@ -2068,6 +2072,20 @@ function toolPlainObject(value) {
   return {};
 }
 
+function isToolFailure(item) {
+  const status = String(item?.status || '').toLowerCase();
+  if (status === 'failed' || status === 'error') return true;
+  const response = toolPlainObject(item?.toolResponse);
+  const responseStatus = String(response.status || '').toLowerCase();
+  const resultState = String(response.result_state || response.resultState || response.state || '').toLowerCase();
+  return Boolean(response.error)
+    || responseStatus === 'error'
+    || responseStatus === 'failed'
+    || resultState === 'blocked'
+    || resultState === 'failed'
+    || resultState === 'error';
+}
+
 function firstToolDisplayValue(...values) {
   for (const value of values) {
     if (value === undefined || value === null) continue;
@@ -2224,6 +2242,8 @@ function toolActionLabel(item) {
   const name = normalizeToolName(item.toolName);
   if (name === 'write_file') return 'Wrote';
   if (name === 'edit_file') return 'Edited';
+  if (name === 'replace_lines') return 'Replaced lines';
+  if (name === 'multi_edit') return 'Edited';
   if (name === 'apply_patch') return 'Patched';
   if (name === 'create_file') return 'Created';
   if (name === 'delete_file') return 'Deleted';
@@ -2240,6 +2260,19 @@ function toolActionLabel(item) {
   if (name === 'background_process_status') return 'Background process status';
   if (name === 'list_background_processes') return 'List background processes';
   return item.label || item.toolName || 'Tool';
+}
+
+function toolFailureActionLabel(item) {
+  const name = normalizeToolName(item.toolName);
+  if (name === 'write_file') return 'Write failed';
+  if (name === 'edit_file') return 'Edit failed';
+  if (name === 'replace_lines') return 'Replace lines failed';
+  if (name === 'multi_edit') return 'Edit failed';
+  if (name === 'apply_patch') return 'Apply patch failed';
+  if (name === 'create_file') return 'Create failed';
+  if (name === 'delete_file') return 'Delete failed';
+  if (name === 'copy_file') return 'Copy failed';
+  return `${toolActionLabel(item)} failed`;
 }
 
 function extractProcessChatMeta(item, name) {
@@ -2313,9 +2346,22 @@ function buildToolView(item) {
   if (TOOL_DIFF_NAMES.has(name)) {
     const diff = getToolDiff(item);
     const { added, removed } = toolLineDelta(item, diff);
+    const failed = isToolFailure(item);
+    const target = path || item.label || name;
+    if (failed) {
+      const response = toolPlainObject(item.toolResponse);
+      const error = toolPlainObject(response.error);
+      const failureText = compactToolValue(error.message || response.summary || item.outputSummary || item.message, TOOL_BLOCK_LIMIT);
+      const failureTarget = path ? ` ${path}` : '';
+      return {
+        mode: 'diff',
+        label: `${toolFailureActionLabel(item)}${failureTarget}`,
+        body: failureText || outputJsonText(item.toolResponse) || compactToolValue(item.toolOutput, TOOL_BLOCK_LIMIT),
+      };
+    }
     return {
       mode: 'diff',
-      label: `${toolActionLabel(item)} ${path || item.label || name} (+${added} -${removed})`,
+      label: `${toolActionLabel(item)} ${target}${added || removed ? ` (+${added} -${removed})` : ' (no changes)'}`,
       body: diff ? compactToolText(diff) : '',
     };
   }
@@ -2439,6 +2485,84 @@ function ChatTimelineToolBody({ view }) {
     return <ChatJsonPair requestJson={view.requestJson} responseJson={view.responseJson || view.body} />;
   }
   return null;
+}
+
+const CHAT_TODO_COLLAPSED_COMPLETED_LIMIT = 2;
+
+function ChatTodoPanel({ todos = [], streaming = false }) {
+  const safeTodos = Array.isArray(todos) ? todos : [];
+  const [showAllCompleted, setShowAllCompleted] = React.useState(false);
+  if (!safeTodos.length) return null;
+
+  // 渲染顺序：in_progress 最前 → pending 居中 → completed 最后。
+  // 不动原数组，按 status 分组聚合即可。
+  const inProgress = safeTodos.filter((t) => t.status === 'in_progress');
+  const pending = safeTodos.filter((t) => t.status === 'pending');
+  const completed = safeTodos.filter((t) => t.status === 'completed');
+
+  const visibleCompleted = showAllCompleted
+    ? completed
+    : completed.slice(-CHAT_TODO_COLLAPSED_COMPLETED_LIMIT);
+  const hiddenCount = completed.length - visibleCompleted.length;
+
+  return (
+    <div className={`chat-todo-panel ${streaming ? 'streaming' : 'done'}`} role="list">
+      {inProgress.map((todo, index) => (
+        <ChatTodoRow key={`ip-${index}`} todo={todo} streaming={streaming} />
+      ))}
+      {pending.map((todo, index) => (
+        <ChatTodoRow key={`pe-${index}`} todo={todo} streaming={streaming} />
+      ))}
+      {visibleCompleted.map((todo, index) => (
+        <ChatTodoRow key={`co-${index}`} todo={todo} streaming={streaming} />
+      ))}
+      {hiddenCount > 0 ? (
+        <button
+          type="button"
+          className="chat-todo-expand"
+          onClick={() => setShowAllCompleted(true)}
+        >
+          … +{hiddenCount} completed
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function ChatTodoRow({ todo, streaming = false }) {
+  const status = todo.status || 'pending';
+  // 已完成、或本轮非 streaming 状态的 in_progress 项不要再继续转 spinner。
+  // 只有"任务还在 running 时的 in_progress 项"才显示真正的旋转动画。
+  const showLiveSpinner = status === 'in_progress' && streaming;
+  return (
+    <div className={`chat-todo-item status-${status}`} role="listitem">
+      <ChatTodoStatusIcon status={status} live={showLiveSpinner} />
+      <span className="chat-todo-content">{todo.content}</span>
+      {status === 'in_progress' && todo.activeForm ? (
+        <span className="chat-todo-activeform">{todo.activeForm}</span>
+      ) : null}
+    </div>
+  );
+}
+
+function ChatTodoStatusIcon({ status, live = false }) {
+  if (status === 'completed') {
+    return (
+      <span className="chat-todo-icon completed" aria-label="completed">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M3.5 8.5 L6.8 11.7 L12.5 5" />
+        </svg>
+      </span>
+    );
+  }
+  if (status === 'in_progress') {
+    return (
+      <span className="chat-todo-icon in-progress" aria-label="in progress">
+        <span className={`chat-todo-spinner ${live ? 'live' : ''}`} />
+      </span>
+    );
+  }
+  return <span className="chat-todo-icon pending" aria-label="pending" />;
 }
 
 function ChatJsonBlock({ text, compact = false }) {
@@ -2759,12 +2883,13 @@ function ChatTimelineThinkingNode({ item }) {
   );
 }
 
-function ChatAgentTimeline({ items = [], streaming = false }) {
+function ChatAgentTimeline({ items = [], streaming = false, latestTodos = null }) {
   const safeItems = Array.isArray(items) ? items : [];
-  // Empty timeline + done = nothing to show, exit early.
-  // Empty timeline + streaming = still in-flight, keep the activity indicator visible
-  // so the user knows the task is alive (no "Preparing…" placeholder needed).
-  if (!safeItems.length && !streaming) return null;
+  const todos = Array.isArray(latestTodos) && latestTodos.length > 0 ? latestTodos : null;
+  // Empty timeline + done + no todos = nothing to show.
+  // Empty timeline + streaming = activity indicator carries the "alive" hint.
+  // Has todos = always show the panel even if there are no other items.
+  if (!safeItems.length && !streaming && !todos) return null;
   return (
     <div className={`chat-timeline ${streaming ? 'streaming' : 'done'}`}>
       {safeItems.map((item) => {
@@ -2796,6 +2921,7 @@ function ChatAgentTimeline({ items = [], streaming = false }) {
           <span className="chat-timeline-verb" aria-hidden="true" />
         </div>
       ) : null}
+      {todos ? <ChatTodoPanel todos={todos} streaming={streaming} /> : null}
     </div>
   );
 }
@@ -2893,11 +3019,21 @@ function ChatMessageRow({ message, now, onPreviewImage }) {
               label={elapsed || 'Trace'}
               expanded={traceExpanded}
             />
-            {traceExpanded ? <ChatAgentTimeline items={timeline} streaming={false} /> : null}
+            {traceExpanded ? (
+              <ChatAgentTimeline
+                items={timeline}
+                streaming={false}
+                latestTodos={message.traceLatestTodos || null}
+              />
+            ) : null}
           </>
         ) : null}
         {showTimelineExpanded && !showTimelineCollapsed ? (
-          <ChatAgentTimeline items={timeline} streaming={message.streaming} />
+          <ChatAgentTimeline
+            items={timeline}
+            streaming={message.streaming}
+            latestTodos={message.traceLatestTodos || null}
+          />
         ) : null}
         {message.text ? (
           <div className="chat-bubble-text">

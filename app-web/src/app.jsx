@@ -906,11 +906,15 @@ function normalizeChatImageRefs(refs, conversationId, ownerId = '') {
 }
 
 function mergeChatImageRefs(...groups) {
+  // 去重以 path 为优先 key——同一张图被多个源头（服务端记录 / 消息标记还原 /
+  // 上一轮客户端 state）各自合成的 image_id 不同，但 path 是真正稳定的"内容标识"。
+  // 历史实现按 image_id 优先，导致重启恢复 task 时 2 张图被算成 4 张。
   const seen = new Set();
   const merged = [];
   groups.flat().forEach((ref) => {
     if (!ref) return;
-    const key = ref.image_id || ref.path || ref.previewUrl;
+    const path = String(ref.path || '').trim();
+    const key = path || ref.image_id || ref.previewUrl;
     if (!key || seen.has(key)) return;
     seen.add(key);
     merged.push(ref);
@@ -1836,6 +1840,23 @@ function getToolTraceStatus(state, fallbackStatus = 'running') {
   return 'pending';
 }
 
+function getToolResponseTraceStatus(response, fallback = '') {
+  if (!response || typeof response !== 'object') return fallback || '';
+  const status = String(response.status || '').toLowerCase();
+  const resultState = String(response.result_state || response.resultState || response.state || '').toLowerCase();
+  const error = response.error || null;
+  if (error || status === 'error' || status === 'failed' || resultState === 'blocked' || resultState === 'failed' || resultState === 'error') {
+    return 'failed';
+  }
+  if (status === 'ok' || status === 'success' || resultState === 'resolved' || resultState === 'done' || resultState === 'success') {
+    return 'done';
+  }
+  if (resultState === 'not_found' || resultState === 'no_change' || resultState === 'partial') {
+    return 'done';
+  }
+  return fallback || '';
+}
+
 function formatTraceTokens(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return '';
@@ -2231,7 +2252,8 @@ function buildChatTimeline(task, taskStatus) {
     if (!callId) return;
     const toolItem = toolItemsByCallId.get(callId);
     if (!toolItem) return;
-    toolItem.status = getToolTraceStatus(terminalState, finalStatus);
+    const responseState = getToolResponseTraceStatus(event?.toolResponse, terminalState);
+    toolItem.status = getToolTraceStatus(responseState || terminalState, finalStatus);
     if (toolItem === currentSkillItem && !canNestToolChildren(toolItem)) {
       currentSkillItem = null;
     }
@@ -2321,7 +2343,19 @@ function buildChatTimeline(task, taskStatus) {
       flushThinking(false);
       if (textBuf.trim()) flushText();
       const callId = event.callId || '';
-      if (callId && seenToolIds.has(callId)) continue;
+      if (callId && seenToolIds.has(callId)) {
+        const existing = toolItemsByCallId.get(callId);
+        if (existing) {
+          existing.inputSummary = event.inputSummary || existing.inputSummary || '';
+          existing.outputSummary = event.outputSummary || existing.outputSummary || '';
+          existing.toolInput = event.toolInput || existing.toolInput || null;
+          existing.toolResponse = event.toolResponse || existing.toolResponse || null;
+          existing.toolOutput = event.toolOutput || existing.toolOutput || '';
+          existing.message = event.message || existing.message || '';
+          appendToolProgress(existing, event, 'requested');
+        }
+        continue;
+      }
       const call = (callId && toolByCallId.get(callId)) || {
         callId,
         toolName: event.toolName,
@@ -2481,10 +2515,49 @@ function buildChatTimeline(task, taskStatus) {
   // No "Preparing…" / "Queued…" placeholder——空时间线就让外面的 streaming 活动指示器
   // 单独承担"任务进行中"的视觉反馈，避免连续显示两条无内容信息。
 
+  // todo_write 不进时间线渲染——它是"持续更新的计划面板"，挂在活动指示器下方，
+  // 由 latestTodos 单独承载。这里把所有 todo_write 抽出来取最后一次写入作为
+  // 当前快照，其它工具不受影响。
+  const displayItems = [];
+  let latestTodos = null;
+  for (const it of items) {
+    if (it && it.kind === 'tool' && normalizeToolName(it.toolName) === 'todo_write') {
+      const todos = extractTodosFromToolItem(it);
+      if (todos) latestTodos = todos;
+      continue;
+    }
+    displayItems.push(it);
+  }
+
   // 折叠"两段文本之间"的连续工具调用为单行聚合 chip。聊天阅读时关心解决思路
   // (text + thinking)，不关心 read_file / chrome_devtools_* 反复的细节；想看
   // 单条工具调用时点开 chip 还能看到原来的 ChatTimelineToolNode 列表。
-  return { items: groupConsecutiveTools(items) };
+  return { items: groupConsecutiveTools(displayItems), latestTodos };
+}
+
+function extractTodosFromToolItem(item) {
+  const response = item && item.toolResponse && typeof item.toolResponse === 'object'
+    ? item.toolResponse
+    : {};
+  const artifacts = response.artifacts && typeof response.artifacts === 'object'
+    ? response.artifacts
+    : {};
+  const rawTodos = Array.isArray(artifacts.todos) ? artifacts.todos : null;
+  if (!rawTodos) return null;
+  const sanitized = rawTodos
+    .map((entry) => {
+      const obj = entry && typeof entry === 'object' ? entry : {};
+      const content = String(obj.content || '').trim();
+      if (!content) return null;
+      const statusRaw = String(obj.status || 'pending');
+      const status = ['pending', 'in_progress', 'completed'].includes(statusRaw)
+        ? statusRaw
+        : 'pending';
+      const activeForm = obj.activeForm ? String(obj.activeForm) : '';
+      return { content, status, activeForm };
+    })
+    .filter(Boolean);
+  return sanitized.length > 0 ? sanitized : null;
 }
 
 function pendingTaskToQuest(pendingTask) {
@@ -3618,8 +3691,16 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     // workspaceState[当前 conversation].tasks。否则切到别的会话后，旧会话
     // sidebar 节点会回退到上一次 activate 时拉到的 detail.tasks 快照，刚跑
     // 完的任务消失，要再切回去触发一次 fetch 才会重新出现。
+    //
+    // 必须用 conversationIdRef.current 而不是 state.activeConversationId：
+    // handleSelectConversation 在 await fetchConversationDetail 之前就已经
+    // setWorkspaceState 把 activeConversationId 改成了新会话，等这里 reducer
+    // 跑到时 state.activeConversationId 已经等于 detail.conversation_id，会
+    // 误触发 early return，flush 永远不发生。conversationIdRef.current 直到
+    // 本函数下面第 ~3651 行才会被更新，所以这里读到的还是真正"切走前"的 id。
+    const previousIdForFlush = conversationIdRef.current;
     setWorkspaceState((state) => {
-      const previousId = state.activeConversationId;
+      const previousId = previousIdForFlush;
       if (!previousId || previousId === detail.conversation_id) return state;
       const previousRuntime = getRuntime(previousId);
       const snapshot = previousRuntime ? previousRuntime.worldTaskState : worldTaskStateRef.current;
@@ -3790,7 +3871,21 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       if (task.conversationId && expectedConvId && task.conversationId !== expectedConvId) {
         return state;
       }
-      const nextTask = typeof updater === 'function' ? updater(task) : { ...task, ...updater };
+      const rawNextTask = typeof updater === 'function' ? updater(task) : { ...task, ...updater };
+      // Terminal status (done/failed/cancelled) is sticky. Late-arriving stream
+      // events must not regress a finished task back into running/queued — that's
+      // what made the sidebar show a loading spinner for already-cancelled tasks.
+      const taskWasTerminal = isTerminalTaskStatus(task.status);
+      const nextWouldBeTerminal = isTerminalTaskStatus(rawNextTask?.status);
+      const nextTask = taskWasTerminal && !nextWouldBeTerminal
+        ? {
+            ...rawNextTask,
+            status: task.status,
+            stage: rawNextTask?.stage || task.stage,
+            completedAt: rawNextTask?.completedAt || task.completedAt,
+            serverFinished: true,
+          }
+        : rawNextTask;
       return {
         ...state,
         tasksById: {
@@ -5410,7 +5505,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           const existingToolCall = Array.isArray(run.toolCalls)
             ? run.toolCalls.find((item) => item.callId === event.call_id)
             : null;
-          const nextState = event.type === 'tool_manager_received'
+          let nextState = event.type === 'tool_manager_received'
             ? 'received'
             : event.type === 'tool_dispatched'
               ? 'dispatched'
@@ -5419,6 +5514,12 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
                 : event.type === 'tool_executor_completed'
                   ? 'completed'
                   : 'returned';
+          const responseState = getToolResponseTraceStatus(event.tool_response, '');
+          if (responseState === 'failed') {
+            nextState = 'failed';
+          } else if (responseState === 'done' && (nextState === 'completed' || nextState === 'returned')) {
+            nextState = 'completed';
+          }
           return {
             ...run,
             stage: 'in_progress',
@@ -6462,6 +6563,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           text: bubbleText,
           progressLines,
           traceTimeline: timeline?.items || [],
+          traceLatestTodos: timeline?.latestTodos || null,
           status,
           streaming,
           createdAt: task.createdAt,

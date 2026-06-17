@@ -2712,6 +2712,113 @@ select,
   margin-top: 4px;
 }
 
+/* ────────────────────────────────────────────────────────────────────
+ * Todo panel: 一直挂在活动指示器下方的"当前计划"清单，跟着 todo_write
+ * 每次调用刷新。不是 tool item——不会出现在工具调用列表里，状态变化
+ * 在同一处原地更新。spinner 仅在 streaming=true 时旋转，避免任务结束
+ * 后还在空转。设计参考 Claude Code 风格，icon 与项目内已有 spinner/
+ * check 视觉系一致。
+ * ──────────────────────────────────────────────────────────────────── */
+.chat-todo-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  padding-left: 12px;   /* 与活动指示器 `*` 对齐 */
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: rgba(220,227,244,0.92);
+}
+.chat-todo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  min-height: 20px;
+}
+.chat-todo-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
+}
+.chat-todo-activeform {
+  flex: 0 0 auto;
+  color: rgba(174,185,211,0.7);
+  font-style: italic;
+  font-size: 11px;
+}
+.chat-todo-item.status-completed .chat-todo-content {
+  color: rgba(174,185,211,0.55);
+  text-decoration: line-through;
+}
+.chat-todo-item.status-in_progress .chat-todo-content {
+  color: rgba(239,191,100,0.95);
+}
+
+/* icon column ─ 14×14 居中圆，三种状态用不同视觉表达 */
+.chat-todo-icon {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  position: relative;
+}
+.chat-todo-icon.pending {
+  border: 1.5px solid rgba(174,185,211,0.55);
+  background: transparent;
+}
+.chat-todo-icon.in-progress {
+  background: transparent;
+}
+.chat-todo-icon.in-progress .chat-todo-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(239,191,100,0.28);
+  border-top-color: rgba(239,191,100,0.95);
+}
+/* 只有当前 task 仍在 streaming 时才转——任务结束后保持静止环。 */
+.chat-todo-icon.in-progress .chat-todo-spinner.live {
+  animation: chat-todo-spin 0.9s linear infinite;
+}
+.chat-todo-icon.completed {
+  background: #22c55e;
+  border: 1.5px solid #22c55e;
+  box-shadow: 0 0 6px rgba(34,197,94,0.32);
+}
+.chat-todo-icon.completed svg {
+  width: 10px;
+  height: 10px;
+  stroke: #062a14;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+@keyframes chat-todo-spin {
+  to { transform: rotate(360deg); }
+}
+
+.chat-todo-expand {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  color: rgba(174,185,211,0.72);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+}
+.chat-todo-expand:hover {
+  color: rgba(220,227,244,0.95);
+  background: rgba(138,166,209,0.12);
+  border-radius: 4px;
+}
+
 /* Folded "verb-counted" run of consecutive tool calls. The head reuses
  * .chat-timeline-tool-head; this block only adds the small count pill and
  * the expanded children list. */
