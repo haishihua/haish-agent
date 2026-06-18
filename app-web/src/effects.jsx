@@ -86,151 +86,221 @@ function inlineMarkdown(text) {
   return out;
 }
 
+function leadingColumns(line) {
+  let columns = 0;
+  for (const char of String(line || '')) {
+    if (char === ' ') columns += 1;
+    else if (char === '\t') columns += 4;
+    else break;
+  }
+  return columns;
+}
+
+function stripColumns(line, columns) {
+  let remaining = columns;
+  let index = 0;
+  const text = String(line || '');
+  while (index < text.length && remaining > 0) {
+    if (text[index] === ' ') remaining -= 1;
+    else if (text[index] === '\t') remaining -= 4;
+    else break;
+    index += 1;
+  }
+  return text.slice(index);
+}
+
+function normalizeMarkdownLines(lines) {
+  const output = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const markerOnly = lines[i].match(/^([ \t]*)([-*+]|\d+[.)])\s*$/);
+    if (!markerOnly) {
+      output.push(lines[i]);
+      continue;
+    }
+
+    let nextIndex = i + 1;
+    while (nextIndex < lines.length && lines[nextIndex].trim() === '') nextIndex += 1;
+    const nextLine = lines[nextIndex] || '';
+    const nextIsList = /^[ \t]*(?:[-*+]|\d+[.)])\s+/.test(nextLine);
+    const nextIsBoundary = /^(#{1,6}\s|```|~~~|>|[-*_]{3,}\s*$)/.test(nextLine.trimStart());
+    if (nextIndex < lines.length && nextLine.trim() && !nextIsList && !nextIsBoundary) {
+      output.push(`${markerOnly[1]}${markerOnly[2]} ${nextLine.trimStart()}`);
+      i = nextIndex;
+    } else {
+      output.push(lines[i]);
+    }
+  }
+  return output;
+}
+
 function parseMarkdown(src) {
   if (!src) return [];
-  const lines = String(src).replace(/\r\n/g, '\n').split('\n');
-  const nodes = [];
-  let i = 0;
-  let key = 0;
-
+  const lines = normalizeMarkdownLines(String(src).replace(/\r\n/g, '\n').split('\n'));
+  const state = { key: 0 };
   const isTableSep = (s) => /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(s);
   const splitRow = (l) => l.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(s => s.trim());
+  const listMatch = (line) => {
+    const match = String(line || '').match(/^([ \t]*)([-*+]|\d+[.)])\s+(.*)$/);
+    if (!match) return null;
+    const marker = match[2];
+    return {
+      indent: leadingColumns(match[1]),
+      ordered: /^\d/.test(marker),
+      start: Number(marker.replace(/\D/g, '')) || 1,
+      content: match[3],
+    };
+  };
 
-  while (i < lines.length) {
-    const line = lines[i];
-    if (line.trim() === '') { i++; continue; }
+  const isBlockStart = (line, minIndent) => {
+    if (!line || line.trim() === '') return false;
+    const stripped = stripColumns(line, minIndent);
+    return /^(#{1,6}\s|>|```|~~~)/.test(stripped)
+      || /^[ ]{0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(stripped)
+      || (listMatch(line) && listMatch(line).indent >= minIndent);
+  };
 
-    // Heading
-    let m = line.match(/^(#{1,6})\s+(.+)$/);
-    if (m) {
-      const level = Math.min(m[1].length, 6);
-      nodes.push(React.createElement(`h${level}`, { key: `h-${key++}`, className: `md-h md-h${level}` }, inlineMarkdown(m[2])));
-      i++;
-      continue;
+  const parseList = (startIndex, indent, ordered) => {
+    const items = [];
+    let i = startIndex;
+    let start = 1;
+    while (i < lines.length) {
+      let itemIndex = i;
+      while (itemIndex < lines.length && lines[itemIndex].trim() === '') itemIndex += 1;
+      const item = listMatch(lines[itemIndex]);
+      if (!item || item.indent !== indent || item.ordered !== ordered) break;
+      if (items.length === 0) start = item.start;
+      i = itemIndex + 1;
+
+      const children = [];
+      if (item.content.trim()) {
+        children.push(<React.Fragment key={`li-text-${state.key++}`}>{inlineMarkdown(item.content.trim())}</React.Fragment>);
+      }
+      const nested = parseBlocks(i, indent + 2, true);
+      children.push(...nested.nodes);
+      i = nested.index;
+      items.push(children);
     }
 
-    // Fenced code block
-    m = line.match(/^```(\w*)\s*$/);
-    if (m) {
-      i++;
-      const codeLines = [];
-      while (i < lines.length && !/^```\s*$/.test(lines[i])) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      i++;
-      nodes.push(
-        <pre key={`pre-${key++}`} className="md-pre">
-          {codeLines.map((cl, idx) => (
-            <div key={idx} className="md-code-line">
-              <span className="md-code-no">{idx + 1}</span>
-              <code className="md-code-text">{cl || ' '}</code>
-            </div>
-          ))}
-        </pre>
-      );
-      continue;
-    }
+    const Tag = ordered ? 'ol' : 'ul';
+    const props = {
+      key: `${ordered ? 'ol' : 'ul'}-${state.key++}`,
+      className: ordered ? 'md-ol' : 'md-ul',
+    };
+    if (ordered) props.start = start;
+    return {
+      index: i,
+      node: <Tag {...props}>{items.map((children, idx) => <li key={idx}>{children}</li>)}</Tag>,
+    };
+  };
 
-    // Blockquote
-    if (/^>/.test(line)) {
-      const bqLines = [];
-      while (i < lines.length && /^>/.test(lines[i])) {
-        bqLines.push(lines[i].replace(/^>\s?/, ''));
-        i++;
-      }
-      nodes.push(
-        <blockquote key={`bq-${key++}`} className="md-bq">
-          {inlineMarkdown(bqLines.join(' '))}
-        </blockquote>
-      );
-      continue;
-    }
+  const parseBlocks = (startIndex, minIndent = 0, stopOnOutdent = false) => {
+    const nodes = [];
+    let i = startIndex;
 
-    // Unordered list
-    if (/^[-*+]\s+/.test(line)) {
-      const items = [];
-      while (i < lines.length && /^[-*+]\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^[-*+]\s+/, ''));
-        i++;
-      }
-      nodes.push(
-        <ul key={`ul-${key++}`} className="md-ul">
-          {items.map((it, idx) => <li key={idx}>{inlineMarkdown(it)}</li>)}
-        </ul>
-      );
-      continue;
-    }
+    while (i < lines.length) {
+      const line = lines[i];
+      if (line.trim() === '') { i++; continue; }
+      if (stopOnOutdent && leadingColumns(line) < minIndent) break;
+      const stripped = stripColumns(line, minIndent);
 
-    // Ordered list
-    if (/^\d+\.\s+/.test(line)) {
-      const items = [];
-      let start = 1;
-      while (i < lines.length) {
-        const itemMatch = lines[i].match(/^(\d+)\.\s+(.*)$/);
-        if (!itemMatch) break;
-        if (items.length === 0) start = Number(itemMatch[1]) || 1;
-        items.push(itemMatch[2]);
+      let match = stripped.match(/^(#{1,6})\s+(.+)$/);
+      if (match) {
+        const level = Math.min(match[1].length, 6);
+        nodes.push(React.createElement(`h${level}`, { key: `h-${state.key++}`, className: `md-h md-h${level}` }, inlineMarkdown(match[2])));
         i++;
+        continue;
       }
-      nodes.push(
-        <ol key={`ol-${key++}`} className="md-ol" start={start}>
-          {items.map((it, idx) => <li key={idx}>{inlineMarkdown(it)}</li>)}
-        </ol>
-      );
-      continue;
-    }
 
-    // GFM table
-    if (line.includes('|') && i + 1 < lines.length && isTableSep(lines[i + 1])) {
-      const headers = splitRow(line);
-      i += 2;
-      const rows = [];
-      while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== '') {
-        rows.push(splitRow(lines[i]));
+      match = stripped.match(/^```(\w*)\s*$/);
+      if (match) {
         i++;
-      }
-      nodes.push(
-        <table key={`tb-${key++}`} className="md-table">
-          <thead>
-            <tr>{headers.map((h, idx) => <th key={idx}>{inlineMarkdown(h)}</th>)}</tr>
-          </thead>
-          <tbody>
-            {rows.map((row, rIdx) => (
-              <tr key={rIdx}>
-                {row.map((c, cIdx) => <td key={cIdx}>{inlineMarkdown(c)}</td>)}
-              </tr>
+        const codeLines = [];
+        while (i < lines.length && !/^```\s*$/.test(stripColumns(lines[i], minIndent))) {
+          codeLines.push(stripColumns(lines[i], minIndent));
+          i++;
+        }
+        i++;
+        nodes.push(
+          <pre key={`pre-${state.key++}`} className="md-pre">
+            {codeLines.map((codeLine, idx) => (
+              <div key={idx} className="md-code-line">
+                <span className="md-code-no">{idx + 1}</span>
+                <code className="md-code-text">{codeLine || ' '}</code>
+              </div>
             ))}
-          </tbody>
-        </table>
-      );
-      continue;
-    }
+          </pre>
+        );
+        continue;
+      }
 
-    // Horizontal rule: --- / *** / ___ (3+, optional leading spaces)
-    if (/^[ ]{0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
-      nodes.push(<hr key={`hr-${key++}`} className="md-hr" />);
+      if (/^>/.test(stripped)) {
+        const bqLines = [];
+        while (i < lines.length && /^>/.test(stripColumns(lines[i], minIndent))) {
+          bqLines.push(stripColumns(lines[i], minIndent).replace(/^>\s?/, ''));
+          i++;
+        }
+        nodes.push(<blockquote key={`bq-${state.key++}`} className="md-bq">{inlineMarkdown(bqLines.join(' '))}</blockquote>);
+        continue;
+      }
+
+      const currentList = listMatch(line);
+      if (currentList && currentList.indent >= minIndent) {
+        const parsed = parseList(i, currentList.indent, currentList.ordered);
+        nodes.push(parsed.node);
+        i = parsed.index;
+        continue;
+      }
+
+      if (stripped.includes('|') && i + 1 < lines.length && isTableSep(stripColumns(lines[i + 1], minIndent))) {
+        const headers = splitRow(stripped);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && stripColumns(lines[i], minIndent).includes('|') && lines[i].trim() !== '') {
+          rows.push(splitRow(stripColumns(lines[i], minIndent)));
+          i++;
+        }
+        nodes.push(
+          <table key={`tb-${state.key++}`} className="md-table">
+            <thead>
+              <tr>{headers.map((header, idx) => <th key={idx}>{inlineMarkdown(header)}</th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIdx) => (
+                <tr key={rowIdx}>
+                  {row.map((cell, cellIdx) => <td key={cellIdx}>{inlineMarkdown(cell)}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        );
+        continue;
+      }
+
+      if (/^[ ]{0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(stripped)) {
+        nodes.push(<hr key={`hr-${state.key++}`} className="md-hr" />);
+        i++;
+        continue;
+      }
+
+      const paraLines = [stripped];
       i++;
-      continue;
+      while (
+        i < lines.length &&
+        lines[i].trim() !== '' &&
+        !(stopOnOutdent && leadingColumns(lines[i]) < minIndent) &&
+        !isBlockStart(lines[i], minIndent) &&
+        !(stripColumns(lines[i], minIndent).includes('|') && i + 1 < lines.length && isTableSep(stripColumns(lines[i + 1], minIndent)))
+      ) {
+        paraLines.push(stripColumns(lines[i], minIndent));
+        i++;
+      }
+      nodes.push(<p key={`p-${state.key++}`} className="md-p">{inlineMarkdown(paraLines.join(' '))}</p>);
     }
 
-    // Paragraph (gather contiguous non-special lines)
-    const paraLines = [line];
-    i++;
-    while (
-      i < lines.length &&
-      lines[i].trim() !== '' &&
-      !/^(#{1,6}\s|>|[-*+]\s|\d+\.\s|```)/.test(lines[i]) &&
-      !/^[ ]{0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i]) &&
-      !(lines[i].includes('|') && i + 1 < lines.length && isTableSep(lines[i + 1]))
-    ) {
-      paraLines.push(lines[i]);
-      i++;
-    }
-    nodes.push(<p key={`p-${key++}`} className="md-p">{inlineMarkdown(paraLines.join(' '))}</p>);
-  }
+    return { nodes, index: i };
+  };
 
-  return nodes;
+  return parseBlocks(0, 0, false).nodes;
 }
 
 function Markdown({ source }) {

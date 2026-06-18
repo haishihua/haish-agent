@@ -317,9 +317,11 @@ function worldEventToRuntimeLog(event) {
     actor: event.actor || null,
     target: event.target || null,
     callId: event.call_id || null,
+    parentCallId: event.parent_call_id || event.parentCallId || null,
     toolName: event.tool_name || null,
     toolGroup: event.tool_group || null,
     kind: event.kind || null,
+    role: event.role || event.sub_agent_role || null,
     executorRole: event.executor_role || null,
     executorActorId: event.executor_actor_id || null,
     inputSummary: event.input_summary || '',
@@ -1059,10 +1061,12 @@ function normalizeWorkspaceOrdering(state) {
   const activeConversationId = state?.activeConversationId || getStoredConversationId();
   // Sidebar ordering policy (matches the UX brief):
   //   - Conversations: any conversation with a running/queued task floats
-  //     to the top of its project. Among ties (and among conversations
-  //     with no active task), order by updatedAt desc. Active highlighting
-  //     is a visual concern handled in panels.jsx — it does NOT participate
-  //     in ordering, so clicking around does not reshuffle the list.
+  //     to the top of its project. Once multiple conversations are in that
+  //     running group, keep their existing relative order so polling updates
+  //     do not make them trade places. Idle conversations still order by
+  //     updatedAt desc. Active highlighting is a visual concern handled in
+  //     panels.jsx — it does NOT participate in ordering, so clicking around
+  //     does not reshuffle the list.
   //   - Projects: createdAt desc. Active project and later activity never
   //     participate in project ordering.
   const projects = (Array.isArray(state?.projects) ? state.projects : [])
@@ -1074,6 +1078,7 @@ function normalizeWorkspaceOrdering(state) {
         const bActive = conversationHasActiveTask(b);
         if (aActive && !bActive) return -1;
         if (bActive && !aActive) return 1;
+        if (aActive && bActive) return 0;
         return conversationUpdatedTimestamp(b) - conversationUpdatedTimestamp(a);
       }),
     }))
@@ -1726,6 +1731,7 @@ function runtimeTaskToQuest(task) {
 function getChatProgressLine(event) {
   const toolName = event.tool_name || event.toolName || 'tool';
   const eventData = event.data || event.payload?.data || event.payload || event;
+  const message = String(event.message || '').trim();
   switch (event.type) {
     case 'user_message_received':
       return 'Task received.';
@@ -1753,6 +1759,17 @@ function getChatProgressLine(event) {
       return `${toolName} completed.`;
     case 'tool_result_returned':
       return event.output_summary || event.message || `${toolName} result returned.`;
+    case 'sub_agent_started':
+      return message || `${event.role || 'Sub-agent'} started.`;
+    case 'sub_agent_finished':
+      return event.outputSummary || message || `${event.role || 'Sub-agent'} finished.`;
+    case 'sub_agent_progress_delta':
+    case 'sub_agent_answer_delta':
+      return message || event.delta || event.text || event.contentDelta || event.outputSummary || '';
+    case 'sub_agent_tool_call_requested':
+      return message || `${event.role || 'Sub-agent'} requested ${toolName}.`;
+    case 'sub_agent_tool_executor_completed':
+      return event.outputSummary || message || `${toolName} completed.`;
     default:
       return '';
   }
@@ -2186,6 +2203,17 @@ function toolProgressSummary(event) {
     case 'tool_executor_failed':
     case 'tool_executor_error':
       return message || `${toolName} failed.`;
+    case 'sub_agent_started':
+      return message || `${event.role || 'Sub-agent'} started.`;
+    case 'sub_agent_finished':
+      return event.outputSummary || message || `${event.role || 'Sub-agent'} finished.`;
+    case 'sub_agent_progress_delta':
+    case 'sub_agent_answer_delta':
+      return message || event.delta || event.text || event.contentDelta || event.outputSummary || '';
+    case 'sub_agent_tool_call_requested':
+      return message || `${event.role || 'Sub-agent'} requested ${toolName}.`;
+    case 'sub_agent_tool_executor_completed':
+      return event.outputSummary || message || `${toolName} completed.`;
     default:
       return message || event.inputSummary || event.outputSummary || '';
   }
@@ -2233,6 +2261,13 @@ function buildChatTimeline(task, taskStatus) {
       id: `${toolItem.id}-${event.type}-${progressEvents.length}`,
       type: event.type,
       state,
+      callId: event.callId || event.toolCallId || event.tool_call_id || '',
+      parentCallId: event.parentCallId || event.parent_call_id || '',
+      role: event.role || event.subAgentRole || event.sub_agent_role || '',
+      toolName: event.toolName || event.tool_name || '',
+      toolInput: event.toolInput || event.tool_input || null,
+      toolResponse: event.toolResponse || event.tool_response || null,
+      toolOutput: event.toolOutput || event.tool_output || '',
       summary,
       message: event.message || '',
       inputSummary: event.inputSummary || '',
@@ -2247,6 +2282,37 @@ function buildChatTimeline(task, taskStatus) {
     const toolItem = toolItemsByCallId.get(callId);
     if (!toolItem) return;
     appendToolProgress(toolItem, event, state);
+  };
+  const appendSubAgentProgressByEvent = (event, state = '') => {
+    const parentCallId = event?.parentCallId || event?.parent_call_id || '';
+    if (!parentCallId) return;
+    const toolItem = toolItemsByCallId.get(parentCallId);
+    if (!toolItem) return;
+    if (event?.type === 'sub_agent_answer_delta') {
+      const progressEvents = Array.isArray(toolItem.progressEvents)
+        ? toolItem.progressEvents
+        : [];
+      const summary = toolProgressSummary(event);
+      if (!summary) return;
+      const last = progressEvents[progressEvents.length - 1];
+      if (last && last.type === event.type) {
+        last.summary = appendAnswerDelta(last.summary, summary);
+        last.message = appendAnswerDelta(last.message, event.message || summary);
+        last.toolOutput = appendAnswerDelta(last.toolOutput, event.toolOutput || event.tool_output || '');
+        last.timestamp = event.timestamp || last.timestamp || null;
+        toolItem.progressEvents = progressEvents;
+        return;
+      }
+    }
+    appendToolProgress(toolItem, event, state);
+  };
+  const subAgentProgressState = (type) => {
+    if (type === 'sub_agent_answer_delta') return 'stream';
+    if (type === 'sub_agent_started') return 'running';
+    if (type === 'sub_agent_finished') return 'completed';
+    if (type === 'sub_agent_tool_call_requested') return 'requested';
+    if (type === 'sub_agent_tool_executor_completed') return 'completed';
+    return 'progress';
   };
   const finalizeToolItem = (callId, terminalState, event = null) => {
     if (!callId) return;
@@ -2337,6 +2403,20 @@ function buildChatTimeline(task, taskStatus) {
       if (textBuf.trim()) flushText();
       textBuf += event.message || '';
       flushText();
+      continue;
+    }
+    if (
+      type === 'sub_agent_progress_delta'
+      || type === 'sub_agent_answer_delta'
+      || type === 'sub_agent_tool_call_requested'
+      || type === 'sub_agent_tool_executor_completed'
+      || type === 'sub_agent_started'
+      || type === 'sub_agent_finished'
+    ) {
+      appendSubAgentProgressByEvent(
+        event,
+        subAgentProgressState(type),
+      );
       continue;
     }
     if (type === 'llm_tool_call_requested') {
@@ -5546,6 +5626,18 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
             }),
           };
         });
+        break;
+      case 'sub_agent_progress_delta':
+      case 'sub_agent_answer_delta':
+      case 'sub_agent_tool_call_requested':
+      case 'sub_agent_tool_executor_completed':
+      case 'sub_agent_started':
+      case 'sub_agent_finished':
+        updateTaskById(taskId, (run) => ({
+          ...run,
+          stage: 'in_progress',
+          loopIndex,
+        }));
         break;
       case 'llm_answer_delta': {
         if (chatFinalizedTaskIdsRef.current.has(taskId) || getTaskById(taskId)?.serverFinished) {

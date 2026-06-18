@@ -1611,7 +1611,7 @@ select,
 }
 .agent-trace-verb::after {
   content: 'Synthesis...';
-  animation: chatActivityWords 16s step-end infinite;
+  animation: chatActivityWords 28s step-end infinite;
 }
 @keyframes chatActivityBlink {
   50% { opacity: 0.22; }
@@ -2304,9 +2304,24 @@ select,
     0 1px 1px rgba(0,0,0,0.22);
 }
 .chat-imsg-bubble.sub.stream {
-  font-family: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
-  font-size: 12px;
-  line-height: 1.58;
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: normal;
+}
+.chat-imsg-bubble.sub.timeline {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.chat-imsg-subtimeline {
+  width: 100%;
+  min-width: 0;
+}
+.chat-imsg-subtimeline .chat-timeline {
+  margin: 0;
 }
 
 /* Apple-style "tap to expand" collapsible used for long sub-agent / vision output */
@@ -2460,9 +2475,35 @@ select,
   border: 0.5px solid rgba(255,255,255,0.22);
 }
 
-.chat-imsg-stream-line { display: block; }
-.chat-imsg-stream-line + .chat-imsg-stream-line { margin-top: 2px; }
-.chat-imsg-stream-line.completed { color: rgba(255,255,255,0.96); }
+.chat-imsg-stream-answer {
+  color: rgba(245,247,250,0.96);
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-imsg-stream-answer-body {
+  white-space: pre-wrap;
+}
+.chat-imsg-stream-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 0.5px solid rgba(255,255,255,0.1);
+}
+.chat-imsg-stream-line {
+  display: block;
+  color: rgba(245,247,250,0.58);
+  font-family: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-imsg-stream-line.completed { color: rgba(245,247,250,0.5); }
 .chat-imsg-stream-line.failed,
 .chat-imsg-stream-line.error { color: #ffe4e8; }
 .chat-imsg-cursor {
@@ -2849,10 +2890,10 @@ select,
   align-items: center;
   gap: 7px;
   margin-top: 4px;
-  min-height: 16px;
+  min-height: 20px;
   color: rgba(239,191,100,0.92);
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
 }
 .chat-timeline.streaming { min-height: 24px; }
@@ -2862,7 +2903,7 @@ select,
 }
 .chat-timeline-verb::after {
   content: 'Synthesis...';
-  animation: chatActivityWords 16s step-end infinite;
+  animation: chatActivityWords 28s step-end infinite;
 }
 
 .chat-timeline-collapsed {
@@ -3490,6 +3531,16 @@ select,
 .chat-bubble-text .md-ol {
   margin: 0 0 0.65em;
   padding-left: 1.35em;
+}
+.chat-bubble-text .md-ul .md-ul,
+.chat-bubble-text .md-ul .md-ol,
+.chat-bubble-text .md-ol .md-ul,
+.chat-bubble-text .md-ol .md-ol {
+  margin: 0.2em 0 0.25em;
+}
+.chat-bubble-text .md-ul li,
+.chat-bubble-text .md-ol li {
+  margin: 0.22em 0;
 }
 .chat-bubble-text .md-pre {
   max-width: 100%;
@@ -6989,6 +7040,8 @@ select,
   color: rgba(255, 255, 255, 0.88);
 }
 .md-root .md-ul li, .md-root .md-ol li { margin: 6px 0; }
+.md-root li > .md-ul,
+.md-root li > .md-ol { margin: 6px 0 6px; }
 .md-root .md-ul li::marker, .md-root .md-ol li::marker { color: rgba(255, 255, 255, 0.55); }
 .md-root .md-bq {
   margin: 0 0 16px;

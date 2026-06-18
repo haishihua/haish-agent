@@ -508,6 +508,7 @@ function ConversationNode({
   project,
   conversation,
   active,
+  nodeRef,
   now,
   taskPreviewLimit = 5,
   onSelectConversation,
@@ -523,7 +524,7 @@ function ConversationNode({
   const hiddenCount = Math.max(0, tasks.length - visibleLimit);
 
   return (
-    <div className={`conversation-node ${active ? 'active' : ''}`}>
+    <div className={`conversation-node ${active ? 'active' : ''}`} ref={nodeRef}>
       <div
         role="button"
         tabIndex={0}
@@ -571,6 +572,59 @@ function ConversationNode({
   );
 }
 
+function useConversationOrderAnimation(conversations) {
+  const nodesRef = React.useRef(new Map());
+  const previousRectsRef = React.useRef(new Map());
+  const orderKey = (Array.isArray(conversations) ? conversations : [])
+    .map((conversation) => conversation.id)
+    .join('|');
+
+  const registerNode = React.useCallback((id, node) => {
+    if (!id) return;
+    if (node) nodesRef.current.set(id, node);
+    else nodesRef.current.delete(id);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    const nextRects = new Map();
+    nodesRef.current.forEach((node, id) => {
+      nextRects.set(id, node.getBoundingClientRect());
+    });
+
+    nextRects.forEach((nextRect, id) => {
+      const node = nodesRef.current.get(id);
+      const previousRect = previousRectsRef.current.get(id);
+      if (!node || !previousRect) return;
+      const dx = previousRect.left - nextRect.left;
+      const dy = previousRect.top - nextRect.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+
+      node.style.transition = 'none';
+      node.style.transform = `translate(${dx}px, ${dy}px)`;
+      node.style.willChange = 'transform';
+
+      requestAnimationFrame(() => {
+        node.style.transition = 'transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1)';
+        node.style.transform = 'translate(0, 0)';
+      });
+
+      const cleanup = (event) => {
+        if (event && (event.target !== node || event.propertyName !== 'transform')) return;
+        node.style.transition = '';
+        node.style.transform = '';
+        node.style.willChange = '';
+        node.removeEventListener('transitionend', cleanup);
+      };
+      node.addEventListener('transitionend', cleanup);
+      window.setTimeout(cleanup, 360);
+    });
+
+    previousRectsRef.current = nextRects;
+  }, [orderKey]);
+
+  return registerNode;
+}
+
 function ProjectNode({
   project,
   workspaceState,
@@ -588,6 +642,7 @@ function ProjectNode({
   taskPreviewLimit = 5,
 }) {
   const isActiveProject = workspaceState.activeProjectId === project.id;
+  const registerConversationNode = useConversationOrderAnimation(project.conversations);
 
   return (
     <div className={`project-node ${isActiveProject ? 'active' : ''}`}>
@@ -632,6 +687,7 @@ function ProjectNode({
               project={project}
               conversation={conversation}
               active={isActiveProject && workspaceState.activeConversationId === conversation.id}
+              nodeRef={(node) => registerConversationNode(conversation.id, node)}
               now={now}
               taskPreviewLimit={taskPreviewLimit}
               onSelectConversation={onSelectConversation}
@@ -2138,10 +2194,12 @@ function toolStreamTextForEvent(event, item) {
   const type = String(event?.type || '');
   const text = compactToolValue(event?.summary || event?.message || event?.outputSummary || event?.inputSummary, TOOL_BLOCK_LIMIT);
   const normalizedText = text.trim().toLowerCase();
+  if (type === 'sub_agent_answer_delta') return '';
   if (type === 'llm_tool_call_requested') return '';
   if (type === 'tool_manager_received') return '';
   if (type === 'tool_dispatched') return '';
   if (type === 'tool_executor_started') return '';
+  if (type === 'sub_agent_tool_executor_completed' && (text.length > 180 || text.trim().startsWith('{') || text.includes('\n'))) return '';
   if (normalizedText === 'queued') return '';
   if (normalizedText === 'dispatched') return '';
   if (normalizedText === `${normalizeToolName(item.toolName)} started`) return '';
@@ -2149,6 +2207,15 @@ function toolStreamTextForEvent(event, item) {
   if (normalizedText === 'the tool request has reached the tool manager.') return '';
   if (normalizedText === 'dispatched to internal tool executor.') return '';
   return text;
+}
+
+function buildToolStreamAnswerText(item) {
+  const events = Array.isArray(item.progressEvents) ? item.progressEvents : [];
+  return events
+    .filter((event) => event?.type === 'sub_agent_answer_delta')
+    .map((event) => String(event.message || event.summary || '').trimEnd())
+    .filter(Boolean)
+    .join('');
 }
 
 function buildToolStreamLines(item) {
@@ -2169,6 +2236,102 @@ function buildToolStreamLines(item) {
     lines.push({ id: 'output-summary', state: 'completed', text: compactToolValue(item.outputSummary, TOOL_BLOCK_LIMIT) });
   }
   return lines;
+}
+
+function subAgentEventText(event) {
+  return String(event?.message || event?.summary || event?.outputSummary || event?.inputSummary || '').trim();
+}
+
+function subAgentToolEventKey(event, fallbackIndex) {
+  return event?.callId
+    || event?.toolCallId
+    || event?.tool_call_id
+    || `${event?.toolName || 'tool'}-${fallbackIndex}`;
+}
+
+function subAgentToolCategory(event) {
+  const explicit = String(event?.category || event?.toolCategory || event?.tool_category || '').trim();
+  if (explicit) return explicit;
+  const name = String(event?.toolName || '').trim();
+  if (name.includes(' ')) return 'mcp';
+  return 'tool';
+}
+
+function buildSubAgentTimelineItems(view) {
+  const events = Array.isArray(view.progressEvents) ? view.progressEvents : [];
+  const items = [];
+  const toolItemsByKey = new Map();
+  let textBuffer = '';
+  let textIndex = 0;
+  const flushText = (streaming = false) => {
+    const value = textBuffer;
+    textBuffer = '';
+    if (!value.trim()) return;
+    items.push({
+      kind: 'text',
+      id: `sub-text-${textIndex}`,
+      text: value,
+      streaming,
+    });
+    textIndex += 1;
+  };
+  events.forEach((event, index) => {
+    const type = String(event?.type || '');
+    if (type === 'sub_agent_answer_delta' || type === 'sub_agent_progress_delta') {
+      const value = subAgentEventText(event);
+      if (value) textBuffer += value;
+      return;
+    }
+    if (type === 'sub_agent_tool_call_requested') {
+      flushText(false);
+      const key = subAgentToolEventKey(event, index);
+      const item = {
+        kind: 'tool',
+        id: `sub-tool-${key}-${index}`,
+        category: subAgentToolCategory(event),
+        status: 'running',
+        toolName: event.toolName || event.summary || 'Tool',
+        label: event.toolName || event.summary || 'Tool',
+        inputSummary: event.inputSummary || event.summary || '',
+        outputSummary: '',
+        toolInput: event.toolInput || null,
+        toolResponse: null,
+        toolOutput: '',
+      };
+      items.push(item);
+      toolItemsByKey.set(key, item);
+      return;
+    }
+    if (type === 'sub_agent_tool_executor_completed') {
+      flushText(false);
+      const key = subAgentToolEventKey(event, index);
+      let item = toolItemsByKey.get(key);
+      if (!item) {
+        item = {
+          kind: 'tool',
+          id: `sub-tool-${key}-${index}`,
+          category: subAgentToolCategory(event),
+          status: 'done',
+          toolName: event.toolName || 'Tool',
+          label: event.toolName || 'Tool',
+          inputSummary: event.inputSummary || '',
+          outputSummary: event.outputSummary || event.summary || '',
+          toolInput: event.toolInput || null,
+          toolResponse: event.toolResponse || null,
+          toolOutput: event.toolOutput || '',
+        };
+        items.push(item);
+        toolItemsByKey.set(key, item);
+        return;
+      }
+      item.status = 'done';
+      item.outputSummary = event.outputSummary || event.summary || item.outputSummary || '';
+      item.toolResponse = event.toolResponse || item.toolResponse || null;
+      item.toolOutput = event.toolOutput || item.toolOutput || '';
+    }
+  });
+  flushText(Boolean(view.isRunning));
+  return items;
 }
 
 function extractProcessResultText(item) {
@@ -2323,6 +2486,7 @@ function buildToolView(item) {
   if (isProcessTool(item, name)) {
     const output = toolDisplayOutput(item);
     const streamLines = buildToolStreamLines(item);
+    const streamAnswerText = buildToolStreamAnswerText(item);
     const finalText = extractProcessResultText(item);
     const chatMeta = extractProcessChatMeta(item, name);
     return {
@@ -2332,6 +2496,8 @@ function buildToolView(item) {
         : (item.label || toolActionLabel(item)),
       requestJson: toolJsonText(item.toolInput),
       streamLines,
+      streamAnswerText,
+      progressEvents: Array.isArray(item.progressEvents) ? item.progressEvents : [],
       finalText,
       defaultOpen: false,
       task: chatMeta.task,
@@ -2654,9 +2820,13 @@ function ChatImsgCollapsible({ children, maxHeight = 360 }) {
 
 function ChatProcessConversation({ view }) {
   const hasPrompt = Boolean(view.task || view.role || view.systemPrompt || view.mediaPath);
+  const streamAnswerText = String(view.streamAnswerText || '');
+  const hasStreamAnswer = Boolean(streamAnswerText.trim());
   const hasStream = Array.isArray(view.streamLines) && view.streamLines.length > 0;
+  const subTimelineItems = buildSubAgentTimelineItems(view);
+  const hasSubTimeline = subTimelineItems.length > 0;
   const hasFinal = Boolean(view.finalText);
-  if (!hasPrompt && !hasStream && !hasFinal && !view.requestJson) {
+  if (!hasPrompt && !hasSubTimeline && !hasStreamAnswer && !hasStream && !hasFinal && !view.requestJson) {
     return null;
   }
   const fileName = chatProcessFileName(view.mediaPath);
@@ -2671,15 +2841,34 @@ function ChatProcessConversation({ view }) {
         : <window.Markdown source={view.finalText} />;
       return <ChatImsgCollapsible maxHeight={360}>{inner}</ChatImsgCollapsible>;
     }
-    if (hasStream) {
+    if (hasSubTimeline) {
+      return (
+        <ChatImsgCollapsible maxHeight={420}>
+          <div className="chat-imsg-subtimeline">
+            <ChatAgentTimeline items={subTimelineItems} streaming={view.isRunning} />
+          </div>
+        </ChatImsgCollapsible>
+      );
+    }
+    if (hasStreamAnswer || hasStream) {
       return (
         <ChatImsgCollapsible maxHeight={360}>
-          {view.streamLines.map((row) => (
-            <div key={row.id} className={`chat-imsg-stream-line ${row.state || ''}`}>
-              {row.text}
+          {hasStreamAnswer ? (
+            <div className="chat-imsg-stream-answer">
+              <span className="chat-imsg-stream-answer-body">{streamAnswerText}</span>
+              {view.isRunning ? <span className="chat-imsg-cursor" aria-hidden="true" /> : null}
             </div>
-          ))}
-          {view.isRunning ? <span className="chat-imsg-cursor" aria-hidden="true" /> : null}
+          ) : null}
+          {hasStream ? (
+            <div className="chat-imsg-stream-activity" aria-label="Sub-agent activity">
+              {view.streamLines.map((row) => (
+                <div key={row.id} className={`chat-imsg-stream-line ${row.state || ''}`}>
+                  {row.text}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {!hasStreamAnswer && view.isRunning ? <span className="chat-imsg-cursor" aria-hidden="true" /> : null}
         </ChatImsgCollapsible>
       );
     }
@@ -2691,8 +2880,8 @@ function ChatProcessConversation({ view }) {
       </span>
     );
   };
-  const showSub = hasStream || hasFinal || view.isRunning;
-  const subState = hasFinal ? 'final' : (hasStream ? 'stream' : 'thinking');
+  const showSub = hasSubTimeline || hasStreamAnswer || hasStream || hasFinal || view.isRunning;
+  const subState = hasFinal ? 'final' : ((hasSubTimeline || hasStreamAnswer || hasStream) ? 'stream' : 'thinking');
   return (
     <div className="chat-imsg">
       {hasPrompt ? (
@@ -2725,7 +2914,7 @@ function ChatProcessConversation({ view }) {
 
       {showSub ? (
         <div className="chat-imsg-row from-sub">
-          <div className={`chat-imsg-bubble sub ${subState}`}>
+          <div className={`chat-imsg-bubble sub ${subState} ${hasSubTimeline ? 'timeline' : ''}`}>
             {renderSubContent()}
           </div>
         </div>
