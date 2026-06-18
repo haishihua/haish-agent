@@ -2538,9 +2538,6 @@ function ChatTodoRow({ todo, streaming = false }) {
     <div className={`chat-todo-item status-${status}`} role="listitem">
       <ChatTodoStatusIcon status={status} live={showLiveSpinner} />
       <span className="chat-todo-content">{todo.content}</span>
-      {status === 'in_progress' && todo.activeForm ? (
-        <span className="chat-todo-activeform">{todo.activeForm}</span>
-      ) : null}
     </div>
   );
 }
