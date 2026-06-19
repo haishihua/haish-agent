@@ -1,0 +1,45 @@
+app-web/src/app.jsx
+  s_b489bc74b8624b::t_2b839d230aaed7 2863
+app-web/styles.css
+  s_b489bc74b8624b::t_70855b4d0099f4 447
+  s_b489bc74b8624b::t_81cb12f94af6ac 1087,1089,1091,1097
+  s_b489bc74b8624b::t_30bdd58154aa8d 3668,3673-3674,5257
+  s_b489bc74b8624b::t_8889320d2389a5 1093-1096
+  s_b489bc74b8624b::t_041e2e0fbbf262 4041
+  s_b489bc74b8624b::t_24044f9da4639f 4148-4149,4152-4153
+  s_b489bc74b8624b::t_f62ce19bab8b2f 4337,4339,4374,4380,4395-4397
+  s_b489bc74b8624b::t_f50e95b195f83d 3669-3672
+  s_b489bc74b8624b::t_ae93c25684396c 644
+  s_b489bc74b8624b::t_9bc3f339641eb0 1090
+  s_b489bc74b8624b::t_54ee38b97409ca 4039-4040,4042-4045
+  s_b489bc74b8624b::t_c949e726ec4851 4049,4144-4145
+  s_b489bc74b8624b::t_34628390d4639d 1054,1063-1066,1088,7301
+  s_b489bc74b8624b::t_366e25499e8719 2334-2336
+src/main/main.ts
+  s_b489bc74b8624b::t_ae2516987749c6 13,96-100,248
+app-web/index.html
+  s_b489bc74b8624b::t_612c2d20913c36 5
+app-web/src/panels.jsx
+  s_b489bc74b8624b::t_60def60ad96053 816
+  s_b489bc74b8624b::t_a783f8a326c55e 104
+  s_b489bc74b8624b::t_fe12966688f709 2245,2249-2266,2304,2319,2324-2326,2328,2331,2343
+  s_b489bc74b8624b::t_f5fee7be0cfb58 1017,1690
+package.json
+  s_b489bc74b8624b::t_b41d04a31df9fa 31,53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "fc711cc05684ec4b6a339b0fd2013bab199287d3",
+  "prompts": {},
+  "sessions": {
+    "s_b489bc74b8624b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eda29-acae-7843-9db2-436aa6d3c540",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
