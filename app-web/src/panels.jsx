@@ -101,7 +101,7 @@ function TopBar({ now, viewMode = 'world', onToggleViewMode, calibrationActive =
     <div className="app-topbar">
       <div className="topbar-brand">
         <div className="topbar-logo" />
-        <div className="topbar-title">HAISH AGENT</div>
+        <div className="topbar-title">Haish Agent</div>
       </div>
       <div className="topbar-actions">
         <PortalTooltip text="Documents" position="below">
@@ -813,7 +813,7 @@ function ConversationsPanel({
   return (
     <div className="side-panel left conversations-panel" ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
       <div className="side-panel-head">
-        <div className="title">CONVERSATIONS</div>
+        <div className="title">Conversation</div>
         <PortalTooltip text="Add Project" position="below">
           <button
             type="button"
@@ -1014,7 +1014,7 @@ function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
   return (
     <div className="side-panel right" ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
       <div className="side-panel-head">
-        <div className="title">LIVE FEED</div>
+        <div className="title">Live Feed</div>
         <div className="live-badge">
           <div className="dot" />
           LIVE
@@ -1687,7 +1687,7 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
       <div className="td-head">
         <div className="td-title">
           <span className="td-glyph ico ico-task-delegation" aria-hidden="true" />
-          TASK DELEGATION
+          Task Delegation
         </div>
       </div>
       <div className="td-input-row">
@@ -2242,11 +2242,28 @@ function subAgentEventText(event) {
   return String(event?.message || event?.summary || event?.outputSummary || event?.inputSummary || '').trim();
 }
 
-function subAgentToolEventKey(event, fallbackIndex) {
+function subAgentToolEventKey(event) {
   return event?.callId
     || event?.toolCallId
     || event?.tool_call_id
-    || `${event?.toolName || 'tool'}-${fallbackIndex}`;
+    || '';
+}
+
+function subAgentToolNameKey(event) {
+  return String(event?.toolName || event?.label || event?.summary || 'tool')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function findPendingSubAgentTool(items, event) {
+  const nameKey = subAgentToolNameKey(event);
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (!item || item.kind !== 'tool' || item.status === 'done') continue;
+    if (subAgentToolNameKey(item) === nameKey) return item;
+  }
+  return null;
 }
 
 function subAgentToolCategory(event) {
@@ -2284,7 +2301,7 @@ function buildSubAgentTimelineItems(view) {
     }
     if (type === 'sub_agent_tool_call_requested') {
       flushText(false);
-      const key = subAgentToolEventKey(event, index);
+      const key = subAgentToolEventKey(event) || `pending-${index}`;
       const item = {
         kind: 'tool',
         id: `sub-tool-${key}-${index}`,
@@ -2299,17 +2316,19 @@ function buildSubAgentTimelineItems(view) {
         toolOutput: '',
       };
       items.push(item);
-      toolItemsByKey.set(key, item);
+      if (subAgentToolEventKey(event)) toolItemsByKey.set(key, item);
       return;
     }
     if (type === 'sub_agent_tool_executor_completed') {
       flushText(false);
-      const key = subAgentToolEventKey(event, index);
-      let item = toolItemsByKey.get(key);
+      const key = subAgentToolEventKey(event);
+      let item = key ? toolItemsByKey.get(key) : null;
+      if (!item) item = findPendingSubAgentTool(items, event);
       if (!item) {
+        const fallbackKey = key || `completed-${index}`;
         item = {
           kind: 'tool',
-          id: `sub-tool-${key}-${index}`,
+          id: `sub-tool-${fallbackKey}-${index}`,
           category: subAgentToolCategory(event),
           status: 'done',
           toolName: event.toolName || 'Tool',
@@ -2321,7 +2340,7 @@ function buildSubAgentTimelineItems(view) {
           toolOutput: event.toolOutput || '',
         };
         items.push(item);
-        toolItemsByKey.set(key, item);
+        if (key) toolItemsByKey.set(key, item);
         return;
       }
       item.status = 'done';

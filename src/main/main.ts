@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 
 const projectsFile = () => path.join(app.getPath('userData'), 'projects.json');
 const webRoot = () => path.join(app.getAppPath(), 'app-web');
+const appIconPngPath = () => path.join(app.getAppPath(), 'build', 'icon.png');
 const runtimePaths = () => ({
   userDataPath: app.getPath('userData'),
   resourcesPath: process.resourcesPath,
@@ -90,6 +91,11 @@ function getWindowVisualState(window: BrowserWindow) {
 
 function publishWindowVisualState(window: BrowserWindow): void {
   window.webContents.send('window:state', getWindowVisualState(window));
+}
+
+function applyDockIcon(): void {
+  if (process.platform !== 'darwin' || !app.dock) return;
+  app.dock.setIcon(appIconPngPath());
 }
 
 function createWindow(): void {
@@ -239,6 +245,7 @@ ipcMain.handle('fs:read-file', async (_event, projectId: string, relativePath: s
 
 app.whenReady().then(() => {
   app.setName('Haish');
+  applyDockIcon();
   startLocalRuntime(runtimePaths()).catch((error) => {
     console.error('Failed to start local Haish runtime:', error);
   });

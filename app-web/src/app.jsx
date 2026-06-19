@@ -2860,7 +2860,7 @@ function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = 
       <div className="app-topbar auth-topbar" aria-hidden="true">
         <div className="topbar-brand">
           <div className="topbar-logo" />
-          <div className="topbar-title">HAISH AGENT</div>
+          <div className="topbar-title">Haish Agent</div>
         </div>
       </div>
       <div className="auth-hero">

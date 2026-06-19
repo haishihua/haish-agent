@@ -28,6 +28,7 @@
     },
     "files": [
       "app-web/**/*",
+      "build/icon.png",
       "dist-electron/**/*",
       "package.json"
     ],
@@ -49,6 +50,7 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
       "hardenedRuntime": true,
       "entitlements": "entitlements/entitlements.mac.plist",
       "entitlementsInherit": "entitlements/entitlements.mac.inherit.plist",
