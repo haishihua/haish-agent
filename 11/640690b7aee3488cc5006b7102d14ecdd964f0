@@ -1,0 +1,59 @@
+app-web/styles.css
+  s_b489bc74b8624b::t_a06159e8997fc0 4235-4248,4274-4278
+  s_b94f9af0eedde2::t_674aa923924cf3 3023-3024
+  s_b489bc74b8624b::t_7eb5e732b930f6 4232-4234
+  s_b489bc74b8624b::t_bd8959e60cdf26 16
+  s_b94f9af0eedde2::t_fb750b04107c18 3008,3013,3017,3022
+  s_b94f9af0eedde2::t_c30e9b43db907f 2984,2986,2994,3018-3021,3044-3045,3051-3054,3057-3059,3065-3079,3082-3083
+  s_b489bc74b8624b::t_4b3730f3cc4345 1094,3721,5349
+  s_b489bc74b8624b::t_7c6faa8f495dd4 1211
+  s_b94f9af0eedde2::t_6d041783a08a11 3000
+  s_b489bc74b8624b::t_6c7d0d82915d77 4145,4250-4253,4257-4263,4267-4270,4272-4273
+  s_b94f9af0eedde2::t_db6153a65ee0bb 72
+  s_b94f9af0eedde2::t_7343b598e24e5c 2972-2983,2985,2987-2993,2995-2999,3001-3007,3009-3012,3014-3016,3025-3043,3046-3050,3055-3056,3060-3064,3080-3081,3084-3088
+app-web/src/panels.jsx
+  s_b94f9af0eedde2::t_0392d65cc251c1 3776-3780,3782-3810
+  s_b94f9af0eedde2::t_a07c8d609ee2be 3833
+  s_b94f9af0eedde2::t_a17bbfc28eab1c 118-133,136-138,142-151
+  s_b489bc74b8624b::t_d9572863bf663f 572-593,599,641-642
+  s_b489bc74b8624b::t_9058f416d26eed 561-571,613-614,632-635,649,651
+  s_b489bc74b8624b::t_0c7d41629c4b26 874-909,965,971
+  s_b94f9af0eedde2::t_e883fe5f1878c5 134
+  s_b489bc74b8624b::t_e405e9876cc3bc 724,784
+  s_b489bc74b8624b::t_4a6384cb50e658 640
+  s_b94f9af0eedde2::t_1300ef92c7b8c2 9,50-72
+  s_b94f9af0eedde2::t_f4ac8ec845dee6 135,139-141
+  s_b94f9af0eedde2::t_55bf4dd67afc41 1824-1828
+  s_b94f9af0eedde2::t_f5d240567d41ba 3769-3775,3811-3812,3858-3859
+app-web/src/app.jsx
+  s_b489bc74b8624b::t_a6912b21ee5333 1203,1216,1235
+  s_b489bc74b8624b::t_5ee3628d6936a3 6177-6179
+  s_b489bc74b8624b::t_7fe7a7763a41ee 1073-1076,1088
+  s_b489bc74b8624b::t_f860eb34a128dc 6192
+  s_b94f9af0eedde2::t_884ab9e024fd87 6611-6621
+  s_b489bc74b8624b::t_9af085b2f8b433 963-970,1393-1407
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "11640690b7aee3488cc5006b7102d14ecdd964f0",
+  "prompts": {},
+  "sessions": {
+    "s_b489bc74b8624b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eda29-acae-7843-9db2-436aa6d3c540",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    },
+    "s_b94f9af0eedde2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ee17d-0592-7072-91d7-863e8f5193a9",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
