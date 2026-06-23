@@ -960,6 +960,14 @@ function taskUpdatedTimestamp(task) {
   );
 }
 
+function taskCreatedTimestamp(task) {
+  if (!task) return 0;
+  return Math.max(
+    timestampValue(task.createdAt),
+    timestampValue(task.created_at),
+  );
+}
+
 function conversationUpdatedTimestamp(conversation) {
   if (!conversation) return 0;
   const taskUpdatedAt = Array.isArray(conversation.tasks)
@@ -1062,11 +1070,10 @@ function normalizeWorkspaceOrdering(state) {
   // Sidebar ordering policy (matches the UX brief):
   //   - Conversations: any conversation with a running/queued task floats
   //     to the top of its project. Once multiple conversations are in that
-  //     running group, keep their existing relative order so polling updates
-  //     do not make them trade places. Idle conversations still order by
-  //     updatedAt desc. Active highlighting is a visual concern handled in
-  //     panels.jsx — it does NOT participate in ordering, so clicking around
-  //     does not reshuffle the list.
+  //     running group, keep relative order stable. Idle conversations also
+  //     keep their existing order; updatedAt and active highlighting do NOT
+  //     participate in ordering, so clicking around does not reshuffle the
+  //     list.
   //   - Projects: createdAt desc. Active project and later activity never
   //     participate in project ordering.
   const projects = (Array.isArray(state?.projects) ? state.projects : [])
@@ -1078,8 +1085,7 @@ function normalizeWorkspaceOrdering(state) {
         const bActive = conversationHasActiveTask(b);
         if (aActive && !bActive) return -1;
         if (bActive && !aActive) return 1;
-        if (aActive && bActive) return 0;
-        return conversationUpdatedTimestamp(b) - conversationUpdatedTimestamp(a);
+        return 0;
       }),
     }))
     .sort((a, b) => projectCreatedTimestamp(b) - projectCreatedTimestamp(a));
@@ -1194,10 +1200,7 @@ function workspaceStateWithConversationDetail(state, detail, activate = true) {
       if (conversation.id !== detail.conversation_id) return conversation;
       conversationFound = true;
       const merged = conversationDetailToWorkspaceConversation(detail, conversation);
-      // Activation expands the project + the conversation being activated.
-      // We do not touch any sibling conversation's userExpanded, so others
-      // stay in whatever state the user last left them in.
-      return activate ? { ...merged, userExpanded: true } : merged;
+      return activate ? { ...merged, userExpanded: false } : merged;
     });
     return {
       ...project,
@@ -1210,7 +1213,7 @@ function workspaceStateWithConversationDetail(state, detail, activate = true) {
             ...conversations,
             (() => {
               const fresh = conversationDetailToWorkspaceConversation(detail);
-              return activate ? { ...fresh, userExpanded: true } : fresh;
+              return activate ? { ...fresh, userExpanded: false } : fresh;
             })(),
           ],
     };
@@ -1229,7 +1232,7 @@ function workspaceStateWithConversationDetail(state, detail, activate = true) {
       conversations: [
         (() => {
           const fresh = conversationDetailToWorkspaceConversation(detail);
-          return activate ? { ...fresh, userExpanded: true } : fresh;
+          return activate ? { ...fresh, userExpanded: false } : fresh;
         })(),
       ],
     });
@@ -1387,10 +1390,21 @@ function applyTerminalTaskState(task, status, options = {}) {
   };
 }
 
-function sortTaskIdsForRestore(tasks, lastTaskId) {
-  const ordered = tasks.map((task) => task.task_id);
-  if (!lastTaskId || !ordered.includes(lastTaskId)) return ordered;
-  return [...ordered.filter((taskId) => taskId !== lastTaskId), lastTaskId];
+function sortTaskIdsForRestore(tasks) {
+  return tasks
+    .map((task, index) => ({
+      taskId: task.task_id,
+      createdAt: taskCreatedTimestamp(task),
+      index,
+    }))
+    .filter((item) => item.taskId)
+    .sort((a, b) => {
+      if (a.createdAt && b.createdAt && a.createdAt !== b.createdAt) {
+        return a.createdAt - b.createdAt;
+      }
+      return a.index - b.index;
+    })
+    .map((item) => item.taskId);
 }
 
 function createPendingTaskDraft(text, attachment, imageAttachments) {
@@ -6160,11 +6174,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 
   async function handleSelectConversation(projectId, nextConversationId) {
     const requestSeq = invalidateConversationActivation();
-    // Activation policy: clicking a project or a conversation flips that
-    // item's userExpanded=true so it shows expanded — and ONLY that item.
-    // We deliberately do not touch any other project / conversation's
-    // userExpanded, so previously-opened ones stay open. This kills the
-    // "click around and everything else folds up" regression.
+    // Activation expands the project only. Conversation task lists are now
+    // user-driven via the conversation icon, so selecting a conversation no
+    // longer opens its tasks by default.
     const stampActivation = (state) => ({
       ...state,
       activeProjectId: projectId,
@@ -6177,7 +6189,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           ...projectWithExpanded,
           conversations: project.conversations.map((conversation) => (
             conversation.id === nextConversationId
-              ? { ...conversation, userExpanded: true }
+              ? { ...conversation, userExpanded: false }
               : conversation
           )),
         };
@@ -6596,6 +6608,17 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         : state
     ));
   }, [busy, currentConversationActive, currentTask, worldTaskState.activeTaskId]);
+  useEffect(() => {
+    if (!busy || currentConversationActive) return;
+    const activeTaskId = worldTaskState.activeTaskId || activeTaskIdRef.current;
+    if (activeTaskId) return;
+    if (worldTaskState.pendingTask && isTaskActuallyActive(worldTaskState.pendingTask)) return;
+    // Stale local runtime guard: if no task is actually active in the current
+    // conversation, a leftover `busy` flag should not keep the composer locked.
+    setRuntimeBusy(false);
+    setRuntimeFetchController(null);
+    setRuntimeActiveTaskId(null);
+  }, [busy, currentConversationActive, worldTaskState.activeTaskId, worldTaskState.pendingTask]);
   const activeTaskText = useMemo(() => {
     const activeTaskId = worldTaskState.activeTaskId || activeTaskIdRef.current;
     if (activeTaskId && worldTaskState.tasksById[activeTaskId]?.title) {

@@ -6,6 +6,7 @@ function PortalTooltip({ text, position = 'below', multiline = false, children }
   const [coords, setCoords] = React.useState(null);
   const triggerRef = React.useRef(null);
   const bubbleRef = React.useRef(null);
+  const suppressAfterClickRef = React.useRef(false);
 
   const computeCoords = React.useCallback(() => {
     const el = triggerRef.current;
@@ -46,10 +47,29 @@ function PortalTooltip({ text, position = 'below', multiline = false, children }
   const child = React.Children.only(children);
   const enhanced = React.cloneElement(child, {
     ref: triggerRef,
-    onMouseEnter: (e) => { setVisible(true); child.props.onMouseEnter && child.props.onMouseEnter(e); },
-    onMouseLeave: (e) => { setVisible(false); child.props.onMouseLeave && child.props.onMouseLeave(e); },
-    onFocus: (e) => { setVisible(true); child.props.onFocus && child.props.onFocus(e); },
-    onBlur: (e) => { setVisible(false); child.props.onBlur && child.props.onBlur(e); },
+    onMouseEnter: (e) => {
+      if (!suppressAfterClickRef.current) setVisible(true);
+      child.props.onMouseEnter && child.props.onMouseEnter(e);
+    },
+    onMouseLeave: (e) => {
+      suppressAfterClickRef.current = false;
+      setVisible(false);
+      child.props.onMouseLeave && child.props.onMouseLeave(e);
+    },
+    onFocus: (e) => {
+      if (!suppressAfterClickRef.current) setVisible(true);
+      child.props.onFocus && child.props.onFocus(e);
+    },
+    onBlur: (e) => {
+      suppressAfterClickRef.current = false;
+      setVisible(false);
+      child.props.onBlur && child.props.onBlur(e);
+    },
+    onClick: (e) => {
+      suppressAfterClickRef.current = true;
+      setVisible(false);
+      child.props.onClick && child.props.onClick(e);
+    },
   });
 
   const portalNode = (visible && coords && text)
@@ -93,6 +113,40 @@ function fmtAgoCompact(ts, now) {
   const h = Math.floor(diff / 3600);
   const m = Math.floor((diff % 3600) / 60);
   return m === 0 ? `${h}h ago` : `${h}h ${m}m ago`;
+}
+
+function getAttachmentKind(attachment) {
+  const name = String(attachment?.name || attachment?.title || '').trim();
+  const type = String(attachment?.type || attachment?.mime || '').toLowerCase();
+  const ext = name.match(/\.([^.\\/]+)$/)?.[1];
+  if (ext) return ext.slice(0, 5).toUpperCase();
+  if (type.includes('markdown')) return 'MD';
+  if (type.includes('pdf')) return 'PDF';
+  if (type.startsWith('image/')) return 'IMG';
+  if (type.startsWith('text/')) return 'TXT';
+  return 'FILE';
+}
+
+function AttachmentFileChip({ attachment, uploading = false, onClear }) {
+  if (!attachment) return null;
+  const name = attachment.name || attachment.title || 'Attached file';
+  const kind = getAttachmentKind(attachment);
+  const iconState = uploading ? 'is-loading' : attachment.uploaded ? 'is-ready' : 'is-pending';
+  const glyphClass = uploading ? 'ico-loading' : attachment.uploaded ? 'ico-google-docs' : 'ico-attach';
+  return (
+    <PortalTooltip text={name} position="above">
+      <div className={`composer-file-chip ${uploading ? 'is-uploading' : ''} ${attachment.uploaded ? 'is-ready' : ''}`}>
+        <span className={`composer-file-icon ${iconState}`} aria-hidden="true">
+          <span className={`ico composer-file-glyph ${glyphClass}`} />
+        </span>
+        <span className="composer-file-copy">
+          <span className="composer-file-name">{name}</span>
+          <span className="composer-file-kind">{kind}</span>
+        </span>
+        <button type="button" className="composer-file-remove" onClick={onClear} aria-label="Remove file" disabled={uploading}>×</button>
+      </div>
+    </PortalTooltip>
+  );
 }
 
 function TopBar({ now, viewMode = 'world', onToggleViewMode, calibrationActive = false, calibrationDisabled = false, onToggleCalibration }) {
@@ -504,11 +558,45 @@ function ConversationDialog({ dialog, onCancel }) {
   );
 }
 
+function conversationHasRunningTask(conversation) {
+  const tasks = Array.isArray(conversation?.tasks) ? conversation.tasks : [];
+  return tasks.some((task) => {
+    const status = String(task?.status || '').toLowerCase();
+    if (status !== 'running' && status !== 'queued') return false;
+    if (task?.completedAt || task?.completed_at) return false;
+    const answer = task?.answerText ?? task?.answer_text;
+    return !(typeof answer === 'string' && answer.trim());
+  });
+}
+
+function conversationLatestTerminalStatus(conversation) {
+  const tasks = Array.isArray(conversation?.tasks) ? conversation.tasks : [];
+  for (let index = tasks.length - 1; index >= 0; index -= 1) {
+    const status = String(tasks[index]?.status || '').toLowerCase();
+    if (status === 'done' || status === 'completed' || status === 'success') return 'done';
+    if (status === 'failed' || status === 'error') return 'failed';
+    if (status === 'cancelled' || status === 'canceled' || status === 'aborted') return 'cancelled';
+  }
+  return '';
+}
+
+function collectConversationRunningStates(workspaceState) {
+  const states = new Map();
+  (workspaceState?.projects || []).forEach((project) => {
+    (project?.conversations || []).forEach((conversation) => {
+      if (!conversation?.id) return;
+      states.set(conversation.id, conversationHasRunningTask(conversation));
+    });
+  });
+  return states;
+}
+
 function ConversationNode({
   project,
   conversation,
   active,
   nodeRef,
+  terminalStatus = '',
   now,
   taskPreviewLimit = 5,
   onSelectConversation,
@@ -522,6 +610,8 @@ function ConversationNode({
   const visibleLimit = Math.max(1, Number(taskPreviewLimit) || 5);
   const visibleTasks = conversation.tasksExpanded ? tasks.slice().reverse() : tasks.slice(-visibleLimit).reverse();
   const hiddenCount = Math.max(0, tasks.length - visibleLimit);
+  const runningTask = conversationHasRunningTask(conversation);
+  const showTaskList = conversation.expanded && tasks.length > 0;
 
   return (
     <div className={`conversation-node ${active ? 'active' : ''}`} ref={nodeRef}>
@@ -539,24 +629,26 @@ function ConversationNode({
           aria-expanded={conversation.expanded}
           onClick={(event) => { event.stopPropagation(); onToggleConversation(project.id, conversation.id); }}
         >
-          <span className={`ico ${conversation.expanded ? 'ico-comment-alt-dots' : 'ico-mobile-message'}`} aria-hidden="true" />
+          <span
+            className={`ico ${runningTask ? 'ico-loading' : (conversation.expanded ? 'ico-comment-alt-dots' : 'ico-mobile-message')}`}
+            aria-hidden="true"
+          />
         </button>
         <PortalTooltip text={conversation.name || ''} position="above">
           <span className="conversation-name">{conversation.name}</span>
         </PortalTooltip>
+        {terminalStatus && !active ? (
+          <span className={`conversation-terminal-notice chat-timeline-status status-${terminalStatus}`} aria-hidden="true" />
+        ) : null}
         <span className="conversation-actions">
           <ConversationAction label="Rename conversation" icon="pen-field" onClick={() => onRequestRenameConversation(project, conversation)} />
           <ConversationAction label="Delete conversation" icon="trash" onClick={() => onRequestDeleteConversation(project, conversation)} />
         </span>
       </div>
 
-      {conversation.expanded && (
+      {showTaskList && (
         <div className="conversation-task-list">
-          {tasks.length === 0 ? (
-            <div className="conversation-empty">No tasks yet.</div>
-          ) : (
-            visibleTasks.map((task) => <TaskRecordCompact key={task.taskId || task.id} task={task} now={now} onOpenReport={onOpenTaskReport} />)
-          )}
+          {visibleTasks.map((task) => <TaskRecordCompact key={task.taskId || task.id} task={task} now={now} onOpenReport={onOpenTaskReport} />)}
           {hiddenCount > 0 && (
             <button
               type="button"
@@ -629,6 +721,7 @@ function ProjectNode({
   project,
   workspaceState,
   now,
+  terminalNotices,
   onSelectProject,
   onToggleProject,
   onRemoveProject,
@@ -688,6 +781,7 @@ function ProjectNode({
               conversation={conversation}
               active={isActiveProject && workspaceState.activeConversationId === conversation.id}
               nodeRef={(node) => registerConversationNode(conversation.id, node)}
+              terminalStatus={terminalNotices?.[conversation.id] || ''}
               now={now}
               taskPreviewLimit={taskPreviewLimit}
               onSelectConversation={onSelectConversation}
@@ -777,6 +871,42 @@ function ConversationsPanel({
 }) {
   const [panelRef, panelWidth] = usePanelWidth();
   const [dialog, setDialog] = React.useState(null);
+  const [terminalNotices, setTerminalNotices] = React.useState({});
+  const previousRunningRef = React.useRef(new Map());
+
+  React.useEffect(() => {
+    const nextRunning = collectConversationRunningStates(workspaceState);
+    setTerminalNotices((current) => {
+      let changed = false;
+      const next = { ...current };
+      (workspaceState?.projects || []).forEach((project) => {
+        (project?.conversations || []).forEach((conversation) => {
+          if (!conversation?.id) return;
+          const wasRunning = previousRunningRef.current.get(conversation.id) === true;
+          const isRunning = nextRunning.get(conversation.id) === true;
+          if (!wasRunning || isRunning) return;
+          const status = conversationLatestTerminalStatus(conversation);
+          if (!status || next[conversation.id] === status) return;
+          next[conversation.id] = status;
+          changed = true;
+        });
+      });
+      return changed ? next : current;
+    });
+    previousRunningRef.current = nextRunning;
+  }, [workspaceState]);
+
+  const selectConversationAndClearNotice = React.useCallback((projectId, conversationId) => {
+    if (conversationId) {
+      setTerminalNotices((current) => {
+        if (!current[conversationId]) return current;
+        const next = { ...current };
+        delete next[conversationId];
+        return next;
+      });
+    }
+    onSelectConversation(projectId, conversationId);
+  }, [onSelectConversation]);
 
   function requestRenameConversation(project, conversation) {
     setDialog({
@@ -832,12 +962,13 @@ function ConversationsPanel({
             project={project}
             workspaceState={workspaceState}
             now={now}
+            terminalNotices={terminalNotices}
             taskPreviewLimit={taskPreviewLimit}
             onSelectProject={onSelectProject}
             onToggleProject={onToggleProject}
             onRemoveProject={requestRemoveProject}
             onAddConversation={onAddConversation}
-            onSelectConversation={onSelectConversation}
+            onSelectConversation={selectConversationAndClearNotice}
             onToggleConversation={onToggleConversation}
             onToggleConversationTasks={onToggleConversationTasks}
             onRequestDeleteConversation={requestDeleteConversation}
@@ -1690,6 +1821,11 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
           Task Delegation
         </div>
       </div>
+      {attachment && (
+        <div className="td-attachments" aria-label="Attached files">
+          <AttachmentFileChip attachment={attachment} uploading={uploading} onClear={clearFile} />
+        </div>
+      )}
       <div className="td-input-row">
         <textarea
           ref={taRef}
@@ -1735,16 +1871,6 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
               onSelectFile?.(nextFile);
             }}
           />
-          {attachment && (
-            <PortalTooltip text={attachment.name || ''} position="above">
-              <div className={`td-file-chip ${uploading ? 'uploading' : attachment.uploaded ? 'ready' : ''}`}>
-                <span className="name">{attachment.name}</span>
-                {uploading ? <span className="td-upload-spinner" aria-hidden="true" /> : null}
-                <span className="status">{uploading ? 'Processing' : attachment.uploaded ? 'Uploaded' : 'Pending'}</span>
-                <button type="button" className="x" onClick={clearFile} aria-label="Remove file" disabled={uploading}>×</button>
-              </div>
-            </PortalTooltip>
-          )}
           <ApprovalModePicker />
         </div>
         <div className="td-submit-cluster">
@@ -3640,43 +3766,50 @@ function ChatPanel({
         onDragOver={handleComposerDragOver}
         onDrop={handleComposerDrop}
       >
-        {composerImages.length > 0 && (
-          <div className="chat-composer-images" aria-label="Pasted images">
-            {composerImages.map((img) => (
-              <PortalTooltip
-                key={img.id}
-                text={img.error || (img.uploading ? 'Uploading...' : (img.file?.name || 'image'))}
-                position="above"
-              >
-                <div
-                  className={`chat-composer-image-chip ${img.uploading ? 'is-uploading' : ''} ${img.error ? 'has-error' : ''}`}
-                >
-                  <button
-                    type="button"
-                    className="chat-composer-image-preview-button"
-                    onClick={() => openImagePreview({
-                      src: img.previewUrl || img.path,
-                      title: img.file?.name || img.path || 'Pasted image',
-                    })}
-                    disabled={!img.previewUrl && !img.path}
-                    aria-label="Preview pasted image"
+        {(composerImages.length > 0 || attachment) && (
+          <div className="chat-composer-attachments" aria-label="Attachments">
+            {attachment && (
+              <AttachmentFileChip attachment={attachment} uploading={uploading} onClear={clearFile} />
+            )}
+            {composerImages.length > 0 && (
+              <div className="chat-composer-images" aria-label="Pasted images">
+                {composerImages.map((img) => (
+                  <PortalTooltip
+                    key={img.id}
+                    text={img.error || (img.uploading ? 'Uploading...' : (img.file?.name || 'image'))}
+                    position="above"
                   >
-                    {img.previewUrl ? (
-                      <img src={img.previewUrl} alt="" draggable={false} />
-                    ) : (
-                      <span className="chat-composer-image-fallback" aria-hidden="true">!</span>
-                    )}
-                  </button>
-                  {img.uploading && <span className="chat-composer-image-spinner" aria-hidden="true" />}
-                  <button
-                    type="button"
-                    className="chat-composer-image-remove"
-                    onClick={() => removeComposerImage(img.id)}
-                    aria-label="Remove image"
-                  >×</button>
-                </div>
-              </PortalTooltip>
-            ))}
+                    <div
+                      className={`chat-composer-image-chip ${img.uploading ? 'is-uploading' : ''} ${img.error ? 'has-error' : ''}`}
+                    >
+                      <button
+                        type="button"
+                        className="chat-composer-image-preview-button"
+                        onClick={() => openImagePreview({
+                          src: img.previewUrl || img.path,
+                          title: img.file?.name || img.path || 'Pasted image',
+                        })}
+                        disabled={!img.previewUrl && !img.path}
+                        aria-label="Preview pasted image"
+                      >
+                        {img.previewUrl ? (
+                          <img src={img.previewUrl} alt="" draggable={false} />
+                        ) : (
+                          <span className="chat-composer-image-fallback" aria-hidden="true">!</span>
+                        )}
+                      </button>
+                      {img.uploading && <span className="chat-composer-image-spinner" aria-hidden="true" />}
+                      <button
+                        type="button"
+                        className="chat-composer-image-remove"
+                        onClick={() => removeComposerImage(img.id)}
+                        aria-label="Remove image"
+                      >×</button>
+                    </div>
+                  </PortalTooltip>
+                ))}
+              </div>
+            )}
           </div>
         )}
         <textarea
@@ -3697,7 +3830,7 @@ function ChatPanel({
               submit(event);
             }
           }}
-          placeholder={disabled ? 'Assistant is currently processing...' : 'Ask, draft, or delegate...'}
+          placeholder={running ? 'Assistant is currently processing...' : 'Ask, draft, or delegate...'}
           disabled={disabled}
           maxLength={5000}
         />
@@ -3722,18 +3855,8 @@ function ChatPanel({
                 const nextFile = e.target.files?.[0] || null;
                 if (!nextFile) return;
                 onSelectFile?.(nextFile);
-              }}
-            />
-            {attachment && (
-              <PortalTooltip text={attachment.name || ''} position="above">
-                <div className={`td-file-chip ${uploading ? 'uploading' : attachment.uploaded ? 'ready' : ''}`}>
-                  <span className="name">{attachment.name}</span>
-                  {uploading ? <span className="td-upload-spinner" aria-hidden="true" /> : null}
-                  <span className="status">{uploading ? 'Processing' : attachment.uploaded ? 'Uploaded' : 'Pending'}</span>
-                  <button type="button" className="x" onClick={clearFile} aria-label="Remove file" disabled={uploading}>×</button>
-                </div>
-              </PortalTooltip>
-            )}
+            }}
+          />
             <ApprovalModePicker />
           </div>
           <div className="chat-composer-submit">
