@@ -28,7 +28,10 @@
       const resp = await fetch(`${API_BASE}/api/approvals/state`, { cache: 'no-store' });
       if (!resp.ok) return [];
       const data = await resp.json();
-      return Array.isArray(data?.pending) ? data.pending : [];
+      return [
+        ...(Array.isArray(data?.pending) ? data.pending : []),
+        ...(Array.isArray(data?.pending_browser_runtime_installs) ? data.pending_browser_runtime_installs : []),
+      ];
     } catch (err) {
       console.warn('[approval] failed to load initial state', err);
       return [];
@@ -44,6 +47,33 @@
     if (!resp.ok) {
       const detail = await resp.text().catch(() => '');
       throw new Error(`resolve failed: HTTP ${resp.status} ${detail}`);
+    }
+  }
+
+  function endpointUrl(endpoint) {
+    const value = String(endpoint || '').trim();
+    if (!value) return '';
+    if (/^https?:\/\//i.test(value)) return value;
+    if (value.startsWith('/')) return `${API_BASE}${value}`;
+    return `${API_BASE}/${value.replace(/^\/+/, '')}`;
+  }
+
+  async function postBrowserRuntimeResolve(request, decision) {
+    const endpoint = decision === 'deny' ? request.deny_endpoint : request.install_endpoint;
+    const url = endpointUrl(endpoint);
+    if (!url) {
+      throw new Error(`browser runtime ${decision === 'deny' ? 'deny' : 'install'} endpoint missing`);
+    }
+    const options = { method: 'POST' };
+    if (decision !== 'deny') {
+      options.headers = { 'Content-Type': 'application/json' };
+      options.body = JSON.stringify({ timeout_seconds: 900 });
+    }
+    const fetcher = typeof authFetch === 'function' ? authFetch : fetch;
+    const resp = await fetcher(url, options);
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '');
+      throw new Error(`browser runtime ${decision === 'deny' ? 'deny' : 'install'} failed: HTTP ${resp.status} ${detail}`);
     }
   }
 
@@ -93,7 +123,15 @@
           if (pending.some((p) => p.request_id === payload.request_id)) return;
           pending = [...pending, payload];
           notify();
+        } else if (payload.type === 'browser_runtime_install_required') {
+          if (pending.some((p) => p.request_id === payload.request_id)) return;
+          pending = [...pending, payload];
+          notify();
         } else if (payload.type === 'approval_resolved') {
+          const before = pending.length;
+          pending = pending.filter((p) => p.request_id !== payload.request_id);
+          if (pending.length !== before) notify();
+        } else if (payload.type === 'browser_runtime_install_resolved') {
           const before = pending.length;
           pending = pending.filter((p) => p.request_id !== payload.request_id);
           if (pending.length !== before) notify();
@@ -141,6 +179,21 @@
     };
   })();
 
+  function isBrowserRuntimeRequest(request) {
+    return request?.type === 'browser_runtime_install_required' || request?.action === 'install_browser_runtime';
+  }
+
+  function browserRuntimeSummary(request) {
+    const dependency = request?.diagnostic?.dependency || request?.error?.diagnostic?.dependency || 'browser runtime';
+    if (String(dependency).includes('chromium')) return 'Browser runtime is missing. Install it to continue.';
+    return 'Browser runtime dependency is missing. Install it to continue.';
+  }
+
+  function requestPreview(request) {
+    if (isBrowserRuntimeRequest(request)) return browserRuntimeSummary(request);
+    return request.raw_command || '';
+  }
+
   const RISK_TEXT = {
     destructive_file_delete: 'Recursive file or directory deletion',
     destructive_git_reset_hard: 'Hard git reset that may discard commits',
@@ -171,23 +224,40 @@
   };
 
   function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed }) {
+    const browserRuntime = isBrowserRuntimeRequest(request);
+    const busyDecision = busy === true ? 'working' : String(busy || '');
+    const isBusy = Boolean(busyDecision);
     const showAlways = request.allow_always !== false;
     const riskText = RISK_TEXT[request.risk_code] || request.risk_code || 'Unclassified risk';
+    const title = browserRuntime ? 'Browser Runtime Required' : 'Approval Required';
+    const preview = requestPreview(request);
+    const installs = Array.isArray(request.remediation?.installs) ? request.remediation.installs.join(', ') : '';
+    const busyText = browserRuntime
+      ? (busyDecision === 'deny'
+        ? 'Declining browser runtime installation...'
+        : 'Installing browser runtime...')
+      : (busyDecision === 'deny'
+        ? 'Denying request...'
+        : busyDecision === 'allow_always'
+          ? 'Approving and saving rule...'
+          : busyDecision === 'allow_once'
+            ? 'Approving this request...'
+            : 'Resolving approval...');
 
     return (
-      <div className="haish-approval-card" data-collapsed={collapsed ? '1' : '0'}>
+      <div className="haish-approval-card" data-collapsed={collapsed ? '1' : '0'} data-busy={isBusy ? '1' : '0'}>
         <button
           type="button"
           className="haish-approval-header"
           onClick={onToggleCollapsed}
           aria-expanded={!collapsed}
         >
-          <span className="haish-approval-status" aria-hidden="true" />
+          <span className={`haish-approval-status ${isBusy ? 'is-busy' : ''}`} aria-hidden="true" />
           <span className="haish-approval-icon" aria-hidden="true" />
-          <span className="haish-approval-title">Approval Required</span>
+          <span className="haish-approval-title">{title}</span>
           {collapsed ? (
-            <span className="haish-approval-collapsed-preview" title={request.raw_command}>
-              {(request.raw_command || '').slice(0, 80)}
+            <span className="haish-approval-collapsed-preview" title={preview}>
+              {preview.slice(0, 80)}
             </span>
           ) : null}
           <span className="haish-approval-tool-badge">{request.tool_name}</span>
@@ -202,14 +272,20 @@
 
         {!collapsed ? (
           <div className="haish-approval-body">
-            {request.intent_summary ? (
+            {browserRuntime ? (
+              <div className="haish-approval-intent">
+                {browserRuntimeSummary(request)}
+              </div>
+            ) : request.intent_summary ? (
               <div className="haish-approval-intent">{request.intent_summary}</div>
             ) : null}
 
             <div className="haish-approval-cmd-label">
-              <span>Command (runs in terminal)</span>
+              <span>{browserRuntime ? 'Runtime action' : 'Command (runs in terminal)'}</span>
             </div>
-            <pre className="haish-approval-cmd-pre">{request.raw_command || '(empty)'}</pre>
+            <pre className="haish-approval-cmd-pre">
+              {browserRuntime ? 'install_browser_runtime' : (request.raw_command || '(empty)')}
+            </pre>
 
             <div className="haish-approval-meta">
               {request.workspace_path ? (
@@ -218,11 +294,28 @@
                   <span className="haish-approval-meta-val">{request.workspace_path}</span>
                 </div>
               ) : null}
-              <div className="haish-approval-meta-row">
-                <span className="haish-approval-meta-key">Risk</span>
-                <span className="haish-approval-meta-val haish-approval-risk-val">{riskText}</span>
-              </div>
-              {!showAlways ? (
+              {browserRuntime ? (
+                <>
+                  <div className="haish-approval-meta-row">
+                    <span className="haish-approval-meta-key">Missing</span>
+                    <span className="haish-approval-meta-val haish-approval-risk-val">
+                      {request?.diagnostic?.dependency || request?.error?.diagnostic?.dependency || 'browser runtime'}
+                    </span>
+                  </div>
+                  {installs ? (
+                    <div className="haish-approval-meta-row">
+                      <span className="haish-approval-meta-key">Installs</span>
+                      <span className="haish-approval-meta-val">{installs}</span>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div className="haish-approval-meta-row">
+                  <span className="haish-approval-meta-key">Risk</span>
+                  <span className="haish-approval-meta-val haish-approval-risk-val">{riskText}</span>
+                </div>
+              )}
+              {!browserRuntime && !showAlways ? (
                 <div className="haish-approval-killswitch">
                   This is a failsafe-level operation. It can only be allowed once and cannot be permanently approved.
                 </div>
@@ -230,34 +323,52 @@
             </div>
 
             <div className="haish-approval-actions">
-              <button
-                type="button"
-                className="haish-approval-btn haish-approval-btn-deny"
-                onClick={() => onDecide('deny')}
-                disabled={busy}
-                autoFocus
-              >
-                Deny
-              </button>
-              <button
-                type="button"
-                className="haish-approval-btn haish-approval-btn-once"
-                onClick={() => onDecide('allow_once')}
-                disabled={busy}
-              >
-                Allow Once
-              </button>
-              {showAlways ? (
-                <button
-                  type="button"
-                  className="haish-approval-btn haish-approval-btn-always"
-                  onClick={() => onDecide('allow_always')}
-                  disabled={busy}
-                  title={`Approve and add ${request.suggested_pattern} to this project's permanent allowlist`}
-                >
-                  Approve and Remember
-                </button>
-              ) : null}
+              {isBusy ? (
+                <div className="haish-approval-progress" role="status" aria-live="polite">
+                  <span className="haish-approval-spinner" aria-hidden="true" />
+                  <span>{busyText}</span>
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="haish-approval-btn haish-approval-btn-deny"
+                    onClick={() => onDecide('deny')}
+                    autoFocus
+                  >
+                    Deny
+                  </button>
+                  {browserRuntime ? (
+                    <button
+                      type="button"
+                      className="haish-approval-btn haish-approval-btn-once"
+                      onClick={() => onDecide('install')}
+                    >
+                      Install Browser Runtime
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="haish-approval-btn haish-approval-btn-once"
+                        onClick={() => onDecide('allow_once')}
+                      >
+                        Allow Once
+                      </button>
+                      {showAlways ? (
+                        <button
+                          type="button"
+                          className="haish-approval-btn haish-approval-btn-always"
+                          onClick={() => onDecide('allow_always')}
+                          title={`Approve and add ${request.suggested_pattern} to this project's permanent allowlist`}
+                        >
+                          Approve and Remember
+                        </button>
+                      ) : null}
+                    </>
+                  )}
+                </>
+              )}
             </div>
           </div>
         ) : null}
@@ -305,9 +416,13 @@
 
     const handleDecide = useCallback(async (request, decision) => {
       setError('');
-      setBusy((prev) => ({ ...prev, [request.request_id]: true }));
+      setBusy((prev) => ({ ...prev, [request.request_id]: decision }));
       try {
-        await postResolve(request.request_id, decision);
+        if (isBrowserRuntimeRequest(request)) {
+          await postBrowserRuntimeResolve(request, decision);
+        } else {
+          await postResolve(request.request_id, decision);
+        }
         // Optimistic removal: store will also drop it once the stream confirms.
         approvalStore.remove(request.request_id);
       } catch (err) {
@@ -412,6 +527,26 @@
   border-radius: 50%;
   background: var(--gold);
   box-shadow: 0 0 8px rgba(239,191,100,0.28);
+}
+.haish-approval-status.is-busy {
+  flex: 0 0 12px;
+  width: 12px;
+  min-width: 12px;
+  max-width: 12px;
+  height: 12px;
+  min-height: 12px;
+  max-height: 12px;
+  box-sizing: border-box;
+  display: inline-block;
+  border: 2px solid rgba(239, 191, 100, 0.28);
+  border-top-color: var(--gold);
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  animation: haishApprovalSpin 760ms linear infinite;
+}
+@keyframes haishApprovalSpin {
+  to { transform: rotate(360deg); }
 }
 
 .haish-approval-icon {
@@ -559,6 +694,38 @@
   font-family: inherit;
 }
 
+.haish-approval-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 8px 11px;
+  border: 1px solid rgba(239, 191, 100, 0.28);
+  border-radius: 6px;
+  background: rgba(239, 191, 100, 0.08);
+  color: rgba(236, 241, 252, 0.92);
+  font-size: 12px;
+  line-height: 1.45;
+  font-family: inherit;
+}
+.haish-approval-spinner {
+  flex: 0 0 14px;
+  width: 14px;
+  min-width: 14px;
+  max-width: 14px;
+  height: 14px;
+  min-height: 14px;
+  max-height: 14px;
+  box-sizing: border-box;
+  display: inline-block;
+  border: 2px solid rgba(239, 191, 100, 0.28);
+  border-top-color: var(--gold);
+  border-radius: 999px;
+  animation: haishApprovalSpin 760ms linear infinite;
+}
+
 .haish-approval-actions {
   display: flex;
   justify-content: flex-end;
@@ -579,7 +746,11 @@
 .haish-approval-btn:hover:not(:disabled) {
   background: rgba(35, 40, 56, 0.95);
 }
-.haish-approval-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.haish-approval-btn:disabled {
+  opacity: 0.72;
+  cursor: wait;
+  filter: saturate(0.75);
+}
 .haish-approval-btn-deny {
   border-color: rgba(224, 71, 106, 0.72);
   color: #fb7185;

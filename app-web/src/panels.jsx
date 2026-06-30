@@ -873,9 +873,29 @@ function ConversationsPanel({
   const [dialog, setDialog] = React.useState(null);
   const [terminalNotices, setTerminalNotices] = React.useState({});
   const previousRunningRef = React.useRef(new Map());
+  // Conversations the user was actively viewing while a task was running.
+  // Their completion was already seen, so they must never produce a
+  // lingering notice — even after the user switches to another conversation.
+  const seenWhileRunningRef = React.useRef(new Set());
+  const activeProjectId = workspaceState?.activeProjectId;
+  const activeConversationId = workspaceState?.activeConversationId;
 
   React.useEffect(() => {
     const nextRunning = collectConversationRunningStates(workspaceState);
+    // Remember any conversation the user is actively viewing while its
+    // task is still running.
+    (workspaceState?.projects || []).forEach((project) => {
+      (project?.conversations || []).forEach((conversation) => {
+        if (!conversation?.id) return;
+        if (
+          project.id === activeProjectId &&
+          conversation.id === activeConversationId &&
+          nextRunning.get(conversation.id)
+        ) {
+          seenWhileRunningRef.current.add(conversation.id);
+        }
+      });
+    });
     setTerminalNotices((current) => {
       let changed = false;
       const next = { ...current };
@@ -885,6 +905,13 @@ function ConversationsPanel({
           const wasRunning = previousRunningRef.current.get(conversation.id) === true;
           const isRunning = nextRunning.get(conversation.id) === true;
           if (!wasRunning || isRunning) return;
+          // The user was viewing this conversation while its task was
+          // running, so the completion was already seen — skip the
+          // notice and forget the "seen" marker.
+          if (seenWhileRunningRef.current.has(conversation.id)) {
+            seenWhileRunningRef.current.delete(conversation.id);
+            return;
+          }
           const status = conversationLatestTerminalStatus(conversation);
           if (!status || next[conversation.id] === status) return;
           next[conversation.id] = status;
@@ -893,8 +920,34 @@ function ConversationsPanel({
       });
       return changed ? next : current;
     });
+    // Prune "seen" markers for conversations that are gone or no longer
+    // running, so the set cannot grow without bound.
+    const liveRunningIds = new Set();
+    (workspaceState?.projects || []).forEach((project) => {
+      (project?.conversations || []).forEach((conversation) => {
+        if (conversation?.id && nextRunning.get(conversation.id)) {
+          liveRunningIds.add(conversation.id);
+        }
+      });
+    });
+    seenWhileRunningRef.current = new Set(
+      [...seenWhileRunningRef.current].filter((id) => liveRunningIds.has(id))
+    );
     previousRunningRef.current = nextRunning;
-  }, [workspaceState]);
+  }, [workspaceState, activeProjectId, activeConversationId]);
+
+  // The terminal notice is one-shot: the moment the user opens the
+  // conversation (or is already viewing it when the task finishes), the
+  // completion indicator should disappear immediately.
+  React.useEffect(() => {
+    if (!activeConversationId) return;
+    setTerminalNotices((current) => {
+      if (!current[activeConversationId]) return current;
+      const next = { ...current };
+      delete next[activeConversationId];
+      return next;
+    });
+  }, [activeConversationId, activeProjectId]);
 
   const selectConversationAndClearNotice = React.useCallback((projectId, conversationId) => {
     if (conversationId) {
@@ -905,8 +958,7 @@ function ConversationsPanel({
         return next;
       });
     }
-    onSelectConversation(projectId, conversationId);
-  }, [onSelectConversation]);
+    onSelectConversation(projectId, conversationId);  }, [onSelectConversation]);
 
   function requestRenameConversation(project, conversation) {
     setDialog({

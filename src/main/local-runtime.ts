@@ -131,7 +131,7 @@ function parseEnvFile(filePath: string): Record<string, string> {
   return result;
 }
 
-function runtimeEnv(paths: RuntimePaths, runtimeRepo: string): NodeJS.ProcessEnv {
+function runtimeEnv(paths: RuntimePaths, runtimeRepo: string, workdir: string): NodeJS.ProcessEnv {
   const envFile = process.env.HAISH_LOCAL_RUNTIME_ENV_FILE
     || path.join(paths.userDataPath, 'runtime.env');
   const bundledEnvFile = path.join(runtimeRepo, '.env');
@@ -147,6 +147,10 @@ function runtimeEnv(paths: RuntimePaths, runtimeRepo: string): NodeJS.ProcessEnv
     ...baseEnv,
     ...parseEnvFile(bundledEnvFile),
     ...parseEnvFile(envFile),
+    HAISHIHUA_AGENT_WORLD_APP_HOME: workdir,
+    HAISHIHUA_AGENT_WORLD_APP_WORKDIR: workdir,
+    HAISHIHUA_DOCUMENT_QA_HOME: workdir,
+    HAISHIHUA_DOCUMENT_QA_WORKDIR: workdir,
     PYTHONPATH: process.env.PYTHONPATH ? `${pythonPath}${path.delimiter}${process.env.PYTHONPATH}` : pythonPath,
     PYTHONUNBUFFERED: '1',
   };
@@ -219,8 +223,8 @@ export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRunti
         'haish://app',
       ],
       {
-        cwd: runtimeRepo,
-        env: runtimeEnv(paths, runtimeRepo),
+        cwd: workdir,
+        env: runtimeEnv(paths, runtimeRepo, workdir),
       },
     );
 
