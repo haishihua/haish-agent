@@ -85,6 +85,14 @@ const PROVIDER_ACTOR_MAP = {
   claude: { actor: 'kurisu', label: 'Anthropic protocol' },
 };
 
+const APP_DEFAULT_AGENT_OPTIONS = [
+  { id: 'preset.general', label: 'Task Assistant', description: 'Default full-tool assistant' },
+  { id: 'preset.product', label: 'Product Planner', description: 'Requirements, PRDs, scope, and acceptance criteria' },
+  { id: 'preset.development', label: 'Coding Assistant', description: 'Implementation, debugging, and verification' },
+  { id: 'preset.qa', label: 'Test Engineer', description: 'Test design, execution, and defect reports' },
+  { id: 'preset.document-qa', label: 'Docs Search', description: 'Grounded answers from indexed documents' },
+];
+
 const WORLD_EVENT_ROUTE_MAP = {
   'agent_gateway_received': { actor: 'guts', bubble: 'Task received. Selecting the provider.' },
   'context_compaction_started': { actor: 'okabe', kind: 'llm', bubble: 'Auto-Compacting context' },
@@ -401,6 +409,7 @@ const CONVERSATION_STORAGE_KEY = 'agent_world_conversation_id';
 const WORKSPACE_STORAGE_KEY = 'agent_world_workspaces_v2';
 const CONTEXT_USAGE_STORAGE_KEY = 'agent_world_context_usage_v1';
 const AUTH_SESSION_STORAGE_KEY = 'haish_auth_session_v1';
+const RUN_CONFIG_STORAGE_PREFIX = 'haish_run_config_v1';
 const DEFAULT_CONTEXT_TOTAL_TOKENS = 128000;
 const RESTORED_CONTEXT_BASE_TOKENS = 4200;
 const DEFAULT_PROJECT_ID = 'default-project';
@@ -415,6 +424,22 @@ function readStoredJson(storage, key) {
   } catch (error) {
     return null;
   }
+}
+
+function stableHash(value) {
+  const input = String(value || '');
+  let hash = 5381;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = ((hash << 5) + hash) ^ input.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function buildRunConfigStorageKey(authUser, providerKey) {
+  const userKey = String(authUser?.id || authUser?.email || authUser?.username || 'anonymous').trim() || 'anonymous';
+  const provider = String(providerKey || 'unknown').trim() || 'unknown';
+  if (provider === 'unknown') return '';
+  return `${RUN_CONFIG_STORAGE_PREFIX}:${stableHash(userKey)}:${stableHash(provider)}`;
 }
 
 function clearStoredAuthSession() {
@@ -3214,8 +3239,13 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   const [composerAttachment, setComposerAttachment] = useState(null);
   const [uploadState, setUploadState] = useState({ active: false, fileName: '' });
   const [toast, setToast] = useState(null);
-  const [modelCatalog, setModelCatalog] = useState(() => ({ options: [], defaultModelId: '' }));
+  const [modelCatalog, setModelCatalog] = useState(() => ({ options: [], defaultModelId: '', provider: '' }));
   const [providerLoading, setProviderLoading] = useState(true);
+  const [agentCatalog, setAgentCatalog] = useState(() => ({
+    options: APP_DEFAULT_AGENT_OPTIONS,
+    defaultAgentId: APP_DEFAULT_AGENT_OPTIONS[0].id,
+  }));
+  const [agentLoading, setAgentLoading] = useState(true);
 
   const stageRef = useRef(null);
   const abortRef = useRef(false);
@@ -3289,12 +3319,46 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           setModelCatalog({
             options: data.models,
             defaultModelId: data.default_model || data.models[0].id,
+            provider: String(data.provider || '').trim(),
           });
         }
       })
       .catch((error) => console.warn('failed to fetch provider models', error))
       .finally(() => {
         if (!cancelled) setProviderLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    authFetch(`${API_BASE}/api/agents`, { method: 'GET' }, { json: false })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const rows = Array.isArray(data) ? data : (Array.isArray(data.agents) ? data.agents : []);
+        const options = rows
+          .map((item) => {
+            const id = String(item?.agent_id || item?.id || item?.profile_id || '').trim();
+            if (!id) return null;
+            return {
+              id,
+              label: String(item?.display_name || item?.label || id).trim() || id,
+              description: String(item?.description || '').trim(),
+              custom: Boolean(item?.custom),
+            };
+          })
+          .filter(Boolean);
+        if (options.length > 0) {
+          setAgentCatalog({
+            options,
+            defaultAgentId: options.find((item) => item.id === 'preset.general')?.id || options[0].id,
+          });
+        }
+      })
+      .catch((error) => console.warn('failed to fetch assistant agents', error))
+      .finally(() => {
+        if (!cancelled) setAgentLoading(false);
       });
     return () => { cancelled = true; };
   }, []);
@@ -3323,6 +3387,10 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 
   const modelOptions = modelCatalog?.options;
   const defaultModelId = modelCatalog?.defaultModelId;
+  const modelProviderKey = modelCatalog?.provider || '';
+  const agentOptions = agentCatalog?.options || APP_DEFAULT_AGENT_OPTIONS;
+  const defaultAgentId = agentCatalog?.defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
+  const runConfigStorageKey = buildRunConfigStorageKey(authUser, modelProviderKey);
 
   useEffect(() => { npcStatesRef.current = npcStates; }, [npcStates]);
   useEffect(() => { worldTaskStateRef.current = worldTaskState; }, [worldTaskState]);
@@ -5919,6 +5987,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         options: {
           provider: pendingTask.requestedProvider || 'auto',
           model_id: pendingTask.requestedModelId || null,
+          agent_id: pendingTask.requestedAgentId || null,
           // Fallback when no per-task choice exists. Matches DEFAULT_REASONING_EFFORT
           // in panels.jsx — kept in sync so request payload mirrors UI default.
           reasoning_effort: pendingTask.requestedReasoningEffort || 'high',
@@ -6060,7 +6129,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     resetSceneActors();
   }
 
-  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments) {
+  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId) {
     const sanitizedImageAttachments = Array.isArray(imageAttachments)
       ? imageAttachments
           .filter((ref) => ref && ref.image_id && ref.path)
@@ -6078,6 +6147,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     }
     const pendingTask = createPendingTaskDraft(text, attachment, sanitizedImageAttachments);
     pendingTask.requestedModelId = modelId || '';
+    pendingTask.requestedAgentId = agentId || defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
     // Match DEFAULT_REASONING_EFFORT in panels.jsx (kept in sync).
     pendingTask.requestedReasoningEffort = reasoningEffort || 'high';
     pendingTask.requestedProvider = 'auto';
@@ -6791,7 +6861,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
                     messages={chatMessages}
                     running={busy || currentConversationActive}
                     disabled={busy || currentConversationActive || uploadState.active || calibrationMode || !conversationReady || conversationSelectionPending || !!conversationError}
-                    onSend={(text, attachment, modelId, reasoningEffort, imageAttachments) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments)}
+                    onSend={(text, attachment, modelId, reasoningEffort, imageAttachments, agentId) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId)}
                     onStop={handleStop}
                     onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }}
                     onClearFile={handleAttachmentClear}
@@ -6806,6 +6876,10 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
                     modelOptions={modelOptions}
                     defaultModelId={defaultModelId}
                     modelLoading={providerLoading}
+                    agentOptions={agentOptions}
+                    defaultAgentId={defaultAgentId}
+                    agentLoading={agentLoading}
+                    selectionStorageKey={runConfigStorageKey}
 	                  />
 	                </div>
 	              </div>
@@ -6816,7 +6890,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
                     MAP_W={MAP_W}
                     MAP_H={MAP_H}
                     onViewChange={setMapView}
-                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={busy || currentConversationActive || uploadState.active || calibrationMode || !conversationReady || conversationSelectionPending || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} />}
+                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={busy || currentConversationActive || uploadState.active || calibrationMode || !conversationReady || conversationSelectionPending || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} agentOptions={agentOptions} defaultAgentId={defaultAgentId} agentLoading={agentLoading} selectionStorageKey={runConfigStorageKey} />}
                   >
                     <div ref={stageRef} className="office-map">
                       {calibrationMode && calibrationTarget === 'routes' && selectedRouteId && <window.CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}

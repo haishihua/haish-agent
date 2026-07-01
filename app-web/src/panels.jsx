@@ -1235,6 +1235,14 @@ const MODEL_OPTIONS = [
   ...ANTHROPIC_CLAUDE_MODEL_OPTIONS,
 ];
 
+const DEFAULT_AGENT_OPTIONS = [
+  { id: 'preset.general', label: 'Task Assistant', description: 'Default full-tool assistant' },
+  { id: 'preset.product', label: 'Product Planner', description: 'Requirements, PRDs, scope, and acceptance criteria' },
+  { id: 'preset.development', label: 'Coding Assistant', description: 'Implementation, debugging, and verification' },
+  { id: 'preset.qa', label: 'Test Engineer', description: 'Test design, execution, and defect reports' },
+  { id: 'preset.document-qa', label: 'Docs Search', description: 'Grounded answers from indexed documents' },
+];
+
 // OAuth 模型只通过 model_id 下发；provider 由后端 resolver 基于 model_id 判定。
 const PROVIDER_MODEL_CATALOG = {
   oauth: {
@@ -1452,22 +1460,44 @@ function ApprovalModePicker({ disabled = false }) {
 }
 window.ApprovalModePicker = ApprovalModePicker;
 
-function ModelPicker({ value, reasoningEffort, options, reasoningOptions = REASONING_EFFORT_OPTIONS, onChange, onReasoningChange, disabled, loading = false }) {
+function ModelPicker({
+  value,
+  reasoningEffort,
+  options,
+  reasoningOptions = REASONING_EFFORT_OPTIONS,
+  onChange,
+  onReasoningChange,
+  disabled,
+  loading = false,
+  agentValue,
+  agentOptions,
+  onAgentChange,
+  agentLoading = false,
+}) {
   const [open, setOpen] = React.useState(false);
+  const [activeSubmenu, setActiveSubmenu] = React.useState(null);
   const rootRef = React.useRef(null);
   const current = options.find((o) => o.id === value) || options[0];
   const currentReasoning = reasoningOptions.find((o) => o.id === reasoningEffort) || reasoningOptions.find((o) => o.id === DEFAULT_REASONING_EFFORT) || reasoningOptions[0];
+  const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : [];
+  const currentAgent = resolvedAgentOptions.find((o) => o.id === agentValue) || resolvedAgentOptions[0] || null;
   const modelLabel = current ? current.label : (loading ? 'loading' : 'unavailable');
+  const agentLabel = currentAgent ? currentAgent.label : (agentLoading ? 'loading' : 'Agent');
+  const pickerLoading = agentLoading;
 
   React.useEffect(() => {
     if (!open) return undefined;
     function handleDocMouseDown(event) {
       if (rootRef.current && !rootRef.current.contains(event.target)) {
         setOpen(false);
+        setActiveSubmenu(null);
       }
     }
     function handleKey(event) {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        setActiveSubmenu(null);
+      }
     }
     document.addEventListener('mousedown', handleDocMouseDown);
     document.addEventListener('keydown', handleKey);
@@ -1478,79 +1508,42 @@ function ModelPicker({ value, reasoningEffort, options, reasoningOptions = REASO
   }, [open]);
 
   return (
-    <div className={`model-picker ${open ? 'is-open' : ''} ${loading ? 'is-loading' : ''}`} ref={rootRef}>
-      <PortalTooltip
-        text={open ? '' : (loading ? 'Loading provider models...' : `${currentReasoning ? currentReasoning.id : ''} · ${current ? current.id : ''}`)}
-        position="above"
+    <div className={`model-picker run-config-picker ${open ? 'is-open' : ''} ${pickerLoading ? 'is-loading' : ''}`} ref={rootRef}>
+      <button
+        type="button"
+        className="model-picker-trigger"
+        onClick={() => {
+          if (disabled || pickerLoading) return;
+          setOpen((o) => {
+            if (o) setActiveSubmenu(null);
+            return !o;
+          });
+        }}
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Select run configuration"
       >
-        <button
-          type="button"
-          className="model-picker-trigger"
-          onClick={() => { if (!disabled && !loading) setOpen((o) => !o); }}
-          disabled={disabled}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-label="Select model"
-        >
-          <span className="model-picker-value">{currentReasoning ? currentReasoning.label : ''} · {modelLabel}</span>
-          <span className={loading ? 'model-picker-loading' : 'model-picker-caret'} aria-hidden="true" />
-        </button>
-      </PortalTooltip>
+        <span className="model-picker-value">{agentLabel}</span>
+        <span className={pickerLoading ? 'model-picker-loading' : 'model-picker-caret'} aria-hidden="true" />
+      </button>
       {open ? (
-        <div className="model-picker-menu" role="listbox">
-          <div className="model-picker-header">thinking</div>
-          <div className="model-picker-list">
-            {reasoningOptions.map((opt) => {
-              const active = opt.id === currentReasoning?.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  role="option"
-                  aria-selected={active}
-                  className={`model-picker-option ${active ? 'is-active' : ''}`}
-                  onClick={() => { onReasoningChange?.(opt.id); }}
-                  title={opt.id}
-                >
-                  <span className="model-picker-option-label">{opt.label}</span>
-                  {active ? (
-                    <span className="model-picker-check" aria-hidden="true">
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
-                           strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3.2,8.6 6.6,12 13,4.8" />
-                      </svg>
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-          <div className="model-picker-submenu">
-            <button
-              type="button"
-              className="model-picker-option model-picker-model-entry"
-              title={current ? current.id : ''}
-              aria-haspopup="listbox"
-            >
-              <span className="model-picker-option-label">{modelLabel}</span>
-              <span className="model-picker-subcaret" aria-hidden="true" />
-            </button>
-            <div className="model-picker-flyout" role="listbox" aria-label="model">
-              <div className="model-picker-header">model</div>
+        <div className={`model-picker-menu ${activeSubmenu ? 'has-flyout' : ''}`} role="menu">
+          {currentAgent ? (
+            <div className="model-picker-section">
               <div className="model-picker-list">
-                {options.map((opt) => {
-                  const active = opt.id === value;
+                {resolvedAgentOptions.map((opt) => {
+                  const active = opt.id === currentAgent?.id;
                   return (
                     <button
                       key={opt.id}
                       type="button"
-                      role="option"
-                      aria-selected={active}
+                      role="menuitemradio"
+                      aria-checked={active}
                       className={`model-picker-option ${active ? 'is-active' : ''}`}
-                      onClick={() => { onChange(opt.id); setOpen(false); }}
-                      title={opt.id}
+                      onClick={() => { onAgentChange?.(opt.id); setOpen(false); setActiveSubmenu(null); }}
                     >
-                      <span className="model-picker-option-label">{opt.label}</span>
+                      <span className="model-picker-option-label">{opt.label || opt.id}</span>
                       {active ? (
                         <span className="model-picker-check" aria-hidden="true">
                           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
@@ -1564,6 +1557,94 @@ function ModelPicker({ value, reasoningEffort, options, reasoningOptions = REASO
                 })}
               </div>
             </div>
+          ) : null}
+          <div className="model-picker-submenu">
+            <button
+              type="button"
+              role="menuitem"
+              className={`model-picker-option model-picker-submenu-entry ${activeSubmenu === 'model' ? 'is-active' : ''}`}
+              onMouseEnter={() => setActiveSubmenu('model')}
+              onFocus={() => setActiveSubmenu('model')}
+              onClick={() => setActiveSubmenu((currentOpen) => currentOpen === 'model' ? null : 'model')}
+              aria-haspopup="listbox"
+              aria-expanded={activeSubmenu === 'model'}
+            >
+              <span className="model-picker-option-label">{modelLabel}</span>
+              <span className="model-picker-subcaret" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={`model-picker-option model-picker-submenu-entry ${activeSubmenu === 'thinking' ? 'is-active' : ''}`}
+              onMouseEnter={() => setActiveSubmenu('thinking')}
+              onFocus={() => setActiveSubmenu('thinking')}
+              onClick={() => setActiveSubmenu((currentOpen) => currentOpen === 'thinking' ? null : 'thinking')}
+              aria-haspopup="listbox"
+              aria-expanded={activeSubmenu === 'thinking'}
+            >
+              <span className="model-picker-option-label">{currentReasoning ? currentReasoning.label : ''}</span>
+              <span className="model-picker-subcaret" aria-hidden="true" />
+            </button>
+            {activeSubmenu === 'model' ? (
+              <div className="model-picker-flyout model-picker-flyout-model" role="listbox" aria-label="model">
+                <div className="model-picker-header">model</div>
+                <div className="model-picker-list">
+                  {options.map((opt) => {
+                    const active = opt.id === value;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        className={`model-picker-option ${active ? 'is-active' : ''}`}
+                        onClick={() => { onChange(opt.id); setOpen(false); setActiveSubmenu(null); }}
+                      >
+                        <span className="model-picker-option-label">{opt.label}</span>
+                        {active ? (
+                          <span className="model-picker-check" aria-hidden="true">
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3.2,8.6 6.6,12 13,4.8" />
+                            </svg>
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+            {activeSubmenu === 'thinking' ? (
+              <div className="model-picker-flyout model-picker-flyout-thinking" role="listbox" aria-label="thinking">
+                <div className="model-picker-header">thinking</div>
+                <div className="model-picker-list">
+                  {reasoningOptions.map((opt) => {
+                    const active = opt.id === currentReasoning?.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        className={`model-picker-option ${active ? 'is-active' : ''}`}
+                        onClick={() => { onReasoningChange?.(opt.id); setOpen(false); setActiveSubmenu(null); }}
+                      >
+                        <span className="model-picker-option-label">{opt.label}</span>
+                        {active ? (
+                          <span className="model-picker-check" aria-hidden="true">
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3.2,8.6 6.6,12 13,4.8" />
+                            </svg>
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -1774,18 +1855,123 @@ async function copyTextToClipboard(text) {
   }
 }
 
-function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, contextUsage, workspacePath, homePath, activeTaskText, modelOptions, defaultModelId, modelLoading = false }) {
-  const resolvedOptions = Array.isArray(modelOptions) ? modelOptions : MODEL_OPTIONS;
-  const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
-  const [v, setV] = React.useState('');
-  const [modelId, setModelId] = React.useState(resolvedDefaultModelId);
+function safeReadRunConfigSelection(storageKey) {
+  if (!storageKey || typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      agentId: typeof parsed.agentId === 'string' ? parsed.agentId : '',
+      modelId: typeof parsed.modelId === 'string' ? parsed.modelId : '',
+      reasoningEffort: typeof parsed.reasoningEffort === 'string' ? parsed.reasoningEffort : '',
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+function safeWriteRunConfigSelection(storageKey, selection) {
+  if (!storageKey || typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify({
+      agentId: selection.agentId,
+      modelId: selection.modelId,
+      reasoningEffort: selection.reasoningEffort,
+    }));
+  } catch (_) {
+    // Selection still works for this session if storage is unavailable.
+  }
+}
+
+function optionHasId(options, id) {
+  return Array.isArray(options) && options.some((item) => item?.id === id);
+}
+
+function resolveRunConfigSelection(storageKey, modelOptions, defaultModelId, agentOptions, defaultAgentId) {
+  const stored = safeReadRunConfigSelection(storageKey);
+  const storedReasoning = REASONING_EFFORT_OPTIONS.some((item) => item.id === stored?.reasoningEffort)
+    ? stored.reasoningEffort
+    : '';
+  return {
+    modelId: optionHasId(modelOptions, stored?.modelId) ? stored.modelId : defaultModelId,
+    agentId: optionHasId(agentOptions, stored?.agentId) ? stored.agentId : defaultAgentId,
+    reasoningEffort: storedReasoning || DEFAULT_REASONING_EFFORT,
+  };
+}
+
+function usePersistentRunConfig({ selectionStorageKey, modelOptions, defaultModelId, agentOptions, defaultAgentId }) {
+  const [selection, setSelection] = React.useState(() => resolveRunConfigSelection(
+    selectionStorageKey,
+    modelOptions,
+    defaultModelId,
+    agentOptions,
+    defaultAgentId,
+  ));
+  const storageKeyRef = React.useRef(selectionStorageKey || '');
 
   React.useEffect(() => {
-    if (!resolvedOptions.find((o) => o.id === modelId)) {
-      setModelId(resolvedDefaultModelId);
+    const nextKey = selectionStorageKey || '';
+    const keyChanged = storageKeyRef.current !== nextKey;
+    const nextSelection = resolveRunConfigSelection(
+      selectionStorageKey,
+      modelOptions,
+      defaultModelId,
+      agentOptions,
+      defaultAgentId,
+    );
+    setSelection((current) => {
+      const modelId = keyChanged || !optionHasId(modelOptions, current.modelId)
+        ? nextSelection.modelId
+        : current.modelId;
+      const agentId = keyChanged || !optionHasId(agentOptions, current.agentId)
+        ? nextSelection.agentId
+        : current.agentId;
+      const reasoningEffort = keyChanged || !REASONING_EFFORT_OPTIONS.some((item) => item.id === current.reasoningEffort)
+        ? nextSelection.reasoningEffort
+        : current.reasoningEffort;
+      if (modelId === current.modelId && agentId === current.agentId && reasoningEffort === current.reasoningEffort) {
+        return current;
+      }
+      return { modelId, agentId, reasoningEffort };
+    });
+    storageKeyRef.current = nextKey;
+  }, [selectionStorageKey, modelOptions, defaultModelId, agentOptions, defaultAgentId]);
+
+  React.useEffect(() => {
+    if (
+      optionHasId(modelOptions, selection.modelId)
+      && optionHasId(agentOptions, selection.agentId)
+      && REASONING_EFFORT_OPTIONS.some((item) => item.id === selection.reasoningEffort)
+    ) {
+      safeWriteRunConfigSelection(selectionStorageKey, selection);
     }
-  }, [resolvedOptions, resolvedDefaultModelId]);
-  const [reasoningEffort, setReasoningEffort] = React.useState(DEFAULT_REASONING_EFFORT);
+  }, [selectionStorageKey, selection.modelId, selection.agentId, selection.reasoningEffort, modelOptions, agentOptions]);
+
+  return {
+    modelId: selection.modelId,
+    agentId: selection.agentId,
+    reasoningEffort: selection.reasoningEffort,
+    setModelId: React.useCallback((modelId) => setSelection((current) => ({ ...current, modelId })), []),
+    setAgentId: React.useCallback((agentId) => setSelection((current) => ({ ...current, agentId })), []),
+    setReasoningEffort: React.useCallback((reasoningEffort) => setSelection((current) => ({ ...current, reasoningEffort })), []),
+  };
+}
+
+function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, contextUsage, workspacePath, homePath, activeTaskText, modelOptions, defaultModelId, modelLoading = false, agentOptions, defaultAgentId, agentLoading = false, selectionStorageKey = '' }) {
+  const resolvedOptions = Array.isArray(modelOptions) ? modelOptions : MODEL_OPTIONS;
+  const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
+  const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : DEFAULT_AGENT_OPTIONS;
+  const resolvedDefaultAgentId = defaultAgentId || resolvedAgentOptions[0]?.id || DEFAULT_AGENT_OPTIONS[0].id;
+  const [v, setV] = React.useState('');
+  const { modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort } = usePersistentRunConfig({
+    selectionStorageKey,
+    modelOptions: resolvedOptions,
+    defaultModelId: resolvedDefaultModelId,
+    agentOptions: resolvedAgentOptions,
+    defaultAgentId: resolvedDefaultAgentId,
+  });
   const taRef = React.useRef(null);
   const fileRef = React.useRef(null);
   const suppressSubmitUntilRef = React.useRef(0);
@@ -1848,7 +2034,8 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
     if (Date.now() < suppressSubmitUntilRef.current) return;
     if (!v.trim() || disabled) return;
     if (modelLoading || !resolvedOptions.some((o) => o.id === modelId)) return;
-    onDeploy(v.trim(), attachment, modelId, reasoningEffort);
+    if (!resolvedAgentOptions.some((o) => o.id === agentId)) return;
+    onDeploy(v.trim(), attachment, modelId, reasoningEffort, [], agentId);
     setV('');
     onClearFile?.();
     if (fileRef.current) fileRef.current.value = '';
@@ -1944,6 +2131,10 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
             onReasoningChange={setReasoningEffort}
             disabled={disabled}
             loading={modelLoading}
+            agentValue={agentId}
+            agentOptions={resolvedAgentOptions}
+            onAgentChange={setAgentId}
+            agentLoading={agentLoading}
           />
           {running ? (
             <PortalTooltip text="Stop" position="above">
@@ -3548,12 +3739,23 @@ function ChatPanel({
   modelOptions,
   defaultModelId,
   modelLoading = false,
+  agentOptions,
+  defaultAgentId,
+  agentLoading = false,
+  selectionStorageKey = '',
 }) {
   const resolvedOptions = Array.isArray(modelOptions) ? modelOptions : MODEL_OPTIONS;
   const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
+  const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : DEFAULT_AGENT_OPTIONS;
+  const resolvedDefaultAgentId = defaultAgentId || resolvedAgentOptions[0]?.id || DEFAULT_AGENT_OPTIONS[0].id;
   const [draft, setDraft] = React.useState('');
-  const [modelId, setModelId] = React.useState(resolvedDefaultModelId);
-  const [reasoningEffort, setReasoningEffort] = React.useState(DEFAULT_REASONING_EFFORT);
+  const { modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort } = usePersistentRunConfig({
+    selectionStorageKey,
+    modelOptions: resolvedOptions,
+    defaultModelId: resolvedDefaultModelId,
+    agentOptions: resolvedAgentOptions,
+    defaultAgentId: resolvedDefaultAgentId,
+  });
   const [composerImages, setComposerImages] = React.useState([]);
   const [previewImage, setPreviewImage] = React.useState(null);
   const closeImagePreview = React.useCallback(() => setPreviewImage(null), []);
@@ -3664,11 +3866,6 @@ function ChatPanel({
     });
   }, []);
 
-  React.useEffect(() => {
-    if (!resolvedOptions.find((o) => o.id === modelId)) {
-      setModelId(resolvedDefaultModelId);
-    }
-  }, [resolvedOptions, resolvedDefaultModelId]);
   const listRef = React.useRef(null);
   const inputRef = React.useRef(null);
   const fileRef = React.useRef(null);
@@ -3763,6 +3960,7 @@ function ChatPanel({
     // Block while any pasted image is still uploading.
     if (imagesUploading) return;
     if (modelLoading || !resolvedOptions.some((o) => o.id === modelId)) return;
+    if (!resolvedAgentOptions.some((o) => o.id === agentId)) return;
     const readyImages = composerImages
       .filter((img) => img.imageId && !img.error)
       .map((img) => ({
@@ -3771,7 +3969,7 @@ function ChatPanel({
         mime: img.mime,
         previewUrl: img.previewUrl || null,
       }));
-    onSend?.(text, attachment, modelId, reasoningEffort, readyImages);
+    onSend?.(text, attachment, modelId, reasoningEffort, readyImages, agentId);
     setDraft('');
     onClearFile?.();
     // Ownership of the blob URLs transfers to the rendered chat message; the
@@ -3930,6 +4128,10 @@ function ChatPanel({
               onReasoningChange={setReasoningEffort}
               disabled={disabled}
               loading={modelLoading}
+              agentValue={agentId}
+              agentOptions={resolvedAgentOptions}
+              onAgentChange={setAgentId}
+              agentLoading={agentLoading}
             />
             {running ? (
               <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Stop">

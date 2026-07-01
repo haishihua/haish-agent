@@ -3373,7 +3373,7 @@ select,
   align-items: center;
   gap: 8px;
   height: 30px;
-  width: 152px;
+  width: 132px;
   padding: 0 10px;
   border: 1px solid rgba(72,83,109,0.82);
   background: linear-gradient(180deg, rgba(21, 27, 40, 0.72), rgba(13, 18, 29, 0.76));
@@ -3445,6 +3445,7 @@ select,
   box-shadow: 0 6px 22px rgba(0,0,0,0.55);
   border-radius: 12px;
   z-index: 30;
+  overflow: visible;
 }
 .chat-composer .model-picker-header {
   padding: 4px 10px 6px;
@@ -5504,7 +5505,7 @@ select,
   align-items: center;
   gap: 8px;
   height: 30px;
-  width: 132px;
+  width: 128px;
   padding: 0 10px;
   border: 1px solid rgba(72,83,109,0.82);
   background: linear-gradient(180deg, #171d2d, #121724);
@@ -5561,6 +5562,7 @@ select,
   box-shadow: 0 6px 22px rgba(0,0,0,0.55);
   border-radius: 12px;
   z-index: 30;
+  overflow: visible;
 }
 .task-delegation .model-picker-header {
   padding: 4px 10px 6px;
@@ -5664,19 +5666,29 @@ select,
   border-top: 1px solid rgba(72,83,109,0.55);
 }
 
-.chat-composer .model-picker-model-entry,
-.task-delegation .model-picker-model-entry {
+.chat-composer .model-picker-submenu-entry,
+.task-delegation .model-picker-submenu-entry {
+  color: var(--ink);
+}
+
+.chat-composer .model-picker-submenu-entry:hover,
+.chat-composer .model-picker-submenu-entry.is-active,
+.task-delegation .model-picker-submenu-entry:hover,
+.task-delegation .model-picker-submenu-entry.is-active {
+  background: rgba(255,255,255,0.08);
   color: var(--gold);
 }
 
-.chat-composer .model-picker-model-entry:hover,
-.chat-composer .model-picker-submenu:focus-within .model-picker-model-entry,
-.chat-composer .model-picker-submenu:hover .model-picker-model-entry,
-.task-delegation .model-picker-model-entry:hover,
-.task-delegation .model-picker-submenu:focus-within .model-picker-model-entry,
-.task-delegation .model-picker-submenu:hover .model-picker-model-entry {
-  background: rgba(255,255,255,0.08);
-  color: var(--gold);
+.chat-composer .model-picker-option-value,
+.task-delegation .model-picker-option-value {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 86px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(220,227,244,0.72);
+  text-align: right;
 }
 
 .chat-composer .model-picker-subcaret,
@@ -5695,7 +5707,7 @@ select,
   position: absolute;
   left: calc(100% - 1px);
   bottom: 0;
-  display: none;
+  display: block;
   min-width: 190px;
   padding: 6px;
   border: 1px solid rgba(239,191,100,0.42);
@@ -5705,15 +5717,8 @@ select,
   z-index: 31;
 }
 
-.chat-composer .model-picker-submenu:hover .model-picker-flyout,
-.chat-composer .model-picker-submenu:focus-within .model-picker-flyout,
-.task-delegation .model-picker-submenu:hover .model-picker-flyout,
-.task-delegation .model-picker-submenu:focus-within .model-picker-flyout {
-  display: block;
-}
-
-/* ModelPicker sits on the right side of the composer footer (chat + bot), so
-   its dropdown must open toward the left to avoid being clipped by the window. */
+/* The run-config picker sits on the right side of the composer footer, so its
+   dropdown and flyout open toward the left to avoid being clipped. */
 .chat-composer-submit .model-picker-menu,
 .td-submit-cluster .model-picker-menu {
   left: auto;
@@ -5722,7 +5727,7 @@ select,
 .chat-composer-submit .model-picker-flyout,
 .td-submit-cluster .model-picker-flyout {
   left: auto;
-  right: calc(100% - 1px);
+  right: calc(100% + 6px);
 }
 
 /* TaskDelegation submit cluster: groups context-usage + ModelPicker + deploy
