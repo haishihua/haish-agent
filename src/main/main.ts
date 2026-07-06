@@ -11,10 +11,11 @@ const __dirname = path.dirname(__filename);
 const projectsFile = () => path.join(app.getPath('userData'), 'projects.json');
 const webRoot = () => path.join(app.getAppPath(), 'app-web');
 const appIconPngPath = () => path.join(app.getAppPath(), 'build', 'icon.png');
+const devMode = process.env.HAISH_DEV_MODE === '1' || !app.isPackaged;
 const runtimePaths = () => ({
   userDataPath: app.getPath('userData'),
   resourcesPath: process.resourcesPath,
-  isPackaged: app.isPackaged,
+  isPackaged: app.isPackaged && !devMode,
 });
 
 // Electron 默认会调 macOS Keychain 给 SafeStorage 派密钥，启动时会弹"允许访问钥匙串"
@@ -26,7 +27,7 @@ app.commandLine.appendSwitch('use-mock-keychain');
 // dev (`npm run dev`) 与已安装的 `/Applications/Haish.app` 都用 productName "Haish"，
 // 默认共享同一个 ~/Library/Application Support/Haish 目录，导致 projects.json、
 // runtime workdir 互相串数据。在未打包时把 userData 隔离到独立目录。
-if (!app.isPackaged) {
+if (devMode) {
   app.setPath('userData', path.join(app.getPath('appData'), 'Haish (Dev)'));
 }
 

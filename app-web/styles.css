@@ -799,6 +799,7 @@ svg { image-rendering: auto; shape-rendering: geometricPrecision; }
   height: 100%;
   object-fit: cover;
   image-rendering: -webkit-optimize-contrast;
+  transform: scale(1.22);
 }
 .user-meta {
   display: flex;
@@ -1053,7 +1054,7 @@ select,
   min-width: 0;
   display:flex;
   align-items:center;
-  gap: 12px;
+  gap: 8px;
   justify-self: start;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1062,22 +1063,23 @@ select,
   }
 }
 .topbar-logo {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  border-radius: 13px;
-  border: 1px solid rgba(193, 220, 255, 0.18);
-  background-color: rgba(249, 250, 255, 0.98);
-  background-image: url('assets/ui/penguin_logo_user.png');
-  background-repeat: no-repeat;
-  background-position: center center;
-  background-size: contain;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  display: block;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  object-fit: contain;
+  object-position: center;
   position: relative;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.16);
-  overflow: hidden;
+  box-shadow: none;
+  overflow: visible;
   image-rendering: auto;
-  transform: translateZ(0);
-  filter: contrast(1.08) brightness(0.98) saturate(0.88);
+  filter: none;
+  user-select: none;
+  pointer-events: none;
+  -webkit-user-drag: none;
 }
 .topbar-logo::before {
   content:none;
@@ -3559,9 +3561,13 @@ select,
   box-shadow: inset 0 1px 0 rgba(255,234,176,0.55), inset 0 -1px 0 rgba(82,52,14,0.5);
 }
 .chat-send .ico-deploy,
-.chat-send .ico-stop {
+.chat-send .ico-stop,
+.chat-send .ico-loading {
   width: 16px;
   height: 16px;
+}
+.chat-send .ico-loading {
+  animation: live-loading-spin 1s linear infinite;
 }
 .chat-send:disabled {
   opacity: 0.45;
@@ -5812,6 +5818,11 @@ select,
   display: inline-block;
   line-height: 1;
   text-shadow: 0 1px 0 rgba(255,234,176,0.45);
+}
+.task-delegation .deploy-btn .ico-loading {
+  width: 16px;
+  height: 16px;
+  animation: live-loading-spin 1s linear infinite;
 }
 .task-delegation .deploy-btn:hover {
   background: linear-gradient(180deg, #ecbb50 0%, #d09b35 55%, #aa7d27 100%);

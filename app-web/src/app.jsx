@@ -659,7 +659,8 @@ async function logoutCurrentSession() {
 function normalizeContextUsage(value, fallbackConversationId = null) {
   const rawUsedTokens = Math.max(0, Math.round(Number(value?.contextUsedTokens ?? value?.context_used_tokens ?? value?.usedTokens ?? value?.used_tokens ?? 0) || 0));
   const totalTokens = Math.max(1, Math.round(Number(value?.contextTotalTokens ?? value?.context_total_tokens ?? value?.totalTokens ?? value?.total_tokens ?? value?.effective_budget ?? DEFAULT_CONTEXT_TOTAL_TOKENS) || DEFAULT_CONTEXT_TOTAL_TOKENS));
-  const usedTokens = rawUsedTokens > totalTokens ? 0 : rawUsedTokens;
+  const valid = value?.valid !== false && value?.valid_context_usage !== false && rawUsedTokens <= totalTokens;
+  const usedTokens = valid ? rawUsedTokens : 0;
   const compressedCount = Math.max(0, Math.round(Number(value?.compressedCount ?? value?.compressed_count ?? 0) || 0));
   return {
     conversationId: value?.conversationId || value?.conversation_id || fallbackConversationId || null,
@@ -668,6 +669,7 @@ function normalizeContextUsage(value, fallbackConversationId = null) {
     ratio: Math.max(0, Math.min(1, totalTokens > 0 ? usedTokens / totalTokens : 0)),
     compressed: Boolean(value?.compressed) || compressedCount > 0,
     compressedCount,
+    valid,
     updatedAt: value?.updatedAt || value?.updated_at || null,
   };
 }
@@ -1128,10 +1130,14 @@ function conversationDetailToWorkspaceConversation(detail, previousConversation 
   const shouldKeepLocalTitle = isDefaultConversationName(detailName)
     && previousName
     && !isDefaultConversationName(previousName);
+  const tasks = Array.isArray(detail.tasks) ? detail.tasks.map(taskSummaryToRuntimeTask) : [];
   return {
     id: detail.conversation_id,
     name: shouldKeepLocalTitle ? previousName : (detailName || previousName || DEFAULT_SESSION_NAME),
-    tasks: Array.isArray(detail.tasks) ? detail.tasks.map(taskSummaryToRuntimeTask) : [],
+    tasks,
+    agentId: detail.agent_id || detail.profile_id || previousConversation?.agentId || tasks[0]?.requestedAgentId || null,
+    profileId: detail.profile_id || previousConversation?.profileId || null,
+    profileDisplayName: detail.profile_display_name || previousConversation?.profileDisplayName || null,
     createdAt: detail.created_at || previousConversation?.createdAt || null,
     updatedAt: detail.updated_at || detail.last_message_at || previousConversation?.updatedAt || null,
     // Preserve the user's explicit toggle when present; otherwise leave it
@@ -1534,6 +1540,9 @@ function taskSummaryToRuntimeTask(task, fallbackImageAttachments = [], ownerId =
     provider: task.provider,
     providerKey: task.provider_key || 'auto',
     requestedProvider: task.provider_key || 'auto',
+    requestedAgentId: task.agent_id || task.profile_id || '',
+    profileId: task.profile_id || task.agent_id || '',
+    profileDisplayName: task.profile_display_name || '',
     providerState: task.provider || task.provider_key ? {
       provider: task.provider || task.provider_key,
       state: 'selected',
@@ -1980,6 +1989,9 @@ function formatMetaDetail(event) {
     }
     case 'context_usage_updated': {
       if (event.source === 'provider_usage' && event.context_used_tokens == null && event.usedTokens == null) return '';
+      const usedValue = Number(event.usedTokens ?? event.used_tokens ?? 0);
+      const totalValue = Number(event.totalTokens ?? event.total_tokens ?? DEFAULT_CONTEXT_TOTAL_TOKENS);
+      if (event.valid_context_usage === false || (usedValue > 0 && totalValue > 0 && usedValue > totalValue)) return '';
       const used = formatTraceTokens(event.usedTokens);
       const total = formatTraceTokens(event.totalTokens);
       if (!used && !total) return '';
@@ -2136,19 +2148,16 @@ function summarizeToolGroup(tools, status = 'done') {
   for (const k of mcpKeys) parts.push(renderEntry(buckets.get(k)));
   if (buckets.has('other')) parts.push(renderEntry(buckets.get('other')));
   // Cap visible bucket entries at 3; overflow collapses into "+N more" so the
-  // chip stays single-line. Full breakdown is still reachable via the tooltip
-  // attribute on the head + the click-to-expand list below.
+  // chip stays single-line. The click-to-expand list below still shows each
+  // original tool call.
   const MAX_VISIBLE = 3;
   if (parts.length > MAX_VISIBLE) {
     const visible = parts.slice(0, MAX_VISIBLE);
     const hidden = parts.length - MAX_VISIBLE;
-    return {
-      short: `${visible.join(' · ')} · +${hidden} more`,
-      full: parts.join(' · '),
-    };
+    return { short: `${visible.join(' · ')} · +${hidden} more` };
   }
   const joined = parts.join(' · ');
-  return { short: joined, full: joined };
+  return { short: joined };
 }
 
 function aggregateGroupStatus(tools) {
@@ -2196,7 +2205,6 @@ function groupConsecutiveTools(items) {
         kind: 'tool_group',
         id: `tool-group-${groupIdx}`,
         summary: summary.short,
-        summaryFull: summary.full,
         tools: run,
         status: groupStatus,
       });
@@ -2898,7 +2906,7 @@ function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = 
     <div className={`auth-shell auth-shell-${mode}`}>
       <div className="app-topbar auth-topbar" aria-hidden="true">
         <div className="topbar-brand">
-          <div className="topbar-logo" />
+          <img className="topbar-logo" src="assets/ui/penguin_logo_user.png" alt="" draggable={false} />
           <div className="topbar-title">Haish Agent</div>
         </div>
       </div>
@@ -3238,6 +3246,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   const [localWorkspace, setLocalWorkspace] = useState({ path: null, label: null });
   const [composerAttachment, setComposerAttachment] = useState(null);
   const [uploadState, setUploadState] = useState({ active: false, fileName: '' });
+  const [queuedDeploy, setQueuedDeploy] = useState(null);
   const [toast, setToast] = useState(null);
   const [modelCatalog, setModelCatalog] = useState(() => ({ options: [], defaultModelId: '', provider: '' }));
   const [providerLoading, setProviderLoading] = useState(true);
@@ -5531,6 +5540,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         if (event.source === 'provider_usage' && event.context_used_tokens == null && event.usedTokens == null) {
           break;
         }
+        if (event.valid_context_usage === false) {
+          break;
+        }
         const usageConversationId = event.conversation_id || ownerConvId || conversationId;
         const nextContextUsage = normalizeContextUsage({
           conversationId: usageConversationId,
@@ -5538,10 +5550,14 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           contextTotalTokens: event.context_total_tokens,
           usedTokens: event.usedTokens ?? event.used_tokens,
           totalTokens: event.totalTokens ?? event.total_tokens,
+          valid: event.valid_context_usage,
           compressed: event.compressed,
           compressedCount: event.compressed_count,
           updatedAt: event.created_at || event.timestamp || new Date().toISOString(),
         }, usageConversationId);
+        if (!nextContextUsage.valid) {
+          break;
+        }
         if (!ownerConvId || ownerConvId === conversationIdRef.current) {
           setContextUsage(nextContextUsage);
         }
@@ -5590,6 +5606,21 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         break;
       }
       case 'context_compaction_completed': {
+        if (!event.skipped && Number(event.prompt_tokens_after_compaction) > 0) {
+          const usageConversationId = event.conversation_id || ownerConvId || conversationId;
+          const nextContextUsage = normalizeContextUsage({
+            conversationId: usageConversationId,
+            usedTokens: event.prompt_tokens_after_compaction,
+            totalTokens: event.total_tokens ?? event.context_window_tokens ?? DEFAULT_CONTEXT_TOTAL_TOKENS,
+            compressed: true,
+            compressedCount: event.message_count ?? event.compressed_count ?? 1,
+            updatedAt: event.created_at || event.timestamp || new Date().toISOString(),
+          }, usageConversationId);
+          if (!ownerConvId || ownerConvId === conversationIdRef.current) {
+            setContextUsage(nextContextUsage);
+          }
+          saveStoredContextUsage(nextContextUsage);
+        }
         updateTaskById(taskId, (run) => ({
           ...run,
           status: 'running',
@@ -5859,6 +5890,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
             stage: terminalStatus === 'done'
               ? (hasPresentationPending ? (persistedTask?.stage || run.stage) : (persistedTask?.stage || 'done'))
               : 'done',
+            requestedAgentId: persistedTask?.agent_id || persistedTask?.profile_id || run.requestedAgentId || null,
+            profileId: persistedTask?.profile_id || run.profileId || null,
+            profileDisplayName: persistedTask?.profile_display_name || run.profileDisplayName || '',
             completedAt: persistedTask?.completed_at
               ? (Date.parse(persistedTask.completed_at) || Date.now())
               : (hasPresentationPending ? run.completedAt : Date.now()),
@@ -6129,7 +6163,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     resetSceneActors();
   }
 
-  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId) {
+  function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId) {
     const sanitizedImageAttachments = Array.isArray(imageAttachments)
       ? imageAttachments
           .filter((ref) => ref && ref.image_id && ref.path)
@@ -6140,14 +6174,36 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
             previewUrl: ref.previewUrl || null,
           }))
       : [];
-    const deployConvId = conversationIdRef.current || conversationId;
-    if (!deployConvId) {
-      showToast('error', 'conversation is not ready');
-      return;
-    }
+    return {
+      id: `queued-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      text,
+      attachment,
+      modelId,
+      reasoningEffort,
+      imageAttachments: sanitizedImageAttachments,
+      agentId,
+      targetConversationId: selectedConversationId || conversationIdRef.current || conversationId || null,
+    };
+  }
+
+  function canStartDeployForConversation(targetConversationId = null) {
+    const activeConversationId = conversationIdRef.current || conversationId;
+    if (!conversationReady || conversationSelectionPending || conversationError) return false;
+    if (!activeConversationId) return false;
+    return !targetConversationId || activeConversationId === targetConversationId;
+  }
+
+  function startDeploy(request, deployConvId) {
+    if (!deployConvId) return;
+    const text = request.text;
+    const attachment = request.attachment || null;
+    const modelId = request.modelId || '';
+    const reasoningEffort = request.reasoningEffort || 'high';
+    const agentId = request.agentId || defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
+    const sanitizedImageAttachments = Array.isArray(request.imageAttachments) ? request.imageAttachments : [];
     const pendingTask = createPendingTaskDraft(text, attachment, sanitizedImageAttachments);
     pendingTask.requestedModelId = modelId || '';
-    pendingTask.requestedAgentId = agentId || defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
+    pendingTask.requestedAgentId = agentId;
     // Match DEFAULT_REASONING_EFFORT in panels.jsx (kept in sync).
     pendingTask.requestedReasoningEffort = reasoningEffort || 'high';
     pendingTask.requestedProvider = 'auto';
@@ -6174,6 +6230,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       ];
       return workspaceStateWithTouchedConversation(state, deployConvId, {
         tasks: currentTasks,
+        agentId: pendingTask.requestedAgentId || undefined,
         // No explicit `expanded`: the touched conversation becomes active and
         // withDefaultExpansion auto-expands the active conversation with tasks.
         name: shouldUpdateConversationTitle ? nextConversationTitle : undefined,
@@ -6240,6 +6297,16 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       setRuntimeActiveRunId(null, deployConvId);
       setRuntimeFetchController(null, deployConvId);
     });
+  }
+
+  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId) {
+    const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId);
+    const deployConvId = conversationIdRef.current || conversationId;
+    if (!canStartDeployForConversation(request.targetConversationId)) {
+      setQueuedDeploy(request);
+      return;
+    }
+    startDeploy(request, deployConvId);
   }
 
   async function handleSelectConversation(projectId, nextConversationId) {
@@ -6549,6 +6616,26 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     }
     return false;
   }, [panelWorkspaceState, conversationId]);
+  useEffect(() => {
+    if (!queuedDeploy) return;
+    if (!canStartDeployForConversation(queuedDeploy.targetConversationId)) return;
+    if (busy || currentConversationActive || uploadState.active || calibrationMode) return;
+    const deployConvId = queuedDeploy.targetConversationId || conversationIdRef.current || conversationId;
+    if (!deployConvId) return;
+    const request = queuedDeploy;
+    setQueuedDeploy(null);
+    startDeploy(request, deployConvId);
+  }, [
+    queuedDeploy,
+    conversationReady,
+    conversationSelectionPending,
+    conversationError,
+    busy,
+    currentConversationActive,
+    uploadState.active,
+    calibrationMode,
+    conversationId,
+  ]);
   // If there's a running/queued task in the currently-viewed conversation,
   // expose its taskId so the polling effect below can refresh it. We pick
   // the *latest* running task by updatedAt — in practice there's only ever
@@ -6790,6 +6877,16 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     }
     return rows;
   }, [worldTaskState]);
+  const currentConversation = useMemo(
+    () => findConversationById(panelWorkspaceState, conversationId),
+    [panelWorkspaceState, conversationId],
+  );
+  const lockedAgentId = currentConversation?.agentId
+    || currentConversation?.tasks?.find((task) => task?.requestedAgentId)?.requestedAgentId
+    || '';
+  const agentSelectionLocked = Boolean(
+    lockedAgentId || chatMessages.some((message) => message.role === 'user')
+  );
 
   const activeIds = getIdsForTarget(calibrationTarget);
   const activeDrafts = getDraftsForTarget(calibrationTarget);
@@ -6817,6 +6914,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     ...baseMapExtensionStyle,
     '--panel-map-opacity': rightMapEdgeReached ? '0' : '0.62',
   } : undefined;
+  const composerDisabled = busy || currentConversationActive || uploadState.active || calibrationMode || !!conversationError;
+  const submitPending = Boolean(queuedDeploy);
 
   return (
     <div className="app-shell">
@@ -6856,12 +6955,13 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
             {viewMode === 'chat' ? (
               <div className="app-chat-stage">
                 <div className="app-chat-main">
-                  <window.ChatPanel
-                    conversationId={conversationId}
-                    messages={chatMessages}
-                    running={busy || currentConversationActive}
-                    disabled={busy || currentConversationActive || uploadState.active || calibrationMode || !conversationReady || conversationSelectionPending || !!conversationError}
-                    onSend={(text, attachment, modelId, reasoningEffort, imageAttachments, agentId) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId)}
+	                  <window.ChatPanel
+	                    conversationId={conversationId}
+	                    messages={chatMessages}
+	                    running={busy || currentConversationActive}
+	                    disabled={composerDisabled}
+	                    submitPending={submitPending}
+	                    onSend={(text, attachment, modelId, reasoningEffort, imageAttachments, agentId) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId)}
                     onStop={handleStop}
                     onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }}
                     onClearFile={handleAttachmentClear}
@@ -6879,6 +6979,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
                     agentOptions={agentOptions}
                     defaultAgentId={defaultAgentId}
                     agentLoading={agentLoading}
+                    agentLocked={agentSelectionLocked}
+                    lockedAgentId={lockedAgentId}
                     selectionStorageKey={runConfigStorageKey}
 	                  />
 	                </div>
@@ -6887,10 +6989,10 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 	              <>
                 <div className="app-center-stage">
                   <window.MapViewport
-                    MAP_W={MAP_W}
-                    MAP_H={MAP_H}
-                    onViewChange={setMapView}
-                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={busy || currentConversationActive || uploadState.active || calibrationMode || !conversationReady || conversationSelectionPending || !!conversationError} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} agentOptions={agentOptions} defaultAgentId={defaultAgentId} agentLoading={agentLoading} selectionStorageKey={runConfigStorageKey} />}
+	                    MAP_W={MAP_W}
+	                    MAP_H={MAP_H}
+	                    onViewChange={setMapView}
+	                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} agentOptions={agentOptions} defaultAgentId={defaultAgentId} agentLoading={agentLoading} agentLocked={agentSelectionLocked} lockedAgentId={lockedAgentId} selectionStorageKey={runConfigStorageKey} />}
                   >
                     <div ref={stageRef} className="office-map">
                       {calibrationMode && calibrationTarget === 'routes' && selectedRouteId && <window.CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}

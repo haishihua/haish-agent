@@ -154,7 +154,7 @@ function TopBar({ now, viewMode = 'world', onToggleViewMode, calibrationActive =
   return (
     <div className="app-topbar">
       <div className="topbar-brand">
-        <div className="topbar-logo" />
+        <img className="topbar-logo" src="assets/ui/penguin_logo_user.png" alt="" draggable={false} />
         <div className="topbar-title">Haish Agent</div>
       </div>
       <div className="topbar-actions">
@@ -1473,6 +1473,7 @@ function ModelPicker({
   agentOptions,
   onAgentChange,
   agentLoading = false,
+  agentLocked = false,
 }) {
   const [open, setOpen] = React.useState(false);
   const [activeSubmenu, setActiveSubmenu] = React.useState(null);
@@ -1484,6 +1485,7 @@ function ModelPicker({
   const modelLabel = current ? current.label : (loading ? 'loading' : 'unavailable');
   const agentLabel = currentAgent ? currentAgent.label : (agentLoading ? 'loading' : 'Agent');
   const pickerLoading = agentLoading;
+  const agentChangeDisabled = disabled || pickerLoading || agentLocked;
 
   React.useEffect(() => {
     if (!open) return undefined;
@@ -1541,7 +1543,13 @@ function ModelPicker({
                       role="menuitemradio"
                       aria-checked={active}
                       className={`model-picker-option ${active ? 'is-active' : ''}`}
-                      onClick={() => { onAgentChange?.(opt.id); setOpen(false); setActiveSubmenu(null); }}
+                      disabled={agentChangeDisabled}
+                      onClick={() => {
+                        if (agentChangeDisabled) return;
+                        onAgentChange?.(opt.id);
+                        setOpen(false);
+                        setActiveSubmenu(null);
+                      }}
                     >
                       <span className="model-picker-option-label">{opt.label || opt.id}</span>
                       {active ? (
@@ -1959,7 +1967,7 @@ function usePersistentRunConfig({ selectionStorageKey, modelOptions, defaultMode
   };
 }
 
-function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, contextUsage, workspacePath, homePath, activeTaskText, modelOptions, defaultModelId, modelLoading = false, agentOptions, defaultAgentId, agentLoading = false, selectionStorageKey = '' }) {
+function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, submitPending = false, contextUsage, workspacePath, homePath, activeTaskText, modelOptions, defaultModelId, modelLoading = false, agentOptions, defaultAgentId, agentLoading = false, agentLocked = false, lockedAgentId = '', selectionStorageKey = '' }) {
   const resolvedOptions = Array.isArray(modelOptions) ? modelOptions : MODEL_OPTIONS;
   const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
   const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : DEFAULT_AGENT_OPTIONS;
@@ -1983,6 +1991,7 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
   const contextRingStyle = {
     '--context-used': `${visibleContextRatio * 100}%`,
   };
+  const effectiveAgentId = agentLocked && lockedAgentId ? lockedAgentId : agentId;
 
   React.useLayoutEffect(() => {
     const el = taRef.current;
@@ -2032,17 +2041,17 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
   function submit(e) {
     e?.preventDefault();
     if (Date.now() < suppressSubmitUntilRef.current) return;
-    if (!v.trim() || disabled) return;
+    if (!v.trim() || disabled || submitPending) return;
     if (modelLoading || !resolvedOptions.some((o) => o.id === modelId)) return;
-    if (!resolvedAgentOptions.some((o) => o.id === agentId)) return;
-    onDeploy(v.trim(), attachment, modelId, reasoningEffort, [], agentId);
+    if (!resolvedAgentOptions.some((o) => o.id === effectiveAgentId)) return;
+    onDeploy(v.trim(), attachment, modelId, reasoningEffort, [], effectiveAgentId);
     setV('');
     onClearFile?.();
     if (fileRef.current) fileRef.current.value = '';
   }
 
   function pickFile() {
-    if (disabled) return;
+    if (disabled || submitPending) return;
     fileRef.current?.click();
   }
 
@@ -2081,7 +2090,7 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
             }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
           }}
-          placeholder={uploading ? 'Document is processing. Please wait...' : disabled ? 'Agents are currently busy executing...' : 'Describe the task you want to delegate...'}
+          placeholder={submitPending ? 'Preparing conversation...' : uploading ? 'Document is processing. Please wait...' : disabled ? 'Agents are currently busy executing...' : 'Describe the task you want to delegate...'}
           disabled={disabled}
           maxLength={5000}
         />
@@ -2094,7 +2103,7 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
               type="button"
               className="td-btn td-btn-attach icon-only"
               onClick={pickFile}
-              disabled={disabled}
+              disabled={disabled || submitPending}
               aria-label="Attach File"
             >
               <span className="ico ico-attach" aria-hidden="true" />
@@ -2129,14 +2138,26 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
             options={resolvedOptions}
             onChange={setModelId}
             onReasoningChange={setReasoningEffort}
-            disabled={disabled}
+            disabled={disabled || submitPending}
             loading={modelLoading}
-            agentValue={agentId}
+            agentValue={effectiveAgentId}
             agentOptions={resolvedAgentOptions}
             onAgentChange={setAgentId}
             agentLoading={agentLoading}
+            agentLocked={agentLocked}
           />
-          {running ? (
+          {submitPending ? (
+            <PortalTooltip text="Preparing conversation" position="above">
+              <button
+                type="button"
+                className="deploy-btn icon-only is-loading"
+                disabled
+                aria-label="Preparing conversation"
+              >
+                <span className="ico ico-loading" aria-hidden="true" />
+              </button>
+            </PortalTooltip>
+          ) : running ? (
             <PortalTooltip text="Stop" position="above">
               <button
                 type="button"
@@ -3382,9 +3403,6 @@ function ChatTimelineToolGroup({ item }) {
   const status = item.status || 'done';
   const tools = Array.isArray(item.tools) ? item.tools : [];
   const summary = item.summary || `used ${tools.length} tools`;
-  // 当 bucket > 3 时 summary 已被裁成 "...+N more"；full 是未裁的完整摘要，
-  // 挂在 title 上鼠标 hover 看全。
-  const fullSummary = item.summaryFull || summary;
   return (
     <div className={`chat-timeline-tool category-tool status-${status} is-group`}>
       <button
@@ -3392,7 +3410,6 @@ function ChatTimelineToolGroup({ item }) {
         className="chat-timeline-tool-head"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        title={fullSummary !== summary ? fullSummary : undefined}
       >
         <span className={`chat-timeline-status status-${status}`} aria-hidden="true" />
         <span className="ico ico-tool" aria-label="Tools" role="img" />
@@ -3724,6 +3741,7 @@ function ChatPanel({
   messages = [],
   running = false,
   disabled = false,
+  submitPending = false,
   onSend,
   onStop,
   onSelectFile,
@@ -3742,6 +3760,8 @@ function ChatPanel({
   agentOptions,
   defaultAgentId,
   agentLoading = false,
+  agentLocked = false,
+  lockedAgentId = '',
   selectionStorageKey = '',
 }) {
   const resolvedOptions = Array.isArray(modelOptions) ? modelOptions : MODEL_OPTIONS;
@@ -3761,6 +3781,7 @@ function ChatPanel({
   const closeImagePreview = React.useCallback(() => setPreviewImage(null), []);
   const composerImagesRef = React.useRef([]);
   React.useEffect(() => { composerImagesRef.current = composerImages; }, [composerImages]);
+  const effectiveAgentId = agentLocked && lockedAgentId ? lockedAgentId : agentId;
 
   // Clean up blob URLs + reset draft images when switching conversations.
   React.useEffect(() => {
@@ -3956,11 +3977,11 @@ function ChatPanel({
     e?.preventDefault();
     if (Date.now() < suppressSubmitUntilRef.current) return;
     const text = draft.trim();
-    if (!text || disabled) return;
+    if (!text || disabled || submitPending) return;
     // Block while any pasted image is still uploading.
     if (imagesUploading) return;
     if (modelLoading || !resolvedOptions.some((o) => o.id === modelId)) return;
-    if (!resolvedAgentOptions.some((o) => o.id === agentId)) return;
+    if (!resolvedAgentOptions.some((o) => o.id === effectiveAgentId)) return;
     const readyImages = composerImages
       .filter((img) => img.imageId && !img.error)
       .map((img) => ({
@@ -3969,7 +3990,7 @@ function ChatPanel({
         mime: img.mime,
         previewUrl: img.previewUrl || null,
       }));
-    onSend?.(text, attachment, modelId, reasoningEffort, readyImages, agentId);
+    onSend?.(text, attachment, modelId, reasoningEffort, readyImages, effectiveAgentId);
     setDraft('');
     onClearFile?.();
     // Ownership of the blob URLs transfers to the rendered chat message; the
@@ -3980,7 +4001,7 @@ function ChatPanel({
   }
 
   function pickFile() {
-    if (disabled) return;
+    if (disabled || submitPending) return;
     fileRef.current?.click();
   }
 
@@ -4080,7 +4101,7 @@ function ChatPanel({
               submit(event);
             }
           }}
-          placeholder={running ? 'Assistant is currently processing...' : 'Ask, draft, or delegate...'}
+          placeholder={submitPending ? 'Preparing conversation...' : running ? 'Assistant is currently processing...' : 'Ask, draft, or delegate...'}
           disabled={disabled}
           maxLength={5000}
         />
@@ -4091,7 +4112,7 @@ function ChatPanel({
                 type="button"
                 className="chat-tool-btn chat-tool-attach icon-only"
                 onClick={pickFile}
-                disabled={disabled}
+                disabled={disabled || submitPending}
                 aria-label="Attach File"
               >
                 <span className="ico ico-attach" aria-hidden="true" />
@@ -4126,14 +4147,19 @@ function ChatPanel({
               options={resolvedOptions}
               onChange={setModelId}
               onReasoningChange={setReasoningEffort}
-              disabled={disabled}
+              disabled={disabled || submitPending}
               loading={modelLoading}
-              agentValue={agentId}
+              agentValue={effectiveAgentId}
               agentOptions={resolvedAgentOptions}
               onAgentChange={setAgentId}
               agentLoading={agentLoading}
+              agentLocked={agentLocked}
             />
-            {running ? (
+            {submitPending ? (
+              <button type="button" className="chat-send is-loading" disabled aria-label="Preparing conversation">
+                <span className="ico ico-loading" aria-hidden="true" />
+              </button>
+            ) : running ? (
               <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Stop">
                 <span className="ico ico-stop" aria-hidden="true" />
               </button>
