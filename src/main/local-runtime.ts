@@ -25,8 +25,8 @@ const __dirname = path.dirname(__filename);
 // dist-electron/main/local-runtime.js -> repo root
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 
-const LEGACY_DEFAULT_RUNTIME_REPO = '/Users/zhanruitao/py-project/haishihua-agent-core';
-const BUNDLED_RUNTIME_DIR = 'haishihua-agent-core';
+const DEFAULT_RUNTIME_REPO = '/Users/zhanruitao/py-project/haish-agent-core';
+const BUNDLED_RUNTIME_DIR = 'haish-agent-core';
 const BUNDLED_RUNTIME_EXECUTABLE = path.join('bin', 'haish-runtime', 'haish-runtime');
 // Local runtime startup measured 30-40s on a clean machine (heavy Python
 // import graph + session/state deserialization from the workdir). Doubled
@@ -37,16 +37,16 @@ const START_TIMEOUT_MS = 120_000;
 // 这么久还没退就 SIGKILL，防止 Electron quit 后残留 Chrome 占内存。
 const SHUTDOWN_GRACE_MS = 5_000;
 
-// Dev-mode lookup order for the Python backend repo (haishihua-agent-core):
+// Dev-mode lookup order for the Python backend repo (haish-agent-core):
 //   1. HAISH_LOCAL_RUNTIME_CWD env var (explicit override)
-//   2. ../haishihua-agent-core sibling of this repo
-//   3. ./haishihua-agent-core inside this repo
+//   2. ../haish-agent-core sibling of this repo
+//   3. ./haish-agent-core inside this repo
 const DEV_RUNTIME_REPO_CANDIDATES = [
-  path.resolve(PROJECT_ROOT, '..', 'haishihua-agent-core'),
-  path.resolve(PROJECT_ROOT, 'haishihua-agent-core'),
+  path.resolve(PROJECT_ROOT, '..', 'haish-agent-core'),
+  path.resolve(PROJECT_ROOT, 'haish-agent-core'),
   path.join(os.homedir(), 'Desktop', BUNDLED_RUNTIME_DIR),
   path.join(os.homedir(), 'Desktop', '打工人', BUNDLED_RUNTIME_DIR),
-  LEGACY_DEFAULT_RUNTIME_REPO,
+  DEFAULT_RUNTIME_REPO,
 ];
 
 let child: ChildProcessWithoutNullStreams | null = null;
@@ -77,7 +77,7 @@ function chooseRuntimeCommand(runtimeRepo: string): { command: string; argsPrefi
   if (fs.existsSync(bundledRuntimeExecutable)) {
     return { command: bundledRuntimeExecutable, argsPrefix: [] };
   }
-  return { command: choosePython(runtimeRepo), argsPrefix: ['-m', 'haishihua_agent_core.app.web'] };
+  return { command: choosePython(runtimeRepo), argsPrefix: ['-m', 'haish_agent_core.app.web'] };
 }
 
 function runtimeRepoPath(paths: RuntimePaths): string {
@@ -91,15 +91,15 @@ function runtimeRepoPath(paths: RuntimePaths): string {
   for (const candidate of DEV_RUNTIME_REPO_CANDIDATES) {
     if (
       fs.existsSync(path.join(candidate, 'pyproject.toml'))
-      && fs.existsSync(path.join(candidate, 'src', 'haishihua_agent_core'))
+      && fs.existsSync(path.join(candidate, 'src', 'haish_agent_core'))
     ) {
       return candidate;
     }
   }
   throw new Error(
-    'Could not locate the Haish Python backend (haishihua-agent-core). '
+    'Could not locate the Haish Python backend (haish-agent-core). '
     + `Looked for: ${DEV_RUNTIME_REPO_CANDIDATES.join(', ')}. `
-    + 'Clone the haishihua-agent-core repo next to this project, or set '
+    + 'Clone the haish-agent-core repo next to this project, or set '
     + 'HAISH_LOCAL_RUNTIME_CWD to its absolute path.',
   );
 }
@@ -139,18 +139,16 @@ function runtimeEnv(paths: RuntimePaths, runtimeRepo: string, workdir: string): 
   const pythonPath = path.join(runtimeRepo, 'src');
   const baseEnv = {
     ...process.env,
-    ...(!process.env.HAISHIHUA_MCP_CONFIG && fs.existsSync(bundledMcpConfig)
-      ? { HAISHIHUA_MCP_CONFIG: bundledMcpConfig }
+    ...(!process.env.HAISH_MCP_CONFIG && fs.existsSync(bundledMcpConfig)
+      ? { HAISH_MCP_CONFIG: bundledMcpConfig }
       : {}),
   };
   return {
     ...baseEnv,
     ...parseEnvFile(bundledEnvFile),
     ...parseEnvFile(envFile),
-    HAISHIHUA_AGENT_WORLD_APP_HOME: workdir,
-    HAISHIHUA_AGENT_WORLD_APP_WORKDIR: workdir,
-    HAISHIHUA_DOCUMENT_QA_HOME: workdir,
-    HAISHIHUA_DOCUMENT_QA_WORKDIR: workdir,
+    HAISH_AGENT_WORLD_APP_HOME: workdir,
+    HAISH_AGENT_WORLD_APP_WORKDIR: workdir,
     PYTHONPATH: process.env.PYTHONPATH ? `${pythonPath}${path.delimiter}${process.env.PYTHONPATH}` : pythonPath,
     PYTHONUNBUFFERED: '1',
   };

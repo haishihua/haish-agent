@@ -34,8 +34,8 @@
     ],
     "extraResources": [
       {
-        "from": "build/runtime/haishihua-agent-core",
-        "to": "haishihua-agent-core",
+        "from": "build/runtime/haish-agent-core",
+        "to": "haish-agent-core",
         "filter": [
           "**/*",
           "!**/.git/**",
@@ -55,7 +55,7 @@
       "entitlements": "entitlements/entitlements.mac.plist",
       "entitlementsInherit": "entitlements/entitlements.mac.inherit.plist",
       "signIgnore": [
-        "/Contents/Resources/haishihua-agent-core/.*\\.py$"
+        "/Contents/Resources/haish-agent-core/.*\\.py$"
       ],
       "notarize": true,
       "target": [

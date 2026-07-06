@@ -8,9 +8,9 @@ const __dirname = path.dirname(__filename);
 const appRoot = path.resolve(__dirname, '..');
 const sourceRoot = process.env.HAISH_RUNTIME_SOURCE
   ? path.resolve(process.env.HAISH_RUNTIME_SOURCE)
-  : path.resolve(appRoot, '../../py-project/haishihua-agent-core');
+  : path.resolve(appRoot, '../../py-project/haish-agent-core');
 const buildRoot = path.join(appRoot, 'build', 'runtime');
-const runtimeRoot = path.join(buildRoot, 'haishihua-agent-core');
+const runtimeRoot = path.join(buildRoot, 'haish-agent-core');
 const buildVenvPath = path.join(buildRoot, '.pyinstaller-venv');
 const pyinstallerWorkPath = path.join(buildRoot, 'pyinstaller-work');
 const pyinstallerSpecPath = path.join(buildRoot, 'pyinstaller-spec');
@@ -68,7 +68,7 @@ function pruneRuntime() {
     'test',
   ]);
   const removablePaths = [
-    path.join(runtimeRoot, 'src', 'haishihua_agent_core', 'app', 'frontend'),
+    path.join(runtimeRoot, 'src', 'haish_agent_core', 'app', 'frontend'),
   ];
   for (const removablePath of removablePaths) {
     fs.rmSync(removablePath, { recursive: true, force: true });
@@ -100,7 +100,7 @@ function writeRuntimeLauncher() {
   fs.writeFileSync(
     runtimeLauncherPath,
     [
-      'from haishihua_agent_core.app.web import main',
+      'from haish_agent_core.app.web import main',
       '',
       'if __name__ == "__main__":',
       '    main()',
@@ -110,7 +110,7 @@ function writeRuntimeLauncher() {
 }
 
 function removeInstalledRuntimePackage(venvPython) {
-  spawnSync(venvPython, ['-m', 'pip', 'uninstall', '-y', 'haishihua-agent-core'], {
+  spawnSync(venvPython, ['-m', 'pip', 'uninstall', '-y', 'haish-agent-core'], {
     cwd: appRoot,
     env: {
       ...process.env,
@@ -134,9 +134,9 @@ function removeInstalledRuntimePackage(venvPython) {
     },
   ).stdout.trim();
   if (!sitePackages) return;
-  fs.rmSync(path.join(sitePackages, 'haishihua_agent_core'), { recursive: true, force: true });
+  fs.rmSync(path.join(sitePackages, 'haish_agent_core'), { recursive: true, force: true });
   for (const entry of fs.readdirSync(sitePackages)) {
-    if (/^haishihua_agent_core-.*\.(dist-info|egg-info)$/.test(entry)) {
+    if (/^haish_agent_core-.*\.(dist-info|egg-info)$/.test(entry)) {
       fs.rmSync(path.join(sitePackages, entry), { recursive: true, force: true });
     }
   }
@@ -156,7 +156,7 @@ function main() {
   for (const file of runtimeFiles) {
     copyRuntimeFile(file);
   }
-  // Bundled skills now ship as package data under src/haishihua_agent_core/skills/
+  // Bundled skills now ship as package data under src/haish_agent_core/skills/
   // and are picked up by PyInstaller's collect_data_files. No extra copy here.
 
   const python = process.env.HAISH_RUNTIME_BUILD_PYTHON || 'python3';
@@ -205,11 +205,11 @@ function main() {
     '--paths',
     path.join(runtimeRoot, 'src'),
     '--collect-submodules',
-    'haishihua_agent_core',
+    'haish_agent_core',
     '--collect-submodules',
     'tiktoken_ext',
     '--collect-data',
-    'haishihua_agent_core',
+    'haish_agent_core',
     '--collect-data',
     'tiktoken',
     runtimeLauncherPath,

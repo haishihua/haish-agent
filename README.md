@@ -1,6 +1,6 @@
-# Haish
+# haish-agent
 
-Haish is the macOS desktop app for Haish Agent. It runs the full Haish web UI in
+Haish is the macOS desktop app for the haish-agent project. It runs the full Haish web UI in
 Electron and adds native local-folder authorization for desktop projects.
 
 ## Current Scope
@@ -14,25 +14,25 @@ Electron and adds native local-folder authorization for desktop projects.
 
 ## Run Locally
 
-Haish has two repos:
+The haish-agent workspace has two repos:
 
-- `Haish-agent` (this repo) — the Electron shell and web UI.
-- `haishihua-agent-core` — the Python backend the Electron main process spawns
+- `haish-agent` (this repo) — the Electron shell and web UI.
+- `haish-agent-core` — the Python backend the Electron main process spawns
   on every launch. **It is required even in dev mode.**
 
 ### 1. Set up the Python backend
 
-Clone `haishihua-agent-core` and prepare its virtualenv:
+Clone `haish-agent-core` and prepare its virtualenv:
 
 ```bash
 # Recommended layout (sibling of this repo — auto-detected):
-#   <parent>/Haish-agent
-#   <parent>/haishihua-agent-core
-git clone <haishihua-agent-core repo url> ../haishihua-agent-core
-cd ../haishihua-agent-core
+#   <parent>/haish-agent
+#   <parent>/haish-agent-core
+git clone <haish-agent-core repo url> ../haish-agent-core
+cd ../haish-agent-core
 python3 -m venv .venv
 .venv/bin/pip install -e .   # or follow that repo's own install steps
-# create .env / mcp.json as required by haishihua-agent-core
+# create .env / mcp.json as required by haish-agent-core
 ```
 
 If you cannot put the backend next to this repo, point `HAISH_LOCAL_RUNTIME_CWD`
@@ -41,7 +41,7 @@ at it instead (see env vars below).
 ### 2. Start the desktop app
 
 ```bash
-cd Haish-agent
+cd haish-agent
 npm install
 npm run dev
 ```
@@ -55,8 +55,8 @@ proxies all `haish://app/api/*` requests to it.
 In dev mode the backend repo is resolved in this order:
 
 1. `$HAISH_LOCAL_RUNTIME_CWD` if set.
-2. `../haishihua-agent-core` next to this repo.
-3. `./haishihua-agent-core` inside this repo.
+2. `../haish-agent-core` next to this repo.
+3. `./haish-agent-core` inside this repo.
 
 If none exist the runtime fails fast with a clear error.
 
@@ -64,7 +64,7 @@ If none exist the runtime fails fast with a clear error.
 
 | Variable | Purpose |
 | --- | --- |
-| `HAISH_LOCAL_RUNTIME_CWD` | Absolute path to the `haishihua-agent-core` repo. |
+| `HAISH_LOCAL_RUNTIME_CWD` | Absolute path to the `haish-agent-core` repo. |
 | `HAISH_LOCAL_RUNTIME_PYTHON` | Python interpreter to use (defaults to the repo's `.venv/bin/python`, then `python3`). |
 | `HAISH_LOCAL_RUNTIME_PORT` | Pin the backend port instead of picking a free one. |
 | `HAISH_LOCAL_RUNTIME_WORKDIR` | Override the backend workdir (defaults to Electron `userData/runtime`). |
