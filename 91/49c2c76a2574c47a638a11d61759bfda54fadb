@@ -1,0 +1,39 @@
+README.md
+  s_cd37f26c5f5e70::t_167351d9599638 1
+  s_0bf86764a705dd::t_c19e8bd2e6b838 3,17
+  s_0bf86764a705dd::t_135eec00397dc2 19-20,25,29-32,35,44,58-59,67
+src/main/local-runtime.ts
+  s_cd37f26c5f5e70::t_8a5a68f700678f 142-143,150-151
+  s_0bf86764a705dd::t_c81ff113cd9baa 29,40,42-43,45-46,80,94,100,102
+  s_cd37f26c5f5e70::t_167351d9599638 28,49
+package.json
+  s_0bf86764a705dd::t_a58ccdd834815a 37-38,58
+docs/local-agent-runtime-architecture.md
+  s_0bf86764a705dd::t_08c9f3c8a33286 5,7,9,23,29,31,46-47,59,80,109,122,133,163,199,290,304,331-333,480,489,537,573,575,578-580,586,590-592,596,604-605,670,680
+scripts/build-runtime.mjs
+  s_0bf86764a705dd::t_5bca3252981a12 11,13,71,103,113,137,139,159,208,212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "9149c2c76a2574c47a638a11d61759bfda54fadb",
+  "prompts": {},
+  "sessions": {
+    "s_0bf86764a705dd": {
+      "agent_id": {
+        "tool": "Antigravity",
+        "id": "rename-haish-agent-core-20260706",
+        "model": "gpt-5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    },
+    "s_cd37f26c5f5e70": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f351b-5672-7a01-8850-41a0c996b07b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
