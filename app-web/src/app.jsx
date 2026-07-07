@@ -93,6 +93,2584 @@ const APP_DEFAULT_AGENT_OPTIONS = [
   { id: 'preset.document-qa', label: 'Docs Search', description: 'Grounded answers from indexed documents' },
 ];
 
+const DEFAULT_AGENT_TOOL_GROUPS = [
+  { id: 'workspace_read', label: 'File read', description: 'Read files, list directories, search text, and glob workspace paths.', tools: ['read_file', 'list_dir', 'search_text', 'glob_files'] },
+  { id: 'file_edits', label: 'File edits', description: 'Create, edit, copy, delete, checkpoint, and roll back workspace files.', tools: ['write_file', 'edit_file', 'delete_file', 'copy_file', 'create_dir', 'delete_dir', 'list_checkpoints', 'rollback_workspace'] },
+  { id: 'terminal', label: 'Terminal', description: 'Run terminal commands and manage background processes.', tools: ['terminal', 'start_background_process', 'read_background_process_output', 'stop_background_process', 'list_background_processes'] },
+  { id: 'browser', label: 'Browser', description: 'Navigate, inspect, click, type, scroll, evaluate, and screenshot browser pages.', tools: ['browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type', 'browser_scroll', 'browser_press_key', 'browser_console', 'browser_evaluate', 'browser_screenshot', 'browser_wait_for'] },
+  { id: 'web', label: 'Web', description: 'Search the web and fetch pages.', tools: ['web_search', 'web_fetch'] },
+  { id: 'memory', label: 'Memory', description: 'Search, add, and forget long-term memory entries.', tools: ['memory_search', 'memory_add', 'memory_forget'] },
+  { id: 'knowledge', label: 'RAG', description: 'List indexed documents and search retrieval collections.', tools: ['document_list', 'rag_search'] },
+  { id: 'vision', label: 'Vision', description: 'Inspect images and visual content.', tools: ['vision_analyze'] },
+  { id: 'planning', label: 'Planning', description: 'Write and update task plans.', tools: ['todo_write'] },
+  { id: 'sub_agent', label: 'Sub-agent', description: 'Delegate scoped work to a sub-agent.', tools: ['dispatch_sub_agent'] },
+];
+const DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS = ['read_artifact'];
+
+const DEFAULT_AGENT_SETTINGS = {
+  presets: APP_DEFAULT_AGENT_OPTIONS.map((item) => ({
+    agent_id: item.id,
+    profile_id: item.id,
+    display_name: item.label,
+    description: item.description,
+    custom: false,
+    system: true,
+    enabled: true,
+    can_toggle: item.id !== 'preset.general',
+  })),
+  custom: [],
+  base_profiles: APP_DEFAULT_AGENT_OPTIONS.map((item) => ({
+    agent_id: item.id,
+    display_name: item.label,
+    description: item.description,
+  })),
+  tool_groups: DEFAULT_AGENT_TOOL_GROUPS,
+  skills: [],
+};
+
+const SETTINGS_SECTIONS = [
+  { id: 'llm', label: 'Providers' },
+  { id: 'tools', label: 'Tools' },
+  { id: 'memory', label: 'Memory' },
+  { id: 'knowledge', label: 'Knowledge' },
+  { id: 'agent', label: 'Agent' },
+  { id: 'workflow', label: 'Agentic Workflow' },
+];
+
+const SETTINGS_SUBTABS = {
+  llm: [
+    { id: 'chat', label: 'Chat' },
+    { id: 'vision', label: 'Vision' },
+    { id: 'embedding', label: 'Embedding' },
+  ],
+  tools: [
+    { id: 'tools-mcp', label: 'MCP' },
+    { id: 'tools-skills', label: 'Skills' },
+    { id: 'tools-web', label: 'Web Search' },
+  ],
+};
+
+const SETTINGS_SECTION_COPY = {
+  llm: 'Provider management',
+  tools: 'Tool integrations',
+  memory: 'Configure Neo4j for long-term graph memory and relationship recall.',
+  knowledge: 'Configure Qdrant for document retrieval and vector search.',
+  agent: 'Agent profiles',
+  workflow: 'Workflows',
+};
+
+const LLM_SUBTAB_COPY = {
+  chat: 'Chat',
+  vision: 'Vision',
+  embedding: 'Embedding',
+  'tools-mcp': 'JSON MCP config',
+  'tools-skills': 'Installed skills',
+  'tools-web': 'Search providers',
+};
+
+const ADD_LABEL_BY_SECTION = {
+  memory: 'Add',
+  knowledge: 'Add',
+  agent: 'Add',
+  workflow: 'Add',
+};
+
+const LLM_PROVIDER_MODELS = {
+  openai: ['gpt-5.5', 'gpt-5.4'],
+  anthropic: ['claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-6'],
+  gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+  deepseek: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+  dashscope: ['qwen3-max', 'qwen3-plus', 'qwen3-vl-max'],
+  moonshot: ['kimi-k2.7-code', 'kimi-k2.6', 'kimi-k2.5'],
+  minimax: ['minimax-m3', 'minimax-m2.7', 'minimax-vl-01'],
+  zhipu: ['glm-5.2', 'glm-5.1v-thinking-flash', 'glm-4.5v'],
+  ollama: [],
+  custom: [],
+};
+
+const LLM_PROVIDER_OPTIONS = [
+  { id: 'openai', label: 'OpenAI', authModes: ['api_key', 'oauth'], defaultAuth: 'api_key', defaultModel: 'gpt-5.5', baseUrl: 'https://api.openai.com/v1' },
+  { id: 'anthropic', label: 'Anthropic', authModes: ['api_key', 'oauth'], defaultAuth: 'api_key', defaultModel: 'claude-opus-4-8', baseUrl: 'https://api.anthropic.com/v1' },
+  { id: 'gemini', label: 'Gemini', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'gemini-2.5-pro', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
+  { id: 'deepseek', label: 'DeepSeek', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'deepseek-v4-flash', baseUrl: 'https://api.deepseek.com' },
+  { id: 'dashscope', label: 'DashScope', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'qwen3-max', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+  { id: 'moonshot', label: 'Moonshot', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'kimi-k2.7-code', baseUrl: 'https://api.moonshot.cn/v1' },
+  { id: 'minimax', label: 'MiniMax', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'minimax-m3', baseUrl: 'https://api.minimaxi.com/v1' },
+  { id: 'zhipu', label: 'Zhipu', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'glm-5.2', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
+  { id: 'ollama', label: 'Ollama', authModes: ['none'], defaultAuth: 'none', defaultModel: '', baseUrl: 'http://127.0.0.1:11434/v1' },
+  { id: 'custom', label: 'Custom', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: '', baseUrl: '' },
+];
+const HIDDEN_SETTINGS_LLM_PROVIDERS = new Set(['anthropic', 'gemini']);
+const SETTINGS_LLM_PROVIDER_OPTIONS = LLM_PROVIDER_OPTIONS.filter((item) => !HIDDEN_SETTINGS_LLM_PROVIDERS.has(item.id));
+
+const LLM_SETTINGS_STORAGE_KEY = 'haish.llmSettingsDraft.v1';
+const SETTINGS_RECORDS_STORAGE_KEY = 'haish.settingsRecordsDraft.v1';
+const SETTINGS_CONNECTION_STATUS_STORAGE_KEY = 'haish.settingsConnectionStatus.v1';
+const SETTINGS_CONNECTION_SECTIONS = ['memory', 'knowledge'];
+const SETTINGS_PERSISTED_CONNECTION_STATES = new Set(['success', 'error']);
+const DEFAULT_MCP_CONFIG_JSON = JSON.stringify({ servers: {} }, null, 2);
+const MCP_CONFIG_TEMPLATE_JSON = JSON.stringify({
+  servers: {
+    example: {
+      transport: 'stdio',
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '/path/to/workspace'],
+      env: {},
+      enabled: true,
+      timeout_seconds: 30,
+    },
+  },
+}, null, 2);
+const DEFAULT_NEO4J_CONFIG = {
+  uri: '',
+  username: '',
+  password: '',
+  password_configured: false,
+  database: '',
+};
+const DEFAULT_QDRANT_CONFIG = {
+  url: '',
+  api_key: '',
+  api_key_configured: false,
+  collection: {
+    name: '',
+    vector_size: 1024,
+    distance: 'cosine',
+  },
+};
+const QDRANT_DISTANCE_OPTIONS = [
+  { id: 'cosine', label: 'Cosine' },
+  { id: 'euclid', label: 'Euclid' },
+  { id: 'dot', label: 'Dot' },
+];
+const LEGACY_DEFAULT_QDRANT_COLLECTION = 'haish_rag_default';
+const WEB_SEARCH_PROVIDER_OPTIONS = [
+  { id: 'tavily', label: 'Tavily', keyLabel: 'Tavily API Key' },
+  { id: 'serpapi', label: 'SerpApi', keyLabel: 'SerpApi API Key' },
+];
+const SETTINGS_REASONING_OPTIONS = [
+  { id: 'low', label: 'low' },
+  { id: 'medium', label: 'medium' },
+  { id: 'high', label: 'high' },
+  { id: 'xhigh', label: 'xhigh' },
+];
+
+function getLlmProvider(id) {
+  return LLM_PROVIDER_OPTIONS.find((item) => item.id === id) || LLM_PROVIDER_OPTIONS[0];
+}
+
+function normalizeLlmProviderId(value) {
+  return String(value || '').trim().toLowerCase().replace(/-/g, '_');
+}
+
+function formatAuthModeLabel(mode) {
+  const value = String(mode || '').trim();
+  if (value === 'api_key') return 'API Key';
+  if (value === 'oauth') return 'OAuth';
+  if (value === 'none') return 'None';
+  return value.replace(/_/g, ' ');
+}
+
+function modelChoicesFor(provider) {
+  const configured = provider === 'custom' ? [] : (LLM_PROVIDER_MODELS[provider] || []);
+  return Array.from(new Set(configured));
+}
+
+function uniqueModelChoices(...groups) {
+  const seen = new Set();
+  const result = [];
+  groups.flat().forEach((value) => {
+    const id = typeof value === 'string' ? value : value?.id;
+    const label = typeof value === 'string' ? value : (value?.label || value?.id);
+    const normalized = String(id || '').trim();
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    result.push({ id: normalized, label: String(label || normalized) });
+  });
+  return result;
+}
+
+function configuredModelOptions(config) {
+  if (config?.provider === 'ollama') return [];
+  return config?.model_options || [];
+}
+
+function runtimeProviderLabel(config) {
+  const provider = getLlmProvider(config.provider);
+  const name = String(config.name || config.custom_provider || '').trim();
+  return config.provider === 'custom' && name ? name : provider.label;
+}
+
+function runtimeProviderSelector(config) {
+  const provider = normalizeLlmProviderId(config.provider);
+  if (provider === 'custom') {
+    const key = String(config.name || config.custom_provider || config.base_url || config.model || '').trim();
+    return key ? `custom:${key}` : 'custom';
+  }
+  return provider || 'auto';
+}
+
+function runtimeLlmProviderOptions(draft, modelCatalog) {
+  const rows = [
+    draft?.chat,
+    ...(Array.isArray(draft?.profiles) ? draft.profiles : []),
+  ].filter((item) => item && item.provider);
+  const catalogProvider = normalizeLlmProviderId(modelCatalog?.provider);
+  const seen = new Set();
+  const options = rows.map((config, index) => {
+    const requestProvider = runtimeProviderSelector(config);
+    const idBase = config.id || `${index === 0 ? 'chat' : 'profile'}:${requestProvider}`;
+    const id = seen.has(idBase) ? `${idBase}:${index}` : idBase;
+    seen.add(id);
+    const includeCatalog = catalogProvider && catalogProvider === normalizeLlmProviderId(config.provider);
+    const modelOptions = uniqueModelChoices(
+      config.model,
+      configuredModelOptions(config),
+      includeCatalog ? (modelCatalog?.options || []) : [],
+      modelChoicesFor(config.provider),
+    );
+    return {
+      id,
+      label: runtimeProviderLabel(config),
+      provider: config.provider,
+      requestProvider,
+      defaultModelId: config.model || modelOptions[0]?.id || getLlmProvider(config.provider).defaultModel,
+      modelOptions,
+    };
+  }).filter((item) => item.modelOptions.length > 0 || item.defaultModelId);
+  return options;
+}
+
+function nextProviderDraft(providerId, previous = {}) {
+  const provider = getLlmProvider(providerId);
+  const isCustom = providerId === 'custom';
+  const choices = modelChoicesFor(providerId);
+  return {
+    ...previous,
+    provider: provider.id,
+    auth_mode: provider.defaultAuth,
+    custom_provider: isCustom ? String(previous.custom_provider || previous.name || '').trim() : '',
+    model: isCustom || providerId === 'ollama' ? '' : (choices[0] || provider.defaultModel),
+    base_url: isCustom ? '' : provider.baseUrl,
+    name: isCustom ? String(previous.name || previous.custom_provider || '').trim() : '',
+    api_key: '',
+    api_key_configured: false,
+    model_options: [],
+    oauth_auth_url: '',
+    oauth_code: '',
+    oauth_state: '',
+    oauth_verifier: '',
+  };
+}
+
+function createDefaultLlmSettings() {
+  return {
+    chat: {},
+    vision: {
+      enabled: false,
+      mode: 'auto',
+      provider: 'custom',
+      auth_mode: 'api_key',
+      custom_provider: '',
+      model: '',
+      api_key: '',
+      base_url: '',
+    },
+    embedding: {
+      enabled: false,
+      provider: 'custom',
+      auth_mode: 'api_key',
+      custom_provider: '',
+      model: '',
+      api_key: '',
+      base_url: '',
+    },
+    profiles: [],
+  };
+}
+
+function normalizeLlmModelConfig(config) {
+  if (!config || typeof config !== 'object') return {};
+  const provider = normalizeLlmProviderId(config.provider);
+  if (!provider) return { ...config, provider: '' };
+  if (provider === 'custom' && !config.name && config.custom_provider) {
+    return { ...config, provider, name: config.custom_provider };
+  }
+  return { ...config, provider };
+}
+
+function loadLlmSettingsDraft() {
+  const fallback = createDefaultLlmSettings();
+  try {
+    const raw = window.localStorage?.getItem(LLM_SETTINGS_STORAGE_KEY);
+    if (!raw) return fallback;
+    const stored = JSON.parse(raw);
+    const draft = {
+      chat: normalizeLlmModelConfig({ ...fallback.chat, ...(stored?.chat || {}) }),
+      vision: { ...fallback.vision, ...(stored?.vision || {}) },
+      embedding: { ...fallback.embedding, ...(stored?.embedding || {}) },
+      profiles: Array.isArray(stored?.profiles) ? stored.profiles : [],
+    };
+    return draft;
+  } catch {
+    return fallback;
+  }
+}
+
+function applyLlmSettingsPayloadToDraft(previous, payload) {
+  if (!payload || typeof payload !== 'object') return previous;
+  const hasBackendConfig = Boolean(
+    payload.chat?.provider
+    || payload.vision?.provider
+    || payload.embedding?.provider
+    || (Array.isArray(payload.profiles) && payload.profiles.length > 0),
+  );
+  if (!hasBackendConfig) return previous;
+  const fallback = createDefaultLlmSettings();
+  return {
+    chat: normalizeLlmModelConfig({ ...fallback.chat, ...(payload.chat || {}) }),
+    vision: { ...fallback.vision, ...(payload.vision || {}) },
+    embedding: { ...fallback.embedding, ...(payload.embedding || {}) },
+    profiles: Array.isArray(payload.profiles)
+      ? payload.profiles.map((profile) => normalizeLlmModelConfig(profile))
+      : [],
+  };
+}
+
+function createDefaultSettingsRecords() {
+  return {
+    tools: [
+      { id: 'tools-mcp', name: 'MCP Servers', kind: 'JSON Config', enabled: true, protected: true, endpoint: '', notes: 'Visual editor for runtime mcp.json.', mcp_json: DEFAULT_MCP_CONFIG_JSON, mcp_path: '', mcp_error: '', mcp_status: '' },
+      { id: 'tools-skills', name: 'Skills', kind: 'Package Manager', enabled: true, protected: true, endpoint: '', notes: 'Install, view, enable, disable, and uninstall skills.', skills: [], skill_errors: [], skill_install_root: '' },
+      { id: 'tools-web', name: 'Web Search', kind: 'Provider Keys', enabled: true, protected: true, endpoint: '', notes: 'Configure Tavily and SerpApi search keys.', web_search: createDefaultWebSearchSettings() },
+    ],
+    memory: [
+      { id: 'memory-neo4j', name: 'Neo4j', kind: 'Graph Memory', protected: true, endpoint: '', notes: 'Graph-backed long-term memory.', neo4j: normalizeNeo4jDraft() },
+    ],
+    knowledge: [
+      { id: 'knowledge-qdrant', name: 'Qdrant', kind: 'Vector Store', protected: true, endpoint: '', notes: 'Vector search for indexed documents.', qdrant: normalizeQdrantDraft() },
+    ],
+    agent: [
+      { id: 'agent-default', name: 'Default Agent', kind: 'Profile', enabled: true, endpoint: '', notes: 'Default assistant profile.' },
+    ],
+    workflow: [
+      { id: 'workflow-default', name: 'Default Workflow', kind: 'Workflow', enabled: true, endpoint: '', notes: 'Default planning and execution workflow.' },
+    ],
+  };
+}
+
+function createDefaultWebSearchSettings() {
+  return {
+    enabled: true,
+    mode: 'hybrid',
+    providers: {
+      tavily: { enabled: true, api_key: '', api_key_configured: false },
+      serpapi: { enabled: true, api_key: '', api_key_configured: false },
+    },
+  };
+}
+
+function normalizeNeo4jDraft(value = {}) {
+  const raw = value && typeof value === 'object' ? value : {};
+  return {
+    ...DEFAULT_NEO4J_CONFIG,
+    uri: String(raw.uri ?? raw.endpoint ?? DEFAULT_NEO4J_CONFIG.uri).trim(),
+    username: String(raw.username ?? DEFAULT_NEO4J_CONFIG.username).trim(),
+    password: String(raw.password ?? '').trim(),
+    password_configured: Boolean(raw.password_configured),
+    database: String(raw.database ?? DEFAULT_NEO4J_CONFIG.database).trim(),
+  };
+}
+
+function normalizeQdrantDraft(value = {}) {
+  const raw = value && typeof value === 'object' ? value : {};
+  const collectionRaw = raw.collection && typeof raw.collection === 'object' ? raw.collection : {};
+  const vectorSize = Number.parseInt(collectionRaw.vector_size ?? raw.vector_size ?? DEFAULT_QDRANT_CONFIG.collection.vector_size, 10);
+  const distance = String(collectionRaw.distance ?? raw.distance ?? DEFAULT_QDRANT_CONFIG.collection.distance).trim().toLowerCase();
+  const collectionName = String(collectionRaw.name ?? raw.collection_name ?? DEFAULT_QDRANT_CONFIG.collection.name).trim();
+  return {
+    ...DEFAULT_QDRANT_CONFIG,
+    url: String(raw.url ?? raw.endpoint ?? DEFAULT_QDRANT_CONFIG.url).trim(),
+    api_key: String(raw.api_key ?? '').trim(),
+    api_key_configured: Boolean(raw.api_key_configured),
+    collection: {
+      name: collectionName === LEGACY_DEFAULT_QDRANT_COLLECTION ? '' : collectionName,
+      vector_size: Number.isFinite(vectorSize) && vectorSize > 0 ? vectorSize : DEFAULT_QDRANT_CONFIG.collection.vector_size,
+      distance: QDRANT_DISTANCE_OPTIONS.some((item) => item.id === distance) ? distance : DEFAULT_QDRANT_CONFIG.collection.distance,
+    },
+  };
+}
+
+function mergeDefaultRecords(defaultRecords, storedRecords) {
+  const stored = Array.isArray(storedRecords) ? storedRecords : [];
+  const byId = new Map(stored.map((item) => [item?.id, item]));
+  const merged = defaultRecords.map((item) => ({ ...item, ...(byId.get(item.id) || {}) }));
+  const known = new Set(defaultRecords.map((item) => item.id));
+  return [...merged, ...stored.filter((item) => item?.id && !known.has(item.id))];
+}
+
+function mergeKnownDefaultRecords(defaultRecords, storedRecords) {
+  const stored = Array.isArray(storedRecords) ? storedRecords : [];
+  const byId = new Map(stored.map((item) => [item?.id, item]));
+  return defaultRecords.map((item) => ({ ...item, ...(byId.get(item.id) || {}) }));
+}
+
+function loadSettingsRecordsDraft() {
+  const fallback = createDefaultSettingsRecords();
+  try {
+    const raw = window.localStorage?.getItem(SETTINGS_RECORDS_STORAGE_KEY);
+    if (!raw) return fallback;
+    const stored = JSON.parse(raw);
+    return Object.fromEntries(
+      Object.entries(fallback).map(([section, records]) => [
+        section,
+        ['memory', 'knowledge'].includes(section)
+          ? mergeKnownDefaultRecords(records, stored?.[section])
+          : mergeDefaultRecords(records, stored?.[section]),
+      ]),
+    );
+  } catch {
+    return fallback;
+  }
+}
+
+function settingsConnectionRecord(records, section, itemId) {
+  const items = Array.isArray(records?.[section]) ? records[section] : [];
+  return items.find((item) => item?.id === itemId) || null;
+}
+
+function settingsConnectionSignature(section, record) {
+  if (!record) return '';
+  if (section === 'memory') {
+    const rawNeo4j = record.neo4j || {};
+    const neo4j = normalizeNeo4jDraft({ ...rawNeo4j, uri: rawNeo4j.uri || record.endpoint });
+    if (!neo4j.uri) return '';
+    return JSON.stringify(['memory', neo4j.uri, neo4j.username, Boolean(neo4j.password || neo4j.password_configured), neo4j.database]);
+  }
+  if (section === 'knowledge') {
+    const rawQdrant = record.qdrant || {};
+    const qdrant = normalizeQdrantDraft({ ...rawQdrant, url: rawQdrant.url || record.endpoint });
+    if (!qdrant.url) return '';
+    return JSON.stringify([
+      'knowledge',
+      qdrant.url,
+      Boolean(qdrant.api_key || qdrant.api_key_configured),
+      qdrant.collection?.name || '',
+      qdrant.collection?.vector_size || '',
+      qdrant.collection?.distance || '',
+    ]);
+  }
+  return '';
+}
+
+function settingsConnectionSignatureFor(records, section, itemId) {
+  return settingsConnectionSignature(section, settingsConnectionRecord(records, section, itemId));
+}
+
+function sanitizeSettingsConnectionStatus(status, records) {
+  const next = { memory: {}, knowledge: {} };
+  for (const section of SETTINGS_CONNECTION_SECTIONS) {
+    const items = Array.isArray(records?.[section]) ? records[section] : [];
+    for (const item of items) {
+      const itemStatus = status?.[section]?.[item.id];
+      if (!SETTINGS_PERSISTED_CONNECTION_STATES.has(String(itemStatus?.state || ''))) continue;
+      const signature = settingsConnectionSignature(section, item);
+      if (!signature || itemStatus.signature !== signature) continue;
+      next[section][item.id] = {
+        state: String(itemStatus.state),
+        message: String(itemStatus.message || ''),
+        signature,
+      };
+    }
+  }
+  return next;
+}
+
+function loadSettingsConnectionStatus(records) {
+  try {
+    const raw = window.localStorage?.getItem(SETTINGS_CONNECTION_STATUS_STORAGE_KEY);
+    return sanitizeSettingsConnectionStatus(raw ? JSON.parse(raw) : null, records);
+  } catch {
+    return { memory: {}, knowledge: {} };
+  }
+}
+
+function persistSettingsConnectionStatus(status, records) {
+  try {
+    window.localStorage?.setItem(
+      SETTINGS_CONNECTION_STATUS_STORAGE_KEY,
+      JSON.stringify(sanitizeSettingsConnectionStatus(status, records)),
+    );
+  } catch {
+    // Ignore storage failures; the live status still updates in React state.
+  }
+}
+
+function normalizeAgentProfileRow(item, fallback = {}) {
+  const id = String(item?.agent_id || item?.profile_id || item?.id || fallback.agent_id || fallback.id || '').trim();
+  const draft = Boolean(item?.draft);
+  const displayName = String(item?.display_name ?? item?.label ?? fallback.display_name ?? fallback.label ?? '');
+  const visibleName = draft && displayName.trim() === id ? '' : displayName;
+  return {
+    ...fallback,
+    ...item,
+    agent_id: id,
+    profile_id: String(item?.profile_id || id),
+    display_name: visibleName || (draft ? '' : id),
+    description: String(item?.description ?? fallback.description ?? ''),
+    enabled: item?.enabled !== false,
+    custom: Boolean(item?.custom),
+    draft,
+  };
+}
+
+function normalizeAgentToolGroups(groups) {
+  const defaultsById = new Map(DEFAULT_AGENT_TOOL_GROUPS.map((group) => [group.id, group]));
+  const sourceGroups = Array.isArray(groups) && groups.length ? groups : DEFAULT_AGENT_TOOL_GROUPS;
+  return sourceGroups.map((group) => {
+    const fallback = defaultsById.get(group?.id);
+    if (!fallback) {
+      return {
+        ...group,
+        tools: Array.isArray(group?.tools)
+          ? group.tools.filter((tool) => !DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS.includes(tool))
+          : [],
+      };
+    }
+    return { ...group, ...fallback };
+  });
+}
+
+function normalizeAgentSettings(payload) {
+  const source = payload && typeof payload === 'object' ? payload : DEFAULT_AGENT_SETTINGS;
+  const presets = Array.isArray(source.presets)
+    ? source.presets.map((item, index) => normalizeAgentProfileRow(item, DEFAULT_AGENT_SETTINGS.presets[index] || {})).filter((item) => item.agent_id)
+    : DEFAULT_AGENT_SETTINGS.presets;
+  const custom = Array.isArray(source.custom)
+    ? source.custom.map((item) => normalizeAgentProfileRow(item)).filter((item) => item.agent_id)
+    : [];
+  const baseProfiles = Array.isArray(source.base_profiles) && source.base_profiles.length
+    ? source.base_profiles.map((item, index) => normalizeAgentProfileRow(item, DEFAULT_AGENT_SETTINGS.base_profiles[index] || {})).filter((item) => item.agent_id)
+    : DEFAULT_AGENT_SETTINGS.base_profiles;
+  const toolGroups = normalizeAgentToolGroups(source.tool_groups);
+  const skills = Array.isArray(source.skills) ? source.skills : [];
+  return { presets, custom, base_profiles: baseProfiles, tool_groups: toolGroups, skills };
+}
+
+function agentCatalogFromSettings(settings) {
+  const normalized = normalizeAgentSettings(settings);
+  const options = [...normalized.presets, ...normalized.custom]
+    .filter((item) => item.enabled !== false && !item.draft)
+    .map((item) => ({
+      id: item.agent_id,
+      label: item.display_name,
+      description: item.description,
+      custom: Boolean(item.custom),
+    }));
+  return {
+    options: options.length ? options : APP_DEFAULT_AGENT_OPTIONS,
+    defaultAgentId: options.find((item) => item.id === 'preset.general')?.id || options[0]?.id || APP_DEFAULT_AGENT_OPTIONS[0].id,
+  };
+}
+
+function agentListItems(settings) {
+  const normalized = normalizeAgentSettings(settings);
+  return [...normalized.presets, ...normalized.custom].map((item) => ({
+    id: item.agent_id,
+    title: item.display_name || (item.draft ? 'New Agent' : item.agent_id),
+    kind: item.custom ? 'Custom' : (item.can_toggle === false ? 'Default' : 'Preset'),
+    summary: item.draft ? 'Draft' : (item.description || (item.enabled === false ? 'Disabled' : 'Enabled')),
+    protected: !item.custom,
+    enabled: item.enabled !== false,
+    custom: Boolean(item.custom),
+    canToggle: item.can_toggle !== false && !item.custom,
+    canConfigure: Boolean(item.custom) && item.readonly !== true,
+    readonly: item.readonly === true,
+  }));
+}
+
+function withAlwaysAllowedAgentTools(tools) {
+  const result = [];
+  const seen = new Set();
+  for (const tool of [...DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS, ...(Array.isArray(tools) ? tools : [])]) {
+    if (!tool || seen.has(tool)) continue;
+    seen.add(tool);
+    result.push(tool);
+  }
+  return result;
+}
+
+function toolsForAgentGroups(groupIds, toolGroups) {
+  const selected = new Set(groupIds || []);
+  const result = withAlwaysAllowedAgentTools([]);
+  const seen = new Set(result);
+  for (const group of toolGroups || DEFAULT_AGENT_TOOL_GROUPS) {
+    if (!selected.has(group.id)) continue;
+    for (const tool of group.tools || []) {
+      if (seen.has(tool)) continue;
+      seen.add(tool);
+      result.push(tool);
+    }
+  }
+  return result;
+}
+
+function groupIdsForAgentTools(tools, toolGroups) {
+  const allowed = new Set(tools || []);
+  return (toolGroups || DEFAULT_AGENT_TOOL_GROUPS)
+    .filter((group) => (group.tools || []).some((tool) => allowed.has(tool)))
+    .map((group) => group.id);
+}
+
+function createDefaultCustomAgentPayload(agentSettings) {
+  const settings = normalizeAgentSettings(agentSettings);
+  const base = settings.base_profiles.find((item) => item.agent_id === 'preset.general')?.agent_id
+    || settings.base_profiles[0]?.agent_id
+    || 'preset.general';
+  const groupIds = ['workspace_read', 'planning', 'sub_agent'];
+  return {
+    id: `custom.agent-${Date.now()}`,
+    base,
+    display_name: '',
+    description: '',
+    enabled: true,
+    draft: true,
+    system_prompt: '',
+    primary_skill_name: '',
+    tool_policy: {
+      allow: toolsForAgentGroups(groupIds, settings.tool_groups),
+      deny: [],
+      allow_mcp_tools: true,
+    },
+    skill_policy: { allow: [], deny: [] },
+  };
+}
+
+function FieldRow({ label, hint, children }) {
+  return (
+    <div className="settings-field">
+      <span>{label}</span>
+      {children}
+      {hint && <small>{hint}</small>}
+    </div>
+  );
+}
+
+const SETTINGS_LUCIDE_ICONS = {
+  plus: [
+    ['path', { d: 'M5 12h14' }],
+    ['path', { d: 'M12 5v14' }],
+  ],
+  search: [
+    ['path', { d: 'm21 21-4.34-4.34' }],
+    ['circle', { cx: '11', cy: '11', r: '8' }],
+  ],
+  configure: [
+    ['path', { d: 'M13 21h8' }],
+    ['path', { d: 'M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z' }],
+  ],
+  test: [
+    ['path', { d: 'M21 7 6.82 21.18a2.83 2.83 0 0 1-3.99-.01a2.83 2.83 0 0 1 0-4L17 3' }],
+    ['path', { d: 'm16 2 6 6' }],
+    ['path', { d: 'M12 16H4' }],
+  ],
+  template: [
+    ['rect', { x: '8', y: '8', width: '12', height: '12', rx: '2' }],
+    ['path', { d: 'M4 16V6a2 2 0 0 1 2-2h10' }],
+  ],
+  format: [
+    ['path', { d: 'M8 3H5a2 2 0 0 0-2 2v3' }],
+    ['path', { d: 'M16 3h3a2 2 0 0 1 2 2v3' }],
+    ['path', { d: 'M8 21H5a2 2 0 0 1-2-2v-3' }],
+    ['path', { d: 'M16 21h3a2 2 0 0 0 2-2v-3' }],
+    ['path', { d: 'M9 8h6' }],
+    ['path', { d: 'M9 12h6' }],
+    ['path', { d: 'M9 16h4' }],
+  ],
+  validate: [
+    ['path', { d: 'M20 13c0 5-3.5 7.5-7.66 8.86a1 1 0 0 1-.68 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z' }],
+    ['path', { d: 'm9 12 2 2 4-4' }],
+  ],
+  save: [
+    ['path', { d: 'M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z' }],
+    ['path', { d: 'M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7' }],
+    ['path', { d: 'M7 3v4a1 1 0 0 0 1 1h7' }],
+  ],
+  active: [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['path', { d: 'm9 12 2 2 4-4' }],
+  ],
+};
+
+function SettingsLucideIcon({ name, size = 14, className = '' }) {
+  const nodes = SETTINGS_LUCIDE_ICONS[name] || [];
+  return (
+    <svg
+      className={`settings-lucide ${className}`.trim()}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {nodes.map(([tag, attrs], index) => React.createElement(tag, { key: index, ...attrs }))}
+    </svg>
+  );
+}
+
+function SettingsMenuSelect({
+  value,
+  options,
+  onChange,
+  disabled = false,
+  placeholder = 'Select',
+  header = '',
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const items = Array.isArray(options) ? options : [];
+  const current = items.find((item) => item.id === value);
+  const label = current?.label || value || placeholder;
+
+  const cancelClose = () => {
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  };
+  const scheduleClose = () => {
+    if (!open) return;
+    cancelClose();
+    closeTimerRef.current = window.setTimeout(() => setOpen(false), 220);
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handleDocMouseDown(event) {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    }
+    function handleKey(event) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', handleDocMouseDown);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleDocMouseDown);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [open]);
+
+  useEffect(() => () => cancelClose(), []);
+
+  return (
+    <div
+      className={`model-picker settings-menu-select ${open ? 'is-open' : ''}`}
+      ref={rootRef}
+      onMouseEnter={cancelClose}
+      onMouseLeave={scheduleClose}
+    >
+      <button
+        type="button"
+        className="model-picker-trigger"
+        onClick={() => { if (!disabled) setOpen((shown) => !shown); }}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="model-picker-value">{label}</span>
+        <span className="model-picker-caret" aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="model-picker-menu" role="listbox">
+          {header ? <div className="model-picker-header">{header}</div> : null}
+          <div className="model-picker-list">
+            {items.map((item) => {
+              const active = item.id === value;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  className={`model-picker-option ${active ? 'is-active' : ''}`}
+                  onClick={() => {
+                    onChange?.(item.id);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="model-picker-option-label">{item.label || item.id}</span>
+                  {active ? (
+                    <span className="model-picker-check" aria-hidden="true">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3.2,8.6 6.6,12 13,4.8" />
+                      </svg>
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SettingsComboInput({
+  value,
+  options,
+  onChange,
+  disabled = false,
+  placeholder = '',
+  header = '',
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const items = Array.isArray(options) ? options : [];
+
+  const cancelClose = () => {
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  };
+  const scheduleClose = () => {
+    if (!open) return;
+    cancelClose();
+    closeTimerRef.current = window.setTimeout(() => setOpen(false), 220);
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handleDocMouseDown(event) {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    }
+    function handleKey(event) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', handleDocMouseDown);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleDocMouseDown);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [open]);
+
+  useEffect(() => () => cancelClose(), []);
+
+  return (
+    <div
+      className={`model-picker settings-combo-select ${open ? 'is-open' : ''}`}
+      ref={rootRef}
+      onMouseEnter={cancelClose}
+      onMouseLeave={scheduleClose}
+    >
+      <input
+        value={value || ''}
+        onChange={(event) => onChange?.(event.target.value)}
+        onFocus={() => { if (!disabled && items.length) setOpen(true); }}
+        disabled={disabled}
+        placeholder={placeholder}
+      />
+      <button
+        type="button"
+        className="settings-combo-caret"
+        onClick={() => { if (!disabled && items.length) setOpen((shown) => !shown); }}
+        disabled={disabled || !items.length}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="model-picker-caret" aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="model-picker-menu" role="listbox">
+          {header ? <div className="model-picker-header">{header}</div> : null}
+          <div className="model-picker-list">
+            {items.map((item) => {
+              const active = item.id === value;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  className={`model-picker-option ${active ? 'is-active' : ''}`}
+                  onClick={() => {
+                    onChange?.(item.id);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="model-picker-option-label">{item.label || item.id}</span>
+                  {active ? (
+                    <span className="model-picker-check" aria-hidden="true">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3.2,8.6 6.6,12 13,4.8" />
+                      </svg>
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function getLlmConfigItems(draft, activeSubtab = 'chat') {
+  const titleForConfig = (config) => {
+    if (!config?.provider) return 'Provider';
+    return runtimeProviderLabel(config);
+  };
+  if (activeSubtab === 'vision') {
+    return draft.vision.enabled ? [
+      {
+        id: 'vision',
+        title: titleForConfig(draft.vision),
+        kind: 'Vision Provider',
+        summary: draft.vision.model || 'not set',
+        protected: true,
+      },
+    ] : [];
+  }
+  if (activeSubtab === 'embedding') {
+    return draft.embedding?.enabled ? [
+      {
+        id: 'embedding',
+        title: titleForConfig(draft.embedding),
+        kind: 'Embedding Provider',
+        summary: draft.embedding.model || 'not set',
+        protected: true,
+      },
+    ] : [];
+  }
+  return [
+    ...(draft.chat?.provider ? [{
+      id: 'chat',
+      title: titleForConfig(draft.chat),
+      kind: 'Provider',
+      summary: draft.chat.model || 'not set',
+      protected: true,
+    }] : []),
+    ...(Array.isArray(draft.profiles) ? draft.profiles.filter((profile) => profile?.provider).map((profile) => ({
+      id: profile.id,
+      title: titleForConfig(profile),
+      kind: 'Provider',
+      summary: profile.model || 'not set',
+      protected: false,
+    })) : []),
+  ];
+}
+
+function configItemsForSection(section, llmDraft, records, activeSubtab = '', agentSettings = null) {
+  if (section === 'llm') return getLlmConfigItems(llmDraft, activeSubtab);
+  if (section === 'agent') return agentListItems(agentSettings);
+  if (section === 'memory') {
+    return Array.isArray(records?.memory) ? records.memory.map((item) => {
+      const neo4j = normalizeNeo4jDraft({ ...item.neo4j, endpoint: item.endpoint });
+      return {
+        id: item.id,
+        title: item.name,
+        kind: item.kind,
+        summary: neo4j.uri || 'URI not configured',
+        protected: Boolean(item.protected),
+        enabled: true,
+      };
+    }) : [];
+  }
+  if (section === 'knowledge') {
+    return Array.isArray(records?.knowledge) ? records.knowledge.map((item) => {
+      const qdrant = normalizeQdrantDraft({ ...item.qdrant, endpoint: item.endpoint });
+      return {
+        id: item.id,
+        title: item.name,
+        kind: item.kind,
+        summary: qdrant.url || 'URL not configured',
+        protected: Boolean(item.protected),
+        enabled: true,
+      };
+    }) : [];
+  }
+  return Array.isArray(records?.[section]) ? records[section].map((item) => ({
+    id: item.id,
+    title: item.name,
+    kind: item.kind,
+    summary: section === 'tools' ? toolsRecordSummary(item) : (item.enabled ? (item.endpoint || item.notes || 'Enabled') : 'Disabled'),
+    protected: Boolean(item.protected),
+    enabled: item.enabled !== false,
+  })) : [];
+}
+
+function createGenericRecord(section) {
+  const label = SETTINGS_SECTIONS.find((item) => item.id === section)?.label || 'Config';
+  return {
+    id: `${section}-${Date.now()}`,
+    name: `New ${label} Config`,
+    kind: label,
+    enabled: true,
+    endpoint: '',
+    notes: '',
+  };
+}
+
+function createLlmProfile() {
+  return {
+    id: `llm-profile-${Date.now()}`,
+    name: '',
+    provider: 'custom',
+    auth_mode: 'api_key',
+    custom_provider: '',
+    model: '',
+    api_key: '',
+    base_url: '',
+    reasoning_effort: 'high',
+    model_options: [],
+  };
+}
+
+function toolsRecordSummary(record) {
+  if (record?.id === 'tools-mcp') {
+    const parsed = parseJsonSafe(record.mcp_json || DEFAULT_MCP_CONFIG_JSON);
+    if (!parsed.ok) return 'Invalid JSON';
+    const servers = parsed.value?.servers && typeof parsed.value.servers === 'object' ? parsed.value.servers : {};
+    return `${Object.keys(servers).length} server${Object.keys(servers).length === 1 ? '' : 's'}`;
+  }
+  if (record?.id === 'tools-skills') {
+    const skills = Array.isArray(record.skills) ? record.skills : [];
+    const enabled = skills.filter((skill) => skill.enabled !== false).length;
+    return `${enabled}/${skills.length} enabled`;
+  }
+  if (record?.id === 'tools-web') {
+    const web = normalizeWebSearchDraft(record.web_search);
+    const configured = WEB_SEARCH_PROVIDER_OPTIONS
+      .filter((provider) => web.providers[provider.id]?.api_key_configured || web.providers[provider.id]?.api_key)
+      .map((provider) => provider.label);
+    return configured.length ? `Configured: ${configured.join(', ')}` : 'No keys configured';
+  }
+  return record?.enabled ? (record.endpoint || record.notes || 'Enabled') : 'Disabled';
+}
+
+function connectionBadgeMeta(status) {
+  const state = String(status?.state || 'idle');
+  if (state === 'success') return { className: 'success', label: 'Active', icon: true };
+  if (state === 'testing') return { className: 'testing', label: 'Testing', icon: false };
+  if (state === 'error') return { className: 'error', label: 'Failed', icon: false };
+  return { className: 'idle', label: 'Not tested', icon: false };
+}
+
+function parseJsonSafe(text) {
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error) };
+  }
+}
+
+function escapeHtml(text) {
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function highlightJsonSyntax(text) {
+  return escapeHtml(text).replace(
+    /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/g,
+    (match) => {
+      let cls = 'settings-json-number';
+      if (match.startsWith('"')) cls = match.endsWith(':') ? 'settings-json-key' : 'settings-json-string';
+      else if (match === 'true' || match === 'false') cls = 'settings-json-boolean';
+      else if (match === 'null') cls = 'settings-json-null';
+      return `<span class="${cls}">${match}</span>`;
+    },
+  );
+}
+
+function isEmptyMcpConfigDraft(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return true;
+  const parsed = parseJsonSafe(raw);
+  if (!parsed.ok || !parsed.value || typeof parsed.value !== 'object' || Array.isArray(parsed.value)) return false;
+  const keys = Object.keys(parsed.value);
+  const servers = parsed.value.servers;
+  return keys.length === 0 || (
+    keys.length === 1
+    && servers
+    && typeof servers === 'object'
+    && !Array.isArray(servers)
+    && Object.keys(servers).length === 0
+  );
+}
+
+function normalizeWebSearchDraft(value) {
+  const fallback = createDefaultWebSearchSettings();
+  const incoming = value && typeof value === 'object' ? value : {};
+  const providers = { ...fallback.providers };
+  for (const provider of WEB_SEARCH_PROVIDER_OPTIONS) {
+    providers[provider.id] = {
+      ...providers[provider.id],
+      ...(incoming.providers?.[provider.id] || {}),
+    };
+  }
+  return {
+    ...fallback,
+    ...incoming,
+    mode: ['hybrid', 'tavily', 'serpapi'].includes(incoming.mode) ? incoming.mode : fallback.mode,
+    providers,
+  };
+}
+
+function applyToolsSettingsPayloadToRecords(records, payload) {
+  if (!payload || typeof payload !== 'object') return records;
+  return {
+    ...records,
+    tools: mergeDefaultRecords(createDefaultSettingsRecords().tools, records?.tools).map((record) => {
+      if (record.id === 'tools-mcp' && payload.mcp) {
+        return {
+          ...record,
+          mcp_path: payload.mcp.path || record.mcp_path || '',
+          mcp_error: payload.mcp.error || '',
+          mcp_status: '',
+          mcp_json: JSON.stringify(payload.mcp.config || { servers: {} }, null, 2),
+        };
+      }
+      if (record.id === 'tools-skills' && payload.skills) {
+        return {
+          ...record,
+          skills: Array.isArray(payload.skills.items) ? payload.skills.items : [],
+          skill_errors: Array.isArray(payload.skills.errors) ? payload.skills.errors : [],
+          skill_install_root: payload.skills.install_root || '',
+        };
+      }
+      if (record.id === 'tools-web' && payload.web_search) {
+        return {
+          ...record,
+          web_search: normalizeWebSearchDraft(payload.web_search),
+        };
+      }
+      return record;
+    }),
+  };
+}
+
+function applyMemorySettingsPayloadToRecords(records, payload) {
+  const neo4j = normalizeNeo4jDraft(payload?.neo4j);
+  return {
+    ...records,
+    memory: mergeKnownDefaultRecords(createDefaultSettingsRecords().memory, records?.memory).map((record) => (
+      record.id === 'memory-neo4j'
+        ? { ...record, endpoint: neo4j.uri, neo4j }
+        : record
+    )),
+  };
+}
+
+function applyKnowledgeSettingsPayloadToRecords(records, payload) {
+  const qdrant = normalizeQdrantDraft(payload?.qdrant);
+  return {
+    ...records,
+    knowledge: mergeKnownDefaultRecords(createDefaultSettingsRecords().knowledge, records?.knowledge).map((record) => (
+      record.id === 'knowledge-qdrant'
+        ? { ...record, endpoint: qdrant.url, qdrant }
+        : record
+    )),
+  };
+}
+
+function buildToolsSettingsPayload(records) {
+  const tools = Array.isArray(records?.tools) ? records.tools : [];
+  const mcp = tools.find((item) => item.id === 'tools-mcp');
+  const skills = tools.find((item) => item.id === 'tools-skills');
+  const webRecord = tools.find((item) => item.id === 'tools-web');
+  const parsedMcp = parseJsonSafe(mcp?.mcp_json || DEFAULT_MCP_CONFIG_JSON);
+  if (!parsedMcp.ok) {
+    throw new Error(`MCP JSON is invalid: ${parsedMcp.error}`);
+  }
+  const web = normalizeWebSearchDraft(webRecord?.web_search);
+  const providers = {};
+  for (const provider of WEB_SEARCH_PROVIDER_OPTIONS) {
+    const draft = web.providers[provider.id] || {};
+    providers[provider.id] = {
+      enabled: true,
+      ...(String(draft.api_key || '').trim() ? { api_key: String(draft.api_key).trim() } : {}),
+    };
+  }
+  return {
+    mcp: { config: parsedMcp.value },
+    skills: {
+      disabled: (Array.isArray(skills?.skills) ? skills.skills : [])
+        .filter((skill) => skill.enabled === false)
+        .map((skill) => skill.name || skill.id)
+        .filter(Boolean),
+    },
+    web_search: {
+      enabled: true,
+      mode: 'hybrid',
+      providers,
+    },
+  };
+}
+
+function buildMemorySettingsPayload(records) {
+  const memory = Array.isArray(records?.memory) ? records.memory : [];
+  const record = memory.find((item) => item.id === 'memory-neo4j') || {};
+  const neo4j = normalizeNeo4jDraft({ ...record.neo4j, endpoint: record.endpoint });
+  return {
+    neo4j: {
+      uri: neo4j.uri,
+      username: neo4j.username,
+      ...(neo4j.password ? { password: neo4j.password } : {}),
+      database: neo4j.database,
+    },
+  };
+}
+
+function buildKnowledgeSettingsPayload(records) {
+  const knowledge = Array.isArray(records?.knowledge) ? records.knowledge : [];
+  const record = knowledge.find((item) => item.id === 'knowledge-qdrant') || {};
+  const qdrant = normalizeQdrantDraft({ ...record.qdrant, endpoint: record.endpoint });
+  return {
+    qdrant: {
+      url: qdrant.url,
+      ...(qdrant.api_key ? { api_key: qdrant.api_key } : {}),
+      collection: {
+        name: qdrant.collection.name,
+        vector_size: qdrant.collection.vector_size,
+        distance: qdrant.collection.distance,
+      },
+    },
+  };
+}
+
+function getSelectedLlmConfig(draft, selectedId) {
+  if (selectedId === 'vision') return draft.vision;
+  if (selectedId === 'embedding') return draft.embedding;
+  if (selectedId === 'chat') return draft.chat;
+  return (draft.profiles || []).find((profile) => profile.id === selectedId) || draft.chat;
+}
+
+function updateSelectedLlmConfig(onDraftChange, selectedId, patch) {
+  onDraftChange((prev) => {
+    if (selectedId === 'chat') return { ...prev, chat: { ...prev.chat, ...patch } };
+    if (selectedId === 'vision') return { ...prev, vision: { ...prev.vision, ...patch } };
+    if (selectedId === 'embedding') return { ...prev, embedding: { ...prev.embedding, ...patch } };
+    return {
+      ...prev,
+      profiles: (prev.profiles || []).map((profile) => (
+        profile.id === selectedId ? { ...profile, ...patch } : profile
+      )),
+    };
+  });
+}
+
+function llmProviderRequestPayload(config, { includeSecret = false, refresh = false, includeOAuth = false } = {}) {
+  const provider = normalizeLlmProviderId(config.provider);
+  const payload = {
+    provider,
+    auth_mode: config.auth_mode || getLlmProvider(provider).defaultAuth,
+    custom_provider: provider === 'custom' ? String(config.name || config.custom_provider || '').trim() : '',
+    model: config.model || '',
+    refresh,
+  };
+  if (provider === 'custom') {
+    payload.base_url = config.base_url || '';
+  }
+  if (includeSecret && config.auth_mode === 'api_key' && config.api_key) {
+    payload.api_key = config.api_key;
+  }
+  if (includeOAuth && config.auth_mode === 'oauth') {
+    payload.oauth_code = config.oauth_code || '';
+    payload.oauth_verifier = config.oauth_verifier || '';
+    payload.oauth_state = config.oauth_state || '';
+  }
+  return payload;
+}
+
+function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = false, refreshModels = false }) {
+  const config = getSelectedLlmConfig(draft, selectedId);
+  const provider = getLlmProvider(config.provider);
+  const [modelChoices, setModelChoices] = useState(() => uniqueModelChoices(config.model, configuredModelOptions(config), modelChoicesFor(config.provider)));
+  const disabled = readOnly
+    || (selectedId === 'vision' && !draft.vision.enabled)
+    || (selectedId === 'embedding' && !draft.embedding?.enabled);
+  const showProviderNameField = config.provider === 'custom';
+  const showAuthModeField = provider.authModes.length > 1;
+  const showApiKeyField = config.auth_mode === 'api_key';
+  const showOAuthFields = config.auth_mode === 'oauth' && config.provider === 'openai';
+  const showBaseUrlField = config.provider === 'custom';
+  const update = (patch) => updateSelectedLlmConfig(onDraftChange, selectedId, patch);
+  const changeProvider = (providerId) => {
+    const next = nextProviderDraft(providerId, config);
+    update({
+      ...next,
+      enabled: config.enabled,
+      mode: config.mode || 'auto',
+      reasoning_effort: config.reasoning_effort || 'high',
+    });
+  };
+
+  useEffect(() => {
+    setModelChoices(uniqueModelChoices(config.model, configuredModelOptions(config), modelChoicesFor(config.provider)));
+  }, [config.model, config.model_options, config.provider]);
+
+  useEffect(() => {
+    if (disabled || readOnly || config.provider !== 'openai' || config.auth_mode !== 'oauth' || config.oauth_auth_url) {
+      return undefined;
+    }
+    let cancelled = false;
+    authFetch(`${API_BASE}/api/llm/oauth/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: config.provider }),
+    }, { json: false })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload?.auth_url) return;
+        update({
+          oauth_auth_url: payload.auth_url || '',
+          oauth_verifier: payload.verifier || '',
+          oauth_state: payload.state || '',
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [config.provider, config.auth_mode, config.oauth_auth_url, disabled, readOnly]);
+
+  useEffect(() => {
+    if (!refreshModels || disabled) return undefined;
+    if (config.auth_mode === 'oauth') return undefined;
+    if (config.auth_mode === 'api_key' && config.provider !== 'ollama' && !config.api_key && !config.api_key_configured) return undefined;
+    if (config.provider === 'custom' && !config.base_url) return undefined;
+    let cancelled = false;
+    const fallbackChoices = uniqueModelChoices(config.model, configuredModelOptions(config), modelChoicesFor(config.provider));
+    const timer = window.setTimeout(() => {
+      const payload = llmProviderRequestPayload(config, { includeSecret: true, refresh: true });
+      authFetch(`${API_BASE}/api/llm/models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, { json: false })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((catalog) => {
+          if (cancelled || !catalog) return;
+          const remoteChoices = Array.isArray(catalog.models) ? catalog.models : [];
+          setModelChoices(uniqueModelChoices(config.model, remoteChoices, fallbackChoices));
+          if (remoteChoices.length) {
+            update({
+              model_options: remoteChoices,
+              ...(config.model ? {} : { model: catalog.default_model || remoteChoices[0].id }),
+            });
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setModelChoices(fallbackChoices);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    config.provider,
+    config.auth_mode,
+    config.custom_provider,
+    config.name,
+    config.base_url,
+    config.api_key,
+    config.api_key_configured,
+    config.model,
+    disabled,
+    refreshModels,
+  ]);
+
+  return (
+    <div className="settings-editor-form settings-llm-form">
+      <FieldRow label="Provider">
+        <SettingsMenuSelect
+          value={config.provider}
+          options={SETTINGS_LLM_PROVIDER_OPTIONS.map((item) => ({ id: item.id, label: item.label }))}
+          onChange={changeProvider}
+          disabled={disabled}
+          header="provider"
+        />
+      </FieldRow>
+      {showProviderNameField && (
+        <FieldRow label="Provider Name">
+          <input
+            value={config.name || config.custom_provider || ''}
+            onChange={(event) => update({ name: event.target.value, custom_provider: event.target.value })}
+            disabled={readOnly}
+            placeholder="Custom provider name"
+          />
+        </FieldRow>
+      )}
+      {showAuthModeField && (
+      <FieldRow label="Auth Mode">
+        <SettingsMenuSelect
+          value={config.auth_mode}
+          options={provider.authModes.map((mode) => ({ id: mode, label: formatAuthModeLabel(mode) }))}
+          onChange={(authMode) => update({
+            auth_mode: authMode,
+            oauth_auth_url: '',
+            oauth_code: '',
+            oauth_state: '',
+            oauth_verifier: '',
+          })}
+          disabled={disabled}
+          header="auth mode"
+        />
+      </FieldRow>
+      )}
+      {showApiKeyField && (
+        <FieldRow label="API Key" hint="Saved as secret.">
+          <input
+            type="password"
+            value={config.api_key || ''}
+            onChange={(event) => update({ api_key: event.target.value })}
+            disabled={disabled}
+            placeholder={config.provider === 'custom' ? 'API key' : `${provider.label} API key`}
+          />
+        </FieldRow>
+      )}
+      {showOAuthFields && (
+        <>
+          <FieldRow label="OAuth URL">
+            <div className="settings-inline-control">
+              <input value={config.oauth_auth_url || ''} readOnly disabled={disabled} placeholder="OAuth link will be generated automatically" />
+              {config.oauth_auth_url ? (
+                <a className="settings-inline-button" href={config.oauth_auth_url} target="_blank" rel="noreferrer">Open</a>
+              ) : null}
+            </div>
+          </FieldRow>
+          <FieldRow label="OAuth Code" hint="Paste the callback URL or code after login.">
+            <input
+              value={config.oauth_code || ''}
+              onChange={(event) => update({ oauth_code: event.target.value })}
+              disabled={disabled}
+              placeholder="Callback URL or code"
+            />
+          </FieldRow>
+        </>
+      )}
+      {showBaseUrlField && (
+      <FieldRow label="Base URL">
+        <input
+          value={config.base_url || ''}
+          onChange={(event) => update({ base_url: event.target.value })}
+          disabled={disabled}
+          placeholder={provider.baseUrl || 'https://example.com/v1'}
+        />
+      </FieldRow>
+      )}
+      <FieldRow label="Default Model">
+        <SettingsComboInput
+          value={config.model || ''}
+          options={modelChoices}
+          onChange={(model) => update({ model })}
+          disabled={disabled}
+          placeholder={provider.defaultModel}
+          header="default model"
+        />
+      </FieldRow>
+      {selectedId !== 'vision' && selectedId !== 'embedding' && (
+        <FieldRow label="Default Reasoning">
+          <SettingsMenuSelect
+            value={config.reasoning_effort || 'high'}
+            options={SETTINGS_REASONING_OPTIONS}
+            onChange={(reasoningEffort) => update({ reasoning_effort: reasoningEffort })}
+            disabled={readOnly}
+            header="default reasoning"
+          />
+        </FieldRow>
+      )}
+    </div>
+  );
+}
+
+function GenericConfigEditor({ section, selectedId, records, onRecordsChange, readOnly = false }) {
+  const current = (records[section] || []).find((item) => item.id === selectedId) || null;
+  if (!current) {
+    return <div className="settings-empty">Select or add a configuration.</div>;
+  }
+  const update = (patch) => onRecordsChange((prev) => ({
+    ...prev,
+    [section]: (prev[section] || []).map((item) => (
+      item.id === selectedId ? { ...item, ...patch } : item
+    )),
+  }));
+  return (
+    <div className="settings-editor-form">
+      <FieldRow label="Name">
+        <input value={current.name || ''} onChange={(event) => update({ name: event.target.value })} disabled={readOnly} />
+      </FieldRow>
+      <FieldRow label="Type">
+        <input value={current.kind || ''} onChange={(event) => update({ kind: event.target.value })} disabled={readOnly} />
+      </FieldRow>
+      <FieldRow label="Endpoint">
+        <input value={current.endpoint || ''} onChange={(event) => update({ endpoint: event.target.value })} disabled={readOnly} />
+      </FieldRow>
+      <FieldRow label="Status">
+        <select value={current.enabled ? 'enabled' : 'disabled'} onChange={(event) => update({ enabled: event.target.value === 'enabled' })} disabled={readOnly}>
+          <option value="enabled">Enabled</option>
+          <option value="disabled">Disabled</option>
+        </select>
+      </FieldRow>
+      <FieldRow label="Notes">
+        <textarea value={current.notes || ''} onChange={(event) => update({ notes: event.target.value })} disabled={readOnly} />
+      </FieldRow>
+    </div>
+  );
+}
+
+function MemoryConfigEditor({ selectedId, records, onRecordsChange, onDirty, readOnly = false }) {
+  const current = (records.memory || []).find((item) => item.id === selectedId) || null;
+  if (!current) return <div className="settings-empty">Select a memory configuration.</div>;
+  const neo4j = normalizeNeo4jDraft({ ...current.neo4j, endpoint: current.endpoint });
+  const update = (patch) => {
+    onDirty?.('memory', selectedId);
+    onRecordsChange((prev) => ({
+      ...prev,
+      memory: (prev.memory || []).map((item) => {
+        if (item.id !== selectedId) return item;
+        const nextNeo4j = normalizeNeo4jDraft({ ...neo4j, ...patch });
+        return { ...item, endpoint: nextNeo4j.uri, neo4j: nextNeo4j };
+      }),
+    }));
+  };
+  return (
+    <div className="settings-editor-form settings-tools-form">
+      <FieldRow label="URI">
+        <input value={neo4j.uri} onChange={(event) => update({ uri: event.target.value })} disabled={readOnly} placeholder="Optional, e.g. bolt://localhost:7687" />
+      </FieldRow>
+      <FieldRow label="Username">
+        <input value={neo4j.username} onChange={(event) => update({ username: event.target.value })} disabled={readOnly} placeholder="neo4j" />
+      </FieldRow>
+      <FieldRow label="Password">
+        <input type="password" value={neo4j.password} onChange={(event) => update({ password: event.target.value })} disabled={readOnly} placeholder={neo4j.password_configured ? 'Configured - leave blank to keep' : ''} />
+      </FieldRow>
+      <FieldRow label="Database">
+        <input value={neo4j.database} onChange={(event) => update({ database: event.target.value })} disabled={readOnly} />
+      </FieldRow>
+    </div>
+  );
+}
+
+function KnowledgeConfigEditor({ selectedId, records, onRecordsChange, onDirty, readOnly = false }) {
+  const current = (records.knowledge || []).find((item) => item.id === selectedId) || null;
+  if (!current) return <div className="settings-empty">Select a knowledge configuration.</div>;
+  const qdrant = normalizeQdrantDraft({ ...current.qdrant, endpoint: current.endpoint });
+  const update = (patch) => {
+    onDirty?.('knowledge', selectedId);
+    onRecordsChange((prev) => ({
+      ...prev,
+      knowledge: (prev.knowledge || []).map((item) => {
+        if (item.id !== selectedId) return item;
+        const nextQdrant = normalizeQdrantDraft({
+          ...qdrant,
+          ...patch,
+          collection: { ...qdrant.collection, ...(patch.collection || {}) },
+        });
+        return { ...item, endpoint: nextQdrant.url, qdrant: nextQdrant };
+      }),
+    }));
+  };
+  return (
+    <div className="settings-editor-form settings-tools-form">
+      <FieldRow label="URL">
+        <input value={qdrant.url} onChange={(event) => update({ url: event.target.value })} disabled={readOnly} placeholder="Optional, e.g. http://localhost:6333" />
+      </FieldRow>
+      <FieldRow label="API Key">
+        <input type="password" value={qdrant.api_key} onChange={(event) => update({ api_key: event.target.value })} disabled={readOnly} placeholder={qdrant.api_key_configured ? 'Configured - leave blank to keep' : ''} />
+      </FieldRow>
+      <FieldRow label="Collection Name">
+        <input value={qdrant.collection.name} onChange={(event) => update({ collection: { name: event.target.value } })} disabled={readOnly} placeholder="Leave blank to use workspace default" />
+      </FieldRow>
+      <FieldRow label="Vector Size">
+        <input type="number" min="1" value={qdrant.collection.vector_size} onChange={(event) => update({ collection: { vector_size: event.target.value } })} disabled={readOnly} />
+      </FieldRow>
+      <FieldRow label="Distance">
+        <SettingsMenuSelect
+          value={qdrant.collection.distance}
+          options={QDRANT_DISTANCE_OPTIONS}
+          onChange={(distance) => update({ collection: { distance } })}
+          disabled={readOnly}
+          header="distance"
+        />
+      </FieldRow>
+    </div>
+  );
+}
+
+function AgentConfigEditor({ selectedId, settings, onSettingsChange, readOnly = false }) {
+  const normalized = normalizeAgentSettings(settings);
+  const current = normalized.custom.find((item) => item.agent_id === selectedId) || null;
+  if (!current) {
+    return <div className="settings-empty">Preset agents only support enable or disable.</div>;
+  }
+  const update = (patch) => onSettingsChange((prev) => {
+    const next = normalizeAgentSettings(prev);
+    return {
+      ...next,
+      custom: next.custom.map((item) => (
+        item.agent_id === selectedId ? { ...item, ...patch, agent_id: selectedId, profile_id: selectedId } : item
+      )),
+    };
+  });
+  const updateToolPolicy = (patch) => update({
+    tool_policy: { ...(current.tool_policy || {}), ...patch },
+  });
+  const updateSkillPolicy = (patch) => update({
+    skill_policy: { ...(current.skill_policy || {}), ...patch },
+  });
+  const toolGroups = normalized.tool_groups || DEFAULT_AGENT_TOOL_GROUPS;
+  const renderHelpDot = (text) => {
+    const label = String(text || '').trim();
+    const dot = <span className="settings-help-dot" aria-label={label} tabIndex={0}>?</span>;
+    const Tooltip = window.PortalTooltip;
+    return Tooltip ? <Tooltip text={label} position="above" multiline>{dot}</Tooltip> : dot;
+  };
+  const allowedTools = Array.isArray(current.tool_policy?.allow) ? current.tool_policy.allow : [];
+  const selectedGroupIds = new Set(groupIdsForAgentTools(allowedTools, toolGroups));
+  const baseOptions = normalized.base_profiles.map((profile) => ({
+    id: profile.agent_id,
+    label: profile.display_name,
+  }));
+  const statusOptions = [
+    { id: 'enabled', label: 'Active' },
+    { id: 'disabled', label: 'Disabled' },
+  ];
+  const toggleGroup = (groupId) => {
+    const next = new Set(selectedGroupIds);
+    if (next.has(groupId)) next.delete(groupId);
+    else next.add(groupId);
+    updateToolPolicy({ allow: toolsForAgentGroups([...next], toolGroups) });
+  };
+  const skillOptions = (normalized.skills || [])
+    .map((item) => ({
+      id: String(item?.name || item?.id || '').trim(),
+      label: String(item?.name || item?.label || item?.id || '').trim(),
+      description: String(item?.description || '').trim(),
+      enabled: item?.enabled !== false,
+    }))
+    .filter((item) => item.id);
+  const allowedSkills = new Set(Array.isArray(current.skill_policy?.allow) ? current.skill_policy.allow : []);
+  const toggleSkill = (skillId) => {
+    const next = new Set(allowedSkills);
+    if (next.has(skillId)) next.delete(skillId);
+    else next.add(skillId);
+    const primary = next.has(current.primary_skill_name) ? current.primary_skill_name : '';
+    update({ primary_skill_name: primary });
+    updateSkillPolicy({ allow: [...next] });
+  };
+  const primarySkillOptions = [
+    { id: '', label: 'None' },
+    ...[...allowedSkills].map((skillId) => {
+      const skill = skillOptions.find((item) => item.id === skillId);
+      return { id: skillId, label: skill?.label || skillId };
+    }),
+  ];
+
+  return (
+    <div className="settings-editor-form settings-agent-form">
+      <FieldRow label="Name">
+        <input value={current.display_name || ''} onChange={(event) => update({ display_name: event.target.value })} disabled={readOnly} placeholder="Agent name" />
+      </FieldRow>
+      <FieldRow label="Description">
+        <textarea value={current.description || ''} onChange={(event) => update({ description: event.target.value })} disabled={readOnly} />
+      </FieldRow>
+      <FieldRow label="Based on">
+        <SettingsMenuSelect
+          value={current.base || 'preset.general'}
+          options={baseOptions}
+          onChange={(base) => update({ base })}
+          disabled={readOnly}
+          header="base profile"
+        />
+      </FieldRow>
+      <FieldRow label="Status">
+        <SettingsMenuSelect
+          value={current.enabled === false ? 'disabled' : 'enabled'}
+          options={statusOptions}
+          onChange={(status) => update({ enabled: status === 'enabled' })}
+          disabled={readOnly}
+          header="status"
+        />
+      </FieldRow>
+      <FieldRow label="Prompt">
+        <textarea value={current.system_prompt || ''} onChange={(event) => update({ system_prompt: event.target.value })} disabled={readOnly} />
+      </FieldRow>
+      <FieldRow label="Tools">
+        <div className="settings-check-grid">
+          {toolGroups.map((group) => (
+            <label className="settings-check-row" key={group.id}>
+              <input type="checkbox" checked={selectedGroupIds.has(group.id)} onChange={() => toggleGroup(group.id)} disabled={readOnly} />
+              <span className="settings-check-label">{group.label}</span>
+              {renderHelpDot(group.description || (group.tools || []).join(', '))}
+            </label>
+          ))}
+          <label className="settings-check-row">
+            <input
+              type="checkbox"
+              checked={current.tool_policy?.allow_mcp_tools !== false}
+              onChange={(event) => updateToolPolicy({ allow_mcp_tools: event.target.checked })}
+              disabled={readOnly}
+            />
+            <span className="settings-check-label">MCP tools</span>
+            {renderHelpDot('Expose configured MCP server tools to this agent.')}
+          </label>
+        </div>
+      </FieldRow>
+      <FieldRow label="Skills">
+        <div className="settings-check-grid">
+          {skillOptions.map((skill) => (
+            <label className="settings-check-row" key={skill.id}>
+              <input type="checkbox" checked={allowedSkills.has(skill.id)} onChange={() => toggleSkill(skill.id)} disabled={readOnly || !skill.enabled} />
+              <span className="settings-check-label">{skill.label}</span>
+            </label>
+          ))}
+          {!skillOptions.length ? <small>No installed skills.</small> : null}
+        </div>
+      </FieldRow>
+      <FieldRow label="Primary skill">
+        <SettingsMenuSelect
+          value={current.primary_skill_name || ''}
+          options={primarySkillOptions}
+          onChange={(primarySkillName) => update({ primary_skill_name: primarySkillName })}
+          disabled={readOnly || allowedSkills.size === 0}
+          header="primary skill"
+        />
+      </FieldRow>
+    </div>
+  );
+}
+
+function ToolsConfigEditor({
+  selectedId,
+  records,
+  onRecordsChange,
+  onSaveTools,
+  onTestWebProvider,
+  onInstallSkill,
+  onToggleSkill,
+  onUninstallSkill,
+  skillActionBusy,
+}) {
+  const current = (records.tools || []).find((item) => item.id === selectedId) || null;
+  const mcpDirtyRef = useRef(false);
+  const mcpHighlightRef = useRef(null);
+  const [testingWebProvider, setTestingWebProvider] = useState('');
+  useEffect(() => {
+    mcpDirtyRef.current = false;
+  }, [selectedId]);
+  if (!current) {
+    return <div className="settings-empty">Select a Tools configuration.</div>;
+  }
+  const nextRecordsForPatch = (patch) => ({
+    ...records,
+    tools: (records.tools || []).map((item) => (
+      item.id === current.id ? { ...item, ...patch } : item
+    )),
+  });
+  const updateRecord = (patch) => onRecordsChange((prev) => ({
+    ...prev,
+    tools: (prev.tools || []).map((item) => (
+      item.id === current.id ? { ...item, ...patch } : item
+    )),
+  }));
+
+  if (current.id === 'tools-mcp') {
+    const mcpJson = current.mcp_json ?? DEFAULT_MCP_CONFIG_JSON;
+    const parsed = parseJsonSafe(mcpJson);
+    const updateMcpJson = (value) => {
+      mcpDirtyRef.current = true;
+      updateRecord({ mcp_json: value, mcp_error: '', mcp_status: '' });
+    };
+    const applyTemplate = () => {
+      if (!isEmptyMcpConfigDraft(mcpJson)) {
+        updateRecord({ mcp_error: 'Template can only fill an empty MCP config.', mcp_status: '' });
+        return;
+      }
+      updateMcpJson(MCP_CONFIG_TEMPLATE_JSON);
+    };
+    const formatJson = () => {
+      if (!parsed.ok) return;
+      const formatted = JSON.stringify(parsed.value, null, 2);
+      if (formatted !== current.mcp_json) mcpDirtyRef.current = true;
+      updateRecord({ mcp_json: formatted, mcp_error: '', mcp_status: '' });
+    };
+    const validateJson = async (value) => {
+      const parsedDraft = parseJsonSafe(value ?? DEFAULT_MCP_CONFIG_JSON);
+      if (!parsedDraft.ok) {
+        updateRecord({ mcp_json: value, mcp_error: parsedDraft.error, mcp_status: '' });
+        return false;
+      }
+      try {
+        const response = await authFetch(`${API_BASE}/api/settings/tools/mcp/validate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ config: parsedDraft.value }),
+        }, { json: false });
+        if (!response.ok) {
+          const message = await parseResponseMessage(response, `mcp validation failed: ${response.status}`);
+          throw new Error(message);
+        }
+        updateRecord({ mcp_json: value, mcp_error: '', mcp_status: 'MCP config is valid.' });
+        return true;
+      } catch (error) {
+        updateRecord({ mcp_json: value, mcp_error: String(error?.message || error), mcp_status: '' });
+        return false;
+      }
+    };
+    const saveJson = async (value) => {
+      if (!await validateJson(value)) return;
+      const parsedDraft = parseJsonSafe(value ?? DEFAULT_MCP_CONFIG_JSON);
+      if (!parsedDraft.ok) return;
+      const formatted = JSON.stringify(parsedDraft.value, null, 2);
+      const nextRecords = nextRecordsForPatch({ mcp_json: formatted, mcp_error: '', mcp_status: '' });
+      onRecordsChange(() => nextRecords);
+      const saved = await onSaveTools?.(nextRecords, 'mcp config saved and reloaded');
+      if (saved) {
+        mcpDirtyRef.current = false;
+        updateRecord({ mcp_error: '', mcp_status: 'Saved and MCP reloaded.' });
+      }
+    };
+    const syncHighlightScroll = (event) => {
+      if (!mcpHighlightRef.current) return;
+      mcpHighlightRef.current.style.transform = `translate(${-event.currentTarget.scrollLeft}px, ${-event.currentTarget.scrollTop}px)`;
+    };
+    return (
+      <div className="settings-editor-form settings-tools-form settings-mcp-form">
+        <div className="settings-mcp-config">
+          <div className="settings-mcp-editor-shell">
+            <div className="settings-mcp-actions">
+              <div className="settings-mcp-actions-group">
+                <button
+                  type="button"
+                  className="settings-mcp-action-button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={applyTemplate}
+                >
+                  <SettingsLucideIcon name="template" size={14} />
+                  Template
+                </button>
+                <button
+                  type="button"
+                  className="settings-mcp-action-button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={formatJson}
+                  disabled={!parsed.ok}
+                >
+                  <SettingsLucideIcon name="format" size={14} />
+                  Format
+                </button>
+                <button
+                  type="button"
+                  className="settings-mcp-action-button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => validateJson(mcpJson)}
+                >
+                  <SettingsLucideIcon name="validate" size={14} />
+                  Validate
+                </button>
+                <button
+                  type="button"
+                  className="settings-mcp-action-button primary"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => saveJson(mcpJson)}
+                >
+                  <SettingsLucideIcon name="save" size={14} />
+                  Save
+                </button>
+              </div>
+            </div>
+            <div className="settings-json-editor-layer">
+              <pre className="settings-json-highlight" aria-hidden="true"><code ref={mcpHighlightRef} dangerouslySetInnerHTML={{ __html: highlightJsonSyntax(mcpJson) }} /></pre>
+              <textarea
+                className="settings-json-editor"
+                aria-label="Mcp Config JSON"
+                value={mcpJson}
+                onChange={(event) => updateMcpJson(event.target.value)}
+                onScroll={syncHighlightScroll}
+                spellCheck={false}
+                wrap="off"
+              />
+            </div>
+          </div>
+        </div>
+        {current.mcp_error ? <div className="settings-inline-error">{current.mcp_error}</div> : null}
+        {!current.mcp_error && current.mcp_status ? <div className="settings-inline-success">{current.mcp_status}</div> : null}
+      </div>
+    );
+  }
+
+  if (current.id === 'tools-skills') {
+    const skills = Array.isArray(current.skills) ? current.skills : [];
+    const errors = Array.isArray(current.skill_errors) ? current.skill_errors : [];
+    return (
+      <div className="settings-editor-form settings-tools-form">
+        <div className="settings-skills-toolbar">
+          <span>{skills.length ? `${skills.length} installed skill${skills.length === 1 ? '' : 's'}` : 'No installed skills yet.'}</span>
+          <button type="button" className="settings-primary-button" onClick={onInstallSkill} disabled={Boolean(skillActionBusy)}>
+            <SettingsLucideIcon name="plus" size={14} />
+            Install Directory
+          </button>
+        </div>
+        {errors.map((error, index) => (
+          <div className="settings-inline-error" key={`${error.origin || 'skill-error'}-${index}`}>
+            {error.origin ? `${error.origin}: ` : ''}{error.message || error.code || 'Skill load failed'}
+          </div>
+        ))}
+        <div className="settings-skill-list">
+          {skills.map((skill) => (
+            <div className="settings-skill-row" key={skill.id || skill.name}>
+              <div>
+                <strong>{skill.name}</strong>
+                <span>{skill.description || 'No description.'}</span>
+              </div>
+              <div className="settings-row-actions">
+                <button
+                  type="button"
+                  className={skill.enabled === false ? 'settings-icon-button' : 'settings-primary-button'}
+                  onClick={() => onToggleSkill(skill.name, skill.enabled === false)}
+                  disabled={Boolean(skillActionBusy)}
+                >
+                  {skill.enabled === false ? 'Enable' : 'Disable'}
+                </button>
+                <button
+                  type="button"
+                  className="settings-danger-button"
+                  onClick={() => onUninstallSkill(skill.name)}
+                  disabled={Boolean(skillActionBusy)}
+                >
+                  Uninstall
+                </button>
+              </div>
+            </div>
+          ))}
+          {!skills.length ? <div className="settings-empty">Install a local skill directory to use it in agent runs.</div> : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (current.id === 'tools-web') {
+    const web = normalizeWebSearchDraft(current.web_search);
+    const updateWeb = (patch) => updateRecord({ web_search: normalizeWebSearchDraft({ ...web, ...patch }) });
+    const nextRecordsForProvider = (providerId, patch) => nextRecordsForPatch({
+      web_search: normalizeWebSearchDraft({
+        ...web,
+        providers: {
+          ...web.providers,
+          [providerId]: { ...web.providers[providerId], ...patch },
+        },
+      }),
+    });
+    const updateProvider = (providerId, patch) => updateWeb({
+      providers: {
+        ...web.providers,
+        [providerId]: { ...web.providers[providerId], ...patch },
+      },
+    });
+    const saveProviderKey = async (providerId, apiKey) => {
+      const trimmed = String(apiKey || '').trim();
+      if (!trimmed) return true;
+      const nextRecords = nextRecordsForProvider(providerId, { api_key: trimmed });
+      onRecordsChange(() => nextRecords);
+      return await onSaveTools?.(nextRecords, '') !== false;
+    };
+    const testProviderKey = async (provider, apiKey) => {
+      const trimmed = String(apiKey || '').trim();
+      setTestingWebProvider(provider.id);
+      try {
+        const saved = await saveProviderKey(provider.id, trimmed);
+        if (!saved) return;
+        await onTestWebProvider?.(provider.id, trimmed);
+      } finally {
+        setTestingWebProvider('');
+      }
+    };
+    return (
+      <div className="settings-editor-form settings-tools-form">
+        <div className="settings-skills-toolbar settings-provider-toolbar">
+          <span>{WEB_SEARCH_PROVIDER_OPTIONS.length} search providers</span>
+        </div>
+        <div className="settings-provider-list">
+          {WEB_SEARCH_PROVIDER_OPTIONS.map((provider) => {
+            const draft = web.providers[provider.id] || {};
+            const configured = Boolean(draft.api_key_configured || String(draft.api_key || '').trim());
+            const hasUsableKey = configured || String(draft.api_key || '').trim();
+            const testing = testingWebProvider === provider.id;
+            return (
+              <div className="settings-provider-row" key={provider.id}>
+                <strong>{provider.label}</strong>
+                <input
+                  type="password"
+                  value={draft.api_key || ''}
+                  onChange={(event) => updateProvider(provider.id, { api_key: event.target.value })}
+                  onBlur={(event) => saveProviderKey(provider.id, event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') event.currentTarget.blur();
+                  }}
+                  placeholder={draft.api_key_configured ? 'Configured - leave blank to keep' : provider.keyLabel}
+                />
+                <span className={`settings-provider-status ${configured ? 'configured' : 'missing'}`}>
+                  {configured ? <SettingsLucideIcon name="active" size={13} /> : null}
+                  {configured ? 'Configured' : 'Not configured'}
+                </span>
+                <button
+                  type="button"
+                  className="settings-icon-button settings-provider-test-button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => testProviderKey(provider, draft.api_key)}
+                  disabled={testing || !hasUsableKey}
+                >
+                  {testing ? 'Testing...' : 'Test'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return <GenericConfigEditor section="tools" selectedId={selectedId} records={records} onRecordsChange={onRecordsChange} />;
+}
+
+function SettingsPage({
+  activeSection,
+  onSectionChange,
+  selectionBySection,
+  onSelectionChange,
+  llmDraft,
+  onLlmDraftChange,
+  records,
+  onRecordsChange,
+  agentSettings,
+  onAgentSettingsChange,
+  onSave,
+  onSaveTools,
+  onTogglePresetAgent,
+  onCreateCustomAgent,
+  onSaveCustomAgent,
+  onDeleteCustomAgent,
+  onTestLlmConfig,
+  onTestWebProvider,
+  onTestSettingsConnection,
+  onSettingsConnectionDirty,
+  settingsConnectionStatus = {},
+  onInstallSkill,
+  onToggleSkill,
+  onUninstallSkill,
+  skillActionBusy,
+}) {
+  const [editingSettings, setEditingSettings] = useState(null);
+  const [settingsSearch, setSettingsSearch] = useState('');
+  const [expandedSettingsSections, setExpandedSettingsSections] = useState(() => new Set([activeSection]));
+  const sectionMeta = SETTINGS_SECTIONS.find((item) => item.id === activeSection) || SETTINGS_SECTIONS[0];
+  const subtabs = SETTINGS_SUBTABS[activeSection] || [];
+  const activeSubtab = subtabs.some((item) => item.id === selectionBySection[activeSection])
+    ? selectionBySection[activeSection]
+    : (subtabs[0]?.id || '');
+  const showConfigList = activeSection !== 'tools';
+  const displayItems = configItemsForSection(activeSection, llmDraft, records, activeSubtab, agentSettings);
+  const items = showConfigList ? displayItems : [];
+  const selectionKey = activeSection === 'llm' ? 'llmConfig' : activeSection;
+  const selectedConfigId = selectionBySection[selectionKey] || '';
+  const selectedId = activeSection === 'tools'
+    ? activeSubtab
+    : (items.some((item) => item.id === selectedConfigId) ? selectedConfigId : (items[0]?.id || ''));
+  const selectedItem = displayItems.find((item) => item.id === selectedId) || (showConfigList ? items[0] : null) || null;
+  const listTitle = activeSection === 'llm'
+    ? (activeSubtab === 'vision' ? 'Vision' : (activeSubtab === 'embedding' ? 'Embedding' : 'Chat'))
+    : sectionMeta.label;
+  const listDescription = activeSection === 'llm'
+    ? (activeSubtab === 'vision'
+        ? 'Manage dedicated vision providers and image inspection fallback.'
+        : activeSubtab === 'embedding'
+          ? 'Manage embedding providers for retrieval and indexing.'
+        : 'Manage providers, default models, and chat runtime behavior.')
+    : (SETTINGS_SECTION_COPY[activeSection] || 'Manage runtime configuration.');
+  const filteredItems = settingsSearch.trim()
+    ? items.filter((item) => `${item.title} ${item.kind || ''} ${item.summary || ''}`.toLowerCase().includes(settingsSearch.trim().toLowerCase()))
+    : items;
+  const canAddItem = !(['memory', 'knowledge'].includes(activeSection) || (activeSection === 'llm' && activeSubtab === 'embedding' && displayItems.length > 0));
+  const isMcpConfigPane = activeSection === 'tools' && activeSubtab === 'tools-mcp';
+  const isSkillsConfigPane = activeSection === 'tools' && activeSubtab === 'tools-skills';
+  const isWebConfigPane = activeSection === 'tools' && activeSubtab === 'tools-web';
+  const isPlainToolsPane = isMcpConfigPane || isSkillsConfigPane || isWebConfigPane;
+  useEffect(() => {
+    setExpandedSettingsSections((prev) => new Set([...prev, activeSection]));
+  }, [activeSection]);
+  const selectItem = (id) => onSelectionChange((prev) => ({ ...prev, [selectionKey]: id }));
+  const selectListItem = (id) => {
+    cancelEditor();
+    selectItem(id);
+  };
+  const openEditor = (section, id, mode = 'edit') => {
+    if (!id) return;
+    setEditingSettings({ section, id, mode });
+  };
+  const closeEditor = () => setEditingSettings(null);
+  const discardNewEditor = (draft = editingSettings) => {
+    if (!draft || draft.mode !== 'new') return;
+    if (draft.section === 'llm') {
+      if (draft.id === 'vision') {
+        onLlmDraftChange((prev) => ({ ...prev, vision: { ...prev.vision, enabled: false } }));
+      } else if (draft.id === 'embedding') {
+        onLlmDraftChange((prev) => ({ ...prev, embedding: { ...prev.embedding, enabled: false } }));
+      } else {
+        onLlmDraftChange((prev) => ({
+          ...prev,
+          profiles: (prev.profiles || []).filter((profile) => profile.id !== draft.id),
+        }));
+      }
+      if (selectionBySection.llmConfig === draft.id) selectItem('chat');
+      return;
+    }
+    if (draft.section === 'agent') {
+      onAgentSettingsChange((prev) => {
+        const next = normalizeAgentSettings(prev);
+        return {
+          ...next,
+          custom: next.custom.filter((item) => item.agent_id !== draft.id),
+        };
+      });
+      if (selectionBySection.agent === draft.id) {
+        const normalized = normalizeAgentSettings(agentSettings);
+        const fallback = [...normalized.presets, ...normalized.custom].find((item) => item.agent_id !== draft.id);
+        onSelectionChange((prev) => ({ ...prev, agent: fallback?.agent_id || '' }));
+      }
+      return;
+    }
+    onRecordsChange((prev) => ({
+      ...prev,
+      [draft.section]: (prev[draft.section] || []).filter((item) => item.id !== draft.id),
+    }));
+    if (selectionBySection[draft.section] === draft.id) {
+      const fallback = (records[draft.section] || []).find((item) => item.id !== draft.id);
+      onSelectionChange((prev) => ({ ...prev, [draft.section]: fallback?.id || '' }));
+    }
+  };
+  const cancelEditor = () => {
+    discardNewEditor();
+    closeEditor();
+  };
+  const selectSubtab = (section, id) => {
+    cancelEditor();
+    setExpandedSettingsSections((prev) => new Set([...prev, section]));
+    onSectionChange(section);
+    onSelectionChange((prev) => {
+      const next = { ...prev, [section]: id };
+      if (section === 'llm') {
+        const nextItems = configItemsForSection('llm', llmDraft, records, id);
+        next.llmConfig = nextItems[0]?.id || '';
+      }
+      return next;
+    });
+  };
+  const addItem = async () => {
+    if (activeSection === 'tools') return;
+    if (activeSection === 'agent') {
+      const id = await onCreateCustomAgent?.();
+      if (id) {
+        selectItem(id);
+        openEditor('agent', id, 'new');
+      }
+      return;
+    }
+    if (activeSection === 'llm') {
+      if (activeSubtab === 'vision') {
+        onLlmDraftChange((prev) => ({
+          ...prev,
+          vision: {
+            enabled: true,
+            mode: 'auto',
+            provider: 'custom',
+            auth_mode: 'api_key',
+            custom_provider: '',
+            name: '',
+            model: '',
+            api_key: '',
+            api_key_configured: false,
+            base_url: '',
+            model_options: [],
+            oauth_auth_url: '',
+            oauth_code: '',
+            oauth_state: '',
+            oauth_verifier: '',
+          },
+        }));
+        onSelectionChange((prev) => ({ ...prev, llm: 'vision', llmConfig: 'vision' }));
+        openEditor('llm', 'vision', 'new');
+        return;
+      }
+      if (activeSubtab === 'embedding') {
+        onLlmDraftChange((prev) => ({
+          ...prev,
+          embedding: {
+            enabled: true,
+            provider: 'custom',
+            auth_mode: 'api_key',
+            custom_provider: '',
+            name: '',
+            model: '',
+            api_key: '',
+            api_key_configured: false,
+            base_url: '',
+            model_options: [],
+            oauth_auth_url: '',
+            oauth_code: '',
+            oauth_state: '',
+            oauth_verifier: '',
+          },
+        }));
+        onSelectionChange((prev) => ({ ...prev, llm: 'embedding', llmConfig: 'embedding' }));
+        openEditor('llm', 'embedding', 'new');
+        return;
+      }
+      const profile = createLlmProfile();
+      onLlmDraftChange((prev) => ({ ...prev, profiles: [...(prev.profiles || []), profile] }));
+      selectItem(profile.id);
+      openEditor('llm', profile.id, 'new');
+      return;
+    }
+    const record = createGenericRecord(activeSection);
+    onRecordsChange((prev) => ({ ...prev, [activeSection]: [...(prev[activeSection] || []), record] }));
+    selectItem(record.id);
+    openEditor(activeSection, record.id, 'new');
+  };
+  const showSideEditor = showConfigList && Boolean(editingSettings);
+  const workbenchClassName = `settings-workbench ${showConfigList ? `provider-list-only ${showSideEditor ? 'has-detail' : ''}` : `single-pane ${isMcpConfigPane ? 'mcp-pane' : ''}`}`;
+  const panelSection = editingSettings?.section || '';
+  const panelSelectedId = editingSettings?.id || '';
+  const panelMode = editingSettings?.mode || 'edit';
+  const panelItems = panelSection === activeSection ? displayItems : configItemsForSection(panelSection, llmDraft, records, activeSubtab, agentSettings);
+  const panelSelectedItem = panelItems.find((item) => item.id === panelSelectedId) || null;
+  const panelEyebrow = panelMode === 'new' ? 'New' : 'Edit';
+  const panelIsConnectionSection = panelSection === 'memory' || panelSection === 'knowledge';
+  const panelConnectionStatus = settingsConnectionStatus?.[panelSection]?.[panelSelectedId];
+  const panelConnectionTesting = panelConnectionStatus?.state === 'testing';
+  const deleteConfig = (section, id) => {
+    const sectionItems = section === activeSection ? displayItems : configItemsForSection(section, llmDraft, records, activeSubtab, agentSettings);
+    const target = sectionItems.find((item) => item.id === id);
+    if (!target || target.protected) return;
+    if (section === 'agent') {
+      onDeleteCustomAgent?.(id);
+    } else if (section === 'llm') {
+      onLlmDraftChange((prev) => ({
+        ...prev,
+        profiles: (prev.profiles || []).filter((profile) => profile.id !== id),
+      }));
+    } else {
+      onRecordsChange((prev) => ({
+        ...prev,
+        [section]: (prev[section] || []).filter((item) => item.id !== id),
+      }));
+    }
+    if (section === activeSection) {
+      const fallback = sectionItems.find((item) => item.id !== id);
+      selectItem(fallback?.id || '');
+    }
+    if (editingSettings?.section === section && editingSettings?.id === id) closeEditor();
+  };
+  const saveAndClose = async () => {
+    const saved = panelSection === 'agent'
+      ? await onSaveCustomAgent?.(panelSelectedId)
+      : await onSave();
+    if (saved !== false) closeEditor();
+  };
+  const testSelectedProvider = async () => {
+    if (panelSection !== 'llm' || !panelSelectedId) return;
+    await onTestLlmConfig?.(panelSelectedId);
+  };
+  const editorBody = (section, id, mode = panelMode) => {
+    const readOnly = mode === 'detail';
+    if (section === 'llm') {
+      return id ? (
+        <LlmConfigEditor
+          selectedId={id}
+          draft={llmDraft}
+          onDraftChange={onLlmDraftChange}
+          readOnly={readOnly}
+          refreshModels={mode !== 'detail'}
+        />
+      ) : (
+        <div className="settings-empty">Click Add to create a configuration.</div>
+      );
+    }
+    if (section === 'tools') {
+      return (
+        <ToolsConfigEditor
+          selectedId={id}
+          records={records}
+          onRecordsChange={onRecordsChange}
+          onInstallSkill={onInstallSkill}
+          onToggleSkill={onToggleSkill}
+          onUninstallSkill={onUninstallSkill}
+          skillActionBusy={skillActionBusy}
+          onSaveTools={onSaveTools}
+          onTestWebProvider={onTestWebProvider}
+        />
+      );
+    }
+    if (section === 'agent') {
+      return (
+        <AgentConfigEditor
+          selectedId={id}
+          settings={agentSettings}
+          onSettingsChange={onAgentSettingsChange}
+          readOnly={readOnly}
+        />
+      );
+    }
+    if (section === 'memory') {
+      return <MemoryConfigEditor section={section} selectedId={id} records={records} onRecordsChange={onRecordsChange} onDirty={onSettingsConnectionDirty} readOnly={readOnly} />;
+    }
+    if (section === 'knowledge') {
+      return <KnowledgeConfigEditor section={section} selectedId={id} records={records} onRecordsChange={onRecordsChange} onDirty={onSettingsConnectionDirty} readOnly={readOnly} />;
+    }
+    return <GenericConfigEditor section={section} selectedId={id} records={records} onRecordsChange={onRecordsChange} readOnly={readOnly} />;
+  };
+
+  return (
+    <div className="settings-page">
+      <aside className="settings-sidebar">
+        <div className="settings-sidebar-head">
+          <span>Settings</span>
+        </div>
+        <nav className="settings-side-tabs">
+          {SETTINGS_SECTIONS.map((section) => {
+            const sectionSubtabs = SETTINGS_SUBTABS[section.id] || [];
+            const sectionSubtab = sectionSubtabs.some((item) => item.id === selectionBySection[section.id])
+              ? selectionBySection[section.id]
+              : (sectionSubtabs[0]?.id || '');
+            const isActive = activeSection === section.id;
+            const isExpanded = expandedSettingsSections.has(section.id);
+            return (
+              <div className="settings-side-section" key={section.id}>
+                <button
+	                  type="button"
+	                  className={isActive ? 'active' : ''}
+	                  aria-expanded={sectionSubtabs.length ? isExpanded : undefined}
+	                  onClick={() => {
+	                    cancelEditor();
+	                    setExpandedSettingsSections((prev) => {
+	                      if (!sectionSubtabs.length) return prev;
+	                      const next = new Set(prev);
+	                      if (isActive && next.has(section.id)) next.delete(section.id);
+	                      else next.add(section.id);
+	                      return next;
+	                    });
+	                    onSectionChange(section.id);
+	                  }}
+	                >
+                  <span>{section.label}</span>
+                </button>
+                {isExpanded && sectionSubtabs.length ? (
+                  <div className="settings-side-subtabs" role="tablist" aria-label={`${section.label} settings`}>
+                    {sectionSubtabs.map((tab) => {
+                      const isSubtabActive = isActive && sectionSubtab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={isSubtabActive}
+                          className={isSubtabActive ? 'active' : ''}
+                          onClick={() => selectSubtab(section.id, tab.id)}
+                        >
+                          <span>{tab.label}</span>
+                          {section.id === 'llm' ? (
+                            <strong className="settings-side-subtab-count">
+                              {configItemsForSection(section.id, llmDraft, records, tab.id, agentSettings).length}
+                            </strong>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </nav>
+      </aside>
+      <main className="settings-main">
+        <div className={workbenchClassName}>
+          {showConfigList ? (
+            <section className="settings-config-list">
+              <div className="settings-list-head">
+                <div className="settings-list-title">
+                  <strong>{listTitle}</strong>
+                  <span>{listDescription}</span>
+                </div>
+              </div>
+              <div className="settings-search-row">
+                <SettingsLucideIcon name="search" className="settings-search-lucide" />
+                <input
+                  value={settingsSearch}
+                  onChange={(event) => setSettingsSearch(event.target.value)}
+                  aria-label={`Search ${listTitle.toLowerCase()}`}
+                  placeholder={`Search ${listTitle.toLowerCase()}...`}
+                />
+              </div>
+              <div className="settings-list-scroll">
+	                {filteredItems.map((item) => {
+	                  const isConnectionSection = activeSection === 'memory' || activeSection === 'knowledge';
+	                  const connectionStatus = settingsConnectionStatus?.[activeSection]?.[item.id];
+	                  const connectionMeta = connectionBadgeMeta(connectionStatus);
+	                  return (
+                    <div
+                      key={item.id}
+                      className={`settings-config-row ${selectedItem?.id === item.id ? 'active' : ''}`}
+                    >
+                      <button
+                        type="button"
+                        className="settings-config-main"
+                        onClick={() => {
+                          selectListItem(item.id);
+                        }}
+                      >
+                        <span className="settings-config-copy">
+                          <span className="settings-config-title">{item.title}</span>
+                          <span className="settings-config-summary">{item.summary}</span>
+                        </span>
+                      </button>
+                      {isConnectionSection ? (
+                        <span className={`settings-active-badge ${connectionMeta.className}`}>
+                          {connectionMeta.icon ? <SettingsLucideIcon name="active" size={13} /> : null}
+                          {connectionMeta.label}
+                        </span>
+                      ) : (
+                        <span className={`settings-active-badge ${item.enabled === false ? 'disabled' : ''}`}>
+                          {item.enabled === false ? null : <SettingsLucideIcon name="active" size={13} />}
+                          {item.enabled === false ? 'Disabled' : 'Active'}
+                        </span>
+                      )}
+	                      <div className="settings-config-actions">
+	                        {activeSection === 'agent' && item.canToggle ? (
+	                          <button
+	                            type="button"
+	                            className={item.enabled === false ? 'settings-row-button' : 'settings-row-button danger'}
+	                            onClick={() => onTogglePresetAgent?.(item.id, item.enabled === false)}
+	                          >
+	                            {item.enabled === false ? 'Enable' : 'Disable'}
+	                          </button>
+	                        ) : null}
+	                        {activeSection !== 'agent' || item.canConfigure ? (
+	                          <button
+	                            type="button"
+	                            className="settings-row-button"
+	                            onClick={() => {
+	                              selectItem(item.id);
+	                              openEditor(activeSection, item.id, 'edit');
+	                            }}
+	                          >
+	                            <SettingsLucideIcon name="configure" />
+	                            Configure
+	                          </button>
+	                        ) : null}
+                        {activeSection === 'agent' && item.canConfigure ? (
+                          <button
+                            type="button"
+                            className="settings-row-button danger"
+                            onClick={() => deleteConfig('agent', item.id)}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+                {canAddItem ? (
+                  <button type="button" className="settings-connect-card" onClick={addItem}>
+                    <span className="settings-connect-icon" aria-hidden="true">
+                      <SettingsLucideIcon name="plus" size={18} />
+                    </span>
+                    <span>
+                      <strong>{activeSection === 'llm' ? (activeSubtab === 'vision' ? 'Connect vision provider' : (activeSubtab === 'embedding' ? 'Connect embedding provider' : 'Connect provider')) : (activeSection === 'agent' ? 'Create custom agent' : `Add ${sectionMeta.label}`)}</strong>
+                      <small>{activeSection === 'llm' ? 'Use official providers or OpenAI-compatible APIs.' : (activeSection === 'agent' ? 'Define prompt, tools, skills, and sub-agent access.' : 'Create another configuration.')}</small>
+                    </span>
+                  </button>
+                ) : null}
+                {!filteredItems.length && items.length ? <div className="settings-empty">No matching configuration.</div> : null}
+                {!items.length ? <div className="settings-empty">No configuration yet.</div> : null}
+              </div>
+            </section>
+          ) : null}
+          {showSideEditor ? (
+            <section className="settings-editor settings-detail-drawer is-editing">
+              <div className="settings-editor-head">
+                <div>
+                  <span>{panelEyebrow}</span>
+                  <strong>{panelSelectedItem?.title || listTitle}</strong>
+                </div>
+                <button type="button" className="settings-pane-close" onClick={cancelEditor} aria-label="Close">x</button>
+              </div>
+              {panelSelectedId ? editorBody(panelSection, panelSelectedId, panelMode) : (
+                <div className="settings-empty">Select a configuration.</div>
+              )}
+	              {panelSelectedId ? (
+	                <div className="settings-detail-footer">
+	                  {panelSection === 'llm' ? (
+	                    <button type="button" className="settings-icon-button" onClick={testSelectedProvider}>
+	                      <SettingsLucideIcon name="test" />
+	                      Test
+	                    </button>
+	                  ) : panelIsConnectionSection ? (
+	                    <button
+	                      type="button"
+	                      className="settings-icon-button"
+	                      disabled={panelConnectionTesting}
+	                      onClick={() => onTestSettingsConnection?.(panelSection, panelSelectedId)}
+	                    >
+	                      <SettingsLucideIcon name="test" />
+	                      {panelConnectionTesting ? 'Testing...' : 'Test'}
+	                    </button>
+	                  ) : null}
+                  <button type="button" className="settings-primary-button" onClick={saveAndClose}>
+                    <SettingsLucideIcon name="save" />
+                    Save
+                  </button>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+          {!showConfigList ? (
+            <section className={`settings-editor ${isPlainToolsPane ? 'settings-mcp-editor' : ''}`}>
+              <div className="settings-editor-head">
+                <div>
+                  <strong>{isMcpConfigPane ? 'Mcp Config' : (isSkillsConfigPane ? 'Installed skills' : (isWebConfigPane ? 'Search providers' : sectionMeta.label))}</strong>
+                  {isMcpConfigPane
+                    ? <span>Configure Model Context Protocol servers, commands, and tool integrations.</span>
+                    : isSkillsConfigPane
+                      ? <span>Install skills to the system library first, then sync them into each personal project environment.</span>
+                      : isWebConfigPane
+                        ? <span>Configure provider API keys used by web search and page fetch tools.</span>
+                    : <span>{LLM_SUBTAB_COPY[activeSubtab] || SETTINGS_SECTION_COPY[activeSection] || 'Configuration'}</span>}
+                </div>
+                {isPlainToolsPane ? null : (
+                  <div className="settings-head-actions">
+                    <button type="button" className="settings-primary-button" onClick={onSave}>Save</button>
+                  </div>
+                )}
+              </div>
+              {editorBody(activeSection, selectedId, 'edit')}
+            </section>
+          ) : null}
+        </div>
+      </main>
+    </div>
+  );
+}
+
 const WORLD_EVENT_ROUTE_MAP = {
   'agent_gateway_received': { actor: 'guts', bubble: 'Task received. Selecting the provider.' },
   'context_compaction_started': { actor: 'okabe', kind: 'llm', bubble: 'Auto-Compacting context' },
@@ -923,32 +3501,50 @@ function normalizeChatImageRefs(refs, conversationId, ownerId = '') {
     .filter((ref) => ref && (ref.path || ref.previewUrl))
     .map((ref, index) => {
       const previewUrl = chatImagePreviewUrl(ref, conversationId, ownerId);
-      const authPreviewUrl = isProtectedChatImagePreviewUrl(previewUrl) ? previewUrl : '';
+      const explicitAuthPreviewUrl = String(ref.authPreviewUrl || '').trim();
+      const protectedPreviewUrl = isProtectedChatImagePreviewUrl(previewUrl);
+      const authPreviewUrl = explicitAuthPreviewUrl || (protectedPreviewUrl ? previewUrl : '');
       return {
         image_id: ref.image_id || ref.imageId || `image-${index}`,
         path: ref.path || '',
         mime: ref.mime || null,
-        previewUrl: authPreviewUrl ? '' : previewUrl,
+        previewUrl: protectedPreviewUrl ? '' : previewUrl,
         authPreviewUrl,
       };
     });
+}
+
+function mergeChatImageRefValue(existing = {}, incoming = {}) {
+  return {
+    ...existing,
+    ...incoming,
+    image_id: incoming.image_id || incoming.imageId || existing.image_id || existing.imageId,
+    path: incoming.path || existing.path || '',
+    mime: incoming.mime || existing.mime || null,
+    previewUrl: incoming.previewUrl || existing.previewUrl || '',
+    authPreviewUrl: incoming.authPreviewUrl || existing.authPreviewUrl || '',
+  };
 }
 
 function mergeChatImageRefs(...groups) {
   // 去重以 path 为优先 key——同一张图被多个源头（服务端记录 / 消息标记还原 /
   // 上一轮客户端 state）各自合成的 image_id 不同，但 path 是真正稳定的"内容标识"。
   // 历史实现按 image_id 优先，导致重启恢复 task 时 2 张图被算成 4 张。
-  const seen = new Set();
-  const merged = [];
+  const order = [];
+  const mergedByKey = new Map();
   groups.flat().forEach((ref) => {
     if (!ref) return;
     const path = String(ref.path || '').trim();
-    const key = path || ref.image_id || ref.previewUrl;
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    merged.push(ref);
+    const key = path || ref.image_id || ref.imageId || ref.previewUrl;
+    if (!key) return;
+    if (!mergedByKey.has(key)) {
+      order.push(key);
+      mergedByKey.set(key, ref);
+      return;
+    }
+    mergedByKey.set(key, mergeChatImageRefValue(mergedByKey.get(key), ref));
   });
-  return merged;
+  return order.map((key) => mergedByKey.get(key)).filter(Boolean);
 }
 
 function chatImageFallbacksByTaskIdFromMessages(messages, conversationId, ownerId = '') {
@@ -1451,7 +4047,7 @@ function createPendingTaskDraft(text, attachment, imageAttachments) {
     status: 'queued',
     assignedTo: 'guts',
     assignedToLabel: 'Assistant',
-    requestedProvider: 'auto',
+    requestedProvider: '',
     attachment: attachment ? { ...attachment } : null,
     imageAttachments: Array.isArray(imageAttachments)
       ? imageAttachments.map((ref) => ({ ...ref }))
@@ -1483,13 +4079,13 @@ function buildWorldTaskRecord(event, pendingTask) {
     loopIndex: Math.max(0, event.loop_index || 0),
     activeRole: event.actor || null,
     provider: null,
-    providerKey: pendingTask?.requestedProvider || 'auto',
-    requestedProvider: pendingTask?.requestedProvider || 'auto',
+    providerKey: pendingTask?.requestedProvider || '',
+    requestedProvider: pendingTask?.requestedProvider || '',
     originViewMode: pendingTask?.originViewMode || 'world',
     providerState: pendingTask?.requestedProvider ? {
       provider: pendingTask.requestedProvider,
       state: 'selected',
-      selected: pendingTask.requestedProvider !== 'auto',
+      selected: true,
       reason: 'Selected from the page.',
       model: null,
     } : null,
@@ -3187,7 +5783,12 @@ function AuthGate() {
       setSession(nextSession);
       setMode('login');
     } catch (authError) {
-      setError(formData.mode === 'login' ? 'Incorrect account or password. Try again.' : String(authError?.message || authError));
+      const message = String(authError?.message || authError);
+      setError(
+        formData.mode === 'login' && /invalid account or password/i.test(message)
+          ? 'Incorrect account or password. Try again.'
+          : message,
+      );
       setErrorKey((current) => current + 1);
     } finally {
       setSubmitting(false);
@@ -3255,6 +5856,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     defaultAgentId: APP_DEFAULT_AGENT_OPTIONS[0].id,
   }));
   const [agentLoading, setAgentLoading] = useState(true);
+  const [agentSettingsDraft, setAgentSettingsDraft] = useState(() => normalizeAgentSettings(DEFAULT_AGENT_SETTINGS));
 
   const stageRef = useRef(null);
   const abortRef = useRef(false);
@@ -3265,6 +5867,20 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   const dragStateRef = useRef(null);
   const copyTimerRef = useRef(null);
   const [calibrationMode, setCalibrationMode] = useState(false);
+  const [settingsSection, setSettingsSection] = useState('llm');
+  const [llmSettingsDraft, setLlmSettingsDraft] = useState(() => loadLlmSettingsDraft());
+  const [settingsRecordsDraft, setSettingsRecordsDraft] = useState(() => loadSettingsRecordsDraft());
+  const [settingsConnectionStatus, setSettingsConnectionStatus] = useState(() => loadSettingsConnectionStatus(settingsRecordsDraft));
+  const [settingsSelection, setSettingsSelection] = useState(() => ({
+    llm: 'chat',
+    llmConfig: 'chat',
+    tools: 'tools-mcp',
+    memory: 'memory-neo4j',
+    knowledge: 'knowledge-qdrant',
+    agent: 'agent-default',
+    workflow: 'workflow-default',
+  }));
+  const [skillActionBusy, setSkillActionBusy] = useState('');
   const [calibrationTarget, setCalibrationTarget] = useState('stations');
   const [selectedMarkerId, setSelectedMarkerId] = useState(window.CALIBRATION_IDS[0]);
   const [selectedRouteId, setSelectedRouteId] = useState(window.ROUTE_EDITOR_IDS[0] || window.ROUTE_IDS[0] || null);
@@ -3317,6 +5933,23 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   // still write to *its* runtime (not the one currently shown). Acts as an
   // implicit dynamic context — set on flush enter, cleared on flush exit.
   const streamTargetConvIdRef = useRef(null);
+  const worldCalibrationActive = calibrationMode && settingsSection === 'world';
+
+  function syncSettingsConnectionStatus(records) {
+    setSettingsConnectionStatus((prev) => {
+      const next = sanitizeSettingsConnectionStatus(prev, records);
+      persistSettingsConnectionStatus(next, records);
+      return next;
+    });
+  }
+
+  function updateSettingsConnectionStatus(updater, records = settingsRecordsDraft) {
+    setSettingsConnectionStatus((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      persistSettingsConnectionStatus(next, records);
+      return next;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -3373,6 +6006,76 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }, []);
 
   useEffect(() => {
+    if (!calibrationMode || settingsSection !== 'tools') return undefined;
+    let cancelled = false;
+    authFetch(`${API_BASE}/api/settings/tools`, { method: 'GET' }, { json: false })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload) return;
+        setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
+      })
+      .catch((error) => console.warn('failed to fetch tools settings', error));
+    return () => { cancelled = true; };
+  }, [calibrationMode, settingsSection]);
+
+  useEffect(() => {
+    if (!calibrationMode || settingsSection !== 'agent') return undefined;
+    let cancelled = false;
+    let retryTimer = null;
+    const load = async (attempt = 0) => {
+      try {
+        const payload = await fetchAgentSettingsPayload();
+        if (!cancelled) applyAgentSettingsPayload(payload);
+      } catch (error) {
+        if (cancelled) return;
+        if (attempt < 4) {
+          retryTimer = window.setTimeout(() => load(attempt + 1), 400 * (attempt + 1));
+          return;
+        }
+        console.warn('failed to fetch agent settings', error);
+        showToast('error', String(error?.message || error));
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [calibrationMode, settingsSection]);
+
+  useEffect(() => {
+    if (!calibrationMode || settingsSection !== 'llm') return undefined;
+    let cancelled = false;
+    authFetch(`${API_BASE}/api/settings/llm`, { method: 'GET' }, { json: false })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload) return;
+        setLlmSettingsDraft((prev) => applyLlmSettingsPayloadToDraft(prev, payload));
+      })
+      .catch((error) => console.warn('failed to fetch llm settings', error));
+    return () => { cancelled = true; };
+  }, [calibrationMode, settingsSection]);
+
+  useEffect(() => {
+    if (!calibrationMode || !['memory', 'knowledge'].includes(settingsSection)) return undefined;
+    let cancelled = false;
+    authFetch(`${API_BASE}/api/settings/${settingsSection}`, { method: 'GET' }, { json: false })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload) return;
+        setSettingsRecordsDraft((prev) => {
+          const next = settingsSection === 'memory'
+            ? applyMemorySettingsPayloadToRecords(prev, payload)
+            : applyKnowledgeSettingsPayloadToRecords(prev, payload);
+          syncSettingsConnectionStatus(next);
+          return next;
+        });
+      })
+      .catch((error) => console.warn(`failed to fetch ${settingsSection} settings`, error));
+    return () => { cancelled = true; };
+  }, [calibrationMode, settingsSection]);
+
+  useEffect(() => {
     let cleanup = null;
     let cancelled = false;
     const applyWindowState = (state) => {
@@ -3396,7 +6099,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 
   const modelOptions = modelCatalog?.options;
   const defaultModelId = modelCatalog?.defaultModelId;
-  const modelProviderKey = modelCatalog?.provider || '';
+  const llmProviderOptions = useMemo(() => runtimeLlmProviderOptions(llmSettingsDraft, modelCatalog), [llmSettingsDraft, modelCatalog]);
+  const modelProviderKey = llmProviderOptions.map((item) => item.requestProvider || item.id).join('|') || 'unconfigured';
   const agentOptions = agentCatalog?.options || APP_DEFAULT_AGENT_OPTIONS;
   const defaultAgentId = agentCatalog?.defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
   const runConfigStorageKey = buildRunConfigStorageKey(authUser, modelProviderKey);
@@ -4767,7 +7471,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   useEffect(() => {
     function handlePointerMove(e) {
       const drag = dragStateRef.current;
-      if (!drag || !calibrationMode || busy) return;
+      if (!drag || !worldCalibrationActive || busy) return;
       const point = stagePointFromClient(e.clientX, e.clientY);
       if (!point) return;
       const footX = point.x * MAP_W - drag.offsetX;
@@ -4781,10 +7485,10 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', stopDrag);
     };
-  }, [busy, calibrationMode]);
+  }, [busy, worldCalibrationActive]);
 
   function handleMarkerPointerDown(target, id, event) {
-    if (!calibrationMode || busy) return;
+    if (!worldCalibrationActive || busy) return;
     event.preventDefault(); event.stopPropagation();
     const point = stagePointFromClient(event.clientX, event.clientY);
     if (!point) return;
@@ -4796,9 +7500,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     dragStateRef.current = { target, id, offsetX: point.x * MAP_W - current.x * MAP_W, offsetY: point.y * MAP_H - current.y * MAP_H };
   }
 
-  function handleToggleCalibration() {
-    if (busy) return;
-    if (activeTab !== 'dashboard') setActiveTab('dashboard');
+  function prepareWorldCalibration() {
     dragStateRef.current = null;
     const stationSnapshot = clonePointMap(window.STATIONS);
     setStationDrafts(stationSnapshot);
@@ -4806,8 +7508,444 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     setMeetDrafts(clonePointMap(window.MEET_POINTS));
     syncNpcPositions(stationSnapshot);
     clearAllPoseDebug();
-    setCalibrationMode((enabled) => !enabled);
     setCopiedCoords(false);
+  }
+
+  function handleSettingsSectionChange(section) {
+    setSettingsSection(section);
+    if (section === 'world') prepareWorldCalibration();
+    else {
+      dragStateRef.current = null;
+      clearAllPoseDebug();
+    }
+  }
+
+  function handleToggleCalibration() {
+    if (busy) return;
+    if (activeTab !== 'dashboard') setActiveTab('dashboard');
+    dragStateRef.current = null;
+    setCalibrationMode((enabled) => {
+      const next = !enabled;
+      if (next) setSettingsSection('llm');
+      else clearAllPoseDebug();
+      return next;
+    });
+    setCopiedCoords(false);
+  }
+
+  async function handleSaveSettingsDraft() {
+    try {
+      window.localStorage?.setItem(LLM_SETTINGS_STORAGE_KEY, JSON.stringify(llmSettingsDraft));
+      window.localStorage?.setItem(SETTINGS_RECORDS_STORAGE_KEY, JSON.stringify(settingsRecordsDraft));
+      const llmResponse = await authFetch(`${API_BASE}/api/settings/llm`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(llmSettingsDraft),
+      }, { json: false });
+      if (!llmResponse.ok) {
+        const message = await parseResponseMessage(llmResponse, `llm settings save failed: ${llmResponse.status}`);
+        throw new Error(message);
+      }
+      const llmPayload = await llmResponse.json();
+      setLlmSettingsDraft((prev) => applyLlmSettingsPayloadToDraft(prev, llmPayload));
+      const toolsPayload = buildToolsSettingsPayload(settingsRecordsDraft);
+      const response = await authFetch(`${API_BASE}/api/settings/tools`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toolsPayload),
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `settings save failed: ${response.status}`);
+        throw new Error(message);
+      }
+      const payload = await response.json();
+      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
+      const memoryResponse = await authFetch(`${API_BASE}/api/settings/memory`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildMemorySettingsPayload(settingsRecordsDraft)),
+      }, { json: false });
+      if (!memoryResponse.ok) {
+        const message = await parseResponseMessage(memoryResponse, `memory settings save failed: ${memoryResponse.status}`);
+        throw new Error(message);
+      }
+      const memoryPayload = await memoryResponse.json();
+      setSettingsRecordsDraft((prev) => {
+        const next = applyMemorySettingsPayloadToRecords(prev, memoryPayload);
+        syncSettingsConnectionStatus(next);
+        return next;
+      });
+      const knowledgeResponse = await authFetch(`${API_BASE}/api/settings/knowledge`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildKnowledgeSettingsPayload(settingsRecordsDraft)),
+      }, { json: false });
+      if (!knowledgeResponse.ok) {
+        const message = await parseResponseMessage(knowledgeResponse, `knowledge settings save failed: ${knowledgeResponse.status}`);
+        throw new Error(message);
+      }
+      const knowledgePayload = await knowledgeResponse.json();
+      setSettingsRecordsDraft((prev) => {
+        const next = applyKnowledgeSettingsPayloadToRecords(prev, knowledgePayload);
+        syncSettingsConnectionStatus(next);
+        return next;
+      });
+      showToast('success', 'settings saved');
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+    }
+  }
+
+  async function handleSaveToolsSettingsDraft(nextRecords = settingsRecordsDraft, successMessage = 'settings saved') {
+    try {
+      window.localStorage?.setItem(SETTINGS_RECORDS_STORAGE_KEY, JSON.stringify(nextRecords));
+      const toolsPayload = buildToolsSettingsPayload(nextRecords);
+      const response = await authFetch(`${API_BASE}/api/settings/tools`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toolsPayload),
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `settings save failed: ${response.status}`);
+        throw new Error(message);
+      }
+      const payload = await response.json();
+      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
+      if (successMessage) showToast('success', successMessage);
+      return true;
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+      return false;
+    }
+  }
+
+  function applyAgentSettingsPayload(payload) {
+    const normalized = normalizeAgentSettings(payload);
+    setAgentSettingsDraft(normalized);
+    setAgentCatalog(agentCatalogFromSettings(normalized));
+    return normalized;
+  }
+
+  async function fetchAgentSettingsPayload() {
+    const response = await authFetch(`${API_BASE}/api/settings/agents`, { method: 'GET' }, { json: false });
+    if (!response.ok) {
+      const message = await parseResponseMessage(response, `agent settings fetch failed: ${response.status}`);
+      throw new Error(message);
+    }
+    return response.json();
+  }
+
+  function customAgentPayload(agentId) {
+    const current = normalizeAgentSettings(agentSettingsDraft).custom.find((item) => item.agent_id === agentId);
+    if (!current) return null;
+    const displayName = String(current.display_name || '').trim();
+    if (!displayName) throw new Error('agent name is required');
+    return {
+      id: current.agent_id,
+      base: current.base || 'preset.general',
+      display_name: displayName,
+      description: current.description || '',
+      enabled: current.enabled !== false,
+      system_prompt: current.system_prompt || '',
+      primary_skill_name: current.primary_skill_name || '',
+      tool_policy: {
+        allow: withAlwaysAllowedAgentTools(current.tool_policy?.allow),
+        deny: Array.isArray(current.tool_policy?.deny) ? current.tool_policy.deny : [],
+        allow_mcp_tools: current.tool_policy?.allow_mcp_tools !== false,
+      },
+      skill_policy: {
+        allow: Array.isArray(current.skill_policy?.allow) ? current.skill_policy.allow : [],
+        deny: Array.isArray(current.skill_policy?.deny) ? current.skill_policy.deny : [],
+      },
+    };
+  }
+
+  async function handleTogglePresetAgent(agentId, enabled) {
+    try {
+      const response = await authFetch(`${API_BASE}/api/settings/agents/presets/${encodeURIComponent(agentId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `agent settings save failed: ${response.status}`);
+        throw new Error(message);
+      }
+      applyAgentSettingsPayload(await response.json());
+      showToast('success', 'agent settings saved');
+      return true;
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+      return false;
+    }
+  }
+
+  async function handleCreateCustomAgent() {
+    const draft = createDefaultCustomAgentPayload(agentSettingsDraft);
+    setAgentSettingsDraft((prev) => {
+      const normalized = normalizeAgentSettings(prev);
+      return { ...normalized, custom: [...normalized.custom, draft] };
+    });
+    return draft.id;
+  }
+
+  async function handleSaveCustomAgent(agentId) {
+    try {
+      const payload = customAgentPayload(agentId);
+      if (!payload) throw new Error('custom agent not found');
+      const current = normalizeAgentSettings(agentSettingsDraft).custom.find((item) => item.agent_id === agentId);
+      const isDraft = Boolean(current?.draft);
+      const endpoint = isDraft
+        ? `${API_BASE}/api/settings/agents/custom`
+        : `${API_BASE}/api/settings/agents/custom/${encodeURIComponent(agentId)}`;
+      const response = await authFetch(endpoint, {
+        method: isDraft ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `agent save failed: ${response.status}`);
+        throw new Error(message);
+      }
+      applyAgentSettingsPayload(await response.json());
+      showToast('success', 'custom agent saved');
+      return true;
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+      return false;
+    }
+  }
+
+  async function handleDeleteCustomAgent(agentId) {
+    try {
+      const current = normalizeAgentSettings(agentSettingsDraft).custom.find((item) => item.agent_id === agentId);
+      if (current?.draft) {
+        setAgentSettingsDraft((prev) => {
+          const normalized = normalizeAgentSettings(prev);
+          return {
+            ...normalized,
+            custom: normalized.custom.filter((item) => item.agent_id !== agentId),
+          };
+        });
+        return true;
+      }
+      const response = await authFetch(`${API_BASE}/api/settings/agents/custom/${encodeURIComponent(agentId)}`, {
+        method: 'DELETE',
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `agent delete failed: ${response.status}`);
+        throw new Error(message);
+      }
+      applyAgentSettingsPayload(await response.json());
+      showToast('success', 'custom agent deleted');
+      return true;
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+      return false;
+    }
+  }
+
+  async function handleTestLlmConfig(selectedId) {
+    const config = getSelectedLlmConfig(llmSettingsDraft, selectedId);
+    if (!config?.provider) return;
+    try {
+      const response = await authFetch(`${API_BASE}/api/llm/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(llmProviderRequestPayload(config, {
+          includeSecret: true,
+          includeOAuth: true,
+          refresh: true,
+        })),
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `llm test failed: ${response.status}`);
+        throw new Error(message);
+      }
+      const payload = await response.json();
+      const models = Array.isArray(payload.models) ? payload.models : [];
+      const defaultModel = String(payload.default_model || models[0]?.id || '').trim();
+      updateSelectedLlmConfig(setLlmSettingsDraft, selectedId, {
+        model_options: models,
+        ...(config.model ? {} : (defaultModel ? { model: defaultModel } : {})),
+        ...(payload.oauth_saved ? { oauth_code: '', oauth_configured: true } : {}),
+      });
+      showToast('success', 'llm provider test passed');
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+    }
+  }
+
+  async function handleTestWebProvider(provider, apiKey = '') {
+    const providerLabel = WEB_SEARCH_PROVIDER_OPTIONS.find((item) => item.id === provider)?.label || provider;
+    try {
+      const trimmed = String(apiKey || '').trim();
+      const response = await authFetch(`${API_BASE}/api/settings/tools/web-search/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          ...(trimmed ? { api_key: trimmed } : {}),
+        }),
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `web search provider test failed: ${response.status}`);
+        throw new Error(message);
+      }
+      await response.json();
+      showToast('success', `${providerLabel} API key test passed`);
+      return true;
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+      return false;
+    }
+  }
+
+  function handleSettingsConnectionDirty(section, itemId) {
+    if (!['memory', 'knowledge'].includes(section) || !itemId) return;
+    updateSettingsConnectionStatus((prev) => {
+      const current = prev?.[section]?.[itemId];
+      if (!current || current.state === 'idle') return prev;
+      return {
+        ...prev,
+        [section]: {
+          ...(prev?.[section] || {}),
+          [itemId]: { state: 'idle', message: '' },
+        },
+      };
+    });
+  }
+
+  async function handleTestSettingsConnection(section, itemId) {
+    if (!['memory', 'knowledge'].includes(section) || !itemId) return false;
+    const label = section === 'memory' ? 'Neo4j' : 'Qdrant';
+    const payload = section === 'memory'
+      ? buildMemorySettingsPayload(settingsRecordsDraft)
+      : buildKnowledgeSettingsPayload(settingsRecordsDraft);
+    const signature = settingsConnectionSignatureFor(settingsRecordsDraft, section, itemId);
+    updateSettingsConnectionStatus((prev) => ({
+      ...prev,
+      [section]: {
+        ...(prev?.[section] || {}),
+        [itemId]: { state: 'testing', message: '', signature },
+      },
+    }));
+    try {
+      const response = await authFetch(`${API_BASE}/api/settings/${section}/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `${label} connection test failed: ${response.status}`);
+        throw new Error(message);
+      }
+      const result = await response.json();
+      const message = String(result?.message || `${label} connection verified.`);
+      updateSettingsConnectionStatus((prev) => {
+        const current = prev?.[section]?.[itemId];
+        if (current?.state !== 'testing' || current?.signature !== signature) return prev;
+        return {
+          ...prev,
+          [section]: {
+            ...(prev?.[section] || {}),
+            [itemId]: { state: 'success', message, signature },
+          },
+        };
+      });
+      showToast('success', message);
+      return true;
+    } catch (error) {
+      const message = String(error?.message || error);
+      updateSettingsConnectionStatus((prev) => {
+        const current = prev?.[section]?.[itemId];
+        if (current?.state !== 'testing' || current?.signature !== signature) return prev;
+        return {
+          ...prev,
+          [section]: {
+            ...(prev?.[section] || {}),
+            [itemId]: { state: 'error', message, signature },
+          },
+        };
+      });
+      showToast('error', message);
+      return false;
+    }
+  }
+
+  async function handleInstallSkillDirectory() {
+    try {
+      let sourcePath = '';
+      if (window.haish?.pickSkillDirectory) {
+        const result = await window.haish.pickSkillDirectory();
+        if (result?.canceled) return;
+        sourcePath = result?.path || '';
+      } else {
+        sourcePath = String(window.prompt?.('Skill directory path') || '').trim();
+      }
+      if (!sourcePath) return;
+      setSkillActionBusy('install');
+      const response = await authFetch(`${API_BASE}/api/settings/tools/skills/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: sourcePath }),
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `skill install failed: ${response.status}`);
+        throw new Error(message);
+      }
+      const payload = await response.json();
+      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
+      showToast('success', 'skill installed');
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+    } finally {
+      setSkillActionBusy('');
+    }
+  }
+
+  async function handleToggleSkill(name, enabled) {
+    if (!name) return;
+    try {
+      setSkillActionBusy(name);
+      const response = await authFetch(`${API_BASE}/api/settings/tools/skills/${encodeURIComponent(name)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `skill update failed: ${response.status}`);
+        throw new Error(message);
+      }
+      const payload = await response.json();
+      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
+      showToast('success', enabled ? 'skill enabled' : 'skill disabled');
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+    } finally {
+      setSkillActionBusy('');
+    }
+  }
+
+  async function handleUninstallSkill(name) {
+    if (!name) return;
+    try {
+      setSkillActionBusy(name);
+      const response = await authFetch(`${API_BASE}/api/settings/tools/skills/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `skill uninstall failed: ${response.status}`);
+        throw new Error(message);
+      }
+      const payload = await response.json();
+      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
+      showToast('success', 'skill uninstalled');
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+    } finally {
+      setSkillActionBusy('');
+    }
   }
 
   function handleResetCalibration() {
@@ -5908,7 +9046,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
             attachments: Array.isArray(persistedTask?.attachments)
               ? persistedTask.attachments.map((attachment) => ({ ...attachment, uploaded: true }))
               : run.attachments,
-            imageAttachments: persistedImages.length > 0 ? persistedImages : run.imageAttachments,
+            imageAttachments: persistedImages.length > 0
+              ? mergeChatImageRefs(run.imageAttachments || [], persistedImages)
+              : run.imageAttachments,
             answerText: chatFinalizedTaskIdsRef.current.has(taskId) && run.answerText
               ? run.answerText
               : (persistedTask?.answer_text || (terminalStatus === 'done' ? (toDisplayText(event.message) || run.answerText) : run.answerText)),
@@ -6019,7 +9159,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         }] : [],
         image_attachments: Array.isArray(pendingTask.imageAttachments) ? pendingTask.imageAttachments : [],
         options: {
-          provider: pendingTask.requestedProvider || 'auto',
+          provider: pendingTask.requestedProvider || null,
           model_id: pendingTask.requestedModelId || null,
           agent_id: pendingTask.requestedAgentId || null,
           // Fallback when no per-task choice exists. Matches DEFAULT_REASONING_EFFORT
@@ -6085,6 +9225,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function handleStop() {
+    const hadQueuedDeploy = Boolean(queuedDeploy);
+    if (hadQueuedDeploy) setQueuedDeploy(null);
     // Stop targets the currently-shown conversation only — other backgrounded
     // conversations continue running. All ref/state reads scope to its runtime.
     const targetConvId = conversationIdRef.current;
@@ -6163,7 +9305,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     resetSceneActors();
   }
 
-  function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId) {
+  function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest) {
     const sanitizedImageAttachments = Array.isArray(imageAttachments)
       ? imageAttachments
           .filter((ref) => ref && ref.image_id && ref.path)
@@ -6182,6 +9324,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       reasoningEffort,
       imageAttachments: sanitizedImageAttachments,
       agentId,
+      providerRequest: providerRequest || '',
       targetConversationId: selectedConversationId || conversationIdRef.current || conversationId || null,
     };
   }
@@ -6206,7 +9349,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     pendingTask.requestedAgentId = agentId;
     // Match DEFAULT_REASONING_EFFORT in panels.jsx (kept in sync).
     pendingTask.requestedReasoningEffort = reasoningEffort || 'high';
-    pendingTask.requestedProvider = 'auto';
+    pendingTask.requestedProvider = request.providerRequest || '';
     pendingTask.originViewMode = viewModeRef.current || viewMode;
     pendingTask.imageAttachments = sanitizedImageAttachments;
     const nextConversationTitle = titleFromTaskText(text);
@@ -6299,8 +9442,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     });
   }
 
-  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId) {
-    const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId);
+  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest) {
+    const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest);
     const deployConvId = conversationIdRef.current || conversationId;
     if (!canStartDeployForConversation(request.targetConversationId)) {
       setQueuedDeploy(request);
@@ -6884,9 +10027,12 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   const lockedAgentId = currentConversation?.agentId
     || currentConversation?.tasks?.find((task) => task?.requestedAgentId)?.requestedAgentId
     || '';
-  const agentSelectionLocked = Boolean(
-    lockedAgentId || chatMessages.some((message) => message.role === 'user')
-  );
+  const hasUserMessages = chatMessages.some((message) => message.role === 'user');
+  const agentLockedReason = lockedAgentId || hasUserMessages
+    ? 'Cannot change agent for this conversation.'
+    : '';
+  const submitPending = Boolean(queuedDeploy);
+  const agentSelectionLocked = Boolean(lockedAgentId || hasUserMessages);
 
   const activeIds = getIdsForTarget(calibrationTarget);
   const activeDrafts = getDraftsForTarget(calibrationTarget);
@@ -6915,7 +10061,6 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     '--panel-map-opacity': rightMapEdgeReached ? '0' : '0.62',
   } : undefined;
   const composerDisabled = busy || currentConversationActive || uploadState.active || calibrationMode || !!conversationError;
-  const submitPending = Boolean(queuedDeploy);
 
   return (
     <div className="app-shell">
@@ -6930,8 +10075,36 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         onToggleCalibration={handleToggleCalibration}
         calibrationDisabled={busy}
       />
-      <div className={`app-body ${viewMode === 'chat' ? 'chat-mode' : 'world-mode'}`}>
-        {activeTab === 'dashboard' ? (
+      <div className={`app-body ${calibrationMode ? 'settings-mode' : viewMode === 'chat' ? 'chat-mode' : 'world-mode'}`}>
+        {calibrationMode ? (
+          <SettingsPage
+            activeSection={settingsSection}
+            onSectionChange={setSettingsSection}
+            selectionBySection={settingsSelection}
+            onSelectionChange={setSettingsSelection}
+            llmDraft={llmSettingsDraft}
+            onLlmDraftChange={setLlmSettingsDraft}
+            records={settingsRecordsDraft}
+            onRecordsChange={setSettingsRecordsDraft}
+            agentSettings={agentSettingsDraft}
+            onAgentSettingsChange={setAgentSettingsDraft}
+            onSave={handleSaveSettingsDraft}
+            onSaveTools={handleSaveToolsSettingsDraft}
+            onTogglePresetAgent={handleTogglePresetAgent}
+            onCreateCustomAgent={handleCreateCustomAgent}
+            onSaveCustomAgent={handleSaveCustomAgent}
+            onDeleteCustomAgent={handleDeleteCustomAgent}
+            onTestLlmConfig={handleTestLlmConfig}
+            onTestWebProvider={handleTestWebProvider}
+            onTestSettingsConnection={handleTestSettingsConnection}
+            onSettingsConnectionDirty={handleSettingsConnectionDirty}
+            settingsConnectionStatus={settingsConnectionStatus}
+            onInstallSkill={handleInstallSkillDirectory}
+            onToggleSkill={handleToggleSkill}
+            onUninstallSkill={handleUninstallSkill}
+            skillActionBusy={skillActionBusy}
+          />
+        ) : activeTab === 'dashboard' ? (
           <>
             <window.ConversationsPanel
               workspaceState={panelWorkspaceState}
@@ -6961,7 +10134,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 	                    running={busy || currentConversationActive}
 	                    disabled={composerDisabled}
 	                    submitPending={submitPending}
-	                    onSend={(text, attachment, modelId, reasoningEffort, imageAttachments, agentId) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId)}
+	                    onSend={(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest)}
                     onStop={handleStop}
                     onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }}
                     onClearFile={handleAttachmentClear}
@@ -6973,6 +10146,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
                     homePath={window.haish?.homePath || ''}
                     activeTaskText={activeTaskText}
                     now={now}
+                    providerOptions={llmProviderOptions}
                     modelOptions={modelOptions}
                     defaultModelId={defaultModelId}
                     modelLoading={providerLoading}
@@ -6980,9 +10154,10 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
                     defaultAgentId={defaultAgentId}
                     agentLoading={agentLoading}
                     agentLocked={agentSelectionLocked}
+                    agentLockedReason={agentLockedReason}
                     lockedAgentId={lockedAgentId}
                     selectionStorageKey={runConfigStorageKey}
-	                  />
+		                  />
 	                </div>
 	              </div>
 	            ) : (
@@ -6992,12 +10167,12 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 	                    MAP_W={MAP_W}
 	                    MAP_H={MAP_H}
 	                    onViewChange={setMapView}
-	                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} agentOptions={agentOptions} defaultAgentId={defaultAgentId} agentLoading={agentLoading} agentLocked={agentSelectionLocked} lockedAgentId={lockedAgentId} selectionStorageKey={runConfigStorageKey} />}
+			                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} agentOptions={agentOptions} defaultAgentId={defaultAgentId} agentLoading={agentLoading} agentLocked={agentSelectionLocked} agentLockedReason={agentLockedReason} lockedAgentId={lockedAgentId} selectionStorageKey={runConfigStorageKey} />}
                   >
                     <div ref={stageRef} className="office-map">
-                      {calibrationMode && calibrationTarget === 'routes' && selectedRouteId && <window.CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}
-                      {Object.keys(window.STATIONS).map(id => <window.NPC key={id} id={id} state={npcStates[id]} spriteConfig={getCharPoseConfig(id)} mapW={MAP_W} mapH={MAP_H} showLabel={true} interactive={calibrationMode && !busy && calibrationTarget === 'stations'} selected={(selectedMarkerId === id && calibrationTarget === 'stations') || (selectedPoseNpcId === id && calibrationTarget === 'poses')} showDebug={calibrationMode && (calibrationTarget === 'stations' || (calibrationTarget === 'poses' && selectedPoseNpcId === id))} debugText={calibrationTarget === 'poses' ? `${(npcStates[id]?.poseDebug?.pose || 'idle').toUpperCase()} · ${(npcStates[id]?.poseDebug?.dir || 'front').toUpperCase()}` : `${(stationDrafts[id]?.x??0).toFixed(3)}, ${(stationDrafts[id]?.y??0).toFixed(3)}`} onPointerDown={(npcId, e) => handleMarkerPointerDown('stations', npcId, e)} />)}
-                      {calibrationMode && calibrationTarget === 'routes' && activeIds.map((id, index) => <window.CalibrationPoint key={`${calibrationTarget}-${id}`} id={id} point={activeDrafts[id]} mapW={MAP_W} mapH={MAP_H} kind={resolvePointTarget(id)==='meet'?'meet':'nav'} selected={selectedMarkerId===id} showDebug={true} badgeText={index+1} onPointerDown={(pId, e) => handleMarkerPointerDown(calibrationTarget, pId, e)} />)}
+                      {worldCalibrationActive && calibrationTarget === 'routes' && selectedRouteId && <window.CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}
+                      {Object.keys(window.STATIONS).map(id => <window.NPC key={id} id={id} state={npcStates[id]} spriteConfig={getCharPoseConfig(id)} mapW={MAP_W} mapH={MAP_H} showLabel={true} interactive={worldCalibrationActive && !busy && calibrationTarget === 'stations'} selected={worldCalibrationActive && ((selectedMarkerId === id && calibrationTarget === 'stations') || (selectedPoseNpcId === id && calibrationTarget === 'poses'))} showDebug={worldCalibrationActive && (calibrationTarget === 'stations' || (calibrationTarget === 'poses' && selectedPoseNpcId === id))} debugText={calibrationTarget === 'poses' ? `${(npcStates[id]?.poseDebug?.pose || 'idle').toUpperCase()} · ${(npcStates[id]?.poseDebug?.dir || 'front').toUpperCase()}` : `${(stationDrafts[id]?.x??0).toFixed(3)}, ${(stationDrafts[id]?.y??0).toFixed(3)}`} onPointerDown={(npcId, e) => handleMarkerPointerDown('stations', npcId, e)} />)}
+                      {worldCalibrationActive && calibrationTarget === 'routes' && activeIds.map((id, index) => <window.CalibrationPoint key={`${calibrationTarget}-${id}`} id={id} point={activeDrafts[id]} mapW={MAP_W} mapH={MAP_H} kind={resolvePointTarget(id)==='meet'?'meet':'nav'} selected={selectedMarkerId===id} showDebug={true} badgeText={index+1} onPointerDown={(pId, e) => handleMarkerPointerDown(calibrationTarget, pId, e)} />)}
                       <div className="fx-layer">{bursts.map(b => <div key={b.id} className="fx-ring" style={{ left: b.x, top: b.y, borderColor: b.color, boxShadow: `0 0 12px ${b.color}` }} />)}</div>
 	                    </div>
 	                  </window.MapViewport>
@@ -7015,180 +10190,6 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           </div>
         )}
       </div>
-
-      {calibrationMode && (
-        <div className={`calibration-panel ${calibrationTarget === 'routes' ? 'route-mode' : calibrationTarget === 'poses' ? 'pose-mode' : ''}`}>
-          <div className="calibration-panel-header">
-            <span className="calibration-panel-title">Settings</span>
-            <button
-              type="button"
-              className="calibration-panel-close"
-              onClick={handleToggleCalibration}
-              aria-label="Close settings"
-              title="Close"
-            >
-              <span className="calibration-panel-close-glyph" aria-hidden="true">×</span>
-            </button>
-          </div>
-          <div className="calibration-tabs">
-            <button className={calibrationTarget==='stations'?'active':''} onClick={()=>setCalibrationTarget('stations')}>STATIONS</button>
-            <button className={calibrationTarget==='routes'?'active':''} onClick={()=>setCalibrationTarget('routes')}>ROUTES</button>
-            <button className={calibrationTarget==='poses'?'active':''} onClick={()=>{ setCalibrationTarget('poses'); setSelectedPoseSourceKey(null); syncPosePreview(selectedPoseNpcId, selectedPoseMappingKey); }}>POSES</button>
-          </div>
-          {calibrationTarget === 'poses' ? (
-            <>
-              <div className="calibration-head">
-                <div>
-                  <div className="title">POSE DEBUG</div>
-                  <div className="sub">Three steps: pick a character, pick which action state you want to change, then click the frame source you want to use. The map preview updates automatically.</div>
-                </div>
-                <div className="badge">{selectedPoseLabel}</div>
-              </div>
-              <div className="calibration-point-picker">
-                <div className="calibration-point-picker-head">
-                  <span>Character</span>
-                  <code>{selectedPoseNpcId}</code>
-                </div>
-                <div className="calibration-option-grid calibration-option-grid-characters">
-                  {window.CALIBRATION_IDS.map((id) => (
-                    <button
-                      key={id}
-                      className={`calibration-option-chip ${selectedPoseNpcId === id ? 'selected' : ''}`}
-                      onClick={() => {
-                        setSelectedPoseNpcId(id);
-                        setSelectedPoseSourceKey(null);
-                        syncPosePreview(id, selectedPoseMappingKey);
-                      }}
-                    >
-                      <strong>{window.CHAR_DEFS[id]?.name || id}</strong>
-                      <span>{id}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="calibration-point-picker">
-                <div className="calibration-point-picker-head">
-                  <span>Action To Change</span>
-                  <code>{selectedPoseMapping.key}</code>
-                </div>
-                <div className="calibration-option-grid">
-                  {POSE_MAPPING_FIELDS.map((field) => (
-                    <button
-                      key={field.key}
-                      className={`calibration-option-chip ${selectedPoseMapping.key === field.key ? 'selected' : ''}`}
-                      onClick={() => {
-                        setSelectedPoseMappingKey(field.key);
-                        setSelectedPoseSourceKey(null);
-                        syncPosePreview(selectedPoseNpcId, field.key);
-                      }}
-                    >
-                      <strong>{field.label}</strong>
-                      <span>{field.type}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="calibration-point-picker">
-                <div className="calibration-point-picker-head">
-                  <span>Use This Frame</span>
-                  <code>{selectedPoseSourceKey ? 'selected' : `current ${selectedMappingFrame ?? '-'}`}</code>
-                </div>
-                <div className="calibration-option-grid">
-                  {selectedPoseFrameOptions.map((option) => {
-                    const sourceFrame = option.frame;
-                    return (
-                      <button
-                        key={`mapping-${option.sourceKey}`}
-                        className={`calibration-option-chip ${selectedPoseSourceKey === option.sourceKey ? 'selected' : ''}`}
-                        onClick={() => {
-                          applyPoseMapping(selectedPoseNpcId, selectedPoseMapping.key, sourceFrame);
-                          setSelectedPoseSourceKey(option.sourceKey);
-                          syncPosePreview(selectedPoseNpcId, selectedPoseMapping.key);
-                        }}
-                      >
-                        <strong>{option.label}</strong>
-                        <span>{option.group} · frame {sourceFrame ?? '-'}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="calibration-point-picker">
-                <div className="calibration-point-picker-head">
-                  <span>Preview</span>
-                  <code>{selectedPoseLabel}</code>
-                </div>
-                <div className="calibration-pose-summary">
-                  <span>Now Editing</span>
-                  <code>{selectedPoseMapping.label} · frame {selectedMappingFrame ?? '-'}</code>
-                </div>
-              </div>
-              <textarea className="calibration-export" readOnly value={poseExport} />
-              <div className="calibration-actions">
-                <button onClick={async ()=>{ try { await navigator.clipboard.writeText(poseExport); setCopiedCoords(true); setTimeout(()=>setCopiedCoords(false), 1500); } catch(e){} }}>{copiedCoords?'COPIED':'COPY'}</button>
-                <button onClick={() => updateNpc(selectedPoseNpcId, { poseDebug: null })}>CLEAR CURRENT</button>
-                <button onClick={() => resetPoseMapping(selectedPoseNpcId)}>RESET MAPPING</button>
-                <button className="ghost" onClick={handleResetCalibration}>RESET ALL</button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="calibration-head"><div><div className="title">CALIBRATION</div><div className="sub">{calibrationTarget === 'routes' ? 'Choose a route, then drag its points on the map. Copy the updated route coordinates below.' : 'Drag points on the map. Copy the coordinates below to your code.'}</div></div><div className="badge">{calibrationTarget === 'routes' ? selectedRouteId : selectedMarkerId}</div></div>
-              {calibrationTarget === 'routes' ? (
-                <>
-                  <div className="calibration-routes">
-                    <div className="calibration-route-head">
-                      <span>Route</span>
-                      <code>{routeEditorIds.length} total</code>
-                    </div>
-                    <div className="calibration-route-list">
-                      {routeEditorIds.map((routeId) => {
-                        const routeRefs = window.ROUTE_EDITOR_DEFS?.[routeId]?.refs || window.ROUTES?.[routeId] || [];
-                        return (
-                          <button
-                            key={routeId}
-                            className={`calibration-route-row ${selectedRouteId === routeId ? 'selected' : ''}`}
-                            onClick={() => {
-                              setSelectedRouteId(routeId);
-                              const firstRef = getFirstRouteRef(routeId);
-                              if (firstRef) setSelectedMarkerId(firstRef);
-                            }}
-                          >
-                            <span>{window.ROUTE_EDITOR_DEFS?.[routeId]?.label || routeId}</span>
-                            <code>{routeRefs.join(' -> ')}</code>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div className="calibration-point-picker">
-                    <div className="calibration-point-picker-head">
-                      <span>Points In Route</span>
-                      <code>{activeIds.length} refs</code>
-                    </div>
-                    <div className="calibration-list">
-                      {activeIds.map(id => (
-                        <button
-                          key={id}
-                          className={`calibration-row ${selectedMarkerId===id?'selected':''}`}
-                          onClick={()=>setSelectedMarkerId(id)}
-                        >
-                          <span>{getPointDisplayName(calibrationTarget,id)}</span>
-                          <code>{activeDrafts[id].x.toFixed(3)}, {activeDrafts[id].y.toFixed(3)}</code>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="calibration-list">{activeIds.map(id => <button key={id} className={`calibration-row ${selectedMarkerId===id?'selected':''}`} onClick={()=>setSelectedMarkerId(id)}><span>{getPointDisplayName(calibrationTarget,id)}</span><code>{activeDrafts[id].x.toFixed(3)}, {activeDrafts[id].y.toFixed(3)}</code></button>)}</div>
-              )}
-              <textarea className="calibration-export" readOnly value={calibrationExport} />
-              <div className="calibration-actions"><button onClick={async ()=>{ try { await navigator.clipboard.writeText(calibrationExport); setCopiedCoords(true); setTimeout(()=>setCopiedCoords(false), 1500); } catch(e){} }}>{copiedCoords?'COPIED':'COPY'}</button><button className="ghost" onClick={handleResetCalibration}>RESET</button></div>
-            </>
-          )}
-        </div>
-      )}
 
       {toast && (
         <div className={`app-toast app-toast-${toast.kind}`} role="status" aria-live="polite">

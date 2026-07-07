@@ -6,6 +6,7 @@ import type {
   LocalProject,
   LocalRuntimeState,
   ReadFileResult,
+  SkillDirectoryPickResult,
   WindowVisualState,
 } from '../shared/haish-api.js';
 
@@ -21,6 +22,7 @@ const api: HaishDesktopApi = {
     return () => ipcRenderer.removeListener('window:state', listener);
   },
   pickProjectDirectory: () => ipcRenderer.invoke('project:pick-directory') as Promise<DirectoryPickResult>,
+  pickSkillDirectory: () => ipcRenderer.invoke('skill:pick-directory') as Promise<SkillDirectoryPickResult>,
   listProjects: () => ipcRenderer.invoke('project:list') as Promise<LocalProject[]>,
   listDirectory: (projectId: string, relativePath = '') => ipcRenderer.invoke('fs:list-directory', projectId, relativePath) as Promise<FileEntry[]>,
   readFile: (projectId: string, relativePath: string) => ipcRenderer.invoke('fs:read-file', projectId, relativePath) as Promise<ReadFileResult>,

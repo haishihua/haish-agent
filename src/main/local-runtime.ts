@@ -131,22 +131,32 @@ function parseEnvFile(filePath: string): Record<string, string> {
   return result;
 }
 
+function ensureRuntimeMcpConfig(runtimeRepo: string, workdir: string): string {
+  const runtimeMcpConfig = path.join(workdir, 'mcp.json');
+  if (fs.existsSync(runtimeMcpConfig)) {
+    return runtimeMcpConfig;
+  }
+
+  const bundledMcpConfig = path.join(runtimeRepo, 'mcp.json');
+  if (fs.existsSync(bundledMcpConfig)) {
+    fs.copyFileSync(bundledMcpConfig, runtimeMcpConfig);
+  } else {
+    fs.writeFileSync(runtimeMcpConfig, `${JSON.stringify({ servers: {} }, null, 2)}\n`, 'utf8');
+  }
+  return runtimeMcpConfig;
+}
+
 function runtimeEnv(paths: RuntimePaths, runtimeRepo: string, workdir: string): NodeJS.ProcessEnv {
   const envFile = process.env.HAISH_LOCAL_RUNTIME_ENV_FILE
     || path.join(paths.userDataPath, 'runtime.env');
-  const bundledEnvFile = path.join(runtimeRepo, '.env');
-  const bundledMcpConfig = path.join(runtimeRepo, 'mcp.json');
   const pythonPath = path.join(runtimeRepo, 'src');
-  const baseEnv = {
-    ...process.env,
-    ...(!process.env.HAISH_MCP_CONFIG && fs.existsSync(bundledMcpConfig)
-      ? { HAISH_MCP_CONFIG: bundledMcpConfig }
-      : {}),
-  };
+  const userEnv = parseEnvFile(envFile);
+  const explicitMcpConfig = process.env.HAISH_MCP_CONFIG
+    || userEnv.HAISH_MCP_CONFIG;
   return {
-    ...baseEnv,
-    ...parseEnvFile(bundledEnvFile),
-    ...parseEnvFile(envFile),
+    ...process.env,
+    ...(!explicitMcpConfig ? { HAISH_MCP_CONFIG: ensureRuntimeMcpConfig(runtimeRepo, workdir) } : {}),
+    ...userEnv,
     HAISH_AGENT_WORLD_APP_HOME: workdir,
     HAISH_AGENT_WORLD_APP_WORKDIR: workdir,
     PYTHONPATH: process.env.PYTHONPATH ? `${pythonPath}${path.delimiter}${process.env.PYTHONPATH}` : pythonPath,
@@ -176,7 +186,7 @@ async function waitForRuntime(baseUrl: string, timeoutMs: number): Promise<void>
   let lastError: unknown = null;
   while (Date.now() - startedAt < timeoutMs) {
     try {
-      const response = await fetch(`${baseUrl}/api/llm/models`);
+      const response = await fetch(`${baseUrl}/api/health`);
       if (response.ok) {
         return;
       }

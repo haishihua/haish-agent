@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'elect
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { DirectoryPickResult, FileEntry, LocalProject, ReadFileResult } from '../shared/haish-api.js';
+import type { DirectoryPickResult, FileEntry, LocalProject, ReadFileResult, SkillDirectoryPickResult } from '../shared/haish-api.js';
 import { ensureLocalRuntime, getLocalRuntimeState, startLocalRuntime, stopLocalRuntime } from './local-runtime.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -203,6 +203,22 @@ ipcMain.handle('project:pick-directory', async (): Promise<DirectoryPickResult> 
 });
 
 ipcMain.handle('project:list', async (): Promise<LocalProject[]> => readProjects());
+
+ipcMain.handle('skill:pick-directory', async (): Promise<SkillDirectoryPickResult> => {
+  const result = await dialog.showOpenDialog({
+    title: 'Install Skill Directory',
+    properties: ['openDirectory']
+  });
+  if (result.canceled || !result.filePaths[0]) {
+    return { canceled: true };
+  }
+  const selectedPath = result.filePaths[0];
+  return {
+    canceled: false,
+    path: selectedPath,
+    name: path.basename(selectedPath.replace(/\/+$/, '')) || selectedPath,
+  };
+});
 
 ipcMain.handle('runtime:status', async () => getLocalRuntimeState());
 ipcMain.handle('window:state', (event) => {

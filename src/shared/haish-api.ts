@@ -9,6 +9,10 @@ export type DirectoryPickResult =
   | { canceled: true }
   | { canceled: false; project: LocalProject };
 
+export type SkillDirectoryPickResult =
+  | { canceled: true }
+  | { canceled: false; path: string; name: string };
+
 export type FileEntry = {
   name: string;
   relativePath: string;
@@ -45,6 +49,7 @@ export type HaishDesktopApi = {
   getWindowState: () => Promise<WindowVisualState>;
   onWindowStateChange: (callback: (state: WindowVisualState) => void) => () => void;
   pickProjectDirectory: () => Promise<DirectoryPickResult>;
+  pickSkillDirectory: () => Promise<SkillDirectoryPickResult>;
   listProjects: () => Promise<LocalProject[]>;
   listDirectory: (projectId: string, relativePath?: string) => Promise<FileEntry[]>;
   readFile: (projectId: string, relativePath: string) => Promise<ReadFileResult>;
