@@ -2196,7 +2196,8 @@ function SettingsPage({
           ? 'Manage embedding providers for retrieval and indexing.'
         : 'Manage providers, default models, and chat runtime behavior.')
     : (SETTINGS_SECTION_COPY[activeSection] || 'Manage runtime configuration.');
-  const filteredItems = settingsSearch.trim()
+  const hideSettingsSearch = activeSection === 'memory' || activeSection === 'knowledge';
+  const filteredItems = !hideSettingsSearch && settingsSearch.trim()
     ? items.filter((item) => `${item.title} ${item.kind || ''} ${item.summary || ''}`.toLowerCase().includes(settingsSearch.trim().toLowerCase()))
     : items;
   const canAddItem = !(['memory', 'knowledge'].includes(activeSection) || (activeSection === 'llm' && activeSubtab === 'embedding' && displayItems.length > 0));
@@ -2511,15 +2512,17 @@ function SettingsPage({
                   <span>{listDescription}</span>
                 </div>
               </div>
-              <div className="settings-search-row">
-                <SettingsLucideIcon name="search" className="settings-search-lucide" />
-                <input
-                  value={settingsSearch}
-                  onChange={(event) => setSettingsSearch(event.target.value)}
-                  aria-label={`Search ${listTitle.toLowerCase()}`}
-                  placeholder={`Search ${listTitle.toLowerCase()}...`}
-                />
-              </div>
+              {!hideSettingsSearch ? (
+                <div className="settings-search-row">
+                  <SettingsLucideIcon name="search" className="settings-search-lucide" />
+                  <input
+                    value={settingsSearch}
+                    onChange={(event) => setSettingsSearch(event.target.value)}
+                    aria-label={`Search ${listTitle.toLowerCase()}`}
+                    placeholder={`Search ${listTitle.toLowerCase()}...`}
+                  />
+                </div>
+              ) : null}
               <div className="settings-list-scroll">
 	                {filteredItems.map((item) => {
 	                  const isConnectionSection = activeSection === 'memory' || activeSection === 'knowledge';
