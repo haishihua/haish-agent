@@ -1,0 +1,19 @@
+app-web/src/app.jsx
+  s_cbbb4af7fde96f::t_2ec87041e3355f 2199-2200,2515-2525
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "71b54ac3ca05d388364ac26aff9a8af464870608",
+  "prompts": {},
+  "sessions": {
+    "s_cbbb4af7fde96f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3c2e-cd02-7283-9ee3-ec1ddfc0861d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
