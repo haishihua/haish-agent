@@ -3734,7 +3734,7 @@ function ChatMessageRow({ message, now, onPreviewImage }) {
           />
         ) : null}
         {message.text ? (
-          <div className="chat-bubble-text">
+          <div className={`chat-bubble-text ${message.streaming ? 'streaming' : ''}`}>
             {!message.streaming && window.Markdown
               ? <window.Markdown source={message.text || ''} />
               : <span className="chat-stream-text">{message.text || ''}</span>}

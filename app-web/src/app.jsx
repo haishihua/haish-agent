@@ -128,6 +128,121 @@ const DEFAULT_AGENT_SETTINGS = {
   skills: [],
 };
 
+const DIRECT_AGENT_WORKFLOW_ID = 'workflow.direct-agent';
+const DEFAULT_WORKFLOW_NODE_TYPES = [
+  { id: 'agent', label: 'Agent', description: 'Invoke an assistant profile over A2A.' },
+  { id: 'llm', label: 'LLM', description: 'Run a direct model call with prompt parameters.' },
+  { id: 'tool', label: 'Tool', description: 'Call an exposed tool with mapped arguments.' },
+  { id: 'condition', label: 'Condition', description: 'Route execution based on an expression.' },
+  { id: 'output', label: 'End', description: 'Return the workflow result.' },
+];
+
+const DEFAULT_WORKFLOW_INPUT_SCHEMA = {
+  type: 'object',
+  fields: [
+    { id: 'message', label: 'Message', type: 'string', required: true, path: 'input.message' },
+    { id: 'attachments', label: 'Attachments', type: 'array', required: false, path: 'input.attachments' },
+    { id: 'image_attachments', label: 'Images', type: 'array', required: false, path: 'input.image_attachments' },
+    { id: 'conversation_id', label: 'Conversation ID', type: 'string', required: false, path: 'input.conversation_id' },
+    { id: 'workspace', label: 'Workspace', type: 'string', required: false, path: 'input.workspace' },
+  ],
+};
+
+const COMMON_WORKFLOW_OUTPUT_FIELDS = [
+  { id: 'status', label: 'Status', type: 'string' },
+  { id: 'success', label: 'Success', type: 'boolean' },
+  { id: 'summary', label: 'Summary', type: 'string' },
+  { id: 'error', label: 'Error', type: 'string' },
+  { id: 'metadata', label: 'Metadata', type: 'object' },
+];
+
+const WORKFLOW_NODE_OUTPUT_FIELDS = {
+  start: [{ id: 'structured', label: 'Input object', type: 'object' }],
+  agent: [
+    { id: 'messages', label: 'Messages', type: 'array' },
+    { id: 'artifacts', label: 'Artifacts', type: 'array' },
+    { id: 'structured', label: 'Structured', type: 'object' },
+    { id: 'citations', label: 'Citations', type: 'array' },
+    { id: 'trace', label: 'Trace', type: 'object' },
+  ],
+  llm: [
+    { id: 'text', label: 'Text', type: 'string' },
+    { id: 'json', label: 'JSON', type: 'object' },
+    { id: 'usage', label: 'Usage', type: 'object' },
+    { id: 'finish_reason', label: 'Finish reason', type: 'string' },
+  ],
+  tool: [
+    { id: 'text', label: 'Text', type: 'string' },
+    { id: 'json', label: 'JSON', type: 'object' },
+    { id: 'artifacts', label: 'Artifacts', type: 'array' },
+    { id: 'raw', label: 'Raw result', type: 'object' },
+  ],
+  condition: [
+    { id: 'matched_case', label: 'Matched case', type: 'string' },
+    { id: 'selected_target', label: 'Selected target', type: 'string' },
+  ],
+  output: [
+    { id: 'value', label: 'Value', type: 'any' },
+    { id: 'structured', label: 'Structured', type: 'object' },
+  ],
+};
+
+const DEFAULT_DIRECT_WORKFLOW = {
+  id: DIRECT_AGENT_WORKFLOW_ID,
+  workflow_id: DIRECT_AGENT_WORKFLOW_ID,
+  version: '1.0.0',
+  display_name: 'Direct Agent',
+  description: 'Run the selected agent and return its final answer.',
+  enabled: true,
+  system: true,
+  custom: false,
+  default: true,
+  editable: false,
+  deletable: false,
+  executable: true,
+  input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA,
+  nodes: [
+    { id: 'start', type: 'start', label: 'Start', input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA, position: { x: 80, y: 180 } },
+    {
+      id: 'agent',
+      type: 'agent',
+      label: 'Agent',
+      agent_id: 'preset.general',
+      prompt: '{{input.message}}',
+      input_mapping: {
+        message: '{{input.message}}',
+        attachments: '{{input.attachments}}',
+        image_attachments: '{{input.image_attachments}}',
+      },
+      position: { x: 360, y: 180 },
+    },
+    {
+      id: 'output',
+      type: 'output',
+      label: 'Output',
+      output_mode: 'json_object',
+      output: '{{nodes.agent.summary}}',
+      output_mapping: { answer: '{{nodes.agent.summary}}' },
+      output_schema: {
+        type: 'object',
+        fields: [{ id: 'answer', label: 'answer', type: 'string', path: 'output.answer' }],
+      },
+      position: { x: 640, y: 180 },
+    },
+  ],
+  edges: [
+    { from: 'start', to: 'agent' },
+    { from: 'agent', to: 'output' },
+  ],
+};
+
+const DEFAULT_WORKFLOW_SETTINGS = {
+  default_workflow_id: DIRECT_AGENT_WORKFLOW_ID,
+  presets: [DEFAULT_DIRECT_WORKFLOW],
+  custom: [],
+  node_types: DEFAULT_WORKFLOW_NODE_TYPES,
+};
+
 const SETTINGS_SECTIONS = [
   { id: 'llm', label: 'Providers' },
   { id: 'tools', label: 'Tools' },
@@ -746,6 +861,450 @@ function createDefaultCustomAgentPayload(agentSettings) {
   };
 }
 
+function normalizeWorkflowNode(node, fallback = {}) {
+  const nodeId = String(node?.id || fallback.id || '').trim();
+  const type = String(node?.type || fallback.type || '').trim() || 'agent';
+  const data = node && typeof node === 'object' ? { ...node } : {};
+  ['prompt', 'input', 'output', 'expression', 'arguments', 'output_mapping'].forEach((key) => {
+    if (key in data) data[key] = sanitizeWorkflowTemplateValue(data[key]);
+  });
+  delete data.id;
+  delete data.type;
+  const fallbackPosition = fallback.position && typeof fallback.position === 'object' ? fallback.position : {};
+  const position = data.position && typeof data.position === 'object' ? data.position : fallbackPosition;
+  return {
+    ...fallback,
+    ...data,
+    id: nodeId,
+    type,
+    label: String(data.label || fallback.label || typeLabelForWorkflowNode(type)),
+    position: {
+      x: Number.isFinite(Number(position.x)) ? Number(position.x) : Number(fallbackPosition.x || 0),
+      y: Number.isFinite(Number(position.y)) ? Number(position.y) : Number(fallbackPosition.y || 0),
+    },
+  };
+}
+
+function normalizeWorkflowEdge(edge) {
+  return {
+    from: String(edge?.from || edge?.source || '').trim(),
+    to: String(edge?.to || edge?.target || '').trim(),
+  };
+}
+
+function normalizeWorkflowRow(item, fallback = DEFAULT_DIRECT_WORKFLOW) {
+  const workflowId = String(item?.workflow_id || item?.id || fallback.workflow_id || fallback.id || '').trim();
+  const rawNodes = Array.isArray(item?.nodes) && item.nodes.length ? item.nodes : fallback.nodes;
+  const rawEdges = Array.isArray(item?.edges) ? item.edges : fallback.edges;
+  const fallbackName = item?.draft ? 'New Workflow' : (fallback.display_name || workflowId);
+  const isBlankDraft = Boolean(item?.draft && !String(item?.display_name || item?.name || '').trim());
+  const nodes = rawNodes
+    .map((node, index) => normalizeWorkflowNode(node, fallback.nodes?.[index] || {}))
+    .filter((node) => node.id)
+    .map((node) => {
+      if (
+        isBlankDraft
+        && node.type === 'output'
+        && (node.output_mode || 'text') === 'text'
+        && String(node.output || '').trim() === '{{input.message}}'
+        && !node.output_mapping
+      ) {
+        return {
+          ...node,
+          output_mode: 'json_object',
+          output_mapping: { answer: '{{input.message}}' },
+          output_schema: {
+            type: 'object',
+            fields: [{ id: 'answer', label: 'answer', type: 'string', path: 'output.answer' }],
+          },
+        };
+      }
+      return node;
+    });
+  return {
+    ...fallback,
+    ...(item && typeof item === 'object' ? item : {}),
+    id: workflowId,
+    workflow_id: workflowId,
+    version: String(item?.version || fallback.version || '1.0.0'),
+    display_name: String(item?.display_name || item?.name || fallbackName),
+    description: String(item?.description || fallback.description || ''),
+    enabled: item?.enabled !== false,
+    system: Boolean(item?.system ?? fallback.system),
+    custom: Boolean(item?.custom ?? !item?.system),
+    default: Boolean(item?.default),
+    editable: Boolean(item?.editable ?? item?.custom),
+    deletable: Boolean(item?.deletable ?? item?.custom),
+    executable: Boolean(item?.executable ?? workflowId === DIRECT_AGENT_WORKFLOW_ID),
+    draft: Boolean(item?.draft),
+    nodes,
+    edges: rawEdges.map(normalizeWorkflowEdge).filter((edge) => edge.from && edge.to),
+  };
+}
+
+function normalizeWorkflowSettings(payload) {
+  const source = payload && typeof payload === 'object' ? payload : DEFAULT_WORKFLOW_SETTINGS;
+  const presets = Array.isArray(source.presets) && source.presets.length
+    ? source.presets.map((item, index) => normalizeWorkflowRow(item, DEFAULT_WORKFLOW_SETTINGS.presets[index] || DEFAULT_DIRECT_WORKFLOW)).filter((item) => item.workflow_id)
+    : DEFAULT_WORKFLOW_SETTINGS.presets;
+  const custom = Array.isArray(source.custom)
+    ? source.custom.map((item) => normalizeWorkflowRow(item, { ...DEFAULT_DIRECT_WORKFLOW, custom: true, system: false, editable: true, deletable: true, default: false })).filter((item) => item.workflow_id)
+    : [];
+  const nodeTypes = Array.isArray(source.node_types) && source.node_types.length
+    ? source.node_types
+    : DEFAULT_WORKFLOW_NODE_TYPES;
+  return {
+    default_workflow_id: String(source.default_workflow_id || DIRECT_AGENT_WORKFLOW_ID),
+    presets,
+    custom,
+    node_types: nodeTypes,
+  };
+}
+
+function workflowListItems(settings) {
+  const normalized = normalizeWorkflowSettings(settings);
+  return [...normalized.presets, ...normalized.custom].map((item) => ({
+    id: item.workflow_id,
+    title: item.display_name || (item.draft ? 'New Workflow' : item.workflow_id),
+    kind: item.custom ? 'Custom' : 'Preset',
+    summary: item.draft ? 'Draft' : (item.description || (item.enabled === false ? 'Disabled' : 'Enabled')),
+    protected: !item.custom,
+    enabled: item.enabled !== false,
+    custom: Boolean(item.custom),
+    default: item.workflow_id === normalized.default_workflow_id || item.default === true,
+    canToggle: item.workflow_id !== DIRECT_AGENT_WORKFLOW_ID,
+    canConfigure: Boolean(item.custom) || item.editable,
+  }));
+}
+
+function workflowById(settings, workflowId) {
+  const normalized = normalizeWorkflowSettings(settings);
+  return [...normalized.presets, ...normalized.custom].find((item) => item.workflow_id === workflowId) || null;
+}
+
+function typeLabelForWorkflowNode(type) {
+  const known = {
+    start: 'Start',
+    output: 'End',
+    agent: 'Agent',
+    llm: 'LLM',
+    tool: 'Tool',
+    condition: 'Condition',
+  };
+  return known[type] || type || 'Node';
+}
+
+function workflowOutputFields(nodeOrType) {
+  const type = typeof nodeOrType === 'string' ? nodeOrType : nodeOrType?.type;
+  return [...COMMON_WORKFLOW_OUTPUT_FIELDS, ...(WORKFLOW_NODE_OUTPUT_FIELDS[type] || [])];
+}
+
+function workflowSchemaFields(schema) {
+  return Array.isArray(schema?.fields) && schema.fields.length
+    ? schema.fields
+    : DEFAULT_WORKFLOW_INPUT_SCHEMA.fields;
+}
+
+function workflowUpstreamNodeIds(workflow, selectedNodeId) {
+  if (!selectedNodeId) return new Set();
+  const incoming = new Map();
+  (workflow?.edges || []).forEach((edge) => {
+    if (!edge.from || !edge.to) return;
+    incoming.set(edge.to, [...(incoming.get(edge.to) || []), edge.from]);
+  });
+  const upstream = new Set();
+  const stack = [...(incoming.get(selectedNodeId) || [])];
+  while (stack.length) {
+    const nodeId = stack.pop();
+    if (!nodeId || upstream.has(nodeId)) continue;
+    upstream.add(nodeId);
+    stack.push(...(incoming.get(nodeId) || []));
+  }
+  return upstream;
+}
+
+function workflowFriendlyVariableLabel(item) {
+  if (!item) return 'Value';
+  if (item.path === 'input.message') return 'User message';
+  if (item.path === 'input.attachments') return 'Files';
+  if (item.path === 'input.image_attachments') return 'Images';
+  if (item.path === 'input.conversation_id') return 'Conversation';
+  if (item.path === 'input.workspace') return 'Workspace';
+  const nodeLabel = item.nodeLabel || item.group || 'Node';
+  const fieldLabels = {
+    status: 'status',
+    success: 'done',
+    summary: 'answer',
+    error: 'error',
+    metadata: 'metadata',
+    messages: 'messages',
+    artifacts: 'artifacts',
+    structured: 'structured data',
+    citations: 'citations',
+    trace: 'trace',
+    text: 'text',
+    json: 'JSON',
+    usage: 'usage',
+    finish_reason: 'finish reason',
+    raw: 'raw result',
+    matched_case: 'matched case',
+    selected_target: 'selected target',
+    value: 'value',
+  };
+  return `${nodeLabel} ${fieldLabels[item.fieldId] || item.fieldId || 'value'}`;
+}
+
+function workflowVariableCatalog(workflow, selectedNodeId = '') {
+  const inputFields = workflowSchemaFields(workflow?.input_schema).map((field) => ({
+    path: field.path || `input.${field.id}`,
+    label: workflowFriendlyVariableLabel({ path: field.path || `input.${field.id}` }),
+    type: field.type || 'any',
+    group: 'Input',
+  }));
+  const upstreamIds = workflowUpstreamNodeIds(workflow, selectedNodeId);
+  const nodeFields = (workflow?.nodes || [])
+    .filter((node) => node?.id && node.id !== selectedNodeId && upstreamIds.has(node.id) && node.type !== 'output')
+    .flatMap((node) => workflowOutputFields(node).map((field) => ({
+      path: `nodes.${node.id}.${field.id}`,
+      label: workflowFriendlyVariableLabel({
+        path: `nodes.${node.id}.${field.id}`,
+        nodeLabel: node.label || typeLabelForWorkflowNode(node.type),
+        fieldId: field.id,
+      }),
+      type: field.type || 'any',
+      group: typeLabelForWorkflowNode(node.type),
+      nodeLabel: node.label || typeLabelForWorkflowNode(node.type),
+      fieldId: field.id,
+    })));
+  return [...inputFields, ...nodeFields];
+}
+
+function sanitizeWorkflowTemplateValue(value) {
+  if (typeof value === 'string') {
+    let next = value;
+    let previous = '';
+    while (next !== previous) {
+      previous = next;
+      next = next.replace(/{{([^{}]*){{\s*([^{}]+?)\s*}}([^{}]*)}}/g, '{{$2}}');
+    }
+    return next;
+  }
+  if (Array.isArray(value)) return value.map(sanitizeWorkflowTemplateValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeWorkflowTemplateValue(item)]));
+  }
+  return value;
+}
+
+function workflowTokenRangeAt(text, start, end) {
+  const selectedStart = Math.min(start, end);
+  const selectedEnd = Math.max(start, end);
+  const exactMatch = text.match(/^{{\s*[^{}]+?\s*}}$/);
+  if (exactMatch) return { start: 0, end: text.length };
+  const tokenPattern = /{{\s*[^{}]+?\s*}}/g;
+  let match = tokenPattern.exec(text);
+  while (match) {
+    const tokenStart = match.index;
+    const tokenEnd = tokenStart + match[0].length;
+    const cursorInsideToken = selectedStart === selectedEnd && selectedStart > tokenStart && selectedStart < tokenEnd;
+    const selectionTouchesToken = selectedStart < tokenEnd && selectedEnd > tokenStart;
+    if (cursorInsideToken || selectionTouchesToken) return { start: tokenStart, end: tokenEnd };
+    match = tokenPattern.exec(text);
+  }
+  return { start: selectedStart, end: selectedEnd };
+}
+
+function workflowArgumentsText(value) {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return '{}';
+  }
+}
+
+const WORKFLOW_OUTPUT_FIELD_OPTIONS = ['answer', 'summary', 'plan', 'request', 'citations', 'artifacts', 'metadata'];
+const DEFAULT_WORKFLOW_OUTPUT_MAPPING = {
+  answer: '{{input.message}}',
+};
+const DEFAULT_WORKFLOW_OUTPUT_SCHEMA = {
+  type: 'object',
+  fields: [{ id: 'answer', label: 'answer', type: 'string', path: 'output.answer' }],
+};
+
+function workflowOutputFieldOptions(entries) {
+  const keys = new Set(WORKFLOW_OUTPUT_FIELD_OPTIONS);
+  entries.forEach((entry) => {
+    const key = String(entry.key || '').trim();
+    if (key) keys.add(key);
+  });
+  return [...keys].map((key) => ({ id: key, label: key }));
+}
+
+function workflowOutputMappingEntries(node) {
+  const schemaFields = Array.isArray(node?.output_schema?.fields) ? node.output_schema.fields : [];
+  const typeByKey = new Map(schemaFields.map((field) => [field.id || field.key || field.name, field.type || 'any']));
+  const mapping = node?.output_mapping && typeof node.output_mapping === 'object' && !Array.isArray(node.output_mapping)
+    ? node.output_mapping
+    : null;
+  const entries = mapping
+    ? Object.entries(mapping)
+    : [['answer', node?.output || '{{input.message}}']];
+  return entries.map(([key, value]) => ({
+    key,
+    value: typeof value === 'string' ? value : workflowArgumentsText(value),
+    type: typeByKey.get(key) || 'any',
+  }));
+}
+
+function workflowTemplateVariablePath(value) {
+  const match = String(value || '').trim().match(/^{{\s*([^{}]+?)\s*}}$/);
+  return match ? match[1] : '';
+}
+
+function workflowVariableTypeForValue(value, variables) {
+  const path = workflowTemplateVariablePath(value);
+  if (!path) return 'any';
+  return variables.find((item) => item.path === path)?.type || 'any';
+}
+
+function buildWorkflowOutputPatch(entries) {
+  const output_mapping = {};
+  entries.forEach((entry) => {
+    const key = String(entry.key || '').trim();
+    if (!key) return;
+    output_mapping[key] = entry.value || '';
+  });
+  const firstValue = Object.values(output_mapping)[0] || '{{input.message}}';
+  return {
+    output_mode: 'json_object',
+    output: String(output_mapping.answer || output_mapping.summary || firstValue),
+    output_mapping,
+    output_schema: {
+      type: 'object',
+      fields: Object.keys(output_mapping).map((key) => ({
+        id: key,
+        label: key,
+        type: entries.find((entry) => entry.key === key)?.type || 'any',
+        path: `output.${key}`,
+      })),
+    },
+  };
+}
+
+function createWorkflowExamplePatch(agentOptions) {
+  const agentId = agentOptions.find((item) => item.id === 'preset.product')?.id
+    || agentOptions[0]?.id
+    || 'preset.general';
+  return {
+    display_name: 'Plan and Answer Example',
+    description: 'Analyze the request, format a final answer, and return structured fields.',
+    nodes: [
+      { id: 'start', type: 'start', label: 'Request', input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA, position: { x: 80, y: 220 } },
+      {
+        id: 'agent_1',
+        type: 'agent',
+        label: 'Analyze',
+        agent_id: agentId,
+        prompt: 'Read the user request and produce a concise plan.\n\nUser request:\n{{input.message}}',
+        input_mapping: {
+          message: '{{input.message}}',
+          attachments: '{{input.attachments}}',
+          image_attachments: '{{input.image_attachments}}',
+        },
+        position: { x: 340, y: 220 },
+      },
+      {
+        id: 'llm_1',
+        type: 'llm',
+        label: 'Format',
+        response_format: 'json_object',
+        prompt: 'Turn the plan into a short final answer.\n\nOriginal request:\n{{input.message}}\n\nPlan:\n{{nodes.agent_1.summary}}',
+        position: { x: 610, y: 220 },
+      },
+      {
+        id: 'output',
+        type: 'output',
+        label: 'End',
+        output_mode: 'json_object',
+        output: '{{nodes.llm_1.text}}',
+        output_mapping: {
+          answer: '{{nodes.llm_1.text}}',
+          plan: '{{nodes.agent_1.summary}}',
+          request: '{{input.message}}',
+        },
+        output_schema: {
+          type: 'object',
+          fields: [
+            { id: 'answer', label: 'answer', type: 'string', path: 'output.answer' },
+            { id: 'plan', label: 'plan', type: 'string', path: 'output.plan' },
+            { id: 'request', label: 'request', type: 'string', path: 'output.request' },
+          ],
+        },
+        position: { x: 880, y: 220 },
+      },
+    ],
+    edges: [
+      { from: 'start', to: 'agent_1' },
+      { from: 'agent_1', to: 'llm_1' },
+      { from: 'llm_1', to: 'output' },
+    ],
+  };
+}
+
+function createDefaultCustomWorkflowPayload() {
+  const id = `custom.workflow-${Date.now()}`;
+  return normalizeWorkflowRow({
+    ...DEFAULT_DIRECT_WORKFLOW,
+    id,
+    workflow_id: id,
+    display_name: '',
+    description: '',
+    enabled: true,
+    system: false,
+    custom: true,
+    editable: true,
+    deletable: true,
+    executable: false,
+    default: false,
+    draft: true,
+    input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA,
+    nodes: [
+      { id: 'start', type: 'start', label: 'Start', input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA, position: { x: 80, y: 180 } },
+      {
+        id: 'output',
+        type: 'output',
+        label: 'End',
+        output_mode: 'json_object',
+        output: '{{input.message}}',
+        output_mapping: DEFAULT_WORKFLOW_OUTPUT_MAPPING,
+        output_schema: DEFAULT_WORKFLOW_OUTPUT_SCHEMA,
+        position: { x: 640, y: 180 },
+      },
+    ],
+    edges: [],
+  });
+}
+
+function payloadForCustomWorkflow(workflow) {
+  const displayName = String(workflow?.display_name || '').trim();
+  if (!displayName) throw new Error('workflow name is required');
+  return {
+    id: workflow.workflow_id,
+    version: workflow.version || '1.0.0',
+    display_name: displayName,
+    description: workflow.description || '',
+    enabled: workflow.enabled !== false,
+    input_schema: workflow.input_schema || DEFAULT_WORKFLOW_INPUT_SCHEMA,
+    variables: workflow.variables && typeof workflow.variables === 'object' ? workflow.variables : {},
+    nodes: (workflow.nodes || []).map((node) => {
+      const next = { ...node, id: node.id, type: node.type };
+      return next;
+    }),
+    edges: (workflow.edges || []).map((edge) => ({ from: edge.from, to: edge.to })),
+  };
+}
+
 function FieldRow({ label, hint, children }) {
   return (
     <div className="settings-field">
@@ -753,6 +1312,147 @@ function FieldRow({ label, hint, children }) {
       {children}
       {hint && <small>{hint}</small>}
     </div>
+  );
+}
+
+function WorkflowVariablePicker({ variables, onInsert, disabled = false }) {
+  if (!variables.length) return null;
+  const options = variables.map((item) => ({
+    id: item.path,
+    label: `${item.label || item.path} · ${item.type || 'any'}`,
+  }));
+  return (
+    <div className="workflow-variable-panel">
+      <span>use data from</span>
+      <SettingsMenuSelect
+        className="workflow-menu-select"
+        value=""
+        options={options}
+        disabled={disabled}
+        placeholder="insert data..."
+        onChange={(path) => {
+          if (path) onInsert(path);
+        }}
+      />
+    </div>
+  );
+}
+
+function WorkflowVariableSelect({ variables, value, onChange, disabled = false }) {
+  const selectedPath = workflowTemplateVariablePath(value);
+  const hasSelected = selectedPath && variables.some((item) => item.path === selectedPath);
+  const options = [
+    ...(!hasSelected && selectedPath ? [{ id: selectedPath, label: `custom: ${selectedPath}` }] : []),
+    ...variables.map((item) => ({
+      id: item.path,
+      label: `${item.label || item.path} · ${item.type || 'any'}`,
+    })),
+  ];
+  return (
+    <SettingsMenuSelect
+      className="workflow-menu-select workflow-variable-menu-select"
+      value={selectedPath || ''}
+      options={options}
+      disabled={disabled}
+      placeholder="select data..."
+      onChange={(path) => {
+        if (path) onChange(`{{${path}}}`);
+      }}
+    />
+  );
+}
+
+function WorkflowTemplateTextarea({
+  value,
+  onChange,
+  variables,
+  disabled = false,
+  rows = 4,
+  placeholder = '',
+  showVariables = true,
+  className = '',
+  onFocus,
+}) {
+  const text = String(sanitizeWorkflowTemplateValue(value ?? ''));
+  const textareaRef = useRef(null);
+  const insertVariable = (path) => {
+    const token = `{{${path}}}`;
+    const field = textareaRef.current;
+    const start = Number.isFinite(field?.selectionStart) ? field.selectionStart : text.length;
+    const end = Number.isFinite(field?.selectionEnd) ? field.selectionEnd : start;
+    const range = workflowTokenRangeAt(text, start, end);
+    const next = `${text.slice(0, range.start)}${token}${text.slice(range.end)}`;
+    onChange(next);
+    requestAnimationFrame(() => {
+      if (!textareaRef.current) return;
+      const cursor = range.start + token.length;
+      textareaRef.current.focus();
+      textareaRef.current.setSelectionRange(cursor, cursor);
+    });
+  };
+  return (
+    <>
+      <textarea
+        ref={textareaRef}
+        className={className}
+        value={text}
+        onChange={(event) => onChange(event.target.value)}
+        onFocus={onFocus}
+        disabled={disabled}
+        rows={rows}
+        placeholder={placeholder}
+      />
+      {showVariables ? (
+        <WorkflowVariablePicker
+          variables={variables}
+          disabled={disabled}
+          onInsert={insertVariable}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function WorkflowSchemaList({ title, fields }) {
+  if (!fields.length) return null;
+  const caption = String(title || '').toLowerCase();
+  return (
+    <div className="workflow-json-schema">
+      <span className="workflow-json-caption">{caption}</span>
+      <div className="workflow-json-code" aria-label={caption}>
+        <div className="workflow-json-line">
+          <span className="workflow-json-punct">{'{'}</span>
+        </div>
+        {fields.map((field, index) => {
+          const key = field.id || field.key || field.label || field.path || `field_${index + 1}`;
+          const path = field.path || key;
+          return (
+            <div className="workflow-json-line is-field" key={field.path || field.id || key}>
+              <span className="workflow-json-indent" aria-hidden="true" />
+              <span className="workflow-json-key">"{key}"</span>
+              <span className="workflow-json-punct">:</span>
+              <span className="workflow-json-string">{`"{{${path}}}"`}</span>
+              {index < fields.length - 1 ? <span className="workflow-json-punct">,</span> : null}
+            </div>
+          );
+        })}
+        <div className="workflow-json-line">
+          <span className="workflow-json-punct">{'}'}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowOutputContract({ node }) {
+  return (
+    <WorkflowSchemaList
+      title="Outputs"
+      fields={workflowOutputFields(node).map((field) => ({
+        ...field,
+        path: `nodes.${node.id}.${field.id}`,
+      }))}
+    />
   );
 }
 
@@ -829,6 +1529,7 @@ function SettingsMenuSelect({
   disabled = false,
   placeholder = 'Select',
   header = '',
+  className = '',
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
@@ -867,7 +1568,7 @@ function SettingsMenuSelect({
 
   return (
     <div
-      className={`model-picker settings-menu-select ${open ? 'is-open' : ''}`}
+      className={`model-picker settings-menu-select ${className} ${open ? 'is-open' : ''}`.trim()}
       ref={rootRef}
       onMouseEnter={cancelClose}
       onMouseLeave={scheduleClose}
@@ -1065,9 +1766,10 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
   ];
 }
 
-function configItemsForSection(section, llmDraft, records, activeSubtab = '', agentSettings = null) {
+function configItemsForSection(section, llmDraft, records, activeSubtab = '', agentSettings = null, workflowSettings = null) {
   if (section === 'llm') return getLlmConfigItems(llmDraft, activeSubtab);
   if (section === 'agent') return agentListItems(agentSettings);
+  if (section === 'workflow') return workflowListItems(workflowSettings);
   if (section === 'memory') {
     return Array.isArray(records?.memory) ? records.memory.map((item) => {
       const neo4j = normalizeNeo4jDraft({ ...item.neo4j, endpoint: item.endpoint });
@@ -1615,10 +2317,15 @@ function GenericConfigEditor({ section, selectedId, records, onRecordsChange, re
         <input value={current.endpoint || ''} onChange={(event) => update({ endpoint: event.target.value })} disabled={readOnly} />
       </FieldRow>
       <FieldRow label="Status">
-        <select value={current.enabled ? 'enabled' : 'disabled'} onChange={(event) => update({ enabled: event.target.value === 'enabled' })} disabled={readOnly}>
-          <option value="enabled">Enabled</option>
-          <option value="disabled">Disabled</option>
-        </select>
+        <SettingsMenuSelect
+          value={current.enabled ? 'enabled' : 'disabled'}
+          options={[
+            { id: 'enabled', label: 'Enabled' },
+            { id: 'disabled', label: 'Disabled' },
+          ]}
+          onChange={(value) => update({ enabled: value === 'enabled' })}
+          disabled={readOnly}
+        />
       </FieldRow>
       <FieldRow label="Notes">
         <textarea value={current.notes || ''} onChange={(event) => update({ notes: event.target.value })} disabled={readOnly} />
@@ -1845,6 +2552,544 @@ function AgentConfigEditor({ selectedId, settings, onSettingsChange, readOnly = 
           header="primary skill"
         />
       </FieldRow>
+    </div>
+  );
+}
+
+function WorkflowFlowNode({ data, selected }) {
+  const flow = window.ReactFlow || {};
+  const Handle = flow.Handle;
+  const Position = flow.Position || { Left: 'left', Right: 'right' };
+  const node = data?.workflowNode || {};
+  const nodeType = node.type || 'agent';
+  return (
+    <div className={`workflow-flow-node ${nodeType} ${selected ? 'active' : ''}`}>
+      {Handle && nodeType !== 'start' ? <Handle type="target" position={Position.Left} /> : null}
+      <strong>{node.label || typeLabelForWorkflowNode(nodeType)}</strong>
+      {Handle && nodeType !== 'output' ? <Handle type="source" position={Position.Right} /> : null}
+    </div>
+  );
+}
+
+const WORKFLOW_REACT_FLOW_NODE_TYPES = { workflowNode: WorkflowFlowNode };
+
+function canConnectWorkflowNodes(source, target) {
+  return Boolean(source && target && source.id !== target.id && source.type !== 'output' && target.type !== 'start');
+}
+
+function addWorkflowEdge(edges, from, to) {
+  if (!from || !to || from === to || edges.some((edge) => edge.from === from && edge.to === to)) return edges;
+  return [...edges, { from, to }];
+}
+
+function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, agentSettings, readOnly = false }) {
+  const normalized = normalizeWorkflowSettings(settings);
+  const agentOptions = agentCatalogFromSettings(agentSettings).options;
+  const workflow = workflowById(normalized, selectedId);
+  const [selectedNodeId, setSelectedNodeId] = useState('');
+  const [selectedEdgeId, setSelectedEdgeId] = useState('');
+
+  useEffect(() => {
+    if (!workflow) {
+      setSelectedNodeId('');
+      setSelectedEdgeId('');
+      return;
+    }
+    setSelectedNodeId((current) => (
+      workflow.nodes.some((node) => node.id === current) ? current : ''
+    ));
+    setSelectedEdgeId('');
+  }, [selectedId, workflow?.nodes?.length]);
+
+  if (!workflow) return <div className="settings-empty">Select a workflow.</div>;
+
+  const isEditable = !readOnly && workflow.custom;
+  const nodes = workflow.nodes || [];
+  const edges = workflow.edges || [];
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
+  const selectedEdge = edges.find((edge) => `${edge.from}->${edge.to}` === selectedEdgeId) || null;
+  const availableVariables = workflowVariableCatalog(workflow, selectedNodeId);
+  const typeOptions = normalized.node_types
+    .filter((item) => item.id !== 'output')
+    .map((item) => ({ id: item.id, label: item.label }));
+
+  const updateWorkflow = (patch) => {
+    if (!isEditable) return;
+    onSettingsChange((prev) => {
+      const next = normalizeWorkflowSettings(prev);
+      return {
+        ...next,
+        custom: next.custom.map((item) => (
+          item.workflow_id === workflow.workflow_id ? normalizeWorkflowRow({ ...item, ...patch }, item) : item
+        )),
+      };
+    });
+  };
+  const flow = window.ReactFlow || {};
+  const ReactFlowCanvas = flow.ReactFlow;
+  const Background = flow.Background;
+  const Controls = flow.Controls;
+  const MarkerType = flow.MarkerType || {};
+  const reactNodes = nodes.map((node) => ({
+    id: node.id,
+    type: 'workflowNode',
+    position: {
+      x: Number(node.position?.x || 0),
+      y: Number(node.position?.y || 0),
+    },
+    data: { workflowNode: node },
+    selected: node.id === selectedNodeId,
+    draggable: isEditable,
+  }));
+  const reactEdges = edges.map((edge, index) => ({
+    id: `${edge.from}->${edge.to}`,
+    source: edge.from,
+    target: edge.to,
+    type: 'smoothstep',
+    selected: `${edge.from}->${edge.to}` === selectedEdgeId,
+    interactionWidth: 24,
+    markerEnd: MarkerType.ArrowClosed ? { type: MarkerType.ArrowClosed } : undefined,
+  }));
+  const onReactFlowNodesChange = (changes) => {
+    if (!isEditable || !flow.applyNodeChanges) return;
+    const removeIds = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id));
+    if (removeIds.size) {
+      const removableIds = new Set(nodes.filter((node) => removeIds.has(node.id) && !['start', 'output'].includes(node.type)).map((node) => node.id));
+      if (!removableIds.size) return;
+      updateWorkflow({
+        nodes: nodes.filter((node) => !removableIds.has(node.id)),
+        edges: edges.filter((edge) => !removableIds.has(edge.from) && !removableIds.has(edge.to)),
+      });
+      if (removableIds.has(selectedNodeId)) setSelectedNodeId('');
+      setSelectedEdgeId('');
+      return;
+    }
+    if (!changes.some((change) => change.type === 'position' && change.position)) return;
+    const updated = flow.applyNodeChanges(changes, reactNodes);
+    const updatedById = new Map(updated.map((node) => [node.id, node]));
+    updateWorkflow({
+      nodes: nodes.map((node) => {
+        const next = updatedById.get(node.id);
+        if (!next) return node;
+        return normalizeWorkflowNode({ ...node, position: next.position }, node);
+      }),
+    });
+  };
+  const onReactFlowEdgesChange = (changes) => {
+    if (!isEditable || !flow.applyEdgeChanges) return;
+    if (!changes.some((change) => change.type !== 'select')) return;
+    const updated = flow.applyEdgeChanges(changes, reactEdges);
+    if (selectedEdgeId && !updated.some((edge) => edge.id === selectedEdgeId)) setSelectedEdgeId('');
+    updateWorkflow({
+      edges: updated
+        .filter((edge) => edge.source && edge.target)
+        .map((edge) => ({ from: edge.source, to: edge.target })),
+    });
+  };
+  const onReactFlowConnect = (connection) => {
+    if (!isEditable || !connection?.source || !connection?.target || connection.source === connection.target) return;
+    const source = nodes.find((node) => node.id === connection.source);
+    const target = nodes.find((node) => node.id === connection.target);
+    if (!canConnectWorkflowNodes(source, target)) return;
+    updateWorkflow({ edges: addWorkflowEdge(edges, connection.source, connection.target) });
+  };
+  const onReactFlowNodeDragStop = (_, draggedNode) => {
+    if (!isEditable) return;
+    updateWorkflow({
+      nodes: nodes.map((node) => (
+        node.id === draggedNode.id ? normalizeWorkflowNode({ ...node, position: draggedNode.position }, node) : node
+      )),
+    });
+  };
+  const updateNode = (nodeId, patch) => {
+    updateWorkflow({
+      nodes: nodes.map((node) => (
+        node.id === nodeId ? normalizeWorkflowNode({ ...node, ...patch }, node) : node
+      )),
+    });
+  };
+  const addNode = (type) => {
+    const baseType = type || 'agent';
+    const count = nodes.filter((node) => node.type === baseType).length + 1;
+    const id = `${baseType}_${count}`;
+    const newNode = {
+      id,
+      type: baseType,
+      label: typeLabelForWorkflowNode(baseType),
+      position: { x: 210 + (count * 150), y: 180 + ((count - 1) % 2) * 110 },
+      ...(baseType === 'agent' ? {
+        agent_id: agentOptions[0]?.id || 'preset.general',
+        prompt: '{{input.message}}',
+        input_mapping: {
+          message: '{{input.message}}',
+          attachments: '{{input.attachments}}',
+          image_attachments: '{{input.image_attachments}}',
+        },
+      } : {}),
+      ...(baseType === 'llm' ? { prompt: '{{input.message}}', response_format: 'text' } : {}),
+      ...(baseType === 'tool' ? { tool_name: '', arguments: { query: '{{input.message}}' } } : {}),
+      ...(baseType === 'condition' ? { expression: '{{nodes.agent_1.success}} == true' } : {}),
+      ...(baseType === 'output' ? {
+        output_mode: 'json_object',
+        output: '{{input.message}}',
+        output_mapping: DEFAULT_WORKFLOW_OUTPUT_MAPPING,
+        output_schema: DEFAULT_WORKFLOW_OUTPUT_SCHEMA,
+      } : {}),
+    };
+    updateWorkflow({
+      nodes: [...nodes.filter((node) => node.id !== id), newNode],
+    });
+    setSelectedNodeId(id);
+    setSelectedEdgeId('');
+  };
+  const deleteNode = (nodeId) => {
+    const target = nodes.find((node) => node.id === nodeId);
+    if (!target || target.type === 'start' || target.type === 'output') return;
+    updateWorkflow({
+      nodes: nodes.filter((node) => node.id !== nodeId),
+      edges: edges.filter((edge) => edge.from !== nodeId && edge.to !== nodeId),
+    });
+    setSelectedNodeId('');
+    setSelectedEdgeId('');
+  };
+  const deleteEdge = (edgeId) => {
+    if (!edgeId) return;
+    updateWorkflow({ edges: edges.filter((edge) => `${edge.from}->${edge.to}` !== edgeId) });
+    setSelectedEdgeId('');
+  };
+  const deleteSelection = () => {
+    if (selectedEdge) {
+      deleteEdge(selectedEdgeId);
+      return;
+    }
+    if (selectedNode) deleteNode(selectedNode.id);
+  };
+  const loadExampleWorkflow = () => {
+    if (!isEditable) return;
+    const shouldReplace = nodes.length <= 2
+      || window.confirm('Replace this canvas with an example workflow?');
+    if (!shouldReplace) return;
+    updateWorkflow(createWorkflowExamplePatch(agentOptions));
+    setSelectedNodeId('output');
+    setSelectedEdgeId('');
+  };
+
+  const renderNodeFields = () => {
+    if (!selectedNode) return null;
+    if (selectedNode.type === 'start') {
+      return (
+        <>
+          <WorkflowSchemaList
+            title="Inputs"
+            fields={workflowSchemaFields(selectedNode.input_schema || workflow.input_schema)}
+          />
+        </>
+      );
+    }
+    if (selectedNode.type === 'agent') {
+      const promptValue = selectedNode.prompt ?? selectedNode.input ?? '{{input.message}}';
+      return (
+        <>
+          <FieldRow label="agent">
+            <SettingsMenuSelect
+              className="workflow-menu-select"
+              value={selectedNode.agent_id || agentOptions[0]?.id || 'preset.general'}
+              options={agentOptions.map((item) => ({ id: item.id, label: item.label }))}
+              onChange={(agent_id) => updateNode(selectedNode.id, { agent_id })}
+              disabled={!isEditable}
+            />
+          </FieldRow>
+          <FieldRow label="prompt" hint="Use variables from start or upstream nodes.">
+            <WorkflowTemplateTextarea
+              value={promptValue}
+              variables={availableVariables}
+              disabled={!isEditable}
+              rows={5}
+              onChange={(prompt) => updateNode(selectedNode.id, { prompt, input: prompt })}
+            />
+          </FieldRow>
+          <WorkflowOutputContract node={selectedNode} />
+        </>
+      );
+    }
+    if (selectedNode.type === 'llm') {
+      return (
+        <>
+          <FieldRow label="response format">
+            <SettingsMenuSelect
+              className="workflow-menu-select"
+              value={selectedNode.response_format || 'text'}
+              options={[
+                { id: 'text', label: 'Text' },
+                { id: 'json_object', label: 'JSON object' },
+              ]}
+              onChange={(response_format) => updateNode(selectedNode.id, { response_format })}
+              disabled={!isEditable}
+            />
+          </FieldRow>
+          <FieldRow label="prompt">
+            <WorkflowTemplateTextarea
+              value={selectedNode.prompt || '{{input.message}}'}
+              variables={availableVariables}
+              disabled={!isEditable}
+              rows={6}
+              onChange={(prompt) => updateNode(selectedNode.id, { prompt })}
+            />
+          </FieldRow>
+          <WorkflowOutputContract node={selectedNode} />
+        </>
+      );
+    }
+    if (selectedNode.type === 'tool') {
+      return (
+        <>
+          <FieldRow label="tool name">
+            <input value={selectedNode.tool_name || ''} onChange={(event) => updateNode(selectedNode.id, { tool_name: event.target.value })} disabled={!isEditable} placeholder="tool name" />
+          </FieldRow>
+          <FieldRow label="arguments json" hint="Objects and arrays render variables recursively.">
+            <WorkflowTemplateTextarea
+              value={workflowArgumentsText(selectedNode.arguments)}
+              variables={availableVariables}
+              disabled={!isEditable}
+              rows={6}
+              onChange={(argumentsText) => updateNode(selectedNode.id, { arguments: argumentsText })}
+            />
+          </FieldRow>
+          <WorkflowOutputContract node={selectedNode} />
+        </>
+      );
+    }
+    if (selectedNode.type === 'condition') {
+      return (
+        <>
+          <FieldRow label="expression" hint="P0 supports restricted comparisons: equals, not equals, contains, exists, and truthiness.">
+            <WorkflowTemplateTextarea
+              value={selectedNode.expression || ''}
+              variables={availableVariables}
+              disabled={!isEditable}
+              rows={4}
+              onChange={(expression) => updateNode(selectedNode.id, { expression })}
+            />
+          </FieldRow>
+          <WorkflowOutputContract node={selectedNode} />
+        </>
+      );
+    }
+    if (selectedNode.type === 'output') {
+      const outputMode = selectedNode.output_mode || (selectedNode.output_mapping ? 'json_object' : 'text');
+      const outputEntries = workflowOutputMappingEntries(selectedNode);
+      const updateOutputEntries = (entries) => updateNode(selectedNode.id, buildWorkflowOutputPatch(entries));
+      return (
+        <>
+          <FieldRow label="response type">
+            <SettingsMenuSelect
+              className="workflow-menu-select"
+              value={outputMode}
+              options={[
+                { id: 'text', label: 'Text' },
+                { id: 'json_object', label: 'Structured JSON' },
+              ]}
+              onChange={(mode) => {
+                if (mode === 'json_object') {
+                  updateNode(selectedNode.id, buildWorkflowOutputPatch(outputEntries));
+                  return;
+                }
+                updateNode(selectedNode.id, {
+                  output_mode: 'text',
+                  output: selectedNode.output || outputEntries[0]?.value || '{{input.message}}',
+                  output_mapping: undefined,
+                });
+              }}
+              disabled={!isEditable}
+            />
+          </FieldRow>
+          {outputMode === 'json_object' ? (
+            <div className="workflow-json-editor">
+              <div className="workflow-json-editor-head">
+                <span>output</span>
+                <small>object</small>
+                {isEditable ? (
+                  <button
+                    type="button"
+                    className="workflow-json-add"
+                    onClick={() => updateOutputEntries([
+                      ...outputEntries,
+                      { key: `field_${outputEntries.length + 1}`, value: '', type: 'any' },
+                    ])}
+                  >
+                    + field
+                  </button>
+                ) : null}
+              </div>
+              <div className="workflow-json-code is-editable" aria-label="output json">
+                <div className="workflow-json-line">
+                  <span className="workflow-json-punct">{'{'}</span>
+                </div>
+              {outputEntries.map((entry, index) => (
+                <div className="workflow-json-edit-field" key={`${entry.key}:${index}`}>
+                  <div className="workflow-json-edit-key">
+                    <span className="workflow-json-indent" aria-hidden="true" />
+                    <span className="workflow-json-key">"</span>
+                    <input
+                      className="workflow-json-key-input"
+                      value={entry.key}
+                      disabled={!isEditable}
+                      placeholder="field name"
+                      onChange={(event) => {
+                        const key = event.target.value;
+                        const next = outputEntries.map((item, itemIndex) => (
+                          itemIndex === index ? { ...item, key } : item
+                        ));
+                        updateOutputEntries(next);
+                      }}
+                    />
+                    <span className="workflow-json-key">"</span>
+                    <span className="workflow-json-punct">:</span>
+                  </div>
+                  <div className="workflow-json-edit-value">
+                    <WorkflowVariableSelect
+                      value={entry.value}
+                      variables={availableVariables}
+                      disabled={!isEditable}
+                      onChange={(value) => {
+                        const nextType = workflowVariableTypeForValue(value, availableVariables);
+                        const next = outputEntries.map((item, itemIndex) => (
+                          itemIndex === index ? { ...item, value, type: nextType } : item
+                        ));
+                        updateOutputEntries(next);
+                      }}
+                    />
+                  </div>
+                  <div className="workflow-json-edit-actions">
+                    {isEditable ? (
+                      <button
+                        type="button"
+                        className="workflow-json-delete"
+                        aria-label={`delete ${entry.key || 'field'}`}
+                        onClick={() => updateOutputEntries(outputEntries.filter((_, itemIndex) => itemIndex !== index))}
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                    {index < outputEntries.length - 1 ? <span className="workflow-json-punct">,</span> : null}
+                  </div>
+                </div>
+              ))}
+                <div className="workflow-json-line">
+                  <span className="workflow-json-punct">{'}'}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <FieldRow label="final text">
+              <WorkflowTemplateTextarea
+                value={selectedNode.output || '{{input.message}}'}
+                variables={availableVariables}
+                disabled={!isEditable}
+                rows={6}
+                onChange={(output) => updateNode(selectedNode.id, { output_mode: 'text', output })}
+              />
+            </FieldRow>
+          )}
+        </>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div className="settings-editor-form settings-workflow-form">
+      <div className="workflow-builder">
+        <div className="workflow-toolbar">
+          <div>
+            <strong>Canvas</strong>
+            <span>{workflow.custom ? 'Custom workflow' : 'System preset'}</span>
+          </div>
+          {isEditable ? (
+            <div className="workflow-toolbar-actions">
+              <button type="button" className="settings-row-button" onClick={loadExampleWorkflow}>
+                Load example
+              </button>
+              {typeOptions.map((type) => (
+                <button type="button" className="settings-row-button" key={type.id} onClick={() => addNode(type.id)}>
+                  <SettingsLucideIcon name="plus" />
+                  {type.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <div className="workflow-canvas">
+                  {ReactFlowCanvas ? (
+            <ReactFlowCanvas
+              nodes={reactNodes}
+              edges={reactEdges}
+              nodeTypes={WORKFLOW_REACT_FLOW_NODE_TYPES}
+              onNodeClick={(_, node) => {
+                setSelectedNodeId(node.id);
+                setSelectedEdgeId('');
+              }}
+              onEdgeClick={(_, edge) => {
+                setSelectedEdgeId(edge.id);
+                setSelectedNodeId('');
+              }}
+              onPaneClick={() => {
+                setSelectedNodeId('');
+                setSelectedEdgeId('');
+              }}
+              onNodesChange={onReactFlowNodesChange}
+              onEdgesChange={onReactFlowEdgesChange}
+              onConnect={onReactFlowConnect}
+              onNodeDragStop={onReactFlowNodeDragStop}
+              nodesDraggable={isEditable}
+              nodesConnectable={isEditable}
+              edgesFocusable={isEditable}
+              elementsSelectable
+              deleteKeyCode={isEditable ? ['Backspace', 'Delete'] : null}
+              connectionRadius={46}
+              fitView
+              fitViewOptions={{ padding: 0.22 }}
+              snapToGrid
+              snapGrid={[20, 20]}
+              defaultEdgeOptions={{ type: 'smoothstep' }}
+              proOptions={{ hideAttribution: true }}
+            >
+              {Background ? <Background gap={24} color="rgba(176, 206, 255, 0.08)" /> : null}
+              {Controls ? <Controls showInteractive={false} /> : null}
+            </ReactFlowCanvas>
+          ) : (
+            <div className="settings-empty">React Flow failed to load.</div>
+          )}
+        </div>
+      </div>
+      <div className="workflow-node-panel">
+        <div className="workflow-node-panel-head">
+          <div>
+            <span>{selectedEdge ? 'Connection' : 'Node'}</span>
+            <strong>{selectedEdge ? `${selectedEdge.from} -> ${selectedEdge.to}` : (selectedNode?.label || selectedNode?.id || 'None')}</strong>
+          </div>
+          {isEditable && selectedNode && !['start', 'output'].includes(selectedNode.type) ? (
+            <button type="button" className="settings-row-button danger" onClick={() => deleteNode(selectedNode.id)}>Delete</button>
+          ) : null}
+          {isEditable && selectedEdge ? (
+            <button type="button" className="settings-row-button danger" onClick={deleteSelection}>Delete</button>
+          ) : null}
+        </div>
+        {selectedEdge ? (
+          <div className="workflow-node-help">
+            Connection: {selectedEdge.from} -> {selectedEdge.to}
+          </div>
+        ) : selectedNode ? (
+          <>
+            <FieldRow label="label">
+              <input value={selectedNode.label || ''} onChange={(event) => updateNode(selectedNode.id, { label: event.target.value })} disabled={!isEditable || ['start', 'output'].includes(selectedNode.type)} />
+            </FieldRow>
+            {renderNodeFields()}
+          </>
+        ) : (
+          <div className="settings-empty">Select a node.</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -2153,12 +3398,18 @@ function SettingsPage({
   onRecordsChange,
   agentSettings,
   onAgentSettingsChange,
+  workflowSettings,
+  onWorkflowSettingsChange,
   onSave,
   onSaveTools,
   onTogglePresetAgent,
   onCreateCustomAgent,
   onSaveCustomAgent,
   onDeleteCustomAgent,
+  onTogglePresetWorkflow,
+  onCreateCustomWorkflow,
+  onSaveCustomWorkflow,
+  onDeleteCustomWorkflow,
   onTestLlmConfig,
   onTestWebProvider,
   onTestSettingsConnection,
@@ -2178,7 +3429,7 @@ function SettingsPage({
     ? selectionBySection[activeSection]
     : (subtabs[0]?.id || '');
   const showConfigList = activeSection !== 'tools';
-  const displayItems = configItemsForSection(activeSection, llmDraft, records, activeSubtab, agentSettings);
+  const displayItems = configItemsForSection(activeSection, llmDraft, records, activeSubtab, agentSettings, workflowSettings);
   const items = showConfigList ? displayItems : [];
   const selectionKey = activeSection === 'llm' ? 'llmConfig' : activeSection;
   const selectedConfigId = selectionBySection[selectionKey] || '';
@@ -2249,6 +3500,19 @@ function SettingsPage({
       }
       return;
     }
+    if (draft.section === 'workflow') {
+      onWorkflowSettingsChange((prev) => {
+        const next = normalizeWorkflowSettings(prev);
+        return {
+          ...next,
+          custom: next.custom.filter((item) => item.workflow_id !== draft.id),
+        };
+      });
+      if (selectionBySection.workflow === draft.id) {
+        onSelectionChange((prev) => ({ ...prev, workflow: DIRECT_AGENT_WORKFLOW_ID }));
+      }
+      return;
+    }
     onRecordsChange((prev) => ({
       ...prev,
       [draft.section]: (prev[draft.section] || []).filter((item) => item.id !== draft.id),
@@ -2282,6 +3546,14 @@ function SettingsPage({
       if (id) {
         selectItem(id);
         openEditor('agent', id, 'new');
+      }
+      return;
+    }
+    if (activeSection === 'workflow') {
+      const id = await onCreateCustomWorkflow?.();
+      if (id) {
+        selectItem(id);
+        openEditor('workflow', id, 'new');
       }
       return;
     }
@@ -2347,22 +3619,40 @@ function SettingsPage({
     openEditor(activeSection, record.id, 'new');
   };
   const showSideEditor = showConfigList && Boolean(editingSettings);
-  const workbenchClassName = `settings-workbench ${showConfigList ? `provider-list-only ${showSideEditor ? 'has-detail' : ''}` : `single-pane ${isMcpConfigPane ? 'mcp-pane' : ''}`}`;
+  const workbenchClassName = `settings-workbench ${activeSection === 'workflow' ? 'workflow-workbench' : ''} ${showConfigList ? `provider-list-only ${showSideEditor ? 'has-detail' : ''}` : `single-pane ${isMcpConfigPane ? 'mcp-pane' : ''}`}`;
   const panelSection = editingSettings?.section || '';
   const panelSelectedId = editingSettings?.id || '';
   const panelMode = editingSettings?.mode || 'edit';
-  const panelItems = panelSection === activeSection ? displayItems : configItemsForSection(panelSection, llmDraft, records, activeSubtab, agentSettings);
+  const panelItems = panelSection === activeSection ? displayItems : configItemsForSection(panelSection, llmDraft, records, activeSubtab, agentSettings, workflowSettings);
   const panelSelectedItem = panelItems.find((item) => item.id === panelSelectedId) || null;
   const panelEyebrow = panelMode === 'new' ? 'New' : 'Edit';
   const panelIsConnectionSection = panelSection === 'memory' || panelSection === 'knowledge';
   const panelConnectionStatus = settingsConnectionStatus?.[panelSection]?.[panelSelectedId];
   const panelConnectionTesting = panelConnectionStatus?.state === 'testing';
-  const deleteConfig = (section, id) => {
-    const sectionItems = section === activeSection ? displayItems : configItemsForSection(section, llmDraft, records, activeSubtab, agentSettings);
+  const panelCanSave = !(panelSection === 'workflow' && !panelSelectedItem?.custom);
+  const panelWorkflow = panelSection === 'workflow' ? workflowById(workflowSettings, panelSelectedId) : null;
+  const updatePanelWorkflow = (patch) => {
+    if (!panelWorkflow?.custom) return;
+    onWorkflowSettingsChange((prev) => {
+      const next = normalizeWorkflowSettings(prev);
+      return {
+        ...next,
+        custom: next.custom.map((item) => (
+          item.workflow_id === panelWorkflow.workflow_id ? normalizeWorkflowRow({ ...item, ...patch }, item) : item
+        )),
+      };
+    });
+  };
+  const deleteConfig = async (section, id) => {
+    const sectionItems = section === activeSection ? displayItems : configItemsForSection(section, llmDraft, records, activeSubtab, agentSettings, workflowSettings);
     const target = sectionItems.find((item) => item.id === id);
     if (!target || target.protected) return;
     if (section === 'agent') {
-      onDeleteCustomAgent?.(id);
+      const deleted = await onDeleteCustomAgent?.(id);
+      if (deleted === false) return;
+    } else if (section === 'workflow') {
+      const deleted = await onDeleteCustomWorkflow?.(id);
+      if (deleted === false) return;
     } else if (section === 'llm') {
       onLlmDraftChange((prev) => ({
         ...prev,
@@ -2375,15 +3665,21 @@ function SettingsPage({
       }));
     }
     if (section === activeSection) {
-      const fallback = sectionItems.find((item) => item.id !== id);
-      selectItem(fallback?.id || '');
+      if (section === 'workflow') {
+        selectItem(DIRECT_AGENT_WORKFLOW_ID);
+      } else {
+        const fallback = sectionItems.find((item) => item.id !== id);
+        selectItem(fallback?.id || '');
+      }
     }
     if (editingSettings?.section === section && editingSettings?.id === id) closeEditor();
   };
   const saveAndClose = async () => {
     const saved = panelSection === 'agent'
       ? await onSaveCustomAgent?.(panelSelectedId)
-      : await onSave();
+      : panelSection === 'workflow'
+        ? await onSaveCustomWorkflow?.(panelSelectedId)
+        : await onSave();
     if (saved !== false) closeEditor();
   };
   const testSelectedProvider = async () => {
@@ -2426,6 +3722,17 @@ function SettingsPage({
           selectedId={id}
           settings={agentSettings}
           onSettingsChange={onAgentSettingsChange}
+          readOnly={readOnly}
+        />
+      );
+    }
+    if (section === 'workflow') {
+      return (
+        <WorkflowConfigEditor
+          selectedId={id}
+          settings={workflowSettings}
+          onSettingsChange={onWorkflowSettingsChange}
+          agentSettings={agentSettings}
           readOnly={readOnly}
         />
       );
@@ -2566,6 +3873,15 @@ function SettingsPage({
 	                            {item.enabled === false ? 'Enable' : 'Disable'}
 	                          </button>
 	                        ) : null}
+	                        {activeSection === 'workflow' && item.canToggle ? (
+	                          <button
+	                            type="button"
+	                            className={item.enabled === false ? 'settings-row-button' : 'settings-row-button danger'}
+	                            onClick={() => onTogglePresetWorkflow?.(item.id, item.enabled === false)}
+	                          >
+	                            {item.enabled === false ? 'Enable' : 'Disable'}
+	                          </button>
+	                        ) : null}
 	                        {activeSection !== 'agent' || item.canConfigure ? (
 	                          <button
 	                            type="button"
@@ -2588,6 +3904,15 @@ function SettingsPage({
                             Delete
                           </button>
                         ) : null}
+                        {activeSection === 'workflow' && item.custom ? (
+                          <button
+                            type="button"
+                            className="settings-row-button danger"
+                            onClick={() => deleteConfig('workflow', item.id)}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -2598,8 +3923,8 @@ function SettingsPage({
                       <SettingsLucideIcon name="plus" size={18} />
                     </span>
                     <span>
-                      <strong>{activeSection === 'llm' ? (activeSubtab === 'vision' ? 'Connect vision provider' : (activeSubtab === 'embedding' ? 'Connect embedding provider' : 'Connect provider')) : (activeSection === 'agent' ? 'Create custom agent' : `Add ${sectionMeta.label}`)}</strong>
-                      <small>{activeSection === 'llm' ? 'Use official providers or OpenAI-compatible APIs.' : (activeSection === 'agent' ? 'Define prompt, tools, skills, and sub-agent access.' : 'Create another configuration.')}</small>
+                      <strong>{activeSection === 'llm' ? (activeSubtab === 'vision' ? 'Connect vision provider' : (activeSubtab === 'embedding' ? 'Connect embedding provider' : 'Connect provider')) : (activeSection === 'agent' ? 'Create custom agent' : (activeSection === 'workflow' ? 'Create workflow' : `Add ${sectionMeta.label}`))}</strong>
+                      <small>{activeSection === 'llm' ? 'Use official providers or OpenAI-compatible APIs.' : (activeSection === 'agent' ? 'Define prompt, tools, skills, and sub-agent access.' : (activeSection === 'workflow' ? 'Arrange agents, models, tools, and output nodes.' : 'Create another configuration.'))}</small>
                     </span>
                   </button>
                 ) : null}
@@ -2612,8 +3937,17 @@ function SettingsPage({
             <section className="settings-editor settings-detail-drawer is-editing">
               <div className="settings-editor-head">
                 <div>
-                  <span>{panelEyebrow}</span>
-                  <strong>{panelSelectedItem?.title || listTitle}</strong>
+                  {panelSection === 'workflow' ? null : <span>{panelEyebrow}</span>}
+                  {panelSection === 'workflow' && panelWorkflow?.custom ? (
+                    <input
+                      className="workflow-title-input"
+                      value={panelWorkflow.display_name || ''}
+                      onChange={(event) => updatePanelWorkflow({ display_name: event.target.value })}
+                      placeholder="Workflow name"
+                    />
+                  ) : (
+                    <strong>{panelSelectedItem?.title || listTitle}</strong>
+                  )}
                 </div>
                 <button type="button" className="settings-pane-close" onClick={cancelEditor} aria-label="Close">x</button>
               </div>
@@ -2638,10 +3972,12 @@ function SettingsPage({
 	                      {panelConnectionTesting ? 'Testing...' : 'Test'}
 	                    </button>
 	                  ) : null}
-                  <button type="button" className="settings-primary-button" onClick={saveAndClose}>
-                    <SettingsLucideIcon name="save" />
-                    Save
-                  </button>
+                  {panelCanSave ? (
+                    <button type="button" className="settings-primary-button" onClick={saveAndClose}>
+                      <SettingsLucideIcon name="save" />
+                      Save
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </section>
@@ -2736,6 +4072,11 @@ const CHAT_FINAL_FOLLOWUP_EVENT_TYPES = new Set([
 const STREAM_IMMEDIATE_EVENT_TYPES = new Set([
   'context_compaction_started',
   'context_compaction_completed',
+  'llm_thinking_delta',
+  'llm_answer_delta',
+  'agent_progress_delta',
+  'sub_agent_progress_delta',
+  'sub_agent_answer_delta',
 ]);
 
 const SCENE_CATCHUP_TOOL_EVENT_TYPES = new Set([
@@ -2759,6 +4100,15 @@ const PROVIDER_SCENE_EVENT_TYPES = new Set([
 const WORLD_EVENT_TYPE_ALIASES = {
   gateway_received: 'agent_gateway_received',
   gateway_reported: 'agent_gateway_reported',
+  llm_started: 'llm_thinking_started',
+  answer_delta: 'llm_answer_delta',
+  text_delta: 'llm_answer_delta',
+  message_delta: 'llm_answer_delta',
+  content_delta: 'llm_answer_delta',
+  thinking_delta: 'llm_thinking_delta',
+  reasoning_delta: 'llm_thinking_delta',
+  final_answer: 'llm_final_answer',
+  task_completed: 'run_finished',
 };
 
 const WORLD_EVENT_TAG_MAP = {
@@ -2899,7 +4249,7 @@ function normalizeWorldEvents(events) {
 }
 
 function worldEventToRuntimeLog(event) {
-  const deltaText = toDisplayText(event.delta ?? event.text ?? event.content_delta ?? '');
+  const deltaText = eventDeltaText(event);
   return {
     type: event.type,
     timestamp: event.timestamp,
@@ -2930,7 +4280,7 @@ function worldEventToRuntimeLog(event) {
     estimatedTokens: event.estimated_tokens || null,
     compressed: Boolean(event.compressed),
     delta: deltaText,
-    message: toDisplayText(event.message || event.delta || event.text || event.content_delta || event.content || null),
+    message: toDisplayText(event.message || deltaText || event.content || null),
     loopIndex: event.loop_index || 0,
   };
 }
@@ -4448,7 +5798,19 @@ function appendAnswerDelta(current, delta) {
 }
 
 function eventDeltaText(event) {
-  return String(event?.delta ?? event?.text ?? event?.contentDelta ?? event?.content_delta ?? event?.message ?? '');
+  return String(
+    event?.delta
+    ?? event?.text
+    ?? event?.contentDelta
+    ?? event?.content_delta
+    ?? event?.content
+    ?? event?.message
+    ?? event?.data?.delta
+    ?? event?.data?.text
+    ?? event?.payload?.delta
+    ?? event?.payload?.text
+    ?? ''
+  );
 }
 
 function chatTraceToolName(value) {
@@ -4991,14 +6353,18 @@ function buildChatTimeline(task, taskStatus) {
     currentSkillItem = null;
   };
 
+  let textBufSource = 'progress';
   const flushText = () => {
     const value = textBuf;
+    const source = textBufSource;
     textBuf = '';
+    textBufSource = 'progress';
     if (!value.trim()) return;
     items.push({
       kind: 'text',
       id: `text-${textSegmentIndex}`,
       text: value,
+      source,
       streaming: false,
     });
     textSegmentIndex += 1;
@@ -5008,6 +6374,7 @@ function buildChatTimeline(task, taskStatus) {
   for (const event of events) {
     const type = event.type;
     if (type === 'llm_thinking_delta') {
+      thinkingBuf += eventDeltaText(event);
       continue;
     }
     if (type === 'context_compaction_started' || type === 'context_compaction_completed') {
@@ -5041,13 +6408,15 @@ function buildChatTimeline(task, taskStatus) {
     }
     if (type === 'llm_answer_delta') {
       flushThinking(false);
-      textBuf += event.message || '';
+      textBuf += eventDeltaText(event);
+      textBufSource = 'answer';
       continue;
     }
     if (type === 'agent_progress_delta') {
       flushThinking(false);
       if (textBuf.trim()) flushText();
       textBuf += event.message || '';
+      textBufSource = 'progress';
       flushText();
       continue;
     }
@@ -5170,6 +6539,7 @@ function buildChatTimeline(task, taskStatus) {
       kind: 'text',
       id: `text-${textSegmentIndex}`,
       text: textBuf,
+      source: textBufSource,
       streaming: isRunning,
     });
     textSegmentIndex += 1;
@@ -5860,6 +7230,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }));
   const [agentLoading, setAgentLoading] = useState(true);
   const [agentSettingsDraft, setAgentSettingsDraft] = useState(() => normalizeAgentSettings(DEFAULT_AGENT_SETTINGS));
+  const [workflowSettingsDraft, setWorkflowSettingsDraft] = useState(() => normalizeWorkflowSettings(DEFAULT_WORKFLOW_SETTINGS));
 
   const stageRef = useRef(null);
   const abortRef = useRef(false);
@@ -5881,7 +7252,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     memory: 'memory-neo4j',
     knowledge: 'knowledge-qdrant',
     agent: 'agent-default',
-    workflow: 'workflow-default',
+    workflow: DIRECT_AGENT_WORKFLOW_ID,
   }));
   const [skillActionBusy, setSkillActionBusy] = useState('');
   const [calibrationTarget, setCalibrationTarget] = useState('stations');
@@ -5899,6 +7270,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   const conversationIdRef = useRef(null);
   const cancelledRunIdsRef = useRef(new Set());
   const fetchAbortRef = useRef(null);
+  const conversationDetailAbortRef = useRef(null);
   const answerBufferRef = useRef('');
   const chatFinalizedTaskIdsRef = useRef(new Set());
   const userCancelledTaskIdsRef = useRef(new Set());
@@ -6036,6 +7408,31 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           return;
         }
         console.warn('failed to fetch agent settings', error);
+        showToast('error', String(error?.message || error));
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [calibrationMode, settingsSection]);
+
+  useEffect(() => {
+    if (!calibrationMode || settingsSection !== 'workflow') return undefined;
+    let cancelled = false;
+    let retryTimer = null;
+    const load = async (attempt = 0) => {
+      try {
+        const payload = await fetchWorkflowSettingsPayload();
+        if (!cancelled) applyWorkflowSettingsPayload(payload);
+      } catch (error) {
+        if (cancelled) return;
+        if (attempt < 4) {
+          retryTimer = window.setTimeout(() => load(attempt + 1), 400 * (attempt + 1));
+          return;
+        }
+        console.warn('failed to fetch workflow settings', error);
         showToast('error', String(error?.message || error));
       }
     };
@@ -6324,6 +7721,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     return () => {
       cancelled = true;
       fetchAbortRef.current?.abort?.();
+      conversationDetailAbortRef.current?.abort?.();
     };
   }, []);
 
@@ -6362,6 +7760,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       fetchController: null,
       answerBuffer: '',
       cancelledRunIds: new Set(),
+      abortRequested: false,
+      shellSeeded: false,
     };
   }
 
@@ -6557,14 +7957,76 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     resetSceneActors();
   }
 
-  async function activateConversationDetail(detail, { restoreLatest = true } = {}) {
+  function runtimeTaskFromConversationTask(task) {
+    if (!task) return null;
+    if (task.taskId) return { ...task };
+    if (task.task_id) return taskSummaryToRuntimeTask(task, [], userIdRef.current);
+    return null;
+  }
+
+  function activateConversationShell(projectId, nextConversationId) {
+    if (!nextConversationId || nextConversationId === conversationIdRef.current) return;
+    const previousId = conversationIdRef.current;
+    if (previousId) flushRuntimeTasksToWorkspace(previousId);
+    if (previousId && previousId !== nextConversationId) {
+      detachActiveRunFromCurrentConversation();
+    }
+    conversationIdRef.current = nextConversationId;
+    setConversationId(nextConversationId);
+    setStoredConversationId(nextConversationId);
+    const storedContextUsage = loadStoredContextUsage(nextConversationId);
+    setContextUsage(storedContextUsage);
+    saveStoredContextUsage(storedContextUsage);
+
+    const project = workspaceState.projects.find((item) => item.id === projectId)
+      || findProjectByConversationId(workspaceState, nextConversationId);
+    setLocalWorkspace({
+      path: project?.workspacePath || window.haish?.homePath || null,
+      label: project?.workspaceLabel || project?.name || null,
+    });
+    setConversationAttachments([]);
+    setAgentLive({});
+
+    const existingRuntime = getRuntime(nextConversationId);
+    if (existingRuntime) {
+      syncDisplayedRuntime(existingRuntime);
+      return;
+    }
+
+    const conversation = findConversationById(workspaceState, nextConversationId);
+    const summaryTasks = (Array.isArray(conversation?.tasks) ? conversation.tasks : [])
+      .map(runtimeTaskFromConversationTask)
+      .filter(Boolean);
+    const taskEntries = summaryTasks
+      .map((task) => [task.taskId || task.id, task])
+      .filter(([taskId]) => Boolean(taskId));
+    const taskOrder = taskEntries.map(([taskId]) => taskId);
+    const activeTask = summaryTasks.find(isTaskActuallyActive) || null;
+    mutateRuntime(nextConversationId, (rt) => {
+      rt.worldTaskState = {
+        activeTaskId: activeTask?.taskId || activeTask?.id || null,
+        pendingTask: null,
+        taskOrder,
+        tasksById: Object.fromEntries(taskEntries),
+      };
+      rt.busy = Boolean(activeTask);
+      rt.activeRunId = null;
+      rt.activeTaskId = activeTask?.taskId || activeTask?.id || null;
+      rt.fetchController = null;
+      rt.answerBuffer = '';
+      rt.cancelledRunIds = new Set();
+      rt.abortRequested = false;
+      rt.shellSeeded = true;
+    });
+  }
+
+  async function activateConversationDetail(detail, { restoreLatest = true, activationSeq = null } = {}) {
     if (!detail?.conversation_id) return;
-    // Race model (matches f2ee298 baseline): every activate bumps the
-    // activation seq; any awaited work that resumes after a newer activation
-    // started will see its seq invalidated and bail. handleSelect{Conversation,
-    // Project,...} also use the same seq for fetch-stage cancellation.
-    const activationSeq = invalidateConversationActivation();
-    const isCurrentActivation = () => isConversationActivationCurrent(activationSeq);
+    // Race model: standalone activates bump the activation seq. Conversation
+    // selection passes its existing seq so the immediate shell switch and the
+    // later detail hydration share the same stale-response guard.
+    const nextActivationSeq = activationSeq || invalidateConversationActivation();
+    const isCurrentActivation = () => isConversationActivationCurrent(nextActivationSeq);
     // 切走前先把当前 conversation 的实时 worldTaskState flush 回
     // workspaceState[当前 conversation].tasks。否则切到别的会话后，旧会话
     // sidebar 节点会回退到上一次 activate 时拉到的 detail.tasks 快照，刚跑
@@ -6630,7 +8092,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     // the freshly-fetched detail and seed/refresh the runtime accordingly.
     const incomingRuntime = getRuntime(restoredConversationId);
     const incomingHasInflight = Boolean(
-      incomingRuntime && (incomingRuntime.busy || incomingRuntime.activeRunId || incomingRuntime.fetchController)
+      incomingRuntime
+      && !incomingRuntime.shellSeeded
+      && (incomingRuntime.busy || incomingRuntime.activeRunId || incomingRuntime.fetchController)
     );
 
     if (incomingHasInflight) {
@@ -6662,6 +8126,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         rt.fetchController = null;
         rt.answerBuffer = '';
         rt.cancelledRunIds = new Set();
+        rt.abortRequested = false;
+        rt.shellSeeded = false;
       });
     }
 
@@ -6682,9 +8148,10 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     }
   }
 
-  async function fetchConversationDetail(nextConversationId) {
+  async function fetchConversationDetail(nextConversationId, { signal } = {}) {
     const detailResponse = await authFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
       method: 'GET',
+      signal,
     }, { json: false });
     if (!detailResponse.ok) {
       throw new Error(`conversation restore failed: ${detailResponse.status}`);
@@ -6839,7 +8306,6 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function appendTaskEvent(taskId, event) {
-    if (event.type === 'llm_thinking_delta') return;
     updateTaskById(taskId, (task) => ({
       ...task,
       loopIndex: Math.max(task.loopIndex || 0, event.loop_index || 0),
@@ -7136,7 +8602,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 
   function isChatOriginTask(taskId, targetConvId = null) {
     const task = getTaskById(taskId, targetConvId);
-    return task?.originViewMode === 'chat' || viewModeRef.current === 'chat';
+    return task?.originViewMode === 'chat';
   }
 
   function pumpSceneQueue() {
@@ -7741,6 +9207,106 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       }
       applyAgentSettingsPayload(await response.json());
       showToast('success', 'custom agent deleted');
+      return true;
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+      return false;
+    }
+  }
+
+  function applyWorkflowSettingsPayload(payload) {
+    const normalized = normalizeWorkflowSettings(payload);
+    setWorkflowSettingsDraft(normalized);
+    return normalized;
+  }
+
+  async function fetchWorkflowSettingsPayload() {
+    const response = await authFetch(`${API_BASE}/api/settings/workflows`, { method: 'GET' }, { json: false });
+    if (!response.ok) {
+      const message = await parseResponseMessage(response, `workflow settings fetch failed: ${response.status}`);
+      throw new Error(message);
+    }
+    return response.json();
+  }
+
+  async function handleTogglePresetWorkflow(workflowId, enabled) {
+    try {
+      const response = await authFetch(`${API_BASE}/api/settings/workflows/presets/${encodeURIComponent(workflowId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `workflow settings save failed: ${response.status}`);
+        throw new Error(message);
+      }
+      applyWorkflowSettingsPayload(await response.json());
+      showToast('success', 'workflow settings saved');
+      return true;
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+      return false;
+    }
+  }
+
+  async function handleCreateCustomWorkflow() {
+    const draft = createDefaultCustomWorkflowPayload();
+    setWorkflowSettingsDraft((prev) => {
+      const normalized = normalizeWorkflowSettings(prev);
+      return { ...normalized, custom: [...normalized.custom, draft] };
+    });
+    return draft.workflow_id;
+  }
+
+  async function handleSaveCustomWorkflow(workflowId) {
+    try {
+      const current = workflowById(workflowSettingsDraft, workflowId);
+      if (!current) throw new Error('custom workflow not found');
+      const payload = payloadForCustomWorkflow(current);
+      const isDraft = Boolean(current.draft);
+      const endpoint = isDraft
+        ? `${API_BASE}/api/settings/workflows/custom`
+        : `${API_BASE}/api/settings/workflows/custom/${encodeURIComponent(workflowId)}`;
+      const response = await authFetch(endpoint, {
+        method: isDraft ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `workflow save failed: ${response.status}`);
+        throw new Error(message);
+      }
+      applyWorkflowSettingsPayload(await response.json());
+      showToast('success', 'custom workflow saved');
+      return true;
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+      return false;
+    }
+  }
+
+  async function handleDeleteCustomWorkflow(workflowId) {
+    try {
+      const current = workflowById(workflowSettingsDraft, workflowId);
+      if (current?.draft) {
+        setWorkflowSettingsDraft((prev) => {
+          const normalized = normalizeWorkflowSettings(prev);
+          return {
+            ...normalized,
+            custom: normalized.custom.filter((item) => item.workflow_id !== workflowId),
+          };
+        });
+        return true;
+      }
+      const response = await authFetch(`${API_BASE}/api/settings/workflows/custom/${encodeURIComponent(workflowId)}`, {
+        method: 'DELETE',
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `workflow delete failed: ${response.status}`);
+        throw new Error(message);
+      }
+      applyWorkflowSettingsPayload(await response.json());
+      showToast('success', 'custom workflow deleted');
       return true;
     } catch (error) {
       showToast('error', String(error?.message || error));
@@ -8481,6 +10047,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     const targetConversationId = conversationIdRef.current || conversationId;
     if (!file || !targetConversationId) return;
     const uploadController = new AbortController();
+    mutateRuntime(targetConversationId, (rt) => {
+      rt.abortRequested = false;
+    });
     setRuntimeFetchController(uploadController, targetConversationId);
     setComposerAttachment({
       name: file.name,
@@ -8510,7 +10079,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       if (conversationIdRef.current === targetConversationId) {
         setComposerAttachment(null);
       }
-      if (conversationIdRef.current === targetConversationId && !(abortRef.current || error?.name === 'AbortError')) {
+      const targetRuntime = getRuntime(targetConversationId);
+      const uploadAborted = targetRuntime ? targetRuntime.abortRequested : abortRef.current;
+      if (conversationIdRef.current === targetConversationId && !(uploadAborted || error?.name === 'AbortError')) {
         showToast('error', `upload failed: ${String(file.name || '').toLowerCase()}`);
       }
       throw error;
@@ -8645,10 +10216,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function applyWorldEvent(event, targetConvId = null) {
-    if (event.type === 'llm_thinking_delta') {
-      return;
-    }
-    const eventConversationId = event.conversation_id || null;
+  const eventConversationId = event.conversation_id || null;
     const ownerConvId = activeRuntimeTargetConvId(targetConvId);
     if (eventConversationId && ownerConvId && eventConversationId !== ownerConvId) {
       return;
@@ -8666,7 +10234,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     }
     appendTaskEvent(taskId, event);
     const loopIndex = Math.max(1, event.loop_index || 1);
-    if (isChatOriginTask(taskId)) {
+    if (isChatOriginTask(taskId, ownerConvId)) {
       const progressLine = getChatProgressLine(event);
       if (progressLine) {
         updateTaskById(taskId, (run) => ({
@@ -8899,10 +10467,12 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         }
         setRuntimeAnswerBuffer(appendAnswerDelta(
           readRuntimeAnswerBuffer(),
-          event.delta || event.text || event.content_delta || ''
+          eventDeltaText(event)
         ));
         updateTaskById(taskId, (run) => ({
           ...run,
+          status: isTerminalTaskStatus(run.status) ? run.status : 'running',
+          stage: 'in_progress',
           answerText: readRuntimeAnswerBuffer(),
           chatStreamText: run.chatStreamText,
           loopIndex,
@@ -8910,8 +10480,17 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         break;
       }
       case 'llm_final_answer': {
-        setRuntimeAnswerBuffer(event.content || readRuntimeAnswerBuffer());
-        if (isChatOriginTask(taskId)) {
+        const finalAnswerText = toDisplayText(
+          event.content
+          ?? event.answer_text
+          ?? event.answer
+          ?? event.final_answer
+          ?? event.text
+          ?? event.message
+          ?? readRuntimeAnswerBuffer()
+        );
+        setRuntimeAnswerBuffer(finalAnswerText || readRuntimeAnswerBuffer());
+        if (isChatOriginTask(taskId, ownerConvId)) {
           chatFinalizedTaskIdsRef.current.add(taskId);
           updateTaskById(taskId, (run) => ({
             ...run,
@@ -8941,7 +10520,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         break;
       }
       case 'agent_gateway_reported':
-        if (isChatOriginTask(taskId)) {
+        if (isChatOriginTask(taskId, ownerConvId)) {
           chatFinalizedTaskIdsRef.current.add(taskId);
           pendingPresentationTaskIdsRef.current.delete(taskId);
           updateTaskById(taskId, (run) => ({
@@ -9060,7 +10639,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
             sceneCatchup: hasPresentationPending,
           };
         });
-        if (shouldWaitForPresentation && !isChatOriginTask(taskId)) {
+        if (shouldWaitForPresentation && !isChatOriginTask(taskId, ownerConvId)) {
           compactPendingSceneItems(taskId, ownerConvId);
           break;
         }
@@ -9076,7 +10655,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         break;
     }
 
-    if (WORLD_SCENE_EVENT_TYPES.has(event.type) && !isChatOriginTask(taskId)) {
+    if (WORLD_SCENE_EVENT_TYPES.has(event.type) && !isChatOriginTask(taskId, ownerConvId)) {
       scheduleSceneEvent(event, taskId, ownerConvId);
     }
   }
@@ -9094,8 +10673,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       rt.cancelledRunIds.delete(runId);
       rt.answerBuffer = '';
       rt.busy = true;
+      rt.abortRequested = false;
+      rt.shellSeeded = false;
     });
-    abortRef.current = false;
     updateWorldTaskState((state) => ({
       ...state,
       pendingTask: {
@@ -9131,7 +10711,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         setComposerAttachment(nextAttachment);
         showToast('success', `document uploaded: ${String(uploadName || '').toLowerCase()}`);
       } catch (error) {
-        if (!(abortRef.current || error?.name === 'AbortError')) {
+        const runRuntimeForError = getRuntime(runConversationId);
+        if (!((runRuntimeForError?.abortRequested) || error?.name === 'AbortError')) {
           showToast('error', `upload failed: ${String(uploadName || '').toLowerCase()}`);
         }
         throw error;
@@ -9192,7 +10773,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         for (const event of batch) {
           if (
             controller.signal.aborted
-            || abortRef.current
+            || runRuntime.abortRequested
             || runRuntime.activeRunId !== runId
             || runRuntime.cancelledRunIds.has(runId)
             || (event.conversation_id && event.conversation_id !== runConversationId)
@@ -9257,8 +10838,12 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     const runtimeBusy = targetRuntime ? targetRuntime.busy : busy;
     const hasActiveRun = runtimeBusy || taskId || currentTaskState.pendingTask || controllerToAbort;
     if (!hasActiveRun) return;
-    abortRef.current = true;
-    if (runId && targetRuntime) targetRuntime.cancelledRunIds.add(runId);
+    if (targetRuntime) {
+      targetRuntime.abortRequested = true;
+      if (runId) targetRuntime.cancelledRunIds.add(runId);
+    } else {
+      abortRef.current = true;
+    }
     if (taskId) {
       userCancelledTaskIdsRef.current.add(taskId);
       cancelActiveTask(taskId).catch((error) => {
@@ -9403,7 +10988,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
       if (deployRuntime && deployRuntime.activeRunId !== pendingTask.id) {
         return;
       }
-      if (abortRef.current || error?.name === 'AbortError') {
+      const deployAborted = deployRuntime ? deployRuntime.abortRequested : abortRef.current;
+      if (deployAborted || error?.name === 'AbortError') {
         return;
       }
       console.error(error);
@@ -9456,7 +11042,6 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   async function handleSelectConversation(projectId, nextConversationId) {
-    const requestSeq = invalidateConversationActivation();
     // Activation expands the project only. Conversation task lists are now
     // user-driven via the conversation icon, so selecting a conversation no
     // longer opens its tasks by default.
@@ -9478,14 +11063,29 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         };
       }),
     });
-    if (!nextConversationId || nextConversationId === conversationId) {
+    const currentConversationId = conversationIdRef.current || conversationId;
+    if (!nextConversationId || nextConversationId === currentConversationId) {
       setWorkspaceState((state) => normalizeWorkspaceOrdering(stampActivation(state)));
       return;
     }
+    const requestSeq = invalidateConversationActivation();
     setWorkspaceState((state) => normalizeWorkspaceOrdering(stampActivation(state)));
-    const detail = await fetchConversationDetail(nextConversationId);
-    if (!isConversationActivationCurrent(requestSeq)) return;
-    await activateConversationDetail(detail);
+    activateConversationShell(projectId, nextConversationId);
+    conversationDetailAbortRef.current?.abort?.();
+    const detailController = new AbortController();
+    conversationDetailAbortRef.current = detailController;
+    try {
+      const detail = await fetchConversationDetail(nextConversationId, { signal: detailController.signal });
+      if (!isConversationActivationCurrent(requestSeq) || detailController.signal.aborted) return;
+      await activateConversationDetail(detail, { activationSeq: requestSeq });
+    } catch (error) {
+      if (detailController.signal.aborted || error?.name === 'AbortError') return;
+      if (isConversationActivationCurrent(requestSeq)) throw error;
+    } finally {
+      if (conversationDetailAbortRef.current === detailController) {
+        conversationDetailAbortRef.current = null;
+      }
+    }
   }
 
   async function handleSelectProject(projectId) {
@@ -9969,18 +11569,23 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           || (Array.isArray(task.toolCalls) && task.toolCalls.length > 0);
         const timeline = hasTraceSource ? buildChatTimeline(task, status) : null;
         const streaming = (status === 'running' || status === 'queued') && !error;
-        // While streaming: text comes from inline timeline text segments,
-        // so the bubble's `text` stays empty to avoid double-rendering.
-        // When done: `text` holds the final markdown answer.
+        const timelineItems = Array.isArray(timeline?.items) ? timeline.items : [];
+        // While streaming, show the assistant's answer in the main bubble and
+        // keep process/progress items in the trace. Answer text items are only
+        // a transport detail for the trace builder, so filter them to avoid
+        // rendering the same tokens twice.
+        const visibleTimelineItems = streaming && answer
+          ? timelineItems.filter((item) => !(item?.kind === 'text' && item?.source === 'answer'))
+          : timelineItems;
         const bubbleText = streaming
-          ? ''
+          ? answer
           : (error || answer || (status === 'cancelled' ? 'Task was cancelled.' : ''));
         rows.push({
           id: `${taskId}-agent`,
           role: 'agent',
           text: bubbleText,
           progressLines,
-          traceTimeline: timeline?.items || [],
+          traceTimeline: visibleTimelineItems,
           traceLatestTodos: timeline?.latestTodos || null,
           status,
           streaming,
@@ -10091,12 +11696,18 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
             onRecordsChange={setSettingsRecordsDraft}
             agentSettings={agentSettingsDraft}
             onAgentSettingsChange={setAgentSettingsDraft}
+            workflowSettings={workflowSettingsDraft}
+            onWorkflowSettingsChange={setWorkflowSettingsDraft}
             onSave={handleSaveSettingsDraft}
             onSaveTools={handleSaveToolsSettingsDraft}
             onTogglePresetAgent={handleTogglePresetAgent}
             onCreateCustomAgent={handleCreateCustomAgent}
             onSaveCustomAgent={handleSaveCustomAgent}
             onDeleteCustomAgent={handleDeleteCustomAgent}
+            onTogglePresetWorkflow={handleTogglePresetWorkflow}
+            onCreateCustomWorkflow={handleCreateCustomWorkflow}
+            onSaveCustomWorkflow={handleSaveCustomWorkflow}
+            onDeleteCustomWorkflow={handleDeleteCustomWorkflow}
             onTestLlmConfig={handleTestLlmConfig}
             onTestWebProvider={handleTestWebProvider}
             onTestSettingsConnection={handleTestSettingsConnection}

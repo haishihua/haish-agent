@@ -60,7 +60,8 @@ function inlineMarkdown(text) {
   if (!text) return '';
   const out = [];
   // Order matters: code first (greedy quoting), then link `[text](url)`, then bold/italic, then bare URL.
-  const re = /(`[^`]+`)|(\[([^\]]+)\]\(([^)\s]+)\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(_[^_]+_)|((?:https?|file):\/\/[^\s<>"`)]+)/g;
+  // Underscore emphasis is intentionally not parsed because it breaks IDs such as mem_408719a58646.
+  const re = /(`[^`]+`)|(\[([^\]]+)\]\(([^)\s]+)\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|((?:https?|file):\/\/[^\s<>"`)]+)/g;
   let lastIdx = 0;
   let m;
   let key = 0;
@@ -75,9 +76,7 @@ function inlineMarkdown(text) {
     } else if (m[6]) {
       out.push(<em key={`i-${key++}`}>{m[6].slice(1, -1)}</em>);
     } else if (m[7]) {
-      out.push(<em key={`u-${key++}`}>{m[7].slice(1, -1)}</em>);
-    } else if (m[8]) {
-      out.push(<a key={`au-${key++}`} className="md-link" href={m[8]} target="_blank" rel="noopener noreferrer">{m[8]}</a>);
+      out.push(<a key={`au-${key++}`} className="md-link" href={m[7]} target="_blank" rel="noopener noreferrer">{m[7]}</a>);
     }
     lastIdx = m.index + m[0].length;
   }
