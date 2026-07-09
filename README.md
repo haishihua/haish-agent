@@ -25,6 +25,11 @@ Electron and adds native local-folder authorization for desktop projects.
 
 Build config: `vite.app-web.config.ts`.
 
+**Architecture & coding standards (required reading for UI work):**  
+[`docs/frontend-architecture-and-conventions.md`](./docs/frontend-architecture-and-conventions.md)
+
+Source tree cheat sheet: `app-web/src/lib/README.md`.
+
 ## Run Locally
 
 The haish-agent workspace has two repos:

@@ -1,5 +1,5 @@
 // @haish-esm
-import { CHAR_DEFS, WalkingSprite } from './sprites.jsx';
+import { CHAR_DEFS, WalkingSprite } from './Sprites.jsx';
 import React from 'react';
 
 // World — the office stage with characters

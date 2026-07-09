@@ -5,4 +5,4 @@ import '../styles.css';
 import '@xyflow/react/dist/style.css';
 
 import './app.jsx';
-import './approval-dialog.jsx';
+import './approval-overlay.jsx';

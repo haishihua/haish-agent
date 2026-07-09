@@ -1,5 +1,5 @@
 // @haish-esm
-import { CHAR_DEFS } from './sprites.jsx';
+import { CHAR_DEFS } from './Sprites.jsx';
 // Orchestrator — generates a quest plan from user input and produces step events.
 // Each step targets one NPC, has a kind (think|tool|mcp|skill|rag|llm|report|deliver),
 // and produces logs/animations.
