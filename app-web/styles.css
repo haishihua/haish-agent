@@ -1201,6 +1201,51 @@ svg { image-rendering: auto; shape-rendering: geometricPrecision; }
   background: rgba(176, 206, 255, 0.08);
   color: rgba(235, 240, 252, 0.9);
 }
+.settings-tooltip-icon-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgba(235, 240, 252, 0.82);
+  cursor: pointer;
+}
+.settings-tooltip-icon-button:hover,
+.settings-tooltip-icon-button:focus-visible {
+  background: rgba(176, 206, 255, 0.1);
+  color: rgba(246, 248, 255, 0.96);
+  outline: none;
+}
+.settings-tooltip-icon-button.danger {
+  color: #ff9aa3;
+}
+.settings-tooltip-icon-button.danger:hover,
+.settings-tooltip-icon-button.danger:focus-visible {
+  background: rgba(255, 110, 122, 0.12);
+  color: #ffb1b8;
+}
+.settings-tooltip-icon-button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.settings-detail-drawer .settings-tooltip-icon-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+.settings-detail-drawer .settings-tooltip-icon-button .settings-lucide {
+  width: 20px;
+  height: 20px;
+}
+.settings-config-actions .settings-tooltip-icon-button {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
 .settings-primary-button {
   border: 1px solid rgba(239, 191, 100, 0.38);
   background: rgba(239, 191, 100, 0.14);

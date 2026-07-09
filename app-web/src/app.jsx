@@ -1469,6 +1469,10 @@ const SETTINGS_LUCIDE_ICONS = {
     ['path', { d: 'M13 21h8' }],
     ['path', { d: 'M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z' }],
   ],
+  close: [
+    ['path', { d: 'M18 6 6 18' }],
+    ['path', { d: 'm6 6 12 12' }],
+  ],
   test: [
     ['path', { d: 'M21 7 6.82 21.18a2.83 2.83 0 0 1-3.99-.01a2.83 2.83 0 0 1 0-4L17 3' }],
     ['path', { d: 'm16 2 6 6' }],
@@ -1500,6 +1504,13 @@ const SETTINGS_LUCIDE_ICONS = {
     ['circle', { cx: '12', cy: '12', r: '10' }],
     ['path', { d: 'm9 12 2 2 4-4' }],
   ],
+  delete: [
+    ['path', { d: 'M3 6h18' }],
+    ['path', { d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }],
+    ['path', { d: 'M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6' }],
+    ['path', { d: 'M10 11v6' }],
+    ['path', { d: 'M14 11v6' }],
+  ],
 };
 
 function SettingsLucideIcon({ name, size = 14, className = '' }) {
@@ -1520,6 +1531,32 @@ function SettingsLucideIcon({ name, size = 14, className = '' }) {
       {nodes.map(([tag, attrs], index) => React.createElement(tag, { key: index, ...attrs }))}
     </svg>
   );
+}
+
+function SettingsTooltipIconButton({
+  label,
+  icon,
+  onClick,
+  disabled = false,
+  danger = false,
+  type = 'button',
+  className = '',
+  iconSize = 15,
+}) {
+  const button = (
+    <button
+      type={type}
+      className={`settings-tooltip-icon-button${danger ? ' danger' : ''}${className ? ` ${className}` : ''}`}
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <SettingsLucideIcon name={icon} size={iconSize} />
+    </button>
+  );
+  const Tooltip = window.PortalTooltip;
+  return Tooltip ? <Tooltip text={label} position="above">{button}</Tooltip> : button;
 }
 
 function SettingsMenuSelect({
@@ -1734,6 +1771,7 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
         kind: 'Vision Provider',
         summary: draft.vision.model || 'not set',
         protected: true,
+        canDelete: true,
       },
     ] : [];
   }
@@ -1745,6 +1783,7 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
         kind: 'Embedding Provider',
         summary: draft.embedding.model || 'not set',
         protected: true,
+        canDelete: true,
       },
     ] : [];
   }
@@ -1755,6 +1794,7 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
       kind: 'Provider',
       summary: draft.chat.model || 'not set',
       protected: true,
+      canDelete: true,
     }] : []),
     ...(Array.isArray(draft.profiles) ? draft.profiles.filter((profile) => profile?.provider).map((profile) => ({
       id: profile.id,
@@ -1762,6 +1802,7 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
       kind: 'Provider',
       summary: profile.model || 'not set',
       protected: false,
+      canDelete: true,
     })) : []),
   ];
 }
@@ -3646,7 +3687,7 @@ function SettingsPage({
   const deleteConfig = async (section, id) => {
     const sectionItems = section === activeSection ? displayItems : configItemsForSection(section, llmDraft, records, activeSubtab, agentSettings, workflowSettings);
     const target = sectionItems.find((item) => item.id === id);
-    if (!target || target.protected) return;
+    if (!target || (target.protected && !target.canDelete)) return;
     if (section === 'agent') {
       const deleted = await onDeleteCustomAgent?.(id);
       if (deleted === false) return;
@@ -3654,10 +3695,15 @@ function SettingsPage({
       const deleted = await onDeleteCustomWorkflow?.(id);
       if (deleted === false) return;
     } else if (section === 'llm') {
-      onLlmDraftChange((prev) => ({
-        ...prev,
-        profiles: (prev.profiles || []).filter((profile) => profile.id !== id),
-      }));
+      onLlmDraftChange((prev) => {
+        if (id === 'chat') return { ...prev, chat: {} };
+        if (id === 'vision') return { ...prev, vision: { ...prev.vision, enabled: false } };
+        if (id === 'embedding') return { ...prev, embedding: { ...prev.embedding, enabled: false } };
+        return {
+          ...prev,
+          profiles: (prev.profiles || []).filter((profile) => profile.id !== id),
+        };
+      });
     } else {
       onRecordsChange((prev) => ({
         ...prev,
@@ -3831,11 +3877,11 @@ function SettingsPage({
                 </div>
               ) : null}
               <div className="settings-list-scroll">
-	                {filteredItems.map((item) => {
-	                  const isConnectionSection = activeSection === 'memory' || activeSection === 'knowledge';
-	                  const connectionStatus = settingsConnectionStatus?.[activeSection]?.[item.id];
-	                  const connectionMeta = connectionBadgeMeta(connectionStatus);
-	                  return (
+                {filteredItems.map((item) => {
+                  const isConnectionSection = activeSection === 'memory' || activeSection === 'knowledge';
+                  const connectionStatus = settingsConnectionStatus?.[activeSection]?.[item.id];
+                  const connectionMeta = connectionBadgeMeta(connectionStatus);
+                  return (
                     <div
                       key={item.id}
                       className={`settings-config-row ${selectedItem?.id === item.id ? 'active' : ''}`}
@@ -3863,38 +3909,59 @@ function SettingsPage({
                           {item.enabled === false ? 'Disabled' : 'Active'}
                         </span>
                       )}
-	                      <div className="settings-config-actions">
-	                        {activeSection === 'agent' && item.canToggle ? (
-	                          <button
-	                            type="button"
-	                            className={item.enabled === false ? 'settings-row-button' : 'settings-row-button danger'}
-	                            onClick={() => onTogglePresetAgent?.(item.id, item.enabled === false)}
-	                          >
-	                            {item.enabled === false ? 'Enable' : 'Disable'}
-	                          </button>
-	                        ) : null}
-	                        {activeSection === 'workflow' && item.canToggle ? (
-	                          <button
-	                            type="button"
-	                            className={item.enabled === false ? 'settings-row-button' : 'settings-row-button danger'}
-	                            onClick={() => onTogglePresetWorkflow?.(item.id, item.enabled === false)}
-	                          >
-	                            {item.enabled === false ? 'Enable' : 'Disable'}
-	                          </button>
-	                        ) : null}
-	                        {activeSection !== 'agent' || item.canConfigure ? (
-	                          <button
-	                            type="button"
-	                            className="settings-row-button"
-	                            onClick={() => {
-	                              selectItem(item.id);
-	                              openEditor(activeSection, item.id, 'edit');
-	                            }}
-	                          >
-	                            <SettingsLucideIcon name="configure" />
-	                            Configure
-	                          </button>
-	                        ) : null}
+                      <div className="settings-config-actions">
+                        {activeSection === 'agent' && item.canToggle ? (
+                          <button
+                            type="button"
+                            className={item.enabled === false ? 'settings-row-button' : 'settings-row-button danger'}
+                            onClick={() => onTogglePresetAgent?.(item.id, item.enabled === false)}
+                          >
+                            {item.enabled === false ? 'Enable' : 'Disable'}
+                          </button>
+                        ) : null}
+                        {activeSection === 'workflow' && item.canToggle ? (
+                          <button
+                            type="button"
+                            className={item.enabled === false ? 'settings-row-button' : 'settings-row-button danger'}
+                            onClick={() => onTogglePresetWorkflow?.(item.id, item.enabled === false)}
+                          >
+                            {item.enabled === false ? 'Enable' : 'Disable'}
+                          </button>
+                        ) : null}
+                        {activeSection !== 'agent' || item.canConfigure ? (
+                          activeSection === 'llm' ? (
+                            <SettingsTooltipIconButton
+                              label="Configure"
+                              icon="configure"
+                              iconSize={18}
+                              onClick={() => {
+                                selectItem(item.id);
+                                openEditor(activeSection, item.id, 'edit');
+                              }}
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              className="settings-row-button"
+                              onClick={() => {
+                                selectItem(item.id);
+                                openEditor(activeSection, item.id, 'edit');
+                              }}
+                            >
+                              <SettingsLucideIcon name="configure" />
+                              Configure
+                            </button>
+                          )
+                        ) : null}
+                        {activeSection === 'llm' && item.canDelete ? (
+                          <SettingsTooltipIconButton
+                            label="Delete"
+                            icon="delete"
+                            danger
+                            iconSize={20}
+                            onClick={() => deleteConfig('llm', item.id)}
+                          />
+                        ) : null}
                         {activeSection === 'agent' && item.canConfigure ? (
                           <button
                             type="button"
@@ -3949,34 +4016,39 @@ function SettingsPage({
                     <strong>{panelSelectedItem?.title || listTitle}</strong>
                   )}
                 </div>
-                <button type="button" className="settings-pane-close" onClick={cancelEditor} aria-label="Close">x</button>
+                {panelSection === 'llm' ? (
+                  <SettingsTooltipIconButton label="Close" icon="close" iconSize={20} onClick={cancelEditor} />
+                ) : (
+                  <button type="button" className="settings-pane-close" onClick={cancelEditor} aria-label="Close">x</button>
+                )}
               </div>
               {panelSelectedId ? editorBody(panelSection, panelSelectedId, panelMode) : (
                 <div className="settings-empty">Select a configuration.</div>
               )}
-	              {panelSelectedId ? (
-	                <div className="settings-detail-footer">
-	                  {panelSection === 'llm' ? (
-	                    <button type="button" className="settings-icon-button" onClick={testSelectedProvider}>
-	                      <SettingsLucideIcon name="test" />
-	                      Test
-	                    </button>
-	                  ) : panelIsConnectionSection ? (
-	                    <button
-	                      type="button"
-	                      className="settings-icon-button"
-	                      disabled={panelConnectionTesting}
-	                      onClick={() => onTestSettingsConnection?.(panelSection, panelSelectedId)}
-	                    >
-	                      <SettingsLucideIcon name="test" />
-	                      {panelConnectionTesting ? 'Testing...' : 'Test'}
-	                    </button>
-	                  ) : null}
-                  {panelCanSave ? (
-                    <button type="button" className="settings-primary-button" onClick={saveAndClose}>
-                      <SettingsLucideIcon name="save" />
-                      Save
+              {panelSelectedId ? (
+                <div className="settings-detail-footer">
+                  {panelSection === 'llm' ? (
+                    <SettingsTooltipIconButton label="Test" icon="test" iconSize={20} onClick={testSelectedProvider} />
+                  ) : panelIsConnectionSection ? (
+                    <button
+                      type="button"
+                      className="settings-icon-button"
+                      disabled={panelConnectionTesting}
+                      onClick={() => onTestSettingsConnection?.(panelSection, panelSelectedId)}
+                    >
+                      <SettingsLucideIcon name="test" />
+                      {panelConnectionTesting ? 'Testing...' : 'Test'}
                     </button>
+                  ) : null}
+                  {panelCanSave ? (
+                    panelSection === 'llm'
+                      ? <SettingsTooltipIconButton label="Save" icon="save" iconSize={20} onClick={saveAndClose} />
+                      : (
+                        <button type="button" className="settings-primary-button" onClick={saveAndClose}>
+                          <SettingsLucideIcon name="save" />
+                          Save
+                        </button>
+                      )
                   ) : null}
                 </div>
               ) : null}
