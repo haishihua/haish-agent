@@ -1,11 +1,13 @@
+// @haish-esm
+import { CHAR_DEFS, WalkingSprite } from './sprites.jsx';
+import React from 'react';
+
 // World — the office stage with characters
 // Position grid is in % of map (1700x950)
 
-const NPC_SIZE = 88;
+export const NPC_SIZE = 88;
 const NPC_FOOT_OFFSET = 10;
-window.NPC_SIZE = NPC_SIZE;
-
-const NPC_SIZES = {
+export const NPC_SIZES = {
   gojo: 108,
   guts: 106,
   okabe: 88,
@@ -15,10 +17,8 @@ const NPC_SIZES = {
   itachi: 88,
   mikey: 88,
 };
-window.NPC_SIZES = NPC_SIZES;
-
 // Stations — fixed positions on the office map (percentage)
-const STATIONS = {
+export const STATIONS = {
   gojo:    { x: 0.281, y: 0.418, label: 'You' },
   guts:    { x: 0.336, y: 0.694, label: 'Assistant' },
   okabe:   { x: 0.572, y: 0.277, label: 'OpenAI protocol' },
@@ -28,10 +28,7 @@ const STATIONS = {
   itachi:  { x: 0.702, y: 0.262, label: 'External Tools' },
   mikey:   { x: 0.726, y: 0.645, label: 'Knowledge Base' },
 };
-window.STATIONS = STATIONS;
-window.CALIBRATION_IDS = Object.keys(STATIONS);
-
-const NAV_POINTS = {
+export const NAV_POINTS = {
   left_hall_entry: { x: 0.332, y: 0.531 },
   center_left_lane: { x: 0.460, y: 0.637 },
   planning_lane: { x: 0.507, y: 0.493 },
@@ -41,10 +38,7 @@ const NAV_POINTS = {
   right_mid_hall: { x: 0.612, y: 0.473 },
   right_lower_hall: { x: 0.727, y: 0.469 },
 };
-window.NAV_POINTS = NAV_POINTS;
-window.NAV_POINT_IDS = Object.keys(NAV_POINTS);
-
-const MEET_POINTS = {
+export const MEET_POINTS = {
   gojo_guts: { x: 0.303, y: 0.621 },
   guts_lelouch: { x: 0.465, y: 0.646 },
   planning_brief: { x: 0.586, y: 0.376 },
@@ -55,10 +49,7 @@ const MEET_POINTS = {
   okabe_guts_report: { x: 0.369, y: 0.636 },
   guts_gojo_report: { x: 0.324, y: 0.423 },
 };
-window.MEET_POINTS = MEET_POINTS;
-window.MEET_POINT_IDS = Object.keys(MEET_POINTS);
-
-const ROUTES = {
+export const ROUTES = {
   gojoToGuts: ['left_hall_entry', 'gojo_guts'],
   gutsToPlanning: ['center_left_lane', 'planning_lane', 'planning_door', 'planning_brief'],
   planningToLelouch: ['planning_door', 'planning_lane', 'center_left_lane', 'guts_lelouch'],
@@ -74,10 +65,7 @@ const ROUTES = {
   planningToGojo: ['planning_door', 'planning_lane', 'center_left_lane', 'left_hall_entry', 'guts_gojo_report'],
   gutsToGojo: ['left_hall_entry', 'guts_gojo_report'],
 };
-window.ROUTES = ROUTES;
-window.ROUTE_IDS = Object.keys(ROUTES);
-
-const ROUTE_EDITOR_DEFS = {
+export const ROUTE_EDITOR_DEFS = {
   brief_gojo_guts: { label: 'You -> Assistant', refs: ['left_hall_entry', 'gojo_guts'] },
   guts_to_lab: { label: 'Assistant -> Provider Desk', refs: ['center_left_lane', 'planning_lane', 'planning_door', 'planning_brief'] },
   lab_to_lelouch: { label: 'Provider Desk -> Tool Manager', refs: ['planning_door', 'planning_lane', 'center_left_lane', 'guts_lelouch'] },
@@ -86,10 +74,7 @@ const ROUTE_EDITOR_DEFS = {
   lelouch_to_mikey: { label: 'Tool Manager -> Knowledge Base', refs: ['lounge_right', 'right_mid_hall', 'right_lower_hall', 'lelouch_mikey'] },
   okabe_to_guts: { label: 'Provider -> Assistant', refs: ['planning_door', 'planning_lane', 'center_left_lane', 'okabe_guts_report'] },
 };
-window.ROUTE_EDITOR_DEFS = ROUTE_EDITOR_DEFS;
-window.ROUTE_EDITOR_IDS = Object.keys(ROUTE_EDITOR_DEFS);
-
-const PROVIDER_CHANNELS = [
+export const PROVIDER_CHANNELS = [
   { id: 'auto', label: 'Auto', x: 0.422, y: 0.208 },
   { id: 'openai', label: 'Anthropic protocol', x: 0.486, y: 0.192 },
   { id: 'deepseek', label: 'OpenAI protocol', x: 0.548, y: 0.204 },
@@ -98,8 +83,6 @@ const PROVIDER_CHANNELS = [
   { id: 'ollama', label: 'Ollama', x: 0.502, y: 0.332 },
   { id: 'vllm', label: 'vLLM', x: 0.438, y: 0.306 },
 ];
-window.PROVIDER_CHANNELS = PROVIDER_CHANNELS;
-
 function normalizeProviderChannelId(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (!normalized || normalized === 'generic') return 'auto';
@@ -108,7 +91,7 @@ function normalizeProviderChannelId(value) {
   return normalized;
 }
 
-function ProviderRail({ mapW, mapH, providerKey, providerLabel, providerState, requestedProvider }) {
+export function ProviderRail({ mapW, mapH, providerKey, providerLabel, providerState, requestedProvider }) {
   const activeChannelId = normalizeProviderChannelId(providerKey || providerLabel || requestedProvider || 'auto');
   const requestChannelId = normalizeProviderChannelId(requestedProvider || 'auto');
   const stateLabel = String(providerState || 'idle').toLowerCase();
@@ -162,9 +145,7 @@ function ProviderRail({ mapW, mapH, providerKey, providerLabel, providerState, r
     </div>
   );
 }
-window.ProviderRail = ProviderRail;
-
-function NPC({
+export function NPC({
   id,
   state,
   spriteConfig = null,
@@ -177,7 +158,7 @@ function NPC({
   debugText = '',
   onPointerDown,
 }) {
-  const def = window.CHAR_DEFS[id];
+  const def = CHAR_DEFS[id];
   const station = STATIONS[id];
   const pos = state?.pos || station;
   const poseDebug = state?.poseDebug;
@@ -202,7 +183,7 @@ function NPC({
     >
       <div className="npc-shadow" />
       <div className={`npc-body ${walking ? 'walking' : 'idle'}`}>
-        <window.WalkingSprite
+        <WalkingSprite
           id={id}
           dir={dir}
           size={npcSize}
@@ -222,9 +203,7 @@ function NPC({
     </div>
   );
 }
-window.NPC = NPC;
-
-function CalibrationPoint({
+export function CalibrationPoint({
   id,
   point,
   mapW,
@@ -255,13 +234,11 @@ function CalibrationPoint({
     </div>
   );
 }
-window.CalibrationPoint = CalibrationPoint;
-
-function CalibrationRoutePreview({ routeId, mapW, mapH }) {
-  const route = window.ROUTE_EDITOR_DEFS?.[routeId]?.refs || window.ROUTES?.[routeId];
+export function CalibrationRoutePreview({ routeId, mapW, mapH }) {
+  const route = ROUTE_EDITOR_DEFS?.[routeId]?.refs || ROUTES?.[routeId];
   if (!route?.length) return null;
   const points = route
-    .map((ref) => window.STATIONS[ref] || window.NAV_POINTS?.[ref] || window.MEET_POINTS?.[ref] || null)
+    .map((ref) => STATIONS[ref] || NAV_POINTS?.[ref] || MEET_POINTS?.[ref] || null)
     .filter(Boolean);
   if (points.length < 2) return null;
   const polyline = points.map((point) => `${point.x * mapW},${point.y * mapH}`).join(' ');
@@ -279,4 +256,11 @@ function CalibrationRoutePreview({ routeId, mapW, mapH }) {
     </div>
   );
 }
-window.CalibrationRoutePreview = CalibrationRoutePreview;
+
+
+// Derived / compatibility exports
+export const CALIBRATION_IDS = Object.keys(STATIONS);
+export const NAV_POINT_IDS = Object.keys(NAV_POINTS);
+export const MEET_POINT_IDS = Object.keys(MEET_POINTS);
+export const ROUTE_IDS = Object.keys(ROUTES);
+export const ROUTE_EDITOR_IDS = Object.keys(ROUTE_EDITOR_DEFS);

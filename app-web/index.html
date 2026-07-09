@@ -1,26 +1,27 @@
 <!doctype html>
 <html lang="zh">
 <head>
-<meta charset="utf-8" />
-<title>Haish Agent</title>
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&family=Zpix&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/@xyflow/react@12.11.2/dist/style.css" />
-  <link rel="stylesheet" href="styles.css?v=131" />
-<link rel="preload" as="image" href="assets/office.png" />
-<link rel="preload" as="image" href="assets/fx/final-report-blackhole.png" />
-<link rel="preload" as="image" href="assets/atlases/gojo.png" />
-<link rel="preload" as="image" href="assets/atlases/guts.png" />
-<link rel="preload" as="image" href="assets/atlases/okabe.png" />
-<link rel="preload" as="image" href="assets/atlases/kurisu.png" />
-<link rel="preload" as="image" href="assets/atlases/lelouch.png" />
-<link rel="preload" as="image" href="assets/atlases/levi.png" />
-<link rel="preload" as="image" href="assets/atlases/itachi.png" />
-<link rel="preload" as="image" href="assets/atlases/mikey.png" />
+  <meta charset="utf-8" />
+  <title>Haish Agent</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&family=Zpix&family=JetBrains+Mono:wght@400;600&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="preload" as="image" href="assets/office.png" />
+  <link rel="preload" as="image" href="assets/fx/final-report-blackhole.png" />
+  <link rel="preload" as="image" href="assets/atlases/gojo.png" />
+  <link rel="preload" as="image" href="assets/atlases/guts.png" />
+  <link rel="preload" as="image" href="assets/atlases/okabe.png" />
+  <link rel="preload" as="image" href="assets/atlases/kurisu.png" />
+  <link rel="preload" as="image" href="assets/atlases/lelouch.png" />
+  <link rel="preload" as="image" href="assets/atlases/levi.png" />
+  <link rel="preload" as="image" href="assets/atlases/itachi.png" />
+  <link rel="preload" as="image" href="assets/atlases/mikey.png" />
 </head>
 <body>
   <div id="root"></div>
-  <!-- Hidden preload to ensure images are decoded into browser cache before stage renders -->
+  <!-- Hidden preload so atlases decode into browser cache before stage paints -->
   <div aria-hidden="true" style="position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none">
     <img src="assets/office.png" alt="" />
     <img src="assets/fx/final-report-blackhole.png" alt="" />
@@ -33,60 +34,6 @@
     <img src="assets/atlases/itachi.png" alt="" />
     <img src="assets/atlases/mikey.png" alt="" />
   </div>
-
-  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-  <script>
-    window.jsxRuntime = {
-      Fragment: React.Fragment,
-      jsx: (type, props, key) => React.createElement(type, key === undefined ? props : { ...props, key }),
-      jsxs: (type, props, key) => React.createElement(type, key === undefined ? props : { ...props, key })
-    };
-  </script>
-  <script src="https://unpkg.com/@xyflow/react@12.11.2/dist/umd/index.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
-  <script>
-    (async function bootstrap() {
-      const files = [
-        'src/sprites.jsx?v=2',
-        'src/world.jsx',
-        'src/effects.jsx',
-        'src/panels.jsx',
-        'src/orchestrator.jsx',
-        'src/app.jsx',
-        'src/approval-dialog.jsx'
-      ];
-
-      try {
-        for (const file of files) {
-          const response = await fetch(file, { cache: 'no-store' });
-          if (!response.ok) {
-            throw new Error(`Failed to load ${file}: ${response.status}`);
-          }
-          const source = await response.text();
-          const transformed = Babel.transform(source, {
-            presets: ['react'],
-            sourceFileName: file
-          }).code;
-          const script = document.createElement('script');
-          script.text = `${transformed}\n//# sourceURL=${file}`;
-          document.body.appendChild(script);
-        }
-      } catch (error) {
-        console.error(error);
-        const root = document.getElementById('root');
-        if (root) {
-          root.innerHTML = `
-            <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#05060b;color:#daddef;font-family:monospace;">
-              <div style="max-width:720px;padding:24px 28px;border:1px solid rgba(239,191,100,0.28);background:#10131d;">
-                <div style="color:#efbf64;font-size:16px;margin-bottom:12px;">BOOTSTRAP ERROR</div>
-                <pre style="margin:0;white-space:pre-wrap;line-height:1.5;">${String(error && error.stack ? error.stack : error)}</pre>
-              </div>
-            </div>
-          `;
-        }
-      }
-    })();
-  </script>
+  <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>

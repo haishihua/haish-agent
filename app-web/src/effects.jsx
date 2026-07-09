@@ -1,11 +1,12 @@
+// @haish-esm
+import React from 'react';
+
 // Visual effects layer — particles, rings, energy lines
 
-function FXRing({ x, y }) {
+export function FXRing({ x, y }) {
   return <div className="fx-ring" style={{ left: x, top: y }} />;
 }
-window.FXRing = FXRing;
-
-function FXParticles({ x, y, count = 12, color = 'var(--gold)' }) {
+export function FXParticles({ x, y, count = 12, color = 'var(--gold)' }) {
   const particles = React.useMemo(() => {
     return Array.from({ length: count }, (_, i) => {
       const a = (i / count) * Math.PI * 2;
@@ -31,10 +32,8 @@ function FXParticles({ x, y, count = 12, color = 'var(--gold)' }) {
     </>
   );
 }
-window.FXParticles = FXParticles;
-
 // Burst of FX at a point. Auto-removes after 1.5s.
-function useFXBursts() {
+export function useFXBursts() {
   const [bursts, setBursts] = React.useState([]);
   const fire = React.useCallback((x, y, color) => {
     const id = Math.random().toString(36).slice(2);
@@ -53,8 +52,6 @@ function useFXBursts() {
   );
   return [node, fire];
 }
-window.useFXBursts = useFXBursts;
-
 // ─── Lightweight markdown renderer (no external deps) ──────────────────────
 function inlineMarkdown(text) {
   if (!text) return '';
@@ -302,13 +299,11 @@ function parseMarkdown(src) {
   return parseBlocks(0, 0, false).nodes;
 }
 
-function Markdown({ source }) {
+export function Markdown({ source }) {
   const nodes = React.useMemo(() => parseMarkdown(source), [source]);
   return <div className="md-root">{nodes}</div>;
 }
-window.Markdown = Markdown;
-
-function exportReport(title, md) {
+export function exportReport(title, md) {
   try {
     const blob = new Blob([md || ''], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -324,8 +319,6 @@ function exportReport(title, md) {
     console.error('Export failed', e);
   }
 }
-window.exportReport = exportReport;
-
 // Reusable octagonal pixel frame: transparent fill that lets the backdrop
 // show through, with explicit edge + corner decorations on top.
 function PixelFrameDecorations() {
@@ -343,7 +336,7 @@ function PixelFrameDecorations() {
   );
 }
 
-function PixelFrame({ className, children }) {
+export function PixelFrame({ className, children }) {
   return (
     <div className={`hp-frame ${className || ''}`}>
       <span className="hp-frame-bg" aria-hidden="true" />
@@ -352,10 +345,8 @@ function PixelFrame({ className, children }) {
     </div>
   );
 }
-window.PixelFrame = PixelFrame;
-
 // Hollow Purple result modal
-function HollowPurple({ open, title, result, onClose }) {
+export function HollowPurple({ open, title, result, onClose }) {
   if (!open) return null;
   return (
     <div className="hollow-overlay" onClick={onClose}>
@@ -388,4 +379,3 @@ function HollowPurple({ open, title, result, onClose }) {
     </div>
   );
 }
-window.HollowPurple = HollowPurple;

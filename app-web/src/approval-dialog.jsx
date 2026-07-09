@@ -1,4 +1,7 @@
-/* eslint-disable */
+// @haish-esm
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+
 /**
  * Approval inline card：内嵌到最新一条 assistant 消息气泡（.chat-message-row.agent .chat-bubble）
  * 内部底部，作为 assistant 消息的一部分呈现。
@@ -13,7 +16,6 @@
  * 设计文档：docs/tool-approval-and-risk-design.md
  */
 
-(function bootstrapApprovalOverlay() {
   const { useState, useEffect, useCallback } = React;
 
   function resolveApiBase() {
@@ -69,7 +71,7 @@
       options.headers = { 'Content-Type': 'application/json' };
       options.body = JSON.stringify({ timeout_seconds: 900 });
     }
-    const fetcher = typeof authFetch === 'function' ? authFetch : fetch;
+    const fetcher = typeof window.authFetch === 'function' ? window.authFetch : fetch;
     const resp = await fetcher(url, options);
     if (!resp.ok) {
       const detail = await resp.text().catch(() => '');
@@ -892,4 +894,3 @@
   } else {
     observeAndMount();
   }
-})();

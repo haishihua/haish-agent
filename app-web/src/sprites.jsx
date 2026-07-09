@@ -1,3 +1,6 @@
+// @haish-esm
+import React from 'react';
+
 // Sprite component supporting two atlas modes:
 //   1. grid mode  – uniform 8×4 cells of 160×160 (used for okabe/lelouch/mikey).
 //   2. frame mode – each character supplies an explicit `frames` array of
@@ -237,7 +240,7 @@ const OKABE_FRAMES = {
   31: F(1130, 1001, 1220, 1203),
 };
 
-const CHAR_DEFS = {
+export const CHAR_DEFS = {
   gojo: {
     src: 'assets/atlases/gojo.png?v=26',
     sheetWidth: 2048,
@@ -492,9 +495,7 @@ for (const [id, override] of Object.entries(POSE_CONFIG_OVERRIDES)) {
   };
 }
 
-window.CHAR_DEFS = CHAR_DEFS;
-
-function Sprite({ id, frame = 0, size = 64 }) {
+export function Sprite({ id, frame = 0, size = 64 }) {
   const def = CHAR_DEFS[id];
   if (!def) return null;
 
@@ -570,7 +571,7 @@ function resolveFrames(def, dir, walking) {
   return [def.idle[baseDir] ?? def.idle.front];
 }
 
-function WalkingSprite({ id, dir = 'front', size = 64, walking = false, frameRate = 8, actionKind, actionVariant, busy = false, thinking = false, spriteConfig = null }) {
+export function WalkingSprite({ id, dir = 'front', size = 64, walking = false, frameRate = 8, actionKind, actionVariant, busy = false, thinking = false, spriteConfig = null }) {
   const baseDef = CHAR_DEFS[id];
   const spriteConfigSignature = JSON.stringify(spriteConfig || {});
   const def = React.useMemo(() => getRuntimeSpriteDef(baseDef, spriteConfig), [baseDef, spriteConfigSignature]);
@@ -613,5 +614,3 @@ function WalkingSprite({ id, dir = 'front', size = 64, walking = false, frameRat
   );
 }
 
-window.Sprite = Sprite;
-window.WalkingSprite = WalkingSprite;

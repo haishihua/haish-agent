@@ -1,1309 +1,173 @@
+// @haish-esm
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  Handle,
+  Position,
+  MarkerType,
+} from '@xyflow/react';
+import { CHAR_DEFS } from './sprites.jsx';
+import {
+  STATIONS,
+  CALIBRATION_IDS,
+  NAV_POINTS,
+  NAV_POINT_IDS,
+  MEET_POINTS,
+  MEET_POINT_IDS,
+  ROUTES,
+  ROUTE_IDS,
+  ROUTE_EDITOR_DEFS,
+  ROUTE_EDITOR_IDS,
+  NPC,
+  CalibrationPoint,
+  CalibrationRoutePreview,
+} from './world.jsx';
+import { HollowPurple } from './effects.jsx';
+import { KIND_COLORS } from './orchestrator.jsx';
+import {
+  PortalTooltip,
+  TopBar,
+  ConversationsPanel,
+  LiveFeedPanel,
+  ChatPanel,
+  TaskDelegation,
+  MapViewport,
+  TabPlaceholder,
+  BottomNav,
+  normalizeToolName,
+} from './panels.jsx';
+import { ErrorBoundary } from './lib/ErrorBoundary.jsx';
+import {
+  MAP_W,
+  MAP_H,
+  CALIBRATION_NUDGE,
+  DEFAULT_WALK_SPEED_PX_PER_SEC,
+  WALK_SPEED_BY_ACTOR,
+  DEFAULT_WALK_MIN_DURATION_MS,
+  WALK_MIN_DURATION_BY_ACTOR,
+  SCENE_WAIT_TIMEOUT_MS,
+  CONVERSATION_BOOTSTRAP_MAX_ATTEMPTS,
+  CONVERSATION_BOOTSTRAP_RETRY_DELAY_MS,
+  THINKING_PULSE_INTERVAL_MS,
+  STREAM_EVENT_BATCH_MS,
+  POSE_DEBUG_DEFAULTS,
+  POSE_DEBUG_OPTIONS,
+  POSE_MAPPING_FIELDS,
+  WORLD_ROLE_TO_ACTOR,
+  WORLD_KIND_MAP,
+  PROVIDER_ACTOR_MAP,
+} from './lib/world-runtime.js';
+import {
+  APP_DEFAULT_AGENT_OPTIONS,
+  DEFAULT_AGENT_TOOL_GROUPS,
+  DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS,
+  DEFAULT_AGENT_SETTINGS,
+  DIRECT_AGENT_WORKFLOW_ID,
+  DEFAULT_WORKFLOW_NODE_TYPES,
+  DEFAULT_WORKFLOW_INPUT_SCHEMA,
+  COMMON_WORKFLOW_OUTPUT_FIELDS,
+  WORKFLOW_NODE_OUTPUT_FIELDS,
+  DEFAULT_DIRECT_WORKFLOW,
+  DEFAULT_WORKFLOW_SETTINGS,
+  SETTINGS_SECTIONS,
+  SETTINGS_SUBTABS,
+  SETTINGS_SECTION_COPY,
+  LLM_SUBTAB_COPY,
+  ADD_LABEL_BY_SECTION,
+  LLM_PROVIDER_MODELS,
+  LLM_PROVIDER_OPTIONS,
+  HIDDEN_SETTINGS_LLM_PROVIDERS,
+  SETTINGS_LLM_PROVIDER_OPTIONS,
+  LLM_SETTINGS_STORAGE_KEY,
+  SETTINGS_RECORDS_STORAGE_KEY,
+  SETTINGS_CONNECTION_STATUS_STORAGE_KEY,
+  SETTINGS_CONNECTION_SECTIONS,
+  SETTINGS_PERSISTED_CONNECTION_STATES,
+  DEFAULT_MCP_CONFIG_JSON,
+  MCP_CONFIG_TEMPLATE_JSON,
+  DEFAULT_NEO4J_CONFIG,
+  DEFAULT_QDRANT_CONFIG,
+  QDRANT_DISTANCE_OPTIONS,
+  LEGACY_DEFAULT_QDRANT_COLLECTION,
+  WEB_SEARCH_PROVIDER_OPTIONS,
+  SETTINGS_REASONING_OPTIONS,
+  getLlmProvider,
+  normalizeLlmProviderId,
+  formatAuthModeLabel,
+  modelChoicesFor,
+  uniqueModelChoices,
+  configuredModelOptions,
+  runtimeProviderLabel,
+  runtimeProviderSelector,
+  runtimeLlmProviderOptions,
+  nextProviderDraft,
+  createDefaultLlmSettings,
+  normalizeLlmModelConfig,
+  loadLlmSettingsDraft,
+  applyLlmSettingsPayloadToDraft,
+  createDefaultSettingsRecords,
+  createDefaultWebSearchSettings,
+  normalizeNeo4jDraft,
+  normalizeQdrantDraft,
+  mergeDefaultRecords,
+  mergeKnownDefaultRecords,
+  loadSettingsRecordsDraft,
+  settingsConnectionRecord,
+  settingsConnectionSignature,
+  settingsConnectionSignatureFor,
+  sanitizeSettingsConnectionStatus,
+  loadSettingsConnectionStatus,
+  persistSettingsConnectionStatus,
+  normalizeAgentProfileRow,
+  normalizeAgentToolGroups,
+  normalizeAgentSettings,
+  agentCatalogFromSettings,
+  agentListItems,
+  withAlwaysAllowedAgentTools,
+  toolsForAgentGroups,
+  groupIdsForAgentTools,
+  createDefaultCustomAgentPayload,
+} from './lib/agent-catalog.js';
+import {
+  normalizeWorkflowNode,
+  normalizeWorkflowEdge,
+  normalizeWorkflowRow,
+  normalizeWorkflowSettings,
+  workflowListItems,
+  workflowById,
+  typeLabelForWorkflowNode,
+  workflowOutputFields,
+  workflowSchemaFields,
+  workflowUpstreamNodeIds,
+  workflowFriendlyVariableLabel,
+  workflowVariableCatalog,
+  sanitizeWorkflowTemplateValue,
+  workflowTokenRangeAt,
+  workflowArgumentsText,
+  WORKFLOW_OUTPUT_FIELD_OPTIONS,
+  DEFAULT_WORKFLOW_OUTPUT_MAPPING,
+  DEFAULT_WORKFLOW_OUTPUT_SCHEMA,
+  workflowOutputFieldOptions,
+  workflowOutputMappingEntries,
+  workflowTemplateVariablePath,
+  workflowVariableTypeForValue,
+  buildWorkflowOutputPatch,
+  createWorkflowExamplePatch,
+  createDefaultCustomWorkflowPayload,
+  payloadForCustomWorkflow,
+} from './lib/workflow-catalog.js';
+
+
+// React Flow namespace expected by existing settings UI (window.ReactFlow shape).
+const ReactFlowNS = { ReactFlow, Background, Controls, Handle, Position, MarkerType };
+const { useState, useEffect, useRef, useMemo } = React;
+
 // Main app — top bar / left task records / map viewport / right live feed /
 // bottom delegation / bottom nav. Dashboard tab is the live one; other tabs
 // are placeholders.
-
-const { useState, useEffect, useRef, useMemo } = React;
-const MAP_W = 1700;
-const MAP_H = 950;
-const CALIBRATION_NUDGE = 0.004;
-const DEFAULT_WALK_SPEED_PX_PER_SEC = 220;
-const WALK_SPEED_BY_ACTOR = {
-  guts: 220,
-};
-const DEFAULT_WALK_MIN_DURATION_MS = 260;
-const WALK_MIN_DURATION_BY_ACTOR = {
-  guts: 210,
-};
-const SCENE_WAIT_TIMEOUT_MS = 45000;
-const CONVERSATION_BOOTSTRAP_MAX_ATTEMPTS = 8;
-const CONVERSATION_BOOTSTRAP_RETRY_DELAY_MS = 2000;
-const THINKING_PULSE_INTERVAL_MS = 1000;
-const STREAM_EVENT_BATCH_MS = 80;
-const POSE_DEBUG_DEFAULTS = { pose: 'idle', dir: 'front', movement: 'idle' };
-const POSE_DEBUG_OPTIONS = [
-  { key: 'idle', label: 'Idle' },
-  { key: 'think', label: 'Think' },
-  { key: 'busy', label: 'Busy' },
-  { key: 'report', label: 'Report' },
-  { key: 'llm', label: 'LLM' },
-  { key: 'tool', label: 'Tool' },
-  { key: 'mcp', label: 'MCP' },
-  { key: 'skill', label: 'Skill' },
-  { key: 'deliver', label: 'Deliver' },
-];
-const POSE_MAPPING_FIELDS = [
-  { key: 'idle_front', label: 'Idle Front', type: 'idle', dir: 'front' },
-  { key: 'idle_side', label: 'Idle Side', type: 'idle', dir: 'side' },
-  { key: 'idle_back', label: 'Idle Back', type: 'idle', dir: 'back' },
-  { key: 'walk_front', label: 'Walk Front', type: 'walk', dir: 'front' },
-  { key: 'walk_side', label: 'Walk Side', type: 'walk', dir: 'side' },
-  { key: 'walk_back', label: 'Walk Back', type: 'walk', dir: 'back' },
-  { key: 'think', label: 'Think', type: 'pose' },
-  { key: 'busy', label: 'Busy', type: 'pose' },
-  { key: 'report', label: 'Report', type: 'pose' },
-  { key: 'llm', label: 'LLM', type: 'pose' },
-  { key: 'tool', label: 'Tool', type: 'pose' },
-  { key: 'mcp', label: 'MCP', type: 'pose' },
-  { key: 'skill', label: 'Skill', type: 'pose' },
-  { key: 'deliver', label: 'Deliver', type: 'pose' },
-];
-const WORLD_ROLE_TO_ACTOR = {
-  'User': 'gojo',
-  'Agent Gateway': 'guts',
-  'LLM Hub': 'okabe',
-  'Provider Node': 'kurisu',
-  'Tool Manager': 'lelouch',
-  'Internal Tool Executor': 'levi',
-  'External Tool Executor': 'itachi',
-  'RAG Executor': 'mikey',
-};
-
-const WORLD_KIND_MAP = {
-  gojo: 'deliver',
-  guts: 'report',
-  okabe: 'think',
-  kurisu: 'llm',
-  lelouch: 'deliver',
-  levi: 'tool',
-  itachi: 'mcp',
-  mikey: 'skill',
-};
-
-const PROVIDER_ACTOR_MAP = {
-  generic: { actor: 'okabe', label: 'Auto' },
-  openai: { actor: 'okabe', label: 'OpenAI protocol' },
-  deepseek: { actor: 'okabe', label: 'OpenAI protocol' },
-  dashscope: { actor: 'okabe', label: 'OpenAI protocol' },
-  qwen: { actor: 'okabe', label: 'OpenAI protocol' },
-  zhipu: { actor: 'okabe', label: 'OpenAI protocol' },
-  modelscope: { actor: 'okabe', label: 'OpenAI protocol' },
-  moonshot: { actor: 'okabe', label: 'OpenAI protocol' },
-  minimax: { actor: 'okabe', label: 'OpenAI protocol' },
-  ollama: { actor: 'okabe', label: 'OpenAI protocol' },
-  vllm: { actor: 'okabe', label: 'OpenAI protocol' },
-  anthropic: { actor: 'kurisu', label: 'Anthropic protocol' },
-  claude: { actor: 'kurisu', label: 'Anthropic protocol' },
-};
-
-const APP_DEFAULT_AGENT_OPTIONS = [
-  { id: 'preset.general', label: 'Task Assistant', description: 'Default full-tool assistant' },
-  { id: 'preset.product', label: 'Product Planner', description: 'Requirements, PRDs, scope, and acceptance criteria' },
-  { id: 'preset.development', label: 'Coding Assistant', description: 'Implementation, debugging, and verification' },
-  { id: 'preset.qa', label: 'Test Engineer', description: 'Test design, execution, and defect reports' },
-  { id: 'preset.document-qa', label: 'Docs Search', description: 'Grounded answers from indexed documents' },
-];
-
-const DEFAULT_AGENT_TOOL_GROUPS = [
-  { id: 'workspace_read', label: 'File read', description: 'Read files, list directories, search text, and glob workspace paths.', tools: ['read_file', 'list_dir', 'search_text', 'glob_files'] },
-  { id: 'file_edits', label: 'File edits', description: 'Create, edit, copy, delete, checkpoint, and roll back workspace files.', tools: ['write_file', 'edit_file', 'delete_file', 'copy_file', 'create_dir', 'delete_dir', 'list_checkpoints', 'rollback_workspace'] },
-  { id: 'terminal', label: 'Terminal', description: 'Run terminal commands and manage background processes.', tools: ['terminal', 'start_background_process', 'read_background_process_output', 'stop_background_process', 'list_background_processes'] },
-  { id: 'browser', label: 'Browser', description: 'Navigate, inspect, click, type, scroll, evaluate, and screenshot browser pages.', tools: ['browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type', 'browser_scroll', 'browser_press_key', 'browser_console', 'browser_evaluate', 'browser_screenshot', 'browser_wait_for'] },
-  { id: 'web', label: 'Web', description: 'Search the web and fetch pages.', tools: ['web_search', 'web_fetch'] },
-  { id: 'memory', label: 'Memory', description: 'Search, add, and forget long-term memory entries.', tools: ['memory_search', 'memory_add', 'memory_forget'] },
-  { id: 'knowledge', label: 'RAG', description: 'List indexed documents and search retrieval collections.', tools: ['document_list', 'rag_search'] },
-  { id: 'vision', label: 'Vision', description: 'Inspect images and visual content.', tools: ['vision_analyze'] },
-  { id: 'planning', label: 'Planning', description: 'Write and update task plans.', tools: ['todo_write'] },
-  { id: 'sub_agent', label: 'Sub-agent', description: 'Delegate scoped work to a sub-agent.', tools: ['dispatch_sub_agent'] },
-];
-const DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS = ['read_artifact'];
-
-const DEFAULT_AGENT_SETTINGS = {
-  presets: APP_DEFAULT_AGENT_OPTIONS.map((item) => ({
-    agent_id: item.id,
-    profile_id: item.id,
-    display_name: item.label,
-    description: item.description,
-    custom: false,
-    system: true,
-    enabled: true,
-    can_toggle: item.id !== 'preset.general',
-  })),
-  custom: [],
-  base_profiles: APP_DEFAULT_AGENT_OPTIONS.map((item) => ({
-    agent_id: item.id,
-    display_name: item.label,
-    description: item.description,
-  })),
-  tool_groups: DEFAULT_AGENT_TOOL_GROUPS,
-  skills: [],
-};
-
-const DIRECT_AGENT_WORKFLOW_ID = 'workflow.direct-agent';
-const DEFAULT_WORKFLOW_NODE_TYPES = [
-  { id: 'agent', label: 'Agent', description: 'Invoke an assistant profile over A2A.' },
-  { id: 'llm', label: 'LLM', description: 'Run a direct model call with prompt parameters.' },
-  { id: 'tool', label: 'Tool', description: 'Call an exposed tool with mapped arguments.' },
-  { id: 'condition', label: 'Condition', description: 'Route execution based on an expression.' },
-  { id: 'output', label: 'End', description: 'Return the workflow result.' },
-];
-
-const DEFAULT_WORKFLOW_INPUT_SCHEMA = {
-  type: 'object',
-  fields: [
-    { id: 'message', label: 'Message', type: 'string', required: true, path: 'input.message' },
-    { id: 'attachments', label: 'Attachments', type: 'array', required: false, path: 'input.attachments' },
-    { id: 'image_attachments', label: 'Images', type: 'array', required: false, path: 'input.image_attachments' },
-    { id: 'conversation_id', label: 'Conversation ID', type: 'string', required: false, path: 'input.conversation_id' },
-    { id: 'workspace', label: 'Workspace', type: 'string', required: false, path: 'input.workspace' },
-  ],
-};
-
-const COMMON_WORKFLOW_OUTPUT_FIELDS = [
-  { id: 'status', label: 'Status', type: 'string' },
-  { id: 'success', label: 'Success', type: 'boolean' },
-  { id: 'summary', label: 'Summary', type: 'string' },
-  { id: 'error', label: 'Error', type: 'string' },
-  { id: 'metadata', label: 'Metadata', type: 'object' },
-];
-
-const WORKFLOW_NODE_OUTPUT_FIELDS = {
-  start: [{ id: 'structured', label: 'Input object', type: 'object' }],
-  agent: [
-    { id: 'messages', label: 'Messages', type: 'array' },
-    { id: 'artifacts', label: 'Artifacts', type: 'array' },
-    { id: 'structured', label: 'Structured', type: 'object' },
-    { id: 'citations', label: 'Citations', type: 'array' },
-    { id: 'trace', label: 'Trace', type: 'object' },
-  ],
-  llm: [
-    { id: 'text', label: 'Text', type: 'string' },
-    { id: 'json', label: 'JSON', type: 'object' },
-    { id: 'usage', label: 'Usage', type: 'object' },
-    { id: 'finish_reason', label: 'Finish reason', type: 'string' },
-  ],
-  tool: [
-    { id: 'text', label: 'Text', type: 'string' },
-    { id: 'json', label: 'JSON', type: 'object' },
-    { id: 'artifacts', label: 'Artifacts', type: 'array' },
-    { id: 'raw', label: 'Raw result', type: 'object' },
-  ],
-  condition: [
-    { id: 'matched_case', label: 'Matched case', type: 'string' },
-    { id: 'selected_target', label: 'Selected target', type: 'string' },
-  ],
-  output: [
-    { id: 'value', label: 'Value', type: 'any' },
-    { id: 'structured', label: 'Structured', type: 'object' },
-  ],
-};
-
-const DEFAULT_DIRECT_WORKFLOW = {
-  id: DIRECT_AGENT_WORKFLOW_ID,
-  workflow_id: DIRECT_AGENT_WORKFLOW_ID,
-  version: '1.0.0',
-  display_name: 'Direct Agent',
-  description: 'Run the selected agent and return its final answer.',
-  enabled: true,
-  system: true,
-  custom: false,
-  default: true,
-  editable: false,
-  deletable: false,
-  executable: true,
-  input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA,
-  nodes: [
-    { id: 'start', type: 'start', label: 'Start', input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA, position: { x: 80, y: 180 } },
-    {
-      id: 'agent',
-      type: 'agent',
-      label: 'Agent',
-      agent_id: 'preset.general',
-      prompt: '{{input.message}}',
-      input_mapping: {
-        message: '{{input.message}}',
-        attachments: '{{input.attachments}}',
-        image_attachments: '{{input.image_attachments}}',
-      },
-      position: { x: 360, y: 180 },
-    },
-    {
-      id: 'output',
-      type: 'output',
-      label: 'Output',
-      output_mode: 'json_object',
-      output: '{{nodes.agent.summary}}',
-      output_mapping: { answer: '{{nodes.agent.summary}}' },
-      output_schema: {
-        type: 'object',
-        fields: [{ id: 'answer', label: 'answer', type: 'string', path: 'output.answer' }],
-      },
-      position: { x: 640, y: 180 },
-    },
-  ],
-  edges: [
-    { from: 'start', to: 'agent' },
-    { from: 'agent', to: 'output' },
-  ],
-};
-
-const DEFAULT_WORKFLOW_SETTINGS = {
-  default_workflow_id: DIRECT_AGENT_WORKFLOW_ID,
-  presets: [DEFAULT_DIRECT_WORKFLOW],
-  custom: [],
-  node_types: DEFAULT_WORKFLOW_NODE_TYPES,
-};
-
-const SETTINGS_SECTIONS = [
-  { id: 'llm', label: 'Providers' },
-  { id: 'tools', label: 'Tools' },
-  { id: 'memory', label: 'Memory' },
-  { id: 'knowledge', label: 'Knowledge' },
-  { id: 'agent', label: 'Agent' },
-  { id: 'workflow', label: 'Agentic Workflow' },
-];
-
-const SETTINGS_SUBTABS = {
-  llm: [
-    { id: 'chat', label: 'Chat' },
-    { id: 'vision', label: 'Vision' },
-    { id: 'embedding', label: 'Embedding' },
-  ],
-  tools: [
-    { id: 'tools-mcp', label: 'MCP' },
-    { id: 'tools-skills', label: 'Skills' },
-    { id: 'tools-web', label: 'Web Search' },
-  ],
-};
-
-const SETTINGS_SECTION_COPY = {
-  llm: 'Provider management',
-  tools: 'Tool integrations',
-  memory: 'Configure Neo4j for long-term graph memory and relationship recall.',
-  knowledge: 'Configure Qdrant for document retrieval and vector search.',
-  agent: 'Agent profiles',
-  workflow: 'Workflows',
-};
-
-const LLM_SUBTAB_COPY = {
-  chat: 'Chat',
-  vision: 'Vision',
-  embedding: 'Embedding',
-  'tools-mcp': 'JSON MCP config',
-  'tools-skills': 'Installed skills',
-  'tools-web': 'Search providers',
-};
-
-const ADD_LABEL_BY_SECTION = {
-  memory: 'Add',
-  knowledge: 'Add',
-  agent: 'Add',
-  workflow: 'Add',
-};
-
-const LLM_PROVIDER_MODELS = {
-  openai: ['gpt-5.5', 'gpt-5.4'],
-  anthropic: ['claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-6'],
-  gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
-  deepseek: ['deepseek-v4-flash', 'deepseek-v4-pro'],
-  dashscope: ['qwen3-max', 'qwen3-plus', 'qwen3-vl-max'],
-  moonshot: ['kimi-k2.7-code', 'kimi-k2.6', 'kimi-k2.5'],
-  minimax: ['minimax-m3', 'minimax-m2.7', 'minimax-vl-01'],
-  zhipu: ['glm-5.2', 'glm-5.1v-thinking-flash', 'glm-4.5v'],
-  ollama: [],
-  custom: [],
-};
-
-const LLM_PROVIDER_OPTIONS = [
-  { id: 'openai', label: 'OpenAI', authModes: ['api_key', 'oauth'], defaultAuth: 'api_key', defaultModel: 'gpt-5.5', baseUrl: 'https://api.openai.com/v1' },
-  { id: 'anthropic', label: 'Anthropic', authModes: ['api_key', 'oauth'], defaultAuth: 'api_key', defaultModel: 'claude-opus-4-8', baseUrl: 'https://api.anthropic.com/v1' },
-  { id: 'gemini', label: 'Gemini', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'gemini-2.5-pro', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
-  { id: 'deepseek', label: 'DeepSeek', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'deepseek-v4-flash', baseUrl: 'https://api.deepseek.com' },
-  { id: 'dashscope', label: 'DashScope', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'qwen3-max', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
-  { id: 'moonshot', label: 'Moonshot', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'kimi-k2.7-code', baseUrl: 'https://api.moonshot.cn/v1' },
-  { id: 'minimax', label: 'MiniMax', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'minimax-m3', baseUrl: 'https://api.minimaxi.com/v1' },
-  { id: 'zhipu', label: 'Zhipu', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'glm-5.2', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
-  { id: 'ollama', label: 'Ollama', authModes: ['none'], defaultAuth: 'none', defaultModel: '', baseUrl: 'http://127.0.0.1:11434/v1' },
-  { id: 'custom', label: 'Custom', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: '', baseUrl: '' },
-];
-const HIDDEN_SETTINGS_LLM_PROVIDERS = new Set(['anthropic', 'gemini']);
-const SETTINGS_LLM_PROVIDER_OPTIONS = LLM_PROVIDER_OPTIONS.filter((item) => !HIDDEN_SETTINGS_LLM_PROVIDERS.has(item.id));
-
-const LLM_SETTINGS_STORAGE_KEY = 'haish.llmSettingsDraft.v1';
-const SETTINGS_RECORDS_STORAGE_KEY = 'haish.settingsRecordsDraft.v1';
-const SETTINGS_CONNECTION_STATUS_STORAGE_KEY = 'haish.settingsConnectionStatus.v1';
-const SETTINGS_CONNECTION_SECTIONS = ['memory', 'knowledge'];
-const SETTINGS_PERSISTED_CONNECTION_STATES = new Set(['success', 'error']);
-const DEFAULT_MCP_CONFIG_JSON = JSON.stringify({ servers: {} }, null, 2);
-const MCP_CONFIG_TEMPLATE_JSON = JSON.stringify({
-  servers: {
-    example: {
-      transport: 'stdio',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-filesystem', '/path/to/workspace'],
-      env: {},
-      enabled: true,
-      timeout_seconds: 30,
-    },
-  },
-}, null, 2);
-const DEFAULT_NEO4J_CONFIG = {
-  uri: '',
-  username: '',
-  password: '',
-  password_configured: false,
-  database: '',
-};
-const DEFAULT_QDRANT_CONFIG = {
-  url: '',
-  api_key: '',
-  api_key_configured: false,
-  collection: {
-    name: '',
-    vector_size: 1024,
-    distance: 'cosine',
-  },
-};
-const QDRANT_DISTANCE_OPTIONS = [
-  { id: 'cosine', label: 'Cosine' },
-  { id: 'euclid', label: 'Euclid' },
-  { id: 'dot', label: 'Dot' },
-];
-const LEGACY_DEFAULT_QDRANT_COLLECTION = 'haish_rag_default';
-const WEB_SEARCH_PROVIDER_OPTIONS = [
-  { id: 'tavily', label: 'Tavily', keyLabel: 'Tavily API Key' },
-  { id: 'serpapi', label: 'SerpApi', keyLabel: 'SerpApi API Key' },
-];
-const SETTINGS_REASONING_OPTIONS = [
-  { id: 'low', label: 'low' },
-  { id: 'medium', label: 'medium' },
-  { id: 'high', label: 'high' },
-  { id: 'xhigh', label: 'xhigh' },
-];
-
-function getLlmProvider(id) {
-  return LLM_PROVIDER_OPTIONS.find((item) => item.id === id) || LLM_PROVIDER_OPTIONS[0];
-}
-
-function normalizeLlmProviderId(value) {
-  return String(value || '').trim().toLowerCase().replace(/-/g, '_');
-}
-
-function formatAuthModeLabel(mode) {
-  const value = String(mode || '').trim();
-  if (value === 'api_key') return 'API Key';
-  if (value === 'oauth') return 'OAuth';
-  if (value === 'none') return 'None';
-  return value.replace(/_/g, ' ');
-}
-
-function modelChoicesFor(provider) {
-  const configured = provider === 'custom' ? [] : (LLM_PROVIDER_MODELS[provider] || []);
-  return Array.from(new Set(configured));
-}
-
-function uniqueModelChoices(...groups) {
-  const seen = new Set();
-  const result = [];
-  groups.flat().forEach((value) => {
-    const id = typeof value === 'string' ? value : value?.id;
-    const label = typeof value === 'string' ? value : (value?.label || value?.id);
-    const normalized = String(id || '').trim();
-    if (!normalized || seen.has(normalized)) return;
-    seen.add(normalized);
-    result.push({ id: normalized, label: String(label || normalized) });
-  });
-  return result;
-}
-
-function configuredModelOptions(config) {
-  if (config?.provider === 'ollama') return [];
-  return config?.model_options || [];
-}
-
-function runtimeProviderLabel(config) {
-  const provider = getLlmProvider(config.provider);
-  const name = String(config.name || config.custom_provider || '').trim();
-  return config.provider === 'custom' && name ? name : provider.label;
-}
-
-function runtimeProviderSelector(config) {
-  const provider = normalizeLlmProviderId(config.provider);
-  if (provider === 'custom') {
-    const key = String(config.name || config.custom_provider || config.base_url || config.model || '').trim();
-    return key ? `custom:${key}` : 'custom';
-  }
-  return provider || 'auto';
-}
-
-function runtimeLlmProviderOptions(draft, modelCatalog) {
-  const rows = [
-    draft?.chat,
-    ...(Array.isArray(draft?.profiles) ? draft.profiles : []),
-  ].filter((item) => item && item.provider);
-  const catalogProvider = normalizeLlmProviderId(modelCatalog?.provider);
-  const seen = new Set();
-  const options = rows.map((config, index) => {
-    const requestProvider = runtimeProviderSelector(config);
-    const idBase = config.id || `${index === 0 ? 'chat' : 'profile'}:${requestProvider}`;
-    const id = seen.has(idBase) ? `${idBase}:${index}` : idBase;
-    seen.add(id);
-    const includeCatalog = catalogProvider && catalogProvider === normalizeLlmProviderId(config.provider);
-    const modelOptions = uniqueModelChoices(
-      config.model,
-      configuredModelOptions(config),
-      includeCatalog ? (modelCatalog?.options || []) : [],
-      modelChoicesFor(config.provider),
-    );
-    return {
-      id,
-      label: runtimeProviderLabel(config),
-      provider: config.provider,
-      requestProvider,
-      defaultModelId: config.model || modelOptions[0]?.id || getLlmProvider(config.provider).defaultModel,
-      modelOptions,
-    };
-  }).filter((item) => item.modelOptions.length > 0 || item.defaultModelId);
-  return options;
-}
-
-function nextProviderDraft(providerId, previous = {}) {
-  const provider = getLlmProvider(providerId);
-  const isCustom = providerId === 'custom';
-  const choices = modelChoicesFor(providerId);
-  return {
-    ...previous,
-    provider: provider.id,
-    auth_mode: provider.defaultAuth,
-    custom_provider: isCustom ? String(previous.custom_provider || previous.name || '').trim() : '',
-    model: isCustom || providerId === 'ollama' ? '' : (choices[0] || provider.defaultModel),
-    base_url: isCustom ? '' : provider.baseUrl,
-    name: isCustom ? String(previous.name || previous.custom_provider || '').trim() : '',
-    api_key: '',
-    api_key_configured: false,
-    model_options: [],
-    oauth_auth_url: '',
-    oauth_code: '',
-    oauth_state: '',
-    oauth_verifier: '',
-  };
-}
-
-function createDefaultLlmSettings() {
-  return {
-    chat: {},
-    vision: {
-      enabled: false,
-      mode: 'auto',
-      provider: 'custom',
-      auth_mode: 'api_key',
-      custom_provider: '',
-      model: '',
-      api_key: '',
-      base_url: '',
-    },
-    embedding: {
-      enabled: false,
-      provider: 'custom',
-      auth_mode: 'api_key',
-      custom_provider: '',
-      model: '',
-      api_key: '',
-      base_url: '',
-    },
-    profiles: [],
-  };
-}
-
-function normalizeLlmModelConfig(config) {
-  if (!config || typeof config !== 'object') return {};
-  const provider = normalizeLlmProviderId(config.provider);
-  if (!provider) return { ...config, provider: '' };
-  if (provider === 'custom' && !config.name && config.custom_provider) {
-    return { ...config, provider, name: config.custom_provider };
-  }
-  return { ...config, provider };
-}
-
-function loadLlmSettingsDraft() {
-  const fallback = createDefaultLlmSettings();
-  try {
-    const raw = window.localStorage?.getItem(LLM_SETTINGS_STORAGE_KEY);
-    if (!raw) return fallback;
-    const stored = JSON.parse(raw);
-    const draft = {
-      chat: normalizeLlmModelConfig({ ...fallback.chat, ...(stored?.chat || {}) }),
-      vision: { ...fallback.vision, ...(stored?.vision || {}) },
-      embedding: { ...fallback.embedding, ...(stored?.embedding || {}) },
-      profiles: Array.isArray(stored?.profiles) ? stored.profiles : [],
-    };
-    return draft;
-  } catch {
-    return fallback;
-  }
-}
-
-function applyLlmSettingsPayloadToDraft(previous, payload) {
-  if (!payload || typeof payload !== 'object') return previous;
-  const hasBackendConfig = Boolean(
-    payload.chat?.provider
-    || payload.vision?.provider
-    || payload.embedding?.provider
-    || (Array.isArray(payload.profiles) && payload.profiles.length > 0),
-  );
-  if (!hasBackendConfig) return previous;
-  const fallback = createDefaultLlmSettings();
-  return {
-    chat: normalizeLlmModelConfig({ ...fallback.chat, ...(payload.chat || {}) }),
-    vision: { ...fallback.vision, ...(payload.vision || {}) },
-    embedding: { ...fallback.embedding, ...(payload.embedding || {}) },
-    profiles: Array.isArray(payload.profiles)
-      ? payload.profiles.map((profile) => normalizeLlmModelConfig(profile))
-      : [],
-  };
-}
-
-function createDefaultSettingsRecords() {
-  return {
-    tools: [
-      { id: 'tools-mcp', name: 'MCP Servers', kind: 'JSON Config', enabled: true, protected: true, endpoint: '', notes: 'Visual editor for runtime mcp.json.', mcp_json: DEFAULT_MCP_CONFIG_JSON, mcp_path: '', mcp_error: '', mcp_status: '' },
-      { id: 'tools-skills', name: 'Skills', kind: 'Package Manager', enabled: true, protected: true, endpoint: '', notes: 'Install, view, enable, disable, and uninstall skills.', skills: [], skill_errors: [], skill_install_root: '' },
-      { id: 'tools-web', name: 'Web Search', kind: 'Provider Keys', enabled: true, protected: true, endpoint: '', notes: 'Configure Tavily and SerpApi search keys.', web_search: createDefaultWebSearchSettings() },
-    ],
-    memory: [
-      { id: 'memory-neo4j', name: 'Neo4j', kind: 'Graph Memory', protected: true, endpoint: '', notes: 'Graph-backed long-term memory.', neo4j: normalizeNeo4jDraft() },
-    ],
-    knowledge: [
-      { id: 'knowledge-qdrant', name: 'Qdrant', kind: 'Vector Store', protected: true, endpoint: '', notes: 'Vector search for indexed documents.', qdrant: normalizeQdrantDraft() },
-    ],
-    agent: [
-      { id: 'agent-default', name: 'Default Agent', kind: 'Profile', enabled: true, endpoint: '', notes: 'Default assistant profile.' },
-    ],
-    workflow: [
-      { id: 'workflow-default', name: 'Default Workflow', kind: 'Workflow', enabled: true, endpoint: '', notes: 'Default planning and execution workflow.' },
-    ],
-  };
-}
-
-function createDefaultWebSearchSettings() {
-  return {
-    enabled: true,
-    mode: 'hybrid',
-    providers: {
-      tavily: { enabled: true, api_key: '', api_key_configured: false },
-      serpapi: { enabled: true, api_key: '', api_key_configured: false },
-    },
-  };
-}
-
-function normalizeNeo4jDraft(value = {}) {
-  const raw = value && typeof value === 'object' ? value : {};
-  return {
-    ...DEFAULT_NEO4J_CONFIG,
-    uri: String(raw.uri ?? raw.endpoint ?? DEFAULT_NEO4J_CONFIG.uri).trim(),
-    username: String(raw.username ?? DEFAULT_NEO4J_CONFIG.username).trim(),
-    password: String(raw.password ?? '').trim(),
-    password_configured: Boolean(raw.password_configured),
-    database: String(raw.database ?? DEFAULT_NEO4J_CONFIG.database).trim(),
-  };
-}
-
-function normalizeQdrantDraft(value = {}) {
-  const raw = value && typeof value === 'object' ? value : {};
-  const collectionRaw = raw.collection && typeof raw.collection === 'object' ? raw.collection : {};
-  const vectorSize = Number.parseInt(collectionRaw.vector_size ?? raw.vector_size ?? DEFAULT_QDRANT_CONFIG.collection.vector_size, 10);
-  const distance = String(collectionRaw.distance ?? raw.distance ?? DEFAULT_QDRANT_CONFIG.collection.distance).trim().toLowerCase();
-  const collectionName = String(collectionRaw.name ?? raw.collection_name ?? DEFAULT_QDRANT_CONFIG.collection.name).trim();
-  return {
-    ...DEFAULT_QDRANT_CONFIG,
-    url: String(raw.url ?? raw.endpoint ?? DEFAULT_QDRANT_CONFIG.url).trim(),
-    api_key: String(raw.api_key ?? '').trim(),
-    api_key_configured: Boolean(raw.api_key_configured),
-    collection: {
-      name: collectionName === LEGACY_DEFAULT_QDRANT_COLLECTION ? '' : collectionName,
-      vector_size: Number.isFinite(vectorSize) && vectorSize > 0 ? vectorSize : DEFAULT_QDRANT_CONFIG.collection.vector_size,
-      distance: QDRANT_DISTANCE_OPTIONS.some((item) => item.id === distance) ? distance : DEFAULT_QDRANT_CONFIG.collection.distance,
-    },
-  };
-}
-
-function mergeDefaultRecords(defaultRecords, storedRecords) {
-  const stored = Array.isArray(storedRecords) ? storedRecords : [];
-  const byId = new Map(stored.map((item) => [item?.id, item]));
-  const merged = defaultRecords.map((item) => ({ ...item, ...(byId.get(item.id) || {}) }));
-  const known = new Set(defaultRecords.map((item) => item.id));
-  return [...merged, ...stored.filter((item) => item?.id && !known.has(item.id))];
-}
-
-function mergeKnownDefaultRecords(defaultRecords, storedRecords) {
-  const stored = Array.isArray(storedRecords) ? storedRecords : [];
-  const byId = new Map(stored.map((item) => [item?.id, item]));
-  return defaultRecords.map((item) => ({ ...item, ...(byId.get(item.id) || {}) }));
-}
-
-function loadSettingsRecordsDraft() {
-  const fallback = createDefaultSettingsRecords();
-  try {
-    const raw = window.localStorage?.getItem(SETTINGS_RECORDS_STORAGE_KEY);
-    if (!raw) return fallback;
-    const stored = JSON.parse(raw);
-    return Object.fromEntries(
-      Object.entries(fallback).map(([section, records]) => [
-        section,
-        ['memory', 'knowledge'].includes(section)
-          ? mergeKnownDefaultRecords(records, stored?.[section])
-          : mergeDefaultRecords(records, stored?.[section]),
-      ]),
-    );
-  } catch {
-    return fallback;
-  }
-}
-
-function settingsConnectionRecord(records, section, itemId) {
-  const items = Array.isArray(records?.[section]) ? records[section] : [];
-  return items.find((item) => item?.id === itemId) || null;
-}
-
-function settingsConnectionSignature(section, record) {
-  if (!record) return '';
-  if (section === 'memory') {
-    const rawNeo4j = record.neo4j || {};
-    const neo4j = normalizeNeo4jDraft({ ...rawNeo4j, uri: rawNeo4j.uri || record.endpoint });
-    if (!neo4j.uri) return '';
-    return JSON.stringify(['memory', neo4j.uri, neo4j.username, Boolean(neo4j.password || neo4j.password_configured), neo4j.database]);
-  }
-  if (section === 'knowledge') {
-    const rawQdrant = record.qdrant || {};
-    const qdrant = normalizeQdrantDraft({ ...rawQdrant, url: rawQdrant.url || record.endpoint });
-    if (!qdrant.url) return '';
-    return JSON.stringify([
-      'knowledge',
-      qdrant.url,
-      Boolean(qdrant.api_key || qdrant.api_key_configured),
-      qdrant.collection?.name || '',
-      qdrant.collection?.vector_size || '',
-      qdrant.collection?.distance || '',
-    ]);
-  }
-  return '';
-}
-
-function settingsConnectionSignatureFor(records, section, itemId) {
-  return settingsConnectionSignature(section, settingsConnectionRecord(records, section, itemId));
-}
-
-function sanitizeSettingsConnectionStatus(status, records) {
-  const next = { memory: {}, knowledge: {} };
-  for (const section of SETTINGS_CONNECTION_SECTIONS) {
-    const items = Array.isArray(records?.[section]) ? records[section] : [];
-    for (const item of items) {
-      const itemStatus = status?.[section]?.[item.id];
-      if (!SETTINGS_PERSISTED_CONNECTION_STATES.has(String(itemStatus?.state || ''))) continue;
-      const signature = settingsConnectionSignature(section, item);
-      if (!signature || itemStatus.signature !== signature) continue;
-      next[section][item.id] = {
-        state: String(itemStatus.state),
-        message: String(itemStatus.message || ''),
-        signature,
-      };
-    }
-  }
-  return next;
-}
-
-function loadSettingsConnectionStatus(records) {
-  try {
-    const raw = window.localStorage?.getItem(SETTINGS_CONNECTION_STATUS_STORAGE_KEY);
-    return sanitizeSettingsConnectionStatus(raw ? JSON.parse(raw) : null, records);
-  } catch {
-    return { memory: {}, knowledge: {} };
-  }
-}
-
-function persistSettingsConnectionStatus(status, records) {
-  try {
-    window.localStorage?.setItem(
-      SETTINGS_CONNECTION_STATUS_STORAGE_KEY,
-      JSON.stringify(sanitizeSettingsConnectionStatus(status, records)),
-    );
-  } catch {
-    // Ignore storage failures; the live status still updates in React state.
-  }
-}
-
-function normalizeAgentProfileRow(item, fallback = {}) {
-  const id = String(item?.agent_id || item?.profile_id || item?.id || fallback.agent_id || fallback.id || '').trim();
-  const draft = Boolean(item?.draft);
-  const displayName = String(item?.display_name ?? item?.label ?? fallback.display_name ?? fallback.label ?? '');
-  const visibleName = draft && displayName.trim() === id ? '' : displayName;
-  return {
-    ...fallback,
-    ...item,
-    agent_id: id,
-    profile_id: String(item?.profile_id || id),
-    display_name: visibleName || (draft ? '' : id),
-    description: String(item?.description ?? fallback.description ?? ''),
-    enabled: item?.enabled !== false,
-    custom: Boolean(item?.custom),
-    draft,
-  };
-}
-
-function normalizeAgentToolGroups(groups) {
-  const defaultsById = new Map(DEFAULT_AGENT_TOOL_GROUPS.map((group) => [group.id, group]));
-  const sourceGroups = Array.isArray(groups) && groups.length ? groups : DEFAULT_AGENT_TOOL_GROUPS;
-  return sourceGroups.map((group) => {
-    const fallback = defaultsById.get(group?.id);
-    if (!fallback) {
-      return {
-        ...group,
-        tools: Array.isArray(group?.tools)
-          ? group.tools.filter((tool) => !DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS.includes(tool))
-          : [],
-      };
-    }
-    return { ...group, ...fallback };
-  });
-}
-
-function normalizeAgentSettings(payload) {
-  const source = payload && typeof payload === 'object' ? payload : DEFAULT_AGENT_SETTINGS;
-  const presets = Array.isArray(source.presets)
-    ? source.presets.map((item, index) => normalizeAgentProfileRow(item, DEFAULT_AGENT_SETTINGS.presets[index] || {})).filter((item) => item.agent_id)
-    : DEFAULT_AGENT_SETTINGS.presets;
-  const custom = Array.isArray(source.custom)
-    ? source.custom.map((item) => normalizeAgentProfileRow(item)).filter((item) => item.agent_id)
-    : [];
-  const baseProfiles = Array.isArray(source.base_profiles) && source.base_profiles.length
-    ? source.base_profiles.map((item, index) => normalizeAgentProfileRow(item, DEFAULT_AGENT_SETTINGS.base_profiles[index] || {})).filter((item) => item.agent_id)
-    : DEFAULT_AGENT_SETTINGS.base_profiles;
-  const toolGroups = normalizeAgentToolGroups(source.tool_groups);
-  const skills = Array.isArray(source.skills) ? source.skills : [];
-  return { presets, custom, base_profiles: baseProfiles, tool_groups: toolGroups, skills };
-}
-
-function agentCatalogFromSettings(settings) {
-  const normalized = normalizeAgentSettings(settings);
-  const options = [...normalized.presets, ...normalized.custom]
-    .filter((item) => item.enabled !== false && !item.draft)
-    .map((item) => ({
-      id: item.agent_id,
-      label: item.display_name,
-      description: item.description,
-      custom: Boolean(item.custom),
-    }));
-  return {
-    options: options.length ? options : APP_DEFAULT_AGENT_OPTIONS,
-    defaultAgentId: options.find((item) => item.id === 'preset.general')?.id || options[0]?.id || APP_DEFAULT_AGENT_OPTIONS[0].id,
-  };
-}
-
-function agentListItems(settings) {
-  const normalized = normalizeAgentSettings(settings);
-  return [...normalized.presets, ...normalized.custom].map((item) => ({
-    id: item.agent_id,
-    title: item.display_name || (item.draft ? 'New Agent' : item.agent_id),
-    kind: item.custom ? 'Custom' : (item.can_toggle === false ? 'Default' : 'Preset'),
-    summary: item.draft ? 'Draft' : (item.description || (item.enabled === false ? 'Disabled' : 'Enabled')),
-    protected: !item.custom,
-    enabled: item.enabled !== false,
-    custom: Boolean(item.custom),
-    canToggle: item.can_toggle !== false && !item.custom,
-    canConfigure: Boolean(item.custom) && item.readonly !== true,
-    readonly: item.readonly === true,
-  }));
-}
-
-function withAlwaysAllowedAgentTools(tools) {
-  const result = [];
-  const seen = new Set();
-  for (const tool of [...DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS, ...(Array.isArray(tools) ? tools : [])]) {
-    if (!tool || seen.has(tool)) continue;
-    seen.add(tool);
-    result.push(tool);
-  }
-  return result;
-}
-
-function toolsForAgentGroups(groupIds, toolGroups) {
-  const selected = new Set(groupIds || []);
-  const result = withAlwaysAllowedAgentTools([]);
-  const seen = new Set(result);
-  for (const group of toolGroups || DEFAULT_AGENT_TOOL_GROUPS) {
-    if (!selected.has(group.id)) continue;
-    for (const tool of group.tools || []) {
-      if (seen.has(tool)) continue;
-      seen.add(tool);
-      result.push(tool);
-    }
-  }
-  return result;
-}
-
-function groupIdsForAgentTools(tools, toolGroups) {
-  const allowed = new Set(tools || []);
-  return (toolGroups || DEFAULT_AGENT_TOOL_GROUPS)
-    .filter((group) => (group.tools || []).some((tool) => allowed.has(tool)))
-    .map((group) => group.id);
-}
-
-function createDefaultCustomAgentPayload(agentSettings) {
-  const settings = normalizeAgentSettings(agentSettings);
-  const base = settings.base_profiles.find((item) => item.agent_id === 'preset.general')?.agent_id
-    || settings.base_profiles[0]?.agent_id
-    || 'preset.general';
-  const groupIds = ['workspace_read', 'planning', 'sub_agent'];
-  return {
-    id: `custom.agent-${Date.now()}`,
-    base,
-    display_name: '',
-    description: '',
-    enabled: true,
-    draft: true,
-    system_prompt: '',
-    primary_skill_name: '',
-    tool_policy: {
-      allow: toolsForAgentGroups(groupIds, settings.tool_groups),
-      deny: [],
-      allow_mcp_tools: true,
-    },
-    skill_policy: { allow: [], deny: [] },
-  };
-}
-
-function normalizeWorkflowNode(node, fallback = {}) {
-  const nodeId = String(node?.id || fallback.id || '').trim();
-  const type = String(node?.type || fallback.type || '').trim() || 'agent';
-  const data = node && typeof node === 'object' ? { ...node } : {};
-  ['prompt', 'input', 'output', 'expression', 'arguments', 'output_mapping'].forEach((key) => {
-    if (key in data) data[key] = sanitizeWorkflowTemplateValue(data[key]);
-  });
-  delete data.id;
-  delete data.type;
-  const fallbackPosition = fallback.position && typeof fallback.position === 'object' ? fallback.position : {};
-  const position = data.position && typeof data.position === 'object' ? data.position : fallbackPosition;
-  return {
-    ...fallback,
-    ...data,
-    id: nodeId,
-    type,
-    label: String(data.label || fallback.label || typeLabelForWorkflowNode(type)),
-    position: {
-      x: Number.isFinite(Number(position.x)) ? Number(position.x) : Number(fallbackPosition.x || 0),
-      y: Number.isFinite(Number(position.y)) ? Number(position.y) : Number(fallbackPosition.y || 0),
-    },
-  };
-}
-
-function normalizeWorkflowEdge(edge) {
-  return {
-    from: String(edge?.from || edge?.source || '').trim(),
-    to: String(edge?.to || edge?.target || '').trim(),
-  };
-}
-
-function normalizeWorkflowRow(item, fallback = DEFAULT_DIRECT_WORKFLOW) {
-  const workflowId = String(item?.workflow_id || item?.id || fallback.workflow_id || fallback.id || '').trim();
-  const rawNodes = Array.isArray(item?.nodes) && item.nodes.length ? item.nodes : fallback.nodes;
-  const rawEdges = Array.isArray(item?.edges) ? item.edges : fallback.edges;
-  const fallbackName = item?.draft ? 'New Workflow' : (fallback.display_name || workflowId);
-  const isBlankDraft = Boolean(item?.draft && !String(item?.display_name || item?.name || '').trim());
-  const nodes = rawNodes
-    .map((node, index) => normalizeWorkflowNode(node, fallback.nodes?.[index] || {}))
-    .filter((node) => node.id)
-    .map((node) => {
-      if (
-        isBlankDraft
-        && node.type === 'output'
-        && (node.output_mode || 'text') === 'text'
-        && String(node.output || '').trim() === '{{input.message}}'
-        && !node.output_mapping
-      ) {
-        return {
-          ...node,
-          output_mode: 'json_object',
-          output_mapping: { answer: '{{input.message}}' },
-          output_schema: {
-            type: 'object',
-            fields: [{ id: 'answer', label: 'answer', type: 'string', path: 'output.answer' }],
-          },
-        };
-      }
-      return node;
-    });
-  return {
-    ...fallback,
-    ...(item && typeof item === 'object' ? item : {}),
-    id: workflowId,
-    workflow_id: workflowId,
-    version: String(item?.version || fallback.version || '1.0.0'),
-    display_name: String(item?.display_name || item?.name || fallbackName),
-    description: String(item?.description || fallback.description || ''),
-    enabled: item?.enabled !== false,
-    system: Boolean(item?.system ?? fallback.system),
-    custom: Boolean(item?.custom ?? !item?.system),
-    default: Boolean(item?.default),
-    editable: Boolean(item?.editable ?? item?.custom),
-    deletable: Boolean(item?.deletable ?? item?.custom),
-    executable: Boolean(item?.executable ?? workflowId === DIRECT_AGENT_WORKFLOW_ID),
-    draft: Boolean(item?.draft),
-    nodes,
-    edges: rawEdges.map(normalizeWorkflowEdge).filter((edge) => edge.from && edge.to),
-  };
-}
-
-function normalizeWorkflowSettings(payload) {
-  const source = payload && typeof payload === 'object' ? payload : DEFAULT_WORKFLOW_SETTINGS;
-  const presets = Array.isArray(source.presets) && source.presets.length
-    ? source.presets.map((item, index) => normalizeWorkflowRow(item, DEFAULT_WORKFLOW_SETTINGS.presets[index] || DEFAULT_DIRECT_WORKFLOW)).filter((item) => item.workflow_id)
-    : DEFAULT_WORKFLOW_SETTINGS.presets;
-  const custom = Array.isArray(source.custom)
-    ? source.custom.map((item) => normalizeWorkflowRow(item, { ...DEFAULT_DIRECT_WORKFLOW, custom: true, system: false, editable: true, deletable: true, default: false })).filter((item) => item.workflow_id)
-    : [];
-  const nodeTypes = Array.isArray(source.node_types) && source.node_types.length
-    ? source.node_types
-    : DEFAULT_WORKFLOW_NODE_TYPES;
-  return {
-    default_workflow_id: String(source.default_workflow_id || DIRECT_AGENT_WORKFLOW_ID),
-    presets,
-    custom,
-    node_types: nodeTypes,
-  };
-}
-
-function workflowListItems(settings) {
-  const normalized = normalizeWorkflowSettings(settings);
-  return [...normalized.presets, ...normalized.custom].map((item) => ({
-    id: item.workflow_id,
-    title: item.display_name || (item.draft ? 'New Workflow' : item.workflow_id),
-    kind: item.custom ? 'Custom' : 'Preset',
-    summary: item.draft ? 'Draft' : (item.description || (item.enabled === false ? 'Disabled' : 'Enabled')),
-    protected: !item.custom,
-    enabled: item.enabled !== false,
-    custom: Boolean(item.custom),
-    default: item.workflow_id === normalized.default_workflow_id || item.default === true,
-    canToggle: item.workflow_id !== DIRECT_AGENT_WORKFLOW_ID,
-    canConfigure: Boolean(item.custom) || item.editable,
-  }));
-}
-
-function workflowById(settings, workflowId) {
-  const normalized = normalizeWorkflowSettings(settings);
-  return [...normalized.presets, ...normalized.custom].find((item) => item.workflow_id === workflowId) || null;
-}
-
-function typeLabelForWorkflowNode(type) {
-  const known = {
-    start: 'Start',
-    output: 'End',
-    agent: 'Agent',
-    llm: 'LLM',
-    tool: 'Tool',
-    condition: 'Condition',
-  };
-  return known[type] || type || 'Node';
-}
-
-function workflowOutputFields(nodeOrType) {
-  const type = typeof nodeOrType === 'string' ? nodeOrType : nodeOrType?.type;
-  return [...COMMON_WORKFLOW_OUTPUT_FIELDS, ...(WORKFLOW_NODE_OUTPUT_FIELDS[type] || [])];
-}
-
-function workflowSchemaFields(schema) {
-  return Array.isArray(schema?.fields) && schema.fields.length
-    ? schema.fields
-    : DEFAULT_WORKFLOW_INPUT_SCHEMA.fields;
-}
-
-function workflowUpstreamNodeIds(workflow, selectedNodeId) {
-  if (!selectedNodeId) return new Set();
-  const incoming = new Map();
-  (workflow?.edges || []).forEach((edge) => {
-    if (!edge.from || !edge.to) return;
-    incoming.set(edge.to, [...(incoming.get(edge.to) || []), edge.from]);
-  });
-  const upstream = new Set();
-  const stack = [...(incoming.get(selectedNodeId) || [])];
-  while (stack.length) {
-    const nodeId = stack.pop();
-    if (!nodeId || upstream.has(nodeId)) continue;
-    upstream.add(nodeId);
-    stack.push(...(incoming.get(nodeId) || []));
-  }
-  return upstream;
-}
-
-function workflowFriendlyVariableLabel(item) {
-  if (!item) return 'Value';
-  if (item.path === 'input.message') return 'User message';
-  if (item.path === 'input.attachments') return 'Files';
-  if (item.path === 'input.image_attachments') return 'Images';
-  if (item.path === 'input.conversation_id') return 'Conversation';
-  if (item.path === 'input.workspace') return 'Workspace';
-  const nodeLabel = item.nodeLabel || item.group || 'Node';
-  const fieldLabels = {
-    status: 'status',
-    success: 'done',
-    summary: 'answer',
-    error: 'error',
-    metadata: 'metadata',
-    messages: 'messages',
-    artifacts: 'artifacts',
-    structured: 'structured data',
-    citations: 'citations',
-    trace: 'trace',
-    text: 'text',
-    json: 'JSON',
-    usage: 'usage',
-    finish_reason: 'finish reason',
-    raw: 'raw result',
-    matched_case: 'matched case',
-    selected_target: 'selected target',
-    value: 'value',
-  };
-  return `${nodeLabel} ${fieldLabels[item.fieldId] || item.fieldId || 'value'}`;
-}
-
-function workflowVariableCatalog(workflow, selectedNodeId = '') {
-  const inputFields = workflowSchemaFields(workflow?.input_schema).map((field) => ({
-    path: field.path || `input.${field.id}`,
-    label: workflowFriendlyVariableLabel({ path: field.path || `input.${field.id}` }),
-    type: field.type || 'any',
-    group: 'Input',
-  }));
-  const upstreamIds = workflowUpstreamNodeIds(workflow, selectedNodeId);
-  const nodeFields = (workflow?.nodes || [])
-    .filter((node) => node?.id && node.id !== selectedNodeId && upstreamIds.has(node.id) && node.type !== 'output')
-    .flatMap((node) => workflowOutputFields(node).map((field) => ({
-      path: `nodes.${node.id}.${field.id}`,
-      label: workflowFriendlyVariableLabel({
-        path: `nodes.${node.id}.${field.id}`,
-        nodeLabel: node.label || typeLabelForWorkflowNode(node.type),
-        fieldId: field.id,
-      }),
-      type: field.type || 'any',
-      group: typeLabelForWorkflowNode(node.type),
-      nodeLabel: node.label || typeLabelForWorkflowNode(node.type),
-      fieldId: field.id,
-    })));
-  return [...inputFields, ...nodeFields];
-}
-
-function sanitizeWorkflowTemplateValue(value) {
-  if (typeof value === 'string') {
-    let next = value;
-    let previous = '';
-    while (next !== previous) {
-      previous = next;
-      next = next.replace(/{{([^{}]*){{\s*([^{}]+?)\s*}}([^{}]*)}}/g, '{{$2}}');
-    }
-    return next;
-  }
-  if (Array.isArray(value)) return value.map(sanitizeWorkflowTemplateValue);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeWorkflowTemplateValue(item)]));
-  }
-  return value;
-}
-
-function workflowTokenRangeAt(text, start, end) {
-  const selectedStart = Math.min(start, end);
-  const selectedEnd = Math.max(start, end);
-  const exactMatch = text.match(/^{{\s*[^{}]+?\s*}}$/);
-  if (exactMatch) return { start: 0, end: text.length };
-  const tokenPattern = /{{\s*[^{}]+?\s*}}/g;
-  let match = tokenPattern.exec(text);
-  while (match) {
-    const tokenStart = match.index;
-    const tokenEnd = tokenStart + match[0].length;
-    const cursorInsideToken = selectedStart === selectedEnd && selectedStart > tokenStart && selectedStart < tokenEnd;
-    const selectionTouchesToken = selectedStart < tokenEnd && selectedEnd > tokenStart;
-    if (cursorInsideToken || selectionTouchesToken) return { start: tokenStart, end: tokenEnd };
-    match = tokenPattern.exec(text);
-  }
-  return { start: selectedStart, end: selectedEnd };
-}
-
-function workflowArgumentsText(value) {
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.stringify(value ?? {}, null, 2);
-  } catch {
-    return '{}';
-  }
-}
-
-const WORKFLOW_OUTPUT_FIELD_OPTIONS = ['answer', 'summary', 'plan', 'request', 'citations', 'artifacts', 'metadata'];
-const DEFAULT_WORKFLOW_OUTPUT_MAPPING = {
-  answer: '{{input.message}}',
-};
-const DEFAULT_WORKFLOW_OUTPUT_SCHEMA = {
-  type: 'object',
-  fields: [{ id: 'answer', label: 'answer', type: 'string', path: 'output.answer' }],
-};
-
-function workflowOutputFieldOptions(entries) {
-  const keys = new Set(WORKFLOW_OUTPUT_FIELD_OPTIONS);
-  entries.forEach((entry) => {
-    const key = String(entry.key || '').trim();
-    if (key) keys.add(key);
-  });
-  return [...keys].map((key) => ({ id: key, label: key }));
-}
-
-function workflowOutputMappingEntries(node) {
-  const schemaFields = Array.isArray(node?.output_schema?.fields) ? node.output_schema.fields : [];
-  const typeByKey = new Map(schemaFields.map((field) => [field.id || field.key || field.name, field.type || 'any']));
-  const mapping = node?.output_mapping && typeof node.output_mapping === 'object' && !Array.isArray(node.output_mapping)
-    ? node.output_mapping
-    : null;
-  const entries = mapping
-    ? Object.entries(mapping)
-    : [['answer', node?.output || '{{input.message}}']];
-  return entries.map(([key, value]) => ({
-    key,
-    value: typeof value === 'string' ? value : workflowArgumentsText(value),
-    type: typeByKey.get(key) || 'any',
-  }));
-}
-
-function workflowTemplateVariablePath(value) {
-  const match = String(value || '').trim().match(/^{{\s*([^{}]+?)\s*}}$/);
-  return match ? match[1] : '';
-}
-
-function workflowVariableTypeForValue(value, variables) {
-  const path = workflowTemplateVariablePath(value);
-  if (!path) return 'any';
-  return variables.find((item) => item.path === path)?.type || 'any';
-}
-
-function buildWorkflowOutputPatch(entries) {
-  const output_mapping = {};
-  entries.forEach((entry) => {
-    const key = String(entry.key || '').trim();
-    if (!key) return;
-    output_mapping[key] = entry.value || '';
-  });
-  const firstValue = Object.values(output_mapping)[0] || '{{input.message}}';
-  return {
-    output_mode: 'json_object',
-    output: String(output_mapping.answer || output_mapping.summary || firstValue),
-    output_mapping,
-    output_schema: {
-      type: 'object',
-      fields: Object.keys(output_mapping).map((key) => ({
-        id: key,
-        label: key,
-        type: entries.find((entry) => entry.key === key)?.type || 'any',
-        path: `output.${key}`,
-      })),
-    },
-  };
-}
-
-function createWorkflowExamplePatch(agentOptions) {
-  const agentId = agentOptions.find((item) => item.id === 'preset.product')?.id
-    || agentOptions[0]?.id
-    || 'preset.general';
-  return {
-    display_name: 'Plan and Answer Example',
-    description: 'Analyze the request, format a final answer, and return structured fields.',
-    nodes: [
-      { id: 'start', type: 'start', label: 'Request', input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA, position: { x: 80, y: 220 } },
-      {
-        id: 'agent_1',
-        type: 'agent',
-        label: 'Analyze',
-        agent_id: agentId,
-        prompt: 'Read the user request and produce a concise plan.\n\nUser request:\n{{input.message}}',
-        input_mapping: {
-          message: '{{input.message}}',
-          attachments: '{{input.attachments}}',
-          image_attachments: '{{input.image_attachments}}',
-        },
-        position: { x: 340, y: 220 },
-      },
-      {
-        id: 'llm_1',
-        type: 'llm',
-        label: 'Format',
-        response_format: 'json_object',
-        prompt: 'Turn the plan into a short final answer.\n\nOriginal request:\n{{input.message}}\n\nPlan:\n{{nodes.agent_1.summary}}',
-        position: { x: 610, y: 220 },
-      },
-      {
-        id: 'output',
-        type: 'output',
-        label: 'End',
-        output_mode: 'json_object',
-        output: '{{nodes.llm_1.text}}',
-        output_mapping: {
-          answer: '{{nodes.llm_1.text}}',
-          plan: '{{nodes.agent_1.summary}}',
-          request: '{{input.message}}',
-        },
-        output_schema: {
-          type: 'object',
-          fields: [
-            { id: 'answer', label: 'answer', type: 'string', path: 'output.answer' },
-            { id: 'plan', label: 'plan', type: 'string', path: 'output.plan' },
-            { id: 'request', label: 'request', type: 'string', path: 'output.request' },
-          ],
-        },
-        position: { x: 880, y: 220 },
-      },
-    ],
-    edges: [
-      { from: 'start', to: 'agent_1' },
-      { from: 'agent_1', to: 'llm_1' },
-      { from: 'llm_1', to: 'output' },
-    ],
-  };
-}
-
-function createDefaultCustomWorkflowPayload() {
-  const id = `custom.workflow-${Date.now()}`;
-  return normalizeWorkflowRow({
-    ...DEFAULT_DIRECT_WORKFLOW,
-    id,
-    workflow_id: id,
-    display_name: '',
-    description: '',
-    enabled: true,
-    system: false,
-    custom: true,
-    editable: true,
-    deletable: true,
-    executable: false,
-    default: false,
-    draft: true,
-    input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA,
-    nodes: [
-      { id: 'start', type: 'start', label: 'Start', input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA, position: { x: 80, y: 180 } },
-      {
-        id: 'output',
-        type: 'output',
-        label: 'End',
-        output_mode: 'json_object',
-        output: '{{input.message}}',
-        output_mapping: DEFAULT_WORKFLOW_OUTPUT_MAPPING,
-        output_schema: DEFAULT_WORKFLOW_OUTPUT_SCHEMA,
-        position: { x: 640, y: 180 },
-      },
-    ],
-    edges: [],
-  });
-}
-
-function payloadForCustomWorkflow(workflow) {
-  const displayName = String(workflow?.display_name || '').trim();
-  if (!displayName) throw new Error('workflow name is required');
-  return {
-    id: workflow.workflow_id,
-    version: workflow.version || '1.0.0',
-    display_name: displayName,
-    description: workflow.description || '',
-    enabled: workflow.enabled !== false,
-    input_schema: workflow.input_schema || DEFAULT_WORKFLOW_INPUT_SCHEMA,
-    variables: workflow.variables && typeof workflow.variables === 'object' ? workflow.variables : {},
-    nodes: (workflow.nodes || []).map((node) => {
-      const next = { ...node, id: node.id, type: node.type };
-      return next;
-    }),
-    edges: (workflow.edges || []).map((edge) => ({ from: edge.from, to: edge.to })),
-  };
-}
 
 function FieldRow({ label, hint, children }) {
   return (
@@ -1555,7 +419,7 @@ function SettingsTooltipIconButton({
       <SettingsLucideIcon name={icon} size={iconSize} />
     </button>
   );
-  const Tooltip = window.PortalTooltip;
+  const Tooltip = PortalTooltip;
   return Tooltip ? <Tooltip text={label} position="above">{button}</Tooltip> : button;
 }
 
@@ -2479,7 +1343,7 @@ function AgentConfigEditor({ selectedId, settings, onSettingsChange, readOnly = 
   const renderHelpDot = (text) => {
     const label = String(text || '').trim();
     const dot = <span className="settings-help-dot" aria-label={label} tabIndex={0}>?</span>;
-    const Tooltip = window.PortalTooltip;
+    const Tooltip = PortalTooltip;
     return Tooltip ? <Tooltip text={label} position="above" multiline>{dot}</Tooltip> : dot;
   };
   const allowedTools = Array.isArray(current.tool_policy?.allow) ? current.tool_policy.allow : [];
@@ -2598,7 +1462,7 @@ function AgentConfigEditor({ selectedId, settings, onSettingsChange, readOnly = 
 }
 
 function WorkflowFlowNode({ data, selected }) {
-  const flow = window.ReactFlow || {};
+  const flow = ReactFlowNS;
   const Handle = flow.Handle;
   const Position = flow.Position || { Left: 'left', Right: 'right' };
   const node = data?.workflowNode || {};
@@ -2666,7 +1530,7 @@ function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, agentSet
       };
     });
   };
-  const flow = window.ReactFlow || {};
+  const flow = ReactFlowNS;
   const ReactFlowCanvas = flow.ReactFlow;
   const Background = flow.Background;
   const Controls = flow.Controls;
@@ -3118,7 +1982,7 @@ function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, agentSet
         </div>
         {selectedEdge ? (
           <div className="workflow-node-help">
-            Connection: {selectedEdge.from} -> {selectedEdge.to}
+            Connection: {selectedEdge.from}{' -> '}{selectedEdge.to}
           </div>
         ) : selectedNode ? (
           <>
@@ -5611,7 +4475,7 @@ function buildAgentLiveSnapshot(task, events) {
       : event.tool_group === 'skill'
         ? providerMeta.actor
       : routeConfig?.actor || actorId;
-    if (!actor || !window.STATIONS[actor]) continue;
+    if (!actor || !STATIONS[actor]) continue;
     const bubble = event.type === 'provider_selected'
       ? providerMeta.label
       : event.message || event.delta || routeConfig?.bubble || '';
@@ -6767,7 +5631,7 @@ function serializePointMap(name, ids, pointMap, includeLabel = false) {
   const rows = ids.map((id) => {
     const point = pointMap[id];
     if (includeLabel) {
-      const label = window.STATIONS[id]?.label || point?.label || '';
+      const label = STATIONS[id]?.label || point?.label || '';
       return `  ${id}: { x: ${point.x.toFixed(3)}, y: ${point.y.toFixed(3)}, label: '${label}' },`;
     }
     return `  ${id}: { x: ${point.x.toFixed(3)}, y: ${point.y.toFixed(3)} },`;
@@ -7273,8 +6137,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   const viewModeRef = useRef('chat');
   const [npcStates, setNpcStates] = useState(() => {
     const s = {};
-    for (const id of Object.keys(window.STATIONS)) {
-      s[id] = { pos: window.STATIONS[id], dir: 'front', walking: false };
+    for (const id of Object.keys(STATIONS)) {
+      s[id] = { pos: STATIONS[id], dir: 'front', walking: false };
     }
     return s;
   });
@@ -7307,9 +6171,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   const stageRef = useRef(null);
   const abortRef = useRef(false);
   const npcStatesRef = useRef(npcStates);
-  const originalStationsRef = useRef(clonePointMap(window.STATIONS));
-  const originalNavRef = useRef(clonePointMap(window.NAV_POINTS));
-  const originalMeetRef = useRef(clonePointMap(window.MEET_POINTS));
+  const originalStationsRef = useRef(clonePointMap(STATIONS));
+  const originalNavRef = useRef(clonePointMap(NAV_POINTS));
+  const originalMeetRef = useRef(clonePointMap(MEET_POINTS));
   const dragStateRef = useRef(null);
   const copyTimerRef = useRef(null);
   const [calibrationMode, setCalibrationMode] = useState(false);
@@ -7328,14 +6192,14 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }));
   const [skillActionBusy, setSkillActionBusy] = useState('');
   const [calibrationTarget, setCalibrationTarget] = useState('stations');
-  const [selectedMarkerId, setSelectedMarkerId] = useState(window.CALIBRATION_IDS[0]);
-  const [selectedRouteId, setSelectedRouteId] = useState(window.ROUTE_EDITOR_IDS[0] || window.ROUTE_IDS[0] || null);
-  const [selectedPoseNpcId, setSelectedPoseNpcId] = useState(window.CALIBRATION_IDS[0]);
+  const [selectedMarkerId, setSelectedMarkerId] = useState(CALIBRATION_IDS[0]);
+  const [selectedRouteId, setSelectedRouteId] = useState(ROUTE_EDITOR_IDS[0] || ROUTE_IDS[0] || null);
+  const [selectedPoseNpcId, setSelectedPoseNpcId] = useState(CALIBRATION_IDS[0]);
   const [selectedPoseMappingKey, setSelectedPoseMappingKey] = useState(POSE_MAPPING_FIELDS[0].key);
   const [selectedPoseSourceKey, setSelectedPoseSourceKey] = useState(null);
-  const [stationDrafts, setStationDrafts] = useState(() => clonePointMap(window.STATIONS));
-  const [navDrafts, setNavDrafts] = useState(() => clonePointMap(window.NAV_POINTS));
-  const [meetDrafts, setMeetDrafts] = useState(() => clonePointMap(window.MEET_POINTS));
+  const [stationDrafts, setStationDrafts] = useState(() => clonePointMap(STATIONS));
+  const [navDrafts, setNavDrafts] = useState(() => clonePointMap(NAV_POINTS));
+  const [meetDrafts, setMeetDrafts] = useState(() => clonePointMap(MEET_POINTS));
   const [copiedCoords, setCopiedCoords] = useState(false);
   const activeTaskIdRef = useRef(null);
   const activeRunIdRef = useRef(null);
@@ -8576,7 +7440,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     stepCurrent = 1,
     stepTotal = 1,
   } = {}) {
-    if (!actor || !window.STATIONS[actor]) return;
+    if (!actor || !STATIONS[actor]) return;
     stopThinkingPulse(actor);
     const startedAt = Date.now();
     const tick = () => {
@@ -8597,7 +7461,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function setActorIdle(actor) {
-    if (!actor || !window.STATIONS[actor]) return;
+    if (!actor || !STATIONS[actor]) return;
     stopThinkingPulse(actor);
     updateNpc(actor, {
       action: null,
@@ -8610,7 +7474,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function setActorActive(actor, { kind, bubble = '', thinking = false } = {}) {
-    if (!actor || !window.STATIONS[actor]) return;
+    if (!actor || !STATIONS[actor]) return;
     updateNpc(actor, {
       action: {
         kind: kind || WORLD_KIND_MAP[actor] || 'deliver',
@@ -8623,14 +7487,14 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   async function returnActorHome(actor, pathSpec, meta = {}) {
-    if (!actor || !window.STATIONS[actor]) return;
-    const path = [...resolvePathSpec(pathSpec), window.STATIONS[actor]];
+    if (!actor || !STATIONS[actor]) return;
+    const path = [...resolvePathSpec(pathSpec), STATIONS[actor]];
     await animateWalk(actor, path, meta);
     setActorIdle(actor);
   }
 
   function resetSceneActors() {
-    for (const actor of Object.keys(window.STATIONS)) {
+    for (const actor of Object.keys(STATIONS)) {
       setActorIdle(actor);
     }
   }
@@ -8778,7 +7642,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   function resolvePoint(ref) {
     if (!ref) return null;
     if (typeof ref === 'string') {
-      return window.STATIONS[ref] || window.NAV_POINTS?.[ref] || window.MEET_POINTS?.[ref] || null;
+      return STATIONS[ref] || NAV_POINTS?.[ref] || MEET_POINTS?.[ref] || null;
     }
     return ref;
   }
@@ -8786,8 +7650,8 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   function resolvePathSpec(spec) {
     if (!spec) return [];
     if (Array.isArray(spec)) return spec.flatMap((item) => resolvePathSpec(item));
-    if (typeof spec === 'string' && window.ROUTES?.[spec]) {
-      return window.ROUTES[spec].flatMap((item) => resolvePathSpec(item));
+    if (typeof spec === 'string' && ROUTES?.[spec]) {
+      return ROUTES[spec].flatMap((item) => resolvePathSpec(item));
     }
     const point = resolvePoint(spec);
     return point ? [point] : [];
@@ -8805,7 +7669,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   function syncNpcPositions(stations) {
     setNpcStates((state) => {
       const next = { ...state };
-      for (const id of Object.keys(window.STATIONS)) {
+      for (const id of Object.keys(STATIONS)) {
         const station = stations[id];
         next[id] = {
           ...state[id],
@@ -8858,7 +7722,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function getCharPoseConfig(id) {
-    const def = window.CHAR_DEFS[id];
+    const def = CHAR_DEFS[id];
     if (!def) return null;
     const base = def.poseConfig || {
       idle: { ...def.idle },
@@ -8870,7 +7734,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function getPoseMappingValue(id, mappingKey) {
-    const def = window.CHAR_DEFS[id];
+    const def = CHAR_DEFS[id];
     const config = getCharPoseConfig(id);
     const field = POSE_MAPPING_FIELDS.find((item) => item.key === mappingKey);
     if (!def || !config || !field) return null;
@@ -8880,7 +7744,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function applyPoseMapping(id, mappingKey, frame) {
-    const def = window.CHAR_DEFS[id];
+    const def = CHAR_DEFS[id];
     const config = getCharPoseConfig(id);
     const field = POSE_MAPPING_FIELDS.find((item) => item.key === mappingKey);
     if (!def || !config || !field || frame == null) return;
@@ -8899,7 +7763,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function getPoseFrameOptions(id) {
-    const def = window.CHAR_DEFS[id];
+    const def = CHAR_DEFS[id];
     const config = getCharPoseConfig(id);
     if (!def || !config) return [];
     const seen = new Set();
@@ -8922,7 +7786,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function resetPoseMapping(id) {
-    const def = window.CHAR_DEFS[id];
+    const def = CHAR_DEFS[id];
     if (!def) return;
     def.poseConfig = {
       idle: { ...def.idle },
@@ -8933,9 +7797,9 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function getIdsForTarget(target) {
-    if (target === 'routes') return [...new Set((window.ROUTE_EDITOR_DEFS?.[selectedRouteId]?.refs || window.ROUTES[selectedRouteId] || []))];
-    if (target === 'meet') return window.MEET_POINT_IDS;
-    return window.CALIBRATION_IDS;
+    if (target === 'routes') return [...new Set((ROUTE_EDITOR_DEFS?.[selectedRouteId]?.refs || ROUTES[selectedRouteId] || []))];
+    if (target === 'meet') return MEET_POINT_IDS;
+    return CALIBRATION_IDS;
   }
 
   function getDraftsForTarget(target) {
@@ -8953,29 +7817,29 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   }
 
   function getSourceMapForTarget(target) {
-    if (target === 'nav') return window.NAV_POINTS;
-    if (target === 'meet') return window.MEET_POINTS;
-    return window.STATIONS;
+    if (target === 'nav') return NAV_POINTS;
+    if (target === 'meet') return MEET_POINTS;
+    return STATIONS;
   }
 
   function resolvePointTarget(id) {
-    if (window.NAV_POINTS[id]) return 'nav';
-    if (window.MEET_POINTS[id]) return 'meet';
-    if (window.STATIONS[id]) return 'stations';
+    if (NAV_POINTS[id]) return 'nav';
+    if (MEET_POINTS[id]) return 'meet';
+    if (STATIONS[id]) return 'stations';
     return null;
   }
 
   function getFirstRouteRef(routeId) {
-    const route = window.ROUTE_EDITOR_DEFS?.[routeId]?.refs || window.ROUTES[routeId] || [];
+    const route = ROUTE_EDITOR_DEFS?.[routeId]?.refs || ROUTES[routeId] || [];
     return route[0] || null;
   }
 
   function getPointDisplayName(target, id) {
-    if (target === 'stations') return window.CHAR_DEFS[id]?.name || id;
+    if (target === 'stations') return CHAR_DEFS[id]?.name || id;
     if (target === 'routes') {
       const sourceTarget = resolvePointTarget(id);
       if (sourceTarget === 'meet') return `${id} · report point`;
-      if (sourceTarget === 'stations') return `${window.CHAR_DEFS[id]?.name || id} · station`;
+      if (sourceTarget === 'stations') return `${CHAR_DEFS[id]?.name || id} · station`;
       return `${id} · waypoint`;
     }
     return id;
@@ -9043,10 +7907,10 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 
   function prepareWorldCalibration() {
     dragStateRef.current = null;
-    const stationSnapshot = clonePointMap(window.STATIONS);
+    const stationSnapshot = clonePointMap(STATIONS);
     setStationDrafts(stationSnapshot);
-    setNavDrafts(clonePointMap(window.NAV_POINTS));
-    setMeetDrafts(clonePointMap(window.MEET_POINTS));
+    setNavDrafts(clonePointMap(NAV_POINTS));
+    setMeetDrafts(clonePointMap(MEET_POINTS));
     syncNpcPositions(stationSnapshot);
     clearAllPoseDebug();
     setCopiedCoords(false);
@@ -9592,7 +8456,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
   function handleResetCalibration() {
     if (busy) return;
     if (calibrationTarget === 'poses') {
-      for (const id of window.CALIBRATION_IDS) resetPoseMapping(id);
+      for (const id of CALIBRATION_IDS) resetPoseMapping(id);
       clearAllPoseDebug();
       setCopiedCoords(false);
       return;
@@ -9602,12 +8466,12 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     if (calibrationTarget === 'routes') {
       for (const id of ids) {
         const rt = resolvePointTarget(id);
-        if (rt === 'meet') window.MEET_POINTS[id] = { ...originalMeetRef.current[id] };
-        else if (rt === 'stations') window.STATIONS[id] = { ...originalStationsRef.current[id] };
-        else window.NAV_POINTS[id] = { ...originalNavRef.current[id] };
+        if (rt === 'meet') MEET_POINTS[id] = { ...originalMeetRef.current[id] };
+        else if (rt === 'stations') STATIONS[id] = { ...originalStationsRef.current[id] };
+        else NAV_POINTS[id] = { ...originalNavRef.current[id] };
       }
-      setNavDrafts(clonePointMap(window.NAV_POINTS)); setMeetDrafts(clonePointMap(window.MEET_POINTS)); setStationDrafts(clonePointMap(window.STATIONS));
-      syncNpcPositions(window.STATIONS);
+      setNavDrafts(clonePointMap(NAV_POINTS)); setMeetDrafts(clonePointMap(MEET_POINTS)); setStationDrafts(clonePointMap(STATIONS));
+      syncNpcPositions(STATIONS);
     } else {
       const tm = getSourceMapForTarget(calibrationTarget);
       for (const id of ids) tm[id] = restored[id];
@@ -9668,12 +8532,12 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     }
     if (step.faceToFaceWith) { orientToward(actor, step.faceToFaceWith); orientToward(step.faceToFaceWith, actor); }
     if (step.forceDir) updateNpc(actor, { dir: step.forceDir });
-    if (step.fx || step.kind === 'llm') pushBurst(npcStatesRef.current[actor].pos, window.KIND_COLORS[step.kind]);
+    if (step.fx || step.kind === 'llm') pushBurst(npcStatesRef.current[actor].pos, KIND_COLORS[step.kind]);
     await sleep(step.duration || 1200);
     updateNpc(actor, { action: null, bubble: null, busy: false, thinking: false });
     if (step.faceToFaceWith) updateNpc(step.faceToFaceWith, { dir: 'front' });
     if (travelPoints.length && step.returnHome !== false) {
-      const rp = [ ...(step.returnRoute ? resolvePathSpec(step.returnRoute) : travelPoints.slice(0, -1).reverse()), window.STATIONS[actor] ];
+      const rp = [ ...(step.returnRoute ? resolvePathSpec(step.returnRoute) : travelPoints.slice(0, -1).reverse()), STATIONS[actor] ];
       const returnMeta = actor === 'itachi' && step.kind === 'report' ? { preferSideWalk: true } : {};
       await sleep(120); await animateWalk(actor, rp, returnMeta); updateNpc(actor, { dir: 'front', walking: false });
     }
@@ -9691,7 +8555,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     const actor = PROVIDER_SCENE_EVENT_TYPES.has(event.type)
       ? providerMeta.actor
       : routeConfig?.actor || actorId;
-    if (!actor || !window.STATIONS[actor]) return;
+    if (!actor || !STATIONS[actor]) return;
 
     const bubble = event.type === 'provider_selected'
       ? providerMeta.label
@@ -9711,7 +8575,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
     };
 
     if (kind === 'llm' || kind === 'tool' || kind === 'mcp' || kind === 'skill') {
-      pushBurst(npcStatesRef.current[actor]?.pos || window.STATIONS[actor], window.KIND_COLORS?.[kind] || '#efbf64');
+      pushBurst(npcStatesRef.current[actor]?.pos || STATIONS[actor], KIND_COLORS?.[kind] || '#efbf64');
     }
 
     if (event.type === 'user_message_received') {
@@ -10022,7 +8886,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           bubble: 'Let me review it myself.',
           thinking: false,
         });
-        pushBurst(npcStatesRef.current.gojo?.pos || window.STATIONS.gojo, window.KIND_COLORS?.llm || '#efbf64');
+        pushBurst(npcStatesRef.current.gojo?.pos || STATIONS.gojo, KIND_COLORS?.llm || '#efbf64');
         await sleep(760);
         setActorIdle('gojo');
         const finalTask = getTaskById(taskId, targetConvId);
@@ -11716,13 +10580,13 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 
   const activeIds = getIdsForTarget(calibrationTarget);
   const activeDrafts = getDraftsForTarget(calibrationTarget);
-  const calibrationExport = calibrationTarget === 'routes' ? `${serializePointMap('NAV_POINTS', window.NAV_POINT_IDS, navDrafts)}\n\n${serializePointMap('MEET_POINTS', window.MEET_POINT_IDS, meetDrafts)}` : calibrationTarget === 'nav' ? serializePointMap('NAV_POINTS', activeIds, navDrafts) : calibrationTarget === 'meet' ? serializePointMap('MEET_POINTS', activeIds, meetDrafts) : serializePointMap('STATIONS', activeIds, stationDrafts, true);
-  const selectedPoseLabel = window.CHAR_DEFS[selectedPoseNpcId]?.name || selectedPoseNpcId;
-  const routeEditorIds = window.ROUTE_EDITOR_IDS || [];
+  const calibrationExport = calibrationTarget === 'routes' ? `${serializePointMap('NAV_POINTS', NAV_POINT_IDS, navDrafts)}\n\n${serializePointMap('MEET_POINTS', MEET_POINT_IDS, meetDrafts)}` : calibrationTarget === 'nav' ? serializePointMap('NAV_POINTS', activeIds, navDrafts) : calibrationTarget === 'meet' ? serializePointMap('MEET_POINTS', activeIds, meetDrafts) : serializePointMap('STATIONS', activeIds, stationDrafts, true);
+  const selectedPoseLabel = CHAR_DEFS[selectedPoseNpcId]?.name || selectedPoseNpcId;
+  const routeEditorIds = ROUTE_EDITOR_IDS || [];
   const selectedPoseMapping = POSE_MAPPING_FIELDS.find((item) => item.key === selectedPoseMappingKey) || POSE_MAPPING_FIELDS[0];
   const selectedMappingFrame = getPoseMappingValue(selectedPoseNpcId, selectedPoseMapping.key);
   const selectedPoseFrameOptions = getPoseFrameOptions(selectedPoseNpcId);
-  const poseExport = serializePoseConfigMap(window.CALIBRATION_IDS, getCharPoseConfig);
+  const poseExport = serializePoseConfigMap(CALIBRATION_IDS, getCharPoseConfig);
   const leftMapEdgeReached = !mapView || mapView.tx >= -2;
   const rightMapEdgeReached = !mapView || (mapView.tx + MAP_W * mapView.scale) <= (mapView.viewportWidth + 2);
   const baseMapExtensionStyle = mapView ? {
@@ -11744,7 +10608,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 
   return (
     <div className="app-shell">
-      <window.TopBar
+      <TopBar
         now={now}
         viewMode={viewMode}
         onToggleViewMode={() => {
@@ -11792,7 +10656,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
           />
         ) : activeTab === 'dashboard' ? (
           <>
-            <window.ConversationsPanel
+            <ConversationsPanel
               workspaceState={panelWorkspaceState}
               now={now}
               authUser={authUser}
@@ -11814,7 +10678,7 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
             {viewMode === 'chat' ? (
               <div className="app-chat-stage">
                 <div className="app-chat-main">
-	                  <window.ChatPanel
+	                  <ChatPanel
 	                    conversationId={conversationId}
 	                    messages={chatMessages}
 	                    running={busy || currentConversationActive}
@@ -11849,30 +10713,30 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
 	            ) : (
 	              <>
                 <div className="app-center-stage">
-                  <window.MapViewport
+                  <MapViewport
 	                    MAP_W={MAP_W}
 	                    MAP_H={MAP_H}
 	                    onViewChange={setMapView}
-			                    overlay={<window.TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} agentOptions={agentOptions} defaultAgentId={defaultAgentId} agentLoading={agentLoading} agentLocked={agentSelectionLocked} agentLockedReason={agentLockedReason} lockedAgentId={lockedAgentId} selectionStorageKey={runConfigStorageKey} />}
+			                    overlay={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} agentOptions={agentOptions} defaultAgentId={defaultAgentId} agentLoading={agentLoading} agentLocked={agentSelectionLocked} agentLockedReason={agentLockedReason} lockedAgentId={lockedAgentId} selectionStorageKey={runConfigStorageKey} />}
                   >
                     <div ref={stageRef} className="office-map">
-                      {worldCalibrationActive && calibrationTarget === 'routes' && selectedRouteId && <window.CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}
-                      {Object.keys(window.STATIONS).map(id => <window.NPC key={id} id={id} state={npcStates[id]} spriteConfig={getCharPoseConfig(id)} mapW={MAP_W} mapH={MAP_H} showLabel={true} interactive={worldCalibrationActive && !busy && calibrationTarget === 'stations'} selected={worldCalibrationActive && ((selectedMarkerId === id && calibrationTarget === 'stations') || (selectedPoseNpcId === id && calibrationTarget === 'poses'))} showDebug={worldCalibrationActive && (calibrationTarget === 'stations' || (calibrationTarget === 'poses' && selectedPoseNpcId === id))} debugText={calibrationTarget === 'poses' ? `${(npcStates[id]?.poseDebug?.pose || 'idle').toUpperCase()} · ${(npcStates[id]?.poseDebug?.dir || 'front').toUpperCase()}` : `${(stationDrafts[id]?.x??0).toFixed(3)}, ${(stationDrafts[id]?.y??0).toFixed(3)}`} onPointerDown={(npcId, e) => handleMarkerPointerDown('stations', npcId, e)} />)}
-                      {worldCalibrationActive && calibrationTarget === 'routes' && activeIds.map((id, index) => <window.CalibrationPoint key={`${calibrationTarget}-${id}`} id={id} point={activeDrafts[id]} mapW={MAP_W} mapH={MAP_H} kind={resolvePointTarget(id)==='meet'?'meet':'nav'} selected={selectedMarkerId===id} showDebug={true} badgeText={index+1} onPointerDown={(pId, e) => handleMarkerPointerDown(calibrationTarget, pId, e)} />)}
+                      {worldCalibrationActive && calibrationTarget === 'routes' && selectedRouteId && <CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}
+                      {Object.keys(STATIONS).map(id => <NPC key={id} id={id} state={npcStates[id]} spriteConfig={getCharPoseConfig(id)} mapW={MAP_W} mapH={MAP_H} showLabel={true} interactive={worldCalibrationActive && !busy && calibrationTarget === 'stations'} selected={worldCalibrationActive && ((selectedMarkerId === id && calibrationTarget === 'stations') || (selectedPoseNpcId === id && calibrationTarget === 'poses'))} showDebug={worldCalibrationActive && (calibrationTarget === 'stations' || (calibrationTarget === 'poses' && selectedPoseNpcId === id))} debugText={calibrationTarget === 'poses' ? `${(npcStates[id]?.poseDebug?.pose || 'idle').toUpperCase()} · ${(npcStates[id]?.poseDebug?.dir || 'front').toUpperCase()}` : `${(stationDrafts[id]?.x??0).toFixed(3)}, ${(stationDrafts[id]?.y??0).toFixed(3)}`} onPointerDown={(npcId, e) => handleMarkerPointerDown('stations', npcId, e)} />)}
+                      {worldCalibrationActive && calibrationTarget === 'routes' && activeIds.map((id, index) => <CalibrationPoint key={`${calibrationTarget}-${id}`} id={id} point={activeDrafts[id]} mapW={MAP_W} mapH={MAP_H} kind={resolvePointTarget(id)==='meet'?'meet':'nav'} selected={selectedMarkerId===id} showDebug={true} badgeText={index+1} onPointerDown={(pId, e) => handleMarkerPointerDown(calibrationTarget, pId, e)} />)}
                       <div className="fx-layer">{bursts.map(b => <div key={b.id} className="fx-ring" style={{ left: b.x, top: b.y, borderColor: b.color, boxShadow: `0 0 12px ${b.color}` }} />)}</div>
 	                    </div>
-	                  </window.MapViewport>
+	                  </MapViewport>
 	                </div>
-	                <window.LiveFeedPanel agentLive={agentLive} now={now} extensionStyle={rightPanelExtensionStyle} currentTask={currentTask} />
+	                <LiveFeedPanel agentLive={agentLive} now={now} extensionStyle={rightPanelExtensionStyle} currentTask={currentTask} />
 	              </>
             )}
           </>
         ) : (
           <div className="app-tab-stage">
             <div className="app-tab-main">
-              <window.TabPlaceholder name={activeTab} />
+              <TabPlaceholder name={activeTab} />
             </div>
-            <window.BottomNav active={activeTab} onChange={setActiveTab} />
+            <BottomNav active={activeTab} onChange={setActiveTab} />
           </div>
         )}
       </div>
@@ -11886,9 +10750,16 @@ function App({ authUser = null, onLogout = () => undefined, initialToast = null 
         </div>
       )}
 
-      <window.HollowPurple open={!!hollow} title={hollow?.title} result={hollow?.result} onClose={()=>setHollow(null)} />
+      <HollowPurple open={!!hollow} title={hollow?.title} result={hollow?.result} onClose={()=>setHollow(null)} />
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<AuthGate />);
+// Bridge for approval-dialog (legacy global lookup).
+window.authFetch = authFetch;
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <ErrorBoundary title="HAISH UI ERROR">
+    <AuthGate />
+  </ErrorBoundary>,
+);

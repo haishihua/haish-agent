@@ -1,7 +1,13 @@
+// @haish-esm
+import { CHAR_DEFS } from './sprites.jsx';
+import { Markdown } from './effects.jsx';
+import React from 'react';
+import { createPortal } from 'react-dom';
+
 // New layout: top bar, left task records, right live feed,
 // bottom task delegation overlay, bottom navigation, map viewport with zoom.
 
-function PortalTooltip({ text, position = 'below', multiline = false, children }) {
+export function PortalTooltip({ text, position = 'below', multiline = false, children }) {
   const [visible, setVisible] = React.useState(false);
   const [coords, setCoords] = React.useState(null);
   const triggerRef = React.useRef(null);
@@ -73,7 +79,7 @@ function PortalTooltip({ text, position = 'below', multiline = false, children }
   });
 
   const portalNode = (visible && coords && text)
-    ? ReactDOM.createPortal(
+    ? createPortal(
         <div
           ref={bubbleRef}
           className={`portal-tooltip portal-tooltip-${position}${multiline ? ' is-multiline' : ''}`}
@@ -88,9 +94,7 @@ function PortalTooltip({ text, position = 'below', multiline = false, children }
 
   return <>{enhanced}{portalNode}</>;
 }
-window.PortalTooltip = PortalTooltip;
-
-function fmtAgo(ts, now) {
+export function fmtAgo(ts, now) {
   if (!ts) return '';
   const diff = Math.max(0, Math.floor((now - ts) / 1000));
   if (diff < 60) return `${diff}s ago`;
@@ -103,8 +107,6 @@ function fmtAgo(ts, now) {
   const m = Math.floor((diff % 3600) / 60);
   return m === 0 ? `${h}h ago` : `${h}h ${m}m ago`;
 }
-window.fmtAgo = fmtAgo;
-
 function fmtAgoCompact(ts, now) {
   if (!ts) return '';
   const diff = Math.max(0, Math.floor((now - ts) / 1000));
@@ -149,7 +151,7 @@ function AttachmentFileChip({ attachment, uploading = false, onClear }) {
   );
 }
 
-function TopBar({ now, viewMode = 'world', onToggleViewMode, calibrationActive = false, calibrationDisabled = false, onToggleCalibration }) {
+export function TopBar({ now, viewMode = 'world', onToggleViewMode, calibrationActive = false, calibrationDisabled = false, onToggleCalibration }) {
   const chatMode = viewMode === 'chat';
   return (
     <div className="app-topbar">
@@ -193,18 +195,13 @@ function TopBar({ now, viewMode = 'world', onToggleViewMode, calibrationActive =
     </div>
   );
 }
-window.TopBar = TopBar;
-
-const STAGES = [
+export const STAGES = [
   { id: 'assigned',    label: 'Assigned' },
   { id: 'in_progress', label: 'In Progress' },
   { id: 'check',       label: 'Review' },
   { id: 'done',        label: 'Done' },
 ];
-const STAGE_INDEX = Object.fromEntries(STAGES.map((s, i) => [s.id, i]));
-window.STAGES = STAGES;
-window.STAGE_INDEX = STAGE_INDEX;
-
+export const STAGE_INDEX = Object.fromEntries(STAGES.map((s, i) => [s.id, i]));
 function getStageTrackState(stage, status) {
   const normalizedStatus = normalizeTaskStatus(status);
   if ((normalizedStatus === 'failed' || normalizedStatus === 'cancelled') && stage === 'done') {
@@ -322,7 +319,7 @@ const TASK_FILTERS = [
   { id: 'cancelled',   label: 'Cancelled' },
 ];
 
-function TaskFilterDropdown({ value, onChange }) {
+export function TaskFilterDropdown({ value, onChange }) {
   const [open, setOpen] = React.useState(false);
   const wrapRef = React.useRef(null);
 
@@ -370,8 +367,6 @@ function TaskFilterDropdown({ value, onChange }) {
     </div>
   );
 }
-window.TaskFilterDropdown = TaskFilterDropdown;
-
 function usePanelWidth() {
   const ref = React.useRef(null);
   const [width, setWidth] = React.useState(0);
@@ -389,7 +384,7 @@ function usePanelWidth() {
   return [ref, width];
 }
 
-function TaskRecordsPanel({ quests, now, extensionStyle }) {
+export function TaskRecordsPanel({ quests, now, extensionStyle }) {
   const [filter, setFilter] = React.useState('all');
   const [panelRef, panelWidth] = usePanelWidth();
   const filtered = React.useMemo(() => {
@@ -426,8 +421,6 @@ function TaskRecordsPanel({ quests, now, extensionStyle }) {
     </div>
   );
 }
-window.TaskRecordsPanel = TaskRecordsPanel;
-
 function PanelIcon({ name }) {
   const common = { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
   if (name === 'folder') return <svg {...common}><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>;
@@ -850,7 +843,7 @@ function UserSessionFooter({ authUser, onLogout }) {
   );
 }
 
-function ConversationsPanel({
+export function ConversationsPanel({
   workspaceState,
   now,
   extensionStyle,
@@ -1034,8 +1027,6 @@ function ConversationsPanel({
     </div>
   );
 }
-window.ConversationsPanel = ConversationsPanel;
-
 const LIVE_FEED_VISIBLE_COUNT = 3;
 
 function getLiveEntries(agentData) {
@@ -1097,7 +1088,7 @@ function LiveActivityRow({ entry }) {
 
 function LiveCard({ agentId, agentData, now }) {
   const [expanded, setExpanded] = React.useState(false);
-  const char = window.CHAR_DEFS[agentId];
+  const char = CHAR_DEFS[agentId];
   if (!char) return null;
   const entries = getLiveEntries(agentData).filter((entry) => entry.taskId === agentData.taskId);
   const orderedEntries = entries.slice().sort((a, b) => a.ts - b.ts);
@@ -1181,7 +1172,7 @@ function RuntimeList({ title, items, renderItem, emptyText = 'No data.' }) {
   );
 }
 
-function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
+export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
   const [panelRef, panelWidth] = usePanelWidth();
   const currentTaskId = currentTask?.taskId || null;
   const agents = currentTaskId
@@ -1217,8 +1208,6 @@ function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
     </div>
   );
 }
-window.LiveFeedPanel = LiveFeedPanel;
-
 const OPENAI_CODEX_MODEL_OPTIONS = [
   { id: 'gpt-5.5', label: 'gpt5.5' },
   { id: 'gpt-5.4', label: 'gpt5.4' },
@@ -1290,13 +1279,11 @@ const PROVIDER_MODEL_CATALOG = {
   },
 };
 
-function resolveModelCatalog(provider) {
+export function resolveModelCatalog(provider) {
   const normalized = String(provider || '').trim().toLowerCase();
   if (normalized && PROVIDER_MODEL_CATALOG[normalized]) return PROVIDER_MODEL_CATALOG[normalized];
   return PROVIDER_MODEL_CATALOG.oauth;
 }
-
-window.resolveModelCatalog = resolveModelCatalog;
 
 // Kept in sync with the backend default reasoning effort.
 const DEFAULT_REASONING_EFFORT = 'high';
@@ -1321,7 +1308,7 @@ function resolveApprovalApiBase() {
   return '';
 }
 
-function ApprovalModePicker({ disabled = false }) {
+export function ApprovalModePicker({ disabled = false }) {
   const [open, setOpen] = React.useState(false);
   const [mode, setMode] = React.useState('smart');
   const [loaded, setLoaded] = React.useState(false);
@@ -1458,9 +1445,7 @@ function ApprovalModePicker({ disabled = false }) {
     </div>
   );
 }
-window.ApprovalModePicker = ApprovalModePicker;
-
-function ModelPicker({
+export function ModelPicker({
   value,
   reasoningEffort,
   options = [],
@@ -1721,8 +1706,6 @@ function ModelPicker({
     </div>
   );
 }
-window.ModelPicker = ModelPicker;
-
 function isAbsolutePathLike(value) {
   return value.startsWith('/') || value === '~' || value.startsWith('~/') || /^[A-Za-z]:[\\/]/.test(value);
 }
@@ -2073,7 +2056,7 @@ function usePersistentRunConfig({ selectionStorageKey, providerOptions, modelOpt
   };
 }
 
-function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, submitPending = false, contextUsage, workspacePath, homePath, activeTaskText, providerOptions = [], modelOptions, defaultModelId, modelLoading = false, agentOptions, defaultAgentId, agentLoading = false, agentLocked = false, agentLockedReason = '', lockedAgentId = '', selectionStorageKey = '' }) {
+export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, submitPending = false, contextUsage, workspacePath, homePath, activeTaskText, providerOptions = [], modelOptions, defaultModelId, modelLoading = false, agentOptions, defaultAgentId, agentLoading = false, agentLocked = false, agentLockedReason = '', lockedAgentId = '', selectionStorageKey = '' }) {
   const resolvedOptions = Array.isArray(modelOptions) ? modelOptions : MODEL_OPTIONS;
   const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
   const resolvedProviderOptions = Array.isArray(providerOptions) && providerOptions.length > 0
@@ -2293,8 +2276,6 @@ function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachmen
     </div>
   );
 }
-window.TaskDelegation = TaskDelegation;
-
 const CATEGORY_ICON_CLASS = {
   tool: 'ico-tool',
   skill: 'ico-skill',
@@ -2605,7 +2586,7 @@ function outputJsonText(output) {
   return toolJsonText(output);
 }
 
-function normalizeToolName(toolName) {
+export function normalizeToolName(toolName) {
   return String(toolName || '').trim().toLowerCase();
 }
 
@@ -3354,7 +3335,7 @@ function ChatProcessConversation({ view }) {
     if (hasFinal) {
       const inner = view.isVision
         ? <div className="chat-imsg-plain">{view.finalText}</div>
-        : <window.Markdown source={view.finalText} />;
+        : <Markdown source={view.finalText} />;
       return <ChatImsgCollapsible maxHeight={360}>{inner}</ChatImsgCollapsible>;
     }
     if (hasSubTimeline) {
@@ -3418,7 +3399,7 @@ function ChatProcessConversation({ view }) {
                   <div key={field.label} className={`chat-imsg-field ${field.multiline ? 'is-multiline' : ''}`}>
                     <div className="chat-imsg-field-label">{field.label}</div>
                     <div className={`chat-imsg-field-value ${field.markdown ? 'is-md' : ''}`}>
-                      {field.markdown ? <window.Markdown source={String(field.value || '')} /> : field.value}
+                      {field.markdown ? <Markdown source={String(field.value || '')} /> : field.value}
                     </div>
                   </div>
                 ))}
@@ -3735,8 +3716,8 @@ function ChatMessageRow({ message, now, onPreviewImage }) {
         ) : null}
         {message.text ? (
           <div className={`chat-bubble-text ${message.streaming ? 'streaming' : ''}`}>
-            {!message.streaming && window.Markdown
-              ? <window.Markdown source={message.text || ''} />
+            {!message.streaming && Markdown
+              ? <Markdown source={message.text || ''} />
               : <span className="chat-stream-text">{message.text || ''}</span>}
           </div>
         ) : null}
@@ -3843,7 +3824,7 @@ const CHAT_IMAGE_ACCEPTED_MIME = new Set([
   'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
 ]);
 
-function ChatPanel({
+export function ChatPanel({
   conversationId,
   messages = [],
   running = false,
@@ -4292,8 +4273,6 @@ function ChatPanel({
     </section>
   );
 }
-window.ChatPanel = ChatPanel;
-
 const NAV_ICONS = {
   dashboard: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -4334,16 +4313,14 @@ const NAV_ICONS = {
   ),
 };
 
-const NAV_TABS = [
+export const NAV_TABS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'agents',    label: 'Agents'    },
   { id: 'tasks',     label: 'Tasks'     },
   { id: 'reports',   label: 'Reports'   },
   { id: 'system',    label: 'System'    },
 ];
-window.NAV_TABS = NAV_TABS;
-
-function BottomNav({ active, onChange }) {
+export function BottomNav({ active, onChange }) {
   return (
     <div className="app-bottomnav">
       {NAV_TABS.map(tab => (
@@ -4357,9 +4334,7 @@ function BottomNav({ active, onChange }) {
     </div>
   );
 }
-window.BottomNav = BottomNav;
-
-function MapViewport({ children, overlay, MAP_W, MAP_H, onViewChange }) {
+export function MapViewport({ children, overlay, MAP_W, MAP_H, onViewChange }) {
   const wrapRef = React.useRef(null);
   const [view, setView] = React.useState({ scale: 1, tx: 0, ty: 0, fit: 1 });
   const [dragging, setDragging] = React.useState(false);
@@ -4485,9 +4460,7 @@ function MapViewport({ children, overlay, MAP_W, MAP_H, onViewChange }) {
     </div>
   );
 }
-window.MapViewport = MapViewport;
-
-function TabPlaceholder({ name }) {
+export function TabPlaceholder({ name }) {
   return (
     <div className="tab-placeholder">
       <div className="ph-title">{name.toUpperCase()}</div>
@@ -4495,4 +4468,3 @@ function TabPlaceholder({ name }) {
     </div>
   );
 }
-window.TabPlaceholder = TabPlaceholder;

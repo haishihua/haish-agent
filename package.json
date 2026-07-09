@@ -8,15 +8,21 @@
   "productName": "Haish",
   "type": "module",
   "scripts": {
-    "dev": "tsc -p tsconfig.electron.json && electron .",
-    "build": "tsc --noEmit && tsc -p tsconfig.electron.json",
+    "dev": "npm run build:web && tsc -p tsconfig.electron.json && concurrently -k -n web,electron -c cyan,magenta \"npm:dev:web\" \"electron .\"",
+    "dev:web": "vite build --config vite.app-web.config.ts --watch",
+    "dev:electron": "tsc -p tsconfig.electron.json && electron .",
+    "build:web": "vite build --config vite.app-web.config.ts",
+    "build": "npm run build:web && tsc --noEmit && tsc -p tsconfig.electron.json",
     "build:runtime": "node scripts/build-runtime.mjs",
     "start": "electron .",
     "pack:mac": "npm run build && npm run build:runtime && electron-builder --mac dir",
     "dist:mac": "npm run build && npm run build:runtime && electron-builder --mac dmg zip",
     "check:mac-release": "node scripts/check-mac-release.mjs",
     "dist:mac:release": "npm run check:mac-release && npm run build && npm run build:runtime && electron-builder --mac dmg zip --config.forceCodeSigning=true",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "lint": "eslint \"app-web/src/**/*.{js,jsx}\"",
+    "format": "prettier --write \"app-web/src/**/*.{js,jsx,css}\" \"src/**/*.{ts,tsx,css}\" \"*.md\"",
+    "format:check": "prettier --check \"app-web/src/**/*.{js,jsx,css}\" \"src/**/*.{ts,tsx,css}\""
   },
   "build": {
     "appId": "com.haish.agent",
@@ -27,7 +33,7 @@
       "output": "release"
     },
     "files": [
-      "app-web/**/*",
+      "app-web/dist/**/*",
       "build/icon.png",
       "dist-electron/**/*",
       "package.json"
@@ -69,6 +75,7 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.5.2",
+    "@xyflow/react": "^12.11.2",
     "concurrently": "^9.1.2",
     "lucide-react": "^1.23.0",
     "react": "^19.1.0",
@@ -78,11 +85,17 @@
     "wait-on": "^8.0.3"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/node": "^22.15.29",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "electron": "^42.2.0",
-    "electron-builder": "^26.8.1"
+    "electron-builder": "^26.8.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.7.0",
+    "prettier": "^3.9.5"
   },
   "overrides": {
     "@electron/osx-sign": {

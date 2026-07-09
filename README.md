@@ -6,11 +6,24 @@ Electron and adds native local-folder authorization for desktop projects.
 ## Current Scope
 
 - Electron desktop app named `Haish`
-- Full Haish web UI loaded from `app-web`
+- Full Haish web UI from `app-web` (**Vite production bundle** → `app-web/dist`)
 - Local agent runtime launched and proxied by the Electron main process
 - Native macOS folder picker through the Electron main process
 - Authorized local project registry stored in Electron `userData`
 - Sandboxed local file listing and small text-file preview IPC for future agent tools
+
+## Frontend architecture
+
+| Path | Role |
+| --- | --- |
+| `app-web/` | Product UI (React + ESM, built by Vite) |
+| `app-web/src/main.jsx` | UI entry |
+| `app-web/src/lib/` | Pure helpers (settings/workflow/runtime constants) |
+| `app-web/dist/` | Build output loaded by Electron (`haish://app/...`) |
+| `src/main`, `src/preload` | Electron main + preload (TypeScript) |
+| `src/renderer` | Legacy Vite shell prototype (not used by the desktop app) |
+
+Build config: `vite.app-web.config.ts`.
 
 ## Run Locally
 
@@ -46,9 +59,25 @@ npm install
 npm run dev
 ```
 
-`npm run dev` compiles the Electron main process and launches Electron. The
-main process then `spawn`s the Python backend on a random `127.0.0.1` port and
+`npm run dev` will:
+
+1. Build the web UI into `app-web/dist` (production React, no browser Babel)
+2. Compile the Electron main process
+3. Watch `app-web` for rebuilds and launch Electron
+
+The main process then `spawn`s the Python backend on a random `127.0.0.1` port and
 proxies all `haish://app/api/*` requests to it.
+
+Useful scripts:
+
+| Script | Purpose |
+| --- | --- |
+| `npm run build:web` | One-shot Vite production build for `app-web` |
+| `npm run dev:web` | Vite watch rebuild into `app-web/dist` |
+| `npm run typecheck` | TypeScript check (Electron + shared) |
+| `npm run lint` | ESLint for app-web + Electron sources |
+
+After a web rebuild while Electron is open, reload the window (Cmd+R) to pick up changes.
 
 ### Backend lookup order
 
@@ -79,14 +108,13 @@ folder is stored locally and shown as a project in the full web UI.
 npm run dist:mac
 ```
 
-The generated `.dmg`, `.zip`, and `.app` files are written to `release/`. This build
-is unsigned, so macOS may require opening it from Finder with right click ->
-Open the first time.
+This runs `build:web` + Electron compile + runtime packaging. The generated `.dmg`, `.zip`, and `.app`
+files are written to `release/`. Unsigned builds may require Finder → right click → Open the first time.
 
 ## Next Milestones
 
-- Add account sync and device registration
-- Add runtime health/status controls in the UI
+- Further split `app.jsx` / `panels.jsx` / `styles.css` by feature
+- Add unit tests for `app-web/src/lib/*`
 - Route all project file tools through the local runtime
 - Add write-file and command execution with explicit confirmation prompts
-- Add macOS packaging, signing, notarization, and auto-update
+- Account sync, device registration, and auto-update

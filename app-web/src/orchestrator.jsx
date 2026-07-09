@@ -1,8 +1,10 @@
+// @haish-esm
+import { CHAR_DEFS } from './sprites.jsx';
 // Orchestrator — generates a quest plan from user input and produces step events.
 // Each step targets one NPC, has a kind (think|tool|mcp|skill|rag|llm|report|deliver),
 // and produces logs/animations.
 
-const KIND_COLORS = {
+export const KIND_COLORS = {
   think: '#a78bfa',
   tool: '#67e8f9',
   mcp: '#fb7185',
@@ -12,9 +14,7 @@ const KIND_COLORS = {
   report: '#f5c563',
   deliver: '#f5c563',
 };
-window.KIND_COLORS = KIND_COLORS;
-
-function classifyTask(text) {
+export function classifyTask(text) {
   const t = text.toLowerCase();
   const tags = [];
   if (/天气|搜|查|找|新闻|股票|汇率|价格|api/.test(t)) tags.push('tool');
@@ -25,7 +25,7 @@ function classifyTask(text) {
   return tags;
 }
 
-function buildPlan(quest) {
+export function buildPlan(quest) {
   const tags = Array.from(new Set(classifyTask(quest.title)));
   const questCode = quest.id.slice(-6).toUpperCase();
   const leviKind = tags.includes('rag') ? 'rag' : 'tool';
@@ -148,13 +148,13 @@ function buildPlan(quest) {
     steps.push({
       actor: 'lelouch',
       kind: 'deliver',
-      label: `DISPATCH → ${window.CHAR_DEFS[worker.actor].name}`,
+      label: `DISPATCH → ${CHAR_DEFS[worker.actor].name}`,
       bubble: worker.dispatchBubble,
       route: worker.route,
       faceToFaceWith: worker.actor,
       poseVariant: worker.actor === 'levi' || worker.actor === 'itachi' ? 'vertical-command' : null,
       forceDir: worker.actor === 'levi' || worker.actor === 'itachi' ? 'back' : null,
-      log: { src: 'Tool Manager', kind: 'info', msg: `Dispatch issued: ${worker.label} -> ${window.CHAR_DEFS[worker.actor].name}` },
+      log: { src: 'Tool Manager', kind: 'info', msg: `Dispatch issued: ${worker.label} -> ${CHAR_DEFS[worker.actor].name}` },
       duration: 900,
     });
     steps.push({
@@ -162,7 +162,7 @@ function buildPlan(quest) {
       kind: worker.kind,
       label: worker.label,
       bubble: worker.workBubble,
-      log: { src: window.CHAR_DEFS[worker.actor].name, kind: worker.kind, msg: worker.workLog },
+      log: { src: CHAR_DEFS[worker.actor].name, kind: worker.kind, msg: worker.workLog },
       fx: true,
       duration: 1900,
     });
@@ -173,7 +173,7 @@ function buildPlan(quest) {
       bubble: 'Execution complete. Reporting back.',
       route: worker.reportRoute,
       faceToFaceWith: 'lelouch',
-      log: { src: window.CHAR_DEFS[worker.actor].name, kind: 'result', msg: 'Subtask complete. Result returned in person to the Tool Manager.' },
+      log: { src: CHAR_DEFS[worker.actor].name, kind: 'result', msg: 'Subtask complete. Result returned in person to the Tool Manager.' },
       duration: 900,
     });
   }
@@ -270,7 +270,7 @@ function describeRAG(t) {
   return 'knowledge-base';
 }
 
-function makeFakeResult(title, tags) {
+export function makeFakeResult(title, tags) {
   const safeTitle = (title || 'Task').trim();
   const elapsed = Math.floor(8 + Math.random() * 6);
   const agentCount = tags.length + 2;
@@ -321,6 +321,3 @@ function makeFakeResult(title, tags) {
   return lines.join('\n');
 }
 
-window.buildPlan = buildPlan;
-window.classifyTask = classifyTask;
-window.makeFakeResult = makeFakeResult;

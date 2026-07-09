@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-electron/
+app-web/dist/
 build/runtime/
 release/
 .DS_Store
@@ -13,3 +14,9 @@ pnpm-debug.log*
 *.tsbuildinfo
 .idea
 .haish
+
+# One-off migration / local smoke helpers (do not ship)
+scripts/migrate-app-web-esm.mjs
+app-web/src.bak-pre-esm/
+*.bak-pre-esm/
+/tmp/haish-ui-smoke.mjs
