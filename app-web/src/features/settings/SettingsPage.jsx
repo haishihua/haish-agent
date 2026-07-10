@@ -1,5 +1,6 @@
 // @haish-esm
 import React from 'react';
+import { CircleCheck, ExternalLink, LoaderCircle } from 'lucide-react';
 import {
   ReactFlow,
   Background,
@@ -32,6 +33,9 @@ import {
   LLM_PROVIDER_OPTIONS,
   HIDDEN_SETTINGS_LLM_PROVIDERS,
   SETTINGS_LLM_PROVIDER_OPTIONS,
+  LLM_OAUTH_UI_PROVIDERS,
+  LLM_OAUTH_CALLBACK_PROVIDERS,
+  LLM_OAUTH_MANUAL_CODE_PROVIDERS,
   LLM_SETTINGS_STORAGE_KEY,
   SETTINGS_RECORDS_STORAGE_KEY,
   SETTINGS_CONNECTION_STATUS_STORAGE_KEY,
@@ -319,6 +323,19 @@ const SETTINGS_LUCIDE_ICONS = {
     ['path', { d: 'M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6' }],
     ['path', { d: 'M10 11v6' }],
     ['path', { d: 'M14 11v6' }],
+  ],
+  'folder-plus': [
+    ['path', { d: 'M12 10v6' }],
+    ['path', { d: 'M9 13h6' }],
+    ['path', { d: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z' }],
+  ],
+  'toggle-left': [
+    ['circle', { cx: '9', cy: '12', r: '3' }],
+    ['rect', { width: '20', height: '14', x: '2', y: '5', rx: '7' }],
+  ],
+  'toggle-right': [
+    ['circle', { cx: '15', cy: '12', r: '3' }],
+    ['rect', { width: '20', height: '14', x: '2', y: '5', rx: '7' }],
   ],
 };
 
@@ -945,17 +962,29 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
   const config = getSelectedLlmConfig(draft, selectedId);
   const provider = getLlmProvider(config.provider);
   const [modelChoices, setModelChoices] = useState(() => uniqueModelChoices(config.model, configuredModelOptions(config), modelChoicesFor(config.provider)));
+  const [oauthStartError, setOauthStartError] = useState('');
+  const [oauthStartPending, setOauthStartPending] = useState(false);
+  const [oauthFlowId, setOauthFlowId] = useState('');
+  const [oauthFlowStatus, setOauthFlowStatus] = useState('idle');
+  const [oauthFlowMessage, setOauthFlowMessage] = useState('');
   const disabled = readOnly
     || (selectedId === 'vision' && !draft.vision.enabled)
     || (selectedId === 'embedding' && !draft.embedding?.enabled);
   const showProviderNameField = config.provider === 'custom';
   const showAuthModeField = provider.authModes.length > 1;
   const showApiKeyField = config.auth_mode === 'api_key';
-  const showOAuthFields = config.auth_mode === 'oauth' && config.provider === 'openai';
+  const showOAuthFields = config.auth_mode === 'oauth' && LLM_OAUTH_UI_PROVIDERS.has(config.provider);
+  const showOAuthCallbackLogin = showOAuthFields && LLM_OAUTH_CALLBACK_PROVIDERS.has(config.provider);
+  const showOAuthManualLogin = showOAuthFields && LLM_OAUTH_MANUAL_CODE_PROVIDERS.has(config.provider);
+  const oauthFlowPending = oauthStartPending || oauthFlowStatus === 'pending' || oauthFlowStatus === 'exchanging';
   const showBaseUrlField = config.provider === 'custom';
   const update = (patch) => updateSelectedLlmConfig(onDraftChange, selectedId, patch);
   const changeProvider = (providerId) => {
     const next = nextProviderDraft(providerId, config);
+    setOauthStartError('');
+    setOauthFlowId('');
+    setOauthFlowStatus('idle');
+    setOauthFlowMessage('');
     update({
       ...next,
       enabled: config.enabled,
@@ -963,35 +992,170 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       reasoning_effort: config.reasoning_effort || 'high',
     });
   };
+  const startOAuthLogin = async () => {
+    if (disabled || readOnly || !showOAuthFields) {
+      return;
+    }
+    setOauthStartPending(true);
+    setOauthStartError('');
+    try {
+      const response = await authFetch(`${API_BASE}/api/llm/oauth/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: config.provider }),
+      }, { json: false });
+      if (!response.ok) {
+        let detail = `OAuth start failed (${response.status})`;
+        try {
+          const body = await response.json();
+          detail = String(body?.detail || body?.message || detail);
+        } catch {
+          // keep fallback message
+        }
+        throw new Error(detail);
+      }
+      const payload = await response.json();
+      if (!payload?.auth_url) {
+        throw new Error('OAuth start response did not include auth_url.');
+      }
+      if (payload.flow_id) {
+        setOauthFlowId(payload.flow_id);
+        setOauthFlowStatus(payload.status || 'pending');
+        setOauthFlowMessage('Complete sign-in in your browser. This page will update automatically.');
+        update({
+          oauth_auth_url: '',
+          oauth_code: '',
+          oauth_verifier: '',
+          oauth_state: '',
+          oauth_configured: false,
+        });
+        window.open(payload.auth_url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      update({
+        oauth_auth_url: payload.auth_url || '',
+        oauth_verifier: payload.verifier || '',
+        oauth_state: payload.state || '',
+      });
+    } catch (error) {
+      setOauthStartError(String(error?.message || error));
+    } finally {
+      setOauthStartPending(false);
+    }
+  };
 
   useEffect(() => {
     setModelChoices(uniqueModelChoices(config.model, configuredModelOptions(config), modelChoicesFor(config.provider)));
   }, [config.model, config.model_options, config.provider]);
 
   useEffect(() => {
-    if (disabled || readOnly || config.provider !== 'openai' || config.auth_mode !== 'oauth' || config.oauth_auth_url) {
+    if (
+      disabled
+      || readOnly
+      || !LLM_OAUTH_MANUAL_CODE_PROVIDERS.has(config.provider)
+      || config.auth_mode !== 'oauth'
+      || config.oauth_auth_url
+    ) {
       return undefined;
     }
     let cancelled = false;
+    setOauthStartPending(true);
+    setOauthStartError('');
     authFetch(`${API_BASE}/api/llm/oauth/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ provider: config.provider }),
     }, { json: false })
-      .then((response) => (response.ok ? response.json() : null))
+      .then(async (response) => {
+        if (!response.ok) {
+          let detail = `OAuth start failed (${response.status})`;
+          try {
+            const body = await response.json();
+            detail = String(body?.detail || body?.message || detail);
+          } catch {
+            // keep fallback
+          }
+          throw new Error(detail);
+        }
+        return response.json();
+      })
       .then((payload) => {
-        if (cancelled || !payload?.auth_url) return;
+        if (cancelled) return;
+        if (!payload?.auth_url) {
+          throw new Error('OAuth start response did not include auth_url.');
+        }
         update({
           oauth_auth_url: payload.auth_url || '',
           oauth_verifier: payload.verifier || '',
           oauth_state: payload.state || '',
         });
+        setOauthStartError('');
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (!cancelled) setOauthStartError(String(error?.message || error));
+      })
+      .finally(() => {
+        if (!cancelled) setOauthStartPending(false);
+      });
     return () => {
       cancelled = true;
     };
   }, [config.provider, config.auth_mode, config.oauth_auth_url, disabled, readOnly]);
+
+  useEffect(() => {
+    if (!showOAuthCallbackLogin || !oauthFlowId || !['pending', 'exchanging'].includes(oauthFlowStatus)) {
+      return undefined;
+    }
+    let cancelled = false;
+    let timer = 0;
+    const poll = async () => {
+      try {
+        const response = await authFetch(`${API_BASE}/api/llm/oauth/status/${encodeURIComponent(oauthFlowId)}`, {
+          method: 'GET',
+        }, { json: false });
+        if (!response.ok) {
+          let detail = `OAuth status failed (${response.status})`;
+          try {
+            const body = await response.json();
+            detail = String(body?.detail || body?.message || detail);
+          } catch {
+            // keep fallback
+          }
+          throw new Error(detail);
+        }
+        const payload = await response.json();
+        if (cancelled) return;
+        const status = String(payload?.status || 'pending');
+        setOauthFlowStatus(status);
+        setOauthFlowMessage(String(payload?.message || ''));
+        if (status === 'success') {
+          setOauthStartError('');
+          updateSelectedLlmConfig(onDraftChange, selectedId, {
+            oauth_configured: true,
+            oauth_auth_url: '',
+            oauth_code: '',
+            oauth_verifier: '',
+            oauth_state: '',
+          });
+          return;
+        }
+        if (status === 'error') {
+          setOauthStartError(String(payload?.message || 'OAuth login failed. Start again.'));
+          return;
+        }
+        timer = window.setTimeout(poll, 800);
+      } catch (error) {
+        if (cancelled) return;
+        setOauthFlowStatus('error');
+        setOauthStartError(String(error?.message || error));
+      }
+    };
+    timer = window.setTimeout(poll, 500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [showOAuthCallbackLogin, oauthFlowId, oauthFlowStatus, onDraftChange, selectedId]);
 
   useEffect(() => {
     if (!refreshModels || disabled) return undefined;
@@ -1066,13 +1230,20 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
         <SettingsMenuSelect
           value={config.auth_mode}
           options={provider.authModes.map((mode) => ({ id: mode, label: formatAuthModeLabel(mode) }))}
-          onChange={(authMode) => update({
-            auth_mode: authMode,
-            oauth_auth_url: '',
-            oauth_code: '',
-            oauth_state: '',
-            oauth_verifier: '',
-          })}
+          onChange={(authMode) => {
+            setOauthStartError('');
+            setOauthFlowId('');
+            setOauthFlowStatus('idle');
+            setOauthFlowMessage('');
+            update({
+              auth_mode: authMode,
+              oauth_auth_url: '',
+              oauth_code: '',
+              oauth_state: '',
+              oauth_verifier: '',
+              oauth_configured: false,
+            });
+          }}
           disabled={disabled}
           header="auth mode"
         />
@@ -1089,17 +1260,78 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
           />
         </FieldRow>
       )}
-      {showOAuthFields && (
+      {showOAuthCallbackLogin && (
+        <FieldRow
+          label="OAuth"
+          hint={oauthFlowPending
+            ? 'Finish signing in with xAI in the browser. No code needs to be copied.'
+            : 'Authorization tokens are stored in ~/.haish/auth.json.'}
+        >
+          <div className="settings-oauth-connect">
+            <button
+              type="button"
+              className="settings-primary-button settings-oauth-connect-button"
+              disabled={disabled || oauthFlowPending}
+              onClick={() => { void startOAuthLogin(); }}
+            >
+              {oauthFlowPending
+                ? <LoaderCircle size={15} className="settings-oauth-spinner" aria-hidden="true" />
+                : <ExternalLink size={15} aria-hidden="true" />}
+              {oauthFlowPending
+                ? 'Waiting for sign-in...'
+                : (config.oauth_configured ? 'Reconnect xAI' : 'Connect xAI')}
+            </button>
+            {oauthStartError ? (
+              <div className="settings-inline-error" role="alert">{oauthStartError}</div>
+            ) : null}
+            {!oauthStartError && oauthFlowPending ? (
+              <div className="settings-oauth-message" role="status" aria-live="polite">
+                {oauthFlowMessage || 'Waiting for browser authorization.'}
+              </div>
+            ) : null}
+            {!oauthStartError && !oauthFlowPending && config.oauth_configured ? (
+              <div className="settings-inline-success" role="status">
+                <CircleCheck size={15} aria-hidden="true" />
+                Connected to xAI
+              </div>
+            ) : null}
+          </div>
+        </FieldRow>
+      )}
+      {showOAuthManualLogin && (
         <>
-          <FieldRow label="OAuth URL">
+          <FieldRow
+            label="OAuth URL"
+            hint={oauthStartError
+              ? oauthStartError
+              : (config.oauth_auth_url
+                ? 'Open the link, complete login, then paste the callback URL or code below.'
+                : (oauthStartPending
+                  ? 'Generating OAuth link...'
+                  : 'OAuth link will be generated automatically.'))}
+          >
             <div className="settings-inline-control">
-              <input value={config.oauth_auth_url || ''} readOnly disabled={disabled} placeholder="OAuth link will be generated automatically" />
+              <input
+                value={config.oauth_auth_url || ''}
+                readOnly
+                disabled={disabled}
+                placeholder={oauthStartPending ? 'Generating OAuth link...' : 'OAuth link will be generated automatically'}
+              />
               {config.oauth_auth_url ? (
                 <a className="settings-inline-button" href={config.oauth_auth_url} target="_blank" rel="noreferrer">Open</a>
-              ) : null}
+              ) : (
+                <button
+                  type="button"
+                  className="settings-inline-button"
+                  disabled={disabled || oauthStartPending}
+                  onClick={() => { void startOAuthLogin(); }}
+                >
+                  {oauthStartPending ? '...' : 'Generate'}
+                </button>
+              )}
             </div>
           </FieldRow>
-          <FieldRow label="OAuth Code" hint="Paste the callback URL or code after login.">
+          <FieldRow label="OAuth Code" hint="Paste the callback URL or authorization code after login.">
             <input
               value={config.oauth_code || ''}
               onChange={(event) => update({ oauth_code: event.target.value })}
@@ -2110,10 +2342,12 @@ export function ToolsConfigEditor({
       <div className="settings-editor-form settings-tools-form">
         <div className="settings-skills-toolbar">
           <span>{skills.length ? `${skills.length} installed skill${skills.length === 1 ? '' : 's'}` : 'No installed skills yet.'}</span>
-          <button type="button" className="settings-primary-button" onClick={onInstallSkill} disabled={Boolean(skillActionBusy)}>
-            <SettingsLucideIcon name="plus" size={14} />
-            Install Directory
-          </button>
+          <SettingsTooltipIconButton
+            label="Install Directory"
+            icon="folder-plus"
+            onClick={onInstallSkill}
+            disabled={Boolean(skillActionBusy)}
+          />
         </div>
         {errors.map((error, index) => (
           <div className="settings-inline-error" key={`${error.origin || 'skill-error'}-${index}`}>
@@ -2121,32 +2355,32 @@ export function ToolsConfigEditor({
           </div>
         ))}
         <div className="settings-skill-list">
-          {skills.map((skill) => (
-            <div className="settings-skill-row" key={skill.id || skill.name}>
-              <div>
-                <strong>{skill.name}</strong>
-                <span>{skill.description || 'No description.'}</span>
+          {skills.map((skill) => {
+            const skillEnabled = skill.enabled !== false;
+            return (
+              <div className="settings-skill-row" key={skill.id || skill.name}>
+                <div>
+                  <strong>{skill.name}</strong>
+                  <span>{skill.description || 'No description.'}</span>
+                </div>
+                <div className="settings-row-actions">
+                  <SettingsTooltipIconButton
+                    label={skillEnabled ? 'Disable' : 'Enable'}
+                    icon={skillEnabled ? 'toggle-right' : 'toggle-left'}
+                    onClick={() => onToggleSkill(skill.name, !skillEnabled)}
+                    disabled={Boolean(skillActionBusy)}
+                  />
+                  <SettingsTooltipIconButton
+                    label="Uninstall"
+                    icon="delete"
+                    danger
+                    onClick={() => onUninstallSkill(skill.name)}
+                    disabled={Boolean(skillActionBusy)}
+                  />
+                </div>
               </div>
-              <div className="settings-row-actions">
-                <button
-                  type="button"
-                  className={skill.enabled === false ? 'settings-icon-button' : 'settings-primary-button'}
-                  onClick={() => onToggleSkill(skill.name, skill.enabled === false)}
-                  disabled={Boolean(skillActionBusy)}
-                >
-                  {skill.enabled === false ? 'Enable' : 'Disable'}
-                </button>
-                <button
-                  type="button"
-                  className="settings-danger-button"
-                  onClick={() => onUninstallSkill(skill.name)}
-                  disabled={Boolean(skillActionBusy)}
-                >
-                  Uninstall
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {!skills.length ? <div className="settings-empty">Install a local skill directory to use it in agent runs.</div> : null}
         </div>
       </div>
@@ -2890,4 +3124,3 @@ export function SettingsPage({
     </div>
   );
 }
-

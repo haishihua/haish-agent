@@ -27,6 +27,10 @@ export const DEFAULT_AGENT_OPTIONS = [
   { id: 'preset.document-qa', label: 'Docs Search', description: 'Grounded answers from indexed documents' },
 ];
 
+export const XAI_GROK_MODEL_OPTIONS = [
+  { id: 'grok-4.5', label: 'grok-4.5' },
+];
+
 export const PROVIDER_MODEL_CATALOG = {
   oauth: {
     options: MODEL_OPTIONS,
@@ -47,6 +51,14 @@ export const PROVIDER_MODEL_CATALOG = {
   openai_codex_oauth: {
     options: OPENAI_CODEX_MODEL_OPTIONS,
     defaultModelId: 'gpt-5.5',
+  },
+  xai: {
+    options: XAI_GROK_MODEL_OPTIONS,
+    defaultModelId: 'grok-4.5',
+  },
+  grok: {
+    options: XAI_GROK_MODEL_OPTIONS,
+    defaultModelId: 'grok-4.5',
   },
   anthropic: {
     options: ANTHROPIC_CLAUDE_MODEL_OPTIONS,

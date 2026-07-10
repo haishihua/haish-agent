@@ -300,6 +300,7 @@ export function normalizeProviderKey(value) {
   }
   if (normalized.includes('deepseek')) return 'deepseek';
   if (normalized.includes('openai') || normalized.includes('gpt')) return 'openai';
+  if (normalized.includes('xai') || normalized.includes('grok')) return 'xai';
   if (normalized.includes('qwen') || normalized.includes('dashscope')) return 'dashscope';
   if (normalized.includes('glm') || normalized.includes('zhipu')) return 'zhipu';
   if (normalized.includes('kimi') || normalized.includes('moonshot')) return 'moonshot';

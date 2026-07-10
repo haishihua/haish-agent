@@ -2355,7 +2355,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       updateSelectedLlmConfig(setLlmSettingsDraft, selectedId, {
         model_options: models,
         ...(config.model ? {} : (defaultModel ? { model: defaultModel } : {})),
-        ...(payload.oauth_saved ? { oauth_code: '', oauth_configured: true } : {}),
+        ...(config.auth_mode === 'oauth' ? {
+          oauth_configured: true,
+          ...(payload.oauth_saved ? { oauth_code: '' } : {}),
+        } : {}),
       });
       showToast('success', 'llm provider test passed');
     } catch (error) {

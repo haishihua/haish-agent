@@ -208,6 +208,7 @@ export const ADD_LABEL_BY_SECTION = {
 
 export const LLM_PROVIDER_MODELS = {
   openai: ['gpt-5.5', 'gpt-5.4'],
+  xai: ['grok-4.5'],
   anthropic: ['claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-6'],
   gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
   deepseek: ['deepseek-v4-flash', 'deepseek-v4-pro'],
@@ -221,6 +222,7 @@ export const LLM_PROVIDER_MODELS = {
 
 export const LLM_PROVIDER_OPTIONS = [
   { id: 'openai', label: 'OpenAI', authModes: ['api_key', 'oauth'], defaultAuth: 'api_key', defaultModel: 'gpt-5.5', baseUrl: 'https://api.openai.com/v1' },
+  { id: 'xai', label: 'xAI', authModes: ['api_key', 'oauth'], defaultAuth: 'api_key', defaultModel: 'grok-4.5', baseUrl: 'https://api.x.ai/v1' },
   { id: 'anthropic', label: 'Anthropic', authModes: ['api_key', 'oauth'], defaultAuth: 'api_key', defaultModel: 'claude-opus-4-8', baseUrl: 'https://api.anthropic.com/v1' },
   { id: 'gemini', label: 'Gemini', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'gemini-2.5-pro', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
   { id: 'deepseek', label: 'DeepSeek', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'deepseek-v4-flash', baseUrl: 'https://api.deepseek.com' },
@@ -233,6 +235,12 @@ export const LLM_PROVIDER_OPTIONS = [
 ];
 export const HIDDEN_SETTINGS_LLM_PROVIDERS = new Set(['anthropic', 'gemini']);
 export const SETTINGS_LLM_PROVIDER_OPTIONS = LLM_PROVIDER_OPTIONS.filter((item) => !HIDDEN_SETTINGS_LLM_PROVIDERS.has(item.id));
+/** Providers that show OAuth fields in Settings. */
+export const LLM_OAUTH_UI_PROVIDERS = new Set(['openai', 'xai']);
+/** Providers whose callback is captured and completed by the local runtime. */
+export const LLM_OAUTH_CALLBACK_PROVIDERS = new Set(['xai']);
+/** Providers that still require a callback URL or code to be pasted manually. */
+export const LLM_OAUTH_MANUAL_CODE_PROVIDERS = new Set(['openai']);
 
 export const LLM_SETTINGS_STORAGE_KEY = 'haish.llmSettingsDraft.v1';
 export const SETTINGS_RECORDS_STORAGE_KEY = 'haish.settingsRecordsDraft.v1';
@@ -391,6 +399,7 @@ export function nextProviderDraft(providerId, previous = {}) {
     oauth_code: '',
     oauth_state: '',
     oauth_verifier: '',
+    oauth_configured: false,
   };
 }
 

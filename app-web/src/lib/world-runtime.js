@@ -70,6 +70,8 @@ export const WORLD_KIND_MAP = {
 export const PROVIDER_ACTOR_MAP = {
   generic: { actor: 'okabe', label: 'Auto' },
   openai: { actor: 'okabe', label: 'OpenAI protocol' },
+  xai: { actor: 'okabe', label: 'xAI protocol' },
+  grok: { actor: 'okabe', label: 'xAI protocol' },
   deepseek: { actor: 'okabe', label: 'OpenAI protocol' },
   dashscope: { actor: 'okabe', label: 'OpenAI protocol' },
   qwen: { actor: 'okabe', label: 'OpenAI protocol' },
