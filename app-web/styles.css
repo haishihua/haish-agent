@@ -1242,9 +1242,9 @@ svg { image-rendering: auto; shape-rendering: geometricPrecision; }
   height: 20px;
 }
 .settings-config-actions .settings-tooltip-icon-button {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
 }
 .settings-primary-button {
   border: 1px solid rgba(239, 191, 100, 0.38);
@@ -1707,43 +1707,33 @@ svg { image-rendering: auto; shape-rendering: geometricPrecision; }
 }
 .settings-active-badge {
   grid-area: badge;
-  height: 24px;
-  padding: 0 10px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
   justify-self: end;
-  border: 1px solid rgba(74, 222, 128, 0.2);
-  border-radius: 999px;
-  background: rgba(74, 222, 128, 0.1);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: #78da8b;
-  font-size: 12px;
-  font-weight: 650;
+  line-height: 1;
 }
 .settings-active-badge.success {
-  border-color: rgba(74, 222, 128, 0.2);
-  background: rgba(74, 222, 128, 0.1);
   color: #78da8b;
 }
 .settings-active-badge.idle {
-  border-color: rgba(176, 206, 255, 0.12);
-  background: rgba(176, 206, 255, 0.06);
   color: rgba(195, 205, 225, 0.62);
 }
 .settings-active-badge.testing {
-  border-color: rgba(239, 191, 100, 0.24);
-  background: rgba(239, 191, 100, 0.08);
   color: rgba(247, 213, 142, 0.9);
 }
 .settings-active-badge.error {
-  border-color: rgba(255, 107, 129, 0.22);
-  background: rgba(255, 107, 129, 0.09);
-  color: rgba(255, 153, 169, 0.94);
+  color: #ff9aa3;
 }
 .settings-active-badge.disabled {
-  border-color: rgba(176, 206, 255, 0.12);
-  background: rgba(176, 206, 255, 0.06);
-  color: rgba(195, 205, 225, 0.58);
+  color: #ff9aa3;
 }
 .settings-config-actions {
   grid-area: actions;
@@ -2433,9 +2423,10 @@ svg { image-rendering: auto; shape-rendering: geometricPrecision; }
   font-weight: 650;
 }
 .settings-skills-toolbar .settings-tooltip-icon-button,
-.settings-row-actions .settings-tooltip-icon-button {
-  width: 32px;
-  height: 32px;
+.settings-row-actions .settings-tooltip-icon-button,
+.settings-provider-row .settings-tooltip-icon-button {
+  width: 34px;
+  height: 34px;
   border-radius: 9px;
 }
 .settings-provider-toolbar {
@@ -2571,40 +2562,32 @@ svg { image-rendering: auto; shape-rendering: geometricPrecision; }
   gap: 8px;
 }
 .settings-provider-row {
-  grid-template-columns: 110px minmax(260px, 1fr) auto auto;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 10px;
 }
-.settings-provider-status {
-  width: fit-content;
-  height: 24px;
-  padding: 0 10px;
+.settings-provider-status-icon {
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
-  justify-self: end;
-  gap: 7px;
-  border: 1px solid rgba(176, 206, 255, 0.14);
-  border-radius: 999px;
-  background: rgba(176, 206, 255, 0.06);
-  color: rgba(195, 205, 225, 0.78);
-  font-size: 12px;
-  font-weight: 650;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   line-height: 1;
-  white-space: nowrap;
 }
-.settings-provider-status.configured {
-  border-color: rgba(74, 222, 128, 0.2);
-  background: rgba(74, 222, 128, 0.1);
+.settings-provider-status-icon.configured {
   color: #78da8b;
 }
-.settings-provider-status.missing {
-  border-color: rgba(255, 110, 122, 0.18);
-  background: rgba(255, 110, 122, 0.08);
+.settings-provider-status-icon.missing {
   color: #ff9aa3;
 }
 .settings-provider-row input[type="password"] {
-  width: 100%;
+  width: 240px;
+  max-width: 240px;
   min-width: 0;
+  justify-self: start;
   height: 38px;
   padding: 0 11px;
   border: 1px solid rgba(176, 206, 255, 0.14);
@@ -2617,13 +2600,6 @@ svg { image-rendering: auto; shape-rendering: geometricPrecision; }
 .settings-provider-row input[type="password"]:focus {
   border-color: rgba(239, 191, 100, 0.46);
   box-shadow: 0 0 0 3px rgba(239, 191, 100, 0.08);
-}
-.settings-provider-test-button {
-  min-width: 74px;
-}
-.settings-provider-test-button:disabled {
-  opacity: 0.42;
-  cursor: not-allowed;
 }
 .settings-workbench.workflow-workbench.provider-list-only.has-detail {
   grid-template-columns: minmax(0, 1fr);

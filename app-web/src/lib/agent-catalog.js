@@ -108,7 +108,7 @@ export const DEFAULT_DIRECT_WORKFLOW = {
   workflow_id: DIRECT_AGENT_WORKFLOW_ID,
   version: '1.0.0',
   display_name: 'Direct Agent',
-  description: 'Run the selected agent and return its final answer.',
+  description: 'Default single-agent path — send the user message to the chosen agent and return its final answer.',
   enabled: true,
   system: true,
   custom: false,
@@ -187,7 +187,7 @@ export const SETTINGS_SECTION_COPY = {
   memory: 'Configure Neo4j for long-term graph memory and relationship recall.',
   knowledge: 'Configure Qdrant for document retrieval and vector search.',
   agent: 'Agent profiles',
-  workflow: 'Workflows',
+  workflow: 'Compose multi-step agent flows with models, tools, conditions, and structured outputs.',
 };
 
 export const LLM_SUBTAB_COPY = {

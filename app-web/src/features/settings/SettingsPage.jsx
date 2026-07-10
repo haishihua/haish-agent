@@ -363,6 +363,7 @@ export function SettingsTooltipIconButton({
   label,
   icon,
   onClick,
+  onMouseDown,
   disabled = false,
   danger = false,
   type = 'button',
@@ -374,15 +375,14 @@ export function SettingsTooltipIconButton({
       type={type}
       className={`settings-tooltip-icon-button${danger ? ' danger' : ''}${className ? ` ${className}` : ''}`}
       aria-label={label}
-      title={label}
       onClick={onClick}
+      onMouseDown={onMouseDown}
       disabled={disabled}
     >
       <SettingsLucideIcon name={icon} size={iconSize} />
     </button>
   );
-  const Tooltip = PortalTooltip;
-  return Tooltip ? <Tooltip text={label} position="above">{button}</Tooltip> : button;
+  return <PortalTooltip text={label} position="above">{button}</PortalTooltip>;
 }
 
 export function SettingsMenuSelect({
@@ -2345,6 +2345,7 @@ export function ToolsConfigEditor({
           <SettingsTooltipIconButton
             label="Install Directory"
             icon="folder-plus"
+            iconSize={20}
             onClick={onInstallSkill}
             disabled={Boolean(skillActionBusy)}
           />
@@ -2367,6 +2368,7 @@ export function ToolsConfigEditor({
                   <SettingsTooltipIconButton
                     label={skillEnabled ? 'Disable' : 'Enable'}
                     icon={skillEnabled ? 'toggle-right' : 'toggle-left'}
+                    iconSize={22}
                     onClick={() => onToggleSkill(skill.name, !skillEnabled)}
                     disabled={Boolean(skillActionBusy)}
                   />
@@ -2374,6 +2376,7 @@ export function ToolsConfigEditor({
                     label="Uninstall"
                     icon="delete"
                     danger
+                    iconSize={22}
                     onClick={() => onUninstallSkill(skill.name)}
                     disabled={Boolean(skillActionBusy)}
                   />
@@ -2434,6 +2437,7 @@ export function ToolsConfigEditor({
             const configured = Boolean(draft.api_key_configured || String(draft.api_key || '').trim());
             const hasUsableKey = configured || String(draft.api_key || '').trim();
             const testing = testingWebProvider === provider.id;
+            const statusLabel = configured ? 'Configured' : 'Not configured';
             return (
               <div className="settings-provider-row" key={provider.id}>
                 <strong>{provider.label}</strong>
@@ -2447,19 +2451,24 @@ export function ToolsConfigEditor({
                   }}
                   placeholder={draft.api_key_configured ? 'Configured - leave blank to keep' : provider.keyLabel}
                 />
-                <span className={`settings-provider-status ${configured ? 'configured' : 'missing'}`}>
-                  {configured ? <SettingsLucideIcon name="active" size={13} /> : null}
-                  {configured ? 'Configured' : 'Not configured'}
-                </span>
-                <button
-                  type="button"
-                  className="settings-icon-button settings-provider-test-button"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => testProviderKey(provider, draft.api_key)}
-                  disabled={testing || !hasUsableKey}
-                >
-                  {testing ? 'Testing...' : 'Test'}
-                </button>
+                <div className="settings-row-actions">
+                  <PortalTooltip text={statusLabel} position="above">
+                    <span
+                      className={`settings-provider-status-icon ${configured ? 'configured' : 'missing'}`}
+                      aria-label={statusLabel}
+                    >
+                      <SettingsLucideIcon name={configured ? 'active' : 'close'} size={18} />
+                    </span>
+                  </PortalTooltip>
+                  <SettingsTooltipIconButton
+                    label={testing ? 'Testing...' : 'Test'}
+                    icon="test"
+                    iconSize={18}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => testProviderKey(provider, draft.api_key)}
+                    disabled={testing || !hasUsableKey}
+                  />
+                </div>
               </div>
             );
           })}
@@ -2942,59 +2951,63 @@ export function SettingsPage({
                         </span>
                       </button>
                       {isConnectionSection ? (
-                        <span className={`settings-active-badge ${connectionMeta.className}`}>
-                          {connectionMeta.icon ? <SettingsLucideIcon name="active" size={13} /> : null}
-                          {connectionMeta.label}
-                        </span>
+                        <PortalTooltip text={connectionMeta.label} position="above">
+                          <span
+                            className={`settings-active-badge ${connectionMeta.className}`}
+                            aria-label={connectionMeta.label}
+                          >
+                            <SettingsLucideIcon
+                              name={
+                                connectionMeta.className === 'success'
+                                  ? 'active'
+                                  : connectionMeta.className === 'testing'
+                                    ? 'test'
+                                    : 'close'
+                              }
+                              size={18}
+                            />
+                          </span>
+                        </PortalTooltip>
                       ) : (
-                        <span className={`settings-active-badge ${item.enabled === false ? 'disabled' : ''}`}>
-                          {item.enabled === false ? null : <SettingsLucideIcon name="active" size={13} />}
-                          {item.enabled === false ? 'Disabled' : 'Active'}
-                        </span>
+                        <PortalTooltip text={item.enabled === false ? 'Disabled' : 'Active'} position="above">
+                          <span
+                            className={`settings-active-badge ${item.enabled === false ? 'disabled' : ''}`}
+                            aria-label={item.enabled === false ? 'Disabled' : 'Active'}
+                          >
+                            <SettingsLucideIcon
+                              name={item.enabled === false ? 'close' : 'active'}
+                              size={18}
+                            />
+                          </span>
+                        </PortalTooltip>
                       )}
                       <div className="settings-config-actions">
                         {activeSection === 'agent' && item.canToggle ? (
-                          <button
-                            type="button"
-                            className={item.enabled === false ? 'settings-row-button' : 'settings-row-button danger'}
+                          <SettingsTooltipIconButton
+                            label={item.enabled === false ? 'Enable' : 'Disable'}
+                            icon={item.enabled === false ? 'toggle-left' : 'toggle-right'}
+                            iconSize={22}
                             onClick={() => onTogglePresetAgent?.(item.id, item.enabled === false)}
-                          >
-                            {item.enabled === false ? 'Enable' : 'Disable'}
-                          </button>
+                          />
                         ) : null}
                         {activeSection === 'workflow' && item.canToggle ? (
-                          <button
-                            type="button"
-                            className={item.enabled === false ? 'settings-row-button' : 'settings-row-button danger'}
+                          <SettingsTooltipIconButton
+                            label={item.enabled === false ? 'Enable' : 'Disable'}
+                            icon={item.enabled === false ? 'toggle-left' : 'toggle-right'}
+                            iconSize={22}
                             onClick={() => onTogglePresetWorkflow?.(item.id, item.enabled === false)}
-                          >
-                            {item.enabled === false ? 'Enable' : 'Disable'}
-                          </button>
+                          />
                         ) : null}
                         {activeSection !== 'agent' || item.canConfigure ? (
-                          activeSection === 'llm' ? (
-                            <SettingsTooltipIconButton
-                              label="Configure"
-                              icon="configure"
-                              iconSize={18}
-                              onClick={() => {
-                                selectItem(item.id);
-                                openEditor(activeSection, item.id, 'edit');
-                              }}
-                            />
-                          ) : (
-                            <button
-                              type="button"
-                              className="settings-row-button"
-                              onClick={() => {
-                                selectItem(item.id);
-                                openEditor(activeSection, item.id, 'edit');
-                              }}
-                            >
-                              <SettingsLucideIcon name="configure" />
-                              Configure
-                            </button>
-                          )
+                          <SettingsTooltipIconButton
+                            label="Configure"
+                            icon="configure"
+                            iconSize={18}
+                            onClick={() => {
+                              selectItem(item.id);
+                              openEditor(activeSection, item.id, 'edit');
+                            }}
+                          />
                         ) : null}
                         {activeSection === 'llm' && item.canDelete ? (
                           <SettingsTooltipIconButton
@@ -3006,22 +3019,22 @@ export function SettingsPage({
                           />
                         ) : null}
                         {activeSection === 'agent' && item.canConfigure ? (
-                          <button
-                            type="button"
-                            className="settings-row-button danger"
+                          <SettingsTooltipIconButton
+                            label="Delete"
+                            icon="delete"
+                            danger
+                            iconSize={20}
                             onClick={() => deleteConfig('agent', item.id)}
-                          >
-                            Delete
-                          </button>
+                          />
                         ) : null}
                         {activeSection === 'workflow' && item.custom ? (
-                          <button
-                            type="button"
-                            className="settings-row-button danger"
+                          <SettingsTooltipIconButton
+                            label="Delete"
+                            icon="delete"
+                            danger
+                            iconSize={20}
                             onClick={() => deleteConfig('workflow', item.id)}
-                          >
-                            Delete
-                          </button>
+                          />
                         ) : null}
                       </div>
                     </div>
@@ -3034,7 +3047,7 @@ export function SettingsPage({
                     </span>
                     <span>
                       <strong>{activeSection === 'llm' ? (activeSubtab === 'vision' ? 'Connect vision provider' : (activeSubtab === 'embedding' ? 'Connect embedding provider' : 'Connect provider')) : (activeSection === 'agent' ? 'Create custom agent' : (activeSection === 'workflow' ? 'Create workflow' : `Add ${sectionMeta.label}`))}</strong>
-                      <small>{activeSection === 'llm' ? 'Use official providers or OpenAI-compatible APIs.' : (activeSection === 'agent' ? 'Define prompt, tools, skills, and sub-agent access.' : (activeSection === 'workflow' ? 'Arrange agents, models, tools, and output nodes.' : 'Create another configuration.'))}</small>
+                      <small>{activeSection === 'llm' ? 'Use official providers or OpenAI-compatible APIs.' : (activeSection === 'agent' ? 'Define prompt, tools, skills, and sub-agent access.' : (activeSection === 'workflow' ? 'Start from a blank canvas and wire agents, models, tools, conditions, and outputs into a reusable flow.' : 'Create another configuration.'))}</small>
                     </span>
                   </button>
                 ) : null}
@@ -3084,14 +3097,7 @@ export function SettingsPage({
                     </button>
                   ) : null}
                   {panelCanSave ? (
-                    panelSection === 'llm'
-                      ? <SettingsTooltipIconButton label="Save" icon="save" iconSize={20} onClick={saveAndClose} />
-                      : (
-                        <button type="button" className="settings-primary-button" onClick={saveAndClose}>
-                          <SettingsLucideIcon name="save" />
-                          Save
-                        </button>
-                      )
+                    <SettingsTooltipIconButton label="Save" icon="save" iconSize={20} onClick={saveAndClose} />
                   ) : null}
                 </div>
               ) : null}
