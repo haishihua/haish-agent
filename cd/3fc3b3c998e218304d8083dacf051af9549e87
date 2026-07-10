@@ -1,0 +1,23 @@
+app-web/src/lib/agent-catalog.js
+  s_3f2b1a2705481b::t_7ec5b90a62a8c3 240-243
+app-web/styles.css
+  s_3f2b1a2705481b::t_6e293d93edd309 2076-2102
+app-web/src/features/settings/SettingsPage.jsx
+  s_3f2b1a2705481b::t_0de761748c0bc1 3,36-38,327-339,965-969,976-979,984-987,995-1045,1052-1058,1062-1063,1069-1081,1083-1086,1092,1094-1099,1105-1159,1233-1246,1263-1301
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "cd3fc3b3c998e218304d8083dacf051af9549e87",
+  "prompts": {},
+  "sessions": {
+    "s_3f2b1a2705481b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4787-6fd0-7f02-9343-9aa4bed255ca",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
