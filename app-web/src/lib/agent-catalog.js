@@ -2,11 +2,11 @@
 // Agent catalog, LLM/settings draft defaults, and pure normalize helpers (UI-free).
 
 export const APP_DEFAULT_AGENT_OPTIONS = [
-  { id: 'preset.general', label: 'Task Assistant', description: 'Default full-tool assistant' },
-  { id: 'preset.product', label: 'Product Planner', description: 'Requirements, PRDs, scope, and acceptance criteria' },
-  { id: 'preset.development', label: 'Coding Assistant', description: 'Implementation, debugging, refactoring, and lightweight self-checks' },
-  { id: 'preset.qa', label: 'Test Engineer', description: 'Test design, browser/E2E verification, and release gates' },
-  { id: 'preset.document-qa', label: 'Docs Search', description: 'Grounded answers from indexed documents' },
+  { id: 'preset.general', label: 'Task Assistant', description: 'All-purpose agent with full tools for everyday work.' },
+  { id: 'preset.product', label: 'Product Planner', description: 'Shape requirements, PRDs, scope, risks, and acceptance criteria.' },
+  { id: 'preset.development', label: 'Coding Assistant', description: 'Build, debug, and refactor code with lightweight self-checks.' },
+  { id: 'preset.qa', label: 'Test Engineer', description: 'Design tests, reproduce issues, verify changes, and gate releases.' },
+  { id: 'preset.document-qa', label: 'Docs Search', description: 'Answer from indexed documents with retrieved, citable evidence.' },
 ];
 
 export const DEFAULT_AGENT_TOOL_GROUPS = [
@@ -137,7 +137,7 @@ export const DEFAULT_DIRECT_WORKFLOW = {
     {
       id: 'output',
       type: 'output',
-      label: 'Output',
+      label: 'End',
       output_mode: 'json_object',
       output: '{{nodes.agent.summary}}',
       output_mapping: { answer: '{{nodes.agent.summary}}' },
@@ -174,7 +174,7 @@ export const DEFAULT_SOFTWARE_DEVELOPMENT_WORKFLOW = {
     { id: 'scope_gate', type: 'condition', label: 'Scope Gate', cases: [{ name: 'clarify', when: '{{nodes.product.summary}} contains NEEDS_CLARIFICATION:', to: 'output' }], default: 'development', position: { x: 540, y: 180 } },
     { id: 'development', type: 'agent', label: 'Development', agent_id: 'preset.development', prompt: 'Implement {{input.message}} using this product brief: {{nodes.product.summary}}', position: { x: 680, y: 180 } },
     { id: 'qa', type: 'agent', label: 'QA', agent_id: 'preset.qa', prompt: 'Verify {{input.message}} against {{nodes.product.summary}}. Development report: {{nodes.development.summary}}', position: { x: 1000, y: 180 } },
-    { id: 'output', type: 'output', label: 'Output', output_mode: 'text', output: '{{nodes.qa.summary}}', fallback_output: '{{nodes.product.summary}}', strip_prefix: 'NEEDS_CLARIFICATION:', position: { x: 1320, y: 180 } },
+    { id: 'output', type: 'output', label: 'End', output_mode: 'text', output: '{{nodes.qa.summary}}', fallback_output: '{{nodes.product.summary}}', strip_prefix: 'NEEDS_CLARIFICATION:', position: { x: 1320, y: 180 } },
   ],
   edges: [
     { from: 'start', to: 'product' },
@@ -220,7 +220,7 @@ export const SETTINGS_SECTION_COPY = {
   tools: 'Tool integrations',
   memory: 'Configure Neo4j for long-term graph memory and relationship recall.',
   knowledge: 'Configure Qdrant for document retrieval and vector search.',
-  agent: 'Agent profiles',
+  agent: 'Manage preset and custom agents for chat and workflows.',
   workflow: 'Compose multi-step agent flows with models, tools, conditions, and structured outputs.',
 };
 

@@ -205,6 +205,10 @@ function workflowNodeStatus(nodeId, run) {
   return 'pending';
 }
 
+function workflowNodeLabel(node) {
+  return node?.type === 'output' ? 'End' : (node?.label || node?.id || 'Node');
+}
+
 function runtimeValue(value) {
   if (value == null || value === '') return '—';
   if (typeof value === 'string') return value;
@@ -239,11 +243,11 @@ function WorkflowRuntime({ task }) {
               type="button"
               className={`workflow-runtime-step status-${status} ${selectedNodeId === node.id ? 'selected' : ''}`}
               aria-pressed={selectedNodeId === node.id}
-              aria-label={`${node.label || node.id}, ${status}`}
+              aria-label={`${workflowNodeLabel(node)}, ${status}`}
               onClick={() => setSelectedNodeId((current) => current === node.id ? '' : node.id)}
             >
               <span className="workflow-runtime-step-index" aria-hidden="true">{index + 1}</span>
-              <span className="workflow-runtime-step-title">{node.label || node.id}</span>
+              <span className="workflow-runtime-step-title">{workflowNodeLabel(node)}</span>
               <span className="workflow-runtime-step-status">{status}</span>
             </button>
           );
@@ -252,7 +256,7 @@ function WorkflowRuntime({ task }) {
       {selectedNode ? (
         <div className="workflow-runtime-detail">
           <div className="workflow-runtime-detail-head">
-            <strong>{selectedNode.label || selectedNode.id}</strong>
+            <strong>{workflowNodeLabel(selectedNode)}</strong>
             <span>{selectedResult?.duration_ms != null ? `${selectedResult.duration_ms} ms` : workflowNodeStatus(selectedNode.id, run)}</span>
           </div>
           <div className="workflow-runtime-detail-row">

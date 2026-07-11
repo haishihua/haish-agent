@@ -77,6 +77,11 @@ export const STREAM_IMMEDIATE_EVENT_TYPES = new Set([
   'llm_thinking_delta',
   'llm_answer_delta',
   'agent_progress_delta',
+  'llm_tool_call_requested',
+  'tool_manager_received',
+  'tool_dispatched',
+  'tool_executor_started',
+  'sub_agent_tool_call_requested',
   'sub_agent_progress_delta',
   'sub_agent_answer_delta',
 ]);

@@ -621,7 +621,7 @@ export function buildChatTimeline(task, taskStatus) {
 
   let textBufSource = 'progress';
   const flushText = () => {
-    const value = textBuf;
+    const value = textBuf.trim();
     const source = textBufSource;
     textBuf = '';
     textBufSource = 'progress';
@@ -804,7 +804,7 @@ export function buildChatTimeline(task, taskStatus) {
     items.push({
       kind: 'text',
       id: `text-${textSegmentIndex}`,
-      text: textBuf,
+      text: textBuf.trim(),
       source: textBufSource,
       streaming: isRunning,
     });
@@ -942,6 +942,5 @@ export function pendingTaskToQuest(pendingTask) {
     serverFinished: !!pendingTask.serverFinished,
   };
 }
-
 
 

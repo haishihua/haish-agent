@@ -20,11 +20,11 @@ export const MODEL_OPTIONS = [
 ];
 
 export const DEFAULT_AGENT_OPTIONS = [
-  { id: 'preset.general', label: 'Task Assistant', description: 'Default full-tool assistant' },
-  { id: 'preset.product', label: 'Product Planner', description: 'Requirements, PRDs, scope, and acceptance criteria' },
-  { id: 'preset.development', label: 'Coding Assistant', description: 'Implementation, debugging, refactoring, and lightweight self-checks' },
-  { id: 'preset.qa', label: 'Test Engineer', description: 'Test design, browser/E2E verification, and release gates' },
-  { id: 'preset.document-qa', label: 'Docs Search', description: 'Grounded answers from indexed documents' },
+  { id: 'preset.general', label: 'Task Assistant', description: 'All-purpose agent with full tools for everyday work.' },
+  { id: 'preset.product', label: 'Product Planner', description: 'Shape requirements, PRDs, scope, risks, and acceptance criteria.' },
+  { id: 'preset.development', label: 'Coding Assistant', description: 'Build, debug, and refactor code with lightweight self-checks.' },
+  { id: 'preset.qa', label: 'Test Engineer', description: 'Design tests, reproduce issues, verify changes, and gate releases.' },
+  { id: 'preset.document-qa', label: 'Docs Search', description: 'Answer from indexed documents with retrieved, citable evidence.' },
 ];
 
 export const XAI_GROK_MODEL_OPTIONS = [

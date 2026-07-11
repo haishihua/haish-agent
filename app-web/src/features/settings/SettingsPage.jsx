@@ -1,6 +1,11 @@
 // @haish-esm
 import React from 'react';
-import { Box, ChevronDown, CircleCheck, ExternalLink, LoaderCircle } from 'lucide-react';
+import {
+  ChevronDown,
+  CircleCheck,
+  ExternalLink,
+  LoaderCircle,
+} from 'lucide-react';
 import anthropicLogo from '@lobehub/icons-static-svg/icons/anthropic.svg';
 import deepseekLogo from '@lobehub/icons-static-svg/icons/deepseek.svg';
 import geminiLogo from '@lobehub/icons-static-svg/icons/gemini.svg';
@@ -11,6 +16,10 @@ import openaiLogo from '@lobehub/icons-static-svg/icons/openai.svg';
 import qwenLogo from '@lobehub/icons-static-svg/icons/qwen.svg';
 import xaiLogo from '@lobehub/icons-static-svg/icons/xai.svg';
 import zhipuLogo from '@lobehub/icons-static-svg/icons/zhipu.svg';
+import tavilyLogo from '@lobehub/icons-static-svg/icons/tavily.svg';
+import neo4jLogo from '../../../assets/ui/icons/neo4j.svg';
+import qdrantLogo from '../../../assets/ui/icons/qdrant.svg';
+import serpapiLogo from '../../../assets/ui/icons/serpapi.svg';
 import {
   ReactFlow,
   Background,
@@ -147,19 +156,64 @@ const PROVIDER_LOGOS = {
   ollama: ollamaLogo,
 };
 
-function ProviderIcon({ provider }) {
-  if (provider === 'custom') {
-    return (
-      <span className="settings-provider-icon settings-provider-icon-custom" aria-hidden="true">
-        <Box size={24} strokeWidth={1.8} />
-      </span>
-    );
-  }
-  const logo = PROVIDER_LOGOS[provider];
+const CONNECTION_BRAND_LOGOS = {
+  'memory-neo4j': neo4jLogo,
+  'knowledge-qdrant': qdrantLogo,
+  neo4j: neo4jLogo,
+  qdrant: qdrantLogo,
+};
+
+const WEB_SEARCH_BRAND_LOGOS = {
+  tavily: tavilyLogo,
+  serpapi: serpapiLogo,
+};
+
+function BrandLogoIcon({ logo }) {
   if (!logo) return null;
   return (
     <span className="settings-provider-icon" aria-hidden="true">
       <span className="settings-provider-logo" style={{ '--settings-provider-logo': `url(${logo})` }} />
+    </span>
+  );
+}
+
+function ProviderIcon({ provider }) {
+  if (provider === 'custom') {
+    return (
+      <span className="settings-provider-icon settings-provider-icon-custom" aria-hidden="true">
+        <SettingsLucideIcon name="box" size={22} className="settings-provider-glyph" />
+      </span>
+    );
+  }
+  return <BrandLogoIcon logo={PROVIDER_LOGOS[provider]} />;
+}
+
+function ConnectionBrandIcon({ itemId, title }) {
+  const logo = CONNECTION_BRAND_LOGOS[itemId]
+    || CONNECTION_BRAND_LOGOS[String(title || '').trim().toLowerCase()];
+  return <BrandLogoIcon logo={logo} />;
+}
+
+const PRESET_AGENT_ICON_NAMES = {
+  'preset.general': 'sparkles',
+  'preset.product': 'clipboard-list',
+  'preset.development': 'code-2',
+  'preset.qa': 'flask-conical',
+  'preset.document-qa': 'book-open',
+};
+
+function AgentListIcon({ item }) {
+  if (item?.custom) {
+    return (
+      <span className="settings-provider-icon settings-provider-icon-custom" aria-hidden="true">
+        <SettingsLucideIcon name="box" size={22} className="settings-provider-glyph" />
+      </span>
+    );
+  }
+  const iconName = PRESET_AGENT_ICON_NAMES[item?.id] || 'sparkles';
+  return (
+    <span className="settings-provider-icon" aria-hidden="true">
+      <SettingsLucideIcon name={iconName} size={22} className="settings-provider-glyph" />
     </span>
   );
 }
@@ -171,6 +225,39 @@ export function FieldRow({ label, hint, children }) {
       {children}
       {hint && <small>{hint}</small>}
     </div>
+  );
+}
+
+const SECRET_KEY_SAVED_PLACEHOLDER = 'Saved · enter a new key to replace';
+
+export function SecretKeyField({
+  value = '',
+  onChange,
+  onBlur,
+  onKeyDown,
+  placeholder = 'API key',
+  configured = false,
+  disabled = false,
+  className = '',
+  autoComplete = 'off',
+}) {
+  const keyValue = String(value || '');
+  const keySaved = Boolean(configured) && !keyValue.trim();
+  return (
+    <label className={`settings-secret-key-field${keySaved ? ' is-saved' : ''}${className ? ` ${className}` : ''}`}>
+      <SettingsLucideIcon name="lock" size={15} className="settings-secret-key-icon" />
+      <input
+        type="password"
+        value={keyValue}
+        onChange={onChange}
+        onBlur={onBlur}
+        onKeyDown={onKeyDown}
+        disabled={disabled}
+        placeholder={keySaved ? SECRET_KEY_SAVED_PLACEHOLDER : placeholder}
+        autoComplete={autoComplete}
+        spellCheck={false}
+      />
+    </label>
   );
 }
 
@@ -393,6 +480,10 @@ const SETTINGS_LUCIDE_ICONS = {
     ['circle', { cx: '12', cy: '12', r: '10' }],
     ['path', { d: 'm9 12 2 2 4-4' }],
   ],
+  lock: [
+    ['rect', { x: '4', y: '10', width: '16', height: '10', rx: '2' }],
+    ['path', { d: 'M8 10V7a4 4 0 0 1 8 0v3' }],
+  ],
   delete: [
     ['path', { d: 'M3 6h18' }],
     ['path', { d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }],
@@ -412,6 +503,38 @@ const SETTINGS_LUCIDE_ICONS = {
   'toggle-right': [
     ['circle', { cx: '15', cy: '12', r: '3' }],
     ['rect', { width: '20', height: '14', x: '2', y: '5', rx: '7' }],
+  ],
+  sparkles: [
+    ['path', { d: 'M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z' }],
+    ['path', { d: 'M20 2v4' }],
+    ['path', { d: 'M22 4h-4' }],
+    ['circle', { cx: '4', cy: '20', r: '2' }],
+  ],
+  'clipboard-list': [
+    ['rect', { width: '8', height: '4', x: '8', y: '2', rx: '1', ry: '1' }],
+    ['path', { d: 'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2' }],
+    ['path', { d: 'M12 11h4' }],
+    ['path', { d: 'M12 16h4' }],
+    ['path', { d: 'M8 11h.01' }],
+    ['path', { d: 'M8 16h.01' }],
+  ],
+  'code-2': [
+    ['path', { d: 'm18 16 4-4-4-4' }],
+    ['path', { d: 'm6 8-4 4 4 4' }],
+  ],
+  'flask-conical': [
+    ['path', { d: 'M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2' }],
+    ['path', { d: 'M6.453 15h11.094' }],
+    ['path', { d: 'M8.5 2h7' }],
+  ],
+  'book-open': [
+    ['path', { d: 'M12 7v14' }],
+    ['path', { d: 'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z' }],
+  ],
+  box: [
+    ['path', { d: 'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z' }],
+    ['path', { d: 'm3.3 7 8.7 5 8.7-5' }],
+    ['path', { d: 'M12 22V12' }],
   ],
 };
 
@@ -852,6 +975,19 @@ export function isEmptyMcpConfigDraft(text) {
     && !Array.isArray(servers)
     && Object.keys(servers).length === 0
   );
+}
+
+export function countMcpServersFromJson(text) {
+  const parsed = parseJsonSafe(text || DEFAULT_MCP_CONFIG_JSON);
+  if (!parsed.ok || !parsed.value || typeof parsed.value !== 'object' || Array.isArray(parsed.value)) return 0;
+  const servers = parsed.value.servers;
+  if (!servers || typeof servers !== 'object' || Array.isArray(servers)) return 0;
+  return Object.keys(servers).length;
+}
+
+export function formatMcpServerCountLabel(count) {
+  const total = Number.isFinite(count) && count > 0 ? count : 0;
+  return `${total} mcp server${total === 1 ? '' : 's'}`;
 }
 
 export function normalizeWebSearchDraft(value) {
@@ -1331,11 +1467,11 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       )}
       {showApiKeyField && (
         <FieldRow label="API Key" hint="Saved as secret.">
-          <input
-            type="password"
+          <SecretKeyField
             value={config.api_key || ''}
             onChange={(event) => update({ api_key: event.target.value })}
             disabled={disabled}
+            configured={Boolean(config.api_key_configured)}
             placeholder={config.provider === 'custom' ? 'API key' : `${provider.label} API key`}
           />
         </FieldRow>
@@ -1520,7 +1656,13 @@ export function MemoryConfigEditor({ selectedId, records, onRecordsChange, onDir
         <input value={neo4j.username} onChange={(event) => update({ username: event.target.value })} disabled={readOnly} placeholder="neo4j" />
       </FieldRow>
       <FieldRow label="Password">
-        <input type="password" value={neo4j.password} onChange={(event) => update({ password: event.target.value })} disabled={readOnly} placeholder={neo4j.password_configured ? 'Configured - leave blank to keep' : ''} />
+        <SecretKeyField
+          value={neo4j.password}
+          onChange={(event) => update({ password: event.target.value })}
+          disabled={readOnly}
+          configured={Boolean(neo4j.password_configured)}
+          placeholder="Password"
+        />
       </FieldRow>
       <FieldRow label="Database">
         <input value={neo4j.database} onChange={(event) => update({ database: event.target.value })} disabled={readOnly} />
@@ -1554,7 +1696,13 @@ export function KnowledgeConfigEditor({ selectedId, records, onRecordsChange, on
         <input value={qdrant.url} onChange={(event) => update({ url: event.target.value })} disabled={readOnly} placeholder="Optional, e.g. http://localhost:6333" />
       </FieldRow>
       <FieldRow label="API Key">
-        <input type="password" value={qdrant.api_key} onChange={(event) => update({ api_key: event.target.value })} disabled={readOnly} placeholder={qdrant.api_key_configured ? 'Configured - leave blank to keep' : ''} />
+        <SecretKeyField
+          value={qdrant.api_key}
+          onChange={(event) => update({ api_key: event.target.value })}
+          disabled={readOnly}
+          configured={Boolean(qdrant.api_key_configured)}
+          placeholder="API key"
+        />
       </FieldRow>
       <FieldRow label="Collection Name">
         <input value={qdrant.collection.name} onChange={(event) => update({ collection: { name: event.target.value } })} disabled={readOnly} placeholder="Leave blank to use workspace default" />
@@ -2320,9 +2468,16 @@ export function ToolsConfigEditor({
   const mcpDirtyRef = useRef(false);
   const mcpHighlightRef = useRef(null);
   const [testingWebProvider, setTestingWebProvider] = useState('');
+  const [mcpServerCount, setMcpServerCount] = useState(0);
   useEffect(() => {
     mcpDirtyRef.current = false;
   }, [selectedId]);
+  useEffect(() => {
+    if (selectedId !== 'tools-mcp') return;
+    if (mcpDirtyRef.current) return;
+    const mcpRecord = (records.tools || []).find((item) => item.id === 'tools-mcp');
+    setMcpServerCount(countMcpServersFromJson(mcpRecord?.mcp_json));
+  }, [selectedId, records]);
   if (!current) {
     return <div className="settings-empty">Select a Tools configuration.</div>;
   }
@@ -2392,6 +2547,7 @@ export function ToolsConfigEditor({
       const saved = await onSaveTools?.(nextRecords, 'mcp config saved and reloaded');
       if (saved) {
         mcpDirtyRef.current = false;
+        setMcpServerCount(countMcpServersFromJson(formatted));
         updateRecord({ mcp_error: '', mcp_status: 'Saved and MCP reloaded.' });
       }
     };
@@ -2404,44 +2560,38 @@ export function ToolsConfigEditor({
         <div className="settings-mcp-config">
           <div className="settings-mcp-editor-shell">
             <div className="settings-mcp-actions">
+              <span className="settings-mcp-server-count">{formatMcpServerCountLabel(mcpServerCount)}</span>
               <div className="settings-mcp-actions-group">
-                <button
-                  type="button"
-                  className="settings-mcp-action-button"
+                <SettingsTooltipIconButton
+                  label="Template"
+                  icon="template"
+                  iconSize={20}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={applyTemplate}
-                >
-                  <SettingsLucideIcon name="template" size={14} />
-                  Template
-                </button>
-                <button
-                  type="button"
-                  className="settings-mcp-action-button"
+                />
+                <SettingsTooltipIconButton
+                  label="Format"
+                  icon="format"
+                  iconSize={20}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={formatJson}
                   disabled={!parsed.ok}
-                >
-                  <SettingsLucideIcon name="format" size={14} />
-                  Format
-                </button>
-                <button
-                  type="button"
-                  className="settings-mcp-action-button"
+                />
+                <SettingsTooltipIconButton
+                  label="Validate"
+                  icon="validate"
+                  iconSize={20}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => validateJson(mcpJson)}
-                >
-                  <SettingsLucideIcon name="validate" size={14} />
-                  Validate
-                </button>
-                <button
-                  type="button"
-                  className="settings-mcp-action-button primary"
+                />
+                <SettingsTooltipIconButton
+                  label="Save"
+                  icon="save"
+                  iconSize={20}
+                  className="primary"
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => saveJson(mcpJson)}
-                >
-                  <SettingsLucideIcon name="save" size={14} />
-                  Save
-                </button>
+                />
               </div>
             </div>
             <div className="settings-json-editor-layer">
@@ -2569,16 +2719,20 @@ export function ToolsConfigEditor({
             const statusLabel = configured ? 'Configured' : 'Not configured';
             return (
               <div className="settings-provider-row" key={provider.id}>
-                <strong>{provider.label}</strong>
-                <input
-                  type="password"
+                <div className="settings-provider-identity">
+                  <BrandLogoIcon logo={WEB_SEARCH_BRAND_LOGOS[provider.id]} />
+                  <strong>{provider.label}</strong>
+                </div>
+                <SecretKeyField
+                  className="settings-provider-key-field"
                   value={draft.api_key || ''}
                   onChange={(event) => updateProvider(provider.id, { api_key: event.target.value })}
                   onBlur={(event) => saveProviderKey(provider.id, event.currentTarget.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') event.currentTarget.blur();
                   }}
-                  placeholder={draft.api_key_configured ? 'Configured - leave blank to keep' : provider.keyLabel}
+                  configured={Boolean(draft.api_key_configured)}
+                  placeholder={provider.keyLabel}
                 />
                 <div className="settings-row-actions">
                   <PortalTooltip text={statusLabel} position="above">
@@ -3074,19 +3228,28 @@ export function SettingsPage({
                   const isConnectionSection = activeSection === 'memory' || activeSection === 'knowledge';
                   const connectionStatus = settingsConnectionStatus?.[activeSection]?.[item.id];
                   const connectionMeta = connectionBadgeMeta(connectionStatus);
+                  const showBrandIcon = activeSection === 'llm'
+                    || activeSection === 'agent'
+                    || isConnectionSection;
                   return (
                     <div
                       key={item.id}
-                      className={`settings-config-row${activeSection === 'llm' ? ' provider-row' : ''}${selectedItem?.id === item.id ? ' active' : ''}`}
+                      className={`settings-config-row${showBrandIcon ? ' provider-row' : ''}${selectedItem?.id === item.id ? ' active' : ''}`}
                     >
                       <button
                         type="button"
-                        className={`settings-config-main${activeSection === 'llm' ? ' has-provider-icon' : ''}`}
+                        className={`settings-config-main${showBrandIcon ? ' has-provider-icon' : ''}`}
                         onClick={() => {
                           selectListItem(item.id);
                         }}
                       >
-                        {activeSection === 'llm' ? <ProviderIcon provider={item.provider} /> : null}
+                        {activeSection === 'llm' ? (
+                          <ProviderIcon provider={item.provider} />
+                        ) : activeSection === 'agent' ? (
+                          <AgentListIcon item={item} />
+                        ) : isConnectionSection ? (
+                          <ConnectionBrandIcon itemId={item.id} title={item.title} />
+                        ) : null}
                         <span className="settings-config-copy">
                           <span className="settings-config-title">{item.title}</span>
                           <span className="settings-config-summary">{item.summary}</span>

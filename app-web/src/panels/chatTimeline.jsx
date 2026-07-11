@@ -487,7 +487,7 @@ export function buildSubAgentTimelineItems(view) {
   let textBuffer = '';
   let textIndex = 0;
   const flushText = (streaming = false) => {
-    const value = textBuffer;
+    const value = textBuffer.trim();
     textBuffer = '';
     if (!value.trim()) return;
     items.push({
@@ -1342,6 +1342,51 @@ export function ChatTimelineCollapsed({ onExpand, label = 'Trace', expanded = fa
   );
 }
 
+function FinalAnswerMarkdown({ source, streaming }) {
+  const text = String(source || '');
+  const previousStreamingRef = React.useRef(streaming);
+  const [visibleText, setVisibleText] = React.useState(() => (streaming ? '' : text));
+  const [revealing, setRevealing] = React.useState(false);
+
+  React.useEffect(() => {
+    const shouldReveal = previousStreamingRef.current && !streaming && Boolean(text);
+    previousStreamingRef.current = streaming;
+
+    if (streaming) {
+      setVisibleText('');
+      setRevealing(false);
+      return undefined;
+    }
+    if (!shouldReveal || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setVisibleText(text);
+      setRevealing(false);
+      return undefined;
+    }
+
+    const characters = Array.from(text);
+    const chunkSize = Math.max(1, Math.ceil(characters.length / 120));
+    let visibleCount = 0;
+    setVisibleText('');
+    setRevealing(true);
+    const timer = window.setInterval(() => {
+      visibleCount = Math.min(visibleCount + chunkSize, characters.length);
+      setVisibleText(characters.slice(0, visibleCount).join(''));
+      if (visibleCount >= characters.length) {
+        window.clearInterval(timer);
+        setRevealing(false);
+      }
+    }, 24);
+    return () => window.clearInterval(timer);
+  }, [streaming, text]);
+
+  if (!text || streaming) return null;
+  return (
+    <div className="chat-bubble-text">
+      {Markdown ? <Markdown source={`${visibleText}${revealing ? ' ▍' : ''}`} /> : visibleText}
+    </div>
+  );
+}
+
 export function ChatMessageRow({ message, now, onPreviewImage }) {
   const timeline = Array.isArray(message.traceTimeline) ? message.traceTimeline : [];
   const hasTimeline = timeline.length > 0;
@@ -1442,12 +1487,10 @@ export function ChatMessageRow({ message, now, onPreviewImage }) {
             latestTodos={message.traceLatestTodos || null}
           />
         ) : null}
-        {message.text ? (
-          <div className={`chat-bubble-text ${message.streaming ? 'streaming' : ''}`}>
-            {!message.streaming && Markdown
-              ? <Markdown source={message.text || ''} />
-              : <span className="chat-stream-text">{message.text || ''}</span>}
-          </div>
+        {isAgent ? (
+          <FinalAnswerMarkdown source={message.text} streaming={message.streaming} />
+        ) : message.text ? (
+          <div className="chat-bubble-text"><span className="chat-stream-text">{message.text}</span></div>
         ) : null}
       </div>
       {(messageClock || copyText) ? (
@@ -2001,4 +2044,3 @@ export function ChatPanel({
     </section>
   );
 }
-

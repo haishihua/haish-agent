@@ -4926,15 +4926,12 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         const timeline = hasTraceSource ? buildChatTimeline(task, status) : null;
         const streaming = (status === 'running' || status === 'queued') && !error;
         const timelineItems = Array.isArray(timeline?.items) ? timeline.items : [];
-        // While streaming, show the assistant's answer in the main bubble and
-        // keep process/progress items in the trace. Answer text items are only
-        // a transport detail for the trace builder, so filter them to avoid
-        // rendering the same tokens twice.
-        const visibleTimelineItems = streaming && answer
-          ? timelineItems.filter((item) => !(item?.kind === 'text' && item?.source === 'answer'))
-          : timelineItems;
+        // Keep streamed answer segments in the trace so text and tool calls
+        // stay in their original chronological order. The final answer moves
+        // into the Markdown bubble only after the run completes.
+        const visibleTimelineItems = timelineItems;
         const bubbleText = streaming
-          ? answer
+          ? ''
           : (error || answer || (status === 'cancelled' ? 'Task was cancelled.' : ''));
         rows.push({
           id: `${taskId}-agent`,

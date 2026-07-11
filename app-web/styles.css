@@ -2378,6 +2378,18 @@ svg {
     color: rgba(246, 248, 255, 0.92);
 }
 
+/* Keep list glyphs crisp: integer stroke + no fractional CSS override. */
+.settings-provider-icon .settings-provider-glyph,
+.settings-provider-icon .settings-lucide {
+    width: 22px;
+    height: 22px;
+    display: block;
+    flex: 0 0 auto;
+    stroke-width: 2;
+    shape-rendering: geometricPrecision;
+    overflow: visible;
+}
+
 .settings-config-row.active .settings-provider-icon {
     border-color: rgba(239, 191, 100, 0.24);
     background: rgba(239, 191, 100, 0.09);
@@ -3136,9 +3148,19 @@ svg {
     padding: 8px 10px;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
+    gap: 12px;
     border-bottom: 1px solid rgba(176, 206, 255, 0.08);
     background: rgba(176, 206, 255, 0.025);
+}
+
+.settings-mcp-server-count {
+    min-width: 0;
+    padding-left: 4px;
+    color: rgba(195, 205, 225, 0.66);
+    font-size: 13px;
+    font-weight: 650;
+    white-space: nowrap;
 }
 
 .settings-mcp-actions-group {
@@ -3146,49 +3168,38 @@ svg {
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
+    margin-left: auto;
 }
 
-.settings-mcp-action-button {
-    height: 32px;
-    padding: 0 12px;
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
+.settings-mcp-actions-group .settings-tooltip-icon-button {
+    width: 34px;
+    height: 34px;
     border: 1px solid rgba(176, 206, 255, 0.12);
     border-radius: 9px;
     background: rgba(176, 206, 255, 0.055);
     color: rgba(218, 226, 244, 0.82);
-    font-size: 12px;
-    font-weight: 680;
-    line-height: 1;
-    cursor: pointer;
     transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
 }
 
-.settings-mcp-action-button:hover:not(:disabled),
-.settings-mcp-action-button:focus-visible {
+.settings-mcp-actions-group .settings-tooltip-icon-button:hover:not(:disabled),
+.settings-mcp-actions-group .settings-tooltip-icon-button:focus-visible {
     border-color: rgba(239, 191, 100, 0.32);
     background: rgba(239, 191, 100, 0.08);
     color: rgba(246, 248, 255, 0.9);
 }
 
-.settings-mcp-action-button.primary {
+.settings-mcp-actions-group .settings-tooltip-icon-button.primary {
     border-color: rgba(239, 191, 100, 0.5);
     background: linear-gradient(180deg, rgba(245, 197, 99, 0.95), rgba(214, 154, 43, 0.92));
     color: rgba(21, 17, 10, 0.95);
     box-shadow: 0 8px 18px rgba(239, 191, 100, 0.16);
 }
 
-.settings-mcp-action-button.primary:hover:not(:disabled),
-.settings-mcp-action-button.primary:focus-visible {
+.settings-mcp-actions-group .settings-tooltip-icon-button.primary:hover:not(:disabled),
+.settings-mcp-actions-group .settings-tooltip-icon-button.primary:focus-visible {
     border-color: rgba(255, 216, 137, 0.72);
     background: linear-gradient(180deg, rgba(255, 214, 128, 0.98), rgba(229, 168, 54, 0.96));
     color: rgba(17, 14, 8, 0.98);
-}
-
-.settings-mcp-action-button:disabled {
-    color: rgba(137, 148, 171, 0.38);
-    cursor: default;
 }
 
 .settings-tool-status {
@@ -3409,9 +3420,25 @@ svg {
 }
 
 .settings-provider-row {
-    grid-template-columns: 88px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(132px, max-content) minmax(0, 1fr) auto;
     align-items: center;
-    column-gap: 10px;
+    column-gap: 12px;
+}
+
+.settings-provider-identity {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.settings-provider-identity strong {
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.settings-provider-row .settings-provider-icon {
+    flex: 0 0 auto;
 }
 
 .settings-provider-status-icon {
@@ -3434,24 +3461,90 @@ svg {
     color: #ff9aa3;
 }
 
-.settings-provider-row input[type="password"] {
-    width: 240px;
-    max-width: 240px;
+.settings-secret-key-field {
     min-width: 0;
-    justify-self: start;
-    height: 38px;
-    padding: 0 11px;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 10px;
+    height: 40px;
+    padding: 0 12px;
     border: 1px solid rgba(176, 206, 255, 0.14);
-    border-radius: 10px;
-    background: rgba(7, 12, 22, 0.58);
+    border-radius: 12px;
+    background:
+        linear-gradient(180deg, rgba(18, 28, 46, 0.72), rgba(8, 13, 24, 0.88));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    color: rgba(195, 205, 225, 0.72);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.settings-provider-row .settings-secret-key-field,
+.settings-provider-row .settings-provider-key-field {
+    width: min(100%, 360px);
+    max-width: 360px;
+    justify-self: start;
+}
+
+.settings-secret-key-field.is-saved {
+    border-color: rgba(120, 218, 139, 0.22);
+    background:
+        linear-gradient(180deg, rgba(18, 36, 30, 0.55), rgba(8, 16, 18, 0.86));
+}
+
+.settings-secret-key-field:focus-within {
+    border-color: rgba(239, 191, 100, 0.46);
+    box-shadow:
+        0 0 0 3px rgba(239, 191, 100, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    color: rgba(239, 191, 100, 0.92);
+}
+
+.settings-secret-key-field:has(input:disabled) {
+    opacity: 0.62;
+    cursor: not-allowed;
+}
+
+.settings-secret-key-icon {
+    flex: 0 0 auto;
+    opacity: 0.88;
+}
+
+.settings-page .settings-field .settings-secret-key-field input,
+.settings-page .settings-field .settings-secret-key-field input[type="password"],
+.settings-secret-key-field input,
+.settings-secret-key-field input[type="password"] {
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
     color: rgba(246, 248, 255, 0.95);
     font: 500 13px/1.3 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, ui-sans-serif, sans-serif;
     outline: none;
 }
 
-.settings-provider-row input[type="password"]:focus {
-    border-color: rgba(239, 191, 100, 0.46);
-    box-shadow: 0 0 0 3px rgba(239, 191, 100, 0.08);
+.settings-secret-key-field input::placeholder {
+    color: rgba(158, 172, 196, 0.62);
+    font-weight: 500;
+}
+
+.settings-secret-key-field.is-saved input::placeholder {
+    color: rgba(148, 201, 168, 0.78);
+}
+
+.settings-page .settings-field .settings-secret-key-field input:focus,
+.settings-secret-key-field input:focus {
+    border: 0;
+    box-shadow: none;
+}
+
+.settings-secret-key-field input:disabled {
+    cursor: not-allowed;
+    color: rgba(246, 248, 255, 0.72);
 }
 
 .settings-workbench.workflow-workbench.provider-list-only.has-detail {
@@ -8943,9 +9036,15 @@ select,
 }
 
 .workflow-runtime-feed-title {
-    margin: 14px 4px 2px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(176, 206, 255, 0.1);
+    margin: 14px 4px 6px;
+    padding-top: 0;
+    border-top: 0;
+    color: rgba(238, 242, 255, .9);
+    font-family: var(--content-font);
+    font-size: 13px;
+    font-weight: 760;
+    letter-spacing: 0;
+    text-transform: none;
 }
 
 .workflow-runtime-empty {
