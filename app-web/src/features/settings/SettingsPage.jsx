@@ -1,6 +1,16 @@
 // @haish-esm
 import React from 'react';
-import { CircleCheck, ExternalLink, LoaderCircle } from 'lucide-react';
+import { Box, ChevronDown, CircleCheck, ExternalLink, LoaderCircle } from 'lucide-react';
+import anthropicLogo from '@lobehub/icons-static-svg/icons/anthropic.svg';
+import deepseekLogo from '@lobehub/icons-static-svg/icons/deepseek.svg';
+import geminiLogo from '@lobehub/icons-static-svg/icons/gemini.svg';
+import minimaxLogo from '@lobehub/icons-static-svg/icons/minimax.svg';
+import moonshotLogo from '@lobehub/icons-static-svg/icons/moonshot.svg';
+import ollamaLogo from '@lobehub/icons-static-svg/icons/ollama.svg';
+import openaiLogo from '@lobehub/icons-static-svg/icons/openai.svg';
+import qwenLogo from '@lobehub/icons-static-svg/icons/qwen.svg';
+import xaiLogo from '@lobehub/icons-static-svg/icons/xai.svg';
+import zhipuLogo from '@lobehub/icons-static-svg/icons/zhipu.svg';
 import {
   ReactFlow,
   Background,
@@ -11,7 +21,7 @@ import {
 } from '@xyflow/react';
 import { PortalTooltip } from '../../panels/PortalTooltip.jsx';
 import { API_BASE } from '../../api/base.js';
-import { authFetch } from '../../api/auth.js';
+import { authFetch, parseResponseMessage } from '../../api/auth.js';
 import {
   APP_DEFAULT_AGENT_OPTIONS,
   DEFAULT_AGENT_TOOL_GROUPS,
@@ -116,6 +126,43 @@ import {
 
 const { useState, useEffect, useRef, useMemo } = React;
 const ReactFlowNS = { ReactFlow, Background, Controls, Handle, Position, MarkerType };
+const SETTINGS_SUBTAB_ICONS = {
+  chat: 'message',
+  vision: 'eye',
+  embedding: 'layers',
+  'tools-mcp': 'nodes',
+  'tools-skills': 'wrench',
+  'tools-web': 'globe',
+};
+const PROVIDER_LOGOS = {
+  openai: openaiLogo,
+  xai: xaiLogo,
+  anthropic: anthropicLogo,
+  gemini: geminiLogo,
+  deepseek: deepseekLogo,
+  dashscope: qwenLogo,
+  moonshot: moonshotLogo,
+  minimax: minimaxLogo,
+  zhipu: zhipuLogo,
+  ollama: ollamaLogo,
+};
+
+function ProviderIcon({ provider }) {
+  if (provider === 'custom') {
+    return (
+      <span className="settings-provider-icon settings-provider-icon-custom" aria-hidden="true">
+        <Box size={24} strokeWidth={1.8} />
+      </span>
+    );
+  }
+  const logo = PROVIDER_LOGOS[provider];
+  if (!logo) return null;
+  return (
+    <span className="settings-provider-icon" aria-hidden="true">
+      <span className="settings-provider-logo" style={{ '--settings-provider-logo': `url(${logo})` }} />
+    </span>
+  );
+}
 
 export function FieldRow({ label, hint, children }) {
   return (
@@ -269,6 +316,36 @@ export function WorkflowOutputContract({ node }) {
 }
 
 const SETTINGS_LUCIDE_ICONS = {
+  message: [
+    ['path', { d: 'M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z' }],
+    ['path', { d: 'M8 9h8' }],
+    ['path', { d: 'M8 13h5' }],
+  ],
+  eye: [
+    ['path', { d: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z' }],
+    ['circle', { cx: '12', cy: '12', r: '3' }],
+  ],
+  layers: [
+    ['path', { d: 'm12 2 10 5-10 5L2 7Z' }],
+    ['path', { d: 'm2 17 10 5 10-5' }],
+    ['path', { d: 'm2 12 10 5 10-5' }],
+  ],
+  nodes: [
+    ['circle', { cx: '5', cy: '12', r: '3' }],
+    ['circle', { cx: '19', cy: '5', r: '3' }],
+    ['circle', { cx: '19', cy: '19', r: '3' }],
+    ['path', { d: 'M8 11 16.5 6.5' }],
+    ['path', { d: 'M8 13 16.5 17.5' }],
+  ],
+  wrench: [
+    ['path', { d: 'M14.7 6.3a4 4 0 0 0-5 5L3 18v3h3l6.7-6.7a4 4 0 0 0 5-5l-2.9 2.9-2.1-2.1Z' }],
+  ],
+  globe: [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['path', { d: 'M2 12h20' }],
+    ['path', { d: 'M12 2a15.3 15.3 0 0 1 0 20' }],
+    ['path', { d: 'M12 2a15.3 15.3 0 0 0 0 20' }],
+  ],
   plus: [
     ['path', { d: 'M5 12h14' }],
     ['path', { d: 'M12 5v14' }],
@@ -593,6 +670,7 @@ export function getLlmConfigItems(draft, activeSubtab = 'chat') {
       {
         id: 'vision',
         title: titleForConfig(draft.vision),
+        provider: draft.vision.provider,
         kind: 'Vision Provider',
         summary: draft.vision.model || 'not set',
         protected: true,
@@ -605,6 +683,7 @@ export function getLlmConfigItems(draft, activeSubtab = 'chat') {
       {
         id: 'embedding',
         title: titleForConfig(draft.embedding),
+        provider: draft.embedding.provider,
         kind: 'Embedding Provider',
         summary: draft.embedding.model || 'not set',
         protected: true,
@@ -616,6 +695,7 @@ export function getLlmConfigItems(draft, activeSubtab = 'chat') {
     ...(draft.chat?.provider ? [{
       id: 'chat',
       title: titleForConfig(draft.chat),
+      provider: draft.chat.provider,
       kind: 'Provider',
       summary: draft.chat.model || 'not set',
       protected: true,
@@ -624,6 +704,7 @@ export function getLlmConfigItems(draft, activeSubtab = 'chat') {
     ...(Array.isArray(draft.profiles) ? draft.profiles.filter((profile) => profile?.provider).map((profile) => ({
       id: profile.id,
       title: titleForConfig(profile),
+      provider: profile.provider,
       kind: 'Provider',
       summary: profile.model || 'not set',
       protected: false,
@@ -2909,22 +2990,31 @@ export function SettingsPage({
             return (
               <div className="settings-side-section" key={section.id}>
                 <button
-	                  type="button"
-	                  className={isActive ? 'active' : ''}
-	                  aria-expanded={sectionSubtabs.length ? isExpanded : undefined}
-	                  onClick={() => {
-	                    cancelEditor();
-	                    setExpandedSettingsSections((prev) => {
-	                      if (!sectionSubtabs.length) return prev;
-	                      const next = new Set(prev);
-	                      if (isActive && next.has(section.id)) next.delete(section.id);
-	                      else next.add(section.id);
-	                      return next;
-	                    });
-	                    onSectionChange(section.id);
-	                  }}
-	                >
+                  type="button"
+                  className={`${isActive ? 'active' : ''}${sectionSubtabs.length ? '' : ' settings-side-leaf'}`.trim()}
+                  aria-expanded={sectionSubtabs.length ? isExpanded : undefined}
+                  onClick={() => {
+                    if (sectionSubtabs.length) {
+                      setExpandedSettingsSections((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(section.id)) next.delete(section.id);
+                        else next.add(section.id);
+                        return next;
+                      });
+                      return;
+                    }
+                    cancelEditor();
+                    onSectionChange(section.id);
+                  }}
+                >
                   <span>{section.label}</span>
+                  {sectionSubtabs.length ? (
+                    <ChevronDown
+                      className={`settings-side-section-chevron${isExpanded ? ' expanded' : ''}`}
+                      size={16}
+                      aria-hidden="true"
+                    />
+                  ) : null}
                 </button>
                 {isExpanded && sectionSubtabs.length ? (
                   <div className="settings-side-subtabs" role="tablist" aria-label={`${section.label} settings`}>
@@ -2939,6 +3029,9 @@ export function SettingsPage({
                           className={isSubtabActive ? 'active' : ''}
                           onClick={() => selectSubtab(section.id, tab.id)}
                         >
+                          <span className="settings-side-subtab-icon">
+                            <SettingsLucideIcon name={SETTINGS_SUBTAB_ICONS[tab.id] || 'configure'} size={16} />
+                          </span>
                           <span>{tab.label}</span>
                           {section.id === 'llm' ? (
                             <strong className="settings-side-subtab-count">
@@ -2984,15 +3077,16 @@ export function SettingsPage({
                   return (
                     <div
                       key={item.id}
-                      className={`settings-config-row ${selectedItem?.id === item.id ? 'active' : ''}`}
+                      className={`settings-config-row${activeSection === 'llm' ? ' provider-row' : ''}${selectedItem?.id === item.id ? ' active' : ''}`}
                     >
                       <button
                         type="button"
-                        className="settings-config-main"
+                        className={`settings-config-main${activeSection === 'llm' ? ' has-provider-icon' : ''}`}
                         onClick={() => {
                           selectListItem(item.id);
                         }}
                       >
+                        {activeSection === 'llm' ? <ProviderIcon provider={item.provider} /> : null}
                         <span className="settings-config-copy">
                           <span className="settings-config-title">{item.title}</span>
                           <span className="settings-config-summary">{item.summary}</span>

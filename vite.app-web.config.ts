@@ -99,7 +99,7 @@ export default defineConfig({
   },
   build: {
     outDir,
-    emptyOutDir: true,
+    emptyOutDir: process.env.HAISH_DEV_WEB_WATCH === '1' ? false : true,
     sourcemap: true,
     target: 'es2022',
     cssCodeSplit: false,

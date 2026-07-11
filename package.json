@@ -9,7 +9,7 @@
   "type": "module",
   "scripts": {
     "dev": "npm run build:web && tsc -p tsconfig.electron.json && concurrently -k -n web,electron -c cyan,magenta \"npm:dev:web\" \"electron .\"",
-    "dev:web": "vite build --config vite.app-web.config.ts --watch",
+    "dev:web": "HAISH_DEV_WEB_WATCH=1 vite build --config vite.app-web.config.ts --watch",
     "dev:electron": "tsc -p tsconfig.electron.json && electron .",
     "build:web": "vite build --config vite.app-web.config.ts",
     "build": "npm run build:web && tsc --noEmit && tsc -p tsconfig.electron.json",
@@ -74,6 +74,7 @@
     }
   },
   "dependencies": {
+    "@lobehub/icons-static-svg": "^1.66.0",
     "@vitejs/plugin-react": "^4.5.2",
     "@xyflow/react": "^12.11.2",
     "concurrently": "^9.1.2",

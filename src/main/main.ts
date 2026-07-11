@@ -8,17 +8,23 @@ import { ensureLocalRuntime, getLocalRuntimeState, startLocalRuntime, stopLocalR
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const projectRoot = () => path.resolve(__dirname, '../..');
 
 const projectsFile = () => path.join(app.getPath('userData'), 'projects.json');
 // Vite builds the product UI into app-web/dist. Prefer dist so the renderer always
 // loads the production bundle (no Babel-in-browser, production React).
 const webRoot = () => {
-  const distRoot = path.join(app.getAppPath(), 'app-web', 'dist');
-  if (existsSync(path.join(distRoot, 'index.html'))) {
-    return distRoot;
+  const distCandidates = [
+    path.join(projectRoot(), 'app-web', 'dist'),
+    path.join(app.getAppPath(), 'app-web', 'dist'),
+  ];
+  for (const distRoot of distCandidates) {
+    if (existsSync(path.join(distRoot, 'index.html'))) {
+      return distRoot;
+    }
   }
   // Legacy fallback for older checkouts that still ship unbundled app-web sources.
-  return path.join(app.getAppPath(), 'app-web');
+  return path.join(projectRoot(), 'app-web');
 };
 const appIconPngPath = () => path.join(app.getAppPath(), 'build', 'icon.png');
 const devMode = process.env.HAISH_DEV_MODE === '1' || !app.isPackaged;
