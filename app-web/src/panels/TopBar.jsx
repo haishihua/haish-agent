@@ -18,11 +18,11 @@ export function TopBar({ now, viewMode = 'world', onToggleViewMode, calibrationA
             <span className="ico ico-preview" aria-hidden="true" />
           </button>
         </PortalTooltip>
-        <PortalTooltip text={chatMode ? 'Agent World Mode' : 'Chat Mode'} position="below">
+        <PortalTooltip text={chatMode ? 'Bot Mode' : 'Chat Mode'} position="below">
           <button
             type="button"
             className={`topbar-icon topbar-mode-toggle ${chatMode ? 'active' : ''}`}
-            aria-label={chatMode ? 'Switch to Agent World Mode' : 'Switch to Chat Mode'}
+            aria-label={chatMode ? 'Switch to Bot Mode' : 'Switch to Chat Mode'}
             aria-pressed={chatMode}
             onClick={onToggleViewMode}
           >

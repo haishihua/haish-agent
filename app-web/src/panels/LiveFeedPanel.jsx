@@ -17,6 +17,9 @@ import {
   normalizeTaskStatus,
 } from '../lib/task-runtime.js';
 import {
+  workflowNodeActorBindings,
+} from '../lib/world-runtime.js';
+import {
   usePanelWidth,
 } from './TaskRecords.jsx';
 export function getLiveEntries(agentData) {
@@ -76,7 +79,7 @@ export function LiveActivityRow({ entry }) {
   );
 }
 
-export function LiveCard({ agentId, agentData, now }) {
+export function LiveCard({ agentId, agentData, now, titleOverride = '' }) {
   const [expanded, setExpanded] = React.useState(false);
   const char = CHAR_DEFS[agentId];
   if (!char) return null;
@@ -102,7 +105,7 @@ export function LiveCard({ agentId, agentData, now }) {
       </div>
       <div className="body">
         <div className="row">
-          <div className={nameClass}>{char.name}</div>
+          <div className={nameClass}>{titleOverride || char.name}</div>
           <div className="ago">{ago}</div>
         </div>
         <div className="live-activity-list">
@@ -162,6 +165,110 @@ export function RuntimeList({ title, items, renderItem, emptyText = 'No data.' }
   );
 }
 
+export function workflowRuntimeLevels(workflow) {
+  const nodes = Array.isArray(workflow?.nodes) ? workflow.nodes : [];
+  const edges = Array.isArray(workflow?.edges) ? workflow.edges : [];
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const incoming = new Map(nodes.map((node) => [node.id, 0]));
+  const outgoing = new Map(nodes.map((node) => [node.id, []]));
+  edges.forEach((edge) => {
+    const source = edge.from || edge.source;
+    const target = edge.to || edge.target;
+    if (!byId.has(source) || !byId.has(target)) return;
+    incoming.set(target, (incoming.get(target) || 0) + 1);
+    outgoing.get(source).push(target);
+  });
+  const queue = nodes.filter((node) => (incoming.get(node.id) || 0) === 0).map((node) => node.id);
+  const levelById = new Map(queue.map((id) => [id, 0]));
+  while (queue.length) {
+    const source = queue.shift();
+    for (const target of outgoing.get(source) || []) {
+      levelById.set(target, Math.max(levelById.get(target) || 0, (levelById.get(source) || 0) + 1));
+      incoming.set(target, incoming.get(target) - 1);
+      if (incoming.get(target) === 0) queue.push(target);
+    }
+  }
+  const levels = [];
+  nodes.forEach((node) => {
+    const level = levelById.get(node.id) || 0;
+    if (!levels[level]) levels[level] = [];
+    levels[level].push(node);
+  });
+  return levels.filter(Boolean);
+}
+
+function workflowNodeStatus(nodeId, run) {
+  const result = run?.nodes?.[nodeId];
+  if (run?.current_node_id === nodeId && result?.status === 'running') return 'running';
+  if (result?.success === false || result?.status === 'failed') return 'failed';
+  if (result) return 'done';
+  return 'pending';
+}
+
+function runtimeValue(value) {
+  if (value == null || value === '') return '—';
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value, null, 2); } catch { return String(value); }
+}
+
+function WorkflowRuntime({ task }) {
+  const workflow = task?.workflowSnapshot;
+  const run = task?.workflowRun;
+  const [selectedNodeId, setSelectedNodeId] = React.useState('');
+  const nodes = Array.isArray(workflow?.nodes) ? workflow.nodes : [];
+  const selectedNode = workflow?.nodes?.find((node) => node.id === selectedNodeId) || null;
+  const selectedResult = selectedNode ? run?.nodes?.[selectedNode.id] : null;
+  const doneCount = nodes.filter((node) => workflowNodeStatus(node.id, run) === 'done').length;
+
+  if (!workflow?.nodes?.length) {
+    return <div className="workflow-runtime-empty">Select or run a Bot workflow to see its nodes.</div>;
+  }
+
+  return (
+    <section className="workflow-runtime" aria-label="Workflow runtime">
+      <div className="workflow-runtime-meta">
+        <span>{workflow.display_name || workflow.workflow_id || workflow.id}</span>
+        <span>{doneCount}/{nodes.length}</span>
+      </div>
+      <div className="workflow-runtime-steps">
+        {nodes.map((node, index) => {
+          const status = workflowNodeStatus(node.id, run);
+          return (
+            <button
+              key={node.id}
+              type="button"
+              className={`workflow-runtime-step status-${status} ${selectedNodeId === node.id ? 'selected' : ''}`}
+              aria-pressed={selectedNodeId === node.id}
+              aria-label={`${node.label || node.id}, ${status}`}
+              onClick={() => setSelectedNodeId((current) => current === node.id ? '' : node.id)}
+            >
+              <span className="workflow-runtime-step-index" aria-hidden="true">{index + 1}</span>
+              <span className="workflow-runtime-step-title">{node.label || node.id}</span>
+              <span className="workflow-runtime-step-status">{status}</span>
+            </button>
+          );
+        })}
+      </div>
+      {selectedNode ? (
+        <div className="workflow-runtime-detail">
+          <div className="workflow-runtime-detail-head">
+            <strong>{selectedNode.label || selectedNode.id}</strong>
+            <span>{selectedResult?.duration_ms != null ? `${selectedResult.duration_ms} ms` : workflowNodeStatus(selectedNode.id, run)}</span>
+          </div>
+          <div className="workflow-runtime-detail-row">
+            <span>Input</span>
+            <pre>{runtimeValue(selectedNode.arguments || selectedNode.input_mapping || selectedNode.prompt || run?.input)}</pre>
+          </div>
+          <div className="workflow-runtime-detail-row">
+            <span>{selectedResult?.success === false ? 'Error' : 'Output'}</span>
+            <pre>{runtimeValue(selectedResult?.error || selectedResult?.structured || selectedResult?.value || selectedResult?.summary)}</pre>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
   const [panelRef, panelWidth] = usePanelWidth();
   const currentTaskId = currentTask?.taskId || null;
@@ -174,24 +281,31 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
       })
       .sort((a, b) => (b[1].feedRank || 0) - (a[1].feedRank || 0) || b[1].ts - a[1].ts)
     : [];
+  const isWorkflowTask = currentTask?.executionMode === 'bot';
+  const workflowStatus = currentTask?.workflowRun?.status || currentTask?.status || 'idle';
+  const workflowActorLabels = new Map(
+    workflowNodeActorBindings(currentTask?.workflowSnapshot).map(({ actor, label }) => [actor, label]),
+  );
 
   return (
     <div className="side-panel right" ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
       <div className="side-panel-head">
-        <div className="title">Live Feed</div>
-        <div className="live-badge">
+        <div className="title">{isWorkflowTask ? 'Workflow Run' : 'Live Feed'}</div>
+        <div className={`live-badge status-${workflowStatus}`}>
           <div className="dot" />
-          LIVE
+          {isWorkflowTask ? workflowStatus.toUpperCase() : 'LIVE'}
         </div>
       </div>
       <div className="side-panel-body">
+        {isWorkflowTask ? <WorkflowRuntime task={currentTask} /> : null}
+        {isWorkflowTask && agents.length > 0 ? <div className="workflow-runtime-feed-title">Agent activity</div> : null}
         {agents.length === 0 ? (
-          <div style={{color:'var(--dim-2)', fontSize:15, textAlign:'center', padding:'40px 12px', fontFamily:'Zpix'}}>
+          !isWorkflowTask ? <div style={{color:'var(--dim-2)', fontSize:15, textAlign:'center', padding:'40px 12px', fontFamily:'Zpix'}}>
             Waiting for mission data...
-          </div>
+          </div> : null
         ) : (
           agents.map(([id, data]) => (
-            <LiveCard key={id} agentId={id} agentData={data} now={now} />
+            <LiveCard key={id} agentId={id} agentData={data} now={now} titleOverride={workflowActorLabels.get(id)} />
           ))
         )}
       </div>
@@ -203,4 +317,3 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
 
 
 // OAuth 模型只通过 model_id 下发；provider 由后端 resolver 基于 model_id 判定。
-

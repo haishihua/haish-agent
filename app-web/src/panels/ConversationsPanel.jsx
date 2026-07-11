@@ -60,11 +60,14 @@ export function TaskStatusIcon({ statusClass }) {
   return <span className="conversation-task-status-icon pending"><span className="ico ico-loading" aria-hidden="true" /></span>;
 }
 
-export function TaskRecordCompact({ task, now, onOpenReport }) {
+export function TaskRecordCompact({ task, now, onOpenReport, onRetry }) {
   const stage = task.stage || 'assigned';
   const status = normalizeTaskStatus(task.status);
   const pill = getTaskPillMeta(status, stage);
-  const hasReport = status === 'done' && !!String(task.answerText || '').trim();
+  const hasReport = (status === 'done' && !!String(task.answerText || '').trim())
+    || (task.executionMode === 'bot' && !!task.workflowRun)
+    || ((status === 'failed' || status === 'cancelled') && !!String(task.error || '').trim());
+  const canRetry = status === 'failed' || status === 'cancelled';
   return (
     <div className={`conversation-task-card ${pill.className}`}>
       <div className="conversation-task-main">
@@ -83,6 +86,18 @@ export function TaskRecordCompact({ task, now, onOpenReport }) {
               onClick={(event) => { event.stopPropagation(); onOpenReport?.(task); }}
             >
               <span className="ico ico-report" aria-hidden="true" />
+            </button>
+          </PortalTooltip>
+        )}
+        {canRetry && (
+          <PortalTooltip text="Run again" position="above">
+            <button
+              type="button"
+              className="conversation-report-btn"
+              aria-label="Run task again"
+              onClick={(event) => { event.stopPropagation(); onRetry?.(task); }}
+            >
+              <span aria-hidden="true">↻</span>
             </button>
           </PortalTooltip>
         )}
@@ -188,6 +203,7 @@ export function ConversationNode({
   onRequestDeleteConversation,
   onRequestRenameConversation,
   onOpenTaskReport,
+  onRetryTask,
 }) {
   const tasks = conversation.tasks || [];
   const visibleLimit = Math.max(1, Number(taskPreviewLimit) || 5);
@@ -231,7 +247,7 @@ export function ConversationNode({
 
       {showTaskList && (
         <div className="conversation-task-list">
-          {visibleTasks.map((task) => <TaskRecordCompact key={task.taskId || task.id} task={task} now={now} onOpenReport={onOpenTaskReport} />)}
+          {visibleTasks.map((task) => <TaskRecordCompact key={task.taskId || task.id} task={task} now={now} onOpenReport={onOpenTaskReport} onRetry={onRetryTask} />)}
           {hiddenCount > 0 && (
             <button
               type="button"
@@ -315,6 +331,7 @@ export function ProjectNode({
   onRequestDeleteConversation,
   onRequestRenameConversation,
   onOpenTaskReport,
+  onRetryTask,
   taskPreviewLimit = 5,
 }) {
   const isActiveProject = workspaceState.activeProjectId === project.id;
@@ -373,6 +390,7 @@ export function ProjectNode({
               onRequestDeleteConversation={onRequestDeleteConversation}
               onRequestRenameConversation={onRequestRenameConversation}
               onOpenTaskReport={onOpenTaskReport}
+              onRetryTask={onRetryTask}
             />
           ))}
         </div>
@@ -448,6 +466,7 @@ export function ConversationsPanel({
   onDeleteConversation,
   onRenameConversation,
   onOpenTaskReport,
+  onRetryTask,
   taskPreviewLimit = 5,
   authUser,
   onLogout,
@@ -609,6 +628,7 @@ export function ConversationsPanel({
             onRequestDeleteConversation={requestDeleteConversation}
             onRequestRenameConversation={requestRenameConversation}
             onOpenTaskReport={onOpenTaskReport}
+            onRetryTask={onRetryTask}
           />
         ))}
       </div>
@@ -617,4 +637,3 @@ export function ConversationsPanel({
     </div>
   );
 }
-

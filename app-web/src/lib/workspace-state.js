@@ -408,6 +408,7 @@ export function conversationDetailToWorkspaceConversation(detail, previousConver
   return {
     id: detail.conversation_id,
     name: shouldKeepLocalTitle ? previousName : (detailName || previousName || DEFAULT_SESSION_NAME),
+    executionMode: detail.execution_mode === 'bot' ? 'bot' : 'chat',
     tasks,
     agentId: detail.agent_id || detail.profile_id || previousConversation?.agentId || tasks[0]?.requestedAgentId || null,
     profileId: detail.profile_id || previousConversation?.profileId || null,
@@ -656,5 +657,4 @@ export async function createConversationWithRetry(payload, isCurrentActivation) 
   }
   throw new Error(`conversation bootstrap failed: ${lastStatus || 'unknown'}`);
 }
-
 

@@ -19,6 +19,15 @@ export const WORLD_EVENT_ROUTE_MAP = {
   'agent_gateway_reported': { actor: 'guts', route: 'gutsToGojo', target: 'gojo', kind: 'deliver', bubble: 'Reporting the final answer.' },
 };
 
+export const WORKFLOW_SCENE_EVENT_TYPES = new Set([
+  'workflow_started',
+  'workflow_node_started',
+  'workflow_node_finished',
+  'workflow_edge_selected',
+  'workflow_finished',
+  'workflow_failed',
+]);
+
 export const WORLD_SCENE_EVENT_TYPES = new Set([
   'user_message_received',
   'agent_gateway_received',
@@ -35,6 +44,7 @@ export const WORLD_SCENE_EVENT_TYPES = new Set([
   'tool_result_returned',
   'llm_final_answer',
   'agent_gateway_reported',
+  ...WORKFLOW_SCENE_EVENT_TYPES,
 ]);
 
 export const SCENE_CATCHUP_KEEP_TYPES = new Set([
@@ -322,4 +332,3 @@ export function resolveProviderMeta(...sources) {
   }
   return { key: 'deepseek', ...PROVIDER_ACTOR_MAP.deepseek };
 }
-

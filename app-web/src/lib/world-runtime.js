@@ -67,6 +67,47 @@ export const WORLD_KIND_MAP = {
   mikey: 'skill',
 };
 
+const WORKFLOW_AGENT_ACTORS = ['kurisu', 'okabe', 'itachi', 'levi'];
+const WORKFLOW_AGENT_ACTOR_BY_PROFILE = {
+  'preset.product': 'kurisu',
+  'preset.development': 'okabe',
+  'preset.qa': 'itachi',
+  'preset.document-qa': 'levi',
+  'preset.general': 'levi',
+};
+const WORKFLOW_NODE_ACTOR_BY_TYPE = {
+  start: 'guts',
+  output: 'gojo',
+  llm: 'lelouch',
+  tool: 'mikey',
+};
+
+// The office has eight fixed character slots: Start, End, four Agents, LLM, and Tool.
+export function workflowNodeActorBindings(workflow) {
+  const usedActors = new Set();
+  const agentActors = [...WORKFLOW_AGENT_ACTORS];
+  const takeAgentActor = (preferred) => {
+    const actor = preferred && !usedActors.has(preferred) ? preferred : agentActors.find((id) => !usedActors.has(id));
+    if (actor) usedActors.add(actor);
+    return actor;
+  };
+
+  return (workflow?.nodes || []).flatMap((node) => {
+    const type = String(node?.type || '').toLowerCase();
+    let actor = WORKFLOW_NODE_ACTOR_BY_TYPE[type];
+    if (type === 'agent') actor = takeAgentActor(WORKFLOW_AGENT_ACTOR_BY_PROFILE[node?.agent_id]);
+    else if (actor && !usedActors.has(actor)) usedActors.add(actor);
+    else actor = null;
+    if (!actor) return [];
+    return [{
+      actor,
+      nodeId: String(node.id || ''),
+      type,
+      label: type === 'start' ? 'Start' : type === 'output' ? 'End' : (String(node.label || '').trim() || type.toUpperCase()),
+    }];
+  });
+}
+
 export const PROVIDER_ACTOR_MAP = {
   generic: { actor: 'okabe', label: 'Auto' },
   openai: { actor: 'okabe', label: 'OpenAI protocol' },

@@ -22,8 +22,8 @@ export const MODEL_OPTIONS = [
 export const DEFAULT_AGENT_OPTIONS = [
   { id: 'preset.general', label: 'Task Assistant', description: 'Default full-tool assistant' },
   { id: 'preset.product', label: 'Product Planner', description: 'Requirements, PRDs, scope, and acceptance criteria' },
-  { id: 'preset.development', label: 'Coding Assistant', description: 'Implementation, debugging, and verification' },
-  { id: 'preset.qa', label: 'Test Engineer', description: 'Test design, execution, and defect reports' },
+  { id: 'preset.development', label: 'Coding Assistant', description: 'Implementation, debugging, refactoring, and lightweight self-checks' },
+  { id: 'preset.qa', label: 'Test Engineer', description: 'Test design, browser/E2E verification, and release gates' },
   { id: 'preset.document-qa', label: 'Docs Search', description: 'Grounded answers from indexed documents' },
 ];
 

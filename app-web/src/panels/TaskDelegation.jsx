@@ -15,7 +15,7 @@ import {
   modelsForRunProvider,
 } from './path-utils.jsx';
 
-export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, attachment, uploading, running, disabled, submitPending = false, contextUsage, workspacePath, homePath, activeTaskText, providerOptions = [], modelOptions, defaultModelId, modelLoading = false, agentOptions, defaultAgentId, agentLoading = false, agentLocked = false, agentLockedReason = '', lockedAgentId = '', selectionStorageKey = '' }) {
+export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, onSelectionChange, attachment, uploading, running, disabled, submitPending = false, contextUsage, workspacePath, homePath, activeTaskText, providerOptions = [], modelOptions, defaultModelId, modelLoading = false, agentOptions, defaultAgentId, agentLoading = false, agentLocked = false, agentLockedReason = '', lockedAgentId = '', selectionStorageKey = '' }) {
   const resolvedOptions = Array.isArray(modelOptions) ? modelOptions : MODEL_OPTIONS;
   const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
   const resolvedProviderOptions = Array.isArray(providerOptions) && providerOptions.length > 0
@@ -44,10 +44,16 @@ export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, at
     '--context-used': `${visibleContextRatio * 100}%`,
   };
   const effectiveAgentId = agentLocked && lockedAgentId ? lockedAgentId : agentId;
+  const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
+  const canUploadDocuments = currentSelection?.canUploadDocuments === true;
   const currentProvider = resolvedProviderOptions.find((item) => item.id === providerId) || resolvedProviderOptions[0];
   const activeModelOptions = modelsForRunProvider(currentProvider, resolvedOptions);
   const providerRequest = currentProvider?.requestProvider || currentProvider?.provider || providerId || '';
   const providerConfigured = Boolean(currentProvider && providerRequest);
+
+  React.useEffect(() => {
+    onSelectionChange?.(effectiveAgentId);
+  }, [effectiveAgentId, onSelectionChange]);
 
   React.useLayoutEffect(() => {
     const el = taRef.current;
@@ -107,9 +113,13 @@ export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, at
   }
 
   function pickFile() {
-    if (disabled || submitPending) return;
+    if (!canUploadDocuments || disabled || submitPending) return;
     fileRef.current?.click();
   }
+
+  React.useEffect(() => {
+    if (!canUploadDocuments && attachment) onClearFile?.();
+  }, [canUploadDocuments, attachment, onClearFile]);
 
   function clearFile(e) {
     e.stopPropagation();
@@ -154,27 +164,31 @@ export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, at
       </div>
       <div className="td-actions">
         <div className="td-tools">
-          <PortalTooltip text="Attach File" position="above">
-            <button
-              type="button"
-              className="td-btn td-btn-attach icon-only"
-              onClick={pickFile}
-              disabled={disabled || submitPending}
-              aria-label="Attach File"
-            >
-              <span className="ico ico-attach" aria-hidden="true" />
-            </button>
-          </PortalTooltip>
-          <input
-            ref={fileRef}
-            type="file"
-            className="td-file-input"
-            onChange={e => {
-              const nextFile = e.target.files?.[0] || null;
-              if (!nextFile) return;
-              onSelectFile?.(nextFile);
-            }}
-          />
+          {canUploadDocuments ? (
+            <>
+              <PortalTooltip text="Attach File" position="above">
+                <button
+                  type="button"
+                  className="td-btn td-btn-attach icon-only"
+                  onClick={pickFile}
+                  disabled={disabled || submitPending}
+                  aria-label="Attach File"
+                >
+                  <span className="ico ico-attach" aria-hidden="true" />
+                </button>
+              </PortalTooltip>
+              <input
+                ref={fileRef}
+                type="file"
+                className="td-file-input"
+                onChange={e => {
+                  const nextFile = e.target.files?.[0] || null;
+                  if (!nextFile) return;
+                  onSelectFile?.(nextFile, effectiveAgentId);
+                }}
+              />
+            </>
+          ) : null}
           <ApprovalModePicker />
         </div>
         <div className="td-submit-cluster">

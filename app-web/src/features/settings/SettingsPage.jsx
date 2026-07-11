@@ -17,12 +17,11 @@ import {
   DEFAULT_AGENT_TOOL_GROUPS,
   DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS,
   DEFAULT_AGENT_SETTINGS,
-  DIRECT_AGENT_WORKFLOW_ID,
+  SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
   DEFAULT_WORKFLOW_NODE_TYPES,
   DEFAULT_WORKFLOW_INPUT_SCHEMA,
   COMMON_WORKFLOW_OUTPUT_FIELDS,
   WORKFLOW_NODE_OUTPUT_FIELDS,
-  DEFAULT_DIRECT_WORKFLOW,
   DEFAULT_WORKFLOW_SETTINGS,
   SETTINGS_SECTIONS,
   SETTINGS_SUBTABS,
@@ -1499,7 +1498,31 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
   const normalized = normalizeAgentSettings(settings);
   const current = normalized.custom.find((item) => item.agent_id === selectedId) || null;
   if (!current) {
-    return <div className="settings-empty">Preset agents only support enable or disable.</div>;
+    const preset = normalized.presets.find((item) => item.agent_id === selectedId) || null;
+    if (!preset) return <div className="settings-empty">Select an agent.</div>;
+    const effectiveSkills = (preset.effective_skills || [])
+      .map((skill) => String(skill?.name || skill || '').trim())
+      .filter(Boolean);
+    return (
+      <div className="settings-editor-form settings-agent-form">
+        <FieldRow label="Name">
+          <input value={preset.display_name || ''} disabled />
+        </FieldRow>
+        <FieldRow label="Description">
+          <textarea value={preset.description || ''} disabled />
+        </FieldRow>
+        <FieldRow label="Effective skills">
+          <div className="settings-check-grid">
+            {effectiveSkills.map((skill) => (
+              <div className="settings-check-row" key={skill}>
+                <span className="settings-check-label">{skill}</span>
+              </div>
+            ))}
+            {!effectiveSkills.length ? <small>No effective skills.</small> : null}
+          </div>
+        </FieldRow>
+      </div>
+    );
   }
   const update = (patch) => onSettingsChange((prev) => {
     const next = normalizeAgentSettings(prev);
@@ -1548,21 +1571,31 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
     }))
     .filter((item) => item.id);
   const allowedSkills = new Set(Array.isArray(current.skill_policy?.allow) ? current.skill_policy.allow : []);
+  const mcpServers = Array.isArray(normalized.mcp_servers) ? normalized.mcp_servers : [];
+  const allowedMcpServers = new Set(Array.isArray(current.mcp_policy?.allow_servers) ? current.mcp_policy.allow_servers : []);
+  const allowedMcpTools = new Set(Array.isArray(current.mcp_policy?.allow_tools) ? current.mcp_policy.allow_tools : []);
   const toggleSkill = (skillId) => {
     const next = new Set(allowedSkills);
     if (next.has(skillId)) next.delete(skillId);
     else next.add(skillId);
-    const primary = next.has(current.primary_skill_name) ? current.primary_skill_name : '';
-    update({ primary_skill_name: primary });
     updateSkillPolicy({ allow: [...next] });
   };
-  const primarySkillOptions = [
-    { id: '', label: 'None' },
-    ...[...allowedSkills].map((skillId) => {
-      const skill = skillOptions.find((item) => item.id === skillId);
-      return { id: skillId, label: skill?.label || skillId };
-    }),
-  ];
+  const updateMcpPolicy = (patch) => update({
+    mcp_policy: { ...(current.mcp_policy || {}), ...patch },
+  });
+  const toggleMcpServer = (serverName) => {
+    const next = new Set(allowedMcpServers);
+    if (next.has(serverName)) next.delete(serverName);
+    else next.add(serverName);
+    updateMcpPolicy({ allow_servers: [...next] });
+  };
+  const toggleMcpTool = (serverName, toolName) => {
+    const key = `${serverName}.${toolName}`;
+    const next = new Set(allowedMcpTools);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    updateMcpPolicy({ allow_tools: [...next] });
+  };
 
   return (
     <div className="settings-editor-form settings-agent-form">
@@ -1590,7 +1623,7 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
           header="status"
         />
       </FieldRow>
-      <FieldRow label="Prompt">
+      <FieldRow label="Additional instructions">
         <textarea value={current.system_prompt || ''} onChange={(event) => update({ system_prompt: event.target.value })} disabled={readOnly} />
       </FieldRow>
       <FieldRow label="Tools">
@@ -1602,16 +1635,32 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
               {renderHelpDot(group.description || (group.tools || []).join(', '))}
             </label>
           ))}
-          <label className="settings-check-row">
-            <input
-              type="checkbox"
-              checked={current.tool_policy?.allow_mcp_tools !== false}
-              onChange={(event) => updateToolPolicy({ allow_mcp_tools: event.target.checked })}
-              disabled={readOnly}
-            />
-            <span className="settings-check-label">MCP tools</span>
-            {renderHelpDot('Expose configured MCP server tools to this agent.')}
-          </label>
+        </div>
+      </FieldRow>
+      <FieldRow label="MCP tools">
+        <div className="settings-check-grid">
+          {mcpServers.map((server) => (
+            <div key={server.name} className="settings-check-group">
+              <label className="settings-check-row">
+                <input type="checkbox" checked={allowedMcpServers.has(server.name)} onChange={() => toggleMcpServer(server.name)} disabled={readOnly} />
+                <span className="settings-check-label">{server.name} · all tools</span>
+                {server.error ? renderHelpDot(server.error) : null}
+              </label>
+              {(server.tools || []).map((tool) => (
+                <label className="settings-check-row" key={`${server.name}.${tool.name}`}>
+                  <input
+                    type="checkbox"
+                    checked={allowedMcpServers.has(server.name) || allowedMcpTools.has(`${server.name}.${tool.name}`)}
+                    onChange={() => toggleMcpTool(server.name, tool.name)}
+                    disabled={readOnly || allowedMcpServers.has(server.name)}
+                  />
+                  <span className="settings-check-label">{tool.name}</span>
+                  {tool.description ? renderHelpDot(tool.description) : null}
+                </label>
+              ))}
+            </div>
+          ))}
+          {!mcpServers.length ? <small>No configured MCP servers.</small> : null}
         </div>
       </FieldRow>
       <FieldRow label="Skills">
@@ -1620,19 +1669,18 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
             <label className="settings-check-row" key={skill.id}>
               <input type="checkbox" checked={allowedSkills.has(skill.id)} onChange={() => toggleSkill(skill.id)} disabled={readOnly || !skill.enabled} />
               <span className="settings-check-label">{skill.label}</span>
+              {skill.description ? renderHelpDot(skill.description) : null}
             </label>
           ))}
           {!skillOptions.length ? <small>No installed skills.</small> : null}
         </div>
       </FieldRow>
-      <FieldRow label="Primary skill">
-        <SettingsMenuSelect
-          value={current.primary_skill_name || ''}
-          options={primarySkillOptions}
-          onChange={(primarySkillName) => update({ primary_skill_name: primarySkillName })}
-          disabled={readOnly || allowedSkills.size === 0}
-          header="primary skill"
-        />
+      <FieldRow label="Effective capabilities">
+        <div className="settings-effective-capabilities">
+          <small>Tools: {(current.effective_tools || []).join(', ') || 'None'}</small>
+          <small>MCP: {(current.effective_mcp_tools || []).join(', ') || 'None'}</small>
+          <small>Skills: {(current.effective_skills || current.skill_policy?.effective_skills || []).join(', ') || 'None'}</small>
+        </div>
       </FieldRow>
     </div>
   );
@@ -2602,7 +2650,7 @@ export function SettingsPage({
         };
       });
       if (selectionBySection.workflow === draft.id) {
-        onSelectionChange((prev) => ({ ...prev, workflow: DIRECT_AGENT_WORKFLOW_ID }));
+        onSelectionChange((prev) => ({ ...prev, workflow: SOFTWARE_DEVELOPMENT_WORKFLOW_ID }));
       }
       return;
     }
@@ -2718,11 +2766,11 @@ export function SettingsPage({
   const panelMode = editingSettings?.mode || 'edit';
   const panelItems = panelSection === activeSection ? displayItems : configItemsForSection(panelSection, llmDraft, records, activeSubtab, agentSettings, workflowSettings);
   const panelSelectedItem = panelItems.find((item) => item.id === panelSelectedId) || null;
-  const panelEyebrow = panelMode === 'new' ? 'New' : 'Edit';
+  const panelEyebrow = panelMode === 'new' ? 'New' : (panelMode === 'detail' ? 'Details' : 'Edit');
   const panelIsConnectionSection = panelSection === 'memory' || panelSection === 'knowledge';
   const panelConnectionStatus = settingsConnectionStatus?.[panelSection]?.[panelSelectedId];
   const panelConnectionTesting = panelConnectionStatus?.state === 'testing';
-  const panelCanSave = !(panelSection === 'workflow' && !panelSelectedItem?.custom);
+  const panelCanSave = !panelSelectedItem?.readonly && !(panelSection === 'workflow' && !panelSelectedItem?.custom);
   const panelWorkflow = panelSection === 'workflow' ? workflowById(workflowSettings, panelSelectedId) : null;
   const updatePanelWorkflow = (patch) => {
     if (!panelWorkflow?.custom) return;
@@ -2764,7 +2812,7 @@ export function SettingsPage({
     }
     if (section === activeSection) {
       if (section === 'workflow') {
-        selectItem(DIRECT_AGENT_WORKFLOW_ID);
+        selectItem(SOFTWARE_DEVELOPMENT_WORKFLOW_ID);
       } else {
         const fallback = sectionItems.find((item) => item.id !== id);
         selectItem(fallback?.id || '');
@@ -2998,14 +3046,14 @@ export function SettingsPage({
                             onClick={() => onTogglePresetWorkflow?.(item.id, item.enabled === false)}
                           />
                         ) : null}
-                        {activeSection !== 'agent' || item.canConfigure ? (
+                        {activeSection !== 'agent' || item.canConfigure || item.readonly ? (
                           <SettingsTooltipIconButton
-                            label="Configure"
+                            label={item.readonly ? 'View' : 'Configure'}
                             icon="configure"
                             iconSize={18}
                             onClick={() => {
                               selectItem(item.id);
-                              openEditor(activeSection, item.id, 'edit');
+                              openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit');
                             }}
                           />
                         ) : null}
@@ -3018,7 +3066,7 @@ export function SettingsPage({
                             onClick={() => deleteConfig('llm', item.id)}
                           />
                         ) : null}
-                        {activeSection === 'agent' && item.canConfigure ? (
+                        {activeSection === 'agent' && item.custom ? (
                           <SettingsTooltipIconButton
                             label="Delete"
                             icon="delete"

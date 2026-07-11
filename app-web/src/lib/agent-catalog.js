@@ -4,8 +4,8 @@
 export const APP_DEFAULT_AGENT_OPTIONS = [
   { id: 'preset.general', label: 'Task Assistant', description: 'Default full-tool assistant' },
   { id: 'preset.product', label: 'Product Planner', description: 'Requirements, PRDs, scope, and acceptance criteria' },
-  { id: 'preset.development', label: 'Coding Assistant', description: 'Implementation, debugging, and verification' },
-  { id: 'preset.qa', label: 'Test Engineer', description: 'Test design, execution, and defect reports' },
+  { id: 'preset.development', label: 'Coding Assistant', description: 'Implementation, debugging, refactoring, and lightweight self-checks' },
+  { id: 'preset.qa', label: 'Test Engineer', description: 'Test design, browser/E2E verification, and release gates' },
   { id: 'preset.document-qa', label: 'Docs Search', description: 'Grounded answers from indexed documents' },
 ];
 
@@ -21,7 +21,7 @@ export const DEFAULT_AGENT_TOOL_GROUPS = [
   { id: 'planning', label: 'Planning', description: 'Write and update task plans.', tools: ['todo_write'] },
   { id: 'sub_agent', label: 'Sub-agent', description: 'Delegate scoped work to a sub-agent.', tools: ['dispatch_sub_agent'] },
 ];
-export const DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS = ['read_artifact'];
+export const DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS = [];
 
 export const DEFAULT_AGENT_SETTINGS = {
   presets: APP_DEFAULT_AGENT_OPTIONS.map((item) => ({
@@ -42,9 +42,11 @@ export const DEFAULT_AGENT_SETTINGS = {
   })),
   tool_groups: DEFAULT_AGENT_TOOL_GROUPS,
   skills: [],
+  mcp_servers: [],
 };
 
 export const DIRECT_AGENT_WORKFLOW_ID = 'workflow.direct-agent';
+export const SOFTWARE_DEVELOPMENT_WORKFLOW_ID = 'workflow.software-development';
 export const DEFAULT_WORKFLOW_NODE_TYPES = [
   { id: 'agent', label: 'Agent', description: 'Invoke an assistant profile over A2A.' },
   { id: 'llm', label: 'LLM', description: 'Run a direct model call with prompt parameters.' },
@@ -152,9 +154,41 @@ export const DEFAULT_DIRECT_WORKFLOW = {
   ],
 };
 
+export const DEFAULT_SOFTWARE_DEVELOPMENT_WORKFLOW = {
+  id: SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
+  workflow_id: SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
+  version: '1.0.0',
+  display_name: 'Software Development',
+  description: 'Product planning, implementation, and QA verification in one workflow.',
+  enabled: true,
+  system: true,
+  custom: false,
+  default: true,
+  editable: false,
+  deletable: false,
+  executable: true,
+  input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA,
+  nodes: [
+    { id: 'start', type: 'start', label: 'Start', input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA, position: { x: 80, y: 180 } },
+    { id: 'product', type: 'agent', label: 'Product', agent_id: 'preset.product', prompt: 'Decide whether the request is actionable. If clarification is needed, return NEEDS_CLARIFICATION: followed by one concise question. Otherwise return a READY: implementation brief for: {{input.message}}', position: { x: 360, y: 180 } },
+    { id: 'scope_gate', type: 'condition', label: 'Scope Gate', cases: [{ name: 'clarify', when: '{{nodes.product.summary}} contains NEEDS_CLARIFICATION:', to: 'output' }], default: 'development', position: { x: 540, y: 180 } },
+    { id: 'development', type: 'agent', label: 'Development', agent_id: 'preset.development', prompt: 'Implement {{input.message}} using this product brief: {{nodes.product.summary}}', position: { x: 680, y: 180 } },
+    { id: 'qa', type: 'agent', label: 'QA', agent_id: 'preset.qa', prompt: 'Verify {{input.message}} against {{nodes.product.summary}}. Development report: {{nodes.development.summary}}', position: { x: 1000, y: 180 } },
+    { id: 'output', type: 'output', label: 'Output', output_mode: 'text', output: '{{nodes.qa.summary}}', fallback_output: '{{nodes.product.summary}}', strip_prefix: 'NEEDS_CLARIFICATION:', position: { x: 1320, y: 180 } },
+  ],
+  edges: [
+    { from: 'start', to: 'product' },
+    { from: 'product', to: 'scope_gate' },
+    { from: 'scope_gate', to: 'development' },
+    { from: 'scope_gate', to: 'output' },
+    { from: 'development', to: 'qa' },
+    { from: 'qa', to: 'output' },
+  ],
+};
+
 export const DEFAULT_WORKFLOW_SETTINGS = {
-  default_workflow_id: DIRECT_AGENT_WORKFLOW_ID,
-  presets: [DEFAULT_DIRECT_WORKFLOW],
+  default_workflow_id: SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
+  presets: [DEFAULT_SOFTWARE_DEVELOPMENT_WORKFLOW],
   custom: [],
   node_types: DEFAULT_WORKFLOW_NODE_TYPES,
 };
@@ -677,7 +711,12 @@ export function normalizeAgentToolGroups(groups) {
           : [],
       };
     }
-    return { ...group, ...fallback };
+    return {
+      ...fallback,
+      ...group,
+      tools: (Array.isArray(group?.tools) ? group.tools : fallback.tools)
+        .filter((tool) => !DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS.includes(tool)),
+    };
   });
 }
 
@@ -694,7 +733,8 @@ export function normalizeAgentSettings(payload) {
     : DEFAULT_AGENT_SETTINGS.base_profiles;
   const toolGroups = normalizeAgentToolGroups(source.tool_groups);
   const skills = Array.isArray(source.skills) ? source.skills : [];
-  return { presets, custom, base_profiles: baseProfiles, tool_groups: toolGroups, skills };
+  const mcpServers = Array.isArray(source.mcp_servers) ? source.mcp_servers : [];
+  return { presets, custom, base_profiles: baseProfiles, tool_groups: toolGroups, skills, mcp_servers: mcpServers };
 }
 
 export function agentCatalogFromSettings(settings) {
@@ -725,7 +765,7 @@ export function agentListItems(settings) {
     custom: Boolean(item.custom),
     canToggle: item.can_toggle !== false && !item.custom,
     canConfigure: Boolean(item.custom) && item.readonly !== true,
-    readonly: item.readonly === true,
+    readonly: item.readonly === true || !item.custom,
   }));
 }
 
@@ -776,12 +816,11 @@ export function createDefaultCustomAgentPayload(agentSettings) {
     enabled: true,
     draft: true,
     system_prompt: '',
-    primary_skill_name: '',
     tool_policy: {
       allow: toolsForAgentGroups(groupIds, settings.tool_groups),
       deny: [],
-      allow_mcp_tools: true,
     },
+    mcp_policy: { allow_servers: [], allow_tools: [] },
     skill_policy: { allow: [], deny: [] },
   };
 }

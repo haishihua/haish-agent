@@ -84,8 +84,7 @@ import {
   sanitizeSettingsConnectionStatus,
   createDefaultCustomAgentPayload,
   normalizeAgentProfileRow,
-  DIRECT_AGENT_WORKFLOW_ID,
-  DEFAULT_DIRECT_WORKFLOW,
+  SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
   WEB_SEARCH_PROVIDER_OPTIONS,
   withAlwaysAllowedAgentTools,
   } from '../../lib/agent-catalog.js';
@@ -116,6 +115,7 @@ import {
   WORLD_ROLE_TO_ACTOR,
   WORLD_KIND_MAP,
   PROVIDER_ACTOR_MAP,
+  workflowNodeActorBindings,
   } from '../../lib/world-runtime.js';
 import {
   createEmptyContextUsage,
@@ -205,6 +205,7 @@ import {
   skillDisplayName, skillLoadingBubble, skillReadyBubble, summarizeText, toDisplayText,
   defaultQuestDescription, getLoopIndexFromWorldEvents, getActiveRoleFromWorldEvents,
   WORLD_EVENT_ROUTE_MAP, WORLD_SCENE_EVENT_TYPES, PROVIDER_SCENE_EVENT_TYPES,
+  WORKFLOW_SCENE_EVENT_TYPES,
   STREAM_IMMEDIATE_EVENT_TYPES, SCENE_CATCHUP_TOOL_EVENT_TYPES, SCENE_CATCHUP_KEEP_TYPES,
   SCENE_TERMINAL_EVENT_TYPES, CHAT_FINAL_FOLLOWUP_EVENT_TYPES, WORLD_EVENT_TYPE_ALIASES,
 } from '../../lib/world-events.js';
@@ -216,6 +217,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const [workspaceState, setWorkspaceState] = useState(() => loadStoredWorkspaceState());
   const [activeTab, setActiveTab] = useState('dashboard');
   const [viewMode, setViewMode] = useState('chat');
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
   const viewModeRef = useRef('chat');
   const [npcStates, setNpcStates] = useState(() => {
     const s = {};
@@ -247,6 +249,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     defaultAgentId: APP_DEFAULT_AGENT_OPTIONS[0].id,
   }));
   const [agentLoading, setAgentLoading] = useState(true);
+  const [workflowLoading, setWorkflowLoading] = useState(true);
   const [agentSettingsDraft, setAgentSettingsDraft] = useState(() => normalizeAgentSettings(DEFAULT_AGENT_SETTINGS));
   const [workflowSettingsDraft, setWorkflowSettingsDraft] = useState(() => normalizeWorkflowSettings(DEFAULT_WORKFLOW_SETTINGS));
 
@@ -270,7 +273,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     memory: 'memory-neo4j',
     knowledge: 'knowledge-qdrant',
     agent: 'agent-default',
-    workflow: DIRECT_AGENT_WORKFLOW_ID,
+    workflow: SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
   }));
   const [skillActionBusy, setSkillActionBusy] = useState('');
   const [calibrationTarget, setCalibrationTarget] = useState('stations');
@@ -381,6 +384,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               label: String(item?.display_name || item?.label || id).trim() || id,
               description: String(item?.description || '').trim(),
               custom: Boolean(item?.custom),
+              canUploadDocuments: item?.can_upload_documents === true,
             };
           })
           .filter(Boolean);
@@ -394,6 +398,19 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       .catch((error) => console.warn('failed to fetch assistant agents', error))
       .finally(() => {
         if (!cancelled) setAgentLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchWorkflowSettingsPayload()
+      .then((payload) => {
+        if (!cancelled) applyWorkflowSettingsPayload(payload);
+      })
+      .catch((error) => console.warn('failed to fetch workflow catalog', error))
+      .finally(() => {
+        if (!cancelled) setWorkflowLoading(false);
       });
     return () => { cancelled = true; };
   }, []);
@@ -522,6 +539,20 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const agentOptions = agentCatalog?.options || APP_DEFAULT_AGENT_OPTIONS;
   const defaultAgentId = agentCatalog?.defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
   const runConfigStorageKey = buildRunConfigStorageKey(authUser, modelProviderKey);
+  const workflowOptions = useMemo(() => {
+    const normalized = normalizeWorkflowSettings(workflowSettingsDraft);
+    return [...normalized.presets, ...normalized.custom]
+      .filter((item) => item.enabled !== false && item.executable && !item.draft)
+      .map((item) => ({
+        id: item.workflow_id,
+        label: item.display_name || item.workflow_id,
+        description: item.description || '',
+        canUploadDocuments: item.can_upload_documents === true,
+      }));
+  }, [workflowSettingsDraft]);
+  const defaultWorkflowId = workflowOptions.find((item) => item.id === workflowSettingsDraft.default_workflow_id)?.id
+    || workflowOptions[0]?.id
+    || SOFTWARE_DEVELOPMENT_WORKFLOW_ID;
 
   useEffect(() => { npcStatesRef.current = npcStates; }, [npcStates]);
   useEffect(() => { worldTaskStateRef.current = worldTaskState; }, [worldTaskState]);
@@ -710,7 +741,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         if (details.length === 0) {
           if (!isConversationActivationCurrent(bootstrapActivationSeq)) return;
           const created = await createConversationWithRetry(
-            { title: DEFAULT_SESSION_NAME },
+            { title: DEFAULT_SESSION_NAME, execution_mode: 'chat' },
             () => isConversationActivationCurrent(bootstrapActivationSeq),
           );
           if (!created) return;
@@ -1091,6 +1122,12 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     const restoredTasks = Array.isArray(detail.tasks) ? detail.tasks : [];
     const messageImageFallbacks = chatImageFallbacksByTaskIdFromMessages(detail.messages, restoredConversationId, userIdRef.current);
     const latestTaskId = detail.last_task_id || (restoredTasks.length ? restoredTasks[restoredTasks.length - 1].task_id : null);
+    const latestTask = restoredTasks.find((task) => task.task_id === latestTaskId);
+    if (restoreLatest && latestTask) {
+      const restoredMode = latestTask.execution_mode === 'bot' ? 'world' : 'chat';
+      viewModeRef.current = restoredMode;
+      setViewMode(restoredMode);
+    }
     const nextContextUsage = mergeContextUsage(
       loadStoredContextUsage(restoredConversationId),
       estimateContextUsageFromConversationDetail(detail)
@@ -1623,6 +1660,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     return task?.originViewMode === 'chat';
   }
 
+  function isBotWorkflowTask(taskId, targetConvId = null) {
+    return getTaskById(taskId, targetConvId)?.executionMode === 'bot';
+  }
+
   function pumpSceneQueue() {
     const runtime = sceneRuntimeRef.current;
     if (runtime.running) {
@@ -2134,11 +2175,13 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       description: current.description || '',
       enabled: current.enabled !== false,
       system_prompt: current.system_prompt || '',
-      primary_skill_name: current.primary_skill_name || '',
       tool_policy: {
         allow: withAlwaysAllowedAgentTools(current.tool_policy?.allow),
         deny: Array.isArray(current.tool_policy?.deny) ? current.tool_policy.deny : [],
-        allow_mcp_tools: current.tool_policy?.allow_mcp_tools !== false,
+      },
+      mcp_policy: {
+        allow_servers: Array.isArray(current.mcp_policy?.allow_servers) ? current.mcp_policy.allow_servers : [],
+        allow_tools: Array.isArray(current.mcp_policy?.allow_tools) ? current.mcp_policy.allow_tools : [],
       },
       skill_policy: {
         allow: Array.isArray(current.skill_policy?.allow) ? current.skill_policy.allow : [],
@@ -2628,9 +2671,109 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     }
   }
 
+  async function playWorkflowEventScene(event, taskId, run, targetConvId = null) {
+    if (!WORKFLOW_SCENE_EVENT_TYPES.has(event.type)) return;
+    const bindings = workflowNodeActorBindings(run?.workflowSnapshot);
+    const byNodeId = new Map(bindings.map((binding) => [binding.nodeId, binding]));
+    const nodeId = event.workflow_node_id || event.node_id;
+    const node = byNodeId.get(nodeId);
+    const nodeKind = node?.type === 'tool' ? 'tool' : node?.type === 'llm' ? 'llm' : node?.type === 'output' ? 'report' : 'think';
+    const markWorkflowLive = (binding, description, tag, kind = nodeKind, status = 'pending') => {
+      if (!binding) return;
+      markAgentLive(binding.actor, {
+        taskId,
+        description,
+        stepCurrent: 1,
+        stepTotal: 1,
+        tag,
+        kind,
+        status,
+      });
+    };
+
+    if (event.type === 'workflow_started') {
+      const start = bindings.find((binding) => binding.type === 'start');
+      if (!start) return;
+      markWorkflowLive(start, 'Workflow started. Preparing the task.', 'START', 'think');
+      setActorActive(start.actor, { kind: 'think', bubble: 'Workflow started. Preparing the task.', thinking: true });
+      return;
+    }
+
+    if (event.type === 'workflow_edge_selected') {
+      const incomingEdge = run?.workflowSnapshot?.edges?.find((edge) => (
+        (edge.to || edge.target) === event.from_node_id
+      ));
+      const incomingSourceId = incomingEdge?.from || incomingEdge?.source;
+      const source = byNodeId.get(event.from_node_id) || byNodeId.get(incomingSourceId);
+      const target = byNodeId.get(event.to_node_id);
+      if (!source || !target) return;
+      const handoff = `${source.label} handed the task to ${target.label}.`;
+      markWorkflowLive(source, handoff, 'HANDOFF', 'deliver', 'done');
+      markWorkflowLive(target, 'Task received.', 'RECEIVED', 'think');
+      setActorActive(source.actor, { kind: 'deliver', bubble: handoff });
+      setActorActive(target.actor, { kind: 'think', bubble: 'Task received.', thinking: true });
+      orientToward(source.actor, target.actor);
+      orientToward(target.actor, source.actor);
+      pushBurst(npcStatesRef.current[source.actor]?.pos || STATIONS[source.actor], KIND_COLORS?.deliver || '#efbf64');
+      pushBurst(npcStatesRef.current[target.actor]?.pos || STATIONS[target.actor], KIND_COLORS?.think || '#efbf64');
+      await sleep(440);
+      setActorIdle(source.actor);
+      updateNpc(target.actor, { dir: 'front' });
+      return;
+    }
+
+    if (event.type === 'workflow_node_started') {
+      if (!node) return;
+      const bubble = node.type === 'start' ? 'Task ready. Delegating now.' : `${node.label} is working.`;
+      markWorkflowLive(node, bubble, 'RUNNING', nodeKind);
+      setActorActive(node.actor, { kind: nodeKind, bubble, thinking: nodeKind === 'think' || nodeKind === 'llm' });
+      if (nodeKind === 'tool' || nodeKind === 'llm') {
+        pushBurst(npcStatesRef.current[node.actor]?.pos || STATIONS[node.actor], KIND_COLORS?.[nodeKind] || '#efbf64');
+      }
+      return;
+    }
+
+    if (event.type === 'workflow_node_finished') {
+      if (!node) return;
+      const failed = event.success === false || event.status === 'failed';
+      const bubble = failed ? `${node.label} failed.` : `${node.label} completed.`;
+      markWorkflowLive(node, bubble, failed ? 'FAILED' : 'DONE', failed ? 'report' : nodeKind, failed ? 'failed' : 'done');
+      setActorActive(node.actor, { kind: failed ? 'report' : nodeKind, bubble });
+      await sleep(340);
+      setActorIdle(node.actor);
+      return;
+    }
+
+    if (event.type === 'workflow_finished' || event.type === 'workflow_failed') {
+      const end = bindings.find((binding) => binding.type === 'output');
+      if (!end) return;
+      const failed = event.type === 'workflow_failed';
+      const bubble = failed ? 'Workflow failed. Reporting the blocker.' : 'Final report ready.';
+      markWorkflowLive(end, bubble, failed ? 'FAILED' : 'REPORT', 'report', failed ? 'failed' : 'done');
+      setActorActive(end.actor, { kind: 'report', bubble });
+      pushBurst(npcStatesRef.current[end.actor]?.pos || STATIONS[end.actor], KIND_COLORS?.report || '#efbf64');
+      await sleep(640);
+      setActorIdle(end.actor);
+      const finalTask = getTaskById(taskId, targetConvId);
+      const result = toDisplayText(event.output || event.summary || finalTask?.answerText || finalTask?.error || bubble);
+      if (!targetConvId || targetConvId === conversationIdRef.current) {
+        setHollow({
+          title: finalTask?.title || 'Final Report',
+          result,
+          taskId,
+        });
+      }
+      finalizeTaskPresentation(taskId, result, targetConvId);
+    }
+  }
+
   async function playWorldEventScene(event, taskId, targetConvId = null) {
     if (!taskId) return;
     const run = getTaskById(taskId, targetConvId);
+    if (run?.executionMode === 'bot') {
+      await playWorkflowEventScene(event, taskId, run, targetConvId);
+      return;
+    }
     const providerMeta = resolveProviderMeta(event, run);
     const actorId = event.actor_id || WORLD_ROLE_TO_ACTOR[event.actor];
     const targetActorId = event.target_actor_id || WORLD_ROLE_TO_ACTOR[event.target];
@@ -2999,10 +3142,12 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     updateNpc(actor, { action: null, bubble: null, busy: false, thinking: false });
   }
 
-  async function uploadAttachment(file, signal, targetConversationId = conversationId) {
+  async function uploadAttachment(file, signal, targetConversationId = conversationId, capability = {}) {
     if (!file || !targetConversationId) return null;
     const formData = new FormData();
     formData.append('conversation_id', targetConversationId);
+    if (capability.agentId) formData.append('agent_id', capability.agentId);
+    if (capability.workflowId) formData.append('workflow_id', capability.workflowId);
     formData.append('file', file);
     const response = await authFetch(`${API_BASE}/api/documents/upload`, {
       method: 'POST',
@@ -3064,7 +3209,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     showToast('success', `local workspace set: ${detail?.workspace_label || 'selected folder'}`);
   }
 
-  async function handleAttachmentSelect(file) {
+  async function handleAttachmentSelect(file, selectionId, executionMode = viewModeRef.current || viewMode) {
     const targetConversationId = conversationIdRef.current || conversationId;
     if (!file || !targetConversationId) return;
     const uploadController = new AbortController();
@@ -3080,7 +3225,12 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     });
     setUploadState({ active: true, fileName: file.name });
     try {
-      const payload = await uploadAttachment(file, uploadController.signal, targetConversationId);
+      const payload = await uploadAttachment(
+        file,
+        uploadController.signal,
+        targetConversationId,
+        executionMode === 'chat' ? { agentId: selectionId } : { workflowId: selectionId },
+      );
       const nextAttachment = {
         name: payload?.attachment?.file_name || file.name,
         size: payload?.attachment?.size_bytes ?? file.size,
@@ -3266,6 +3416,71 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     }
 
     switch (event.type) {
+      case 'workflow_started':
+        updateTaskById(taskId, (run) => ({
+          ...run,
+          workflowRun: {
+            workflow_id: event.workflow_id || run.requestedWorkflowId,
+            run_id: event.workflow_run_id || '',
+            status: 'running',
+            current_node_id: null,
+            nodes: {},
+          },
+        }));
+        break;
+      case 'workflow_node_started':
+        updateTaskById(taskId, (run) => ({
+          ...run,
+          workflowRun: {
+            ...(run.workflowRun || {}),
+            status: 'running',
+            current_node_id: event.workflow_node_id,
+            nodes: {
+              ...(run.workflowRun?.nodes || {}),
+              [event.workflow_node_id]: {
+                ...(run.workflowRun?.nodes?.[event.workflow_node_id] || {}),
+                status: 'running',
+                success: null,
+                started_at: event.started_at || event.created_at,
+              },
+            },
+          },
+        }));
+        break;
+      case 'workflow_node_finished':
+        updateTaskById(taskId, (run) => ({
+          ...run,
+          workflowRun: {
+            ...(run.workflowRun || {}),
+            current_node_id: event.workflow_node_id,
+            nodes: {
+              ...(run.workflowRun?.nodes || {}),
+              [event.workflow_node_id]: {
+                ...(run.workflowRun?.nodes?.[event.workflow_node_id] || {}),
+                status: event.status || (event.success === false ? 'failed' : 'done'),
+                success: event.success !== false,
+                summary: event.summary || '',
+                error: event.error || '',
+                started_at: event.started_at || run.workflowRun?.nodes?.[event.workflow_node_id]?.started_at,
+                finished_at: event.finished_at || event.created_at,
+                duration_ms: event.duration_ms,
+              },
+            },
+          },
+        }));
+        break;
+      case 'workflow_finished':
+      case 'workflow_failed':
+        pendingPresentationTaskIdsRef.current.add(taskId);
+        updateTaskById(taskId, (run) => ({
+          ...run,
+          workflowRun: {
+            ...(run.workflowRun || {}),
+            status: event.type === 'workflow_failed' ? 'failed' : 'done',
+            current_node_id: null,
+          },
+        }));
+        break;
       case 'context_usage_updated': {
         if (event.source === 'provider_usage' && event.context_used_tokens == null && event.usedTokens == null) {
           break;
@@ -3632,6 +3847,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               ? (hasPresentationPending ? (persistedTask?.stage || run.stage) : (persistedTask?.stage || 'done'))
               : 'done',
             requestedAgentId: persistedTask?.agent_id || persistedTask?.profile_id || run.requestedAgentId || null,
+            requestedWorkflowId: persistedTask?.workflow_id || run.requestedWorkflowId || null,
+            executionMode: persistedTask?.execution_mode === 'bot' ? 'bot' : (run.executionMode || 'chat'),
+            originViewMode: persistedTask?.execution_mode === 'bot' ? 'world' : (run.originViewMode || 'chat'),
+            workflowSnapshot: persistedTask?.workflow_snapshot || run.workflowSnapshot || null,
             profileId: persistedTask?.profile_id || run.profileId || null,
             profileDisplayName: persistedTask?.profile_display_name || run.profileDisplayName || '',
             completedAt: persistedTask?.completed_at
@@ -3676,7 +3895,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         break;
     }
 
-    if (WORLD_SCENE_EVENT_TYPES.has(event.type) && !isChatOriginTask(taskId, ownerConvId)) {
+    if (
+      (isBotWorkflowTask(taskId, ownerConvId) && WORKFLOW_SCENE_EVENT_TYPES.has(event.type))
+      || (!isBotWorkflowTask(taskId, ownerConvId) && WORLD_SCENE_EVENT_TYPES.has(event.type) && !isChatOriginTask(taskId, ownerConvId))
+    ) {
       scheduleSceneEvent(event, taskId, ownerConvId);
     }
   }
@@ -3712,7 +3934,14 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       setRuntimeFetchController(uploadController, runConversationId);
       setUploadState({ active: true, fileName: uploadName });
       try {
-        const payload = await uploadAttachment(pendingTask.attachment.file, uploadController.signal, runConversationId);
+        const payload = await uploadAttachment(
+          pendingTask.attachment.file,
+          uploadController.signal,
+          runConversationId,
+          pendingTask.executionMode === 'bot'
+            ? { workflowId: pendingTask.requestedWorkflowId }
+            : { agentId: pendingTask.requestedAgentId },
+        );
         const runRuntimeForGuard = getRuntime(runConversationId);
         if (!runRuntimeForGuard || runRuntimeForGuard.activeRunId !== runId) {
           return;
@@ -3767,6 +3996,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           provider: pendingTask.requestedProvider || null,
           model_id: pendingTask.requestedModelId || null,
           agent_id: pendingTask.requestedAgentId || null,
+          workflow_id: pendingTask.requestedWorkflowId || null,
+          execution_mode: pendingTask.executionMode === 'bot' ? 'bot' : 'chat',
           // Fallback when no per-task choice exists. Matches DEFAULT_REASONING_EFFORT
           // in panels.jsx — kept in sync so request payload mirrors UI default.
           reasoning_effort: pendingTask.requestedReasoningEffort || 'high',
@@ -3914,7 +4145,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     resetSceneActors();
   }
 
-  function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest) {
+  function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, selectionId, providerRequest) {
     const sanitizedImageAttachments = Array.isArray(imageAttachments)
       ? imageAttachments
           .filter((ref) => ref && ref.image_id && ref.path)
@@ -3932,7 +4163,9 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       modelId,
       reasoningEffort,
       imageAttachments: sanitizedImageAttachments,
-      agentId,
+      executionMode: viewModeRef.current === 'chat' ? 'chat' : 'bot',
+      agentId: viewModeRef.current === 'chat' ? selectionId : null,
+      workflowId: viewModeRef.current === 'chat' ? null : selectionId,
       providerRequest: providerRequest || '',
       targetConversationId: selectedConversationId || conversationIdRef.current || conversationId || null,
     };
@@ -3951,11 +4184,24 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     const attachment = request.attachment || null;
     const modelId = request.modelId || '';
     const reasoningEffort = request.reasoningEffort || 'high';
-    const agentId = request.agentId || defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
+    const executionMode = request.executionMode === 'bot' ? 'bot' : 'chat';
+    const agentId = executionMode === 'chat'
+      ? (request.agentId || defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id)
+      : null;
+    const workflowId = executionMode === 'bot'
+      ? (request.workflowId || defaultWorkflowId)
+      : null;
     const sanitizedImageAttachments = Array.isArray(request.imageAttachments) ? request.imageAttachments : [];
     const pendingTask = createPendingTaskDraft(text, attachment, sanitizedImageAttachments);
     pendingTask.requestedModelId = modelId || '';
     pendingTask.requestedAgentId = agentId;
+    pendingTask.requestedWorkflowId = workflowId;
+    pendingTask.executionMode = executionMode;
+    if (executionMode === 'bot') {
+      const workflows = normalizeWorkflowSettings(workflowSettingsDraft);
+      pendingTask.workflowSnapshot = [...workflows.presets, ...workflows.custom]
+        .find((item) => item.workflow_id === workflowId) || null;
+    }
     // Match DEFAULT_REASONING_EFFORT in panels.jsx (kept in sync).
     pendingTask.requestedReasoningEffort = reasoningEffort || 'high';
     pendingTask.requestedProvider = request.providerRequest || '';
@@ -4111,7 +4357,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 
   async function handleSelectProject(projectId) {
     const project = workspaceState.projects.find((item) => item.id === projectId);
-    const firstConversation = project?.conversations[0];
+    const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
+    const firstConversation = project?.conversations.find((item) => item.executionMode === executionMode);
     if (firstConversation) {
       await handleSelectConversation(projectId, firstConversation.id);
       return;
@@ -4157,11 +4404,11 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     }));
   }
 
-  async function createConversationInProject(project, title) {
+  async function createConversationInProject(project, title, executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot') {
     const createResponse = await authFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: buildApiHeaders(),
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title, execution_mode: executionMode }),
     });
     if (!createResponse.ok) {
       throw new Error(`conversation create failed: ${createResponse.status}`);
@@ -4212,7 +4459,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     const createResponse = await authFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: buildApiHeaders(),
-      body: JSON.stringify({ title: DEFAULT_SESSION_NAME }),
+      body: JSON.stringify({
+        title: DEFAULT_SESSION_NAME,
+        execution_mode: viewModeRef.current === 'chat' ? 'chat' : 'bot',
+      }),
     });
     if (!createResponse.ok) {
       throw new Error(`project conversation create failed: ${createResponse.status}`);
@@ -4254,7 +4504,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     if (!response.ok && response.status !== 404) {
       throw new Error(`conversation delete failed: ${response.status}`);
     }
-    let fallbackConversation = project.conversations.find((conversation) => conversation.id !== nextConversationId);
+    const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
+    let fallbackConversation = project.conversations.find((conversation) => (
+      conversation.id !== nextConversationId && conversation.executionMode === executionMode
+    ));
     if (!fallbackConversation) {
       const detail = await createConversationInProject(project, project.id === DEFAULT_PROJECT_ID ? DEFAULT_SESSION_NAME : 'New Conversation');
       setWorkspaceState((state) => normalizeWorkspaceOrdering({
@@ -4317,8 +4570,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     });
     setWorkspaceState(nextState);
     const defaultProject = nextState.projects.find((item) => item.id === DEFAULT_PROJECT_ID) || createDefaultProject();
-    if (defaultProject.conversations[0]) {
-      const detail = await fetchConversationDetail(defaultProject.conversations[0].id);
+    const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
+    const fallbackConversation = defaultProject.conversations.find((item) => item.executionMode === executionMode);
+    if (fallbackConversation) {
+      const detail = await fetchConversationDetail(fallbackConversation.id);
       await activateConversationDetail(detail);
     } else {
       const detail = await createConversationInProject(defaultProject, DEFAULT_SESSION_NAME);
@@ -4326,14 +4581,71 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     }
   }
 
+  async function handleToggleViewMode() {
+    const nextViewMode = viewModeRef.current === 'chat' ? 'world' : 'chat';
+    const nextExecutionMode = nextViewMode === 'chat' ? 'chat' : 'bot';
+    viewModeRef.current = nextViewMode;
+    setViewMode(nextViewMode);
+    setActiveTab('dashboard');
+
+    const currentConversation = findConversationById(workspaceState, conversationIdRef.current);
+    if (currentConversation?.executionMode === nextExecutionMode) return;
+    const currentProject = findProjectByConversationId(workspaceState, conversationIdRef.current)
+      || workspaceState.projects.find((project) => project.id === workspaceState.activeProjectId)
+      || workspaceState.projects[0];
+    const matchingConversation = currentProject?.conversations.find(
+      (conversation) => conversation.executionMode === nextExecutionMode,
+    );
+    const detail = matchingConversation
+      ? await fetchConversationDetail(matchingConversation.id)
+      : await createConversationInProject(
+          currentProject,
+          currentProject?.id === DEFAULT_PROJECT_ID ? DEFAULT_SESSION_NAME : 'New Conversation',
+          nextExecutionMode,
+        );
+    await activateConversationDetail(detail, { restoreLatest: Boolean(matchingConversation) });
+  }
+
   function handleOpenTaskReport(task) {
-    const result = String(task?.answerText || '').trim();
+    const restoredMode = task?.executionMode === 'bot' ? 'world' : 'chat';
+    viewModeRef.current = restoredMode;
+    setViewMode(restoredMode);
+    const workflowNodes = Object.entries(task?.workflowRun?.nodes || {}).map(([nodeId, node]) => (
+      `${node?.success === false ? '✕' : '✓'} ${nodeId}: ${node?.summary || node?.error || node?.status || ''}`
+    ));
+    const result = String(task?.answerText || workflowNodes.join('\n') || task?.error || '').trim();
     if (!result) return;
     setHollow({
       title: task?.title || 'Final Report',
       result,
       taskId: task?.taskId || task?.id || null,
     });
+  }
+
+  async function handleRetryTask(task) {
+    const targetConversationId = task?.conversationId || task?.conversation_id;
+    if (!targetConversationId) return;
+    if (targetConversationId !== conversationIdRef.current) {
+      const detail = await fetchConversationDetail(targetConversationId);
+      await activateConversationDetail(detail, { restoreLatest: false });
+    }
+    const restoredMode = task?.executionMode === 'bot' ? 'world' : 'chat';
+    viewModeRef.current = restoredMode;
+    setViewMode(restoredMode);
+    const selectionId = task?.executionMode === 'bot'
+      ? task?.requestedWorkflowId
+      : task?.requestedAgentId;
+    const request = buildDeployRequest(
+      task?.title || '',
+      task?.attachment || null,
+      task?.requestedModelId || '',
+      task?.requestedReasoningEffort || 'high',
+      task?.imageAttachments || [],
+      selectionId,
+      task?.requestedProvider || '',
+    );
+    request.targetConversationId = targetConversationId;
+    if (canStartDeployForConversation(targetConversationId)) startDeploy(request, targetConversationId);
   }
 
   const quests = useMemo(() => {
@@ -4369,6 +4681,19 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       )),
     })),
   }), [workspaceState, conversationId, quests]);
+  const visibleConversationMode = viewMode === 'chat' ? 'chat' : 'bot';
+  const visiblePanelWorkspaceState = useMemo(() => ({
+    ...panelWorkspaceState,
+    activeConversationId: findConversationById(panelWorkspaceState, conversationId)?.executionMode === visibleConversationMode
+      ? conversationId
+      : null,
+    projects: panelWorkspaceState.projects.map((project) => ({
+      ...project,
+      conversations: project.conversations.filter(
+        (conversation) => conversation.executionMode === visibleConversationMode,
+      ),
+    })),
+  }), [panelWorkspaceState, conversationId, visibleConversationMode]);
   // True when the currently-viewed conversation has at least one task in
   // `running` / `queued` state. Drives both the composer disabled state and
   // the polling loop below — so a running task in this conversation always
@@ -4516,6 +4841,16 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     const latestTaskId = worldTaskState.taskOrder[worldTaskState.taskOrder.length - 1];
     return latestTaskId ? worldTaskState.tasksById[latestTaskId] || null : null;
   }, [worldTaskState]);
+  const worldWorkflow = useMemo(() => {
+    const selected = workflowById(workflowSettingsDraft, selectedWorkflowId || defaultWorkflowId);
+    return currentTask?.executionMode === 'bot' && isTaskActuallyActive(currentTask) && currentTask.workflowSnapshot
+      ? currentTask.workflowSnapshot
+      : selected;
+  }, [currentTask, defaultWorkflowId, selectedWorkflowId, workflowSettingsDraft]);
+  const worldWorkflowActors = useMemo(
+    () => workflowNodeActorBindings(worldWorkflow),
+    [worldWorkflow],
+  );
   useEffect(() => {
     const activeTaskId = worldTaskState.activeTaskId || activeTaskIdRef.current;
     if (!activeTaskId || !currentTask) return;
@@ -4696,10 +5031,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       <TopBar
         now={now}
         viewMode={viewMode}
-        onToggleViewMode={() => {
-          setActiveTab('dashboard');
-          setViewMode((mode) => (mode === 'chat' ? 'world' : 'chat'));
-        }}
+        onToggleViewMode={() => { handleToggleViewMode().catch((error) => showToast('error', String(error?.message || error))); }}
         calibrationActive={calibrationMode}
         onToggleCalibration={handleToggleCalibration}
         calibrationDisabled={busy}
@@ -4742,7 +5074,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         ) : activeTab === 'dashboard' ? (
           <>
             <ConversationsPanel
-              workspaceState={panelWorkspaceState}
+              workspaceState={visiblePanelWorkspaceState}
               now={now}
               authUser={authUser}
               onLogout={onLogout}
@@ -4758,6 +5090,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               onDeleteConversation={(projectId, nextConversationId) => { handleDeleteConversation(projectId, nextConversationId).catch((error) => { console.error('conversation delete failed', error); showToast('error', String(error?.message || error)); }); }}
               onRenameConversation={(projectId, nextConversationId, title) => { handleRenameConversation(projectId, nextConversationId, title).catch((error) => { console.error('conversation rename failed', error); showToast('error', String(error?.message || error)); }); }}
               onOpenTaskReport={handleOpenTaskReport}
+              onRetryTask={handleRetryTask}
               taskPreviewLimit={viewMode === 'chat' ? 3 : 5}
             />
             {viewMode === 'chat' ? (
@@ -4771,7 +5104,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 	                    submitPending={submitPending}
 	                    onSend={(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest)}
                     onStop={handleStop}
-                    onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }}
+                    onSelectFile={(file, selectedAgentId) => { handleAttachmentSelect(file, selectedAgentId, 'chat').catch((error) => console.error('attachment upload failed', error)); }}
                     onClearFile={handleAttachmentClear}
                     onUploadImage={uploadChatImage}
                     attachment={composerAttachment}
@@ -4802,11 +5135,11 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 	                    MAP_W={MAP_W}
 	                    MAP_H={MAP_H}
 	                    onViewChange={setMapView}
-			                    overlay={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file) => { handleAttachmentSelect(file).catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} agentOptions={agentOptions} defaultAgentId={defaultAgentId} agentLoading={agentLoading} agentLocked={agentSelectionLocked} agentLockedReason={agentLockedReason} lockedAgentId={lockedAgentId} selectionStorageKey={runConfigStorageKey} />}
+	                    overlay={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={`${runConfigStorageKey}.bot`} />}
                   >
                     <div ref={stageRef} className="office-map">
                       {worldCalibrationActive && calibrationTarget === 'routes' && selectedRouteId && <CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}
-                      {Object.keys(STATIONS).map(id => <NPC key={id} id={id} state={npcStates[id]} spriteConfig={getCharPoseConfig(id)} mapW={MAP_W} mapH={MAP_H} showLabel={true} interactive={worldCalibrationActive && !busy && calibrationTarget === 'stations'} selected={worldCalibrationActive && ((selectedMarkerId === id && calibrationTarget === 'stations') || (selectedPoseNpcId === id && calibrationTarget === 'poses'))} showDebug={worldCalibrationActive && (calibrationTarget === 'stations' || (calibrationTarget === 'poses' && selectedPoseNpcId === id))} debugText={calibrationTarget === 'poses' ? `${(npcStates[id]?.poseDebug?.pose || 'idle').toUpperCase()} · ${(npcStates[id]?.poseDebug?.dir || 'front').toUpperCase()}` : `${(stationDrafts[id]?.x??0).toFixed(3)}, ${(stationDrafts[id]?.y??0).toFixed(3)}`} onPointerDown={(npcId, e) => handleMarkerPointerDown('stations', npcId, e)} />)}
+                      {(worldCalibrationActive ? Object.keys(STATIONS).map((actor) => ({ actor, nodeId: actor, label: '' })) : worldWorkflowActors).map(({ actor, nodeId, label }) => <NPC key={nodeId} id={actor} state={npcStates[actor]} labelOverride={label} spriteConfig={getCharPoseConfig(actor)} mapW={MAP_W} mapH={MAP_H} showLabel={true} interactive={worldCalibrationActive && !busy && calibrationTarget === 'stations'} selected={worldCalibrationActive && ((selectedMarkerId === actor && calibrationTarget === 'stations') || (selectedPoseNpcId === actor && calibrationTarget === 'poses'))} showDebug={worldCalibrationActive && (calibrationTarget === 'stations' || (calibrationTarget === 'poses' && selectedPoseNpcId === actor))} debugText={calibrationTarget === 'poses' ? `${(npcStates[actor]?.poseDebug?.pose || 'idle').toUpperCase()} · ${(npcStates[actor]?.poseDebug?.dir || 'front').toUpperCase()}` : `${(stationDrafts[actor]?.x??0).toFixed(3)}, ${(stationDrafts[actor]?.y??0).toFixed(3)}`} onPointerDown={(npcId, e) => handleMarkerPointerDown('stations', npcId, e)} />)}
                       {worldCalibrationActive && calibrationTarget === 'routes' && activeIds.map((id, index) => <CalibrationPoint key={`${calibrationTarget}-${id}`} id={id} point={activeDrafts[id]} mapW={MAP_W} mapH={MAP_H} kind={resolvePointTarget(id)==='meet'?'meet':'nav'} selected={selectedMarkerId===id} showDebug={true} badgeText={index+1} onPointerDown={(pId, e) => handleMarkerPointerDown(calibrationTarget, pId, e)} />)}
                       <div className="fx-layer">{bursts.map(b => <div key={b.id} className="fx-ring" style={{ left: b.x, top: b.y, borderColor: b.color, boxShadow: `0 0 12px ${b.color}` }} />)}</div>
 	                    </div>

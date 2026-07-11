@@ -2,12 +2,13 @@
 // Workflow catalog defaults + pure helpers (UI-free).
 import {
   APP_DEFAULT_AGENT_OPTIONS,
-  DIRECT_AGENT_WORKFLOW_ID,
+  SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
   DEFAULT_WORKFLOW_NODE_TYPES,
   DEFAULT_WORKFLOW_INPUT_SCHEMA,
   COMMON_WORKFLOW_OUTPUT_FIELDS,
   WORKFLOW_NODE_OUTPUT_FIELDS,
   DEFAULT_DIRECT_WORKFLOW,
+  DEFAULT_SOFTWARE_DEVELOPMENT_WORKFLOW,
   DEFAULT_WORKFLOW_SETTINGS,
 } from './agent-catalog.js';
 
@@ -42,7 +43,7 @@ export function normalizeWorkflowEdge(edge) {
   };
 }
 
-export function normalizeWorkflowRow(item, fallback = DEFAULT_DIRECT_WORKFLOW) {
+export function normalizeWorkflowRow(item, fallback = DEFAULT_SOFTWARE_DEVELOPMENT_WORKFLOW) {
   const workflowId = String(item?.workflow_id || item?.id || fallback.workflow_id || fallback.id || '').trim();
   const rawNodes = Array.isArray(item?.nodes) && item.nodes.length ? item.nodes : fallback.nodes;
   const rawEdges = Array.isArray(item?.edges) ? item.edges : fallback.edges;
@@ -85,7 +86,7 @@ export function normalizeWorkflowRow(item, fallback = DEFAULT_DIRECT_WORKFLOW) {
     default: Boolean(item?.default),
     editable: Boolean(item?.editable ?? item?.custom),
     deletable: Boolean(item?.deletable ?? item?.custom),
-    executable: Boolean(item?.executable ?? workflowId === DIRECT_AGENT_WORKFLOW_ID),
+    executable: Boolean(item?.executable ?? workflowId === SOFTWARE_DEVELOPMENT_WORKFLOW_ID),
     draft: Boolean(item?.draft),
     nodes,
     edges: rawEdges.map(normalizeWorkflowEdge).filter((edge) => edge.from && edge.to),
@@ -95,7 +96,7 @@ export function normalizeWorkflowRow(item, fallback = DEFAULT_DIRECT_WORKFLOW) {
 export function normalizeWorkflowSettings(payload) {
   const source = payload && typeof payload === 'object' ? payload : DEFAULT_WORKFLOW_SETTINGS;
   const presets = Array.isArray(source.presets) && source.presets.length
-    ? source.presets.map((item, index) => normalizeWorkflowRow(item, DEFAULT_WORKFLOW_SETTINGS.presets[index] || DEFAULT_DIRECT_WORKFLOW)).filter((item) => item.workflow_id)
+    ? source.presets.map((item, index) => normalizeWorkflowRow(item, DEFAULT_WORKFLOW_SETTINGS.presets[index] || DEFAULT_SOFTWARE_DEVELOPMENT_WORKFLOW)).filter((item) => item.workflow_id)
     : DEFAULT_WORKFLOW_SETTINGS.presets;
   const custom = Array.isArray(source.custom)
     ? source.custom.map((item) => normalizeWorkflowRow(item, { ...DEFAULT_DIRECT_WORKFLOW, custom: true, system: false, editable: true, deletable: true, default: false })).filter((item) => item.workflow_id)
@@ -104,7 +105,7 @@ export function normalizeWorkflowSettings(payload) {
     ? source.node_types
     : DEFAULT_WORKFLOW_NODE_TYPES;
   return {
-    default_workflow_id: String(source.default_workflow_id || DIRECT_AGENT_WORKFLOW_ID),
+    default_workflow_id: String(source.default_workflow_id || SOFTWARE_DEVELOPMENT_WORKFLOW_ID),
     presets,
     custom,
     node_types: nodeTypes,
@@ -122,7 +123,7 @@ export function workflowListItems(settings) {
     enabled: item.enabled !== false,
     custom: Boolean(item.custom),
     default: item.workflow_id === normalized.default_workflow_id || item.default === true,
-    canToggle: item.workflow_id !== DIRECT_AGENT_WORKFLOW_ID,
+    canToggle: item.workflow_id !== SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
     canConfigure: Boolean(item.custom) || item.editable,
   }));
 }
