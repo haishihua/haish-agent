@@ -202,6 +202,10 @@ const PRESET_AGENT_ICON_NAMES = {
   'preset.document-qa': 'book-open',
 };
 
+const PRESET_WORKFLOW_ICON_NAMES = {
+  [SOFTWARE_DEVELOPMENT_WORKFLOW_ID]: 'git-branch',
+};
+
 function AgentListIcon({ item }) {
   if (item?.custom) {
     return (
@@ -211,6 +215,22 @@ function AgentListIcon({ item }) {
     );
   }
   const iconName = PRESET_AGENT_ICON_NAMES[item?.id] || 'sparkles';
+  return (
+    <span className="settings-provider-icon" aria-hidden="true">
+      <SettingsLucideIcon name={iconName} size={22} className="settings-provider-glyph" />
+    </span>
+  );
+}
+
+function WorkflowListIcon({ item }) {
+  if (item?.custom) {
+    return (
+      <span className="settings-provider-icon settings-provider-icon-custom" aria-hidden="true">
+        <SettingsLucideIcon name="box" size={22} className="settings-provider-glyph" />
+      </span>
+    );
+  }
+  const iconName = PRESET_WORKFLOW_ICON_NAMES[item?.id] || 'git-branch';
   return (
     <span className="settings-provider-icon" aria-hidden="true">
       <SettingsLucideIcon name={iconName} size={22} className="settings-provider-glyph" />
@@ -535,6 +555,11 @@ const SETTINGS_LUCIDE_ICONS = {
     ['path', { d: 'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z' }],
     ['path', { d: 'm3.3 7 8.7 5 8.7-5' }],
     ['path', { d: 'M12 22V12' }],
+  ],
+  'git-branch': [
+    ['path', { d: 'M15 6a9 9 0 0 0-9 9V3' }],
+    ['circle', { cx: '18', cy: '6', r: '3' }],
+    ['circle', { cx: '6', cy: '18', r: '3' }],
   ],
 };
 
@@ -1732,6 +1757,18 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
     const effectiveSkills = (preset.effective_skills || [])
       .map((skill) => String(skill?.name || skill || '').trim())
       .filter(Boolean);
+    const effectiveTools = (preset.effective_tools || []).map(String).filter(Boolean);
+    const effectiveMcpTools = (preset.effective_mcp_tools || []).map(String).filter(Boolean);
+    const renderReadOnlyList = (items, emptyLabel) => (
+      <div className="settings-check-grid">
+        {items.map((item) => (
+          <div className="settings-check-row" key={item}>
+            <span className="settings-check-label">{item}</span>
+          </div>
+        ))}
+        {!items.length ? <small>{emptyLabel}</small> : null}
+      </div>
+    );
     return (
       <div className="settings-editor-form settings-agent-form">
         <FieldRow label="Name">
@@ -1740,16 +1777,9 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
         <FieldRow label="Description">
           <textarea value={preset.description || ''} disabled />
         </FieldRow>
-        <FieldRow label="Effective skills">
-          <div className="settings-check-grid">
-            {effectiveSkills.map((skill) => (
-              <div className="settings-check-row" key={skill}>
-                <span className="settings-check-label">{skill}</span>
-              </div>
-            ))}
-            {!effectiveSkills.length ? <small>No effective skills.</small> : null}
-          </div>
-        </FieldRow>
+        <FieldRow label="Tools">{renderReadOnlyList(effectiveTools, 'No tools.')}</FieldRow>
+        <FieldRow label="MCP tools">{renderReadOnlyList(effectiveMcpTools, 'No MCP tools.')}</FieldRow>
+        <FieldRow label="Skills">{renderReadOnlyList(effectiveSkills, 'No skills.')}</FieldRow>
       </div>
     );
   }
@@ -1902,13 +1932,6 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
             </label>
           ))}
           {!skillOptions.length ? <small>No installed skills.</small> : null}
-        </div>
-      </FieldRow>
-      <FieldRow label="Effective capabilities">
-        <div className="settings-effective-capabilities">
-          <small>Tools: {(current.effective_tools || []).join(', ') || 'None'}</small>
-          <small>MCP: {(current.effective_mcp_tools || []).join(', ') || 'None'}</small>
-          <small>Skills: {(current.effective_skills || current.skill_policy?.effective_skills || []).join(', ') || 'None'}</small>
         </div>
       </FieldRow>
     </div>
@@ -3230,6 +3253,7 @@ export function SettingsPage({
                   const connectionMeta = connectionBadgeMeta(connectionStatus);
                   const showBrandIcon = activeSection === 'llm'
                     || activeSection === 'agent'
+                    || activeSection === 'workflow'
                     || isConnectionSection;
                   return (
                     <div
@@ -3247,6 +3271,8 @@ export function SettingsPage({
                           <ProviderIcon provider={item.provider} />
                         ) : activeSection === 'agent' ? (
                           <AgentListIcon item={item} />
+                        ) : activeSection === 'workflow' ? (
+                          <WorkflowListIcon item={item} />
                         ) : isConnectionSection ? (
                           <ConnectionBrandIcon itemId={item.id} title={item.title} />
                         ) : null}
