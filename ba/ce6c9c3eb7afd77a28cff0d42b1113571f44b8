@@ -1,0 +1,19 @@
+app-web/src/features/settings/SettingsPage.jsx
+  s_13cbb4e70b3489::t_416811695eb6fe 1760-1771,1780-1782
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "bace6c9c3eb7afd77a28cff0d42b1113571f44b8",
+  "prompts": {},
+  "sessions": {
+    "s_13cbb4e70b3489": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4f8b-485c-7851-a86d-376664679b56",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
