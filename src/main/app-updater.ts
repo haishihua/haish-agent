@@ -11,6 +11,16 @@ const { autoUpdater } = electronUpdater;
 
 let currentState: AppUpdateState = createIdleState();
 let initialized = false;
+let installInProgress = false;
+
+/**
+ * True while an update install is in progress (manual replace + relaunch).
+ * main.ts checks this in its before-quit handler to skip the slow runtime
+ * shutdown so the app can exit immediately and let the install script run.
+ */
+export function isUpdateInstallInProgress(): boolean {
+  return installInProgress;
+}
 
 /**
  * Electron reports `app.isPackaged === true` when the runtime binary is renamed
@@ -431,6 +441,10 @@ export function installAppUpdate(): AppUpdateState {
   if (!currentState.canInstall) {
     return currentState;
   }
+  if (installInProgress) {
+    return currentState;
+  }
+  installInProgress = true;
   setState({
     status: 'downloaded',
     message: currentState.availableVersion

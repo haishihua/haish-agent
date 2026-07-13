@@ -586,6 +586,7 @@ export function UserSessionFooter({ authUser, onLogout, onToast }) {
   const updateDisabled = updateBusy
     || updateState?.status === 'checking'
     || updateState?.status === 'downloading'
+    || updateState?.status === 'downloaded'
     || updateState?.status === 'unsupported'
     || updateState?.status === 'not-available'
     || !(desktop?.applyLatestAppUpdate || desktop?.checkForAppUpdates);

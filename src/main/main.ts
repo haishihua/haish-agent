@@ -10,6 +10,7 @@ import {
   downloadAppUpdate,
   getAppUpdateState,
   installAppUpdate,
+  isUpdateInstallInProgress,
   setupAppUpdater,
 } from './app-updater.js';
 import { ensureLocalRuntime, getLocalRuntimeState, startLocalRuntime, stopLocalRuntime } from './local-runtime.js';
@@ -313,6 +314,12 @@ app.on('window-all-closed', () => {
 
 let runtimeStopInFlight = false;
 app.on('before-quit', (event) => {
+  // During an update install the app must exit immediately so the detached
+  // install script can replace the .app bundle.  Skipping the (slow) runtime
+  // shutdown here lets the process exit right away.
+  if (isUpdateInstallInProgress()) {
+    return;
+  }
   if (runtimeStopInFlight) {
     return;
   }
