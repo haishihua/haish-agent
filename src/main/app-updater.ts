@@ -1,6 +1,9 @@
 import { app, BrowserWindow } from 'electron';
+import { spawn, spawnSync } from 'node:child_process';
 import electronUpdater from 'electron-updater';
 import type { ProgressInfo, UpdateInfo } from 'electron-updater';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type { AppUpdateState, AppUpdateStatus } from '../shared/haish-api.js';
 
@@ -283,6 +286,147 @@ export async function applyLatestAppUpdate(): Promise<AppUpdateState> {
   return downloaded;
 }
 
+// ---------------------------------------------------------------------------
+// Manual install path for adhoc-signed / unsigned builds.
+//
+// electron-updater on macOS delegates to Squirrel.Mac, which verifies the
+// code signature of the downloaded update zip against the running app.  When
+// the app is only adhoc-signed (our default release path) Squirrel rejects the
+// update with "Code signature … is invalid" and cancels the task — exactly
+// the "Update failed / Task was cancelled" the user sees.
+//
+// Instead of relying on quitAndInstall → Squirrel.Mac, we extract the already
+// downloaded zip ourselves, swap the .app bundle, and relaunch.  This bypasses
+// the signature check entirely.  Once the app is properly code-signed and
+// notarised, switch back to autoUpdater.quitAndInstall().
+// ---------------------------------------------------------------------------
+
+function getAppBundlePath(): string {
+  // app.getPath('exe') on macOS → /Applications/Haish.app/Contents/MacOS/Haish
+  const execPath = app.getPath('exe');
+  return path.dirname(path.dirname(path.dirname(execPath)));
+}
+
+function getUpdaterPendingDir(): string {
+  // electron-updater stores downloads in baseCachePath/updaterCacheDirName/pending.
+  // baseCachePath on macOS = ~/Library/Caches; updaterCacheDirName comes from
+  // app-update.yml ("haish-agent-updater").
+  return path.join(os.homedir(), 'Library', 'Caches', 'haish-agent-updater', 'pending');
+}
+
+function findDownloadedUpdateZip(): string | null {
+  const pendingDir = getUpdaterPendingDir();
+  // Prefer update-info.json which records the exact cached filename.
+  try {
+    const infoPath = path.join(pendingDir, 'update-info.json');
+    if (fs.existsSync(infoPath)) {
+      const info = JSON.parse(fs.readFileSync(infoPath, 'utf-8')) as { fileName?: string };
+      if (info && typeof info.fileName === 'string') {
+        const candidate = path.join(pendingDir, info.fileName);
+        if (fs.existsSync(candidate)) return candidate;
+      }
+    }
+  } catch {
+    /* fall through to scan */
+  }
+  // Fallback: scan pending dir for a Haish-*.zip.
+  try {
+    const entries = fs.readdirSync(pendingDir);
+    const zip = entries.find((f) => /^Haish-.*\.zip$/i.test(f));
+    if (zip) return path.join(pendingDir, zip);
+  } catch {
+    /* pending dir missing */
+  }
+  return null;
+}
+
+function isProperlyCodeSigned(): boolean {
+  // codesign --verify returns exit 0 only for a valid (non-adhoc) signature.
+  try {
+    const result = spawnSync('codesign', ['--verify', '--deep', '--strict', getAppBundlePath()], {
+      encoding: 'utf-8',
+      timeout: 8000,
+    });
+    return result.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Spawn a detached shell script that waits for the app to quit, unzips the
+ * downloaded update, replaces the .app bundle, and relaunches.  The script
+ * self-deletes when done.
+ */
+function manualInstallAndRelaunch(): void {
+  const zipPath = findDownloadedUpdateZip();
+  if (!zipPath) {
+    setState({
+      status: 'error',
+      message: 'Update file not found',
+      canInstall: false,
+    });
+    return;
+  }
+
+  const appPath = getAppBundlePath();
+  const parentDir = path.dirname(appPath);
+  const appName = path.basename(appPath);
+  const tmpDir = path.join(os.tmpdir(), `haish-update-${Date.now()}`);
+
+  // Use ditto (preserves macOS permissions / extended attributes) instead of unzip.
+  // Backup-then-replace so a failed move doesn't leave the user with no app.
+  const script = [
+    '#!/bin/bash',
+    'set -e',
+    `ZIP=${JSON.stringify(zipPath)}`,
+    `APP_PARENT=${JSON.stringify(parentDir)}`,
+    `APP_NAME=${JSON.stringify(appName)}`,
+    `TMP=${JSON.stringify(tmpDir)}`,
+    'LOG=/tmp/haish-update-error.log',
+    'exec >"$LOG" 2>&1',
+    '',
+    '# Wait for the current app process to fully exit',
+    'sleep 2',
+    '',
+    '# Extract the update (ditto preserves permissions & xattrs)',
+    'rm -rf "$TMP"',
+    'mkdir -p "$TMP"',
+    'ditto -x -k "$ZIP" "$TMP"',
+    '',
+    '# Verify extraction produced the expected .app bundle',
+    'if [ ! -d "$TMP/$APP_NAME" ]; then',
+    '  echo "Extracted bundle not found at $TMP/$APP_NAME"',
+    '  exit 1',
+    'fi',
+    '',
+    '# Backup old app, move new app, remove backup',
+    'rm -rf "$APP_PARENT/$APP_NAME.bak"',
+    'mv "$APP_PARENT/$APP_NAME" "$APP_PARENT/$APP_NAME.bak"',
+    'mv "$TMP/$APP_NAME" "$APP_PARENT/$APP_NAME" || mv "$APP_PARENT/$APP_NAME.bak" "$APP_PARENT/$APP_NAME"',
+    'rm -rf "$APP_PARENT/$APP_NAME.bak"',
+    '',
+    '# Relaunch the updated app',
+    'open "$APP_PARENT/$APP_NAME"',
+    '',
+    '# Cleanup',
+    'rm -rf "$TMP"',
+    'rm -f "$0"',
+  ].join('\n');
+
+  const scriptPath = path.join(os.tmpdir(), `haish-install-${Date.now()}.sh`);
+  fs.writeFileSync(scriptPath, script, { mode: 0o755 });
+
+  // Detached spawn so the script survives after the app quits.
+  const child = spawn('bash', [scriptPath], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+
+  app.quit();
+}
+
 export function installAppUpdate(): AppUpdateState {
   if (!currentState.canInstall) {
     return currentState;
@@ -295,10 +439,16 @@ export function installAppUpdate(): AppUpdateState {
     canInstall: true,
     progressPercent: 100,
   });
-  // quitAndInstall will terminate the process; return state for IPC completeness.
+
   setImmediate(() => {
-    // isSilent=false keeps macOS installer UX; isForceRunAfter=true relaunches app.
-    autoUpdater.quitAndInstall(false, true);
+    if (isProperlyCodeSigned()) {
+      // Native Squirrel.Mac path — works when the app is properly signed.
+      autoUpdater.quitAndInstall(false, true);
+    } else {
+      // Adhoc / unsigned builds: Squirrel.Mac rejects the update with a
+      // code-signature error, so install manually.
+      manualInstallAndRelaunch();
+    }
   });
   return currentState;
 }

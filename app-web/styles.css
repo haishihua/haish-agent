@@ -1373,6 +1373,26 @@ svg {
     margin-top: 1px;
     display: block;
     opacity: 0.92;
+    transform-origin: center;
+}
+
+.update-icon.is-loading {
+    animation: update-icon-spin 900ms linear infinite;
+}
+
+@keyframes update-icon-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .update-icon.is-loading {
+        animation: none;
+    }
 }
 
 .user-session-signout {

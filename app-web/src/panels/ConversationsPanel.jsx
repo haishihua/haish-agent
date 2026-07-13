@@ -588,6 +588,10 @@ export function UserSessionFooter({ authUser, onLogout, onToast }) {
     || updateState?.status === 'downloading'
     || updateState?.status === 'unsupported'
     || !(desktop?.applyLatestAppUpdate || desktop?.checkForAppUpdates);
+  const updateIconLoading = updateBusy
+    || updateState?.status === 'checking'
+    || updateState?.status === 'downloading'
+    || updateState?.status === 'downloaded';
 
   return (
     <div className={`user-session-footer${open ? ' open' : ''}`} ref={wrapRef}>
@@ -620,14 +624,14 @@ export function UserSessionFooter({ authUser, onLogout, onToast }) {
             <div className="user-session-menu-tooltip-target">
               <button
                 type="button"
-                className={`user-session-menu-item${updateState?.status === 'error' ? ' is-error' : ''}${updateState?.status === 'downloaded' ? ' is-ready' : ''}${updateState?.status === 'unsupported' ? ' is-muted' : ''}`}
+                className={`user-session-menu-item${updateState?.status === 'error' ? ' is-error' : ''}${updateState?.status === 'downloaded' ? ' is-ready' : ''}${updateState?.status === 'unsupported' ? ' is-muted' : ''}${updateIconLoading ? ' is-loading' : ''}`}
                 role="menuitem"
                 disabled={updateDisabled}
                 aria-label={updateTooltipText(updateState)}
                 onClick={() => { handleUpdateAction(); }}
               >
                 <svg
-                  className="update-icon"
+                  className={`update-icon${updateIconLoading ? ' is-loading' : ''}`}
                   width="14"
                   height="14"
                   viewBox="0 0 24 24"
