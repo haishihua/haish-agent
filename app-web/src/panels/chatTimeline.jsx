@@ -1647,6 +1647,8 @@ export function ChatPanel({
   const composerImagesRef = React.useRef([]);
   React.useEffect(() => { composerImagesRef.current = composerImages; }, [composerImages]);
   const effectiveAgentId = agentLocked && lockedAgentId ? lockedAgentId : agentId;
+  const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
+  const canUploadDocuments = currentSelection?.canUploadDocuments === true;
   const currentProvider = resolvedProviderOptions.find((item) => item.id === providerId) || resolvedProviderOptions[0];
   const activeModelOptions = modelsForRunProvider(currentProvider, resolvedOptions);
   const providerRequest = currentProvider?.requestProvider || currentProvider?.provider || providerId || '';
@@ -1870,7 +1872,7 @@ export function ChatPanel({
   }
 
   function pickFile() {
-    if (disabled || submitPending) return;
+    if (!canUploadDocuments || disabled || submitPending) return;
     fileRef.current?.click();
   }
 
@@ -1879,6 +1881,10 @@ export function ChatPanel({
     onClearFile?.();
     if (fileRef.current) fileRef.current.value = '';
   }
+
+  React.useEffect(() => {
+    if (!canUploadDocuments && attachment) onClearFile?.();
+  }, [canUploadDocuments, attachment, onClearFile]);
 
   return (
     <section className="chat-workspace" aria-label="Chat">
@@ -1976,27 +1982,31 @@ export function ChatPanel({
         />
         <div className="chat-composer-actions">
           <div className="chat-composer-tools">
-            <PortalTooltip text="Attach File" position="above">
-              <button
-                type="button"
-                className="chat-tool-btn chat-tool-attach icon-only"
-                onClick={pickFile}
-                disabled={disabled || submitPending}
-                aria-label="Attach File"
-              >
-                <span className="ico ico-attach" aria-hidden="true" />
-              </button>
-            </PortalTooltip>
-            <input
-              ref={fileRef}
-              type="file"
-              className="td-file-input"
-              onChange={e => {
-                const nextFile = e.target.files?.[0] || null;
-                if (!nextFile) return;
-                onSelectFile?.(nextFile);
-            }}
-          />
+            {canUploadDocuments ? (
+              <>
+                <PortalTooltip text="Attach File" position="above">
+                  <button
+                    type="button"
+                    className="chat-tool-btn chat-tool-attach icon-only"
+                    onClick={pickFile}
+                    disabled={disabled || submitPending}
+                    aria-label="Attach File"
+                  >
+                    <span className="ico ico-attach" aria-hidden="true" />
+                  </button>
+                </PortalTooltip>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  className="td-file-input"
+                  onChange={e => {
+                    const nextFile = e.target.files?.[0] || null;
+                    if (!nextFile) return;
+                    onSelectFile?.(nextFile);
+                  }}
+                />
+              </>
+            ) : null}
             <ApprovalModePicker />
           </div>
           <div className="chat-composer-submit">
