@@ -114,8 +114,12 @@ export function setupAppUpdater(): void {
   }
 
   // Manual control from the user menu: check → download → install.
+  // autoInstallOnAppQuit must stay false because the manual-install path
+  // calls app.quit() directly.  If true, electron-updater also hooks
+  // before-quit and tries to delegate to Squirrel.Mac, whose code-signature
+  // check fails for adhoc-signed builds, resetting the state to 'error'.
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowDowngrade = false;
 
   // Private GitHub Releases need a token on the client if the repo is private.
@@ -177,6 +181,11 @@ export function setupAppUpdater(): void {
   });
 
   autoUpdater.on('error', (error: Error) => {
+    // During an install (manual or Squirrel), the app is about to quit.
+    // electron-updater may still fire error events (e.g. signature mismatch
+    // on adhoc builds), but we must not reset the state back to 'error'
+    // or the user will see a false failure and re-trigger the download loop.
+    if (installInProgress) return;
     setState({
       status: 'error',
       message: describeError(error),
