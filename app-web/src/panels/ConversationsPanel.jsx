@@ -587,6 +587,7 @@ export function UserSessionFooter({ authUser, onLogout, onToast }) {
     || updateState?.status === 'checking'
     || updateState?.status === 'downloading'
     || updateState?.status === 'unsupported'
+    || updateState?.status === 'not-available'
     || !(desktop?.applyLatestAppUpdate || desktop?.checkForAppUpdates);
   const updateIconLoading = updateBusy
     || updateState?.status === 'checking'
@@ -624,7 +625,7 @@ export function UserSessionFooter({ authUser, onLogout, onToast }) {
             <div className="user-session-menu-tooltip-target">
               <button
                 type="button"
-                className={`user-session-menu-item${updateState?.status === 'error' ? ' is-error' : ''}${updateState?.status === 'downloaded' ? ' is-ready' : ''}${updateState?.status === 'unsupported' ? ' is-muted' : ''}${updateIconLoading ? ' is-loading' : ''}`}
+                className={`user-session-menu-item${updateState?.status === 'error' ? ' is-error' : ''}${updateState?.status === 'downloaded' ? ' is-ready' : ''}${updateState?.status === 'unsupported' || updateState?.status === 'not-available' ? ' is-muted' : ''}${updateIconLoading ? ' is-loading' : ''}`}
                 role="menuitem"
                 disabled={updateDisabled}
                 aria-label={updateTooltipText(updateState)}

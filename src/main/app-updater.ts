@@ -68,7 +68,7 @@ function describeError(error: unknown): string {
     : String(error || 'Unknown update error');
 
   if (/app-update\.yml/i.test(raw) || /ENOENT/i.test(raw)) {
-    return 'Only in installed builds';
+    return 'Update config missing';
   }
   if (/401|403|Bad credentials|Not Found/i.test(raw)) {
     return 'Update feed unavailable';
