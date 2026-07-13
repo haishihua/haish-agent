@@ -5056,6 +5056,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               now={now}
               authUser={authUser}
               onLogout={onLogout}
+              onToast={showToast}
               extensionStyle={leftPanelExtensionStyle}
               onAddProject={() => { handleAddProject().catch((error) => { console.error('project add failed', error); showToast('error', String(error?.message || error)); }); }}
               onSelectProject={(projectId) => { handleSelectProject(projectId).catch((error) => { console.error('project select failed', error); showToast('error', String(error?.message || error)); }); }}
@@ -5139,9 +5140,13 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 
       {toast && (
         <div className={`app-toast app-toast-${toast.kind}`} role="status" aria-live="polite">
-          {toast.kind === 'success'
-            ? <span className="app-toast-icon app-toast-icon-success" aria-hidden="true" />
-            : <span className="app-toast-icon app-toast-icon-error" aria-hidden="true" />}
+          {toast.kind === 'success' ? (
+            <span className="app-toast-icon app-toast-icon-success" aria-hidden="true" />
+          ) : toast.kind === 'error' ? (
+            <span className="app-toast-icon app-toast-icon-error" aria-hidden="true" />
+          ) : (
+            <span className="app-toast-icon app-toast-icon-info" aria-hidden="true" />
+          )}
           <span className="app-toast-message">{toast.message}</span>
         </div>
       )}

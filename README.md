@@ -116,6 +116,38 @@ npm run dist:mac
 This runs `build:web` + Electron compile + runtime packaging. The generated `.dmg`, `.zip`, and `.app`
 files are written to `release/`. Unsigned builds may require Finder → right click → Open the first time.
 
+## In-app updates (GitHub Releases)
+
+Packaged builds can check for updates from the left sidebar user menu → **Check for updates**.
+
+### Release flow
+
+1. Bump `version` in `package.json` (semver). Current baseline is `0.0.1`.
+2. Ensure `gh` is logged in (`gh auth status`).
+3. Publish:
+
+```bash
+# Preferred when Apple signing + notarization credentials are available:
+npm run release:mac
+
+# Internal smoke without the signing gate:
+npm run release:mac:unsigned
+```
+
+The script builds dmg/zip, then creates/updates GitHub Release `v<version>` with
+`latest-mac.yml` and the artifacts under `release/`.
+
+### Important notes
+
+- In-app update works in **packaged** apps only (`npm run dev` will show “packaged app only”).
+- macOS auto-update uses the **zip** artifact; dmg remains the first-install path.
+- This repository is currently **private**. `electron-updater` can only download private
+  release assets if the running app has a GitHub token (`GH_TOKEN` / `GITHUB_TOKEN`) or if
+  you later make the repo/releases publicly readable. For external users, prefer a public
+  release channel or a public download host.
+- Signing/notarization is still recommended for smooth install; unsigned builds may need
+  right-click → Open the first time.
+
 ## Next Milestones
 
 - Further split `app.jsx` / `panels.jsx` / `styles.css` by feature

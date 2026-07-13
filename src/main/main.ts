@@ -4,6 +4,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { DirectoryPickResult, FileEntry, LocalProject, ReadFileResult, SkillDirectoryPickResult } from '../shared/haish-api.js';
+import {
+  checkForAppUpdates,
+  downloadAppUpdate,
+  getAppUpdateState,
+  installAppUpdate,
+  setupAppUpdater,
+} from './app-updater.js';
 import { ensureLocalRuntime, getLocalRuntimeState, startLocalRuntime, stopLocalRuntime } from './local-runtime.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -241,6 +248,10 @@ ipcMain.handle('window:state', (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   return window ? getWindowVisualState(window) : { fullScreen: false, maximized: false };
 });
+ipcMain.handle('app-update:state', () => getAppUpdateState());
+ipcMain.handle('app-update:check', () => checkForAppUpdates());
+ipcMain.handle('app-update:download', () => downloadAppUpdate());
+ipcMain.handle('app-update:install', () => installAppUpdate());
 
 ipcMain.handle('fs:list-directory', async (_event, projectId: string, relativePath = ''): Promise<FileEntry[]> => {
   const target = await resolveInsideProject(projectId, relativePath);
@@ -279,6 +290,7 @@ ipcMain.handle('fs:read-file', async (_event, projectId: string, relativePath: s
 app.whenReady().then(() => {
   app.setName('Haish');
   applyDockIcon();
+  setupAppUpdater();
   startLocalRuntime(runtimePaths()).catch((error) => {
     console.error('Failed to start local Haish runtime:', error);
   });

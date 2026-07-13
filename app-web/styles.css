@@ -1319,6 +1319,62 @@ svg {
     z-index: 60;
 }
 
+.user-session-menu-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 0;
+    background: transparent;
+    color: rgba(220, 230, 248, 0.92);
+    font: 600 13px/1.25 ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    cursor: pointer;
+    text-align: left;
+}
+
+.user-session-menu-item:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.user-session-menu-item:disabled {
+    opacity: 0.62;
+    cursor: default;
+}
+
+.user-session-menu-item.is-ready {
+    color: rgba(122, 214, 170, 0.96);
+}
+
+.user-session-menu-item.is-error {
+    color: rgba(255, 160, 140, 0.96);
+}
+
+.user-session-menu-item.is-muted {
+    color: rgba(195, 205, 225, 0.72);
+}
+
+.user-session-menu-label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.user-session-menu-tooltip-target {
+    width: 100%;
+}
+
+.update-icon {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    margin-top: 1px;
+    display: block;
+    opacity: 0.92;
+}
+
 .user-session-signout {
     display: flex;
     align-items: center;
@@ -12028,6 +12084,10 @@ select,
     border-color: rgba(236, 94, 111, 0.34);
 }
 
+.app-toast-info {
+    border-color: rgba(120, 168, 255, 0.34);
+}
+
 .app-toast-icon {
     display: inline-flex;
     align-items: center;
@@ -12048,6 +12108,19 @@ select,
     background: url("assets/ui/icons/exclamation.png") center / contain no-repeat;
     color: transparent;
     font-size: 0;
+}
+
+.app-toast-icon-info {
+    background: rgba(120, 168, 255, 0.18);
+    color: rgba(180, 210, 255, 0.96);
+    font-size: 12px;
+    line-height: 1;
+}
+
+.app-toast-icon-info::before {
+    content: "i";
+    font-style: italic;
+    font-weight: 700;
 }
 
 .app-toast-message {

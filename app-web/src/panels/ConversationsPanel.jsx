@@ -399,11 +399,107 @@ export function ProjectNode({
   );
 }
 
-export function UserSessionFooter({ authUser, onLogout }) {
+function getDesktopUpdateApi() {
+  return typeof window !== 'undefined' ? window.haish : null;
+}
+
+function updateMenuLabel(state) {
+  if (!state) return 'Check for updates';
+  switch (state.status) {
+    case 'checking':
+      return 'Checking…';
+    case 'available':
+      return state.availableVersion
+        ? `Download v${state.availableVersion}`
+        : 'Download update';
+    case 'downloading': {
+      const pct = Number.isFinite(state.progressPercent)
+        ? Math.floor(state.progressPercent)
+        : 0;
+      return `Downloading… ${pct}%`;
+    }
+    case 'downloaded':
+      return state.availableVersion
+        ? `Restart to install v${state.availableVersion}`
+        : 'Restart to install';
+    case 'not-available':
+      return state.currentVersion ? `Up to date · v${state.currentVersion}` : 'Up to date';
+    case 'unsupported':
+      return 'Updates unavailable';
+    case 'error':
+      return 'Update failed';
+    default:
+      return 'Check for updates';
+  }
+}
+
+function updateTooltipText(state) {
+  if (!state) return 'Check for updates';
+  switch (state.status) {
+    case 'unsupported':
+      return 'Only in installed builds';
+    case 'not-available':
+      return state.currentVersion ? `You're on v${state.currentVersion}` : "You're up to date";
+    case 'available':
+      return state.availableVersion
+        ? `Update v${state.availableVersion} ready to download`
+        : 'Update available';
+    case 'downloaded':
+      return state.availableVersion
+        ? `v${state.availableVersion} ready · restart to install`
+        : 'Restart to install update';
+    case 'error':
+      return state.message || 'Update failed';
+    case 'checking':
+      return 'Checking for updates';
+    case 'downloading':
+      return 'Downloading update';
+    default:
+      return state.message || 'Check for updates';
+  }
+}
+
+function notifyUpdateState(onToast, state) {
+  if (!onToast || !state) return;
+  switch (state.status) {
+    case 'not-available':
+      onToast('success', state.currentVersion ? `Up to date · v${state.currentVersion}` : 'Up to date');
+      break;
+    case 'available':
+      onToast(
+        'info',
+        state.availableVersion
+          ? `Update v${state.availableVersion} available`
+          : 'Update available',
+      );
+      break;
+    case 'downloaded':
+      onToast(
+        'info',
+        state.availableVersion
+          ? `v${state.availableVersion} ready · restart to install`
+          : 'Restart to install update',
+      );
+      break;
+    case 'unsupported':
+      onToast('info', 'Only in installed builds');
+      break;
+    case 'error':
+      onToast('error', state.message || 'Update failed');
+      break;
+    default:
+      break;
+  }
+}
+
+export function UserSessionFooter({ authUser, onLogout, onToast }) {
   const [open, setOpen] = React.useState(false);
+  const [updateState, setUpdateState] = React.useState(null);
+  const [updateBusy, setUpdateBusy] = React.useState(false);
   const wrapRef = React.useRef(null);
   const displayName = authUser?.display_name || authUser?.username || 'User';
   const email = authUser?.email || '';
+  const desktop = getDesktopUpdateApi();
 
   React.useEffect(() => {
     if (!open) return;
@@ -413,6 +509,72 @@ export function UserSessionFooter({ authUser, onLogout }) {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
+
+  React.useEffect(() => {
+    if (!desktop?.getAppUpdateState) return undefined;
+    let cancelled = false;
+    desktop.getAppUpdateState().then((state) => {
+      if (!cancelled) setUpdateState(state);
+    }).catch(() => undefined);
+    const unsubscribe = desktop.onAppUpdateStateChange
+      ? desktop.onAppUpdateStateChange((state) => {
+        if (!cancelled) setUpdateState(state);
+      })
+      : null;
+    return () => {
+      cancelled = true;
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [desktop]);
+
+  const handleUpdateAction = async () => {
+    if (!desktop || updateBusy) return;
+    setUpdateBusy(true);
+    try {
+      const status = updateState?.status;
+      if (status === 'downloaded' && desktop.installAppUpdate) {
+        await desktop.installAppUpdate();
+        return;
+      }
+      if (status === 'available' && desktop.downloadAppUpdate) {
+        const next = await desktop.downloadAppUpdate();
+        setUpdateState(next);
+        notifyUpdateState(onToast, next);
+        return;
+      }
+      if (desktop.checkForAppUpdates) {
+        const checked = await desktop.checkForAppUpdates();
+        setUpdateState(checked);
+        if (checked?.status === 'available' && desktop.downloadAppUpdate) {
+          // Keep menu label as downloading; toast when download settles.
+          const next = await desktop.downloadAppUpdate();
+          setUpdateState(next);
+          notifyUpdateState(onToast, next);
+          return;
+        }
+        notifyUpdateState(onToast, checked);
+      }
+    } catch (error) {
+      const message = error?.message || String(error);
+      const next = {
+        status: 'error',
+        currentVersion: updateState?.currentVersion || '',
+        canInstall: false,
+        isPackaged: updateState?.isPackaged ?? false,
+        message,
+      };
+      setUpdateState(next);
+      notifyUpdateState(onToast, next);
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
+
+  const updateDisabled = updateBusy
+    || updateState?.status === 'checking'
+    || updateState?.status === 'downloading'
+    || updateState?.status === 'unsupported'
+    || !desktop?.checkForAppUpdates;
 
   return (
     <div className={`user-session-footer${open ? ' open' : ''}`} ref={wrapRef}>
@@ -436,6 +598,44 @@ export function UserSessionFooter({ authUser, onLogout }) {
       </button>
       {open ? (
         <div className="user-session-menu" role="menu">
+          {/*
+            Wrap the button so hover still works when it is disabled.
+            Disabled buttons do not receive pointer events, so PortalTooltip
+            must attach to a non-disabled wrapper.
+          */}
+          <PortalTooltip text={updateTooltipText(updateState)} position="above">
+            <div className="user-session-menu-tooltip-target">
+              <button
+                type="button"
+                className={`user-session-menu-item${updateState?.status === 'error' ? ' is-error' : ''}${updateState?.status === 'downloaded' ? ' is-ready' : ''}${updateState?.status === 'unsupported' ? ' is-muted' : ''}`}
+                role="menuitem"
+                disabled={updateDisabled}
+                aria-label={updateTooltipText(updateState)}
+                onClick={() => { handleUpdateAction(); }}
+              >
+                <svg
+                  className="update-icon"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                  <path d="M21 3v5h-5" />
+                  <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                  <path d="M8 16H3v5" />
+                </svg>
+                <span className="user-session-menu-label">
+                  <span>{updateMenuLabel(updateState)}</span>
+                </span>
+              </button>
+            </div>
+          </PortalTooltip>
           <button
             type="button"
             className="user-session-signout"
@@ -470,6 +670,7 @@ export function ConversationsPanel({
   taskPreviewLimit = 5,
   authUser,
   onLogout,
+  onToast,
 }) {
   const [panelRef, panelWidth] = usePanelWidth();
   const [dialog, setDialog] = React.useState(null);
@@ -632,7 +833,7 @@ export function ConversationsPanel({
           />
         ))}
       </div>
-      {authUser ? <UserSessionFooter authUser={authUser} onLogout={onLogout} /> : null}
+      {authUser ? <UserSessionFooter authUser={authUser} onLogout={onLogout} onToast={onToast} /> : null}
       <ConversationDialog dialog={dialog} onCancel={() => setDialog(null)} />
     </div>
   );

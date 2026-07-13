@@ -41,6 +41,26 @@ export type WindowVisualState = {
   maximized: boolean;
 };
 
+export type AppUpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error'
+  | 'unsupported';
+
+export type AppUpdateState = {
+  status: AppUpdateStatus;
+  currentVersion: string;
+  availableVersion?: string;
+  progressPercent?: number;
+  message?: string;
+  canInstall: boolean;
+  isPackaged: boolean;
+};
+
 export type HaishDesktopApi = {
   platform: NodeJS.Platform;
   apiBase: string;
@@ -48,6 +68,11 @@ export type HaishDesktopApi = {
   getRuntimeStatus: () => Promise<LocalRuntimeState>;
   getWindowState: () => Promise<WindowVisualState>;
   onWindowStateChange: (callback: (state: WindowVisualState) => void) => () => void;
+  getAppUpdateState: () => Promise<AppUpdateState>;
+  checkForAppUpdates: () => Promise<AppUpdateState>;
+  downloadAppUpdate: () => Promise<AppUpdateState>;
+  installAppUpdate: () => Promise<AppUpdateState>;
+  onAppUpdateStateChange: (callback: (state: AppUpdateState) => void) => () => void;
   pickProjectDirectory: () => Promise<DirectoryPickResult>;
   pickSkillDirectory: () => Promise<SkillDirectoryPickResult>;
   listProjects: () => Promise<LocalProject[]>;

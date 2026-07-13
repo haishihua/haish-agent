@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
+  AppUpdateState,
   DirectoryPickResult,
   FileEntry,
   HaishDesktopApi,
@@ -20,6 +21,15 @@ const api: HaishDesktopApi = {
     const listener = (_event: Electron.IpcRendererEvent, state: WindowVisualState) => callback(state);
     ipcRenderer.on('window:state', listener);
     return () => ipcRenderer.removeListener('window:state', listener);
+  },
+  getAppUpdateState: () => ipcRenderer.invoke('app-update:state') as Promise<AppUpdateState>,
+  checkForAppUpdates: () => ipcRenderer.invoke('app-update:check') as Promise<AppUpdateState>,
+  downloadAppUpdate: () => ipcRenderer.invoke('app-update:download') as Promise<AppUpdateState>,
+  installAppUpdate: () => ipcRenderer.invoke('app-update:install') as Promise<AppUpdateState>,
+  onAppUpdateStateChange: (callback: (state: AppUpdateState) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: AppUpdateState) => callback(state);
+    ipcRenderer.on('app-update:state', listener);
+    return () => ipcRenderer.removeListener('app-update:state', listener);
   },
   pickProjectDirectory: () => ipcRenderer.invoke('project:pick-directory') as Promise<DirectoryPickResult>,
   pickSkillDirectory: () => ipcRenderer.invoke('skill:pick-directory') as Promise<SkillDirectoryPickResult>,

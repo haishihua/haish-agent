@@ -1,6 +1,6 @@
 {
   "name": "haish-agent",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Haish desktop app with a local agent runtime.",
   "main": "dist-electron/main/main.js",
@@ -19,6 +19,8 @@
     "dist:mac": "npm run build && npm run build:runtime && electron-builder --mac dmg zip",
     "check:mac-release": "node scripts/check-mac-release.mjs",
     "dist:mac:release": "npm run check:mac-release && npm run build && npm run build:runtime && electron-builder --mac dmg zip --config.forceCodeSigning=true",
+    "release:mac": "node scripts/release-mac.mjs",
+    "release:mac:unsigned": "node scripts/release-mac.mjs --unsigned",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "lint": "eslint \"app-web/src/**/*.{js,jsx}\"",
     "format": "prettier --write \"app-web/src/**/*.{js,jsx,css}\" \"src/**/*.{ts,tsx,css}\" \"*.md\"",
@@ -71,13 +73,22 @@
     },
     "dmg": {
       "artifactName": "Haish-${version}-${arch}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "haishihua",
+        "repo": "haish-agent",
+        "releaseType": "release"
+      }
+    ]
   },
   "dependencies": {
     "@lobehub/icons-static-svg": "^1.66.0",
     "@vitejs/plugin-react": "^4.5.2",
     "@xyflow/react": "^12.11.2",
     "concurrently": "^9.1.2",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^1.23.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
