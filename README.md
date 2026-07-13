@@ -102,7 +102,7 @@ If none exist the runtime fails fast with a clear error.
 | `HAISH_LOCAL_RUNTIME_PYTHON` | Python interpreter to use (defaults to the repo's `.venv/bin/python`, then `python3`). |
 | `HAISH_LOCAL_RUNTIME_PORT` | Pin the backend port instead of picking a free one. |
 | `HAISH_LOCAL_RUNTIME_WORKDIR` | Override the backend workdir (defaults to Electron `userData/runtime`). |
-| `HAISH_LOCAL_RUNTIME_ENV_FILE` | Extra env file merged on top of the backend's bundled `.env`. |
+| `HAISH_LOCAL_RUNTIME_ENV_FILE` | Extra env file for the backend (defaults to Electron `userData/runtime.env`). Release builds do **not** ship a real `.env`. |
 
 `Add Project` uses the macOS folder picker in the desktop app. The selected
 folder is stored locally and shown as a project in the full web UI.
@@ -141,10 +141,10 @@ The script builds dmg/zip, then creates/updates GitHub Release `v<version>` with
 
 - In-app update works in **packaged** apps only (`npm run dev` will show “packaged app only”).
 - macOS auto-update uses the **zip** artifact; dmg remains the first-install path.
-- This repository is currently **private**. `electron-updater` can only download private
-  release assets if the running app has a GitHub token (`GH_TOKEN` / `GITHUB_TOKEN`) or if
-  you later make the repo/releases publicly readable. For external users, prefer a public
-  release channel or a public download host.
+- Public repos can be checked by `electron-updater` without a client token. Private repos
+  need `GH_TOKEN` / `GITHUB_TOKEN` on the client, or a public download host for update assets.
+- Never package a real backend `.env` into dmg/zip. Runtime secrets belong in the user's
+  local `runtime.env` (or `HAISH_LOCAL_RUNTIME_ENV_FILE`), not in release artifacts.
 - Signing/notarization is still recommended for smooth install; unsigned builds may need
   right-click → Open the first time.
 

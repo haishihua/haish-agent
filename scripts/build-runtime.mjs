@@ -16,12 +16,19 @@ const pyinstallerWorkPath = path.join(buildRoot, 'pyinstaller-work');
 const pyinstallerSpecPath = path.join(buildRoot, 'pyinstaller-spec');
 const runtimeLauncherPath = path.join(buildRoot, 'haish-runtime-launcher.py');
 
+// Never ship a real developer `.env` in release artifacts.
+// Packaged apps should use placeholders / user-provided runtime.env instead.
 const runtimeFiles = [
-  '.env',
   'pyproject.toml',
   'README.md',
   'mcp.json',
   'src',
+];
+
+const optionalRuntimeTemplates = [
+  '.env.example',
+  '.env.sample',
+  '.env.template',
 ];
 
 function run(cmd, args, options = {}) {
@@ -155,6 +162,13 @@ function main() {
   fs.mkdirSync(runtimeRoot, { recursive: true });
   for (const file of runtimeFiles) {
     copyRuntimeFile(file);
+  }
+  for (const file of optionalRuntimeTemplates) {
+    copyRuntimeFile(file);
+  }
+  // Hard guarantee: never leave a developer .env in the packaged runtime tree.
+  for (const name of ['.env', '.env.local', '.env.production', '.env.development']) {
+    fs.rmSync(path.join(runtimeRoot, name), { force: true });
   }
   // Bundled skills now ship as package data under src/haish_agent_core/skills/
   // and are picked up by PyInstaller's collect_data_files. No extra copy here.

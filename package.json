@@ -52,7 +52,14 @@
           "!**/__pycache__/**",
           "!**/*.pyc",
           "!**/*.pyo",
-          "!**/.agent-world-web.log"
+          "!**/.agent-world-web.log",
+          "!**/.env",
+          "!**/.env.*",
+          "!**/.env.local",
+          "!**/*.pem",
+          "!**/*.key",
+          "!**/*.p12",
+          "!**/*.pfx"
         ]
       }
     ],
