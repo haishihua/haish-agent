@@ -1767,7 +1767,7 @@ export function ChatPanel({
   const totalTokens = Math.max(1, Math.round(Number(contextUsage?.totalTokens) || 128000));
   const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (usedTokens / totalTokens)));
   const visibleContextRatio = usedTokens > 0 ? Math.max(contextRatio, 0.01) : 0;
-  const contextTooltip = formatContextUsageLabel(usedTokens, totalTokens);
+  const contextTooltip = `${formatContextUsageLabel(usedTokens, totalTokens)}${contextUsage?.overLimit ? ' · Over limit' : ''}`;
   const contextRingStyle = {
     '--context-used': `${visibleContextRatio * 100}%`,
   };
@@ -2003,7 +2003,7 @@ export function ChatPanel({
             <PortalTooltip text={contextTooltip} position="above">
               <button
                 type="button"
-                className={`context-usage-btn icon-only ${contextUsage?.compressed ? 'compressed' : ''}`}
+                className={`context-usage-btn icon-only ${contextUsage?.compressed ? 'compressed' : ''} ${contextUsage?.overLimit ? 'over-limit' : ''}`}
                 aria-label={contextTooltip}
                 aria-disabled="true"
               >

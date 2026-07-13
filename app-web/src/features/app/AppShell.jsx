@@ -3485,9 +3485,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         if (event.source === 'provider_usage' && event.context_used_tokens == null && event.usedTokens == null) {
           break;
         }
-        if (event.valid_context_usage === false) {
-          break;
-        }
         const usageConversationId = event.conversation_id || ownerConvId || conversationId;
         const nextContextUsage = normalizeContextUsage({
           conversationId: usageConversationId,
@@ -3551,21 +3548,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         break;
       }
       case 'context_compaction_completed': {
-        if (!event.skipped && Number(event.prompt_tokens_after_compaction) > 0) {
-          const usageConversationId = event.conversation_id || ownerConvId || conversationId;
-          const nextContextUsage = normalizeContextUsage({
-            conversationId: usageConversationId,
-            usedTokens: event.prompt_tokens_after_compaction,
-            totalTokens: event.total_tokens ?? event.context_window_tokens ?? DEFAULT_CONTEXT_TOTAL_TOKENS,
-            compressed: true,
-            compressedCount: event.message_count ?? event.compressed_count ?? 1,
-            updatedAt: event.created_at || event.timestamp || new Date().toISOString(),
-          }, usageConversationId);
-          if (!ownerConvId || ownerConvId === conversationIdRef.current) {
-            setContextUsage(nextContextUsage);
-          }
-          saveStoredContextUsage(nextContextUsage);
-        }
         updateTaskById(taskId, (run) => ({
           ...run,
           status: 'running',
@@ -4057,6 +4039,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       await readNdjsonStream(response, queueWorldEvent, controller.signal);
     } finally {
       flushQueuedEvents();
+      const guardRt = getRuntime(runConversationId);
+      if (guardRt && guardRt.fetchController === controller) {
+        setRuntimeFetchController(null, runConversationId);
+      }
     }
   }
 
@@ -4073,14 +4059,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       || null;
     if (!taskId) {
       const tasksById = currentTaskState.tasksById || {};
-      const candidates = Object.values(tasksById).filter((task) => {
-        const status = String(task?.status || '').toLowerCase();
-        if (status !== 'running' && status !== 'queued') return false;
-        if (task?.completedAt) return false;
-        const answer = task?.answerText;
-        if (typeof answer === 'string' && answer.trim().length > 0) return false;
-        return true;
-      });
+      const candidates = Object.values(tasksById).filter((task) => isTaskActuallyActive(task));
       candidates.sort((a, b) => taskUpdatedTimestamp(b) - taskUpdatedTimestamp(a));
       const fallback = candidates[0];
       if (fallback?.taskId) taskId = fallback.taskId;
@@ -4708,10 +4687,13 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     }
     return false;
   }, [panelWorkspaceState, conversationId]);
+  const currentConversationRunning = busy
+    || currentConversationActive
+    || Boolean(conversationId && getRuntime(conversationId)?.fetchController);
   useEffect(() => {
     if (!queuedDeploy) return;
     if (!canStartDeployForConversation(queuedDeploy.targetConversationId)) return;
-    if (busy || currentConversationActive || uploadState.active || calibrationMode) return;
+    if (currentConversationRunning || uploadState.active || calibrationMode) return;
     const deployConvId = queuedDeploy.targetConversationId || conversationIdRef.current || conversationId;
     if (!deployConvId) return;
     const request = queuedDeploy;
@@ -4722,8 +4704,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     conversationReady,
     conversationSelectionPending,
     conversationError,
-    busy,
-    currentConversationActive,
+    currentConversationRunning,
     uploadState.active,
     calibrationMode,
     conversationId,
@@ -5021,7 +5002,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     ...baseMapExtensionStyle,
     '--panel-map-opacity': rightMapEdgeReached ? '0' : '0.62',
   } : undefined;
-  const composerDisabled = busy || currentConversationActive || uploadState.active || calibrationMode || !!conversationError;
+  const composerDisabled = currentConversationRunning || uploadState.active || calibrationMode || !!conversationError;
 
   return (
     <div className="app-shell">
@@ -5096,7 +5077,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 	                  <ChatPanel
 	                    conversationId={conversationId}
 	                    messages={chatMessages}
-	                    running={busy || currentConversationActive}
+	                    running={currentConversationRunning}
 	                    disabled={composerDisabled}
 	                    submitPending={submitPending}
 	                    onSend={(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest)}
@@ -5132,7 +5113,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 	                    MAP_W={MAP_W}
 	                    MAP_H={MAP_H}
 	                    onViewChange={setMapView}
-	                    overlay={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} attachment={composerAttachment} uploading={uploadState.active} running={busy || currentConversationActive} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={`${runConfigStorageKey}.bot`} />}
+	                    overlay={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} attachment={composerAttachment} uploading={uploadState.active} running={currentConversationRunning} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={`${runConfigStorageKey}.bot`} />}
                   >
                     <div ref={stageRef} className="office-map">
                       {worldCalibrationActive && calibrationTarget === 'routes' && selectedRouteId && <CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}

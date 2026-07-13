@@ -27,20 +27,19 @@ import {
   Handle,
   Position,
   MarkerType,
+  ReactFlowProvider,
+  useReactFlow,
 } from '@xyflow/react';
 import { PortalTooltip } from '../../panels/PortalTooltip.jsx';
 import { API_BASE } from '../../api/base.js';
 import { authFetch, parseResponseMessage } from '../../api/auth.js';
 import {
-  APP_DEFAULT_AGENT_OPTIONS,
   DEFAULT_AGENT_TOOL_GROUPS,
   DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS,
   DEFAULT_AGENT_SETTINGS,
   SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
   DEFAULT_WORKFLOW_NODE_TYPES,
   DEFAULT_WORKFLOW_INPUT_SCHEMA,
-  COMMON_WORKFLOW_OUTPUT_FIELDS,
-  WORKFLOW_NODE_OUTPUT_FIELDS,
   DEFAULT_WORKFLOW_SETTINGS,
   SETTINGS_SECTIONS,
   SETTINGS_SUBTABS,
@@ -131,10 +130,11 @@ import {
   createWorkflowExamplePatch,
   createDefaultCustomWorkflowPayload,
   payloadForCustomWorkflow,
+  placeAddedWorkflowNode,
 } from '../../lib/workflow-catalog.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
-const ReactFlowNS = { ReactFlow, Background, Controls, Handle, Position, MarkerType };
+const ReactFlowNS = { ReactFlow, Background, Controls, Handle, Position, MarkerType, ReactFlowProvider, useReactFlow };
 const SETTINGS_SUBTAB_ICONS = {
   chat: 'message',
   vision: 'eye',
@@ -206,17 +206,32 @@ const PRESET_WORKFLOW_ICON_NAMES = {
   [SOFTWARE_DEVELOPMENT_WORKFLOW_ID]: 'git-branch',
 };
 
+function agentIconNameForItem(item) {
+  if (item?.custom) return 'box';
+  return PRESET_AGENT_ICON_NAMES[item?.id] || 'sparkles';
+}
+
+function agentIconNameForAgentId(agentId, agentOptions = []) {
+  const id = String(agentId || '').trim();
+  if (!id) return 'sparkles';
+  const match = (Array.isArray(agentOptions) ? agentOptions : []).find((item) => item.id === id);
+  if (match) return agentIconNameForItem(match);
+  if (PRESET_AGENT_ICON_NAMES[id]) return PRESET_AGENT_ICON_NAMES[id];
+  if (id.startsWith('custom.')) return 'box';
+  return 'sparkles';
+}
+
 function AgentListIcon({ item }) {
-  if (item?.custom) {
+  const iconName = agentIconNameForItem(item);
+  if (iconName === 'box' && item?.custom) {
     return (
       <span className="settings-provider-icon settings-provider-icon-custom" aria-hidden="true">
         <SettingsLucideIcon name="box" size={22} className="settings-provider-glyph" />
       </span>
     );
   }
-  const iconName = PRESET_AGENT_ICON_NAMES[item?.id] || 'sparkles';
   return (
-    <span className="settings-provider-icon" aria-hidden="true">
+    <span className={`settings-provider-icon${iconName === 'box' ? ' settings-provider-icon-custom' : ''}`} aria-hidden="true">
       <SettingsLucideIcon name={iconName} size={22} className="settings-provider-glyph" />
     </span>
   );
@@ -379,46 +394,149 @@ export function WorkflowTemplateTextarea({
   );
 }
 
+const WORKFLOW_OUTPUT_GROUP_META = {
+  result: {
+    id: 'result',
+    label: 'Result',
+    hint: 'Main values to pass into later nodes.',
+  },
+  status: {
+    id: 'status',
+    label: 'Status',
+    hint: 'Whether the node finished and why.',
+  },
+  debug: {
+    id: 'debug',
+    label: 'Debug',
+    hint: 'Extra details for inspection and troubleshooting.',
+  },
+};
+
+const WORKFLOW_OUTPUT_GROUP_ORDER = ['result', 'status', 'debug'];
+
+function workflowOutputGroupId(field) {
+  const group = String(field?.group || '').trim().toLowerCase();
+  if (WORKFLOW_OUTPUT_GROUP_META[group]) return group;
+  const id = String(field?.id || '').trim().toLowerCase();
+  if (['status', 'success', 'error', 'finish_reason'].includes(id)) return 'status';
+  if (['metadata', 'trace', 'usage', 'raw'].includes(id)) return 'debug';
+  return 'result';
+}
+
+function workflowFieldTypeLabel(type) {
+  const value = String(type || 'any').trim().toLowerCase();
+  if (value === 'boolean') return 'bool';
+  if (value === 'object') return 'object';
+  if (value === 'array') return 'array';
+  if (value === 'string') return 'string';
+  if (value === 'number') return 'number';
+  return value || 'any';
+}
+
+function WorkflowIoFieldLabel({ label, description = '' }) {
+  const text = String(label || '').trim() || 'Field';
+  const tip = String(description || '').trim();
+  const labelNode = (
+    <span className="workflow-io-item-label" tabIndex={tip ? 0 : undefined}>
+      {text}
+    </span>
+  );
+  if (!tip) return labelNode;
+  return (
+    <PortalTooltip text={tip} position="above" multiline>
+      {labelNode}
+    </PortalTooltip>
+  );
+}
+
 export function WorkflowSchemaList({ title, fields }) {
   if (!fields.length) return null;
-  const caption = String(title || '').toLowerCase();
+  const caption = String(title || 'Fields');
   return (
-    <div className="workflow-json-schema">
-      <span className="workflow-json-caption">{caption}</span>
-      <div className="workflow-json-code" aria-label={caption}>
-        <div className="workflow-json-line">
-          <span className="workflow-json-punct">{'{'}</span>
+    <div className="workflow-io-panel">
+      <div className="workflow-io-panel-head">
+        <div className="workflow-io-panel-copy">
+          <strong>{caption}</strong>
         </div>
+        <span className="workflow-io-count">{fields.length}</span>
+      </div>
+      <div className="workflow-io-list" aria-label={caption}>
         {fields.map((field, index) => {
           const key = field.id || field.key || field.label || field.path || `field_${index + 1}`;
           const path = field.path || key;
+          const label = field.label || key;
+          const type = workflowFieldTypeLabel(field.type);
+          const description = field.description || (field.required ? 'Required input.' : 'Optional input.');
           return (
-            <div className="workflow-json-line is-field" key={field.path || field.id || key}>
-              <span className="workflow-json-indent" aria-hidden="true" />
-              <span className="workflow-json-key">"{key}"</span>
-              <span className="workflow-json-punct">:</span>
-              <span className="workflow-json-string">{`"{{${path}}}"`}</span>
-              {index < fields.length - 1 ? <span className="workflow-json-punct">,</span> : null}
+            <div className="workflow-io-item" key={field.path || field.id || key}>
+              <div className="workflow-io-item-top">
+                <div className="workflow-io-item-title">
+                  <WorkflowIoFieldLabel label={label} description={description} />
+                  <span className={`workflow-io-type is-${type}`}>{type}</span>
+                  {field.required ? <span className="workflow-io-required">required</span> : null}
+                </div>
+                <code className="workflow-io-path">{`{{${path}}}`}</code>
+              </div>
             </div>
           );
         })}
-        <div className="workflow-json-line">
-          <span className="workflow-json-punct">{'}'}</span>
-        </div>
       </div>
     </div>
   );
 }
 
 export function WorkflowOutputContract({ node }) {
+  const fields = workflowOutputFields(node).map((field) => ({
+    ...field,
+    path: `nodes.${node.id}.${field.id}`,
+    group: workflowOutputGroupId(field),
+  }));
+  if (!fields.length) return null;
+
+  const groups = WORKFLOW_OUTPUT_GROUP_ORDER
+    .map((groupId) => ({
+      ...WORKFLOW_OUTPUT_GROUP_META[groupId],
+      fields: fields.filter((field) => field.group === groupId),
+    }))
+    .filter((group) => group.fields.length);
+
   return (
-    <WorkflowSchemaList
-      title="Outputs"
-      fields={workflowOutputFields(node).map((field) => ({
-        ...field,
-        path: `nodes.${node.id}.${field.id}`,
-      }))}
-    />
+    <div className="workflow-io-panel workflow-output-contract">
+      <div className="workflow-io-panel-head">
+        <div className="workflow-io-panel-copy">
+          <strong>Available outputs</strong>
+        </div>
+        <span className="workflow-io-count">{fields.length}</span>
+      </div>
+      <div className="workflow-output-groups">
+        {groups.map((group) => (
+          <section className="workflow-output-group" key={group.id} data-group={group.id}>
+            <div className="workflow-output-group-head">
+              <span>{group.label}</span>
+            </div>
+            <div className="workflow-io-list">
+              {group.fields.map((field) => {
+                const type = workflowFieldTypeLabel(field.type);
+                return (
+                  <div className="workflow-io-item" key={field.path || field.id}>
+                    <div className="workflow-io-item-top">
+                      <div className="workflow-io-item-title">
+                        <WorkflowIoFieldLabel
+                          label={field.label || field.id}
+                          description={field.description || ''}
+                        />
+                        <span className={`workflow-io-type is-${type}`}>{type}</span>
+                      </div>
+                      <code className="workflow-io-path">{`{{${field.path}}}`}</code>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -560,6 +678,13 @@ const SETTINGS_LUCIDE_ICONS = {
     ['path', { d: 'M15 6a9 9 0 0 0-9 9V3' }],
     ['circle', { cx: '18', cy: '6', r: '3' }],
     ['circle', { cx: '6', cy: '18', r: '3' }],
+  ],
+  play: [
+    ['path', { d: 'M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z' }],
+  ],
+  'circle-check': [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['path', { d: 'm9 12 2 2 4-4' }],
   ],
 };
 
@@ -1938,19 +2063,53 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
   );
 }
 
+const WORKFLOW_NODE_META = {
+  start: { icon: 'play', badge: 'Start' },
+  agent: { icon: 'sparkles', badge: 'Agent' },
+  llm: { icon: 'message', badge: 'LLM' },
+  tool: { icon: 'wrench', badge: 'Tool' },
+  condition: { icon: 'git-branch', badge: 'Condition' },
+  output: { icon: 'circle-check', badge: 'End' },
+};
+
+function workflowNodeMeta(nodeType) {
+  return WORKFLOW_NODE_META[nodeType] || { icon: 'box', badge: typeLabelForWorkflowNode(nodeType) };
+}
+
 export function WorkflowFlowNode({ data, selected }) {
   const flow = ReactFlowNS;
   const Handle = flow.Handle;
   const Position = flow.Position || { Left: 'left', Right: 'right' };
   const node = data?.workflowNode || {};
   const nodeType = node.type || 'agent';
+  const meta = workflowNodeMeta(nodeType);
+  const iconName = nodeType === 'agent'
+    ? (data?.agentIconName || agentIconNameForAgentId(node.agent_id, data?.agentOptions))
+    : meta.icon;
   return (
     <div className={`workflow-flow-node ${nodeType} ${selected ? 'active' : ''}`}>
       {Handle && nodeType !== 'start' ? <Handle type="target" position={Position.Left} /> : null}
-      <strong>{node.label || typeLabelForWorkflowNode(nodeType)}</strong>
+      <span className="workflow-flow-node-icon" aria-hidden="true">
+        <SettingsLucideIcon name={iconName} size={16} />
+      </span>
+      <span className="workflow-flow-node-copy">
+        <span className="workflow-flow-node-badge">{meta.badge}</span>
+        <strong>{node.label || typeLabelForWorkflowNode(nodeType)}</strong>
+      </span>
       {Handle && nodeType !== 'output' ? <Handle type="source" position={Position.Right} /> : null}
     </div>
   );
+}
+
+function WorkflowCanvasFitView({ workflowKey, nodeCount }) {
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      fitView({ padding: 0.18, minZoom: 0.45, maxZoom: 1.15, duration: 220 });
+    }, 40);
+    return () => window.clearTimeout(timer);
+  }, [fitView, workflowKey, nodeCount]);
+  return null;
 }
 
 const WORKFLOW_REACT_FLOW_NODE_TYPES = { workflowNode: WorkflowFlowNode };
@@ -2019,18 +2178,40 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
       x: Number(node.position?.x || 0),
       y: Number(node.position?.y || 0),
     },
-    data: { workflowNode: node },
+    data: {
+      workflowNode: node,
+      agentOptions,
+      agentIconName: node.type === 'agent'
+        ? agentIconNameForAgentId(node.agent_id, agentOptions)
+        : undefined,
+    },
     selected: node.id === selectedNodeId,
     draggable: isEditable,
   }));
-  const reactEdges = edges.map((edge, index) => ({
+  const reactEdges = edges.map((edge) => ({
     id: `${edge.from}->${edge.to}`,
     source: edge.from,
     target: edge.to,
     type: 'smoothstep',
     selected: `${edge.from}->${edge.to}` === selectedEdgeId,
-    interactionWidth: 24,
-    markerEnd: MarkerType.ArrowClosed ? { type: MarkerType.ArrowClosed } : undefined,
+    interactionWidth: 28,
+    animated: `${edge.from}->${edge.to}` === selectedEdgeId,
+    style: {
+      stroke: `${edge.from}->${edge.to}` === selectedEdgeId
+        ? 'rgba(105, 200, 246, 0.95)'
+        : 'rgba(239, 191, 100, 0.62)',
+      strokeWidth: `${edge.from}->${edge.to}` === selectedEdgeId ? 2.5 : 2,
+    },
+    markerEnd: MarkerType.ArrowClosed
+      ? {
+        type: MarkerType.ArrowClosed,
+        width: 18,
+        height: 18,
+        color: `${edge.from}->${edge.to}` === selectedEdgeId
+          ? 'rgba(105, 200, 246, 0.95)'
+          : 'rgba(239, 191, 100, 0.72)',
+      }
+      : undefined,
   }));
   const onReactFlowNodesChange = (changes) => {
     if (!isEditable || !flow.applyNodeChanges) return;
@@ -2098,10 +2279,10 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
       id,
       type: baseType,
       label: typeLabelForWorkflowNode(baseType),
-      position: { x: 210 + (count * 150), y: 180 + ((count - 1) % 2) * 110 },
       ...(baseType === 'agent' ? {
         agent_id: agentOptions[0]?.id || 'preset.general',
-        prompt: '{{input.message}}',
+        prompt: '',
+        input: '{{input.message}}',
         input_mapping: {
           message: '{{input.message}}',
           attachments: '{{input.attachments}}',
@@ -2118,9 +2299,8 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
         output_schema: DEFAULT_WORKFLOW_OUTPUT_SCHEMA,
       } : {}),
     };
-    updateWorkflow({
-      nodes: [...nodes.filter((node) => node.id !== id), newNode],
-    });
+    const placed = placeAddedWorkflowNode(nodes, newNode);
+    updateWorkflow({ nodes: placed.nodes });
     setSelectedNodeId(id);
     setSelectedEdgeId('');
   };
@@ -2169,7 +2349,6 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
       );
     }
     if (selectedNode.type === 'agent') {
-      const promptValue = selectedNode.prompt ?? selectedNode.input ?? '{{input.message}}';
       return (
         <>
           <FieldRow label="agent">
@@ -2181,13 +2360,22 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
               disabled={!isEditable}
             />
           </FieldRow>
-          <FieldRow label="prompt" hint="Use variables from start or upstream nodes.">
+          <FieldRow label="prompt" hint="Static instructions only. Dynamic variables belong in Input so the agent prefix stays cacheable.">
+            <textarea
+              value={selectedNode.prompt || ''}
+              disabled={!isEditable}
+              rows={5}
+              placeholder="Stable instructions for this agent node"
+              onChange={(event) => updateNode(selectedNode.id, { prompt: event.target.value })}
+            />
+          </FieldRow>
+          <FieldRow label="input" hint="Dynamic user message sent after the cached agent prefix.">
             <WorkflowTemplateTextarea
-              value={promptValue}
+              value={selectedNode.input ?? selectedNode.input_mapping?.message ?? '{{input.message}}'}
               variables={availableVariables}
               disabled={!isEditable}
               rows={5}
-              onChange={(prompt) => updateNode(selectedNode.id, { prompt, input: prompt })}
+              onChange={(input) => updateNode(selectedNode.id, { input })}
             />
           </FieldRow>
           <WorkflowOutputContract node={selectedNode} />
@@ -2382,12 +2570,12 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
   return (
     <div className="settings-editor-form settings-workflow-form">
       <div className="workflow-builder">
-        <div className="workflow-toolbar">
-          <div>
-            <strong>Canvas</strong>
-            <span>{workflow.custom ? 'Custom workflow' : 'System preset'}</span>
-          </div>
-          {isEditable ? (
+        {isEditable ? (
+          <div className="workflow-toolbar">
+            <div>
+              <strong>Canvas</strong>
+              <span>Custom workflow</span>
+            </div>
             <div className="workflow-toolbar-actions">
               <button type="button" className="settings-row-button" onClick={loadExampleWorkflow}>
                 Load example
@@ -2399,46 +2587,54 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
                 </button>
               ))}
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
         <div className="workflow-canvas">
-                  {ReactFlowCanvas ? (
-            <ReactFlowCanvas
-              nodes={reactNodes}
-              edges={reactEdges}
-              nodeTypes={WORKFLOW_REACT_FLOW_NODE_TYPES}
-              onNodeClick={(_, node) => {
-                setSelectedNodeId(node.id);
-                setSelectedEdgeId('');
-              }}
-              onEdgeClick={(_, edge) => {
-                setSelectedEdgeId(edge.id);
-                setSelectedNodeId('');
-              }}
-              onPaneClick={() => {
-                setSelectedNodeId('');
-                setSelectedEdgeId('');
-              }}
-              onNodesChange={onReactFlowNodesChange}
-              onEdgesChange={onReactFlowEdgesChange}
-              onConnect={onReactFlowConnect}
-              onNodeDragStop={onReactFlowNodeDragStop}
-              nodesDraggable={isEditable}
-              nodesConnectable={isEditable}
-              edgesFocusable={isEditable}
-              elementsSelectable
-              deleteKeyCode={isEditable ? ['Backspace', 'Delete'] : null}
-              connectionRadius={46}
-              fitView
-              fitViewOptions={{ padding: 0.22 }}
-              snapToGrid
-              snapGrid={[20, 20]}
-              defaultEdgeOptions={{ type: 'smoothstep' }}
-              proOptions={{ hideAttribution: true }}
-            >
-              {Background ? <Background gap={24} color="rgba(176, 206, 255, 0.08)" /> : null}
-              {Controls ? <Controls showInteractive={false} /> : null}
-            </ReactFlowCanvas>
+          {ReactFlowCanvas ? (
+            <ReactFlowProvider>
+              <ReactFlowCanvas
+                nodes={reactNodes}
+                edges={reactEdges}
+                nodeTypes={WORKFLOW_REACT_FLOW_NODE_TYPES}
+                onNodeClick={(_, node) => {
+                  setSelectedNodeId(node.id);
+                  setSelectedEdgeId('');
+                }}
+                onEdgeClick={(_, edge) => {
+                  setSelectedEdgeId(edge.id);
+                  setSelectedNodeId('');
+                }}
+                onPaneClick={() => {
+                  setSelectedNodeId('');
+                  setSelectedEdgeId('');
+                }}
+                onNodesChange={onReactFlowNodesChange}
+                onEdgesChange={onReactFlowEdgesChange}
+                onConnect={onReactFlowConnect}
+                onNodeDragStop={onReactFlowNodeDragStop}
+                nodesDraggable={isEditable}
+                nodesConnectable={isEditable}
+                edgesFocusable={isEditable}
+                elementsSelectable
+                deleteKeyCode={isEditable ? ['Backspace', 'Delete'] : null}
+                connectionRadius={46}
+                fitView
+                fitViewOptions={{ padding: 0.2, minZoom: 0.35, maxZoom: 1.15 }}
+                minZoom={0.3}
+                maxZoom={1.4}
+                snapToGrid
+                snapGrid={[20, 20]}
+                defaultEdgeOptions={{
+                  type: 'smoothstep',
+                  style: { strokeWidth: 2 },
+                }}
+                proOptions={{ hideAttribution: true }}
+              >
+                {Background ? <Background gap={22} size={1.2} color="rgba(176, 206, 255, 0.07)" /> : null}
+                {Controls ? <Controls showInteractive={false} position="bottom-left" /> : null}
+                <WorkflowCanvasFitView workflowKey={workflow.workflow_id} nodeCount={nodes.length} />
+              </ReactFlowCanvas>
+            </ReactFlowProvider>
           ) : (
             <div className="settings-empty">React Flow failed to load.</div>
           )}

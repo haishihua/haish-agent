@@ -7,9 +7,10 @@ import {
 } from '../api/auth.js';
 
 export function normalizeContextUsage(value, fallbackConversationId = null) {
-  const rawUsedTokens = Math.max(0, Math.round(Number(value?.contextUsedTokens ?? value?.context_used_tokens ?? value?.usedTokens ?? value?.used_tokens ?? 0) || 0));
+  const rawUsedValue = Number(value?.contextUsedTokens ?? value?.context_used_tokens ?? value?.usedTokens ?? value?.used_tokens ?? 0);
+  const rawUsedTokens = Math.max(0, Math.round(rawUsedValue || 0));
   const totalTokens = Math.max(1, Math.round(Number(value?.contextTotalTokens ?? value?.context_total_tokens ?? value?.totalTokens ?? value?.total_tokens ?? value?.effective_budget ?? DEFAULT_CONTEXT_TOTAL_TOKENS) || DEFAULT_CONTEXT_TOTAL_TOKENS));
-  const valid = value?.valid !== false && value?.valid_context_usage !== false && rawUsedTokens <= totalTokens;
+  const valid = Number.isFinite(rawUsedValue) && rawUsedValue >= 0;
   const usedTokens = valid ? rawUsedTokens : 0;
   const compressedCount = Math.max(0, Math.round(Number(value?.compressedCount ?? value?.compressed_count ?? 0) || 0));
   return {
@@ -17,6 +18,7 @@ export function normalizeContextUsage(value, fallbackConversationId = null) {
     usedTokens,
     totalTokens,
     ratio: Math.max(0, Math.min(1, totalTokens > 0 ? usedTokens / totalTokens : 0)),
+    overLimit: usedTokens > totalTokens,
     compressed: Boolean(value?.compressed) || compressedCount > 0,
     compressedCount,
     valid,
@@ -97,5 +99,3 @@ export function mergeContextUsage(primary, fallback) {
     ? normalizedPrimary
     : normalizedFallback;
 }
-
-

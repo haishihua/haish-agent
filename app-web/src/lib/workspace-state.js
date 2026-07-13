@@ -354,14 +354,15 @@ export function conversationHasActiveTask(conversation) {
 export function isTaskActuallyActive(task) {
   const status = String(task?.status || '').toLowerCase();
   if (status !== 'running' && status !== 'queued') return false;
-  // Server status alone is unreliable: a task may have already streamed
-  // its answer and finished from the user's perspective, but the
-  // persisted status wasn't transitioned (the user-facing symptom is
-  // "no task is running but composer is locked"). Stronger "done"
-  // signals override the raw running/queued state.
+  // Server status alone is unreliable: a task may have already finished
+  // from the user's perspective while the persisted status lagged behind
+  // (the user-facing symptom is "no task is running but composer is locked").
+  // Only terminal completion markers override raw running/queued state.
+  // Do NOT treat answerText as done — streaming runs write partial
+  // answerText while status remains running; using answer presence here
+  // prematurely unlocks the composer and hides the stop button mid-run.
   if (task?.completedAt || task?.completed_at) return false;
-  const answer = task?.answerText ?? task?.answer_text;
-  if (typeof answer === 'string' && answer.trim().length > 0) return false;
+  if (task?.serverFinished === true) return false;
   return true;
 }
 

@@ -209,6 +209,19 @@ function workflowNodeLabel(node) {
   return node?.type === 'output' ? 'End' : (node?.label || node?.id || 'Node');
 }
 
+function WorkflowRuntimeStepStatusIcon({ status }) {
+  if (status === 'done') {
+    return <span className="workflow-runtime-step-status status-done" title="Done" aria-hidden="true"><span className="ico ico-check" /></span>;
+  }
+  if (status === 'failed') {
+    return <span className="workflow-runtime-step-status status-failed" title="Failed" aria-hidden="true"><span className="ico ico-close" /></span>;
+  }
+  if (status === 'running') {
+    return <span className="workflow-runtime-step-status status-running" title="Running" aria-hidden="true"><span className="ico ico-loading" /></span>;
+  }
+  return <span className="workflow-runtime-step-status status-pending" title="Pending" aria-hidden="true" />;
+}
+
 function runtimeValue(value) {
   if (value == null || value === '') return '—';
   if (typeof value === 'string') return value;
@@ -248,7 +261,7 @@ function WorkflowRuntime({ task }) {
             >
               <span className="workflow-runtime-step-index" aria-hidden="true">{index + 1}</span>
               <span className="workflow-runtime-step-title">{workflowNodeLabel(node)}</span>
-              <span className="workflow-runtime-step-status">{status}</span>
+              <WorkflowRuntimeStepStatusIcon status={status} />
             </button>
           );
         })}
@@ -287,6 +300,10 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
     : [];
   const isWorkflowTask = currentTask?.executionMode === 'bot';
   const workflowStatus = currentTask?.workflowRun?.status || currentTask?.status || 'idle';
+  const workflowStatusClass = normalizeTaskStatus(workflowStatus);
+  const workflowStatusLabel = workflowStatusClass === 'done'
+    ? 'LIVE'
+    : String(workflowStatus || 'idle').toUpperCase();
   const workflowActorLabels = new Map(
     workflowNodeActorBindings(currentTask?.workflowSnapshot).map(({ actor, label }) => [actor, label]),
   );
@@ -295,14 +312,24 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
     <div className="side-panel right" ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
       <div className="side-panel-head">
         <div className="title">{isWorkflowTask ? 'Workflow Run' : 'Live Feed'}</div>
-        <div className={`live-badge status-${workflowStatus}`}>
-          <div className="dot" />
-          {isWorkflowTask ? workflowStatus.toUpperCase() : 'LIVE'}
-        </div>
+        {!isWorkflowTask ? (
+          <div className={`live-badge status-${workflowStatusClass}`}>
+            <div className="dot" />
+            LIVE
+          </div>
+        ) : null}
       </div>
       <div className="side-panel-body">
         {isWorkflowTask ? <WorkflowRuntime task={currentTask} /> : null}
-        {isWorkflowTask && agents.length > 0 ? <div className="workflow-runtime-feed-title">Agent activity</div> : null}
+        {isWorkflowTask && agents.length > 0 ? (
+          <div className="workflow-runtime-feed-head">
+            <div className="workflow-runtime-feed-title">Agent activity</div>
+            <div className={`live-badge workflow-runtime-feed-badge status-${workflowStatusClass}`}>
+              <div className="dot" />
+              {workflowStatusLabel}
+            </div>
+          </div>
+        ) : null}
         {agents.length === 0 ? (
           !isWorkflowTask ? <div style={{color:'var(--dim-2)', fontSize:15, textAlign:'center', padding:'40px 12px', fontFamily:'Zpix'}}>
             Waiting for mission data...
