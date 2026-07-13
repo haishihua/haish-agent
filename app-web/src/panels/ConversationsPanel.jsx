@@ -410,18 +410,18 @@ function updateMenuLabel(state) {
       return 'Checking…';
     case 'available':
       return state.availableVersion
-        ? `Download v${state.availableVersion}`
-        : 'Download update';
+        ? `Update to v${state.availableVersion}`
+        : 'Update available';
     case 'downloading': {
       const pct = Number.isFinite(state.progressPercent)
         ? Math.floor(state.progressPercent)
         : 0;
-      return `Downloading… ${pct}%`;
+      return `Updating… ${pct}%`;
     }
     case 'downloaded':
       return state.availableVersion
-        ? `Restart to install v${state.availableVersion}`
-        : 'Restart to install';
+        ? `Installing v${state.availableVersion}…`
+        : 'Installing…';
     case 'not-available':
       return state.currentVersion ? `Up to date · v${state.currentVersion}` : 'Up to date';
     case 'unsupported':
@@ -442,18 +442,18 @@ function updateTooltipText(state) {
       return state.currentVersion ? `You're on v${state.currentVersion}` : "You're up to date";
     case 'available':
       return state.availableVersion
-        ? `Update v${state.availableVersion} ready to download`
-        : 'Update available';
+        ? `Click to download and install v${state.availableVersion}`
+        : 'Click to download and install update';
     case 'downloaded':
       return state.availableVersion
-        ? `v${state.availableVersion} ready · restart to install`
-        : 'Restart to install update';
+        ? `Installing v${state.availableVersion} and restarting…`
+        : 'Installing update and restarting…';
     case 'error':
       return state.message || 'Update failed';
     case 'checking':
       return 'Checking for updates';
     case 'downloading':
-      return 'Downloading update';
+      return 'Downloading and installing update';
     default:
       return state.message || 'Check for updates';
   }
@@ -466,19 +466,14 @@ function notifyUpdateState(onToast, state) {
       onToast('success', state.currentVersion ? `Up to date · v${state.currentVersion}` : 'Up to date');
       break;
     case 'available':
-      onToast(
-        'info',
-        state.availableVersion
-          ? `Update v${state.availableVersion} available`
-          : 'Update available',
-      );
+      // One-shot apply path continues into download; avoid noisy intermediate toasts.
       break;
     case 'downloaded':
       onToast(
         'info',
         state.availableVersion
-          ? `v${state.availableVersion} ready · restart to install`
-          : 'Restart to install update',
+          ? `Installing v${state.availableVersion}…`
+          : 'Installing update…',
       );
       break;
     case 'unsupported':
@@ -531,25 +526,43 @@ export function UserSessionFooter({ authUser, onLogout, onToast }) {
     if (!desktop || updateBusy) return;
     setUpdateBusy(true);
     try {
+      // Preferred path: one click checks, downloads, and restarts into the new build.
+      if (desktop.applyLatestAppUpdate) {
+        const next = await desktop.applyLatestAppUpdate();
+        setUpdateState(next);
+        notifyUpdateState(onToast, next);
+        return;
+      }
+
+      // Fallback for older preload bridges that only expose stepwise APIs.
       const status = updateState?.status;
       if (status === 'downloaded' && desktop.installAppUpdate) {
         await desktop.installAppUpdate();
         return;
       }
       if (status === 'available' && desktop.downloadAppUpdate) {
-        const next = await desktop.downloadAppUpdate();
-        setUpdateState(next);
-        notifyUpdateState(onToast, next);
+        const downloaded = await desktop.downloadAppUpdate();
+        setUpdateState(downloaded);
+        if (downloaded?.status === 'downloaded' && desktop.installAppUpdate) {
+          notifyUpdateState(onToast, downloaded);
+          await desktop.installAppUpdate();
+          return;
+        }
+        notifyUpdateState(onToast, downloaded);
         return;
       }
       if (desktop.checkForAppUpdates) {
         const checked = await desktop.checkForAppUpdates();
         setUpdateState(checked);
         if (checked?.status === 'available' && desktop.downloadAppUpdate) {
-          // Keep menu label as downloading; toast when download settles.
-          const next = await desktop.downloadAppUpdate();
-          setUpdateState(next);
-          notifyUpdateState(onToast, next);
+          const downloaded = await desktop.downloadAppUpdate();
+          setUpdateState(downloaded);
+          if (downloaded?.status === 'downloaded' && desktop.installAppUpdate) {
+            notifyUpdateState(onToast, downloaded);
+            await desktop.installAppUpdate();
+            return;
+          }
+          notifyUpdateState(onToast, downloaded);
           return;
         }
         notifyUpdateState(onToast, checked);
@@ -574,7 +587,7 @@ export function UserSessionFooter({ authUser, onLogout, onToast }) {
     || updateState?.status === 'checking'
     || updateState?.status === 'downloading'
     || updateState?.status === 'unsupported'
-    || !desktop?.checkForAppUpdates;
+    || !(desktop?.applyLatestAppUpdate || desktop?.checkForAppUpdates);
 
   return (
     <div className={`user-session-footer${open ? ' open' : ''}`} ref={wrapRef}>

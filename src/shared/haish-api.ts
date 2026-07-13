@@ -72,6 +72,8 @@ export type HaishDesktopApi = {
   checkForAppUpdates: () => Promise<AppUpdateState>;
   downloadAppUpdate: () => Promise<AppUpdateState>;
   installAppUpdate: () => Promise<AppUpdateState>;
+  /** One-shot: check → download → quitAndInstall when a newer version exists. */
+  applyLatestAppUpdate: () => Promise<AppUpdateState>;
   onAppUpdateStateChange: (callback: (state: AppUpdateState) => void) => () => void;
   pickProjectDirectory: () => Promise<DirectoryPickResult>;
   pickSkillDirectory: () => Promise<SkillDirectoryPickResult>;

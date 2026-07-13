@@ -26,6 +26,7 @@ const api: HaishDesktopApi = {
   checkForAppUpdates: () => ipcRenderer.invoke('app-update:check') as Promise<AppUpdateState>,
   downloadAppUpdate: () => ipcRenderer.invoke('app-update:download') as Promise<AppUpdateState>,
   installAppUpdate: () => ipcRenderer.invoke('app-update:install') as Promise<AppUpdateState>,
+  applyLatestAppUpdate: () => ipcRenderer.invoke('app-update:apply') as Promise<AppUpdateState>,
   onAppUpdateStateChange: (callback: (state: AppUpdateState) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: AppUpdateState) => callback(state);
     ipcRenderer.on('app-update:state', listener);

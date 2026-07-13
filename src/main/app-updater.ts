@@ -209,7 +209,12 @@ export async function downloadAppUpdate(): Promise<AppUpdateState> {
     return unsupportedState();
   }
 
-  if (currentState.status === 'downloading' || currentState.status === 'downloaded') {
+  if (currentState.status === 'downloading') {
+    return currentState;
+  }
+
+  // Already downloaded — let the install path take over.
+  if (currentState.status === 'downloaded' && currentState.canInstall) {
     return currentState;
   }
 
@@ -239,12 +244,60 @@ export async function downloadAppUpdate(): Promise<AppUpdateState> {
   }
 }
 
+/**
+ * One-shot path used by the user menu:
+ * check → download (if newer) → quitAndInstall.
+ * Same-version releases are intentionally ignored by electron-updater.
+ */
+export async function applyLatestAppUpdate(): Promise<AppUpdateState> {
+  if (!isRealPackagedBuild()) {
+    return unsupportedState();
+  }
+
+  if (currentState.status === 'downloading') {
+    return currentState;
+  }
+
+  // Resume install if a previous click already finished downloading.
+  if (currentState.status === 'downloaded' && currentState.canInstall) {
+    return installAppUpdate();
+  }
+
+  const checked = await checkForAppUpdates();
+  if (checked.status === 'not-available' || checked.status === 'unsupported' || checked.status === 'error') {
+    return checked;
+  }
+
+  if (checked.status === 'downloaded' && checked.canInstall) {
+    return installAppUpdate();
+  }
+
+  if (checked.status !== 'available') {
+    return checked;
+  }
+
+  const downloaded = await downloadAppUpdate();
+  if (downloaded.status === 'downloaded' && downloaded.canInstall) {
+    return installAppUpdate();
+  }
+  return downloaded;
+}
+
 export function installAppUpdate(): AppUpdateState {
   if (!currentState.canInstall) {
     return currentState;
   }
+  setState({
+    status: 'downloaded',
+    message: currentState.availableVersion
+      ? `Installing v${currentState.availableVersion}…`
+      : 'Installing update…',
+    canInstall: true,
+    progressPercent: 100,
+  });
   // quitAndInstall will terminate the process; return state for IPC completeness.
   setImmediate(() => {
+    // isSilent=false keeps macOS installer UX; isForceRunAfter=true relaunches app.
     autoUpdater.quitAndInstall(false, true);
   });
   return currentState;

@@ -118,7 +118,9 @@ files are written to `release/`. Unsigned builds may require Finder → right cl
 
 ## In-app updates (GitHub Releases)
 
-Packaged builds can check for updates from the left sidebar user menu → **Check for updates**.
+Packaged builds can update from the left sidebar user menu → **Check for updates**.
+One click runs: check → download → install/restart. Users do **not** need to manually
+overwrite the app when a **newer semver** is published.
 
 ### Release flow
 
@@ -141,6 +143,9 @@ The script builds dmg/zip, then creates/updates GitHub Release `v<version>` with
 
 - In-app update works in **packaged** apps only (`npm run dev` will show “packaged app only”).
 - macOS auto-update uses the **zip** artifact; dmg remains the first-install path.
+- Updates only apply when the GitHub release version is **greater** than the installed
+  app version (e.g. `0.0.1` → `0.0.2`). Re-publishing the same version will show
+  “Up to date” and will not re-download/replace the binary.
 - Public repos can be checked by `electron-updater` without a client token. Private repos
   need `GH_TOKEN` / `GITHUB_TOKEN` on the client, or a public download host for update assets.
 - Never package a real backend `.env` into dmg/zip. Runtime secrets belong in the user's

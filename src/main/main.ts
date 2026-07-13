@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { DirectoryPickResult, FileEntry, LocalProject, ReadFileResult, SkillDirectoryPickResult } from '../shared/haish-api.js';
 import {
+  applyLatestAppUpdate,
   checkForAppUpdates,
   downloadAppUpdate,
   getAppUpdateState,
@@ -252,6 +253,7 @@ ipcMain.handle('app-update:state', () => getAppUpdateState());
 ipcMain.handle('app-update:check', () => checkForAppUpdates());
 ipcMain.handle('app-update:download', () => downloadAppUpdate());
 ipcMain.handle('app-update:install', () => installAppUpdate());
+ipcMain.handle('app-update:apply', () => applyLatestAppUpdate());
 
 ipcMain.handle('fs:list-directory', async (_event, projectId: string, relativePath = ''): Promise<FileEntry[]> => {
   const target = await resolveInsideProject(projectId, relativePath);
