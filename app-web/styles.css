@@ -455,6 +455,27 @@ svg {
     height: 14px;
 }
 
+.ico-delete-dir {
+    -webkit-mask-image: url("assets/ui/icons/delete-dir.svg");
+    mask-image: url("assets/ui/icons/delete-dir.svg");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-read-artifact {
+    -webkit-mask-image: url("assets/ui/icons/read-artifact.svg");
+    mask-image: url("assets/ui/icons/read-artifact.svg");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-todo-write {
+    -webkit-mask-image: url("assets/ui/icons/todo-write.svg");
+    mask-image: url("assets/ui/icons/todo-write.svg");
+    width: 14px;
+    height: 14px;
+}
+
 .ico-list-dir {
     -webkit-mask-image: url("assets/ui/icons/list-dir.png");
     mask-image: url("assets/ui/icons/list-dir.png");
@@ -6861,6 +6882,16 @@ select,
     background: rgba(28, 38, 62, 0.55);
 }
 
+.chat-timeline-elapsed-pill {
+    cursor: default;
+}
+
+.chat-timeline-elapsed-pill:hover {
+    border-color: rgba(239, 191, 100, 0.34);
+    color: rgba(239, 191, 100, 0.9);
+    background: rgba(20, 28, 48, 0.4);
+}
+
 /* legacy class kept in case anywhere else references it. New code uses .chat-timeline-chevron */
 .chat-timeline-collapsed-icon {
     display: none;
@@ -8449,12 +8480,36 @@ select,
     border: 0;
     border-radius: 0;
     background: transparent;
-    margin-bottom: 14px;
+    margin-bottom: 6px;
     box-shadow: none;
 }
 
 .project-node.active {
     background: transparent;
+}
+
+/* Drag-over insertion indicator: glowing top edge */
+.project-node.drag-over {
+    position: relative;
+}
+
+.project-node.drag-over::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 8px;
+    right: 8px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--gold);
+    box-shadow: 0 0 8px rgba(239, 191, 100, 0.45);
+    z-index: 3;
+    pointer-events: none;
+}
+
+.project-node.drag-over-after::before {
+    top: auto;
+    bottom: -1px;
 }
 
 .project-row,
@@ -8631,8 +8686,21 @@ select,
     color: var(--gold);
 }
 
+/* Pin toggle: subtle gold tint when pinned */
+.conversation-pin-toggle {
+    transition: color .16s;
+}
+
+.conversation-pin-toggle.pinned {
+    color: var(--gold);
+}
+
+.conversation-pin-toggle.pinned:hover {
+    color: #ffcd7a;
+}
+
 .project-conversations {
-    padding: 0 8px 10px 10px;
+    padding: 0 8px 0 10px;
     display: flex;
     flex-direction: column;
     gap: 7px;
@@ -8653,6 +8721,87 @@ select,
     border-bottom: 0;
 }
 
+/* Drag-over insertion indicator: glowing top edge */
+.conversation-node.drag-over {
+    position: relative;
+}
+
+.conversation-node.drag-over::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 8px;
+    right: 8px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--gold);
+    box-shadow: 0 0 8px rgba(239, 191, 100, 0.45);
+    z-index: 3;
+    pointer-events: none;
+}
+
+.conversation-node.drag-over-after::before {
+    top: auto;
+    bottom: -1px;
+}
+
+/* Trailing drop zone: drop a conversation at the end of a project.
+   Keep it visually collapsed so expanded projects don't add extra bottom gap;
+   it expands only while dragging over the trailing target. */
+.conversation-drop-end {
+    height: 0;
+    margin-top: -7px;
+    border-radius: 6px;
+    transition: height .12s ease, margin-top .12s ease;
+}
+
+.conversation-drop-end.drag-over {
+    height: 16px;
+    margin-top: 0;
+    position: relative;
+}
+
+.conversation-drop-end.drag-over::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 8px;
+    right: 8px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--gold);
+    box-shadow: 0 0 8px rgba(239, 191, 100, 0.45);
+    z-index: 3;
+    pointer-events: none;
+}
+
+/* Trailing drop zone: drop a project at the end of the list */
+.project-drop-end {
+    height: 2px;
+    margin-bottom: 6px;
+    border-radius: 6px;
+    transition: height .12s ease;
+}
+
+.project-drop-end.drag-over {
+    height: 16px;
+    position: relative;
+}
+
+.project-drop-end.drag-over::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 8px;
+    right: 8px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--gold);
+    box-shadow: 0 0 8px rgba(239, 191, 100, 0.45);
+    z-index: 3;
+    pointer-events: none;
+}
+
 .conversation-task-list {
     display: flex;
     flex-direction: column;
@@ -8671,6 +8820,7 @@ select,
 .conversation-task-card.failed {
     border-color: transparent;
 }
+
 
 .conversation-task-main {
     display: flex;

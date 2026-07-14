@@ -239,6 +239,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const [contextUsage, setContextUsage] = useState(() => createEmptyContextUsage(null));
   const [localWorkspace, setLocalWorkspace] = useState({ path: null, label: null });
   const [composerAttachment, setComposerAttachment] = useState(null);
+  const [chatDraft, setChatDraft] = useState('');
   const [uploadState, setUploadState] = useState({ active: false, fileName: '' });
   const [queuedDeploy, setQueuedDeploy] = useState(null);
   const [toast, setToast] = useState(null);
@@ -4383,6 +4384,117 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     }));
   }
 
+  function handlePinConversation(projectId, conversationId) {
+    // Compute new pin state from current workspace so we can sync to backend
+    const currentConversation = findConversationById(workspaceState, conversationId);
+    const newPinned = !(currentConversation?.pinned ?? false);
+
+    setWorkspaceState((state) => normalizeWorkspaceOrdering({
+      ...state,
+      projects: state.projects.map((project) => project.id === projectId ? {
+        ...project,
+        conversations: project.conversations.map((conversation) => (
+          conversation.id === conversationId
+            ? { ...conversation, pinned: newPinned }
+            : conversation
+        )),
+      } : project),
+    }));
+
+    // Fire-and-forget sync to backend so pin survives server restart
+    authFetch(`${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}`, {
+      method: 'PATCH',
+      headers: buildApiHeaders(),
+      body: JSON.stringify({ pinned: newPinned }),
+    }).catch(() => {});
+  }
+
+  function handleReorderConversations(projectId, sourceId, targetId, position) {
+    setWorkspaceState((state) => {
+      const nextState = normalizeWorkspaceOrdering({
+        ...state,
+        projects: state.projects.map((project) => {
+          if (project.id !== projectId) return project;
+          const conversations = [...project.conversations];
+          const sourceIdx = conversations.findIndex((c) => c.id === sourceId);
+          if (sourceIdx === -1) return project;
+          const [moved] = conversations.splice(sourceIdx, 1);
+          let insertIdx;
+          if (targetId === null) {
+            insertIdx = conversations.length;
+          } else {
+            const adjustedTargetIdx = conversations.findIndex((c) => c.id === targetId);
+            if (adjustedTargetIdx === -1) { conversations.splice(sourceIdx, 0, moved); return project; }
+            insertIdx = position === 'after' ? adjustedTargetIdx + 1 : adjustedTargetIdx;
+          }
+          conversations.splice(insertIdx, 0, moved);
+          return { ...project, conversations };
+        }),
+      });
+
+      // Fire-and-forget sync to backend so manual order survives server restart
+      const project = nextState.projects.find((p) => p.id === projectId);
+      if (project) {
+        const conversationIds = project.conversations.map((c) => c.id);
+        authFetch(`${API_BASE}/api/conversations/reorder`, {
+          method: 'PATCH',
+          headers: buildApiHeaders(),
+          body: JSON.stringify({ conversation_ids: conversationIds }),
+        }).catch(() => {});
+      }
+
+      return nextState;
+    });
+  }
+
+  function handlePinProject(projectId) {
+    // Compute new pin state from current workspace so we can sync to backend
+    const currentProject = workspaceState.projects.find((p) => p.id === projectId);
+    const newPinned = !(currentProject?.pinned ?? false);
+
+    setWorkspaceState((state) => normalizeWorkspaceOrdering({
+      ...state,
+      projects: state.projects.map((project) => (
+        project.id === projectId
+          ? { ...project, pinned: newPinned }
+          : project
+      )),
+    }));
+
+    // Sync all conversations in this project to backend as well
+    if (currentProject) {
+      for (const conversation of (currentProject.conversations || [])) {
+        authFetch(`${API_BASE}/api/conversations/${encodeURIComponent(conversation.id)}`, {
+          method: 'PATCH',
+          headers: buildApiHeaders(),
+          body: JSON.stringify({ pinned: newPinned }),
+        }).catch(() => {});
+      }
+    }
+  }
+
+  function handleReorderProjects(sourceId, targetId, position) {
+    setWorkspaceState((state) => normalizeWorkspaceOrdering({
+      ...state,
+      projects: (() => {
+        const projects = [...state.projects];
+        const sourceIdx = projects.findIndex((p) => p.id === sourceId);
+        if (sourceIdx === -1) return state.projects;
+        const [moved] = projects.splice(sourceIdx, 1);
+        let insertIdx;
+        if (targetId === null) {
+          insertIdx = projects.length;
+        } else {
+          const adjustedTargetIdx = projects.findIndex((p) => p.id === targetId);
+          if (adjustedTargetIdx === -1) { projects.splice(sourceIdx, 0, moved); return state.projects; }
+          insertIdx = position === 'after' ? adjustedTargetIdx + 1 : adjustedTargetIdx;
+        }
+        projects.splice(insertIdx, 0, moved);
+        return projects;
+      })(),
+    }));
+  }
+
   async function createConversationInProject(project, title, executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot') {
     const createResponse = await authFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
@@ -4910,10 +5022,14 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         // Keep streamed answer segments in the trace so text and tool calls
         // stay in their original chronological order. The final answer moves
         // into the Markdown bubble only after the run completes.
+        // Cancelled runs should not render a separate final-answer body or a
+        // synthetic "Task was cancelled." message. Keep the chronological trace
+        // intact, though: it is the running process (LLM stream + tool calls)
+        // the user saw before pressing Stop.
         const visibleTimelineItems = timelineItems;
         const bubbleText = streaming
           ? ''
-          : (error || answer || (status === 'cancelled' ? 'Task was cancelled.' : ''));
+          : (status === 'cancelled' ? '' : (error || answer));
         rows.push({
           id: `${taskId}-agent`,
           role: 'agent',
@@ -4931,9 +5047,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     if (worldTaskState.pendingTask && !worldTaskState.activeTaskId) {
       const pendingStatus = normalizeTaskStatus(worldTaskState.pendingTask.status);
       const pendingError = String(worldTaskState.pendingTask.error || '').trim();
-      // Same policy as the task loop above — keep cancelled pending tasks
-      // visible so the user can see their cancelled request + the agent's
-      // "Task was cancelled." marker.
+      // Keep cancelled pending tasks visible without adding a synthetic
+      // cancellation body; the elapsed/status UI carries that state.
       rows.push({
         id: `${worldTaskState.pendingTask.id || 'pending'}-user`,
         role: 'user',
@@ -4950,7 +5065,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         rows.push({
           id: `${worldTaskState.pendingTask.id || 'pending'}-agent`,
           role: 'agent',
-          text: pendingStreaming ? '' : (pendingError || (pendingStatus === 'cancelled' ? 'Task was cancelled.' : '')),
+          text: pendingStreaming ? '' : (pendingStatus === 'cancelled' ? '' : pendingError),
           progressLines: [],
           traceTimeline: [],
           status: pendingStatus,
@@ -5068,6 +5183,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               onToggleConversationTasks={handleToggleConversationTasks}
               onDeleteConversation={(projectId, nextConversationId) => { handleDeleteConversation(projectId, nextConversationId).catch((error) => { console.error('conversation delete failed', error); showToast('error', String(error?.message || error)); }); }}
               onRenameConversation={(projectId, nextConversationId, title) => { handleRenameConversation(projectId, nextConversationId, title).catch((error) => { console.error('conversation rename failed', error); showToast('error', String(error?.message || error)); }); }}
+              onPinConversation={handlePinConversation}
+              onPinProject={handlePinProject}
+              onReorderConversations={handleReorderConversations}
+              onReorderProjects={handleReorderProjects}
               onOpenTaskReport={handleOpenTaskReport}
               onRetryTask={handleRetryTask}
               taskPreviewLimit={viewMode === 'chat' ? 3 : 5}
@@ -5104,6 +5223,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
                     agentLockedReason={agentLockedReason}
                     lockedAgentId={lockedAgentId}
                     selectionStorageKey={runConfigStorageKey}
+                    draft={chatDraft}
+                    onDraftChange={setChatDraft}
 		                  />
 	                </div>
 	              </div>

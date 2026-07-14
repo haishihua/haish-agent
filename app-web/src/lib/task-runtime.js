@@ -428,7 +428,11 @@ export function runtimeTaskToQuest(task) {
     taskId: task.taskId,
     provider: task.provider,
     requestedProvider: task.requestedProvider,
+    executionMode: task.executionMode,
+    workflowRun: task.workflowRun || null,
     answerText: task.answerText || '',
+    chatStreamText: task.chatStreamText || '',
+    error: task.error || null,
   };
 }
 

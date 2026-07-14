@@ -557,25 +557,40 @@ export function runtimeProviderSelector(config) {
   return provider || 'auto';
 }
 
+function runtimeModelChoicesForConfig(config, modelCatalog) {
+  const provider = normalizeLlmProviderId(config?.provider);
+  const currentModel = config?.model || '';
+  const providerChoices = modelChoicesFor(provider);
+  if (providerChoices.length > 0) {
+    return uniqueModelChoices(currentModel, providerChoices);
+  }
+
+  const configChoices = configuredModelOptions(config);
+  if (configChoices.length > 0) {
+    return uniqueModelChoices(currentModel, configChoices);
+  }
+
+  const catalogProvider = normalizeLlmProviderId(modelCatalog?.provider);
+  const includeCatalog = catalogProvider && catalogProvider === provider;
+  return uniqueModelChoices(currentModel, includeCatalog ? (modelCatalog?.options || []) : []);
+}
+
 export function runtimeLlmProviderOptions(draft, modelCatalog) {
   const rows = [
     draft?.chat,
     ...(Array.isArray(draft?.profiles) ? draft.profiles : []),
   ].filter((item) => item && item.provider);
-  const catalogProvider = normalizeLlmProviderId(modelCatalog?.provider);
   const seen = new Set();
   const options = rows.map((config, index) => {
     const requestProvider = runtimeProviderSelector(config);
     const idBase = config.id || `${index === 0 ? 'chat' : 'profile'}:${requestProvider}`;
     const id = seen.has(idBase) ? `${idBase}:${index}` : idBase;
     seen.add(id);
-    const includeCatalog = catalogProvider && catalogProvider === normalizeLlmProviderId(config.provider);
-    const modelOptions = uniqueModelChoices(
-      config.model,
-      configuredModelOptions(config),
-      includeCatalog ? (modelCatalog?.options || []) : [],
-      modelChoicesFor(config.provider),
-    );
+    // Settings `model_options` is also used as a remote discovery cache after
+    // testing a provider. For built-in providers the run picker must stay
+    // scoped to that provider's allowed runtime models instead of treating a
+    // broad `/models` response as the provider/profile allow-list.
+    const modelOptions = runtimeModelChoicesForConfig(config, modelCatalog);
     return {
       id,
       label: runtimeProviderLabel(config),

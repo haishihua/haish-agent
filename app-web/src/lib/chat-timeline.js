@@ -938,6 +938,7 @@ export function pendingTaskToQuest(pendingTask) {
     assignedToLabel: pendingTask.assignedToLabel,
     requestedProvider: pendingTask.requestedProvider,
     answerText: pendingTask.answerText || '',
+    chatStreamText: pendingTask.chatStreamText || '',
     error: pendingTask.error || null,
     serverFinished: !!pendingTask.serverFinished,
   };

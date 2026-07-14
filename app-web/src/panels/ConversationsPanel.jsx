@@ -4,6 +4,7 @@ import { CHAR_DEFS } from '../Sprites.jsx';
 import { PortalTooltip } from './PortalTooltip.jsx';
 import { fmtAgo } from './Format.jsx';
 
+
 import {
   normalizeTaskStatus,
 } from '../lib/task-runtime.js';
@@ -202,6 +203,11 @@ export function ConversationNode({
   onToggleConversationTasks,
   onRequestDeleteConversation,
   onRequestRenameConversation,
+  onPinConversation,
+  onDragStartConversation,
+  onDragOverConversation,
+  onDropConversation,
+  onDragEndConversation,
   onOpenTaskReport,
   onRetryTask,
 }) {
@@ -211,15 +217,61 @@ export function ConversationNode({
   const hiddenCount = Math.max(0, tasks.length - visibleLimit);
   const runningTask = conversationHasRunningTask(conversation);
   const showTaskList = conversation.expanded && tasks.length > 0;
+  const isPinned = Boolean(conversation.pinned);
+
+  const [dropPosition, setDropPosition] = React.useState(null);
+
+  function handleDragStart(event) {
+    event.dataTransfer.setData('text/plain', conversation.id);
+    event.dataTransfer.effectAllowed = 'move';
+    onDragStartConversation?.(project.id, conversation.id);
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    const rect = event.currentTarget.getBoundingClientRect();
+    const isAfter = (event.clientY - rect.top) > rect.height / 2;
+    setDropPosition(isAfter ? 'after' : 'before');
+    onDragOverConversation?.(project.id, conversation.id);
+  }
+
+  function handleDragLeave(event) {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    setDropPosition(null);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const sourceId = event.dataTransfer.getData('text/plain');
+    const position = dropPosition;
+    setDropPosition(null);
+    if (sourceId && sourceId !== conversation.id) {
+      onDropConversation?.(project.id, sourceId, conversation.id, position);
+    }
+  }
+
+  function handleDragEnd() {
+    setDropPosition(null);
+    onDragEndConversation?.();
+  }
 
   return (
-    <div className={`conversation-node ${active ? 'active' : ''}`} ref={nodeRef}>
+    <div className={`conversation-node ${active ? 'active' : ''} ${dropPosition ? `drag-over drag-over-${dropPosition}` : ''}`} ref={nodeRef}>
       <div
         role="button"
         tabIndex={0}
         className="conversation-row"
+        draggable={true}
         onClick={() => onSelectConversation(project.id, conversation.id)}
         onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onSelectConversation(project.id, conversation.id); }}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onDragEnd={handleDragEnd}
       >
         <button
           type="button"
@@ -240,6 +292,19 @@ export function ConversationNode({
           <span className={`conversation-terminal-notice chat-timeline-status status-${terminalStatus}`} aria-hidden="true" />
         ) : null}
         <span className="conversation-actions">
+          <PortalTooltip text={isPinned ? 'Unpin conversation' : 'Pin conversation'} position="above">
+            <button
+              type="button"
+              className={`conversation-icon-btn conversation-pin-toggle${isPinned ? ' pinned' : ''}`}
+              aria-label={isPinned ? 'Unpin conversation' : 'Pin conversation'}
+              onClick={(event) => { event.stopPropagation(); onPinConversation?.(project.id, conversation.id); }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 17v5"/>
+                <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+              </svg>
+            </button>
+          </PortalTooltip>
           <ConversationAction label="Rename conversation" icon="pen-field" onClick={() => onRequestRenameConversation(project, conversation)} />
           <ConversationAction label="Delete conversation" icon="trash" onClick={() => onRequestDeleteConversation(project, conversation)} />
         </span>
@@ -330,21 +395,76 @@ export function ProjectNode({
   onToggleConversationTasks,
   onRequestDeleteConversation,
   onRequestRenameConversation,
+  onPinConversation,
+  onPinProject,
+  onDragStartConversation,
+  onDragOverConversation,
+  onDropConversation,
+  onDragEndConversation,
+  onDragStartProject,
+  onDragOverProject,
+  onDropProject,
+  onDragEndProject,
   onOpenTaskReport,
   onRetryTask,
   taskPreviewLimit = 5,
 }) {
   const isActiveProject = workspaceState.activeProjectId === project.id;
+  const isPinned = Boolean(project.pinned);
   const registerConversationNode = useConversationOrderAnimation(project.conversations);
+  const [dropPosition, setDropPosition] = React.useState(null);
+
+  function handleDragStart(event) {
+    event.dataTransfer.setData('application/x-project-id', project.id);
+    event.dataTransfer.effectAllowed = 'move';
+    onDragStartProject?.(project.id);
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    const rect = event.currentTarget.getBoundingClientRect();
+    const isAfter = (event.clientY - rect.top) > rect.height / 2;
+    setDropPosition(isAfter ? 'after' : 'before');
+    onDragOverProject?.(project.id);
+  }
+
+  function handleDragLeave(event) {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    setDropPosition(null);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const sourceId = event.dataTransfer.getData('application/x-project-id');
+    const position = dropPosition;
+    setDropPosition(null);
+    if (sourceId && sourceId !== project.id) {
+      onDropProject?.(sourceId, project.id, position);
+    }
+  }
+
+  function handleDragEnd() {
+    setDropPosition(null);
+    onDragEndProject?.();
+  }
 
   return (
-    <div className={`project-node ${isActiveProject ? 'active' : ''}`}>
+    <div className={`project-node ${isActiveProject ? 'active' : ''} ${dropPosition ? `drag-over drag-over-${dropPosition}` : ''}`}>
       <div
         role="button"
         tabIndex={0}
         className="project-row"
+        draggable={true}
         onClick={() => onSelectProject(project.id)}
         onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onSelectProject(project.id); }}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onDragEnd={handleDragEnd}
       >
         <button
           type="button"
@@ -359,6 +479,19 @@ export function ProjectNode({
           <span className="project-name">{project.name}</span>
         </PortalTooltip>
         <span className="conversation-actions">
+          <PortalTooltip text={isPinned ? 'Unpin project' : 'Pin project'} position="below">
+            <button
+              type="button"
+              className={`conversation-icon-btn conversation-pin-toggle${isPinned ? ' pinned' : ''}`}
+              aria-label={isPinned ? 'Unpin project' : 'Pin project'}
+              onClick={(event) => { event.stopPropagation(); onPinProject?.(project.id); }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 17v5"/>
+                <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+              </svg>
+            </button>
+          </PortalTooltip>
           <ConversationAction
             label="New Conversation"
             icon="multiple"
@@ -389,10 +522,16 @@ export function ProjectNode({
               onToggleConversationTasks={onToggleConversationTasks}
               onRequestDeleteConversation={onRequestDeleteConversation}
               onRequestRenameConversation={onRequestRenameConversation}
+              onPinConversation={onPinConversation}
+              onDragStartConversation={onDragStartConversation}
+              onDragOverConversation={onDragOverConversation}
+              onDropConversation={onDropConversation}
+              onDragEndConversation={onDragEndConversation}
               onOpenTaskReport={onOpenTaskReport}
               onRetryTask={onRetryTask}
             />
           ))}
+          <ConversationDropEnd projectId={project.id} onDropConversation={onDropConversation} />
         </div>
       )}
     </div>
@@ -670,6 +809,62 @@ export function UserSessionFooter({ authUser, onLogout, onToast }) {
   );
 }
 
+function ConversationDropEnd({ projectId, onDropConversation }) {
+  const [dragOver, setDragOver] = React.useState(false);
+  return (
+    <div
+      className={`conversation-drop-end${dragOver ? ' drag-over' : ''}`}
+      onDragOver={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes('text/plain')) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        setDragOver(true);
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        setDragOver(false);
+      }}
+      onDrop={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes('text/plain')) return;
+        event.preventDefault();
+        setDragOver(false);
+        const sourceId = event.dataTransfer.getData('text/plain');
+        if (sourceId) {
+          onDropConversation?.(projectId, sourceId, null, 'after');
+        }
+      }}
+    />
+  );
+}
+
+function ProjectDropEnd({ onDropProject }) {
+  const [dragOver, setDragOver] = React.useState(false);
+  return (
+    <div
+      className={`project-drop-end${dragOver ? ' drag-over' : ''}`}
+      onDragOver={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes('application/x-project-id')) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        setDragOver(true);
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        setDragOver(false);
+      }}
+      onDrop={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes('application/x-project-id')) return;
+        event.preventDefault();
+        setDragOver(false);
+        const sourceId = event.dataTransfer.getData('application/x-project-id');
+        if (sourceId) {
+          onDropProject?.(sourceId, null, 'after');
+        }
+      }}
+    />
+  );
+}
+
 export function ConversationsPanel({
   workspaceState,
   now,
@@ -684,6 +879,10 @@ export function ConversationsPanel({
   onToggleConversationTasks,
   onDeleteConversation,
   onRenameConversation,
+  onPinConversation,
+  onPinProject,
+  onReorderConversations,
+  onReorderProjects,
   onOpenTaskReport,
   onRetryTask,
   taskPreviewLimit = 5,
@@ -782,6 +981,102 @@ export function ConversationsPanel({
     }
     onSelectConversation(projectId, conversationId);  }, [onSelectConversation]);
 
+  const dragSourceIdRef = React.useRef(null);
+  const dragProjectSourceRef = React.useRef(null);
+  const scrollBodyRef = React.useRef(null);
+
+  // Auto-scroll the project/conversation list while dragging near the
+  // top or bottom edge of the scroll container. Uses capture-phase
+  // listeners so child stopPropagation() calls don't block it.
+  React.useEffect(() => {
+    const container = scrollBodyRef.current;
+    if (!container) return;
+    const EDGE = 48;
+    const SPEED = 9;
+    let raf = null;
+    let direction = 0;
+    const step = () => {
+      if (direction === 0) { raf = null; return; }
+      container.scrollTop += direction * SPEED;
+      raf = requestAnimationFrame(step);
+    };
+    const start = (dir) => {
+      if (direction === dir && raf) return;
+      direction = dir;
+      if (!raf) raf = requestAnimationFrame(step);
+    };
+    const stop = () => {
+      direction = 0;
+      if (raf) { cancelAnimationFrame(raf); raf = null; }
+    };
+    const onDragOver = (event) => {
+      const rect = container.getBoundingClientRect();
+      const y = event.clientY - rect.top;
+      if (y < EDGE) start(-1);
+      else if (y > rect.height - EDGE) start(1);
+      else stop();
+    };
+    const onDragEnd = () => stop();
+    const onDrop = () => stop();
+    const onDragLeave = (event) => {
+      if (event.currentTarget.contains(event.relatedTarget)) return;
+      stop();
+    };
+    container.addEventListener('dragover', onDragOver, true);
+    container.addEventListener('dragend', onDragEnd, true);
+    container.addEventListener('drop', onDrop, true);
+    container.addEventListener('dragleave', onDragLeave, false);
+    return () => {
+      container.removeEventListener('dragover', onDragOver, true);
+      container.removeEventListener('dragend', onDragEnd, true);
+      container.removeEventListener('drop', onDrop, true);
+      container.removeEventListener('dragleave', onDragLeave, false);
+      stop();
+    };
+  }, []);
+
+  function dragStartConversation(projectId, conversationId) {
+    dragSourceIdRef.current = conversationId;
+  }
+
+  function dragOverConversation(_projectId, _conversationId) {
+    // no-op for now; the drop target highlights via ConversationNode local state
+  }
+
+  function dropConversation(projectId, sourceId, targetId, position) {
+    if (!sourceId) return;
+    if (targetId === null) {
+      onReorderConversations?.(projectId, sourceId, null, position || 'after');
+    } else if (sourceId !== targetId) {
+      onReorderConversations?.(projectId, sourceId, targetId, position || 'before');
+    }
+  }
+
+  function dragEndConversation() {
+    dragSourceIdRef.current = null;
+  }
+
+  function dragStartProject(projectId) {
+    dragProjectSourceRef.current = projectId;
+  }
+
+  function dragOverProject(_projectId) {
+    // no-op for now; the drop target highlights via ProjectNode local state
+  }
+
+  function dropProject(sourceId, targetId, position) {
+    if (!sourceId) return;
+    if (targetId === null) {
+      onReorderProjects?.(sourceId, null, position || 'after');
+    } else if (sourceId !== targetId) {
+      onReorderProjects?.(sourceId, targetId, position || 'before');
+    }
+  }
+
+  function dragEndProject() {
+    dragProjectSourceRef.current = null;
+  }
+
   function requestRenameConversation(project, conversation) {
     setDialog({
       kind: 'rename',
@@ -829,7 +1124,7 @@ export function ConversationsPanel({
           </button>
         </PortalTooltip>
       </div>
-      <div className="side-panel-body conversations-body">
+      <div className="side-panel-body conversations-body" ref={scrollBodyRef}>
         {workspaceState.projects.map((project) => (
           <ProjectNode
             key={project.id}
@@ -847,10 +1142,21 @@ export function ConversationsPanel({
             onToggleConversationTasks={onToggleConversationTasks}
             onRequestDeleteConversation={requestDeleteConversation}
             onRequestRenameConversation={requestRenameConversation}
+            onPinConversation={onPinConversation}
+            onPinProject={onPinProject}
+            onDragStartConversation={dragStartConversation}
+            onDragOverConversation={dragOverConversation}
+            onDropConversation={dropConversation}
+            onDragEndConversation={dragEndConversation}
+            onDragStartProject={dragStartProject}
+            onDragOverProject={dragOverProject}
+            onDropProject={dropProject}
+            onDragEndProject={dragEndProject}
             onOpenTaskReport={onOpenTaskReport}
             onRetryTask={onRetryTask}
           />
         ))}
+        <ProjectDropEnd onDropProject={dropProject} />
       </div>
       {authUser ? <UserSessionFooter authUser={authUser} onLogout={onLogout} onToast={onToast} /> : null}
       <ConversationDialog dialog={dialog} onCancel={() => setDialog(null)} />

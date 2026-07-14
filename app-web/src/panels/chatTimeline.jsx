@@ -42,8 +42,17 @@ export function resolveToolIconClass(toolName, defaultClass) {
   if (name === 'create_dir') {
     return 'ico-create-dir';
   }
+  if (name === 'read_artifact') {
+    return 'ico-read-artifact';
+  }
   if (name === 'delete_file') {
     return 'ico-delete-file';
+  }
+  if (name === 'delete_dir') {
+    return 'ico-delete-dir';
+  }
+  if (name === 'todo_write') {
+    return 'ico-todo-write';
   }
   if (name === 'list_dir') {
     return 'ico-list-dir';
@@ -1342,47 +1351,22 @@ export function ChatTimelineCollapsed({ onExpand, label = 'Trace', expanded = fa
   );
 }
 
+export function ChatTimelineElapsedPill({ label }) {
+  if (!label) return null;
+  return (
+    <div className="chat-timeline-collapsed chat-timeline-elapsed-pill" aria-label={`Task elapsed ${label}`}>
+      <span className="chat-timeline-collapsed-text">{label}</span>
+    </div>
+  );
+}
+
 function FinalAnswerMarkdown({ source, streaming }) {
   const text = String(source || '');
-  const previousStreamingRef = React.useRef(streaming);
-  const [visibleText, setVisibleText] = React.useState(() => (streaming ? '' : text));
-  const [revealing, setRevealing] = React.useState(false);
-
-  React.useEffect(() => {
-    const shouldReveal = previousStreamingRef.current && !streaming && Boolean(text);
-    previousStreamingRef.current = streaming;
-
-    if (streaming) {
-      setVisibleText('');
-      setRevealing(false);
-      return undefined;
-    }
-    if (!shouldReveal || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      setVisibleText(text);
-      setRevealing(false);
-      return undefined;
-    }
-
-    const characters = Array.from(text);
-    const chunkSize = Math.max(1, Math.ceil(characters.length / 120));
-    let visibleCount = 0;
-    setVisibleText('');
-    setRevealing(true);
-    const timer = window.setInterval(() => {
-      visibleCount = Math.min(visibleCount + chunkSize, characters.length);
-      setVisibleText(characters.slice(0, visibleCount).join(''));
-      if (visibleCount >= characters.length) {
-        window.clearInterval(timer);
-        setRevealing(false);
-      }
-    }, 24);
-    return () => window.clearInterval(timer);
-  }, [streaming, text]);
 
   if (!text || streaming) return null;
   return (
     <div className="chat-bubble-text">
-      {Markdown ? <Markdown source={`${visibleText}${revealing ? ' ▍' : ''}`} /> : visibleText}
+      {Markdown ? <Markdown source={text} /> : text}
     </div>
   );
 }
@@ -1480,6 +1464,7 @@ export function ChatMessageRow({ message, now, onPreviewImage }) {
             ) : null}
           </>
         ) : null}
+        {message.streaming ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
         {showTimelineExpanded && !showTimelineCollapsed ? (
           <ChatAgentTimeline
             items={timeline}
@@ -1624,6 +1609,8 @@ export function ChatPanel({
   agentLockedReason = '',
   lockedAgentId = '',
   selectionStorageKey = '',
+  draft: draftProp,
+  onDraftChange: onDraftChangeProp,
 }) {
   const resolvedOptions = Array.isArray(modelOptions) ? modelOptions : MODEL_OPTIONS;
   const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
@@ -1632,7 +1619,17 @@ export function ChatPanel({
     : [];
   const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : DEFAULT_AGENT_OPTIONS;
   const resolvedDefaultAgentId = defaultAgentId || resolvedAgentOptions[0]?.id || DEFAULT_AGENT_OPTIONS[0].id;
-  const [draft, setDraft] = React.useState('');
+  const [localDraft, setLocalDraft] = React.useState('');
+  const draft = draftProp !== undefined ? draftProp : localDraft;
+  const setDraft = draftProp !== undefined ? onDraftChangeProp : setLocalDraft;
+
+  // Collect user messages for ArrowUp history navigation (most recent first).
+  const userMessageHistory = React.useMemo(() => {
+    return messages
+      .filter((m) => m.role === 'user' && typeof m.text === 'string' && m.text.trim().length > 0)
+      .map((m) => m.text)
+      .reverse();
+  }, [messages]);
   const { providerId, setProviderId, modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort } = usePersistentRunConfig({
     selectionStorageKey,
     providerOptions: resolvedProviderOptions,
@@ -1762,6 +1759,8 @@ export function ChatPanel({
   const inputRef = React.useRef(null);
   const fileRef = React.useRef(null);
   const suppressSubmitUntilRef = React.useRef(0);
+  const historyCursorRef = React.useRef(-1);
+  const historySavedDraftRef = React.useRef('');
   const shouldAutoScrollRef = React.useRef(true);
   const lastMessageCountRef = React.useRef(messages.length);
   const lastConversationIdRef = React.useRef(conversationId || null);
@@ -1773,6 +1772,8 @@ export function ChatPanel({
   const contextRingStyle = {
     '--context-used': `${visibleContextRatio * 100}%`,
   };
+  const runConfigReadOnly = running || submitPending;
+  const runConfigDisabled = !runConfigReadOnly && (disabled || submitPending);
 
   function isMessageListNearBottom(el) {
     return el.scrollHeight - el.scrollTop - el.clientHeight <= 48;
@@ -1974,6 +1975,49 @@ export function ChatPanel({
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault();
               submit(event);
+              return;
+            }
+            // ArrowUp / ArrowDown history navigation (terminal-style).
+            if (event.key === 'ArrowUp' && !event.shiftKey && !event.nativeEvent.isComposing) {
+              const el = event.currentTarget;
+              if (el.selectionStart !== 0 || el.selectionEnd !== 0) return;
+              event.preventDefault();
+              const history = userMessageHistory;
+              if (history.length === 0) return;
+              const cursor = historyCursorRef.current;
+              if (cursor === -1) {
+                historySavedDraftRef.current = draft;
+              }
+              const nextCursor = Math.min(cursor + 1, history.length - 1);
+              historyCursorRef.current = nextCursor;
+              setDraft(history[nextCursor]);
+              requestAnimationFrame(() => {
+                el.setSelectionRange(history[nextCursor].length, history[nextCursor].length);
+              });
+              return;
+            }
+            if (event.key === 'ArrowDown' && !event.shiftKey && !event.nativeEvent.isComposing) {
+              const el = event.currentTarget;
+              if (el.selectionStart !== el.value.length || el.selectionEnd !== el.value.length) return;
+              event.preventDefault();
+              const cursor = historyCursorRef.current;
+              if (cursor <= 0) {
+                historyCursorRef.current = -1;
+                setDraft(historySavedDraftRef.current);
+                return;
+              }
+              const nextCursor = cursor - 1;
+              historyCursorRef.current = nextCursor;
+              const history = userMessageHistory;
+              setDraft(history[nextCursor]);
+              requestAnimationFrame(() => {
+                el.setSelectionRange(history[nextCursor].length, history[nextCursor].length);
+              });
+              return;
+            }
+            // Any non-modifier key resets the history cursor.
+            if (!['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(event.key)) {
+              historyCursorRef.current = -1;
             }
           }}
           placeholder={!providerConfigured ? 'Configure an LLM provider in Settings first...' : submitPending ? 'Preparing conversation...' : running ? 'Assistant is currently processing...' : 'Ask, draft, or delegate...'}
@@ -2007,7 +2051,7 @@ export function ChatPanel({
                 />
               </>
             ) : null}
-            <ApprovalModePicker />
+            <ApprovalModePicker readOnly={runConfigReadOnly} disabled={runConfigDisabled} />
           </div>
           <div className="chat-composer-submit">
             <PortalTooltip text={contextTooltip} position="above">
@@ -2026,7 +2070,8 @@ export function ChatPanel({
               options={activeModelOptions}
               onChange={setModelId}
               onReasoningChange={setReasoningEffort}
-              disabled={disabled || submitPending}
+              disabled={runConfigDisabled}
+              readOnly={runConfigReadOnly}
               loading={modelLoading}
               providerValue={providerId}
               providerOptions={resolvedProviderOptions}

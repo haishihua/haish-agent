@@ -93,6 +93,7 @@ export function loadStoredWorkspaceState() {
         // user last left it. We intentionally drop the legacy `expanded` field
         // on load so old snapshots don't carry forward "every project expanded".
         userExpanded: typeof project.userExpanded === 'boolean' ? project.userExpanded : undefined,
+        pinned: Boolean(project.pinned),
         conversations: Array.isArray(project.conversations)
           ? project.conversations.map((conversation) => ({
             id: conversation.id,
@@ -102,6 +103,8 @@ export function loadStoredWorkspaceState() {
             updatedAt: conversation.updatedAt || conversation.updated_at || null,
             userExpanded: typeof conversation.userExpanded === 'boolean' ? conversation.userExpanded : undefined,
             tasksExpanded: Boolean(conversation.tasksExpanded),
+            pinned: Boolean(conversation.pinned),
+            sortOrder: typeof conversation.sortOrder === 'number' ? conversation.sortOrder : 0,
           })).filter((conversation) => conversation.id)
           : [],
       };
@@ -383,6 +386,10 @@ export function normalizeWorkspaceOrdering(state) {
     .map((project) => ({
       ...project,
       conversations: [...project.conversations].sort((a, b) => {
+        const aPinned = Boolean(a.pinned);
+        const bPinned = Boolean(b.pinned);
+        if (aPinned && !bPinned) return -1;
+        if (bPinned && !aPinned) return 1;
         const aActive = conversationHasActiveTask(a);
         const bActive = conversationHasActiveTask(b);
         if (aActive && !bActive) return -1;
@@ -390,7 +397,15 @@ export function normalizeWorkspaceOrdering(state) {
         return 0;
       }),
     }))
-    .sort((a, b) => projectCreatedTimestamp(b) - projectCreatedTimestamp(a));
+    .sort((a, b) => {
+        const aPinned = Boolean(a.pinned);
+        const bPinned = Boolean(b.pinned);
+        if (aPinned && !bPinned) return -1;
+        if (bPinned && !aPinned) return 1;
+        // Stable: preserve existing relative order within each pinned group.
+        // Manual drag reorders are honored; createdAt never overrides user intent.
+        return 0;
+      });
   return {
     ...(state || {}),
     projects: projects.length ? projects : [createDefaultProject()],
@@ -422,6 +437,10 @@ export function conversationDetailToWorkspaceConversation(detail, previousConver
       ? previousConversation.userExpanded
       : undefined,
     tasksExpanded: Boolean(previousConversation?.tasksExpanded),
+    // Prefer backend true (explicit pin), but never let backend default false
+    // override a local true — the PATCH may have failed silently.
+    pinned: detail.pinned === true ? true : Boolean(previousConversation?.pinned),
+    sortOrder: typeof detail.sort_order === 'number' ? detail.sort_order : (previousConversation?.sortOrder ?? 0),
   };
 }
 
@@ -464,6 +483,7 @@ export function buildWorkspaceStateFromConversationDetails(details, previousStat
         userExpanded: typeof previousProject?.userExpanded === 'boolean'
           ? previousProject.userExpanded
           : undefined,
+        pinned: Boolean(previousProject?.pinned),
         conversations: [],
       });
     }

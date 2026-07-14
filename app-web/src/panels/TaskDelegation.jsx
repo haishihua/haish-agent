@@ -43,6 +43,8 @@ export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, on
   const contextRingStyle = {
     '--context-used': `${visibleContextRatio * 100}%`,
   };
+  const runConfigReadOnly = running || submitPending;
+  const runConfigDisabled = !runConfigReadOnly && (disabled || submitPending);
   const effectiveAgentId = agentLocked && lockedAgentId ? lockedAgentId : agentId;
   const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
   const canUploadDocuments = currentSelection?.canUploadDocuments === true;
@@ -189,7 +191,7 @@ export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, on
               />
             </>
           ) : null}
-          <ApprovalModePicker />
+          <ApprovalModePicker readOnly={runConfigReadOnly} disabled={runConfigDisabled} />
         </div>
         <div className="td-submit-cluster">
           <PortalTooltip text={contextTooltip} position="above">
@@ -208,7 +210,8 @@ export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, on
             options={activeModelOptions}
             onChange={setModelId}
             onReasoningChange={setReasoningEffort}
-            disabled={disabled || submitPending}
+            disabled={runConfigDisabled}
+            readOnly={runConfigReadOnly}
             loading={modelLoading}
             providerValue={providerId}
             providerOptions={resolvedProviderOptions}

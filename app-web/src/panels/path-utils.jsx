@@ -246,10 +246,13 @@ export function firstRunProvider(providerOptions) {
 }
 
 export function modelsForRunProvider(providerOption, fallbackOptions) {
-  if (!providerOption) return [];
-  const options = Array.isArray(providerOption?.modelOptions) && providerOption.modelOptions.length > 0
-    ? providerOption.modelOptions
-    : fallbackOptions;
+  if (!providerOption) return Array.isArray(fallbackOptions) ? fallbackOptions : [];
+  if (Array.isArray(providerOption.modelOptions)) {
+    if (providerOption.modelOptions.length > 0) return providerOption.modelOptions;
+    const fallbackModelId = String(providerOption.defaultModelId || '').trim();
+    return fallbackModelId ? [{ id: fallbackModelId, label: fallbackModelId }] : [];
+  }
+  const options = fallbackOptions;
   return Array.isArray(options) && options.length > 0 ? options : [];
 }
 

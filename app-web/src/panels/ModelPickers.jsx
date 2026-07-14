@@ -25,7 +25,7 @@ export function resolveApprovalApiBase() {
   return '';
 }
 
-export function ApprovalModePicker({ disabled = false }) {
+export function ApprovalModePicker({ disabled = false, readOnly = false }) {
   const [open, setOpen] = React.useState(false);
   const [mode, setMode] = React.useState('smart');
   const [loaded, setLoaded] = React.useState(false);
@@ -71,7 +71,7 @@ export function ApprovalModePicker({ disabled = false }) {
   }, [open]);
 
   async function changeMode(next) {
-    if (next === mode || busy) { setOpen(false); return; }
+    if (readOnly || disabled || next === mode || busy) { setOpen(false); return; }
     const prev = mode;
     setMode(next);
     setOpen(false);
@@ -94,13 +94,15 @@ export function ApprovalModePicker({ disabled = false }) {
   const current = APPROVAL_MODE_OPTIONS.find((o) => o.id === mode) || APPROVAL_MODE_OPTIONS[1];
 
   return (
-    <div className={`approval-mode-picker ${open ? 'is-open' : ''} ${loaded ? '' : 'is-loading'}`} ref={rootRef}>
+    <div className={`approval-mode-picker ${open ? 'is-open' : ''} ${loaded ? '' : 'is-loading'} ${readOnly ? 'is-readonly' : ''}`} ref={rootRef}>
       <PortalTooltip text={open ? '' : `Approval mode · ${current.label}`} position="above">
         <button
           type="button"
           className="approval-mode-trigger"
           onClick={() => { if (!disabled) setOpen((o) => !o); }}
           disabled={disabled}
+          aria-disabled={disabled ? 'true' : undefined}
+          aria-readonly={readOnly ? 'true' : undefined}
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-label="Approval mode"
@@ -129,7 +131,8 @@ export function ApprovalModePicker({ disabled = false }) {
                   type="button"
                   role="option"
                   aria-selected={active}
-                  className={`approval-mode-option ${active ? 'is-active' : ''}`}
+                  className={`approval-mode-option ${active ? 'is-active' : ''} ${readOnly ? 'is-readonly' : ''}`}
+                  aria-disabled={readOnly ? 'true' : undefined}
                   onClick={() => changeMode(opt.id)}
                   title={opt.desc}
                 >
@@ -170,6 +173,7 @@ export function ModelPicker({
   onChange,
   onReasoningChange,
   disabled,
+  readOnly = false,
   loading = false,
   providerValue,
   providerOptions = [],
@@ -196,7 +200,7 @@ export function ModelPicker({
   const providerLabel = currentProvider ? currentProvider.label : 'Configure LLM';
   const agentLabel = currentAgent ? currentAgent.label : (agentLoading ? 'loading' : 'Agent');
   const pickerLoading = agentLoading;
-  const agentChangeDisabled = disabled || pickerLoading || agentLocked;
+  const agentChangeDisabled = disabled || readOnly || pickerLoading || agentLocked;
   const agentLockText = agentLockedReason || 'Cannot change agent for this conversation.';
 
   React.useEffect(() => {
@@ -233,6 +237,8 @@ export function ModelPicker({
         });
       }}
       disabled={disabled || pickerLoading}
+      aria-disabled={disabled ? 'true' : undefined}
+      aria-readonly={readOnly ? 'true' : undefined}
       aria-haspopup="menu"
       aria-expanded={open}
       aria-label="Select run configuration"
@@ -243,7 +249,7 @@ export function ModelPicker({
   );
 
   return (
-    <div className={`model-picker run-config-picker ${open ? 'is-open' : ''} ${pickerLoading ? 'is-loading' : ''}`} ref={rootRef}>
+    <div className={`model-picker run-config-picker ${open ? 'is-open' : ''} ${pickerLoading ? 'is-loading' : ''} ${readOnly ? 'is-readonly' : ''}`} ref={rootRef}>
       {triggerButton}
       {open ? (
         <div className={`model-picker-menu ${activeSubmenu ? 'has-flyout' : ''}`} role="menu">
@@ -337,8 +343,9 @@ export function ModelPicker({
                         type="button"
                         role="option"
                         aria-selected={active}
-                        className={`model-picker-option ${active ? 'is-active' : ''}`}
-                        onClick={() => { onProviderChange?.(opt.id); setOpen(false); setActiveSubmenu(null); }}
+                        className={`model-picker-option ${active ? 'is-active' : ''} ${readOnly ? 'is-readonly' : ''}`}
+                        aria-disabled={readOnly ? 'true' : undefined}
+                        onClick={() => { if (readOnly) return; onProviderChange?.(opt.id); setOpen(false); setActiveSubmenu(null); }}
                       >
                         <span className="model-picker-option-label">{opt.label || opt.id}</span>
                         {active ? (
@@ -369,8 +376,9 @@ export function ModelPicker({
                         type="button"
                         role="option"
                         aria-selected={active}
-                        className={`model-picker-option model-picker-model-option ${active ? 'is-active' : ''}`}
-                        onClick={() => { onChange(opt.id); setOpen(false); setActiveSubmenu(null); }}
+                        className={`model-picker-option model-picker-model-option ${active ? 'is-active' : ''} ${readOnly ? 'is-readonly' : ''}`}
+                        aria-disabled={readOnly ? 'true' : undefined}
+                        onClick={() => { if (readOnly) return; onChange(opt.id); setOpen(false); setActiveSubmenu(null); }}
                       >
                         <span className="model-picker-option-label">{opt.label}</span>
                         {active ? (
@@ -399,8 +407,9 @@ export function ModelPicker({
                         type="button"
                         role="option"
                         aria-selected={active}
-                        className={`model-picker-option ${active ? 'is-active' : ''}`}
-                        onClick={() => { onReasoningChange?.(opt.id); setOpen(false); setActiveSubmenu(null); }}
+                        className={`model-picker-option ${active ? 'is-active' : ''} ${readOnly ? 'is-readonly' : ''}`}
+                        aria-disabled={readOnly ? 'true' : undefined}
+                        onClick={() => { if (readOnly) return; onReasoningChange?.(opt.id); setOpen(false); setActiveSubmenu(null); }}
                       >
                         <span className="model-picker-option-label">{opt.label}</span>
                         {active ? (
