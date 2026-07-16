@@ -74,10 +74,13 @@ export function loadStoredWorkspaceState() {
     if (!parsed || !Array.isArray(parsed.projects)) return createEmptyWorkspaceState();
     const defaultProject = createDefaultProject();
     const projectsById = new Map(parsed.projects.map((project) => [project.id, project]));
-    const projects = [
-      projectsById.get(DEFAULT_PROJECT_ID) || defaultProject,
-      ...parsed.projects.filter((project) => project.id !== DEFAULT_PROJECT_ID),
-    ].map((project) => {
+    // Preserve the saved project order (manual drag). Only inject Default when
+    // missing — never force it back to the top after the user moved it.
+    const orderedProjects = parsed.projects.filter((project) => project?.id);
+    if (!projectsById.has(DEFAULT_PROJECT_ID)) {
+      orderedProjects.unshift(defaultProject);
+    }
+    const projects = orderedProjects.map((project) => {
       const isDefault = project.id === DEFAULT_PROJECT_ID;
       return {
         ...project,
@@ -454,6 +457,8 @@ export function buildWorkspaceStateFromConversationDetails(details, previousStat
     previous.projects.flatMap((project) => project.conversations.map((conversation) => [conversation.id, conversation]))
   );
   const projectsById = new Map();
+  // Seed Default project metadata, but do NOT force it to the front of the
+  // rebuilt list — previous.projects order is the user's drag order.
   projectsById.set(DEFAULT_PROJECT_ID, {
     ...(previousProjects.get(DEFAULT_PROJECT_ID) || createDefaultProject()),
     id: DEFAULT_PROJECT_ID,
@@ -465,6 +470,10 @@ export function buildWorkspaceStateFromConversationDetails(details, previousStat
     createdAt: previousProjects.get(DEFAULT_PROJECT_ID)?.createdAt || null,
     updatedAt: previousProjects.get(DEFAULT_PROJECT_ID)?.updatedAt || null,
     conversationsExpanded: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.conversationsExpanded),
+    pinned: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.pinned),
+    userExpanded: typeof previousProjects.get(DEFAULT_PROJECT_ID)?.userExpanded === 'boolean'
+      ? previousProjects.get(DEFAULT_PROJECT_ID).userExpanded
+      : undefined,
     conversations: [],
   });
 
@@ -498,9 +507,28 @@ export function buildWorkspaceStateFromConversationDetails(details, previousStat
     );
   }
 
-  const projects = Array.from(projectsById.values()).filter((project) => (
-    project.id === DEFAULT_PROJECT_ID || project.conversations.length > 0
-  ));
+  // Rebuild in previous manual order first, then append any newly discovered
+  // projects. Map insertion order alone would always put Default project first.
+  const orderedProjects = [];
+  const seen = new Set();
+  for (const previousProject of previous.projects) {
+    const project = projectsById.get(previousProject.id);
+    if (!project || seen.has(project.id)) continue;
+    if (project.id !== DEFAULT_PROJECT_ID && project.conversations.length === 0) continue;
+    orderedProjects.push(project);
+    seen.add(project.id);
+  }
+  for (const project of projectsById.values()) {
+    if (seen.has(project.id)) continue;
+    if (project.id !== DEFAULT_PROJECT_ID && project.conversations.length === 0) continue;
+    orderedProjects.push(project);
+    seen.add(project.id);
+  }
+  // Ensure Default project always exists somewhere in the list.
+  if (!seen.has(DEFAULT_PROJECT_ID)) {
+    orderedProjects.push(projectsById.get(DEFAULT_PROJECT_ID) || createDefaultProject());
+  }
+  const projects = orderedProjects;
   const activeConversationExists = projects.some((project) => (
     project.conversations.some((conversation) => conversation.id === previous.activeConversationId)
   ));
