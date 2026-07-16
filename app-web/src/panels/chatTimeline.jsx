@@ -1810,8 +1810,8 @@ export function ChatPanel({
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
   }, [draft]);
 
-  function restoreActiveTaskText() {
-    const text = String(activeTaskText || '').trim();
+  function restoreActiveTaskText(value = activeTaskText) {
+    const text = String(value || '').trim();
     if (!text) return;
     setDraft(text);
     requestAnimationFrame(() => {
@@ -1821,8 +1821,8 @@ export function ChatPanel({
   }
 
   function stopAndRestore() {
-    onStop?.();
-    restoreActiveTaskText();
+    const restoreText = onStop?.();
+    if (restoreText) restoreActiveTaskText(restoreText);
   }
 
   function handleStopPress(event) {

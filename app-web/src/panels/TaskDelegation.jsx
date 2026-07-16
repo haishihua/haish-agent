@@ -69,8 +69,8 @@ export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, on
     el.style.height = Math.min(el.scrollHeight, 132) + 'px';
   }, [v]);
 
-  function restoreActiveTaskText() {
-    const text = String(activeTaskText || '').trim();
+  function restoreActiveTaskText(value = activeTaskText) {
+    const text = String(value || '').trim();
     if (!text) return;
     setV(text);
     requestAnimationFrame(() => {
@@ -80,8 +80,8 @@ export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, on
   }
 
   function stopAndRestore() {
-    onStop?.();
-    restoreActiveTaskText();
+    const restoreText = onStop?.();
+    if (restoreText) restoreActiveTaskText(restoreText);
   }
 
   function handleStopPress(event) {

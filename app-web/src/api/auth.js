@@ -32,11 +32,12 @@ export function stableHash(value) {
   return (hash >>> 0).toString(36);
 }
 
-export function buildRunConfigStorageKey(authUser, providerKey) {
+export function buildRunConfigStorageKey(authUser, providerKey, conversationId = '') {
   const userKey = String(authUser?.id || authUser?.email || authUser?.username || 'anonymous').trim() || 'anonymous';
   const provider = String(providerKey || 'unknown').trim() || 'unknown';
-  if (provider === 'unknown') return '';
-  return `${RUN_CONFIG_STORAGE_PREFIX}:${stableHash(userKey)}:${stableHash(provider)}`;
+  const conversation = String(conversationId || '').trim();
+  if (provider === 'unknown' || !conversation) return '';
+  return `${RUN_CONFIG_STORAGE_PREFIX}:${stableHash(userKey)}:${stableHash(provider)}:${stableHash(conversation)}`;
 }
 
 export function clearStoredAuthSession() {

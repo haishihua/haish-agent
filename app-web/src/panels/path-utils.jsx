@@ -247,8 +247,14 @@ export function optionHasId(options, id) {
 }
 
 export function firstRunProvider(providerOptions) {
-  if (Array.isArray(providerOptions) && providerOptions.length > 0) return providerOptions[0];
-  return null;
+  if (!Array.isArray(providerOptions) || providerOptions.length === 0) return null;
+  // Prefer xAI for brand-new conversation selections when available.
+  const xai = providerOptions.find((item) => {
+    const provider = String(item?.provider || '').trim().toLowerCase();
+    const id = String(item?.id || '').trim().toLowerCase();
+    return provider === 'xai' || provider === 'grok' || id === 'xai' || id.includes(':xai') || id.startsWith('xai');
+  });
+  return xai || providerOptions[0];
 }
 
 export function providerModelsRequest(providerOption) {

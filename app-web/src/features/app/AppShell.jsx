@@ -180,6 +180,7 @@ import {
   isTerminalTaskStatus,
   normalizeTaskStatus,
   sortTaskIdsForRestore,
+  taskHasAssistantStreamContent,
   upsertToolCall,
   getLiveEventStatus,
   normalizeLiveEntryStatus,
@@ -512,7 +513,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const llmProviderOptions = useMemo(() => runtimeLlmProviderOptions(llmSettingsDraft), [llmSettingsDraft]);
   const agentOptions = agentCatalog?.options || APP_DEFAULT_AGENT_OPTIONS;
   const defaultAgentId = agentCatalog?.defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
-  const runConfigStorageKey = buildRunConfigStorageKey(authUser, 'chat');
+  const runConfigStorageKey = buildRunConfigStorageKey(authUser, 'chat', conversationId);
   const workflowOptions = useMemo(() => {
     const normalized = normalizeWorkflowSettings(workflowSettingsDraft);
     return [...normalized.presets, ...normalized.custom]
@@ -855,8 +856,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     const snapshot = rt.worldTaskState;
     const taskOrder = Array.isArray(snapshot?.taskOrder) ? snapshot.taskOrder : [];
     const tasksById = snapshot?.tasksById || {};
+    // Always mirror runtime tasks, including an empty list after a full
+    // Stop-before-stream rollback. Skipping empty used to leave the removed
+    // turn in workspaceState and resurrect it on the next sidebar refresh.
     const currentTasks = taskOrder.map((taskId) => tasksById[taskId]).filter(Boolean);
-    if (currentTasks.length === 0) return;
     setWorkspaceState((state) => {
       let touched = false;
       const projects = state.projects.map((project) => {
@@ -1195,12 +1198,28 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       return null;
     }
     const ownerRuntime = ownerConvId ? getRuntime(ownerConvId) : null;
+    // After Stop, the current run is aborted until the next executeQuest resets it.
+    // Do not re-materialize tasks from late NDJSON / run_cancelled events.
+    if (ownerRuntime?.abortRequested) {
+      if (event.task_id) userCancelledTaskIdsRef.current.add(event.task_id);
+      return null;
+    }
     const seedActiveTaskId = ownerRuntime
       ? ownerRuntime.activeTaskId || ownerRuntime.worldTaskState.activeTaskId
       : activeTaskIdRef.current || worldTaskStateRef.current.activeTaskId;
     const taskId = event.task_id || seedActiveTaskId;
     if (!taskId) return null;
+    // User-cancelled turns must never be re-created by late SSE / run_cancelled.
+    // Also block when the local pending draft id was cancelled before the server
+    // task id arrived, and promote the server id into the cancel set.
     if (userCancelledTaskIdsRef.current.has(taskId)) {
+      return null;
+    }
+    const pendingId = ownerRuntime?.worldTaskState?.pendingTask?.id
+      || ownerRuntime?.worldTaskState?.pendingTask?.taskId
+      || null;
+    if (pendingId && userCancelledTaskIdsRef.current.has(pendingId)) {
+      if (event.task_id) userCancelledTaskIdsRef.current.add(event.task_id);
       return null;
     }
 
@@ -3353,20 +3372,39 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   }
 
   function applyWorldEvent(event, targetConvId = null) {
-  const eventConversationId = event.conversation_id || null;
+    const eventConversationId = event.conversation_id || null;
     const ownerConvId = activeRuntimeTargetConvId(targetConvId);
     if (eventConversationId && ownerConvId && eventConversationId !== ownerConvId) {
       return;
     }
+    const ownerRuntime = ownerConvId ? getRuntime(ownerConvId) : null;
+    // Stop-before-visualization: drop every late event for the aborted run,
+    // including CHAT_FINAL_FOLLOWUP types like run_cancelled that would otherwise
+    // rehydrate empty You / Assistant shells.
+    if (ownerRuntime?.abortRequested) {
+      if (event.task_id) {
+        userCancelledTaskIdsRef.current.add(event.task_id);
+        chatFinalizedTaskIdsRef.current.add(event.task_id);
+      }
+      return;
+    }
+    if (event.task_id && userCancelledTaskIdsRef.current.has(event.task_id)) {
+      chatFinalizedTaskIdsRef.current.add(event.task_id);
+      return;
+    }
     const taskId = ensureTaskForEvent(event, ownerConvId);
     if (!taskId) return;
+    if (userCancelledTaskIdsRef.current.has(taskId)) {
+      chatFinalizedTaskIdsRef.current.add(taskId);
+      return;
+    }
     if (
       chatFinalizedTaskIdsRef.current.has(taskId)
       && !CHAT_FINAL_FOLLOWUP_EVENT_TYPES.has(event.type)
     ) {
       updateWorldTaskState((state) => (
         state.activeTaskId === taskId ? { ...state, activeTaskId: null } : state
-      ));
+      ), ownerConvId);
       return;
     }
     appendTaskEvent(taskId, event);
@@ -3734,18 +3772,45 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           presentationPending: true,
         }));
         break;
-      case 'run_cancelled':
+      case 'run_cancelled': {
         pendingPresentationTaskIdsRef.current.delete(taskId);
         chatFinalizedTaskIdsRef.current.add(taskId);
-        updateTaskById(taskId, (run) => applyTerminalTaskState(run, 'cancelled', { aborted: true }));
-        updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
-        setRuntimeBusy(false);
-        setRuntimeActiveTaskId(null);
-        setRuntimeFetchController(null);
+        userCancelledTaskIdsRef.current.add(taskId);
+        const existing = getTaskById(taskId, ownerConvId);
+        const answerBuffer = String(readRuntimeAnswerBuffer(ownerConvId) || '').trim();
+        // Any cancel that never produced agent-visible content must drop both
+        // bubbles. Do not require the local cancel-id set: late server task ids
+        // after a pending-only Stop may not match the original pending draft id.
+        const shouldRollbackEmptyCancel = Boolean(
+          !taskHasAssistantStreamContent(existing)
+          && !answerBuffer
+        );
+        if (shouldRollbackEmptyCancel) {
+          updateWorldTaskState((state) => {
+            const nextTasksById = { ...(state.tasksById || {}) };
+            delete nextTasksById[taskId];
+            return {
+              ...state,
+              activeTaskId: null,
+              pendingTask: null,
+              taskOrder: (state.taskOrder || []).filter((id) => id !== taskId),
+              tasksById: nextTasksById,
+            };
+          }, ownerConvId);
+          removeConversationTaskFromWorkspace(ownerConvId, taskId);
+          if (ownerConvId) flushRuntimeTasksToWorkspace(ownerConvId);
+        } else {
+          updateTaskById(taskId, (run) => applyTerminalTaskState(run, 'cancelled', { aborted: true }), ownerConvId);
+          updateWorldTaskState((state) => ({ ...state, activeTaskId: null }), ownerConvId);
+        }
+        setRuntimeBusy(false, ownerConvId);
+        setRuntimeActiveTaskId(null, ownerConvId);
+        setRuntimeFetchController(null, ownerConvId);
         dropPendingSceneItems(taskId);
         resetSceneActors();
         completeTaskAgents(taskId, 'cancelled');
         break;
+      }
       case 'run_error':
         pendingPresentationTaskIdsRef.current.delete(taskId);
         chatFinalizedTaskIdsRef.current.add(taskId);
@@ -4012,8 +4077,35 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     }
   }
 
+  function removeConversationTaskFromWorkspace(convId, taskKey) {
+    if (!convId || !taskKey) return;
+    setWorkspaceState((state) => {
+      let touched = false;
+      const projects = state.projects.map((project) => {
+        if (!project.conversations.some((conversation) => conversation.id === convId)) return project;
+        touched = true;
+        const now = Date.now();
+        return {
+          ...project,
+          updatedAt: now,
+          conversations: project.conversations.map((conversation) => {
+            if (conversation.id !== convId) return conversation;
+            const tasks = (Array.isArray(conversation.tasks) ? conversation.tasks : []).filter((task) => {
+              const key = task?.taskId || task?.task_id || task?.id;
+              return key !== taskKey;
+            });
+            return { ...conversation, tasks, updatedAt: now };
+          }),
+        };
+      });
+      if (!touched) return state;
+      return normalizeWorkspaceOrdering({ ...state, projects });
+    });
+  }
+
   function handleStop() {
-    const hadQueuedDeploy = Boolean(queuedDeploy);
+    const queuedRequest = queuedDeploy;
+    const hadQueuedDeploy = Boolean(queuedRequest);
     if (hadQueuedDeploy) setQueuedDeploy(null);
     // Stop targets the currently-shown conversation only — other backgrounded
     // conversations continue running. All ref/state reads scope to its runtime.
@@ -4033,16 +4125,54 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     const runId = targetRuntime ? targetRuntime.activeRunId : activeRunIdRef.current;
     const controllerToAbort = targetRuntime ? targetRuntime.fetchController : fetchAbortRef.current;
     const runtimeBusy = targetRuntime ? targetRuntime.busy : busy;
-    const hasActiveRun = runtimeBusy || taskId || currentTaskState.pendingTask || controllerToAbort;
-    if (!hasActiveRun) return;
+    const pendingTask = currentTaskState.pendingTask || null;
+    const activeTask = taskId ? (currentTaskState.tasksById?.[taskId] || null) : null;
+    const restoreText = String(
+      activeTask?.title
+      || pendingTask?.title
+      || queuedRequest?.text
+      || ''
+    ).trim();
+    // Only agent-visible content (thinking/answer/tool/trace) counts as started.
+    // Lifecycle receipts before visualization must still roll the turn back.
+    const answerBuffer = String(
+      (targetConvId ? readRuntimeAnswerBuffer(targetConvId) : answerBufferRef.current) || ''
+    ).trim();
+    const hasAssistantOutput = taskHasAssistantStreamContent(activeTask || pendingTask)
+      || Boolean(answerBuffer);
+    const hasActiveRun = runtimeBusy || taskId || pendingTask || controllerToAbort || hadQueuedDeploy;
+    if (!hasActiveRun) return '';
+    // Mark abort BEFORE any async cancel / abort side effects so in-flight
+    // NDJSON flushes and late applyWorldEvent calls cannot recreate the turn.
     if (targetRuntime) {
       targetRuntime.abortRequested = true;
       if (runId) targetRuntime.cancelledRunIds.add(runId);
     } else {
       abortRef.current = true;
     }
+    // Block any in-flight / late SSE from re-materializing this turn.
     if (taskId) {
       userCancelledTaskIdsRef.current.add(taskId);
+      chatFinalizedTaskIdsRef.current.add(taskId);
+    }
+    if (pendingTask?.id) {
+      userCancelledTaskIdsRef.current.add(pendingTask.id);
+      chatFinalizedTaskIdsRef.current.add(pendingTask.id);
+    }
+    if (pendingTask?.taskId) {
+      userCancelledTaskIdsRef.current.add(pendingTask.taskId);
+      chatFinalizedTaskIdsRef.current.add(pendingTask.taskId);
+    }
+    // Also mark every currently-active task in this conversation, so a pending
+    // local draft that later resolves to a server task_id cannot reappear.
+    Object.values(currentTaskState.tasksById || {}).forEach((task) => {
+      if (!isTaskActuallyActive(task)) return;
+      const key = task?.taskId || task?.task_id || task?.id;
+      if (!key) return;
+      userCancelledTaskIdsRef.current.add(key);
+      chatFinalizedTaskIdsRef.current.add(key);
+    });
+    if (taskId) {
       cancelActiveTask(taskId).catch((error) => {
         console.error('cancel failed', error);
       });
@@ -4053,41 +4183,67 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     }
     controllerToAbort?.abort?.();
     if (taskId) {
-      // 关键：把 taskId 加入 finalized set，让 applyWorldEvent 早退，
-      // 避免后续 in-flight 的 SSE 事件把 status 从 'cancelled' 改回 'running'。
-      chatFinalizedTaskIdsRef.current.add(taskId);
-      updateTaskById(taskId, (task) => applyTerminalTaskState(task, 'cancelled', { aborted: true }), targetConvId);
+      if (hasAssistantOutput) {
+        // Assistant already produced visible content: keep the partial turn.
+        updateTaskById(taskId, (task) => applyTerminalTaskState(task, 'cancelled', { aborted: true }), targetConvId);
+        updateWorldTaskState((state) => ({
+          ...state,
+          activeTaskId: null,
+          pendingTask: null,
+          taskOrder: state.taskOrder.includes(taskId) ? state.taskOrder : [...state.taskOrder, taskId],
+        }), targetConvId);
+      } else {
+        // No agent-visible content yet: drop both bubbles and restore composer.
+        updateWorldTaskState((state) => {
+          const nextTasksById = { ...(state.tasksById || {}) };
+          delete nextTasksById[taskId];
+          return {
+            ...state,
+            activeTaskId: null,
+            pendingTask: null,
+            taskOrder: (state.taskOrder || []).filter((id) => id !== taskId),
+            tasksById: nextTasksById,
+          };
+        }, targetConvId);
+        removeConversationTaskFromWorkspace(targetConvId, taskId);
+      }
+      dropPendingSceneItems(taskId);
+    } else if (pendingTask) {
+      const pendingKey = pendingTask.id || pendingTask.taskId || null;
+      // Pending-only turns never have agent-visible content yet.
       updateWorldTaskState((state) => ({
         ...state,
         activeTaskId: null,
         pendingTask: null,
-        taskOrder: state.taskOrder.includes(taskId) ? state.taskOrder : [...state.taskOrder, taskId],
       }), targetConvId);
-      dropPendingSceneItems(taskId);
+      if (pendingKey) removeConversationTaskFromWorkspace(targetConvId, pendingKey);
+      dropPendingSceneItems();
     } else {
-      updateWorldTaskState((state) => ({
-        ...state,
-        activeTaskId: null,
-        pendingTask: state.pendingTask
-          ? applyTerminalTaskState(state.pendingTask, 'cancelled', { aborted: true })
-          : null,
-      }), targetConvId);
+      // Queued deploy only — nothing rendered yet; just restore composer text.
       dropPendingSceneItems();
     }
     if (targetConvId) {
       mutateRuntime(targetConvId, (rt) => {
+        // Keep abortRequested=true until the next executeQuest starts a fresh run.
+        rt.abortRequested = true;
+        if (runId) rt.cancelledRunIds.add(runId);
         rt.activeTaskId = null;
         rt.activeRunId = null;
         rt.fetchController = null;
+        rt.answerBuffer = '';
         rt.busy = false;
       });
+      // Keep sidebar task list in sync after a hard rollback/cancel.
+      flushRuntimeTasksToWorkspace(targetConvId);
     } else {
       activeTaskIdRef.current = null;
       activeRunIdRef.current = null;
       fetchAbortRef.current = null;
+      answerBufferRef.current = '';
       setBusy(false);
     }
     resetSceneActors();
+    return hasAssistantOutput ? '' : restoreText;
   }
 
   function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, selectionId, providerRequest) {
@@ -4345,6 +4501,16 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         conversations: project.conversations.map((conversation) => (
           conversation.id === nextConversationId ? { ...conversation, tasksExpanded: !conversation.tasksExpanded } : conversation
         )),
+      } : project),
+    }));
+  }
+
+  function handleToggleProjectConversations(projectId) {
+    setWorkspaceState((state) => normalizeWorkspaceOrdering({
+      ...state,
+      projects: state.projects.map((project) => project.id === projectId ? {
+        ...project,
+        conversationsExpanded: !project.conversationsExpanded,
       } : project),
     }));
   }
@@ -4954,10 +5120,23 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     for (const task of orderedTasks) {
       const taskId = task.taskId || task.id || task.title;
       const status = normalizeTaskStatus(task.status);
-      // Cancelled tasks stay in chat history: if the LLM produced no streaming
-      // output the agent bubble falls back to "Task was cancelled."; if it did
-      // produce data the partial answer is shown. Either way the user message
-      // is preserved so the conversation timeline doesn't disappear.
+      const answer = String(task.answerText || '').trim();
+      const progress = String(task.chatStreamText || '').trim();
+      const error = String(task.error || '').trim();
+      // User-cancelled turns with no agent-visible content are rolled back
+      // entirely (composer restore). Ignore early chatStreamText receipts such as
+      // "Task received." — those are not agent visualization and must not keep
+      // empty You / Assistant shells after Stop.
+      if (
+        status === 'cancelled'
+        && !error
+        && !answer
+        && !taskHasAssistantStreamContent(task)
+      ) {
+        continue;
+      }
+      // Cancelled tasks that already streamed content stay in history so the
+      // partial answer / trace remains visible.
       if (task.title) {
         rows.push({
           id: `${taskId}-user`,
@@ -4969,9 +5148,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           images: Array.isArray(task.imageAttachments) ? task.imageAttachments : [],
         });
       }
-      const answer = String(task.answerText || '').trim();
-      const progress = String(task.chatStreamText || '').trim();
-      const error = String(task.error || '').trim();
       if (answer || progress || error || status === 'running' || status === 'queued' || status === 'failed' || status === 'cancelled') {
         const progressLines = progress
           ? progress.split('\n').map((line) => line.trim()).filter(Boolean)
@@ -5012,32 +5188,33 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     if (worldTaskState.pendingTask && !worldTaskState.activeTaskId) {
       const pendingStatus = normalizeTaskStatus(worldTaskState.pendingTask.status);
       const pendingError = String(worldTaskState.pendingTask.error || '').trim();
-      // Keep cancelled pending tasks visible without adding a synthetic
-      // cancellation body; the elapsed/status UI carries that state.
-      rows.push({
-        id: `${worldTaskState.pendingTask.id || 'pending'}-user`,
-        role: 'user',
-        text: worldTaskState.pendingTask.title,
-        status: pendingStatus,
-        createdAt: worldTaskState.pendingTask.createdAt,
-        completedAt: worldTaskState.pendingTask.completedAt,
-        images: Array.isArray(worldTaskState.pendingTask.imageAttachments)
-          ? worldTaskState.pendingTask.imageAttachments
-          : [],
-      });
-      if (pendingError || pendingStatus === 'failed' || pendingStatus === 'cancelled' || pendingStatus === 'running' || pendingStatus === 'queued') {
-        const pendingStreaming = (pendingStatus === 'running' || pendingStatus === 'queued') && !pendingError;
+      // Empty user-cancelled pending turns are rolled back; skip rendering shells.
+      if (!(pendingStatus === 'cancelled' && !pendingError && !taskHasAssistantStreamContent(worldTaskState.pendingTask))) {
         rows.push({
-          id: `${worldTaskState.pendingTask.id || 'pending'}-agent`,
-          role: 'agent',
-          text: pendingStreaming ? '' : (pendingStatus === 'cancelled' ? '' : pendingError),
-          progressLines: [],
-          traceTimeline: [],
+          id: `${worldTaskState.pendingTask.id || 'pending'}-user`,
+          role: 'user',
+          text: worldTaskState.pendingTask.title,
           status: pendingStatus,
-          streaming: pendingStreaming,
           createdAt: worldTaskState.pendingTask.createdAt,
           completedAt: worldTaskState.pendingTask.completedAt,
+          images: Array.isArray(worldTaskState.pendingTask.imageAttachments)
+            ? worldTaskState.pendingTask.imageAttachments
+            : [],
         });
+        if (pendingError || pendingStatus === 'failed' || pendingStatus === 'cancelled' || pendingStatus === 'running' || pendingStatus === 'queued') {
+          const pendingStreaming = (pendingStatus === 'running' || pendingStatus === 'queued') && !pendingError;
+          rows.push({
+            id: `${worldTaskState.pendingTask.id || 'pending'}-agent`,
+            role: 'agent',
+            text: pendingStreaming ? '' : (pendingStatus === 'cancelled' ? '' : pendingError),
+            progressLines: [],
+            traceTimeline: [],
+            status: pendingStatus,
+            streaming: pendingStreaming,
+            createdAt: worldTaskState.pendingTask.createdAt,
+            completedAt: worldTaskState.pendingTask.completedAt,
+          });
+        }
       }
     }
     return rows;
@@ -5146,6 +5323,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               onSelectConversation={(projectId, nextConversationId) => { handleSelectConversation(projectId, nextConversationId).catch((error) => { console.error('conversation select failed', error); showToast('error', String(error?.message || error)); }); }}
               onToggleConversation={handleToggleConversation}
               onToggleConversationTasks={handleToggleConversationTasks}
+              onToggleProjectConversations={handleToggleProjectConversations}
               onDeleteConversation={(projectId, nextConversationId) => { handleDeleteConversation(projectId, nextConversationId).catch((error) => { console.error('conversation delete failed', error); showToast('error', String(error?.message || error)); }); }}
               onRenameConversation={(projectId, nextConversationId, title) => { handleRenameConversation(projectId, nextConversationId, title).catch((error) => { console.error('conversation rename failed', error); showToast('error', String(error?.message || error)); }); }}
               onPinConversation={handlePinConversation}

@@ -48,6 +48,86 @@ export function isTerminalTaskStatus(status) {
   return normalized === 'done' || normalized === 'failed' || normalized === 'cancelled';
 }
 
+/**
+ * Events that actually become agent-visible chat content (trace / answer / tools).
+ *
+ * Lifecycle receipts and markers that never render in the chat bubble must NOT
+ * count — e.g. user_message_received, agent_gateway_received, provider_selected,
+ * llm_thinking_started/completed. Otherwise Stop-before-visualization keeps an
+ * empty You/Assistant shell instead of rolling the turn back.
+ *
+ * Keep this aligned with buildChatTimeline's rendered event kinds.
+ */
+const ASSISTANT_VISIBLE_STREAM_EVENT_TYPES = new Set([
+  'llm_thinking_delta',
+  'llm_answer_delta',
+  'llm_final_answer',
+  'llm_tool_call_requested',
+  'agent_progress_delta',
+  'context_compaction_started',
+  'context_compaction_completed',
+  'tool_manager_received',
+  'tool_dispatched',
+  'tool_executor_started',
+  'tool_executor_completed',
+  'tool_result_returned',
+  'sub_agent_started',
+  'sub_agent_finished',
+  'sub_agent_progress_delta',
+  'sub_agent_answer_delta',
+  'sub_agent_tool_call_requested',
+  'sub_agent_tool_executor_completed',
+]);
+
+function eventLogEntryType(entry) {
+  if (!entry || typeof entry !== 'object') return '';
+  return String(entry.type || entry.event_type || entry.eventType || '').trim();
+}
+
+function eventLogEntryText(entry) {
+  if (!entry || typeof entry !== 'object') return '';
+  return String(
+    entry.delta
+    || entry.text
+    || entry.content
+    || entry.message
+    || entry.contentDelta
+    || entry.outputSummary
+    || entry.output_summary
+    || ''
+  ).trim();
+}
+
+function eventLogEntryHasVisiblePayload(entry) {
+  const type = eventLogEntryType(entry);
+  if (!ASSISTANT_VISIBLE_STREAM_EVENT_TYPES.has(type)) return false;
+  // Text-bearing stream events only count once they carry real text.
+  // Empty lifecycle-style progress must not keep cancelled You/Assistant shells.
+  if (
+    type === 'llm_thinking_delta'
+    || type === 'llm_answer_delta'
+    || type === 'agent_progress_delta'
+    || type === 'sub_agent_progress_delta'
+    || type === 'sub_agent_answer_delta'
+  ) {
+    return Boolean(eventLogEntryText(entry));
+  }
+  return true;
+}
+
+/** True when the assistant has already produced user-visible chat content. */
+export function taskHasAssistantStreamContent(task) {
+  if (!task) return false;
+  if (String(task.answerText || '').trim()) return true;
+  if (Array.isArray(task.toolCalls) && task.toolCalls.length > 0) return true;
+  if (Array.isArray(task.eventLog) && task.eventLog.some(eventLogEntryHasVisiblePayload)) {
+    return true;
+  }
+  // chatStreamText alone is not enough: early receipts write "Task received."
+  // before any agent-visible bubble content exists.
+  return false;
+}
+
 export function applyTerminalTaskState(task, status, options = {}) {
   if (!task) return task;
   const normalized = normalizeTaskStatus(status);

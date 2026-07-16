@@ -393,6 +393,7 @@ export function ProjectNode({
   onSelectConversation,
   onToggleConversation,
   onToggleConversationTasks,
+  onToggleProjectConversations,
   onRequestDeleteConversation,
   onRequestRenameConversation,
   onPinConversation,
@@ -408,10 +409,18 @@ export function ProjectNode({
   onOpenTaskReport,
   onRetryTask,
   taskPreviewLimit = 5,
+  conversationPreviewLimit = 3,
 }) {
   const isActiveProject = workspaceState.activeProjectId === project.id;
   const isPinned = Boolean(project.pinned);
-  const registerConversationNode = useConversationOrderAnimation(project.conversations);
+  const allConversations = Array.isArray(project.conversations) ? project.conversations : [];
+  const conversationLimit = Math.max(1, Number(conversationPreviewLimit) || 3);
+  const conversationsExpanded = Boolean(project.conversationsExpanded);
+  const visibleConversations = conversationsExpanded
+    ? allConversations
+    : allConversations.slice(0, conversationLimit);
+  const hiddenConversationCount = Math.max(0, allConversations.length - conversationLimit);
+  const registerConversationNode = useConversationOrderAnimation(visibleConversations);
   const [dropPosition, setDropPosition] = React.useState(null);
 
   function handleDragStart(event) {
@@ -507,7 +516,7 @@ export function ProjectNode({
 
       {project.expanded && (
         <div className="project-conversations">
-          {project.conversations.map((conversation) => (
+          {visibleConversations.map((conversation) => (
             <ConversationNode
               key={conversation.id}
               project={project}
@@ -531,6 +540,15 @@ export function ProjectNode({
               onRetryTask={onRetryTask}
             />
           ))}
+          {hiddenConversationCount > 0 && (
+            <button
+              type="button"
+              className="conversation-show-more"
+              onClick={() => onToggleProjectConversations?.(project.id)}
+            >
+              {conversationsExpanded ? 'Show less' : `Show ${hiddenConversationCount} more`}
+            </button>
+          )}
           <ConversationDropEnd projectId={project.id} onDropConversation={onDropConversation} />
         </div>
       )}
@@ -877,6 +895,7 @@ export function ConversationsPanel({
   onSelectConversation,
   onToggleConversation,
   onToggleConversationTasks,
+  onToggleProjectConversations,
   onDeleteConversation,
   onRenameConversation,
   onPinConversation,
@@ -886,6 +905,7 @@ export function ConversationsPanel({
   onOpenTaskReport,
   onRetryTask,
   taskPreviewLimit = 5,
+  conversationPreviewLimit = 3,
   authUser,
   onLogout,
   onToast,
@@ -1133,6 +1153,7 @@ export function ConversationsPanel({
             now={now}
             terminalNotices={terminalNotices}
             taskPreviewLimit={taskPreviewLimit}
+            conversationPreviewLimit={conversationPreviewLimit}
             onSelectProject={onSelectProject}
             onToggleProject={onToggleProject}
             onRemoveProject={requestRemoveProject}
@@ -1140,6 +1161,7 @@ export function ConversationsPanel({
             onSelectConversation={selectConversationAndClearNotice}
             onToggleConversation={onToggleConversation}
             onToggleConversationTasks={onToggleConversationTasks}
+            onToggleProjectConversations={onToggleProjectConversations}
             onRequestDeleteConversation={requestDeleteConversation}
             onRequestRenameConversation={requestRenameConversation}
             onPinConversation={onPinConversation}

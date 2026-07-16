@@ -53,6 +53,7 @@ export function createDefaultProject() {
     removable: false,
     createdAt: null,
     updatedAt: null,
+    conversationsExpanded: false,
     conversations: [],
   };
 }
@@ -93,6 +94,7 @@ export function loadStoredWorkspaceState() {
         // user last left it. We intentionally drop the legacy `expanded` field
         // on load so old snapshots don't carry forward "every project expanded".
         userExpanded: typeof project.userExpanded === 'boolean' ? project.userExpanded : undefined,
+        conversationsExpanded: Boolean(project.conversationsExpanded),
         pinned: Boolean(project.pinned),
         conversations: Array.isArray(project.conversations)
           ? project.conversations.map((conversation) => ({
@@ -346,6 +348,7 @@ export function withDefaultExpansion(project) {
     createdAt: inferProjectCreatedAt({ ...project, conversations }),
     updatedAt: projectUpdatedTimestamp({ ...project, conversations }) || project.updatedAt || null,
     expanded: project.userExpanded === true,
+    conversationsExpanded: Boolean(project.conversationsExpanded),
   };
 }
 
@@ -461,6 +464,7 @@ export function buildWorkspaceStateFromConversationDetails(details, previousStat
     removable: false,
     createdAt: previousProjects.get(DEFAULT_PROJECT_ID)?.createdAt || null,
     updatedAt: previousProjects.get(DEFAULT_PROJECT_ID)?.updatedAt || null,
+    conversationsExpanded: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.conversationsExpanded),
     conversations: [],
   });
 
@@ -483,6 +487,7 @@ export function buildWorkspaceStateFromConversationDetails(details, previousStat
         userExpanded: typeof previousProject?.userExpanded === 'boolean'
           ? previousProject.userExpanded
           : undefined,
+        conversationsExpanded: Boolean(previousProject?.conversationsExpanded),
         pinned: Boolean(previousProject?.pinned),
         conversations: [],
       });
@@ -556,6 +561,7 @@ export function workspaceStateWithConversationDetail(state, detail, activate = t
       createdAt: detail.created_at || new Date().toISOString(),
       updatedAt: detail.updated_at || detail.last_message_at || new Date().toISOString(),
       userExpanded: activate ? true : undefined,
+      conversationsExpanded: false,
       conversations: [
         (() => {
           const fresh = conversationDetailToWorkspaceConversation(detail);
