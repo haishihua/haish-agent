@@ -32,7 +32,9 @@ export function normalizeWorkflowNode(node, fallback = {}) {
     ...data,
     id: nodeId,
     type,
-    label: String(data.label || fallback.label || typeLabelForWorkflowNode(type)),
+    // Keep empty labels as-is; `||` would bounce "" back to the previous name
+    // and make Backspace/Delete look broken in the detail panel.
+    label: String(data.label ?? fallback.label ?? typeLabelForWorkflowNode(type)),
     position: {
       x: Number.isFinite(Number(position.x)) ? Number(position.x) : Number(fallbackPosition.x || 0),
       y: Number.isFinite(Number(position.y)) ? Number(position.y) : Number(fallbackPosition.y || 0),
@@ -52,7 +54,11 @@ export function normalizeWorkflowRow(item, fallback = DEFAULT_SOFTWARE_DEVELOPME
   const rawNodes = Array.isArray(item?.nodes) && item.nodes.length ? item.nodes : fallback.nodes;
   const rawEdges = Array.isArray(item?.edges) ? item.edges : fallback.edges;
   const fallbackName = item?.draft ? 'New Workflow' : (fallback.display_name || workflowId);
-  const isBlankDraft = Boolean(item?.draft && !String(item?.display_name || item?.name || '').trim());
+  // Prefer explicit display_name (including "") so draft title inputs can clear fully.
+  const resolvedDisplayName = item?.display_name != null
+    ? item.display_name
+    : (item?.name != null ? item.name : fallbackName);
+  const isBlankDraft = Boolean(item?.draft && !String(resolvedDisplayName || '').trim());
   const nodes = rawNodes
     .map((node, index) => normalizeWorkflowNode(node, fallback.nodes?.[index] || {}))
     .filter((node) => node.id)
@@ -82,7 +88,7 @@ export function normalizeWorkflowRow(item, fallback = DEFAULT_SOFTWARE_DEVELOPME
     id: workflowId,
     workflow_id: workflowId,
     version: String(item?.version || fallback.version || '1.0.0'),
-    display_name: String(item?.display_name || item?.name || fallbackName),
+    display_name: String(resolvedDisplayName),
     description: String(item?.description || fallback.description || ''),
     enabled: item?.enabled !== false,
     system: Boolean(item?.system ?? fallback.system),
@@ -356,7 +362,7 @@ export function workflowFriendlyVariableLabel(item) {
   if (item.path === 'input.image_attachments') return 'Images';
   if (item.path === 'input.conversation_id') return 'Conversation';
   if (item.path === 'input.workspace') return 'Workspace';
-  const nodeLabel = item.nodeLabel || item.group || 'Node';
+  const nodeLabel = String(item.nodeLabel || item.group || 'Node').trim() || 'Node';
   const fieldLabels = {
     status: 'status',
     success: 'success',
@@ -365,23 +371,25 @@ export function workflowFriendlyVariableLabel(item) {
     metadata: 'metadata',
     messages: 'messages',
     artifacts: 'artifacts',
-    structured: 'structured data',
+    structured: 'structured',
     citations: 'citations',
     trace: 'trace',
     text: 'text',
-    json: 'JSON',
+    json: 'json',
     usage: 'usage',
-    finish_reason: 'finish reason',
-    raw: 'raw result',
-    matched_case: 'matched case',
-    selected_target: 'selected target',
+    finish_reason: 'finish_reason',
+    raw: 'raw',
+    matched_case: 'matched_case',
+    selected_target: 'selected_target',
     value: 'value',
   };
-  const fieldLabel = item.fieldLabel
+  const fieldLabel = String(
+    item.fieldLabel
     || fieldLabels[item.fieldId]
     || item.fieldId
-    || 'value';
-  return `${nodeLabel} · ${fieldLabel}`;
+    || 'value',
+  ).trim() || 'value';
+  return `${nodeLabel}.${fieldLabel}`;
 }
 
 export function workflowVariableCatalog(workflow, selectedNodeId = '') {

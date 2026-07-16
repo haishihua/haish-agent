@@ -253,11 +253,18 @@ function WorkflowListIcon({ item }) {
 }
 
 export function FieldRow({ label, hint, children }) {
+  const tip = String(hint || '').trim();
+  const labelNode = tip ? (
+    <PortalTooltip text={tip} position="above" multiline>
+      <span className="settings-field-label has-hint" tabIndex={0}>{label}</span>
+    </PortalTooltip>
+  ) : (
+    <span>{label}</span>
+  );
   return (
     <div className="settings-field">
-      <span>{label}</span>
+      {labelNode}
       {children}
-      {hint && <small>{hint}</small>}
     </div>
   );
 }
@@ -295,15 +302,23 @@ export function SecretKeyField({
   );
 }
 
-export function WorkflowVariablePicker({ variables, onInsert, disabled = false }) {
+export function WorkflowVariablePicker({ variables, onInsert, disabled = false, hint = '' }) {
   if (!variables.length) return null;
   const options = variables.map((item) => ({
     id: item.path,
-    label: `${item.label || item.path} · ${item.type || 'any'}`,
+    label: item.label || item.path,
   }));
+  const tip = String(hint || '').trim();
+  const labelNode = tip ? (
+    <PortalTooltip text={tip} position="above" multiline>
+      <span className="settings-field-label has-hint" tabIndex={0}>use data from</span>
+    </PortalTooltip>
+  ) : (
+    <span>use data from</span>
+  );
   return (
-    <div className="workflow-variable-panel">
-      <span>use data from</span>
+    <div className="settings-field workflow-variable-panel">
+      {labelNode}
       <SettingsMenuSelect
         className="workflow-menu-select"
         value=""
@@ -322,10 +337,10 @@ export function WorkflowVariableSelect({ variables, value, onChange, disabled = 
   const selectedPath = workflowTemplateVariablePath(value);
   const hasSelected = selectedPath && variables.some((item) => item.path === selectedPath);
   const options = [
-    ...(!hasSelected && selectedPath ? [{ id: selectedPath, label: `custom: ${selectedPath}` }] : []),
+    ...(!hasSelected && selectedPath ? [{ id: selectedPath, label: selectedPath }] : []),
     ...variables.map((item) => ({
       id: item.path,
-      label: `${item.label || item.path} · ${item.type || 'any'}`,
+      label: item.label || item.path,
     })),
   ];
   return (
@@ -352,6 +367,9 @@ export function WorkflowTemplateTextarea({
   showVariables = true,
   className = '',
   onFocus,
+  variableHint = '',
+  title = '',
+  hint = '',
 }) {
   const text = String(sanitizeWorkflowTemplateValue(value ?? ''));
   const textareaRef = useRef(null);
@@ -370,7 +388,20 @@ export function WorkflowTemplateTextarea({
       textareaRef.current.setSelectionRange(cursor, cursor);
     });
   };
-  return (
+  const panelTitle = String(title || '').trim();
+  const panelHint = String(hint || '').trim();
+  const titleNode = panelTitle
+    ? (
+        panelHint ? (
+          <PortalTooltip text={panelHint} position="above" multiline>
+            <strong className="settings-field-label has-hint" tabIndex={0}>{panelTitle}</strong>
+          </PortalTooltip>
+        ) : (
+          <strong>{panelTitle}</strong>
+        )
+      )
+    : null;
+  const body = (
     <>
       <textarea
         ref={textareaRef}
@@ -387,9 +418,23 @@ export function WorkflowTemplateTextarea({
           variables={variables}
           disabled={disabled}
           onInsert={insertVariable}
+          hint={variableHint}
         />
       ) : null}
     </>
+  );
+  if (!panelTitle) return body;
+  return (
+    <div className="workflow-io-panel workflow-input-panel">
+      <div className="workflow-io-panel-head">
+        <div className="workflow-io-panel-copy">
+          {titleNode}
+        </div>
+      </div>
+      <div className="workflow-input-panel-body">
+        {body}
+      </div>
+    </div>
   );
 }
 
@@ -462,7 +507,6 @@ export function WorkflowSchemaList({ title, fields }) {
       <div className="workflow-io-list" aria-label={caption}>
         {fields.map((field, index) => {
           const key = field.id || field.key || field.label || field.path || `field_${index + 1}`;
-          const path = field.path || key;
           const label = field.label || key;
           const type = workflowFieldTypeLabel(field.type);
           const description = field.description || (field.required ? 'Required input.' : 'Optional input.');
@@ -474,7 +518,6 @@ export function WorkflowSchemaList({ title, fields }) {
                   <span className={`workflow-io-type is-${type}`}>{type}</span>
                   {field.required ? <span className="workflow-io-required">required</span> : null}
                 </div>
-                <code className="workflow-io-path">{`{{${path}}}`}</code>
               </div>
             </div>
           );
@@ -503,7 +546,7 @@ export function WorkflowOutputContract({ node }) {
     <div className="workflow-io-panel workflow-output-contract">
       <div className="workflow-io-panel-head">
         <div className="workflow-io-panel-copy">
-          <strong>Available outputs</strong>
+          <strong>Output</strong>
         </div>
         <span className="workflow-io-count">{fields.length}</span>
       </div>
@@ -526,7 +569,6 @@ export function WorkflowOutputContract({ node }) {
                         />
                         <span className={`workflow-io-type is-${type}`}>{type}</span>
                       </div>
-                      <code className="workflow-io-path">{`{{${field.path}}}`}</code>
                     </div>
                   </div>
                 );
@@ -2065,12 +2107,22 @@ export function addWorkflowEdge(edges, from, to) {
   return [...edges, { from, to }];
 }
 
-export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, agentSettings, readOnly = false }) {
+export function WorkflowConfigEditor({
+  selectedId,
+  settings,
+  onSettingsChange,
+  agentSettings,
+  readOnly = false,
+  onSave,
+  canSave = false,
+}) {
   const normalized = normalizeWorkflowSettings(settings);
   const agentOptions = agentCatalogFromSettings(agentSettings).options;
   const workflow = workflowById(normalized, selectedId);
   const [selectedNodeId, setSelectedNodeId] = useState('');
   const [selectedEdgeId, setSelectedEdgeId] = useState('');
+  const [nodePanelWidth, setNodePanelWidth] = useState(340);
+  const nodePanelResizeRef = useRef(null);
 
   useEffect(() => {
     if (!workflow) {
@@ -2083,6 +2135,10 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
     ));
     setSelectedEdgeId('');
   }, [selectedId, workflow?.nodes?.length]);
+
+  useEffect(() => () => {
+    if (nodePanelResizeRef.current?.cleanup) nodePanelResizeRef.current.cleanup();
+  }, []);
 
   if (!workflow) return <div className="settings-empty">Select a workflow.</div>;
 
@@ -2134,7 +2190,8 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
     id: `${edge.from}->${edge.to}`,
     source: edge.from,
     target: edge.to,
-    type: 'smoothstep',
+    // Straight keeps collinear nodes on a true line; smoothstep always elbows.
+    type: 'straight',
     selected: `${edge.from}->${edge.to}` === selectedEdgeId,
     interactionWidth: 28,
     animated: `${edge.from}->${edge.to}` === selectedEdgeId,
@@ -2311,15 +2368,16 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
               onChange={(event) => updateNode(selectedNode.id, { prompt: event.target.value })}
             />
           </FieldRow>
-          <FieldRow label="input" hint="Dynamic user message sent after the cached agent prefix.">
-            <WorkflowTemplateTextarea
-              value={selectedNode.input ?? selectedNode.input_mapping?.message ?? '{{input.message}}'}
-              variables={availableVariables}
-              disabled={!isEditable}
-              rows={5}
-              onChange={(input) => updateNode(selectedNode.id, { input })}
-            />
-          </FieldRow>
+          <WorkflowTemplateTextarea
+            title="Input"
+            hint="Dynamic user message sent after the cached agent prefix."
+            value={selectedNode.input ?? selectedNode.input_mapping?.message ?? '{{input.message}}'}
+            variables={availableVariables}
+            disabled={!isEditable}
+            rows={5}
+            variableHint="Insert values from earlier nodes or workflow inputs."
+            onChange={(input) => updateNode(selectedNode.id, { input })}
+          />
           <WorkflowOutputContract node={selectedNode} />
         </>
       );
@@ -2416,34 +2474,33 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
             />
           </FieldRow>
           {outputMode === 'json_object' ? (
-            <div className="workflow-json-editor">
-              <div className="workflow-json-editor-head">
+            <div className="workflow-output-mapping">
+              <div className="workflow-output-mapping-head">
                 <span>output</span>
-                <small>object</small>
                 {isEditable ? (
                   <button
                     type="button"
                     className="workflow-json-add"
                     onClick={() => updateOutputEntries([
                       ...outputEntries,
-                      { key: `field_${outputEntries.length + 1}`, value: '', type: 'any' },
+                      { key: `field_${outputEntries.length + 1}`, value: '', type: 'string' },
                     ])}
                   >
                     + field
                   </button>
                 ) : null}
               </div>
-              <div className="workflow-json-code is-editable" aria-label="output json">
-                <div className="workflow-json-line">
-                  <span className="workflow-json-punct">{'{'}</span>
+              <div className="workflow-output-mapping-table" aria-label="output">
+                <div className="workflow-output-mapping-row is-header">
+                  <span>Name</span>
+                  <span>Type</span>
+                  <span>Value</span>
+                  <span className="workflow-output-mapping-action-col" aria-hidden="true" />
                 </div>
-              {outputEntries.map((entry, index) => (
-                <div className="workflow-json-edit-field" key={`${entry.key}:${index}`}>
-                  <div className="workflow-json-edit-key">
-                    <span className="workflow-json-indent" aria-hidden="true" />
-                    <span className="workflow-json-key">"</span>
+                {outputEntries.map((entry, index) => (
+                  <div className="workflow-output-mapping-row" key={`${entry.key}:${index}`}>
                     <input
-                      className="workflow-json-key-input"
+                      className="workflow-output-mapping-name"
                       value={entry.key}
                       disabled={!isEditable}
                       placeholder="field name"
@@ -2455,41 +2512,55 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
                         updateOutputEntries(next);
                       }}
                     />
-                    <span className="workflow-json-key">"</span>
-                    <span className="workflow-json-punct">:</span>
-                  </div>
-                  <div className="workflow-json-edit-value">
-                    <WorkflowVariableSelect
-                      value={entry.value}
-                      variables={availableVariables}
+                    <SettingsMenuSelect
+                      className="workflow-menu-select workflow-output-mapping-type"
+                      value={entry.type || 'any'}
+                      options={[
+                        { id: 'string', label: 'string' },
+                        { id: 'number', label: 'number' },
+                        { id: 'boolean', label: 'boolean' },
+                        { id: 'object', label: 'object' },
+                        { id: 'array', label: 'array' },
+                        { id: 'any', label: 'any' },
+                      ]}
                       disabled={!isEditable}
-                      onChange={(value) => {
-                        const nextType = workflowVariableTypeForValue(value, availableVariables);
+                      onChange={(type) => {
                         const next = outputEntries.map((item, itemIndex) => (
-                          itemIndex === index ? { ...item, value, type: nextType } : item
+                          itemIndex === index ? { ...item, type } : item
                         ));
                         updateOutputEntries(next);
                       }}
                     />
-                  </div>
-                  <div className="workflow-json-edit-actions">
+                    <div className="workflow-output-mapping-value">
+                      <WorkflowVariableSelect
+                        value={entry.value}
+                        variables={availableVariables}
+                        disabled={!isEditable}
+                        onChange={(value) => {
+                          const nextType = workflowVariableTypeForValue(value, availableVariables);
+                          const next = outputEntries.map((item, itemIndex) => (
+                            itemIndex === index
+                              ? { ...item, value, type: nextType === 'any' ? (item.type || 'any') : nextType }
+                              : item
+                          ));
+                          updateOutputEntries(next);
+                        }}
+                      />
+                    </div>
                     {isEditable ? (
                       <button
                         type="button"
-                        className="workflow-json-delete"
+                        className="workflow-json-delete workflow-output-mapping-delete"
                         aria-label={`delete ${entry.key || 'field'}`}
                         onClick={() => updateOutputEntries(outputEntries.filter((_, itemIndex) => itemIndex !== index))}
                       >
                         ×
                       </button>
-                    ) : null}
-                    {index < outputEntries.length - 1 ? <span className="workflow-json-punct">,</span> : null}
+                    ) : (
+                      <span className="workflow-output-mapping-action-col" aria-hidden="true" />
+                    )}
                   </div>
-                </div>
-              ))}
-                <div className="workflow-json-line">
-                  <span className="workflow-json-punct">{'}'}</span>
-                </div>
+                ))}
               </div>
             </div>
           ) : (
@@ -2509,26 +2580,87 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
     return null;
   };
 
+  const showNodePanel = Boolean(selectedNode || selectedEdge);
+  const clampedNodePanelWidth = Math.max(280, Math.min(720, Math.round(nodePanelWidth || 340)));
+
+  const startNodePanelResize = (event) => {
+    if (event.button != null && event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (nodePanelResizeRef.current?.cleanup) nodePanelResizeRef.current.cleanup();
+
+    const startX = event.clientX;
+    const startWidth = clampedNodePanelWidth;
+    const previousUserSelect = document.body.style.userSelect;
+    const previousCursor = document.body.style.cursor;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+
+    const onMove = (moveEvent) => {
+      const nextWidth = startWidth + (startX - moveEvent.clientX);
+      setNodePanelWidth(Math.max(280, Math.min(720, Math.round(nextWidth))));
+    };
+    const onUp = () => {
+      document.body.style.userSelect = previousUserSelect;
+      document.body.style.cursor = previousCursor;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      nodePanelResizeRef.current = null;
+    };
+
+    nodePanelResizeRef.current = { cleanup: onUp };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+
   return (
-    <div className="settings-editor-form settings-workflow-form">
+    <div
+      className={`settings-editor-form settings-workflow-form${showNodePanel ? ' has-node-panel' : ''}`}
+      style={showNodePanel ? { '--workflow-node-panel-width': `${clampedNodePanelWidth}px` } : undefined}
+    >
       <div className="workflow-builder">
-        {isEditable ? (
+        {isEditable || canSave ? (
           <div className="workflow-toolbar">
-            <div>
-              <strong>Canvas</strong>
-              <span>Custom workflow</span>
-            </div>
             <div className="workflow-toolbar-actions">
-              <button type="button" className="settings-row-button" onClick={loadExampleWorkflow}>
-                Load example
-              </button>
-              {typeOptions.map((type) => (
-                <button type="button" className="settings-row-button" key={type.id} onClick={() => addNode(type.id)}>
-                  <SettingsLucideIcon name="plus" />
-                  {type.label}
-                </button>
-              ))}
+              {isEditable ? (
+                <>
+                  <button type="button" className="workflow-toolbar-button is-muted" onClick={loadExampleWorkflow}>
+                    <SettingsLucideIcon name="layers" size={14} />
+                    <span>Load example</span>
+                  </button>
+                  <div className="workflow-toolbar-add-group" role="group" aria-label="Add node">
+                    {typeOptions.map((type) => {
+                      const meta = workflowNodeMeta(type.id);
+                      return (
+                        <button
+                          type="button"
+                          className={`workflow-toolbar-button workflow-toolbar-add is-${type.id}`}
+                          key={type.id}
+                          onClick={() => addNode(type.id)}
+                          title={`Add ${type.label}`}
+                        >
+                          <span className="workflow-toolbar-add-icon" aria-hidden="true">
+                            <SettingsLucideIcon name={meta.icon} size={16} />
+                          </span>
+                          <span>{type.label}</span>
+                          <span className="workflow-toolbar-add-plus" aria-hidden="true">
+                            <SettingsLucideIcon name="plus" size={12} />
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : null}
             </div>
+            {canSave ? (
+              <div className="workflow-toolbar-end">
+                <SettingsTooltipIconButton label="Save" icon="save" iconSize={20} onClick={onSave} />
+              </div>
+            ) : null}
           </div>
         ) : null}
         <div className="workflow-canvas">
@@ -2558,7 +2690,7 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
                 nodesConnectable={isEditable}
                 edgesFocusable={isEditable}
                 elementsSelectable
-                deleteKeyCode={isEditable ? ['Backspace', 'Delete'] : null}
+                deleteKeyCode={null}
                 connectionRadius={46}
                 fitView
                 fitViewOptions={{ padding: 0.2, minZoom: 0.35, maxZoom: 1.15 }}
@@ -2566,8 +2698,9 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
                 maxZoom={1.4}
                 snapToGrid
                 snapGrid={[20, 20]}
+                connectionLineType="straight"
                 defaultEdgeOptions={{
-                  type: 'smoothstep',
+                  type: 'straight',
                   style: { strokeWidth: 2 },
                 }}
                 proOptions={{ hideAttribution: true }}
@@ -2582,34 +2715,69 @@ export function WorkflowConfigEditor({ selectedId, settings, onSettingsChange, a
           )}
         </div>
       </div>
-      <div className="workflow-node-panel">
-        <div className="workflow-node-panel-head">
-          <div>
-            <span>{selectedEdge ? 'Connection' : 'Node'}</span>
-            <strong>{selectedEdge ? `${selectedEdge.from} -> ${selectedEdge.to}` : (selectedNode?.label || selectedNode?.id || 'None')}</strong>
+      {showNodePanel ? (
+        <div className="workflow-node-panel">
+          <div
+            className="workflow-node-panel-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize detail panel"
+            aria-valuemin={280}
+            aria-valuemax={720}
+            aria-valuenow={clampedNodePanelWidth}
+            onPointerDown={startNodePanelResize}
+          />
+          <div className="workflow-node-panel-head">
+            <div className="workflow-node-panel-title">
+              <span>{selectedEdge ? 'Connection' : 'Node'}</span>
+              <strong>{selectedEdge ? `${selectedEdge.from} -> ${selectedEdge.to}` : (selectedNode?.label || selectedNode?.id || 'None')}</strong>
+            </div>
+            {isEditable && selectedNode && !['start', 'output'].includes(selectedNode.type) ? (
+              <SettingsTooltipIconButton
+                label="Delete"
+                icon="delete"
+                danger
+                iconSize={18}
+                className="workflow-node-panel-delete"
+                onClick={() => deleteNode(selectedNode.id)}
+              />
+            ) : null}
+            {isEditable && selectedEdge ? (
+              <SettingsTooltipIconButton
+                label="Delete"
+                icon="delete"
+                danger
+                iconSize={18}
+                className="workflow-node-panel-delete"
+                onClick={deleteSelection}
+              />
+            ) : null}
           </div>
-          {isEditable && selectedNode && !['start', 'output'].includes(selectedNode.type) ? (
-            <button type="button" className="settings-row-button danger" onClick={() => deleteNode(selectedNode.id)}>Delete</button>
-          ) : null}
-          {isEditable && selectedEdge ? (
-            <button type="button" className="settings-row-button danger" onClick={deleteSelection}>Delete</button>
-          ) : null}
+          {selectedEdge ? (
+            <div className="workflow-node-help">
+              Connection: {selectedEdge.from}{' -> '}{selectedEdge.to}
+            </div>
+          ) : (
+            <>
+              <FieldRow label="label">
+                <input
+                  value={selectedNode.label ?? ''}
+                  onChange={(event) => updateNode(selectedNode.id, { label: event.target.value })}
+                  onKeyDown={(event) => {
+                    // Keep text editing keys inside the field; do not let canvas
+                    // selection shortcuts swallow Backspace / Delete.
+                    if (event.key === 'Backspace' || event.key === 'Delete') {
+                      event.stopPropagation();
+                    }
+                  }}
+                  disabled={!isEditable}
+                />
+              </FieldRow>
+              {renderNodeFields()}
+            </>
+          )}
         </div>
-        {selectedEdge ? (
-          <div className="workflow-node-help">
-            Connection: {selectedEdge.from}{' -> '}{selectedEdge.to}
-          </div>
-        ) : selectedNode ? (
-          <>
-            <FieldRow label="label">
-              <input value={selectedNode.label || ''} onChange={(event) => updateNode(selectedNode.id, { label: event.target.value })} disabled={!isEditable || ['start', 'output'].includes(selectedNode.type)} />
-            </FieldRow>
-            {renderNodeFields()}
-          </>
-        ) : (
-          <div className="settings-empty">Select a node.</div>
-        )}
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -3276,6 +3444,8 @@ export function SettingsPage({
           onSettingsChange={onWorkflowSettingsChange}
           agentSettings={agentSettings}
           readOnly={readOnly}
+          onSave={saveAndClose}
+          canSave={!readOnly && panelCanSave}
         />
       );
     }
@@ -3535,9 +3705,15 @@ export function SettingsPage({
                   {panelSection === 'workflow' && panelWorkflow?.custom ? (
                     <input
                       className="workflow-title-input"
-                      value={panelWorkflow.display_name || ''}
+                      value={panelWorkflow.display_name ?? ''}
                       onChange={(event) => updatePanelWorkflow({ display_name: event.target.value })}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Backspace' || event.key === 'Delete') {
+                          event.stopPropagation();
+                        }
+                      }}
                       placeholder="Workflow name"
+                      aria-label="Workflow name"
                     />
                   ) : (
                     <strong>{panelSelectedItem?.title || listTitle}</strong>
@@ -3552,7 +3728,7 @@ export function SettingsPage({
               {panelSelectedId ? editorBody(panelSection, panelSelectedId, panelMode) : (
                 <div className="settings-empty">Select a configuration.</div>
               )}
-              {panelSelectedId ? (
+              {panelSelectedId && panelSection !== 'workflow' ? (
                 <div className="settings-detail-footer">
                   {panelSection === 'llm' ? (
                     <SettingsTooltipIconButton label="Test" icon="test" iconSize={20} onClick={testSelectedProvider} />

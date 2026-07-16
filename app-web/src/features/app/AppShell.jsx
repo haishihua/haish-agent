@@ -2297,6 +2297,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     try {
       const current = workflowById(workflowSettingsDraft, workflowId);
       if (!current) throw new Error('custom workflow not found');
+      if (!String(current.display_name || '').trim()) {
+        showToast('error', 'Workflow name is required');
+        return false;
+      }
       const payload = payloadForCustomWorkflow(current);
       const isDraft = Boolean(current.draft);
       const endpoint = isDraft
