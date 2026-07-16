@@ -446,9 +446,7 @@ export const SETTINGS_LLM_PROVIDER_OPTIONS = LLM_PROVIDER_OPTIONS.filter((item) 
 /** Providers that show OAuth fields in Settings. */
 export const LLM_OAUTH_UI_PROVIDERS = new Set(['openai', 'xai']);
 /** Providers whose callback is captured and completed by the local runtime. */
-export const LLM_OAUTH_CALLBACK_PROVIDERS = new Set(['xai']);
-/** Providers that still require a callback URL or code to be pasted manually. */
-export const LLM_OAUTH_MANUAL_CODE_PROVIDERS = new Set(['openai']);
+export const LLM_OAUTH_CALLBACK_PROVIDERS = new Set(['openai', 'xai']);
 
 export const LLM_SETTINGS_STORAGE_KEY = 'haish.llmSettingsDraft.v1';
 export const SETTINGS_RECORDS_STORAGE_KEY = 'haish.settingsRecordsDraft.v1';
@@ -557,49 +555,32 @@ export function runtimeProviderSelector(config) {
   return provider || 'auto';
 }
 
-function runtimeModelChoicesForConfig(config, modelCatalog) {
-  const provider = normalizeLlmProviderId(config?.provider);
-  const currentModel = config?.model || '';
-  const providerChoices = modelChoicesFor(provider);
-  if (providerChoices.length > 0) {
-    return uniqueModelChoices(currentModel, providerChoices);
-  }
-
-  const configChoices = configuredModelOptions(config);
-  if (configChoices.length > 0) {
-    return uniqueModelChoices(currentModel, configChoices);
-  }
-
-  const catalogProvider = normalizeLlmProviderId(modelCatalog?.provider);
-  const includeCatalog = catalogProvider && catalogProvider === provider;
-  return uniqueModelChoices(currentModel, includeCatalog ? (modelCatalog?.options || []) : []);
-}
-
-export function runtimeLlmProviderOptions(draft, modelCatalog) {
+export function runtimeLlmProviderOptions(draft) {
   const rows = [
     draft?.chat,
     ...(Array.isArray(draft?.profiles) ? draft.profiles : []),
   ].filter((item) => item && item.provider);
   const seen = new Set();
   const options = rows.map((config, index) => {
-    const requestProvider = runtimeProviderSelector(config);
-    const idBase = config.id || `${index === 0 ? 'chat' : 'profile'}:${requestProvider}`;
+    const providerSelector = runtimeProviderSelector(config);
+    const requestProvider = String(config.id || '').trim() || providerSelector;
+    const idBase = config.id || `${index === 0 ? 'chat' : 'profile'}:${providerSelector}`;
     const id = seen.has(idBase) ? `${idBase}:${index}` : idBase;
     seen.add(id);
-    // Settings `model_options` is also used as a remote discovery cache after
-    // testing a provider. For built-in providers the run picker must stay
-    // scoped to that provider's allowed runtime models instead of treating a
-    // broad `/models` response as the provider/profile allow-list.
-    const modelOptions = runtimeModelChoicesForConfig(config, modelCatalog);
+    const provider = normalizeLlmProviderId(config.provider);
+    const modelOptions = uniqueModelChoices(config.model, configuredModelOptions(config));
     return {
       id,
       label: runtimeProviderLabel(config),
-      provider: config.provider,
+      provider,
       requestProvider,
-      defaultModelId: config.model || modelOptions[0]?.id || getLlmProvider(config.provider).defaultModel,
+      authMode: String(config.auth_mode || getLlmProvider(provider).defaultAuth || '').trim(),
+      customProvider: provider === 'custom' ? String(config.name || config.custom_provider || '').trim() : '',
+      baseUrl: provider === 'custom' ? String(config.base_url || '').trim() : '',
+      defaultModelId: String(config.model || '').trim(),
       modelOptions,
     };
-  }).filter((item) => item.modelOptions.length > 0 || item.defaultModelId);
+  });
   return options;
 }
 

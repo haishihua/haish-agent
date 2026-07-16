@@ -52,7 +52,6 @@ import {
   SETTINGS_LLM_PROVIDER_OPTIONS,
   LLM_OAUTH_UI_PROVIDERS,
   LLM_OAUTH_CALLBACK_PROVIDERS,
-  LLM_OAUTH_MANUAL_CODE_PROVIDERS,
   LLM_SETTINGS_STORAGE_KEY,
   SETTINGS_RECORDS_STORAGE_KEY,
   SETTINGS_CONNECTION_STATUS_STORAGE_KEY,
@@ -1324,15 +1323,24 @@ export function llmProviderRequestPayload(config, { includeSecret = false, refre
   return payload;
 }
 
+export function llmEditorModelChoices(config) {
+  const discovered = configuredModelOptions(config);
+  return uniqueModelChoices(
+    config?.model,
+    discovered.length ? discovered : modelChoicesFor(config?.provider),
+  );
+}
+
 export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = false, refreshModels = false }) {
   const config = getSelectedLlmConfig(draft, selectedId);
   const provider = getLlmProvider(config.provider);
-  const [modelChoices, setModelChoices] = useState(() => uniqueModelChoices(config.model, configuredModelOptions(config), modelChoicesFor(config.provider)));
+  const [modelChoices, setModelChoices] = useState(() => llmEditorModelChoices(config));
   const [oauthStartError, setOauthStartError] = useState('');
   const [oauthStartPending, setOauthStartPending] = useState(false);
   const [oauthFlowId, setOauthFlowId] = useState('');
   const [oauthFlowStatus, setOauthFlowStatus] = useState('idle');
   const [oauthFlowMessage, setOauthFlowMessage] = useState('');
+  const [modelCatalogError, setModelCatalogError] = useState('');
   const disabled = readOnly
     || (selectedId === 'vision' && !draft.vision.enabled)
     || (selectedId === 'embedding' && !draft.embedding?.enabled);
@@ -1341,8 +1349,8 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
   const showApiKeyField = config.auth_mode === 'api_key';
   const showOAuthFields = config.auth_mode === 'oauth' && LLM_OAUTH_UI_PROVIDERS.has(config.provider);
   const showOAuthCallbackLogin = showOAuthFields && LLM_OAUTH_CALLBACK_PROVIDERS.has(config.provider);
-  const showOAuthManualLogin = showOAuthFields && LLM_OAUTH_MANUAL_CODE_PROVIDERS.has(config.provider);
   const oauthFlowPending = oauthStartPending || oauthFlowStatus === 'pending' || oauthFlowStatus === 'exchanging';
+  const oauthModelCatalogReady = Boolean(config.oauth_configured);
   const showBaseUrlField = config.provider === 'custom';
   const update = (patch) => updateSelectedLlmConfig(onDraftChange, selectedId, patch);
   const changeProvider = (providerId) => {
@@ -1351,6 +1359,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
     setOauthFlowId('');
     setOauthFlowStatus('idle');
     setOauthFlowMessage('');
+    setModelCatalogError('');
     update({
       ...next,
       enabled: config.enabled,
@@ -1384,25 +1393,19 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       if (!payload?.auth_url) {
         throw new Error('OAuth start response did not include auth_url.');
       }
-      if (payload.flow_id) {
-        setOauthFlowId(payload.flow_id);
-        setOauthFlowStatus(payload.status || 'pending');
-        setOauthFlowMessage('Complete sign-in in your browser. This page will update automatically.');
-        update({
-          oauth_auth_url: '',
-          oauth_code: '',
-          oauth_verifier: '',
-          oauth_state: '',
-          oauth_configured: false,
-        });
-        window.open(payload.auth_url, '_blank', 'noopener,noreferrer');
-        return;
+      if (!payload.flow_id) {
+        throw new Error(`${provider.label} OAuth did not start an automatic callback session.`);
       }
+      setOauthFlowId(payload.flow_id);
+      setOauthFlowStatus(payload.status || 'pending');
+      setOauthFlowMessage('Complete sign-in in your browser. This page will update automatically.');
       update({
-        oauth_auth_url: payload.auth_url || '',
-        oauth_verifier: payload.verifier || '',
-        oauth_state: payload.state || '',
+        oauth_auth_url: '',
+        oauth_code: '',
+        oauth_verifier: '',
+        oauth_state: '',
       });
+      window.open(payload.auth_url, '_blank', 'noopener,noreferrer');
     } catch (error) {
       setOauthStartError(String(error?.message || error));
     } finally {
@@ -1411,62 +1414,8 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
   };
 
   useEffect(() => {
-    setModelChoices(uniqueModelChoices(config.model, configuredModelOptions(config), modelChoicesFor(config.provider)));
+    setModelChoices(llmEditorModelChoices(config));
   }, [config.model, config.model_options, config.provider]);
-
-  useEffect(() => {
-    if (
-      disabled
-      || readOnly
-      || !LLM_OAUTH_MANUAL_CODE_PROVIDERS.has(config.provider)
-      || config.auth_mode !== 'oauth'
-      || config.oauth_auth_url
-    ) {
-      return undefined;
-    }
-    let cancelled = false;
-    setOauthStartPending(true);
-    setOauthStartError('');
-    authFetch(`${API_BASE}/api/llm/oauth/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider: config.provider }),
-    }, { json: false })
-      .then(async (response) => {
-        if (!response.ok) {
-          let detail = `OAuth start failed (${response.status})`;
-          try {
-            const body = await response.json();
-            detail = String(body?.detail || body?.message || detail);
-          } catch {
-            // keep fallback
-          }
-          throw new Error(detail);
-        }
-        return response.json();
-      })
-      .then((payload) => {
-        if (cancelled) return;
-        if (!payload?.auth_url) {
-          throw new Error('OAuth start response did not include auth_url.');
-        }
-        update({
-          oauth_auth_url: payload.auth_url || '',
-          oauth_verifier: payload.verifier || '',
-          oauth_state: payload.state || '',
-        });
-        setOauthStartError('');
-      })
-      .catch((error) => {
-        if (!cancelled) setOauthStartError(String(error?.message || error));
-      })
-      .finally(() => {
-        if (!cancelled) setOauthStartPending(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [config.provider, config.auth_mode, config.oauth_auth_url, disabled, readOnly]);
 
   useEffect(() => {
     if (!showOAuthCallbackLogin || !oauthFlowId || !['pending', 'exchanging'].includes(oauthFlowStatus)) {
@@ -1525,32 +1474,60 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
 
   useEffect(() => {
     if (!refreshModels || disabled) return undefined;
-    if (config.auth_mode === 'oauth') return undefined;
+    if (config.auth_mode === 'oauth' && !oauthModelCatalogReady) return undefined;
     if (config.auth_mode === 'api_key' && config.provider !== 'ollama' && !config.api_key && !config.api_key_configured) return undefined;
     if (config.provider === 'custom' && !config.base_url) return undefined;
     let cancelled = false;
-    const fallbackChoices = uniqueModelChoices(config.model, configuredModelOptions(config), modelChoicesFor(config.provider));
+    const fallbackChoices = llmEditorModelChoices(config);
     const timer = window.setTimeout(() => {
-      const payload = llmProviderRequestPayload(config, { includeSecret: true, refresh: true });
+      setModelCatalogError('');
+      const payload = llmProviderRequestPayload(config, { includeSecret: true, includeOAuth: true, refresh: true });
       authFetch(`${API_BASE}/api/llm/models`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       }, { json: false })
-        .then((response) => (response.ok ? response.json() : null))
+        .then(async (response) => {
+          if (response.ok) return response.json();
+          let detail = `Model catalog request failed (${response.status})`;
+          try {
+            const body = await response.json();
+            detail = String(body?.detail || body?.message || detail);
+          } catch {
+            // keep fallback
+          }
+          throw new Error(detail);
+        })
         .then((catalog) => {
           if (cancelled || !catalog) return;
           const remoteChoices = Array.isArray(catalog.models) ? catalog.models : [];
-          setModelChoices(uniqueModelChoices(config.model, remoteChoices, fallbackChoices));
+          const oauthPatch = catalog.oauth_saved ? {
+            oauth_configured: true,
+            oauth_code: '',
+          } : {};
+          // When the backend returns a live provider catalog, treat it as the
+          // source of truth so newly available models (e.g. gpt-5.6) appear and
+          // static allow-lists do not keep padding the dropdown.
           if (remoteChoices.length) {
+            const remoteDefault = catalog.default_model || remoteChoices[0].id;
+            const selectedModelSupported = remoteChoices.some((item) => item.id === config.model);
+            setModelCatalogError('');
+            setModelChoices(uniqueModelChoices(remoteChoices));
             update({
               model_options: remoteChoices,
-              ...(config.model ? {} : { model: catalog.default_model || remoteChoices[0].id }),
+              ...(selectedModelSupported ? {} : { model: remoteDefault }),
+              ...oauthPatch,
             });
+            return;
           }
+          setModelChoices(fallbackChoices);
+          if (catalog.oauth_saved) update(oauthPatch);
         })
-        .catch(() => {
-          if (!cancelled) setModelChoices(fallbackChoices);
+        .catch((error) => {
+          if (!cancelled) {
+            setModelChoices(fallbackChoices);
+            setModelCatalogError(String(error?.message || error));
+          }
         });
     }, 250);
     return () => {
@@ -1565,6 +1542,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
     config.base_url,
     config.api_key,
     config.api_key_configured,
+    oauthModelCatalogReady,
     config.model,
     disabled,
     refreshModels,
@@ -1601,6 +1579,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
             setOauthFlowId('');
             setOauthFlowStatus('idle');
             setOauthFlowMessage('');
+            setModelCatalogError('');
             update({
               auth_mode: authMode,
               oauth_auth_url: '',
@@ -1608,6 +1587,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
               oauth_state: '',
               oauth_verifier: '',
               oauth_configured: false,
+              model_options: [],
             });
           }}
           disabled={disabled}
@@ -1630,7 +1610,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
         <FieldRow
           label="OAuth"
           hint={oauthFlowPending
-            ? 'Finish signing in with xAI in the browser. No code needs to be copied.'
+            ? `Finish signing in with ${provider.label} in the browser. No code needs to be copied.`
             : 'Authorization tokens are stored in ~/.haish/auth.json.'}
         >
           <div className="settings-oauth-connect">
@@ -1645,7 +1625,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
                 : <ExternalLink size={15} aria-hidden="true" />}
               {oauthFlowPending
                 ? 'Waiting for sign-in...'
-                : (config.oauth_configured ? 'Reconnect xAI' : 'Connect xAI')}
+                : (config.oauth_configured ? `Reconnect ${provider.label}` : `Connect ${provider.label}`)}
             </button>
             {oauthStartError ? (
               <div className="settings-inline-error" role="alert">{oauthStartError}</div>
@@ -1658,54 +1638,11 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
             {!oauthStartError && !oauthFlowPending && config.oauth_configured ? (
               <div className="settings-inline-success" role="status">
                 <CircleCheck size={15} aria-hidden="true" />
-                Connected to xAI
+                Connected to {provider.label}
               </div>
             ) : null}
           </div>
         </FieldRow>
-      )}
-      {showOAuthManualLogin && (
-        <>
-          <FieldRow
-            label="OAuth URL"
-            hint={oauthStartError
-              ? oauthStartError
-              : (config.oauth_auth_url
-                ? 'Open the link, complete login, then paste the callback URL or code below.'
-                : (oauthStartPending
-                  ? 'Generating OAuth link...'
-                  : 'OAuth link will be generated automatically.'))}
-          >
-            <div className="settings-inline-control">
-              <input
-                value={config.oauth_auth_url || ''}
-                readOnly
-                disabled={disabled}
-                placeholder={oauthStartPending ? 'Generating OAuth link...' : 'OAuth link will be generated automatically'}
-              />
-              {config.oauth_auth_url ? (
-                <a className="settings-inline-button" href={config.oauth_auth_url} target="_blank" rel="noreferrer">Open</a>
-              ) : (
-                <button
-                  type="button"
-                  className="settings-inline-button"
-                  disabled={disabled || oauthStartPending}
-                  onClick={() => { void startOAuthLogin(); }}
-                >
-                  {oauthStartPending ? '...' : 'Generate'}
-                </button>
-              )}
-            </div>
-          </FieldRow>
-          <FieldRow label="OAuth Code" hint="Paste the callback URL or authorization code after login.">
-            <input
-              value={config.oauth_code || ''}
-              onChange={(event) => update({ oauth_code: event.target.value })}
-              disabled={disabled}
-              placeholder="Callback URL or code"
-            />
-          </FieldRow>
-        </>
       )}
       {showBaseUrlField && (
       <FieldRow label="Base URL">
@@ -1718,14 +1655,19 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       </FieldRow>
       )}
       <FieldRow label="Default Model">
-        <SettingsComboInput
-          value={config.model || ''}
-          options={modelChoices}
-          onChange={(model) => update({ model })}
-          disabled={disabled}
-          placeholder={provider.defaultModel}
-          header="default model"
-        />
+        <div className="settings-oauth-connect">
+          <SettingsComboInput
+            value={config.model || ''}
+            options={modelChoices}
+            onChange={(model) => update({ model })}
+            disabled={disabled}
+            placeholder={provider.defaultModel}
+            header="default model"
+          />
+          {modelCatalogError ? (
+            <div className="settings-inline-error" role="alert">{modelCatalogError}</div>
+          ) : null}
+        </div>
       </FieldRow>
       {selectedId !== 'vision' && selectedId !== 'embedding' && (
         <FieldRow label="Default Reasoning">
@@ -3496,13 +3438,15 @@ export function SettingsPage({
                           </span>
                         </PortalTooltip>
                       ) : (
-                        <PortalTooltip text={item.enabled === false ? 'Disabled' : 'Active'} position="above">
+                        <PortalTooltip text={item.enabled === false ? 'Disabled' : 'Enabled'} position="above">
                           <span
                             className={`settings-active-badge ${item.enabled === false ? 'disabled' : ''}`}
-                            aria-label={item.enabled === false ? 'Disabled' : 'Active'}
+                            aria-label={item.enabled === false ? 'Disabled' : 'Enabled'}
                           >
                             <SettingsLucideIcon
-                              name={item.enabled === false ? 'close' : 'active'}
+                              name={activeSection === 'llm'
+                                ? (item.enabled === false ? 'toggle-left' : 'toggle-right')
+                                : (item.enabled === false ? 'close' : 'active')}
                               size={18}
                             />
                           </span>

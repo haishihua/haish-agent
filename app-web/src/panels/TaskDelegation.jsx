@@ -1,7 +1,6 @@
 // @haish-esm
 import React from 'react';
 import {
-  MODEL_OPTIONS,
   DEFAULT_AGENT_OPTIONS } from './shared-constants.jsx';
 
 import { PortalTooltip } from './PortalTooltip.jsx';
@@ -12,12 +11,10 @@ import {
   handlePathPaste,
   formatContextUsageLabel,
   usePersistentRunConfig,
-  modelsForRunProvider,
+  useProviderModels,
 } from './path-utils.jsx';
 
-export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, onSelectionChange, attachment, uploading, running, disabled, submitPending = false, contextUsage, workspacePath, homePath, activeTaskText, providerOptions = [], modelOptions, defaultModelId, modelLoading = false, agentOptions, defaultAgentId, agentLoading = false, agentLocked = false, agentLockedReason = '', lockedAgentId = '', selectionStorageKey = '' }) {
-  const resolvedOptions = Array.isArray(modelOptions) ? modelOptions : MODEL_OPTIONS;
-  const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
+export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, onSelectionChange, attachment, uploading, running, disabled, submitPending = false, contextUsage, workspacePath, homePath, activeTaskText, providerOptions = [], agentOptions, defaultAgentId, agentLoading = false, agentLocked = false, agentLockedReason = '', lockedAgentId = '', selectionStorageKey = '' }) {
   const resolvedProviderOptions = Array.isArray(providerOptions) && providerOptions.length > 0
     ? providerOptions
     : [];
@@ -27,8 +24,6 @@ export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, on
   const { providerId, setProviderId, modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort } = usePersistentRunConfig({
     selectionStorageKey,
     providerOptions: resolvedProviderOptions,
-    modelOptions: resolvedOptions,
-    defaultModelId: resolvedDefaultModelId,
     agentOptions: resolvedAgentOptions,
     defaultAgentId: resolvedDefaultAgentId,
   });
@@ -49,9 +44,19 @@ export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, on
   const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
   const canUploadDocuments = currentSelection?.canUploadDocuments === true;
   const currentProvider = resolvedProviderOptions.find((item) => item.id === providerId) || resolvedProviderOptions[0];
-  const activeModelOptions = modelsForRunProvider(currentProvider, resolvedOptions);
+  const providerModels = useProviderModels(currentProvider);
+  const activeModelOptions = providerModels.options;
+  const modelLoading = providerModels.loading;
   const providerRequest = currentProvider?.requestProvider || currentProvider?.provider || providerId || '';
   const providerConfigured = Boolean(currentProvider && providerRequest);
+
+  React.useEffect(() => {
+    if (modelLoading) return;
+    const nextModelId = activeModelOptions.some((item) => item.id === modelId)
+      ? modelId
+      : providerModels.defaultModelId;
+    if (nextModelId !== modelId) setModelId(nextModelId);
+  }, [activeModelOptions, modelId, modelLoading, providerModels.defaultModelId, setModelId]);
 
   React.useEffect(() => {
     onSelectionChange?.(effectiveAgentId);

@@ -1,6 +1,10 @@
 // @haish-esm
 import React from 'react';
+import { API_BASE } from '../api/base.js';
+import { authFetch } from '../api/auth.js';
 import { DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS } from './shared-constants.jsx';
+
+const PROVIDER_MODELS_STORAGE_KEY = 'haish_provider_models_v1';
 
 export function isAbsolutePathLike(value) {
   return value.startsWith('/') || value === '~' || value.startsWith('~/') || /^[A-Za-z]:[\\/]/.test(value);
@@ -215,6 +219,7 @@ export function safeReadRunConfigSelection(storageKey) {
       agentId: typeof parsed.agentId === 'string' ? parsed.agentId : '',
       modelId: typeof parsed.modelId === 'string' ? parsed.modelId : '',
       providerId: typeof parsed.providerId === 'string' ? parsed.providerId : '',
+      providerDefaultModelId: typeof parsed.providerDefaultModelId === 'string' ? parsed.providerDefaultModelId : '',
       reasoningEffort: typeof parsed.reasoningEffort === 'string' ? parsed.reasoningEffort : '',
     };
   } catch (_) {
@@ -229,6 +234,7 @@ export function safeWriteRunConfigSelection(storageKey, selection) {
       agentId: selection.agentId,
       modelId: selection.modelId,
       providerId: selection.providerId,
+      providerDefaultModelId: selection.providerDefaultModelId,
       reasoningEffort: selection.reasoningEffort,
     }));
   } catch (_) {
@@ -245,41 +251,141 @@ export function firstRunProvider(providerOptions) {
   return null;
 }
 
-export function modelsForRunProvider(providerOption, fallbackOptions) {
-  if (!providerOption) return Array.isArray(fallbackOptions) ? fallbackOptions : [];
-  if (Array.isArray(providerOption.modelOptions)) {
-    if (providerOption.modelOptions.length > 0) return providerOption.modelOptions;
-    const fallbackModelId = String(providerOption.defaultModelId || '').trim();
-    return fallbackModelId ? [{ id: fallbackModelId, label: fallbackModelId }] : [];
-  }
-  const options = fallbackOptions;
-  return Array.isArray(options) && options.length > 0 ? options : [];
+export function providerModelsRequest(providerOption) {
+  if (!providerOption?.provider) return null;
+  return {
+    provider: providerOption.provider,
+    auth_mode: providerOption.authMode || '',
+    custom_provider: providerOption.customProvider || '',
+    base_url: providerOption.baseUrl || '',
+    model: providerOption.defaultModelId || '',
+    refresh: true,
+  };
 }
 
-export function resolveRunConfigSelection(storageKey, providerOptions, modelOptions, defaultModelId, agentOptions, defaultAgentId) {
+export function normalizeProviderModels(payload) {
+  const seen = new Set();
+  const options = [];
+  (Array.isArray(payload?.models) ? payload.models : []).forEach((item) => {
+    const id = String(typeof item === 'string' ? item : item?.id || '').trim();
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    options.push({ id, label: String(typeof item === 'string' ? item : item?.label || id).trim() || id });
+  });
+  const requestedDefault = String(payload?.default_model || '').trim();
+  return {
+    options,
+    defaultModelId: options.some((item) => item.id === requestedDefault) ? requestedDefault : (options[0]?.id || ''),
+  };
+}
+
+function readProviderModelsCache(requestKey) {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    const cache = JSON.parse(window.localStorage.getItem(PROVIDER_MODELS_STORAGE_KEY) || '{}');
+    const catalog = cache?.[requestKey];
+    if (!catalog) return null;
+    return normalizeProviderModels({ models: catalog.options, default_model: catalog.defaultModelId });
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeProviderModelsCache(requestKey, catalog) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const cache = JSON.parse(window.localStorage.getItem(PROVIDER_MODELS_STORAGE_KEY) || '{}');
+    cache[requestKey] = catalog;
+    window.localStorage.setItem(PROVIDER_MODELS_STORAGE_KEY, JSON.stringify(cache));
+  } catch (_) {
+    // The live catalog remains usable when storage is unavailable.
+  }
+}
+
+export function useProviderModels(providerOption) {
+  const providerId = providerOption?.id || '';
+  const requestKey = JSON.stringify(providerModelsRequest(providerOption));
+  const fallbackKey = JSON.stringify({
+    models: providerOption?.modelOptions || [],
+    default_model: providerOption?.defaultModelId || '',
+  });
+  const [state, setState] = React.useState({ providerId: '', options: [], defaultModelId: '', loading: false });
+
+  React.useEffect(() => {
+    const request = JSON.parse(requestKey);
+    const fallback = normalizeProviderModels(JSON.parse(fallbackKey));
+    if (!providerId || !request) {
+      setState({ providerId: '', options: [], defaultModelId: '', loading: false });
+      return undefined;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    const cached = readProviderModelsCache(requestKey);
+    setState({ providerId, ...(cached || fallback), loading: true });
+    authFetch(`${API_BASE}/api/llm/models`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: requestKey,
+      signal: controller.signal,
+    }, { json: false })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`provider models fetch failed: ${response.status}`);
+        const payload = await response.json();
+        const responseProvider = String(payload?.provider || '').trim();
+        if (responseProvider && responseProvider !== request.provider) {
+          throw new Error(`provider models mismatch: expected ${request.provider}, received ${responseProvider}`);
+        }
+        return normalizeProviderModels(payload);
+      })
+      .then((catalog) => {
+        if (cancelled) return;
+        const resolved = catalog.options.length ? catalog : (cached || fallback);
+        if (catalog.options.length) writeProviderModelsCache(requestKey, catalog);
+        setState({ providerId, ...resolved, loading: false });
+      })
+      .catch((error) => {
+        if (cancelled || error?.name === 'AbortError') return;
+        console.warn('failed to fetch selected provider models', error);
+        setState({ providerId, ...(cached || fallback), loading: false });
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [providerId, requestKey, fallbackKey]);
+
+  if (state.providerId !== providerId) {
+    return { options: [], defaultModelId: '', loading: Boolean(providerId) };
+  }
+  return state;
+}
+
+export function resolveRunConfigSelection(storageKey, providerOptions, agentOptions, defaultAgentId) {
   const stored = safeReadRunConfigSelection(storageKey);
   const storedReasoning = REASONING_EFFORT_OPTIONS.some((item) => item.id === stored?.reasoningEffort)
     ? stored.reasoningEffort
     : '';
   const fallbackProvider = firstRunProvider(providerOptions);
-  const providerId = optionHasId(providerOptions, stored?.providerId) ? stored.providerId : (fallbackProvider?.id || '');
+  const storedProviderIsValid = optionHasId(providerOptions, stored?.providerId);
+  const providerId = storedProviderIsValid ? stored.providerId : (fallbackProvider?.id || '');
   const provider = (providerOptions || []).find((item) => item.id === providerId) || fallbackProvider;
-  const activeModelOptions = modelsForRunProvider(provider, modelOptions);
-  const activeDefaultModelId = provider ? (provider.defaultModelId || defaultModelId || activeModelOptions[0]?.id || '') : '';
+  const providerDefaultModelId = String(provider?.defaultModelId || '').trim();
+  const storedDefaultIsCurrent = stored?.providerDefaultModelId === providerDefaultModelId;
   return {
     providerId,
-    modelId: optionHasId(activeModelOptions, stored?.modelId) ? stored.modelId : activeDefaultModelId,
+    modelId: storedProviderIsValid && storedDefaultIsCurrent
+      ? stored?.modelId || providerDefaultModelId
+      : providerDefaultModelId,
+    providerDefaultModelId,
     agentId: optionHasId(agentOptions, stored?.agentId) ? stored.agentId : defaultAgentId,
     reasoningEffort: storedReasoning || DEFAULT_REASONING_EFFORT,
   };
 }
 
-export function usePersistentRunConfig({ selectionStorageKey, providerOptions, modelOptions, defaultModelId, agentOptions, defaultAgentId }) {
+export function usePersistentRunConfig({ selectionStorageKey, providerOptions, agentOptions, defaultAgentId }) {
   const [selection, setSelection] = React.useState(() => resolveRunConfigSelection(
     selectionStorageKey,
     providerOptions,
-    modelOptions,
-    defaultModelId,
     agentOptions,
     defaultAgentId,
   ));
@@ -291,8 +397,6 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, m
     const nextSelection = resolveRunConfigSelection(
       selectionStorageKey,
       providerOptions,
-      modelOptions,
-      defaultModelId,
       agentOptions,
       defaultAgentId,
     );
@@ -300,10 +404,10 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, m
       const providerId = keyChanged || !optionHasId(providerOptions, current.providerId)
         ? nextSelection.providerId
         : current.providerId;
-      const provider = (providerOptions || []).find((item) => item.id === providerId)
-        || firstRunProvider(providerOptions);
-      const activeModelOptions = modelsForRunProvider(provider, modelOptions);
-      const modelId = keyChanged || providerId !== current.providerId || !optionHasId(activeModelOptions, current.modelId)
+      const provider = (providerOptions || []).find((item) => item.id === providerId);
+      const providerDefaultModelId = String(provider?.defaultModelId || '').trim();
+      const defaultModelChanged = providerDefaultModelId !== current.providerDefaultModelId;
+      const modelId = keyChanged || providerId !== current.providerId || defaultModelChanged
         ? nextSelection.modelId
         : current.modelId;
       const agentId = keyChanged || !optionHasId(agentOptions, current.agentId)
@@ -312,27 +416,24 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, m
       const reasoningEffort = keyChanged || !REASONING_EFFORT_OPTIONS.some((item) => item.id === current.reasoningEffort)
         ? nextSelection.reasoningEffort
         : current.reasoningEffort;
-      if (providerId === current.providerId && modelId === current.modelId && agentId === current.agentId && reasoningEffort === current.reasoningEffort) {
+      if (providerId === current.providerId && modelId === current.modelId && providerDefaultModelId === current.providerDefaultModelId && agentId === current.agentId && reasoningEffort === current.reasoningEffort) {
         return current;
       }
-      return { providerId, modelId, agentId, reasoningEffort };
+      return { providerId, modelId, providerDefaultModelId, agentId, reasoningEffort };
     });
     storageKeyRef.current = nextKey;
-  }, [selectionStorageKey, providerOptions, modelOptions, defaultModelId, agentOptions, defaultAgentId]);
+  }, [selectionStorageKey, providerOptions, agentOptions, defaultAgentId]);
 
   React.useEffect(() => {
-    const provider = (providerOptions || []).find((item) => item.id === selection.providerId)
-      || firstRunProvider(providerOptions);
-    const activeModelOptions = modelsForRunProvider(provider, modelOptions);
     if (
       optionHasId(providerOptions, selection.providerId)
-      && optionHasId(activeModelOptions, selection.modelId)
+      && Boolean(selection.modelId)
       && optionHasId(agentOptions, selection.agentId)
       && REASONING_EFFORT_OPTIONS.some((item) => item.id === selection.reasoningEffort)
     ) {
       safeWriteRunConfigSelection(selectionStorageKey, selection);
     }
-  }, [selectionStorageKey, selection.providerId, selection.modelId, selection.agentId, selection.reasoningEffort, providerOptions, modelOptions, defaultModelId, agentOptions]);
+  }, [selectionStorageKey, selection, providerOptions, agentOptions]);
 
   return {
     providerId: selection.providerId,
@@ -340,18 +441,12 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, m
     agentId: selection.agentId,
     reasoningEffort: selection.reasoningEffort,
     setProviderId: React.useCallback((providerId) => setSelection((current) => {
-      const provider = (providerOptions || []).find((item) => item.id === providerId)
-        || firstRunProvider(providerOptions);
-      if (!provider) return { ...current, providerId: '', modelId: '' };
-      const nextModelOptions = modelsForRunProvider(provider, modelOptions);
-      const modelId = optionHasId(nextModelOptions, current.modelId)
-        ? current.modelId
-        : (provider.defaultModelId || nextModelOptions[0]?.id || current.modelId);
-      return { ...current, providerId: provider.id, modelId };
-    }), [providerOptions, modelOptions, defaultModelId]),
+      const provider = (providerOptions || []).find((item) => item.id === providerId);
+      const providerDefaultModelId = String(provider?.defaultModelId || '').trim();
+      return provider ? { ...current, providerId: provider.id, modelId: providerDefaultModelId, providerDefaultModelId } : current;
+    }), [providerOptions]),
     setModelId: React.useCallback((modelId) => setSelection((current) => ({ ...current, modelId })), []),
     setAgentId: React.useCallback((agentId) => setSelection((current) => ({ ...current, agentId })), []),
     setReasoningEffort: React.useCallback((reasoningEffort) => setSelection((current) => ({ ...current, reasoningEffort })), []),
   };
 }
-

@@ -12,10 +12,10 @@ import { formatElapsedDuration,
   handlePathPaste,
   formatContextUsageLabel,
   usePersistentRunConfig,
-  modelsForRunProvider,
+  useProviderModels,
   copyTextToClipboard,
 } from './path-utils.jsx';
-import { MODEL_OPTIONS, DEFAULT_AGENT_OPTIONS, CATEGORY_ICON_CLASS, CATEGORY_LABEL } from './shared-constants.jsx';
+import { DEFAULT_AGENT_OPTIONS, CATEGORY_ICON_CLASS, CATEGORY_LABEL } from './shared-constants.jsx';
 
 import {
   ApprovalModePicker,
@@ -1599,9 +1599,6 @@ export function ChatPanel({
   activeTaskText,
   now,
   providerOptions = [],
-  modelOptions,
-  defaultModelId,
-  modelLoading = false,
   agentOptions,
   defaultAgentId,
   agentLoading = false,
@@ -1612,8 +1609,6 @@ export function ChatPanel({
   draft: draftProp,
   onDraftChange: onDraftChangeProp,
 }) {
-  const resolvedOptions = Array.isArray(modelOptions) ? modelOptions : MODEL_OPTIONS;
-  const resolvedDefaultModelId = defaultModelId || resolvedOptions[0]?.id || 'gpt-5.5';
   const resolvedProviderOptions = Array.isArray(providerOptions) && providerOptions.length > 0
     ? providerOptions
     : [];
@@ -1633,8 +1628,6 @@ export function ChatPanel({
   const { providerId, setProviderId, modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort } = usePersistentRunConfig({
     selectionStorageKey,
     providerOptions: resolvedProviderOptions,
-    modelOptions: resolvedOptions,
-    defaultModelId: resolvedDefaultModelId,
     agentOptions: resolvedAgentOptions,
     defaultAgentId: resolvedDefaultAgentId,
   });
@@ -1647,9 +1640,19 @@ export function ChatPanel({
   const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
   const canUploadDocuments = currentSelection?.canUploadDocuments === true;
   const currentProvider = resolvedProviderOptions.find((item) => item.id === providerId) || resolvedProviderOptions[0];
-  const activeModelOptions = modelsForRunProvider(currentProvider, resolvedOptions);
+  const providerModels = useProviderModels(currentProvider);
+  const activeModelOptions = providerModels.options;
+  const modelLoading = providerModels.loading;
   const providerRequest = currentProvider?.requestProvider || currentProvider?.provider || providerId || '';
   const providerConfigured = Boolean(currentProvider && providerRequest);
+
+  React.useEffect(() => {
+    if (modelLoading) return;
+    const nextModelId = activeModelOptions.some((item) => item.id === modelId)
+      ? modelId
+      : providerModels.defaultModelId;
+    if (nextModelId !== modelId) setModelId(nextModelId);
+  }, [activeModelOptions, modelId, modelLoading, providerModels.defaultModelId, setModelId]);
 
   // Clean up blob URLs + reset draft images when switching conversations.
   React.useEffect(() => {

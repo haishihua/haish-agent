@@ -41,7 +41,6 @@ import {
   buildKnowledgeSettingsPayload,
   getSelectedLlmConfig,
   llmProviderRequestPayload,
-  updateSelectedLlmConfig,
 } from '../settings/SettingsPage.jsx';
 import { API_BASE } from '../../api/base.js';
 import {
@@ -243,8 +242,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const [uploadState, setUploadState] = useState({ active: false, fileName: '' });
   const [queuedDeploy, setQueuedDeploy] = useState(null);
   const [toast, setToast] = useState(null);
-  const [modelCatalog, setModelCatalog] = useState(() => ({ options: [], defaultModelId: '', provider: '' }));
-  const [providerLoading, setProviderLoading] = useState(true);
   const [agentCatalog, setAgentCatalog] = useState(() => ({
     options: APP_DEFAULT_AGENT_OPTIONS,
     defaultAgentId: APP_DEFAULT_AGENT_OPTIONS[0].id,
@@ -347,27 +344,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       return next;
     });
   }
-
-  useEffect(() => {
-    let cancelled = false;
-    authFetch(`${API_BASE}/api/llm/models`, { method: 'GET' }, { json: false })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return;
-        if (Array.isArray(data.models) && data.models.length > 0) {
-          setModelCatalog({
-            options: data.models,
-            defaultModelId: data.default_model || data.models[0].id,
-            provider: String(data.provider || '').trim(),
-          });
-        }
-      })
-      .catch((error) => console.warn('failed to fetch provider models', error))
-      .finally(() => {
-        if (!cancelled) setProviderLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -533,13 +509,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     };
   }, []);
 
-  const modelOptions = modelCatalog?.options;
-  const defaultModelId = modelCatalog?.defaultModelId;
-  const llmProviderOptions = useMemo(() => runtimeLlmProviderOptions(llmSettingsDraft, modelCatalog), [llmSettingsDraft, modelCatalog]);
-  const modelProviderKey = llmProviderOptions.map((item) => item.requestProvider || item.id).join('|') || 'unconfigured';
+  const llmProviderOptions = useMemo(() => runtimeLlmProviderOptions(llmSettingsDraft), [llmSettingsDraft]);
   const agentOptions = agentCatalog?.options || APP_DEFAULT_AGENT_OPTIONS;
   const defaultAgentId = agentCatalog?.defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
-  const runConfigStorageKey = buildRunConfigStorageKey(authUser, modelProviderKey);
+  const runConfigStorageKey = buildRunConfigStorageKey(authUser, 'chat');
   const workflowOptions = useMemo(() => {
     const normalized = normalizeWorkflowSettings(workflowSettingsDraft);
     return [...normalized.presets, ...normalized.custom]
@@ -2385,25 +2358,13 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(llmProviderRequestPayload(config, {
           includeSecret: true,
-          includeOAuth: true,
-          refresh: true,
         })),
       }, { json: false });
       if (!response.ok) {
         const message = await parseResponseMessage(response, `llm test failed: ${response.status}`);
         throw new Error(message);
       }
-      const payload = await response.json();
-      const models = Array.isArray(payload.models) ? payload.models : [];
-      const defaultModel = String(payload.default_model || models[0]?.id || '').trim();
-      updateSelectedLlmConfig(setLlmSettingsDraft, selectedId, {
-        model_options: models,
-        ...(config.model ? {} : (defaultModel ? { model: defaultModel } : {})),
-        ...(config.auth_mode === 'oauth' ? {
-          oauth_configured: true,
-          ...(payload.oauth_saved ? { oauth_code: '' } : {}),
-        } : {}),
-      });
+      await response.json();
       showToast('success', 'llm provider test passed');
     } catch (error) {
       showToast('error', String(error?.message || error));
@@ -5213,9 +5174,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
                     activeTaskText={activeTaskText}
                     now={now}
                     providerOptions={llmProviderOptions}
-                    modelOptions={modelOptions}
-                    defaultModelId={defaultModelId}
-                    modelLoading={providerLoading}
                     agentOptions={agentOptions}
                     defaultAgentId={defaultAgentId}
                     agentLoading={agentLoading}
@@ -5235,7 +5193,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 	                    MAP_W={MAP_W}
 	                    MAP_H={MAP_H}
 	                    onViewChange={setMapView}
-	                    overlay={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} attachment={composerAttachment} uploading={uploadState.active} running={currentConversationRunning} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} modelOptions={modelOptions} defaultModelId={defaultModelId} modelLoading={providerLoading} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={`${runConfigStorageKey}.bot`} />}
+                    overlay={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} attachment={composerAttachment} uploading={uploadState.active} running={currentConversationRunning} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={`${runConfigStorageKey}.bot`} />}
                   >
                     <div ref={stageRef} className="office-map">
                       {worldCalibrationActive && calibrationTarget === 'routes' && selectedRouteId && <CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}
