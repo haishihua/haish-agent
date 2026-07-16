@@ -1,0 +1,25 @@
+app-web/src/features/app/AppShell.jsx
+  s_3fde763ed02080::t_20e929717a31b5 183,516,859-861,1201-1206,1212-1214,1218-1224,3375,3380-3394,3397-3400,3407,3775,3778-3808,3813,4080-4105,4107-4108,4128-4146,4153,4156-4175,4186-4213,4219-4220,4222,4227-4229,4233,4236-4237,4242,4246,4508-4517,5123-5139,5191-5192,5194-5196,5200-5202,5204-5217,5326
+app-web/src/panels/TaskDelegation.jsx
+  s_3fde763ed02080::t_20e929717a31b5 72-73,83-84
+app-web/src/lib/task-runtime.js
+  s_3fde763ed02080::t_20e929717a31b5 51-130
+app-web/src/panels/chatTimeline.jsx
+  s_3fde763ed02080::t_20e929717a31b5 1813-1814,1824-1825
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "3cdc2f21bce1752d55c21710b5531f79d734923d",
+  "prompts": {},
+  "sessions": {
+    "s_3fde763ed02080": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6676-5cd8-7391-b408-34300e12a580",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
