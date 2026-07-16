@@ -1,0 +1,52 @@
+app-web/src/panels/chatTimeline.jsx
+  s_cbbb4af7fde96f::t_a1e36fdd4a71b3 15,18,1643-1645,1649-1655
+app-web/src/panels/path-utils.jsx
+  s_cbbb4af7fde96f::t_8c1724d403e281 3-4,254-260,262-265,267-270,272-279,303-306,312-314,317-322,325-337,339-340,345-348,350-354,356-363,369-370,385,425,430,444,447
+  s_3fde763ed02080::t_ac000f47b0dd60 222,237,261,372-373,376-379,407-410,419,422,445-446
+  s_cbbb4af7fde96f::t_457dd34d5e7ced 307,315
+  s_cbbb4af7fde96f::t_c251440de2b74f 7-8,266,271,280-290,294-302,323,338,341
+  s_3fde763ed02080::t_53a25ccbd4ec1a 308-311,316,324,342-344,349,355
+  s_3fde763ed02080::t_ff69e08c8546b7 436
+app-web/src/panels/TaskDelegation.jsx
+  s_cbbb4af7fde96f::t_7618e5fcdb56b6 14,17,47-49,53-59
+app-web/src/lib/agent-catalog.js
+  s_3fde763ed02080::t_93f228430aab84 565-567
+  s_3fde763ed02080::t_ac000f47b0dd60 580
+  s_3fde763ed02080::t_53a25ccbd4ec1a 571
+  s_cbbb4af7fde96f::t_58fbc78e6dda69 558,570,575,577-579,583
+  s_3fde763ed02080::t_0786a1abe91997 449
+app-web/src/features/app/AppShell.jsx
+  s_3fde763ed02080::t_2fd31a1b4fae35 2367
+  s_cbbb4af7fde96f::t_9ef720f4b41ad8 512,515,5196
+app-web/src/features/settings/SettingsPage.jsx
+  s_3fde763ed02080::t_88fbfdeea547b1 1326-1333,1337,1417,1481,1590
+  s_3fde763ed02080::t_bcc8edba905bfe 1477,1484,1490-1500,1504-1507,1519,1521,1523-1524,1526-1528,1530,1545
+  s_3fde763ed02080::t_e79ffca32abc9c 3441,3447-3449
+  s_3fde763ed02080::t_0786a1abe91997 1353,1396-1397,1399-1401,1403-1406,1408,1512-1513,1515,1518,1613,1628,1641
+  s_3fde763ed02080::t_9b818ac7bfe931 1343,1362,1483,1514,1529,1582,1658-1670
+  s_3fde763ed02080::t_6a9466de7fd260 3444
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "b4b4e5e33acc52f3ce6e713d917dff21ff0280a5",
+  "prompts": {},
+  "sessions": {
+    "s_3fde763ed02080": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6676-5cd8-7391-b408-34300e12a580",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    },
+    "s_cbbb4af7fde96f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3c2e-cd02-7283-9ee3-ec1ddfc0861d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
