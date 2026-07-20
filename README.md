@@ -20,8 +20,7 @@ Electron and adds native local-folder authorization for desktop projects.
 | `app-web/src/main.jsx` | UI entry |
 | `app-web/src/lib/` | Pure helpers (settings/workflow/runtime constants) |
 | `app-web/dist/` | Build output loaded by Electron (`haish://app/...`) |
-| `src/main`, `src/preload` | Electron main + preload (TypeScript) |
-| `src/renderer` | Legacy Vite shell prototype (not used by the desktop app) |
+| `src/main`, `src/preload`, `src/shared` | Electron main + preload + shared IPC types (TypeScript) |
 
 Build config: `vite.app-web.config.ts`.
 

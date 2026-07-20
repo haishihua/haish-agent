@@ -4,36 +4,40 @@
   <meta charset="utf-8" />
   <title>Haish Agent</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- Critical paint: transparent Electron vibrancy shows OS gray until CSS/JS load.
+       Keep first paint dark so hard reload does not flash a blank light page. -->
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #05060b;
+      color: #daddef;
+      overflow: hidden;
+    }
+    #root { min-height: 100%; background: #05060b; }
+  </style>
+  <!-- Non-blocking fonts: hard reload previously waited on Google Fonts + multi-MB atlas preloads. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
     href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&family=Zpix&family=JetBrains+Mono:wght@400;600&display=swap"
     rel="stylesheet"
+    media="print"
+    onload="this.media='all'"
   />
+  <noscript>
+    <link
+      href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&family=Zpix&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+  </noscript>
+  <!-- Only warm the main stage map; character atlases load on demand with BotWorld. -->
   <link rel="preload" as="image" href="assets/office.png" />
-  <link rel="preload" as="image" href="assets/fx/final-report-blackhole.png" />
-  <link rel="preload" as="image" href="assets/atlases/gojo.png" />
-  <link rel="preload" as="image" href="assets/atlases/guts.png" />
-  <link rel="preload" as="image" href="assets/atlases/okabe.png" />
-  <link rel="preload" as="image" href="assets/atlases/kurisu.png" />
-  <link rel="preload" as="image" href="assets/atlases/lelouch.png" />
-  <link rel="preload" as="image" href="assets/atlases/levi.png" />
-  <link rel="preload" as="image" href="assets/atlases/itachi.png" />
-  <link rel="preload" as="image" href="assets/atlases/mikey.png" />
 </head>
 <body>
   <div id="root"></div>
-  <!-- Hidden preload so atlases decode into browser cache before stage paints -->
-  <div aria-hidden="true" style="position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none">
-    <img src="assets/office.png" alt="" />
-    <img src="assets/fx/final-report-blackhole.png" alt="" />
-    <img src="assets/atlases/gojo.png" alt="" />
-    <img src="assets/atlases/guts.png" alt="" />
-    <img src="assets/atlases/okabe.png" alt="" />
-    <img src="assets/atlases/kurisu.png" alt="" />
-    <img src="assets/atlases/lelouch.png" alt="" />
-    <img src="assets/atlases/levi.png" alt="" />
-    <img src="assets/atlases/itachi.png" alt="" />
-    <img src="assets/atlases/mikey.png" alt="" />
-  </div>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>
+

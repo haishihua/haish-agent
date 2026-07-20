@@ -19,7 +19,8 @@ export {
   ModelPicker,
 } from './panels/ModelPickers.jsx';
 export { TaskDelegation } from './panels/TaskDelegation.jsx';
-export { ChatPanel, normalizeToolName } from './panels/ChatTimeline.jsx';
+export { ChatPanel } from './panels/ChatPanel.jsx';
+export { normalizeToolName } from './lib/tool-names.js';
 export { NAV_TABS, BottomNav, MapViewport, TabPlaceholder } from './panels/Shell.jsx';
 export {
   LIVE_FEED_VISIBLE_COUNT,

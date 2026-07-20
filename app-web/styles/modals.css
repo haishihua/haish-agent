@@ -1,0 +1,858 @@
+/* section: modals.css (lines 12643-13499 of former styles.css) */
+/* =================================================================
+   ============ Final Report modal — Apple HIG 风格 ==================
+   ================================================================= */
+.hollow-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.46);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+    z-index: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    animation: hollow-in .25s ease-out;
+}
+
+@keyframes hollow-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.app-toast {
+    position: fixed;
+    top: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 520;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    max-width: min(92vw, 420px);
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(120, 137, 177, 0.28);
+    background: rgba(11, 16, 29, 0.94);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    animation: toast-in .24s ease-out;
+}
+
+.app-toast-success {
+    border-color: rgba(96, 211, 160, 0.34);
+}
+
+.app-toast-error {
+    border-color: rgba(236, 94, 111, 0.34);
+}
+
+.app-toast-info {
+    border-color: rgba(120, 168, 255, 0.34);
+}
+
+.app-toast-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    flex: 0 0 20px;
+}
+
+.app-toast-icon-success {
+    background: url("../assets/ui/icons/check-success.png") center / contain no-repeat;
+}
+
+.app-toast-icon-error {
+    background: url("../assets/ui/icons/exclamation.png") center / contain no-repeat;
+    color: transparent;
+    font-size: 0;
+}
+
+.app-toast-icon-info {
+    background: rgba(120, 168, 255, 0.18);
+    color: rgba(180, 210, 255, 0.96);
+    font-size: 12px;
+    line-height: 1;
+}
+
+.app-toast-icon-info::before {
+    content: "i";
+    font-style: italic;
+    font-weight: 700;
+}
+
+.app-toast-message {
+    color: #eef3ff;
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    word-break: break-word;
+}
+
+@keyframes upload-spinner-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+.hollow-stage {
+    position: relative;
+    width: min(92vw, 880px);
+    max-width: 880px;
+    max-height: min(80vh, 760px);
+    display: flex;
+    flex-direction: column;
+    background: rgba(28, 28, 32, 0.82);
+    border-radius: 14px;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.56),
+    0 4px 12px rgba(0, 0, 0, 0.36),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    backdrop-filter: blur(22px) saturate(140%);
+    overflow: hidden;
+    isolation: isolate;
+    animation: iv-sheet-in .26s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.hollow-visual {
+    /* 黑洞图铺满整个模态背景，不再做底部渐隐 */
+    position: absolute;
+    inset: 0;
+    background: url("../assets/fx/final-report-blackhole.png") center / cover no-repeat;
+    opacity: 0.55;
+    mix-blend-mode: screen;
+    pointer-events: none;
+    z-index: 0;
+}
+
+@keyframes iv-sheet-in {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.iv-modal {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+/* 标题与正文都不再画外框：单 sheet 容器（.hollow-stage）已经提供圆角与背景；
+   header 和 body 之间用 hairline 分隔，符合 Apple Sheet/Inspector 的视觉 */
+.iv-header,
+.iv-body {
+    position: relative;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    animation: none;
+}
+
+.iv-header {
+    padding: 26px 32px 18px;
+}
+
+.iv-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
+    padding: 20px 32px 24px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.iv-header-inner,
+.iv-body-inner {
+    position: relative;
+}
+
+.iv-body-inner {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    max-height: 100%;
+}
+
+/* 之前所有 ::before / ::after 角标全部清空 */
+.iv-header::before,
+.iv-header::after,
+.iv-body::before,
+.iv-body::after,
+.iv-header-inner::before,
+.iv-header-inner::after,
+.iv-body-inner::before,
+.iv-body-inner::after {
+    content: none;
+}
+
+.iv-label {
+    margin-bottom: 6px;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+    -webkit-font-smoothing: antialiased;
+}
+
+.iv-label::before {
+    content: none;
+}
+
+.iv-title {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+    line-height: 1.25;
+    color: #ffffff;
+    text-shadow: none;
+    -webkit-font-smoothing: antialiased;
+}
+
+.iv-body-scroll {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    max-height: 100%;
+    padding-right: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.iv-body-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+.iv-body-scroll::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.iv-body-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1));
+    border-radius: 2px;
+}
+
+.iv-body-scroll::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.2));
+}
+
+@keyframes iv-slide-in {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Markdown styling — SF Pro，Apple HIG 排版 */
+.md-root {
+    color: rgba(255, 255, 255, 0.92);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+    letter-spacing: 0;
+    text-shadow: none;
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.md-root .md-h {
+    color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    margin: 18px 0 8px;
+    line-height: 1.3;
+    font-weight: 700;
+    letter-spacing: -0.1px;
+    text-shadow: none;
+}
+
+.md-root .md-h:first-child {
+    margin-top: 0;
+}
+
+.md-root .md-h1 {
+    font-size: 20px;
+}
+
+.md-root .md-h2 {
+    font-size: 17px;
+}
+
+.md-root .md-h3 {
+    font-size: 15px;
+}
+
+.md-root .md-h4 {
+    font-size: 14px;
+}
+
+.md-root .md-p {
+    margin: 0 0 14px;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.md-root .md-ul, .md-root .md-ol {
+    margin: 0 0 16px;
+    padding-left: 22px;
+    color: rgba(255, 255, 255, 0.88);
+}
+
+.md-root .md-ul li, .md-root .md-ol li {
+    margin: 6px 0;
+}
+
+.md-root li > .md-ul,
+.md-root li > .md-ol {
+    margin: 6px 0 6px;
+}
+
+.md-root .md-ul li::marker, .md-root .md-ol li::marker {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.md-root .md-bq {
+    margin: 0 0 16px;
+    padding: 4px 0 4px 14px;
+    border-left: 2px solid rgba(255, 255, 255, 0.24);
+    color: rgba(255, 255, 255, 0.72);
+    font-style: italic;
+}
+
+.md-root .md-pre {
+    margin: 0 0 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 12px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    border-radius: 2px;
+    color: rgba(255, 255, 255, 0.9);
+    overflow-x: auto;
+}
+
+.md-root .md-code-line {
+    display: flex;
+    gap: 14px;
+}
+
+.md-root .md-code-no {
+    color: rgba(255, 255, 255, 0.35);
+    width: 18px;
+    flex-shrink: 0;
+    text-align: right;
+    user-select: none;
+}
+
+.md-root .md-code-text {
+    color: rgba(255, 255, 255, 0.9);
+    font-family: 'JetBrains Mono', monospace;
+    white-space: pre;
+}
+
+.md-root .md-icode {
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-size: 0.9em;
+    color: #fff;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.md-root .md-hr {
+    margin: 18px 0;
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    height: 0;
+    background: transparent;
+}
+
+.md-root .md-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 0 0 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+}
+
+.md-root .md-table th, .md-root .md-table td {
+    padding: 7px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    vertical-align: top;
+    min-width: 0;
+}
+
+.md-root .md-table th {
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.md-root .md-table td {
+    color: rgba(255, 255, 255, 0.86);
+}
+
+.md-root strong {
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.md-root em {
+    color: rgba(255, 255, 255, 0.75);
+    font-style: italic;
+}
+
+/* Action buttons */
+/* 底部按钮区改为 sheet footer，参考 macOS 标准对话框：右下方贴边，分隔线 */
+.iv-actions {
+    position: static;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.18);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    animation: iv-actions-in 0.28s ease 0.12s forwards;
+}
+
+.iv-btn {
+    min-height: 30px;
+    padding: 5px 18px;
+    border-radius: 7px;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    border: 0;
+    cursor: pointer;
+    transition: background .14s ease, box-shadow .14s ease, color .14s ease;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Secondary：浅灰半透明，类似 macOS .NSButton .bordered 默认样式 */
+.iv-btn-close {
+    background: rgba(255, 255, 255, 0.10);
+    color: rgba(255, 255, 255, 0.9);
+    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+}
+
+.iv-btn-close:hover {
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+}
+
+/* Primary：Apple 系统蓝填充按钮 */
+.iv-btn-export {
+    background: #0a84ff;
+    color: #ffffff;
+    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.iv-btn-export:hover {
+    background: #1f8eff;
+}
+
+.iv-btn:active {
+    transform: translateY(0.5px);
+}
+
+.iv-btn:focus-visible {
+    outline: 2px solid rgba(10, 132, 255, 0.55);
+    outline-offset: 2px;
+}
+
+@keyframes iv-actions-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 768px) {
+    .app-toast {
+        top: 14px;
+        left: 50%;
+        right: auto;
+        width: min(calc(100vw - 28px), 420px);
+        max-width: none;
+    }
+
+    .hollow-stage {
+        width: min(95vw, calc((100vh - 40px) * 1586 / 992));
+        max-width: none;
+        max-height: calc(100vh - 40px);
+    }
+
+    .iv-modal {
+        padding: 28px 18px 18px;
+        padding-bottom: 72px;
+        gap: 16px;
+    }
+
+    .iv-header,
+    .iv-body {
+        padding: 16px 20px;
+    }
+
+    .iv-body {
+        max-height: calc(100% - 164px);
+    }
+
+    .iv-title {
+        font-size: 18px;
+    }
+
+    .iv-body-scroll {
+        max-height: 100%;
+    }
+
+    .iv-actions {
+        right: 18px;
+        bottom: 18px;
+        flex-direction: column;
+    }
+
+    .iv-btn {
+        width: 100%;
+    }
+}
+
+/* ============ Empty state ============ */
+.empty-tip {
+    position: absolute;
+    left: 50%;
+    top: 38%;
+    transform: translateX(-50%);
+    font-family: 'Zpix', monospace;
+    font-size: 14px;
+    color: var(--gold);
+    z-index: 10;
+    pointer-events: none;
+    background: rgba(12, 10, 22, 0.7);
+    padding: 6px 14px;
+    border: 1px dashed var(--gold);
+    letter-spacing: 1px;
+    animation: blink 1.6s steps(2) infinite;
+}
+
+@keyframes blink {
+    0%, 100% {
+        opacity: .5;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+@media (max-width: 1280px) {
+    .app-body {
+        grid-template-columns: 240px minmax(320px, 1fr) 240px;
+    }
+
+    .map-viewport {
+        --task-panel-edge-x: 14px;
+    }
+
+    .task-delegation {
+        left: var(--task-panel-edge-x);
+        right: var(--task-panel-edge-x);
+        bottom: 14px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .app-body {
+        grid-template-columns: 220px minmax(320px, 1fr) 220px;
+    }
+
+    .zoom-controls button {
+        width: 28px;
+        height: 28px;
+    }
+
+    .task-delegation textarea {
+        height: 22px;
+        min-height: 22px;
+    }
+
+    .topbar-title {
+        font-size: 16px;
+    }
+}
+
+/* ===== Approval Mode Picker (next to attach icon in composer) ===== */
+.approval-mode-picker {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.approval-mode-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 12px 0 10px;
+    border: 1px solid rgba(72, 83, 109, 0.82);
+    background: linear-gradient(180deg, #171d2d, #121724);
+    color: var(--ink);
+    font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    border-radius: 10px;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.approval-mode-trigger:hover,
+.approval-mode-picker.is-open .approval-mode-trigger {
+    border-color: var(--gold);
+    color: var(--gold);
+}
+
+.approval-mode-trigger:focus-visible {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 1px rgba(239, 191, 100, 0.32);
+}
+
+.approval-mode-trigger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.approval-mode-icon {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    background-color: currentColor;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    image-rendering: auto;
+    vertical-align: middle;
+    color: rgba(218, 221, 239, 0.88);
+    transition: color 0.12s ease;
+}
+
+.approval-mode-trigger:hover .approval-mode-icon,
+.approval-mode-picker.is-open .approval-mode-icon {
+    color: var(--gold);
+}
+
+.approval-mode-label {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.approval-mode-caret {
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-right: 1px solid currentColor;
+    border-bottom: 1px solid currentColor;
+    transform: rotate(45deg) translateY(-2px);
+    transition: transform 0.14s ease;
+}
+
+.approval-mode-picker.is-open .approval-mode-caret {
+    transform: rotate(225deg) translateY(-2px);
+}
+
+.approval-mode-menu {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 6px);
+    min-width: 280px;
+    padding: 6px;
+    border: 1px solid rgba(239, 191, 100, 0.42);
+    background: linear-gradient(180deg, #1a2030, #11151f);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.56);
+    border-radius: 12px;
+    z-index: 30;
+}
+
+.approval-mode-header {
+    padding: 5px 10px 6px;
+    font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(218, 221, 239, 0.5);
+    border-bottom: 1px dashed rgba(72, 83, 109, 0.55);
+    margin-bottom: 4px;
+}
+
+.approval-mode-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.approval-mode-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 44px;
+    padding: 6px 10px;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 0.1s ease, color 0.1s ease;
+}
+
+.approval-mode-option:hover {
+    background: rgba(239, 191, 100, 0.14);
+    color: var(--gold);
+}
+
+.approval-mode-option.is-active {
+    color: var(--gold);
+}
+
+.approval-mode-option-icon {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    background-color: currentColor;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    image-rendering: auto;
+    vertical-align: middle;
+    color: rgba(218, 221, 239, 0.88);
+    transition: color 0.1s ease;
+}
+
+.approval-mode-option:hover .approval-mode-option-icon,
+.approval-mode-option.is-active .approval-mode-option-icon {
+    color: var(--gold);
+}
+
+.approval-mode-option-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.approval-mode-option-label {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.15;
+}
+
+.approval-mode-option-desc {
+    font-size: 11px;
+    font-weight: 400;
+    color: rgba(218, 221, 239, 0.55);
+    line-height: 1.2;
+}
+
+.approval-mode-option.is-active .approval-mode-option-desc,
+.approval-mode-option:hover .approval-mode-option-desc {
+    color: rgba(239, 191, 100, 0.7);
+}
+
+.approval-mode-check {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    color: var(--gold);
+}
+
+.approval-mode-check svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+}

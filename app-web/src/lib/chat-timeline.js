@@ -1,7 +1,7 @@
 // @haish-esm
 import { eventDeltaText } from './chat-text.js';
 export { eventDeltaText } from './chat-text.js';
-import { normalizeToolName } from '../panels/ChatTimeline.jsx';
+import { normalizeToolName } from './tool-names.js';
 import { DEFAULT_CONTEXT_TOTAL_TOKENS } from '../api/auth.js';
 import { normalizeTaskStatus } from './task-runtime.js';
 import { skillDisplayName } from './world-events.js';

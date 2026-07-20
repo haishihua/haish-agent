@@ -1,0 +1,635 @@
+/* section: base.css (lines 1-634 of former styles.css) */
+:root {
+    --bg-deep: #04050a;
+    --bg: #0a0d15;
+    --panel: #10131d;
+    --panel-2: #141928;
+    --panel-3: #1a2133;
+    --panel-4: #0d1018;
+    --line: #26304a;
+    --line-2: #3a4463;
+    --line-3: #55617d;
+    --ink: #daddef;
+    --dim: #878da6;
+    --dim-2: #606781;
+    --gold: #efbf64;
+    --gold-2: #cb8b39;
+    --cream-title: var(--gold);
+    --violet: #9d8dff;
+    --violet-2: #6c57df;
+    --cyan: #69c8f6;
+    --rose: #fb7185;
+    --green: #8ee3b7;
+    --green-2: #36d39f;
+    --crimson: #e0476a;
+    --orange: #fb923c;
+    --shadow-deep: rgba(0, 0, 0, 0.72);
+    --auth-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, ui-sans-serif, sans-serif;
+    --auth-display-font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, ui-sans-serif, sans-serif;
+    --content-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, ui-sans-serif, sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+/* html/body 用与 .app-shell 一致的深色填充：macOS 会按窗口圆角裁剪，不会渗出方角；
+   同时确保 titleBarStyle:'hiddenInset' 下顶部标题栏区域也被 web 内容完整覆盖 */
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #05060b;
+    color: var(--ink);
+    overflow: hidden;
+}
+
+body {
+    font-family: 'Zpix', 'VT323', ui-monospace, monospace;
+    image-rendering: pixelated;
+}
+
+.topbar-title,
+.side-panel-head .title,
+.task-delegation .td-title {
+    line-height: 1;
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+svg {
+    image-rendering: auto;
+    shape-rendering: geometricPrecision;
+}
+
+/* ============ Masked icon glyphs (PNG line-art tinted via currentColor) ============ */
+.ico {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    background-color: currentColor;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    image-rendering: auto;
+    vertical-align: middle;
+}
+
+.ico-task-delegation {
+    -webkit-mask-image: url("../assets/ui/icons/task-delegation.png");
+    mask-image: url("../assets/ui/icons/task-delegation.png");
+    width: 20px;
+    height: 20px;
+}
+
+.ico-task-filter {
+    -webkit-mask-image: url("../assets/ui/icons/task-filter.png");
+    mask-image: url("../assets/ui/icons/task-filter.png");
+    width: 16px;
+    height: 16px;
+}
+
+.ico-attach {
+    -webkit-mask-image: url("../assets/ui/icons/attach-file.png");
+    mask-image: url("../assets/ui/icons/attach-file.png");
+    width: 16px;
+    height: 16px;
+}
+
+.ico-google-docs {
+    -webkit-mask-image: url("../assets/ui/icons/google-docs.png");
+    mask-image: url("../assets/ui/icons/google-docs.png");
+    width: 16px;
+    height: 16px;
+}
+
+.ico-deploy {
+    -webkit-mask-image: url("../assets/ui/icons/deploy.png");
+    mask-image: url("../assets/ui/icons/deploy.png");
+    width: 18px;
+    height: 18px;
+}
+
+.ico-stop {
+    -webkit-mask-image: url("../assets/ui/icons/stop.png");
+    mask-image: url("../assets/ui/icons/stop.png");
+    width: 18px;
+    height: 18px;
+}
+
+.ico-preview {
+    -webkit-mask-image: url("../assets/ui/icons/preview.png");
+    mask-image: url("../assets/ui/icons/preview.png");
+    width: 19px;
+    height: 19px;
+    background-color: currentColor;
+    filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.22));
+}
+
+.ico-stop-cancel {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #ffb21b 0%, #ffa20a 54%, #f19000 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 232, 160, 0.72), 0 0 6px rgba(255, 162, 10, 0.32);
+}
+
+.ico-stop-cancel::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: #fffdf8;
+    box-shadow: 0 0 2px rgba(255, 255, 255, 0.65);
+}
+
+.stop-cancel-svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+    filter: drop-shadow(0 0 5px rgba(239, 191, 100, 0.3));
+}
+
+.ico-local {
+    -webkit-mask-image: url("../assets/ui/icons/monitor.png");
+    mask-image: url("../assets/ui/icons/monitor.png");
+    width: 16px;
+    height: 16px;
+}
+
+.ico-folder-plus-circle {
+    -webkit-mask-image: url("../assets/ui/icons/folder-plus-circle.png");
+    mask-image: url("../assets/ui/icons/folder-plus-circle.png");
+    width: 18px;
+    height: 18px;
+}
+
+.ico-folder {
+    -webkit-mask-image: url("../assets/ui/icons/folder.png");
+    mask-image: url("../assets/ui/icons/folder.png");
+    width: 18px;
+    height: 18px;
+}
+
+.ico-folder-open {
+    -webkit-mask-image: url("../assets/ui/icons/folder-open.png");
+    mask-image: url("../assets/ui/icons/folder-open.png");
+    width: 18px;
+    height: 18px;
+}
+
+.ico-comment-alt-dots {
+    -webkit-mask-image: url("../assets/ui/icons/comment-alt-dots.png");
+    mask-image: url("../assets/ui/icons/comment-alt-dots.png");
+    width: 16px;
+    height: 16px;
+}
+
+.ico-mobile-message {
+    -webkit-mask-image: url("../assets/ui/icons/mobile-message.png");
+    mask-image: url("../assets/ui/icons/mobile-message.png");
+    width: 16px;
+    height: 16px;
+}
+
+.ico-pen-field {
+    -webkit-mask-image: url("../assets/ui/icons/pen-field.png");
+    mask-image: url("../assets/ui/icons/pen-field.png");
+    width: 15px;
+    height: 15px;
+}
+
+.ico-trash {
+    -webkit-mask-image: url("../assets/ui/icons/trash.png");
+    mask-image: url("../assets/ui/icons/trash.png");
+    width: 15px;
+    height: 15px;
+}
+
+.ico-multiple {
+    -webkit-mask-image: url("../assets/ui/icons/multiple.png");
+    mask-image: url("../assets/ui/icons/multiple.png");
+    width: 15px;
+    height: 15px;
+}
+
+.ico-check-success {
+    -webkit-mask-image: none;
+    mask-image: none;
+    background-color: transparent;
+    background-image: url("../assets/ui/icons/check-success.png?v=2");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    width: 18px;
+    height: 18px;
+}
+
+.ico-check {
+    -webkit-mask-image: none;
+    mask-image: none;
+    background-color: transparent;
+    background-image: url("../assets/ui/icons/check.png?v=2");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    width: 18px;
+    height: 18px;
+}
+
+.ico-close {
+    -webkit-mask-image: none;
+    mask-image: none;
+    background-color: transparent;
+    background-image: url("../assets/ui/icons/close.png");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    width: 18px;
+    height: 18px;
+}
+
+.ico-loading {
+    -webkit-mask-image: url("../assets/ui/icons/loading.png");
+    mask-image: url("../assets/ui/icons/loading.png");
+    width: 18px;
+    height: 18px;
+}
+
+.ico-report {
+    -webkit-mask-image: url("../assets/ui/icons/report.png");
+    mask-image: url("../assets/ui/icons/report.png");
+    width: 16px;
+    height: 16px;
+}
+
+.ico-color-palette {
+    -webkit-mask-image: none;
+    mask-image: none;
+    background-color: transparent;
+    background-image: url("../assets/ui/icons/color-palette.png");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    width: 18px;
+    height: 18px;
+}
+
+.ico-bubble-chat {
+    -webkit-mask-image: url("../assets/ui/icons/bubble-chat.png");
+    mask-image: url("../assets/ui/icons/bubble-chat.png");
+    width: 19px;
+    height: 19px;
+}
+
+.ico-robot {
+    -webkit-mask-image: url("../assets/ui/icons/robot.png");
+    mask-image: url("../assets/ui/icons/robot.png");
+    width: 19px;
+    height: 19px;
+}
+
+.ico-thinking {
+    -webkit-mask-image: url("../assets/ui/icons/thinking.png");
+    mask-image: url("../assets/ui/icons/thinking.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-tool {
+    -webkit-mask-image: url("../assets/ui/icons/tool.png");
+    mask-image: url("../assets/ui/icons/tool.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-skill {
+    -webkit-mask-image: url("../assets/ui/icons/skill.png");
+    mask-image: url("../assets/ui/icons/skill.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-mcp {
+    -webkit-mask-image: url("../assets/ui/icons/magic-wand.png");
+    mask-image: url("../assets/ui/icons/magic-wand.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-subagent {
+    -webkit-mask-image: url("../assets/ui/icons/chat.png");
+    mask-image: url("../assets/ui/icons/chat.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-web {
+    -webkit-mask-image: url("../assets/ui/icons/internet.png");
+    mask-image: url("../assets/ui/icons/internet.png");
+    width: 14px;
+    height: 14px;
+}
+
+/* user 头像是蓝色填充图，保留原色用 background-image */
+.ico-user-avatar {
+    -webkit-mask-image: none;
+    mask-image: none;
+    background-color: transparent;
+    background-image: url("../assets/ui/icons/user.png");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    width: 18px;
+    height: 18px;
+}
+
+/* penguin 是黑色填充图，在深色背景上看不见——用 mask 模式让它跟随 chat-bubble-meta 的金色 currentColor */
+.ico-assistant-avatar {
+    -webkit-mask-image: url("../assets/ui/icons/penguin.png");
+    mask-image: url("../assets/ui/icons/penguin.png");
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    background-color: currentColor;
+    width: 18px;
+    height: 18px;
+}
+
+/* Tool / Skill / observation 图标补强 */
+.ico-file-read {
+    -webkit-mask-image: url("../assets/ui/icons/open-book.png");
+    mask-image: url("../assets/ui/icons/open-book.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-file-write {
+    -webkit-mask-image: url("../assets/ui/icons/copy-writing.png");
+    mask-image: url("../assets/ui/icons/copy-writing.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-weather {
+    -webkit-mask-image: url("../assets/ui/icons/clear-sky.png");
+    mask-image: url("../assets/ui/icons/clear-sky.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-rag {
+    -webkit-mask-image: url("../assets/ui/icons/knowledge-base.png");
+    mask-image: url("../assets/ui/icons/knowledge-base.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-memory {
+    -webkit-mask-image: url("../assets/ui/icons/alzheimer.png");
+    mask-image: url("../assets/ui/icons/alzheimer.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-workspace-artifact {
+    -webkit-mask-image: url("../assets/ui/icons/workspace-artifact.png");
+    mask-image: url("../assets/ui/icons/workspace-artifact.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-visual-inspect {
+    -webkit-mask-image: url("../assets/ui/icons/visual-inspect.png");
+    mask-image: url("../assets/ui/icons/visual-inspect.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-image-describe {
+    -webkit-mask-image: url("../assets/ui/icons/image-describe.png");
+    mask-image: url("../assets/ui/icons/image-describe.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-terminal {
+    -webkit-mask-image: url("../assets/ui/icons/terminal.png");
+    mask-image: url("../assets/ui/icons/terminal.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-copy-file {
+    -webkit-mask-image: url("../assets/ui/icons/copy-file.png");
+    mask-image: url("../assets/ui/icons/copy-file.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-create-dir {
+    -webkit-mask-image: url("../assets/ui/icons/create-dir.png");
+    mask-image: url("../assets/ui/icons/create-dir.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-delete-file {
+    -webkit-mask-image: url("../assets/ui/icons/delete-file.png");
+    mask-image: url("../assets/ui/icons/delete-file.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-delete-dir {
+    -webkit-mask-image: url("../assets/ui/icons/delete-dir.svg");
+    mask-image: url("../assets/ui/icons/delete-dir.svg");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-read-artifact {
+    -webkit-mask-image: url("../assets/ui/icons/read-artifact.svg");
+    mask-image: url("../assets/ui/icons/read-artifact.svg");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-todo-write {
+    -webkit-mask-image: url("../assets/ui/icons/todo-write.svg");
+    mask-image: url("../assets/ui/icons/todo-write.svg");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-list-dir {
+    -webkit-mask-image: url("../assets/ui/icons/list-dir.png");
+    mask-image: url("../assets/ui/icons/list-dir.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-glob-files {
+    -webkit-mask-image: url("../assets/ui/icons/glob-files.png");
+    mask-image: url("../assets/ui/icons/glob-files.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-checkpoint {
+    -webkit-mask-image: url("../assets/ui/icons/checkpoint.png");
+    mask-image: url("../assets/ui/icons/checkpoint.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-background-process {
+    -webkit-mask-image: url("../assets/ui/icons/background-process.png");
+    mask-image: url("../assets/ui/icons/background-process.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-note {
+    -webkit-mask-image: url("../assets/ui/icons/note.png");
+    mask-image: url("../assets/ui/icons/note.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-search-text {
+    -webkit-mask-image: url("../assets/ui/icons/search-text.png");
+    mask-image: url("../assets/ui/icons/search-text.png");
+    width: 14px;
+    height: 14px;
+}
+
+.ico-chevron-next {
+    -webkit-mask-image: url("../assets/ui/icons/next.png");
+    mask-image: url("../assets/ui/icons/next.png");
+    width: 10px;
+    height: 10px;
+}
+
+.ico-chevron-down {
+    -webkit-mask-image: url("../assets/ui/icons/down.png");
+    mask-image: url("../assets/ui/icons/down.png");
+    width: 10px;
+    height: 10px;
+}
+
+/* ============ Hover tooltip (data-tooltip) ============ */
+[data-tooltip] {
+    position: relative;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(180deg, #161b29, #0e121d);
+    color: var(--gold);
+    border: 1px solid rgba(239, 191, 100, 0.55);
+    padding: 5px 9px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    line-height: 1;
+    white-space: nowrap;
+    border-radius: 3px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+    pointer-events: none;
+    z-index: 200;
+    opacity: 0;
+    animation: tooltipIn .12s ease-out forwards .25s;
+}
+
+[data-tooltip][data-tooltip-pos="above"]:hover::after,
+[data-tooltip][data-tooltip-pos="above"]:focus-visible::after {
+    bottom: calc(100% + 8px);
+}
+
+[data-tooltip][data-tooltip-pos="below"]:hover::after,
+[data-tooltip][data-tooltip-pos="below"]:focus-visible::after {
+    top: calc(100% + 8px);
+}
+
+.filter-pill.open[data-tooltip]:hover::after {
+    display: none;
+}
+
+@keyframes tooltipIn {
+    to {
+        opacity: 1;
+    }
+}
+
+/* Portal-rendered tooltip — Apple HIG 风格的深色磨砂胶囊，逃出 overflow:hidden / backdrop-filter 祖先 */
+.portal-tooltip {
+    position: fixed;
+    display: inline-flex;
+    align-items: center;
+    width: max-content;
+    max-width: min(280px, calc(100vw - 16px));
+    background: rgba(28, 28, 32, 0.92);
+    color: #f4f4f6;
+    border: 0;
+    padding: 5px 10px;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0;
+    line-height: 1.25;
+    white-space: nowrap;
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42),
+    0 1px 2px rgba(0, 0, 0, 0.32),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0;
+    animation: tooltipIn .14s ease-out forwards .35s;
+    transform: translateX(-50%);
+}
+
+.portal-tooltip.portal-tooltip-above {
+    transform: translate(-50%, -100%);
+}
+
+.portal-tooltip.is-multiline {
+    white-space: pre-line;
+    line-height: 1.4;
+    text-align: left;
+    min-width: 0;
+    padding: 7px 11px;
+}
+
+#root {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+    /* 内部不再额外画圆角：由 macOS 原生窗口统一裁剪四角，避免出现"内套圆 + 外套圆"的可见缝隙 */
+    background: radial-gradient(circle at 18px 18px, rgba(239, 191, 100, 0.18), transparent 72px),
+    radial-gradient(circle at calc(100% - 18px) 18px, rgba(105, 200, 246, 0.12), transparent 86px),
+    linear-gradient(180deg, #02040a 0%, #050712 100%);
+}
+

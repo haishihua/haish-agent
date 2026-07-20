@@ -10,6 +10,7 @@
 | --- | --- |
 | [`README.md`](../README.md) | 仓库总览、如何跑起来 |
 | [`docs/local-agent-runtime-architecture.md`](./local-agent-runtime-architecture.md) | Electron ↔ 本地 Python runtime |
+| [`docs/frontend-giant-file-refactor-plan.md`](./frontend-giant-file-refactor-plan.md) | 大文件拆分与分层还债执行方案 |
 | [`app-web/src/lib/README.md`](../app-web/src/lib/README.md) | 源码树与命名速查 |
 
 **维护约定：** 架构或强制规范变更时，**同一 PR 必须同步更新本文档**，避免文档与代码再次分叉。
@@ -47,7 +48,7 @@ Haish 桌面端 = **Electron 壳 + Vite 打包的 React UI + 本地 Python runti
 | preload | `src/preload/` | 白名单 IPC / `window.haish` | 任意 Node 能力下沉到页面 |
 | UI 源码 | `app-web/src/` | 全部产品界面与前端状态 | 直接 `require('fs')`、挂业务到 `window` |
 | UI 产物 | `app-web/dist/` | Vite 构建输出，运行时加载 | 手改 dist、提交 dist（已 gitignore） |
-| 遗留原型 | `src/renderer/` | **不参与** 正式桌面 UI | 勿把新功能写在这里 |
+| 已删除遗留 | 原 `src/renderer/` | 已移除；产品 UI 仅 `app-web` | 禁止再引入第二套 renderer 入口 |
 
 ### 1.2 构建与运行（强制）
 
@@ -76,7 +77,7 @@ Haish 桌面端 = **Electron 壳 + Vite 打包的 React UI + 本地 Python runti
 ```
 app-web/
   index.html                 # Vite HTML 入口
-  styles.css                 # 全局样式（仍待按 feature 继续拆）
+  styles.css                 # 全局样式入口（@import styles/*.css）
   assets/                    # 静态资源（运行时按路径访问，构建时拷贝进 dist）
   agent-world/               # 世界地图等静态资源
   src/
@@ -113,9 +114,8 @@ features/*  ──►  panels/*  ──►  api/* , lib/*
 
 **已知例外（历史债，勿扩大）：**
 
-- `lib/chat-timeline.js` 目前 import `panels/ChatTimeline.jsx` 的 `normalizeToolName`。  
-  新代码 **禁止** 再让 `lib` 依赖 `panels`。  
-  后续应把 `normalizeToolName` 下沉到 `lib/chat-text.js` 或 `lib/tool-names.js`。
+- ~~`lib/chat-timeline.js` → `panels` 的 `normalizeToolName`~~ **已还清（Phase B1）**：现位于 `lib/tool-names.js`。  
+  新代码 **禁止** 再让 `lib` 依赖 `panels`。
 
 ### 2.3 模块职责
 
@@ -137,8 +137,8 @@ features/*  ──►  panels/*  ──►  api/* , lib/*
 | --- | --- | --- |
 | `auth/AuthGate.jsx` | 会话门闸：未登录 → AuthScreen，已登录 → AppShell | ~100 行 |
 | `auth/AuthScreen.jsx` | 登录 / 注册 UI | ~370 行 |
-| `app/AppShell.jsx` | 主壳：会话树、聊天/世界视图、runtime 编排、校准等 | **~4800 行（仍过大）** |
-| `settings/SettingsPage.jsx` | 设置页与各配置编辑器 | **~2900 行（仍过大）** |
+| `app/AppShell.jsx` | 主壳：会话树、聊天/世界视图、runtime 编排、校准等 | **~4178 行（handler factories 已外提；仍偏大）** |
+| `settings/SettingsPage.jsx` | 设置页壳 + re-export；编辑器已拆到同目录子模块 | **~780 行（Phase A 已落地）** |
 
 规则：
 
@@ -155,7 +155,7 @@ features/*  ──►  panels/*  ──►  api/* , lib/*
 | --- | --- |
 | `PortalTooltip.jsx` | Portal 提示（`createPortal` from `react-dom`） |
 | `ConversationsPanel.jsx` | 项目/会话树 |
-| `ChatTimeline.jsx` | 聊天面板与时间线（含 `ChatPanel`、`normalizeToolName`） |
+| Chat 时间线（已拆） | 实现见 `ChatPanel.jsx`、`ChatTimelineNodes.jsx`、`ChatMessageRow.jsx`；`normalizeToolName` 在 `lib/tool-names.js`；无独立兼容 barrel |
 | `TaskDelegation.jsx` | 世界模式底部委派输入 |
 | `TaskRecords.jsx` | 任务记录与筛选 |
 | `LiveFeedPanel.jsx` | 实时 feed |
@@ -239,7 +239,7 @@ main.jsx
 | `window.ChatPanel = ...` | ESM `export` / `import` | **禁止新增 window 业务挂载** |
 | 单文件 `app.jsx` 1 万+ 行 | features + panels + lib | 禁止再合并回单文件 |
 | 手写 `?v=131` 缓存破坏 | 构建 hash | 禁止再手写版本号当方案 |
-| `src/renderer` 当产品 UI | 仅 `app-web` | 禁止双入口并行开发 |
+| 第二套 renderer / 根 `index.html` 当产品 UI | 仅 `app-web` | 禁止双入口并行开发 |
 
 **允许的 `window` 使用：**
 
@@ -324,7 +324,7 @@ main.jsx
 - [ ] 新文件命名符合 §3.1  
 - [ ] 无新的 `lib` 循环依赖  
 - [ ] 跨文件符号均有 import（不要假设「同层可见」）  
-- [ ] 未把产品逻辑写进 `src/renderer`  
+- [ ] 未恢复 `src/renderer` 或其它第二套产品 UI 入口  
 - [ ] 未提交 `app-web/dist` / 临时脚本  
 - [ ] 若改了分层/规范，已更新本文档  
 
@@ -344,7 +344,7 @@ main.jsx
 | 循环依赖导致 undefined | `task-runtime` ↔ `workspace-state` 互 import | 单向依赖 + `registerTaskSummaryMapper` 注册 |
 | 同名不同大小写 | macOS 不敏感 + git 敏感 | 临时名两步 `git mv`；禁止仅大小写改名一步到位 |
 | `eventDeltaText is not defined` | 纯函数留在大文件、使用方未 import | 抽到 `lib/chat-text.js` 叶子并两边 import |
-| 误改 `src/renderer` | 以为那里是产品 UI | 产品只在 `app-web` |
+| 恢复第二套 renderer 入口 | 以为根目录/legacy 才是产品 UI | 产品只在 `app-web` |
 | 提交 dist / 迁移脚本 | 临时产物当修复 | 只提交源码；产物由 CI/本地 build 生成 |
 
 **拆大文件作业流程（强制习惯）：**
@@ -391,7 +391,7 @@ main.jsx
 
 1. `AppShell.jsx` → `useTaskStream` / `useWorkspace` / `useCalibration` 等 hooks + 子视图组件。  
 2. `SettingsPage.jsx` → 按 LLM / Tools / Agent / Workflow 分文件。  
-3. `ChatTimeline.jsx` → 消息节点 / 输入区 / 工具卡拆分。  
+3. Chat 时间线 → 消息节点 / 输入区 / 工具卡拆分（`ChatPanel` / Nodes / MessageRow）。  
 4. `normalizeToolName` 下沉到 `lib`，去掉 `lib → panels` 例外。  
 5. `styles.css` 按 feature 前缀拆分。  
 6. 为 `lib/*` 纯函数补 Vitest 单测作为门禁基础。
@@ -402,16 +402,17 @@ main.jsx
 
 | 债 | 说明 | 还债方向 |
 | --- | --- | --- |
-| `AppShell.jsx` 仍很大 | 主壳编排集中 ~4.8k 行 | 抽 hooks / 子模块 |
-| `SettingsPage.jsx` 仍很大 | 编辑器合集 ~2.9k 行 | 按配置域拆文件 |
-| `ChatTimeline.jsx` 仍偏大 | ~2k 行 | 拆消息节点与输入区 |
-| `styles.css` 单体 | 数千行 | 按 feature 拆 CSS |
-| `lib → panels` 例外 | `normalizeToolName` | 下沉到 lib |
-| `src/renderer` 遗留 | 非产品路径 | 文档标明或删除 |
+| `AppShell.jsx` 仍偏大 | 主壳 ~4.2k 行；handlers 已外提 | 继续抽 `use*` hooks / 子视图（[拆分方案](./frontend-giant-file-refactor-plan.md)） |
+| ~~`SettingsPage.jsx` 巨石~~ | 已拆为 payload/UI/editors | **Phase A done**（壳 ~781 行） |
+| ~~`ChatTimeline` 巨石~~ | 已拆为 tool-view / nodes / message / panel | **Phase B done** |
+| ~~`styles.css` 单体~~ | 入口 + `styles/*.css` section 拆分 | **Phase D done**（class 名未改） |
+| ~~`lib → panels` 例外~~ | `normalizeToolName` | **Phase B1 done** → `lib/tool-names.js` |
+| ~~组件文件命名大小写~~ | `Format/Shell/ChatTimeline/World` 已 PascalCase | **Phase D done** |
+| 第二套 renderer 遗留 | 非产品路径 | 已删除；勿再引入 |
 | 前端测试不足 | 无 UT/E2E 门禁 | 先为 lib 纯函数补测 |
 | `approval-overlay` 依赖 `window.authFetch` | 历史挂载 | 逐步改为 ESM import |
 
-还债时仍须遵守本文 §2–§4，不得借还债之名引入双构建链或 `window` 业务全局。
+还债时仍须遵守本文 §2–§4，并按 [`frontend-giant-file-refactor-plan.md`](./frontend-giant-file-refactor-plan.md) 分批执行；不得借还债之名引入双构建链或 `window` 业务全局。
 
 ---
 
@@ -421,8 +422,11 @@ main.jsx
 | --- | --- |
 | 2026-07 | 初版：Vite 化、ESM 模块化、features/panels/lib 分层、命名与依赖规范落地 |
 | 2026-07 | 增强：规模基线、启动链路、重构踩坑清单、文件体量软上限、还债优先级 |
+| 2026-07 | 新增大文件拆分执行方案链接；刷新 AppShell/Settings/ChatTimeline/CSS 规模基线 |
+| 2026-07 | 落地 Phase A/B：Settings 按域拆分、ChatTimeline 拆分、`normalizeToolName` 下沉 lib |
+| 2026-07 | 落地 Phase C 批次（AppShell `create*` factories）+ Phase D 命名/CSS；`build:web` 绿、lint 0 error |
 
 ---
 
 **给 Reviewer 的一句话：**  
-若 PR 让依赖图倒流、恢复全局挂载、或把产品逻辑写回单文件巨石 / `src/renderer`，应 **直接打回**，而不是「先合并再还」。
+若 PR 让依赖图倒流、恢复全局挂载、或把产品逻辑写回单文件巨石 / 第二套 renderer 入口，应 **直接打回**，而不是「先合并再还」。

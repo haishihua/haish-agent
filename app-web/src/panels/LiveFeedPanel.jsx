@@ -2,14 +2,14 @@
 import React from 'react';
 import {
   CHAR_DEFS } from '../Sprites.jsx';
-import { fmtAgo,
+import {
   fmtAgoCompact,
 } from './Format.jsx';
 import { LIVE_FEED_VISIBLE_COUNT } from './shared-constants.jsx';
 
 import {
   StopCancelIcon,
-} from './ConversationsPanel.jsx';
+} from './ConversationIcons.jsx';
 import {
   PortalTooltip,
 } from './PortalTooltip.jsx';

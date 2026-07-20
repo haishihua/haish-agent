@@ -1,0 +1,339 @@
+/* section: world-fx.css (lines 12305-12642 of former styles.css) */
+/* =================================================================
+   ============ KEEP: World map + NPCs + bubbles + FX =============
+   ================================================================= */
+
+/* Pixel character box */
+.npc {
+    position: absolute;
+    width: 88px;
+    height: 88px;
+    image-rendering: pixelated;
+    z-index: 20;
+    filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.45));
+}
+
+.npc-body {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    transform-origin: center bottom;
+}
+
+.npc-body.idle {
+    animation: idle-breathe 1.8s ease-in-out infinite;
+}
+
+.npc-body.walking {
+    animation: walk-bob .34s steps(2) infinite;
+}
+
+.npc[data-npc-id="guts"] {
+    filter: none;
+    image-rendering: auto;
+}
+
+.npc[data-npc-id="guts"] * {
+    image-rendering: auto;
+}
+
+.npc[data-npc-id="guts"] .npc-body.walking {
+    animation: none;
+}
+
+@keyframes idle-breathe {
+    0%, 100% {
+        transform: translateY(0) scale(1);
+    }
+    50% {
+        transform: translateY(-1px) scale(1.02);
+    }
+}
+
+@keyframes walk-bob {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-3px);
+    }
+}
+
+.npc-shadow {
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    width: 56px;
+    height: 12px;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse, rgba(0, 0, 0, 0.5), transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+/* NPC label — Apple HIG 风格的悬浮 caption：深色磨砂胶囊，SF Pro，柔影无硬边 */
+.npc-label {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0;
+    white-space: nowrap;
+    padding: 4px 9px;
+    background: rgba(28, 28, 32, 0.78);
+    color: #f4f4f6;
+    border: 0;
+    border-radius: 6px;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.42),
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    image-rendering: auto;
+}
+
+.npc-label .role {
+    color: var(--gold);
+    font-size: 9px;
+    font-weight: 500;
+    display: block;
+    margin-top: 2px;
+    letter-spacing: 0.2px;
+}
+
+.npc.busy .npc-label {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.42),
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    inset 0 0 0 0.5px rgba(239, 191, 100, 0.55),
+    0 0 0 2px rgba(239, 191, 100, 0.10);
+}
+
+.npc.thinking .npc-label::after {
+    content: " …";
+    color: var(--cyan);
+    animation: dots 1s steps(4) infinite;
+}
+
+@keyframes dots {
+    0% {
+        content: "";
+    }
+    25% {
+        content: " .";
+    }
+    50% {
+        content: " ..";
+    }
+    75% {
+        content: " ...";
+    }
+}
+
+/* Speech bubble — Apple HIG 风格：深色磨砂胶囊，柔影无硬边，小尾巴指向角色 */
+.bubble {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 44px);
+    transform: translateX(-50%);
+    background: rgba(28, 28, 32, 0.82);
+    color: #f4f4f6;
+    border: 0;
+    padding: 7px 12px;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.35;
+    letter-spacing: 0;
+    max-width: 220px;
+    width: max-content;
+    white-space: normal;
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42),
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    z-index: 30;
+    transform-origin: 50% calc(100% + 6px);
+    animation: bubble-in .22s cubic-bezier(0.16, 1, 0.3, 1) both;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    image-rendering: auto;
+}
+
+.bubble::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -5px;
+    width: 10px;
+    height: 10px;
+    background: inherit;
+    border-bottom-right-radius: 2px;
+    transform: translateX(-50%) rotate(45deg);
+    box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.18);
+    z-index: -1;
+}
+
+@keyframes bubble-in {
+    from {
+        transform: translateX(-50%) translateY(4px) scale(0.94);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(-50%) translateY(0) scale(1);
+        opacity: 1;
+    }
+}
+
+/* Tile highlight */
+.tile-highlight {
+    position: absolute;
+    border: 2px solid var(--gold);
+    box-shadow: 0 0 16px rgba(245, 197, 99, 0.5), inset 0 0 8px rgba(245, 197, 99, 0.2);
+    pointer-events: none;
+    animation: highlight-pulse 1.2s ease-in-out infinite;
+    z-index: 15;
+}
+
+@keyframes highlight-pulse {
+    0%, 100% {
+        opacity: .6;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+/* Particles / FX */
+.fx-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 25;
+}
+
+.fx-particle {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: var(--gold);
+    box-shadow: 0 0 8px var(--gold);
+}
+
+.connection-line {
+    position: absolute;
+    pointer-events: none;
+    z-index: 16;
+}
+
+.connection-line svg {
+    overflow: visible;
+}
+
+.connection-line path {
+    fill: none;
+    stroke: var(--gold);
+    stroke-width: 2;
+    stroke-dasharray: 6 4;
+    filter: drop-shadow(0 0 3px var(--gold));
+    animation: dash-flow 1s linear infinite;
+}
+
+@keyframes dash-flow {
+    to {
+        stroke-dashoffset: -20;
+    }
+}
+
+/* Function call FX rings */
+.fx-ring {
+    position: absolute;
+    border: 2px solid var(--cyan);
+    border-radius: 50%;
+    pointer-events: none;
+    animation: ring-grow 1.4s ease-out forwards;
+}
+
+@keyframes ring-grow {
+    0% {
+        width: 8px;
+        height: 8px;
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(.4);
+    }
+    100% {
+        width: 80px;
+        height: 80px;
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.2);
+    }
+}
+
+/* Action indicator above NPC */
+.action-tag {
+    position: absolute;
+    left: 50%;
+    top: -42px;
+    transform: translateX(-50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 2px 6px;
+    background: var(--gold);
+    color: #1a1a26;
+    white-space: nowrap;
+    z-index: 32;
+    animation: tag-bob 1s ease-in-out infinite;
+}
+
+@keyframes tag-bob {
+    0%, 100% {
+        transform: translate(-50%, 0);
+    }
+    50% {
+        transform: translate(-50%, -3px);
+    }
+}
+
+.action-tag.kind-think {
+    background: var(--violet);
+    color: white;
+}
+
+.action-tag.kind-tool {
+    background: var(--cyan);
+    color: #0a0a0f;
+}
+
+.action-tag.kind-mcp {
+    background: var(--rose);
+    color: white;
+}
+
+.action-tag.kind-skill {
+    background: #ffd166;
+    color: #1a1a26;
+}
+
+.action-tag.kind-rag {
+    background: var(--green);
+    color: #0a0a0f;
+}
+
+.action-tag.kind-llm {
+    background: var(--violet-2);
+    color: white;
+}
+

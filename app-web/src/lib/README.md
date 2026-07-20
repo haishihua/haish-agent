@@ -29,13 +29,28 @@ app-web/src/
   panels/                  # UI building blocks (PascalCase components)
   features/
     app/AppShell.jsx       # Main desktop shell
+    app/hooks/create*.js   # AppShell handler factories (Phase C)
     auth/AuthGate.jsx, AuthScreen.jsx
-    settings/SettingsPage.jsx
+    settings/              # SettingsPage shell + editors + payload/ui
   lib/                     # Pure helpers (kebab-case)
   api/                     # HTTP / session
+
+app-web/
+  styles.css               # Global CSS entry (imports styles/*.css)
+  styles/                  # Section CSS (base/auth/chat/panels/...)
 ```
 
 ### Important lib edges
 
 - `chat-text.js` — leaf helpers (`stripChatImageAugmentation`); no deps on other lib modules
+- `tool-names.js` — leaf (`normalizeToolName`); used by `chat-timeline.js` and panels
+- `tool-view.js` — pure tool display helpers for chat timeline (no React)
 - `workspace-state.js` ↔ `task-runtime.js` — **no circular import**; task mapping uses `registerTaskSummaryMapper()` registered from `task-runtime` after init
+
+### settings feature modules
+
+See `features/settings/` after Phase A split: `settings-payload.js`, `settings-ui.jsx`, `*ConfigEditor.jsx`, shell `SettingsPage.jsx`.
+
+### app shell factories
+
+`features/app/hooks/createComposerHandlers.js`, `createSettingsHandlers.js`, `createConversationHandlers.js`, `createWorldCalibrationHandlers.js`, `createScenePlaybackHelpers.js` — behavior-preserving factories extracted from `AppShell.jsx` (not React hooks yet).

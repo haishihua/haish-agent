@@ -1,0 +1,302 @@
+/* section: map.css (lines 10436-10736 of former styles.css) */
+/* ============ Map Viewport ============ */
+.map-viewport {
+    --task-panel-edge-x: 12px;
+    --task-panel-padding-x: 14px;
+    --task-input-right-edge: calc(var(--task-panel-edge-x) + var(--task-panel-padding-x));
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: linear-gradient(180deg, #090b11, #07080d);
+    border: 1px solid rgba(176, 206, 255, 0.13);
+    border-radius: 10px;
+    isolation: isolate;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+
+.map-screen-frame {
+    position: absolute;
+    inset: 0;
+}
+
+.map-screen-frame::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.045);
+    pointer-events: none;
+    z-index: 39;
+}
+
+.map-screen-frame::after {
+    content: none;
+}
+
+.map-stage-wrap {
+    position: absolute;
+    inset: 0;
+    cursor: grab;
+    touch-action: none;
+    z-index: 1;
+}
+
+.map-stage-wrap.dragging {
+    cursor: grabbing;
+}
+
+.map-stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1700px;
+    height: 950px;
+    transform-origin: 0 0;
+    will-change: transform;
+}
+
+.map-stage .office-map {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1700px;
+    height: 950px;
+    background-image: url('../assets/office.png');
+    background-size: 100% 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    filter: none;
+}
+
+.map-stage .office-map::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(14, 17, 27, 0.18), rgba(26, 18, 42, 0.18)),
+    radial-gradient(circle at 50% 44%, transparent 0 45%, rgba(0, 0, 0, 0.22) 100%);
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.provider-rail {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 6;
+}
+
+.provider-links {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+}
+
+.provider-links line {
+    stroke: rgba(147, 160, 191, 0.24);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 5;
+}
+
+.provider-links line.requested {
+    stroke: rgba(240, 184, 79, 0.52);
+}
+
+.provider-links line.active {
+    stroke: rgba(88, 163, 255, 0.78);
+    stroke-width: 2;
+    stroke-dasharray: none;
+}
+
+.provider-hub {
+    position: absolute;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(93, 109, 141, 0.65);
+    background: linear-gradient(180deg, rgba(15, 18, 27, 0.96), rgba(12, 15, 23, 0.96));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.provider-hub.state-selected,
+.provider-hub.state-thinking,
+.provider-hub.state-running,
+.provider-hub.state-completed {
+    border-color: rgba(88, 163, 255, 0.45);
+    box-shadow: 0 0 18px rgba(88, 163, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.provider-hub-title {
+    font-family: 'Zpix', monospace;
+    font-size: 11px;
+    color: #dce4f7;
+}
+
+.provider-hub-subtitle {
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--dim);
+}
+
+.provider-channel {
+    position: absolute;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(87, 100, 128, 0.62);
+    background: linear-gradient(180deg, rgba(19, 22, 31, 0.94), rgba(14, 17, 24, 0.96));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.provider-channel span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #b8c3db;
+    white-space: nowrap;
+}
+
+.provider-channel.requested {
+    border-color: rgba(240, 184, 79, 0.55);
+    background: linear-gradient(180deg, rgba(39, 29, 13, 0.95), rgba(27, 22, 12, 0.95));
+}
+
+.provider-channel.requested span {
+    color: var(--gold);
+}
+
+.provider-channel.active {
+    border-color: rgba(88, 163, 255, 0.72);
+    background: linear-gradient(180deg, rgba(19, 31, 56, 0.96), rgba(13, 24, 46, 0.96));
+    box-shadow: 0 0 16px rgba(88, 163, 255, 0.16);
+}
+
+.provider-channel.active span {
+    color: #9cc6ff;
+}
+
+/* Zoom controls — Apple Maps 风格：+/- 合并成一个胶囊，发条线分隔；
+   fit-to-view 单独一颗；外层用毛玻璃材质替代硬边框 */
+.zoom-controls {
+    position: absolute;
+    top: 16px;
+    right: var(--task-panel-edge-x);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.zoom-controls button {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(20, 25, 38, 0.58);
+    border: 1px solid rgba(176, 206, 255, 0.12);
+    color: #c7d1ed;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background .14s ease, color .14s ease, border-color .14s ease;
+    border-radius: 0;
+    box-shadow: none;
+    backdrop-filter: blur(14px) saturate(120%);
+    -webkit-backdrop-filter: blur(14px) saturate(120%);
+}
+
+/* +/- 合并为单胶囊：第一颗顶部圆角，第二颗底部圆角并复用顶 hairline 分隔 */
+.zoom-controls button:nth-child(1) {
+    border-radius: 8px 8px 0 0;
+}
+
+.zoom-controls button:nth-child(2) {
+    border-radius: 0 0 8px 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    margin-top: -1px;
+}
+
+.zoom-controls button:nth-child(3) {
+    border-radius: 8px;
+}
+
+.zoom-controls button:hover {
+    background: rgba(176, 206, 255, 0.10);
+    color: var(--gold);
+    border-color: rgba(239, 191, 100, 0.32);
+}
+
+.zoom-controls button:active {
+    background: rgba(176, 206, 255, 0.18);
+}
+
+.zoom-controls .zoom-readout {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--dim);
+    text-align: center;
+    margin-top: 4px;
+    letter-spacing: 0.4px;
+}
+
+.map-side-tab {
+    position: absolute;
+    top: 50%;
+    width: 26px;
+    height: 68px;
+    transform: translateY(-50%);
+    border: 1px solid var(--line-2);
+    background: linear-gradient(180deg, #171c2a, #0d121b);
+    color: #d6d9ea;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 49;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.map-side-tab.left {
+    left: 0;
+    border-left: 0;
+    border-radius: 0 4px 4px 0;
+}
+
+.map-side-tab.right {
+    right: 0;
+    border-right: 0;
+    border-radius: 4px 0 0 4px;
+}
+
+.map-side-tab:hover {
+    color: var(--gold);
+    border-color: rgba(239, 191, 100, 0.55);
+}
+
+/* Scanlines / vignette overlay - confined to viewport */
+.map-viewport::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 3px);
+    z-index: 40;
+}
+
+.map-viewport::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 42%, rgba(0, 0, 0, 0.6) 100%);
+    z-index: 41;
+}
+

@@ -131,10 +131,10 @@ function createWindow(): void {
     minWidth: 1280,
     minHeight: 760,
     title: 'Haish',
-    // 透明窗口 + NSVisualEffectView vibrancy：macOS 用原生材质画窗口边缘与圆角，
-    // 去掉 framed 窗口自带的顶部 1px 亮边。html/body 已用不透明 #05060b 覆盖，
-    // 内部内容不会被 vibrancy 染色，只有 OS 圆角裁掉的边缘才用到系统材质。
-    backgroundColor: '#00000000',
+    // 透明窗口 + vibrancy 只用于 OS 圆角边缘；首屏在 web 内容 paint 前若仍用
+    // 全透明底，硬刷新会露出浅色系统材质（用户看到的「灰白异常页」）。
+    // 用与 html/body 一致的深色底，paint 前也保持暗色，避免空白闪屏。
+    backgroundColor: '#05060b',
     transparent: true,
     hasShadow: true,
     roundedCorners: true,

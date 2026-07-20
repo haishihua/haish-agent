@@ -1,0 +1,740 @@
+/* section: delegation.css (lines 10737-11475 of former styles.css) */
+/* ============ Task Delegation (overlay) ============ */
+.task-delegation {
+    position: absolute;
+    left: var(--task-panel-edge-x);
+    right: var(--task-panel-edge-x);
+    bottom: 10px;
+    background: linear-gradient(180deg, rgba(17, 24, 36, 0.22), rgba(11, 17, 27, 0.12));
+    border: 1px solid rgba(176, 206, 255, 0.1);
+    border-radius: 10px;
+    padding: 10px var(--task-panel-padding-x) 10px;
+    z-index: 60;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
+    max-width: none;
+    box-sizing: border-box;
+    backdrop-filter: blur(22px) saturate(122%);
+    -webkit-backdrop-filter: blur(22px) saturate(122%);
+}
+
+.task-delegation * {
+    box-sizing: border-box;
+}
+
+.task-delegation::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 26%),
+    linear-gradient(135deg, rgba(130, 179, 255, 0.028), transparent 50%);
+    pointer-events: none;
+}
+
+.task-delegation::after {
+    content: none;
+}
+
+.task-delegation .td-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    min-height: 20px;
+}
+
+.task-delegation .td-title {
+    font-size: 14px;
+    color: var(--cream-title);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1;
+    text-transform: none;
+}
+
+.task-delegation .td-title .td-glyph {
+    display: inline-block;
+    flex-shrink: 0;
+    color: var(--gold);
+}
+
+.task-delegation .td-input-row {
+    position: relative;
+    background: rgba(12, 18, 29, 0.28);
+    border: 1px solid rgba(138, 166, 209, 0.18);
+    border-radius: 4px;
+    padding: 9px 14px 8px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.018);
+}
+
+.task-delegation textarea {
+    display: block;
+    width: 100%;
+    background: transparent;
+    border: 0;
+    color: var(--ink);
+    font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    resize: none;
+    outline: none;
+    min-height: 22px;
+    max-height: 132px;
+    line-height: 1.4;
+    letter-spacing: 0;
+    padding: 0 64px 0 0;
+    margin: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-2) transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.task-delegation textarea::-webkit-scrollbar {
+    width: 6px;
+}
+
+.task-delegation textarea::-webkit-scrollbar-thumb {
+    background: var(--line-2);
+    border-radius: 3px;
+}
+
+.task-delegation textarea::placeholder {
+    color: var(--dim-2);
+}
+
+.task-delegation .char-count {
+    position: absolute;
+    right: 12px;
+    bottom: 7px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--dim-2);
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(18, 23, 37, 0) 0%, rgba(18, 23, 37, 0.62) 60%);
+    padding: 4px 4px 0 14px;
+}
+
+.task-delegation .td-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    gap: 10px;
+    height: 30px;
+}
+
+.task-delegation .td-tools {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.task-delegation .td-btn {
+    flex-shrink: 0;
+    height: 30px;
+    border: 1px solid rgba(72, 83, 109, 0.82);
+    background: linear-gradient(180deg, #171d2d, #121724);
+    color: #98a0ba;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1;
+    padding: 0 12px;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all .12s;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    white-space: nowrap;
+}
+
+.task-delegation .td-btn svg {
+    flex-shrink: 0;
+    display: block;
+}
+
+.task-delegation .td-btn span {
+    display: inline-block;
+    line-height: 1;
+}
+
+.task-delegation .td-btn:hover {
+    color: var(--gold);
+    border-color: var(--gold);
+}
+
+.task-delegation .td-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.task-delegation .td-btn-attach.icon-only {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.task-delegation .td-btn-attach.icon-only:hover {
+    border-color: transparent;
+    background: transparent;
+}
+
+.task-delegation .td-btn-attach.icon-only .ico-attach {
+    width: 22px;
+    height: 22px;
+}
+
+.task-delegation .td-file-input {
+    display: none;
+}
+
+.task-delegation .td-workspace-chip {
+    flex-shrink: 1;
+    min-width: 0;
+    height: 30px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(96, 186, 255, 0.42);
+    background: rgba(96, 186, 255, 0.08);
+    color: #9fdcff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    border-radius: 3px;
+    max-width: 160px;
+}
+
+.task-delegation .td-workspace-chip .name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.task-delegation .priority-select {
+    flex-shrink: 0;
+    height: 30px;
+    border: 1px solid rgba(72, 83, 109, 0.82);
+    background: linear-gradient(180deg, #171d2d, #121724);
+    color: var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1;
+    padding: 0 28px 0 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(180,188,208,0.78)' d='M0 0h10L5 6z'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+}
+
+.task-delegation .priority-select:hover {
+    border-color: var(--gold);
+}
+
+.task-delegation .model-picker {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.task-delegation .model-picker-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    width: 128px;
+    padding: 0 10px;
+    border: 1px solid rgba(72, 83, 109, 0.82);
+    background: linear-gradient(180deg, #171d2d, #121724);
+    color: var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1;
+    border-radius: 10px;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.task-delegation .model-picker-trigger:hover,
+.task-delegation .model-picker.is-open .model-picker-trigger {
+    border-color: var(--gold);
+    color: var(--gold);
+}
+
+.task-delegation .model-picker-trigger:focus-visible {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 1px rgba(239, 191, 100, 0.32);
+}
+
+.task-delegation .model-picker-trigger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.task-delegation .model-picker-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+
+.task-delegation .model-picker-caret {
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-right: 1px solid currentColor;
+    border-bottom: 1px solid currentColor;
+    transform: rotate(45deg) translateY(-2px);
+    transition: transform 0.14s ease;
+}
+
+.task-delegation .model-picker.is-open .model-picker-caret {
+    transform: rotate(225deg) translateY(-2px);
+}
+
+.task-delegation .model-picker-menu {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 6px);
+    min-width: 188px;
+    padding: 6px;
+    border: 1px solid rgba(239, 191, 100, 0.42);
+    background: linear-gradient(180deg, #1a2030, #11151f);
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+    border-radius: 12px;
+    z-index: 30;
+    overflow: visible;
+}
+
+.task-delegation .model-picker-header {
+    padding: 4px 10px 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: lowercase;
+    color: rgba(218, 221, 239, 0.5);
+    border-bottom: 1px dashed rgba(72, 83, 109, 0.55);
+    margin-bottom: 4px;
+}
+
+.task-delegation .model-picker-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.task-delegation .model-picker-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    height: 28px;
+    padding: 0 10px;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 0.1s ease, color 0.1s ease;
+}
+
+.task-delegation .model-picker-option:hover {
+    background: rgba(239, 191, 100, 0.14);
+    color: var(--gold);
+}
+
+.task-delegation .model-picker-option.is-active {
+    color: var(--gold);
+}
+
+.task-delegation .model-picker-option-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.task-delegation .model-picker-check {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    color: var(--gold);
+}
+
+.task-delegation .model-picker-check svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+}
+
+.chat-composer .model-picker-trigger,
+.chat-composer .model-picker-header,
+.chat-composer .model-picker-option,
+.chat-composer .model-picker-empty,
+.chat-composer .model-picker-menu,
+.chat-composer .model-picker-flyout,
+.task-delegation .model-picker-trigger,
+.task-delegation .model-picker-header,
+.task-delegation .model-picker-option,
+.task-delegation .model-picker-empty,
+.task-delegation .model-picker-menu,
+.task-delegation .model-picker-flyout {
+    font-family: var(--content-font);
+    letter-spacing: 0;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    image-rendering: auto;
+}
+
+.chat-composer .model-picker-trigger,
+.task-delegation .model-picker-trigger {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.chat-composer .model-picker-header,
+.task-delegation .model-picker-header {
+    padding: 5px 10px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.chat-composer .model-picker-option,
+.task-delegation .model-picker-option {
+    height: 36px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.chat-composer .model-picker-empty,
+.task-delegation .model-picker-empty {
+    padding: 8px 10px;
+    color: rgba(220, 227, 244, 0.58);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.chat-composer .model-picker-submenu,
+.task-delegation .model-picker-submenu {
+    position: relative;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(72, 83, 109, 0.55);
+}
+
+.chat-composer .model-picker-submenu-entry,
+.task-delegation .model-picker-submenu-entry {
+    color: var(--ink);
+}
+
+.chat-composer .model-picker-submenu-entry:hover,
+.chat-composer .model-picker-submenu-entry.is-active,
+.task-delegation .model-picker-submenu-entry:hover,
+.task-delegation .model-picker-submenu-entry.is-active {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--gold);
+}
+
+.chat-composer .model-picker-option-value,
+.task-delegation .model-picker-option-value {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 86px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: rgba(220, 227, 244, 0.72);
+    text-align: right;
+}
+
+.chat-composer .model-picker-subcaret,
+.task-delegation .model-picker-subcaret {
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-right: 1px solid currentColor;
+    border-bottom: 1px solid currentColor;
+    transform: rotate(-45deg);
+    opacity: 0.75;
+}
+
+.chat-composer .model-picker-flyout,
+.task-delegation .model-picker-flyout {
+    position: absolute;
+    left: calc(100% - 1px);
+    bottom: 0;
+    display: block;
+    min-width: 190px;
+    padding: 6px;
+    border: 1px solid rgba(239, 191, 100, 0.42);
+    background: linear-gradient(180deg, #1a2030, #11151f);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.56);
+    border-radius: 12px;
+    z-index: 31;
+}
+
+.chat-composer .model-picker-flyout-provider,
+.task-delegation .model-picker-flyout-provider {
+    width: 240px;
+    min-width: 240px;
+}
+
+.chat-composer .model-picker-flyout-model,
+.task-delegation .model-picker-flyout-model {
+    width: 280px;
+    min-width: 280px;
+}
+
+.chat-composer .model-picker-flyout-model,
+.task-delegation .model-picker-flyout-model {
+    max-height: 360px;
+    overflow: hidden;
+}
+
+.chat-composer .model-picker-flyout-model .model-picker-list,
+.task-delegation .model-picker-flyout-model .model-picker-list {
+    max-height: 300px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.chat-composer .model-picker-flyout-model .model-picker-model-option,
+.task-delegation .model-picker-flyout-model .model-picker-model-option {
+    min-height: 36px !important;
+    height: 36px !important;
+    padding: 0 12px !important;
+    font-family: var(--content-font) !important;
+    font-size: 13px !important;
+    line-height: 1.2 !important;
+}
+
+.chat-composer .model-picker-option.is-disabled,
+.task-delegation .model-picker-option.is-disabled,
+.chat-composer .model-picker-option[aria-disabled="true"],
+.task-delegation .model-picker-option[aria-disabled="true"] {
+    cursor: not-allowed;
+    color: rgba(220, 227, 244, 0.48);
+}
+
+.chat-composer .model-picker-option.is-disabled.is-active,
+.task-delegation .model-picker-option.is-disabled.is-active,
+.chat-composer .model-picker-option[aria-disabled="true"].is-active,
+.task-delegation .model-picker-option[aria-disabled="true"].is-active {
+    color: rgba(239, 191, 100, 0.72);
+}
+
+.chat-composer .model-picker-option.is-disabled:hover,
+.task-delegation .model-picker-option.is-disabled:hover,
+.chat-composer .model-picker-option[aria-disabled="true"]:hover,
+.task-delegation .model-picker-option[aria-disabled="true"]:hover {
+    background: transparent;
+}
+
+.chat-composer .model-picker-flyout-model .model-picker-list::-webkit-scrollbar,
+.task-delegation .model-picker-flyout-model .model-picker-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.chat-composer .model-picker-flyout-model .model-picker-list::-webkit-scrollbar-thumb,
+.task-delegation .model-picker-flyout-model .model-picker-list::-webkit-scrollbar-thumb {
+    background: rgba(176, 206, 255, 0.22);
+    border-radius: 999px;
+}
+
+/* The run-config picker sits on the right side of the composer footer, so its
+   dropdown and flyout open toward the left to avoid being clipped. */
+.chat-composer-submit .model-picker-menu,
+.td-submit-cluster .model-picker-menu {
+    left: auto;
+    right: 0;
+}
+
+.chat-composer-submit .model-picker-flyout,
+.td-submit-cluster .model-picker-flyout {
+    left: auto;
+    right: calc(100% + 6px);
+}
+
+/* TaskDelegation submit cluster: groups context-usage + ModelPicker + deploy
+   button on the right side of td-actions, mirroring chat composer layout. */
+.task-delegation .td-submit-cluster {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.task-delegation .context-usage-btn {
+    --context-used: 0%;
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #98a0ba;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+    opacity: 1;
+    box-shadow: none;
+}
+
+.task-delegation .context-usage-btn:disabled {
+    opacity: 1;
+}
+
+.task-delegation .context-usage-btn:hover {
+    color: var(--gold);
+}
+
+.task-delegation .context-usage-btn[data-tooltip][data-tooltip-multiline="true"]:hover::after,
+.task-delegation .context-usage-btn[data-tooltip][data-tooltip-multiline="true"]:focus-visible::after {
+    white-space: pre-line;
+    line-height: 1.35;
+    text-align: left;
+    min-width: 250px;
+}
+
+.task-delegation .context-usage-btn.compressed {
+    filter: drop-shadow(0 0 6px rgba(239, 191, 100, 0.22));
+}
+
+.task-delegation .context-usage-icon {
+    --context-used: 0%;
+    width: 20px;
+    height: 20px;
+    display: inline-block;
+    background: conic-gradient(var(--gold, #efbf64) 0 var(--context-used), #ffffff var(--context-used) 100%);
+    -webkit-mask: url("../assets/ui/icons/color-palette.png") center / contain no-repeat;
+    mask: url("../assets/ui/icons/color-palette.png") center / contain no-repeat;
+    image-rendering: auto;
+    filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 7px rgba(255, 255, 255, 0.18));
+}
+
+.task-delegation .deploy-btn {
+    flex-shrink: 0;
+    height: 30px;
+    background: linear-gradient(180deg, #e0ad44 0%, #c4902f 55%, #9c6f22 100%);
+    color: #1a1419;
+    border: 1px solid #d49d35;
+    padding: 0 18px;
+    min-width: 138px;
+    font-family: 'Zpix', 'VT323', monospace;
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: 0.8px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all .12s;
+    box-shadow: inset 0 1px 0 rgba(255, 234, 176, 0.55), inset 0 -1px 0 rgba(82, 52, 14, 0.5), 0 6px 18px rgba(0, 0, 0, 0.32);
+}
+
+.task-delegation .deploy-btn svg {
+    flex-shrink: 0;
+    display: block;
+}
+
+.task-delegation .deploy-btn span {
+    display: inline-block;
+    line-height: 1;
+    text-shadow: 0 1px 0 rgba(255, 234, 176, 0.45);
+}
+
+.task-delegation .deploy-btn .ico-loading {
+    width: 16px;
+    height: 16px;
+    animation: live-loading-spin 1s linear infinite;
+}
+
+.task-delegation .deploy-btn:hover {
+    background: linear-gradient(180deg, #ecbb50 0%, #d09b35 55%, #aa7d27 100%);
+    transform: translateY(-1px);
+}
+
+.task-delegation .deploy-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.task-delegation .deploy-btn.stop {
+    background: linear-gradient(180deg, #d65a5a 0%, #b73a3a 55%, #8b2a2a 100%);
+    border-color: #d05050;
+    color: #fff8f3;
+    box-shadow: inset 0 1px 0 rgba(255, 210, 200, 0.5), inset 0 -1px 0 rgba(60, 12, 12, 0.5), 0 6px 18px rgba(120, 16, 16, 0.36);
+}
+
+.task-delegation .deploy-btn.stop span {
+    text-shadow: 0 1px 0 rgba(60, 8, 8, 0.6);
+}
+
+.task-delegation .deploy-btn.stop:hover {
+    background: linear-gradient(180deg, #e26565 0%, #c54545 55%, #9c3030 100%);
+    transform: translateY(-1px);
+}
+
+/* ============ Icon-only button collapses ============ */
+.side-panel-head .filter-pill.icon-only {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    gap: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.task-delegation .td-btn.icon-only {
+    width: 30px;
+    padding: 0;
+    gap: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.task-delegation .deploy-btn.icon-only {
+    min-width: 0;
+    width: 44px;
+    padding: 0;
+    gap: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+

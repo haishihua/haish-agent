@@ -1,7 +1,7 @@
 // @haish-esm
 import React from 'react';
 import { PortalTooltip } from './PortalTooltip.jsx';;
-import { fmtAgo,
+import {
   fmtAgoCompact,
 } from './Format.jsx';
 
