@@ -265,7 +265,15 @@ export function ConversationNode({
         tabIndex={0}
         className="conversation-row"
         draggable={true}
+        title="Double-click to rename"
         onClick={() => onSelectConversation(project.id, conversation.id)}
+        onDoubleClick={(event) => {
+          // Rename via double-click on the row; ignore action buttons / expand toggle.
+          if (event.target.closest?.('.conversation-actions, .conversation-session-toggle, .conversation-icon-btn')) return;
+          event.preventDefault();
+          event.stopPropagation();
+          onRequestRenameConversation?.(project, conversation);
+        }}
         onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onSelectConversation(project.id, conversation.id); }}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
@@ -305,7 +313,6 @@ export function ConversationNode({
               </svg>
             </button>
           </PortalTooltip>
-          <ConversationAction label="Rename conversation" icon="pen-field" onClick={() => onRequestRenameConversation(project, conversation)} />
           <ConversationAction label="Delete conversation" icon="trash" onClick={() => onRequestDeleteConversation(project, conversation)} />
         </span>
       </div>
