@@ -1,0 +1,19 @@
+app-web/src/features/app/AppShell.jsx
+  s_d17405f1574b91::t_020ddcee8f4de0 660
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "dcbb398f15a41353affec291776859456e12c609",
+  "prompts": {},
+  "sessions": {
+    "s_d17405f1574b91": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7f4b-ad4d-7432-b8a2-b3aa8ab84192",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "banxun <banxun@tsign.cn>"
+    }
+  }
+}
