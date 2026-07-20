@@ -28,32 +28,18 @@ export function MapViewport({ children, overlay, MAP_W, MAP_H, onViewChange }) {
   const [view, setView] = React.useState({ scale: 1, tx: 0, ty: 0, fit: 1 });
   const [dragging, setDragging] = React.useState(false);
   const dragStartRef = React.useRef(null);
-  // MAP_ANCHOR: which point on the map (0-1) to pin
-  // VIEW_ANCHOR_X: fraction of safeW; VIEW_ANCHOR_Y_PX: fixed px from wrap top
-  const HOME_ZOOM_MULTIPLIER = 1.66;
-  const MAP_ANCHOR_X = 0.281;
-  const MAP_ANCHOR_Y = 0.418;
-  const VIEW_ANCHOR_X = 0.098;
-  const VIEW_ANCHOR_Y_PX = 212;
-
   const computeHomeView = React.useCallback(() => {
     const el = wrapRef.current;
     if (!el) return null;
     const vw = el.clientWidth, vh = el.clientHeight;
     if (!vw || !vh) return null;
-    const insetX = 20;
-    const insetTop = 18;
-    const insetBottom = 220;
-    const safeW = Math.max(1, vw - insetX * 2);
-    const safeH = Math.max(1, vh - insetTop - insetBottom);
-    const fitScale = Math.min(safeW / MAP_W, safeH / MAP_H);
-    const scale = fitScale * HOME_ZOOM_MULTIPLIER;
-    const tx = (insetX + safeW * VIEW_ANCHOR_X) - MAP_ANCHOR_X * MAP_W * scale;
-    // VIEW_ANCHOR_Y_PX = (MAP_ANCHOR_Y * MAP_H - NPC_SIZE + NPC_FOOT_OFFSET) * scale + ty
-    const ty = VIEW_ANCHOR_Y_PX - (MAP_ANCHOR_Y * MAP_H - 98) * scale;
+    const fitScale = Math.max(vw / MAP_W, vh / MAP_H);
+    const scale = fitScale;
+    const tx = (vw - MAP_W * scale) / 2;
+    const ty = (vh - MAP_H * scale) / 2;
 
     return { scale, fit: fitScale, tx, ty };
-  }, [HOME_ZOOM_MULTIPLIER, MAP_ANCHOR_X, MAP_ANCHOR_Y, VIEW_ANCHOR_X, VIEW_ANCHOR_Y_PX, MAP_H, MAP_W]);
+  }, [MAP_H, MAP_W]);
 
   const fit = React.useCallback(() => {
     const homeView = computeHomeView();
@@ -118,7 +104,7 @@ export function MapViewport({ children, overlay, MAP_W, MAP_H, onViewChange }) {
              onPointerMove={onPointerMove}
              onPointerUp={onPointerUp}>
           <div className="map-stage"
-               style={{ transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})` }}>
+               style={{ width: MAP_W, height: MAP_H, transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})` }}>
             {children}
           </div>
         </div>
@@ -157,4 +143,3 @@ export function TabPlaceholder({ name }) {
     </div>
   );
 }
-

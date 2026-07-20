@@ -1526,7 +1526,7 @@ svg {
     position: absolute;
     inset: 0;
     background: linear-gradient(180deg, rgba(6, 10, 18, 0.16), rgba(5, 9, 16, 0.22)),
-    url('assets/office.png') center center / cover no-repeat;
+    url('assets/world/map-winter-park-clean.png') center center / cover no-repeat;
     filter: blur(30px) saturate(94%) brightness(0.7);
     opacity: 0.46;
     transform: scale(1.04);
@@ -8283,7 +8283,7 @@ select,
     inset: 0;
     border-radius: inherit;
     background: linear-gradient(180deg, rgba(8, 12, 20, 0.12), rgba(7, 10, 18, 0.06)),
-    url('assets/office.png') no-repeat;
+    url('assets/world/map-winter-park-clean.png') no-repeat;
     background-size: auto, var(--panel-map-width) var(--panel-map-height);
     filter: blur(4px) saturate(96%) brightness(0.84);
     opacity: var(--panel-map-opacity);

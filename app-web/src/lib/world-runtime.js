@@ -1,8 +1,8 @@
 // @haish-esm
 // World / runtime constants used by App scene orchestration.
 
-export const MAP_W = 1700;
-export const MAP_H = 950;
+export const MAP_W = 1536;
+export const MAP_H = 1024;
 export const CALIBRATION_NUDGE = 0.004;
 export const DEFAULT_WALK_SPEED_PX_PER_SEC = 220;
 export const WALK_SPEED_BY_ACTOR = {

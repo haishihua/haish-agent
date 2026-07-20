@@ -12,6 +12,9 @@ const { autoUpdater } = electronUpdater;
 let currentState: AppUpdateState = createIdleState();
 let initialized = false;
 let installInProgress = false;
+let installWatchdogTimer: NodeJS.Timeout | null = null;
+
+const INSTALL_WATCHDOG_MS = 20_000;
 
 /**
  * True while an update install is in progress (manual replace + relaunch).
@@ -181,11 +184,12 @@ export function setupAppUpdater(): void {
   });
 
   autoUpdater.on('error', (error: Error) => {
-    // During an install (manual or Squirrel), the app is about to quit.
-    // electron-updater may still fire error events (e.g. signature mismatch
-    // on adhoc builds), but we must not reset the state back to 'error'
-    // or the user will see a false failure and re-trigger the download loop.
-    if (installInProgress) return;
+    // If install has already started, treat this as a real install failure
+    // (e.g. Squirrel.Mac signature rejection) and unlock the UI for retry.
+    if (installInProgress) {
+      failInstall(describeError(error));
+      return;
+    }
     setState({
       status: 'error',
       message: describeError(error),
@@ -280,8 +284,12 @@ export async function applyLatestAppUpdate(): Promise<AppUpdateState> {
     return currentState;
   }
 
-  // Resume install if a previous click already finished downloading.
-  if (currentState.status === 'downloaded' && currentState.canInstall) {
+  // Resume install if a previous click already finished downloading, or if a
+  // prior install attempt failed but the package is still on disk.
+  if (
+    currentState.canInstall
+    && (currentState.status === 'downloaded' || currentState.status === 'error')
+  ) {
     return installAppUpdate();
   }
 
@@ -359,14 +367,64 @@ function findDownloadedUpdateZip(): string | null {
   return null;
 }
 
+function clearInstallWatchdog(): void {
+  if (installWatchdogTimer) {
+    clearTimeout(installWatchdogTimer);
+    installWatchdogTimer = null;
+  }
+}
+
+function failInstall(message: string, canInstall = true): AppUpdateState {
+  clearInstallWatchdog();
+  installInProgress = false;
+  return setState({
+    status: 'error',
+    message,
+    progressPercent: undefined,
+    // Keep canInstall true when the package is still on disk so the user can
+    // retry without re-downloading.
+    canInstall,
+  });
+}
+
+function armInstallWatchdog(): void {
+  clearInstallWatchdog();
+  installWatchdogTimer = setTimeout(() => {
+    if (!installInProgress) return;
+    // App never quit → install path stalled (common for Squirrel.Mac on adhoc).
+    failInstall('Install stalled · try again');
+  }, INSTALL_WATCHDOG_MS);
+  // Allow the process to exit even if the timer is still pending.
+  installWatchdogTimer.unref?.();
+}
+
+/**
+ * True only for a Developer ID / App Store style signature that Squirrel.Mac
+ * can accept.  Adhoc (`Signature=adhoc`) and unsigned builds verify cleanly
+ * with `codesign --verify` but still fail Squirrel's install-time check, so
+ * they must take the manual zip-replace path.
+ */
 function isProperlyCodeSigned(): boolean {
-  // codesign --verify returns exit 0 only for a valid (non-adhoc) signature.
+  const appPath = getAppBundlePath();
   try {
-    const result = spawnSync('codesign', ['--verify', '--deep', '--strict', getAppBundlePath()], {
+    const details = spawnSync('codesign', ['-dv', '--verbose=2', appPath], {
       encoding: 'utf-8',
       timeout: 8000,
     });
-    return result.status === 0;
+    // codesign -dv writes diagnostic text to stderr.
+    const output = `${details.stderr || ''}\n${details.stdout || ''}`;
+    if (/Signature=adhoc/i.test(output) || /\(adhoc(?:,|\))/i.test(output)) {
+      return false;
+    }
+    if (/TeamIdentifier=not set/i.test(output)) {
+      return false;
+    }
+
+    const verified = spawnSync('codesign', ['--verify', '--deep', '--strict', appPath], {
+      encoding: 'utf-8',
+      timeout: 8000,
+    });
+    return verified.status === 0;
   } catch {
     return false;
   }
@@ -380,11 +438,7 @@ function isProperlyCodeSigned(): boolean {
 function manualInstallAndRelaunch(): void {
   const zipPath = findDownloadedUpdateZip();
   if (!zipPath) {
-    setState({
-      status: 'error',
-      message: 'Update file not found',
-      canInstall: false,
-    });
+    failInstall('Update file not found', false);
     return;
   }
 
@@ -433,26 +487,46 @@ function manualInstallAndRelaunch(): void {
     'rm -f "$0"',
   ].join('\n');
 
-  const scriptPath = path.join(os.tmpdir(), `haish-install-${Date.now()}.sh`);
-  fs.writeFileSync(scriptPath, script, { mode: 0o755 });
+  try {
+    const scriptPath = path.join(os.tmpdir(), `haish-install-${Date.now()}.sh`);
+    fs.writeFileSync(scriptPath, script, { mode: 0o755 });
 
-  // Detached spawn so the script survives after the app quits.
-  const child = spawn('bash', [scriptPath], {
-    detached: true,
-    stdio: 'ignore',
-  });
-  child.unref();
+    // Detached spawn so the script survives after the app quits.
+    const child = spawn('bash', [scriptPath], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+  } catch (error) {
+    failInstall(describeError(error));
+    return;
+  }
 
+  // App is exiting; keep installInProgress true so before-quit skips runtime stop.
   app.quit();
 }
 
 export function installAppUpdate(): AppUpdateState {
-  if (!currentState.canInstall) {
+  if (!currentState.canInstall && currentState.status !== 'downloaded') {
     return currentState;
   }
   if (installInProgress) {
     return currentState;
   }
+
+  // Allow retry from a previous install failure when the package is still ready.
+  if (currentState.status === 'error') {
+    if (!findDownloadedUpdateZip()) {
+      return setState({
+        status: 'error',
+        message: currentState.message || 'Update file not found',
+        canInstall: false,
+      });
+    }
+  } else if (!currentState.canInstall) {
+    return currentState;
+  }
+
   installInProgress = true;
   setState({
     status: 'downloaded',
@@ -462,15 +536,20 @@ export function installAppUpdate(): AppUpdateState {
     canInstall: true,
     progressPercent: 100,
   });
+  armInstallWatchdog();
 
   setImmediate(() => {
-    if (isProperlyCodeSigned()) {
-      // Native Squirrel.Mac path — works when the app is properly signed.
-      autoUpdater.quitAndInstall(false, true);
-    } else {
-      // Adhoc / unsigned builds: Squirrel.Mac rejects the update with a
-      // code-signature error, so install manually.
-      manualInstallAndRelaunch();
+    try {
+      if (isProperlyCodeSigned()) {
+        // Native Squirrel.Mac path — only for Developer ID / notarised builds.
+        autoUpdater.quitAndInstall(false, true);
+      } else {
+        // Adhoc / unsigned builds: Squirrel.Mac rejects the update with a
+        // code-signature error, so install manually.
+        manualInstallAndRelaunch();
+      }
+    } catch (error) {
+      failInstall(describeError(error));
     }
   });
   return currentState;

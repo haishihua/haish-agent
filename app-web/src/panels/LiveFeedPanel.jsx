@@ -17,9 +17,6 @@ import {
   normalizeTaskStatus,
 } from '../lib/task-runtime.js';
 import {
-  workflowNodeActorBindings,
-} from '../lib/world-runtime.js';
-import {
   usePanelWidth,
 } from './TaskRecords.jsx';
 export function getLiveEntries(agentData) {
@@ -289,7 +286,8 @@ function WorkflowRuntime({ task }) {
 export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
   const [panelRef, panelWidth] = usePanelWidth();
   const currentTaskId = currentTask?.taskId || null;
-  const agents = currentTaskId
+  const isWorkflowTask = currentTask?.executionMode === 'bot';
+  const agents = currentTaskId && !isWorkflowTask
     ? Object.entries(agentLive)
       .filter(([_, data]) => data.ts)
       .filter(([_, data]) => {
@@ -298,15 +296,11 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
       })
       .sort((a, b) => (b[1].feedRank || 0) - (a[1].feedRank || 0) || b[1].ts - a[1].ts)
     : [];
-  const isWorkflowTask = currentTask?.executionMode === 'bot';
   const workflowStatus = currentTask?.workflowRun?.status || currentTask?.status || 'idle';
   const workflowStatusClass = normalizeTaskStatus(workflowStatus);
   const workflowStatusLabel = workflowStatusClass === 'done'
-    ? 'LIVE'
+    ? 'COMPLETED'
     : String(workflowStatus || 'idle').toUpperCase();
-  const workflowActorLabels = new Map(
-    workflowNodeActorBindings(currentTask?.workflowSnapshot).map(({ actor, label }) => [actor, label]),
-  );
 
   return (
     <div className="side-panel right" ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
@@ -336,7 +330,7 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
           </div> : null
         ) : (
           agents.map(([id, data]) => (
-            <LiveCard key={id} agentId={id} agentData={data} now={now} titleOverride={workflowActorLabels.get(id)} />
+            <LiveCard key={id} agentId={id} agentData={data} now={now} />
           ))
         )}
       </div>

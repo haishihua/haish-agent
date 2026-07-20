@@ -13,9 +13,6 @@ import {
   ROUTE_IDS,
   ROUTE_EDITOR_DEFS,
   ROUTE_EDITOR_IDS,
-  NPC,
-  CalibrationPoint,
-  CalibrationRoutePreview,
   } from '../../World.jsx';
 import { HollowPurple } from '../../Effects.jsx';
 import { KIND_COLORS } from '../../orchestrator.js';
@@ -209,6 +206,7 @@ import {
   STREAM_IMMEDIATE_EVENT_TYPES, SCENE_CATCHUP_TOOL_EVENT_TYPES, SCENE_CATCHUP_KEEP_TYPES,
   SCENE_TERMINAL_EVENT_TYPES, CHAT_FINAL_FOLLOWUP_EVENT_TYPES, WORLD_EVENT_TYPE_ALIASES,
 } from '../../lib/world-events.js';
+import { BotWorld } from '../../panels/world/BotWorld.jsx';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -229,7 +227,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const [agentLive, setAgentLive] = useState({});
   const [busy, setBusy] = useState(false);
   const [hollow, setHollow] = useState(null);
-  const [bursts, setBursts] = useState([]);
+  const [, setBursts] = useState([]);
   const [now, setNow] = useState(() => new Date());
   const [mapView, setMapView] = useState(null);
   const [conversationId, setConversationId] = useState(null);
@@ -315,6 +313,12 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const toastTimerRef = useRef(null);
   const initialToastIdRef = useRef(null);
   const conversationActivationSeqRef = useRef(0);
+  // Local draft opened by "new conversation" before the user sends a message.
+  // It is intentionally NOT inserted into the sidebar list until first send.
+  const draftConversationRef = useRef(null);
+  // Server conversation created for a draft (e.g. image/file upload) but not yet
+  // revealed in the sidebar because the user still has not sent a message.
+  const pendingCreatedDetailRef = useRef(null);
   // Per-conversation runtime store. Each entry tracks the live state for a
   // single conversation's task run so multiple conversations can stream in
   // parallel without stepping on each other. The displayed React state
@@ -610,6 +614,200 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 
   function isConversationActivationCurrent(seq) {
     return conversationActivationSeqRef.current === seq;
+  }
+
+  function isDraftConversationId(conversationIdValue) {
+    return Boolean(
+      conversationIdValue
+      && draftConversationRef.current
+      && draftConversationRef.current.id === conversationIdValue
+    );
+  }
+
+  function clearDraftConversationState({ clearComposer = true } = {}) {
+    const draft = draftConversationRef.current;
+    const pendingDetail = pendingCreatedDetailRef.current;
+    if (draft?.id) {
+      runtimesRef.current.delete(draft.id);
+    }
+    // If a draft already forced a server create (e.g. image upload) but the user
+    // never sent a message, drop that empty server conversation so it cannot
+    // reappear after a later workspace refresh.
+    const pendingServerId = pendingDetail?.conversation_id
+      || (draft?.serverCreated ? draft.id : null);
+    if (pendingServerId && !String(pendingServerId).startsWith('draft-')) {
+      authFetch(`${API_BASE}/api/conversations/${encodeURIComponent(pendingServerId)}`, {
+        method: 'DELETE',
+      }).catch(() => {});
+      runtimesRef.current.delete(pendingServerId);
+    }
+    draftConversationRef.current = null;
+    pendingCreatedDetailRef.current = null;
+    if (clearComposer) {
+      setComposerAttachment(null);
+      setUploadState({ active: false, fileName: '' });
+    }
+  }
+
+  function openDraftConversation(projectId) {
+    const requestSeq = invalidateConversationActivation();
+    conversationDetailAbortRef.current?.abort?.();
+    conversationDetailAbortRef.current = null;
+
+    const project = workspaceState.projects.find((item) => item.id === projectId)
+      || workspaceState.projects[0]
+      || createDefaultProject();
+    const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
+    const previousId = conversationIdRef.current;
+    const previousDraftId = draftConversationRef.current?.id || null;
+    if (previousId) flushRuntimeTasksToWorkspace(previousId);
+    if (previousId && previousId !== previousDraftId) {
+      detachActiveRunFromCurrentConversation();
+    }
+    // Drop any previous unsent draft so repeated "+" clicks do not leak runtimes.
+    if (previousDraftId) {
+      runtimesRef.current.delete(previousDraftId);
+    }
+    draftConversationRef.current = null;
+    pendingCreatedDetailRef.current = null;
+
+    const draftId = `draft-${generateHexId()}`;
+    const now = Date.now();
+    draftConversationRef.current = {
+      id: draftId,
+      projectId: project.id,
+      workspacePath: project.workspacePath || null,
+      workspaceLabel: project.workspaceLabel || project.name || null,
+      executionMode,
+      name: project.id === DEFAULT_PROJECT_ID ? DEFAULT_SESSION_NAME : 'New Conversation',
+      createdAt: now,
+    };
+
+    conversationIdRef.current = draftId;
+    setConversationId(draftId);
+    // Drafts are local-only; do not persist a fake id into storage.
+    setStoredConversationId(null);
+    setConversationAttachments([]);
+    setAgentLive({});
+    setLocalWorkspace({
+      path: project.workspacePath || window.haish?.homePath || null,
+      label: project.workspaceLabel || project.name || null,
+    });
+    const emptyUsage = createEmptyContextUsage(null);
+    setContextUsage(emptyUsage);
+    setComposerAttachment(null);
+    setUploadState({ active: false, fileName: '' });
+    setConversationError('');
+    setConversationReady(true);
+
+    mutateRuntime(draftId, (rt) => {
+      rt.worldTaskState = createEmptyWorldTaskState();
+      rt.busy = false;
+      rt.activeRunId = null;
+      rt.activeTaskId = null;
+      rt.fetchController = null;
+      rt.answerBuffer = '';
+      rt.cancelledRunIds = new Set();
+      rt.abortRequested = false;
+      rt.shellSeeded = true;
+    });
+
+    setWorkspaceState((state) => normalizeWorkspaceOrdering({
+      ...state,
+      activeProjectId: project.id,
+      // Keep sidebar selection empty while the draft has no first message.
+      activeConversationId: null,
+      projects: state.projects.map((item) => (
+        item.id === project.id
+          ? { ...item, userExpanded: true }
+          : item
+      )),
+    }));
+
+    return isConversationActivationCurrent(requestSeq) ? draftId : null;
+  }
+
+  async function ensureServerConversationForActiveDraft({ title } = {}) {
+    const draft = draftConversationRef.current;
+    if (!draft?.id) return null;
+
+    if (pendingCreatedDetailRef.current?.conversation_id) {
+      return pendingCreatedDetailRef.current;
+    }
+
+    // Already switched onto a real conversation id that belongs to this draft.
+    if (conversationIdRef.current && conversationIdRef.current !== draft.id) {
+      return null;
+    }
+
+    const project = workspaceState.projects.find((item) => item.id === draft.projectId)
+      || {
+        id: draft.projectId,
+        workspacePath: draft.workspacePath,
+        workspaceLabel: draft.workspaceLabel,
+      };
+    const detail = await createConversationInProject(
+      project,
+      title || draft.name || DEFAULT_SESSION_NAME,
+      draft.executionMode || (viewModeRef.current === 'chat' ? 'chat' : 'bot'),
+    );
+    pendingCreatedDetailRef.current = detail;
+
+    const previousDraftId = draft.id;
+    const realId = detail.conversation_id;
+    const previousRuntime = getRuntime(previousDraftId);
+    if (previousRuntime) {
+      runtimesRef.current.set(realId, previousRuntime);
+      runtimesRef.current.delete(previousDraftId);
+    }
+
+    draftConversationRef.current = {
+      ...draft,
+      id: realId,
+      serverCreated: true,
+    };
+    conversationIdRef.current = realId;
+    setConversationId(realId);
+    // Still withhold from storage/sidebar until the first user message is sent.
+    setStoredConversationId(null);
+    applyConversationSnapshot(detail);
+    return detail;
+  }
+
+  async function materializeDraftConversationForSend(request) {
+    const draft = draftConversationRef.current;
+    if (!draft) {
+      const existingId = conversationIdRef.current || conversationId || null;
+      return existingId ? { id: existingId, detail: null } : null;
+    }
+
+    const nextTitle = titleFromTaskText(request?.text || '') || draft.name || DEFAULT_SESSION_NAME;
+    let detail = pendingCreatedDetailRef.current;
+    if (!detail?.conversation_id) {
+      detail = await ensureServerConversationForActiveDraft({ title: nextTitle });
+    } else if (nextTitle && isDefaultConversationName(detail.title || detail.label || draft.name)) {
+      try {
+        const renamed = await updateConversationTitle(detail.conversation_id, nextTitle);
+        if (renamed) detail = renamed;
+      } catch (error) {
+        console.warn('draft conversation title update skipped:', error);
+      }
+    }
+    if (!detail?.conversation_id) {
+      throw new Error('conversation create failed');
+    }
+
+    const realId = detail.conversation_id;
+    setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
+    setStoredConversationId(realId);
+    conversationIdRef.current = realId;
+    setConversationId(realId);
+    applyConversationSnapshot(detail);
+    draftConversationRef.current = null;
+    pendingCreatedDetailRef.current = null;
+    // Return detail so startDeploy can seed the list entry even if React has not
+    // flushed the setWorkspaceState above yet.
+    return { id: realId, detail };
   }
 
   async function fetchTaskRuntimeDetail(taskId) {
@@ -992,6 +1190,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 
   function activateConversationShell(projectId, nextConversationId) {
     if (!nextConversationId || nextConversationId === conversationIdRef.current) return;
+    // Leaving a draft without sending must not keep a local draft selection.
+    if (draftConversationRef.current && draftConversationRef.current.id !== nextConversationId) {
+      clearDraftConversationState({ clearComposer: false });
+    }
     const previousId = conversationIdRef.current;
     if (previousId) flushRuntimeTasksToWorkspace(previousId);
     if (previousId && previousId !== nextConversationId) {
@@ -1053,6 +1255,14 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     // later detail hydration share the same stale-response guard.
     const nextActivationSeq = activationSeq || invalidateConversationActivation();
     const isCurrentActivation = () => isConversationActivationCurrent(nextActivationSeq);
+    // Activating a real conversation always ends any unsent local draft.
+    if (
+      draftConversationRef.current
+      && draftConversationRef.current.id !== detail.conversation_id
+      && pendingCreatedDetailRef.current?.conversation_id !== detail.conversation_id
+    ) {
+      clearDraftConversationState({ clearComposer: false });
+    }
     // 切走前先把当前 conversation 的实时 worldTaskState flush 回
     // workspaceState[当前 conversation].tasks。否则切到别的会话后，旧会话
     // sidebar 节点会回退到上一次 activate 时拉到的 detail.tasks 快照，刚跑
@@ -2741,13 +2951,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       setActorIdle(end.actor);
       const finalTask = getTaskById(taskId, targetConvId);
       const result = toDisplayText(event.output || event.summary || finalTask?.answerText || finalTask?.error || bubble);
-      if (!targetConvId || targetConvId === conversationIdRef.current) {
-        setHollow({
-          title: finalTask?.title || 'Final Report',
-          result,
-          taskId,
-        });
-      }
       finalizeTaskPresentation(taskId, result, targetConvId);
     }
   }
@@ -3146,11 +3349,20 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   }
 
   async function uploadChatImage(file, signal, targetConversationId = conversationIdRef.current || conversationId) {
-    if (!file || !targetConversationId) {
+    let resolvedConversationId = targetConversationId;
+    if (file && draftConversationRef.current && (
+      !resolvedConversationId
+      || isDraftConversationId(resolvedConversationId)
+      || String(resolvedConversationId).startsWith('draft-')
+    )) {
+      const detail = await ensureServerConversationForActiveDraft();
+      resolvedConversationId = detail?.conversation_id || conversationIdRef.current || resolvedConversationId;
+    }
+    if (!file || !resolvedConversationId || String(resolvedConversationId).startsWith('draft-')) {
       throw new Error('No active conversation.');
     }
     const formData = new FormData();
-    formData.append('conversation_id', targetConversationId);
+    formData.append('conversation_id', resolvedConversationId);
     formData.append('file', file);
     const response = await authFetch(`${API_BASE}/api/messages/images`, {
       method: 'POST',
@@ -3195,8 +3407,22 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   }
 
   async function handleAttachmentSelect(file, selectionId, executionMode = viewModeRef.current || viewMode) {
-    const targetConversationId = conversationIdRef.current || conversationId;
-    if (!file || !targetConversationId) return;
+    let targetConversationId = conversationIdRef.current || conversationId;
+    if (file && draftConversationRef.current && (
+      !targetConversationId
+      || isDraftConversationId(targetConversationId)
+      || String(targetConversationId).startsWith('draft-')
+    )) {
+      try {
+        const detail = await ensureServerConversationForActiveDraft();
+        targetConversationId = detail?.conversation_id || conversationIdRef.current || targetConversationId;
+      } catch (error) {
+        console.error('draft conversation create failed', error);
+        showToast('error', String(error?.message || error));
+        return;
+      }
+    }
+    if (!file || !targetConversationId || String(targetConversationId).startsWith('draft-')) return;
     const uploadController = new AbortController();
     mutateRuntime(targetConversationId, (rt) => {
       rt.abortRequested = false;
@@ -4275,11 +4501,18 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   function canStartDeployForConversation(targetConversationId = null) {
     const activeConversationId = conversationIdRef.current || conversationId;
     if (!conversationReady || conversationSelectionPending || conversationError) return false;
+    // Draft chats are ready for the first send even though they have no list entry yet.
+    if (draftConversationRef.current) {
+      if (!targetConversationId) return true;
+      return targetConversationId === draftConversationRef.current.id
+        || targetConversationId === pendingCreatedDetailRef.current?.conversation_id
+        || targetConversationId === activeConversationId;
+    }
     if (!activeConversationId) return false;
     return !targetConversationId || activeConversationId === targetConversationId;
   }
 
-  function startDeploy(request, deployConvId) {
+  function startDeploy(request, deployConvId, seedDetail = null) {
     if (!deployConvId) return;
     const text = request.text;
     const attachment = request.attachment || null;
@@ -4309,7 +4542,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     pendingTask.originViewMode = viewModeRef.current || viewMode;
     pendingTask.imageAttachments = sanitizedImageAttachments;
     const nextConversationTitle = titleFromTaskText(text);
-    const currentConversation = findConversationById(workspaceState, deployConvId);
+    const currentConversation = findConversationById(workspaceState, deployConvId)
+      || (seedDetail ? conversationDetailToWorkspaceConversation(seedDetail) : null);
     const deployTaskState = getRuntime(deployConvId)?.worldTaskState
       || worldTaskStateRef.current
       || createEmptyWorldTaskState();
@@ -4321,13 +4555,19 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     );
     setComposerAttachment(null);
     setWorkspaceState((state) => {
+      let nextState = state;
+      // First message on a just-materialized draft may race the previous
+      // setWorkspaceState; seed the conversation row from the create payload.
+      if (seedDetail?.conversation_id && !findConversationById(nextState, deployConvId)) {
+        nextState = workspaceStateWithConversationDetail(nextState, seedDetail, true);
+      }
       const currentTasks = [
         ...deployTaskState.taskOrder
           .map((taskId) => deployTaskState.tasksById[taskId])
           .filter(Boolean),
         pendingTask,
       ];
-      return workspaceStateWithTouchedConversation(state, deployConvId, {
+      return workspaceStateWithTouchedConversation(nextState, deployConvId, {
         tasks: currentTasks,
         agentId: pendingTask.requestedAgentId || undefined,
         // No explicit `expanded`: the touched conversation becomes active and
@@ -4401,7 +4641,32 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 
   function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest) {
     const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest);
-    const deployConvId = conversationIdRef.current || conversationId;
+    const activeId = conversationIdRef.current || conversationId;
+    // First send on a local draft: create the server conversation, insert the
+    // sidebar record, then continue the normal deploy path.
+    if (draftConversationRef.current) {
+      if (!canStartDeployForConversation(request.targetConversationId)) {
+        setQueuedDeploy(request);
+        return;
+      }
+      materializeDraftConversationForSend(request)
+        .then((materialized) => {
+          const realConversationId = materialized?.id || null;
+          if (!realConversationId) return;
+          request.targetConversationId = realConversationId;
+          if (!canStartDeployForConversation(realConversationId)) {
+            setQueuedDeploy(request);
+            return;
+          }
+          startDeploy(request, realConversationId, materialized?.detail || null);
+        })
+        .catch((error) => {
+          console.error('draft conversation create failed', error);
+          showToast('error', String(error?.message || error));
+        });
+      return;
+    }
+    const deployConvId = activeId;
     if (!canStartDeployForConversation(request.targetConversationId)) {
       setQueuedDeploy(request);
       return;
@@ -4410,6 +4675,14 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   }
 
   async function handleSelectConversation(projectId, nextConversationId) {
+    // Leaving an unsent draft discards it without creating a list entry.
+    if (
+      draftConversationRef.current
+      && nextConversationId
+      && draftConversationRef.current.id !== nextConversationId
+    ) {
+      clearDraftConversationState({ clearComposer: true });
+    }
     // Activation expands the project only. Conversation task lists are now
     // user-driven via the conversation icon, so selecting a conversation no
     // longer opens its tasks by default.
@@ -4651,11 +4924,9 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   }
 
   async function handleAddConversation(projectId) {
-    const requestSeq = invalidateConversationActivation();
-    const project = workspaceState.projects.find((item) => item.id === projectId) || workspaceState.projects[0];
-    const detail = await createConversationInProject(project, project?.id === DEFAULT_PROJECT_ID ? DEFAULT_SESSION_NAME : 'New Conversation');
-    if (!isConversationActivationCurrent(requestSeq)) return;
-    await activateConversationDetail(detail, { restoreLatest: false });
+    // Open a local blank chat only. The sidebar entry appears when the user
+    // actually sends the first message (see materializeDraftConversationForSend).
+    openDraftConversation(projectId);
   }
 
   async function handleAddProject() {
@@ -4809,6 +5080,14 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     viewModeRef.current = nextViewMode;
     setViewMode(nextViewMode);
     setActiveTab('dashboard');
+    // Settings overlays the main workspace; leaving via bot/chat must exit it
+    // so the corresponding chat/world page is shown instead of staying under settings.
+    if (calibrationMode) {
+      dragStateRef.current = null;
+      clearAllPoseDebug();
+      setCalibrationMode(false);
+      setCopiedCoords(false);
+    }
 
     const currentConversation = findConversationById(workspaceState, conversationIdRef.current);
     if (currentConversation?.executionMode === nextExecutionMode) return;
@@ -4825,7 +5104,9 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           currentProject?.id === DEFAULT_PROJECT_ID ? DEFAULT_SESSION_NAME : 'New Conversation',
           nextExecutionMode,
         );
-    await activateConversationDetail(detail, { restoreLatest: Boolean(matchingConversation) });
+    // The mode toggle is an explicit user choice. Do not let the selected
+    // conversation's latest task override it while its detail is restored.
+    await activateConversationDetail(detail, { restoreLatest: false });
   }
 
   function handleOpenTaskReport(task) {
@@ -4937,9 +5218,29 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     if (!queuedDeploy) return;
     if (!canStartDeployForConversation(queuedDeploy.targetConversationId)) return;
     if (currentConversationRunning || uploadState.active || calibrationMode) return;
-    const deployConvId = queuedDeploy.targetConversationId || conversationIdRef.current || conversationId;
-    if (!deployConvId) return;
     const request = queuedDeploy;
+    // Draft first-send path: materialize server conversation before streaming.
+    if (draftConversationRef.current) {
+      setQueuedDeploy(null);
+      materializeDraftConversationForSend(request)
+        .then((materialized) => {
+          const realConversationId = materialized?.id || null;
+          if (!realConversationId) return;
+          request.targetConversationId = realConversationId;
+          if (!canStartDeployForConversation(realConversationId)) {
+            setQueuedDeploy(request);
+            return;
+          }
+          startDeploy(request, realConversationId, materialized?.detail || null);
+        })
+        .catch((error) => {
+          console.error('draft conversation create failed', error);
+          showToast('error', String(error?.message || error));
+        });
+      return;
+    }
+    const deployConvId = request.targetConversationId || conversationIdRef.current || conversationId;
+    if (!deployConvId || String(deployConvId).startsWith('draft-')) return;
     setQueuedDeploy(null);
     startDeploy(request, deployConvId);
   }, [
@@ -5071,10 +5372,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       ? currentTask.workflowSnapshot
       : selected;
   }, [currentTask, defaultWorkflowId, selectedWorkflowId, workflowSettingsDraft]);
-  const worldWorkflowActors = useMemo(
-    () => workflowNodeActorBindings(worldWorkflow),
-    [worldWorkflow],
-  );
   useEffect(() => {
     const activeTaskId = worldTaskState.activeTaskId || activeTaskIdRef.current;
     if (!activeTaskId || !currentTask) return;
@@ -5377,12 +5674,12 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 	                    onViewChange={setMapView}
                     overlay={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} attachment={composerAttachment} uploading={uploadState.active} running={currentConversationRunning} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={`${runConfigStorageKey}.bot`} />}
                   >
-                    <div ref={stageRef} className="office-map">
-                      {worldCalibrationActive && calibrationTarget === 'routes' && selectedRouteId && <CalibrationRoutePreview routeId={selectedRouteId} mapW={MAP_W} mapH={MAP_H} />}
-                      {(worldCalibrationActive ? Object.keys(STATIONS).map((actor) => ({ actor, nodeId: actor, label: '' })) : worldWorkflowActors).map(({ actor, nodeId, label }) => <NPC key={nodeId} id={actor} state={npcStates[actor]} labelOverride={label} spriteConfig={getCharPoseConfig(actor)} mapW={MAP_W} mapH={MAP_H} showLabel={true} interactive={worldCalibrationActive && !busy && calibrationTarget === 'stations'} selected={worldCalibrationActive && ((selectedMarkerId === actor && calibrationTarget === 'stations') || (selectedPoseNpcId === actor && calibrationTarget === 'poses'))} showDebug={worldCalibrationActive && (calibrationTarget === 'stations' || (calibrationTarget === 'poses' && selectedPoseNpcId === actor))} debugText={calibrationTarget === 'poses' ? `${(npcStates[actor]?.poseDebug?.pose || 'idle').toUpperCase()} · ${(npcStates[actor]?.poseDebug?.dir || 'front').toUpperCase()}` : `${(stationDrafts[actor]?.x??0).toFixed(3)}, ${(stationDrafts[actor]?.y??0).toFixed(3)}`} onPointerDown={(npcId, e) => handleMarkerPointerDown('stations', npcId, e)} />)}
-                      {worldCalibrationActive && calibrationTarget === 'routes' && activeIds.map((id, index) => <CalibrationPoint key={`${calibrationTarget}-${id}`} id={id} point={activeDrafts[id]} mapW={MAP_W} mapH={MAP_H} kind={resolvePointTarget(id)==='meet'?'meet':'nav'} selected={selectedMarkerId===id} showDebug={true} badgeText={index+1} onPointerDown={(pId, e) => handleMarkerPointerDown(calibrationTarget, pId, e)} />)}
-                      <div className="fx-layer">{bursts.map(b => <div key={b.id} className="fx-ring" style={{ left: b.x, top: b.y, borderColor: b.color, boxShadow: `0 0 12px ${b.color}` }} />)}</div>
-	                    </div>
+                    <BotWorld
+                      stageRef={stageRef}
+                      workflow={currentTask?.executionMode === 'bot' && currentTask?.workflowSnapshot ? currentTask.workflowSnapshot : worldWorkflow}
+                      task={currentTask}
+                      onOpenReport={handleOpenTaskReport}
+                    />
 	                  </MapViewport>
 	                </div>
 	                <LiveFeedPanel agentLive={agentLive} now={now} extensionStyle={rightPanelExtensionStyle} currentTask={currentTask} />

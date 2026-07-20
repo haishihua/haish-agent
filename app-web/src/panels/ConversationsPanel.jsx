@@ -584,7 +584,7 @@ function updateMenuLabel(state) {
     case 'unsupported':
       return 'Updates unavailable';
     case 'error':
-      return 'Update failed';
+      return state.canInstall ? 'Retry install' : 'Update failed';
     default:
       return 'Check for updates';
   }
@@ -606,6 +606,11 @@ function updateTooltipText(state) {
         ? `Installing v${state.availableVersion} and restarting…`
         : 'Installing update and restarting…';
     case 'error':
+      if (state.canInstall) {
+        return state.message
+          ? `${state.message} · click to retry install`
+          : 'Install failed · click to retry';
+      }
       return state.message || 'Update failed';
     case 'checking':
       return 'Checking for updates';

@@ -112,4 +112,3 @@ export function AuthGate() {
   return <App authUser={session.user} onLogout={handleLogout} initialToast={postAuthToast} />;
 }
 
-
