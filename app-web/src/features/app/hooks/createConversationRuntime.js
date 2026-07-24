@@ -105,7 +105,17 @@ export function createConversationRuntime(ctx) {
     // Always mirror runtime tasks, including an empty list after a full
     // Stop-before-stream rollback. Skipping empty used to leave the removed
     // turn in workspaceState and resurrect it on the next sidebar refresh.
+    // Also keep a still-pending local draft so the sidebar spinner does not
+    // disappear when the user leaves before the server task id arrives.
     const currentTasks = taskOrder.map((taskId) => tasksById[taskId]).filter(Boolean);
+    const pendingTask = snapshot?.pendingTask || null;
+    if (pendingTask) {
+      const pendingKey = pendingTask.taskId || pendingTask.id || null;
+      const alreadyPresent = pendingKey
+        ? currentTasks.some((task) => (task?.taskId || task?.id) === pendingKey)
+        : false;
+      if (!alreadyPresent) currentTasks.push(pendingTask);
+    }
     setWorkspaceState((state) => {
       let touched = false;
       const projects = state.projects.map((project) => {

@@ -220,6 +220,7 @@ import { createDeployHandlers } from './hooks/createDeployHandlers.js';
 import { createConversationActivationHandlers } from './hooks/createConversationActivationHandlers.js';
 import { createDraftConversationHandlers } from './hooks/createDraftConversationHandlers.js';
 import { createWorldRouteHelpers } from './hooks/createWorldRouteHelpers.js';
+import { usePerConversationDraft } from './hooks/usePerConversationDraft.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -250,7 +251,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const [contextUsage, setContextUsage] = useState(() => createEmptyContextUsage(null));
   const [localWorkspace, setLocalWorkspace] = useState({ path: null, label: null });
   const [composerAttachment, setComposerAttachment] = useState(null);
-  const [chatDraft, setChatDraft] = useState('');
   const [uploadState, setUploadState] = useState({ active: false, fileName: '' });
   const [queuedDeploy, setQueuedDeploy] = useState(null);
   const [toast, setToast] = useState(null);
@@ -335,6 +335,13 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   // Local draft opened by "new conversation" before the user sends a message.
   // It is intentionally NOT inserted into the sidebar list until first send.
   const draftConversationRef = useRef(null);
+  // Unsent composer text is stored per conversation so switching chats keeps
+  // each input box independent. Declared early so draft materialization can rekey it.
+  const {
+    draft: chatDraft,
+    setDraft: setChatDraft,
+    rekeyDraft: rekeyChatDraft,
+  } = usePerConversationDraft(conversationId);
   // Server conversation created for a draft (e.g. image/file upload) but not yet
   // revealed in the sidebar because the user still has not sent a message.
   const pendingCreatedDetailRef = useRef(null);
@@ -672,6 +679,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     normalizeWorkspaceOrdering,
     normalizeWorldEvents,
     pendingCreatedDetailRef,
+    rekeyChatDraft,
     runtimesRef,
     setAgentLive,
     setComposerAttachment,
@@ -2029,17 +2037,17 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 	                    MAP_W={MAP_W}
 	                    MAP_H={MAP_H}
 	                    onViewChange={setMapView}
-                    overlay={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} attachment={composerAttachment} uploading={uploadState.active} running={currentConversationRunning} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={`${runConfigStorageKey}.bot`} />}
+                    overlay={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} attachment={composerAttachment} uploading={uploadState.active} running={currentConversationRunning} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={`${runConfigStorageKey}.bot`} draft={chatDraft} onDraftChange={setChatDraft} />}
                   >
                     <BotWorld
                       stageRef={stageRef}
-                      workflow={currentTask?.executionMode === 'bot' && currentTask?.workflowSnapshot ? currentTask.workflowSnapshot : worldWorkflow}
+                      workflow={worldWorkflow}
                       task={currentTask}
                       onOpenReport={handleOpenTaskReport}
                     />
 	                  </MapViewport>
 	                </div>
-	                <LiveFeedPanel agentLive={agentLive} now={now} extensionStyle={rightPanelExtensionStyle} currentTask={currentTask} />
+	                <LiveFeedPanel agentLive={agentLive} now={now} extensionStyle={rightPanelExtensionStyle} currentTask={currentTask} workflow={worldWorkflow} />
 	              </>
             )}
           </>

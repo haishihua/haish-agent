@@ -225,14 +225,28 @@ function runtimeValue(value) {
   try { return JSON.stringify(value, null, 2); } catch { return String(value); }
 }
 
-function WorkflowRuntime({ task }) {
-  const workflow = task?.workflowSnapshot;
-  const run = task?.workflowRun;
+function workflowIdentity(workflow) {
+  return String(workflow?.workflow_id || workflow?.id || '').trim();
+}
+
+function WorkflowRuntime({ task, workflow: workflowProp = null }) {
+  const workflow = workflowProp || task?.workflowSnapshot || null;
+  const taskWorkflowId = workflowIdentity(task?.workflowSnapshot);
+  const displayWorkflowId = workflowIdentity(workflow);
+  // Only attach run progress when the visible workflow is the one that produced this task.
+  // Re-selecting another idle workflow must preview that graph, not the previous run.
+  const run = taskWorkflowId && displayWorkflowId && taskWorkflowId === displayWorkflowId
+    ? task?.workflowRun
+    : null;
   const [selectedNodeId, setSelectedNodeId] = React.useState('');
   const nodes = Array.isArray(workflow?.nodes) ? workflow.nodes : [];
   const selectedNode = workflow?.nodes?.find((node) => node.id === selectedNodeId) || null;
   const selectedResult = selectedNode ? run?.nodes?.[selectedNode.id] : null;
   const doneCount = nodes.filter((node) => workflowNodeStatus(node.id, run) === 'done').length;
+
+  React.useEffect(() => {
+    setSelectedNodeId('');
+  }, [displayWorkflowId]);
 
   if (!workflow?.nodes?.length) {
     return <div className="workflow-runtime-empty">Select or run a Bot workflow to see its nodes.</div>;
@@ -283,11 +297,13 @@ function WorkflowRuntime({ task }) {
   );
 }
 
-export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
+export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask, workflow = null }) {
   const [panelRef, panelWidth] = usePanelWidth();
   const currentTaskId = currentTask?.taskId || null;
   const isWorkflowTask = currentTask?.executionMode === 'bot';
-  const agents = currentTaskId && !isWorkflowTask
+  const displayWorkflow = workflow || (isWorkflowTask ? currentTask?.workflowSnapshot : null) || null;
+  const showWorkflowPanel = Boolean(displayWorkflow) || isWorkflowTask;
+  const agents = currentTaskId && !showWorkflowPanel
     ? Object.entries(agentLive)
       .filter(([_, data]) => data.ts)
       .filter(([_, data]) => {
@@ -296,7 +312,17 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
       })
       .sort((a, b) => (b[1].feedRank || 0) - (a[1].feedRank || 0) || b[1].ts - a[1].ts)
     : [];
-  const workflowStatus = currentTask?.workflowRun?.status || currentTask?.status || 'idle';
+  const taskWorkflowId = workflowIdentity(currentTask?.workflowSnapshot);
+  const displayWorkflowId = workflowIdentity(displayWorkflow);
+  const workflowTaskMatchesDisplay = Boolean(
+    isWorkflowTask
+    && taskWorkflowId
+    && displayWorkflowId
+    && taskWorkflowId === displayWorkflowId,
+  );
+  const workflowStatus = workflowTaskMatchesDisplay
+    ? (currentTask?.workflowRun?.status || currentTask?.status || 'idle')
+    : 'idle';
   const workflowStatusClass = normalizeTaskStatus(workflowStatus);
   const workflowStatusLabel = workflowStatusClass === 'done'
     ? 'COMPLETED'
@@ -305,8 +331,8 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
   return (
     <div className="side-panel right" ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
       <div className="side-panel-head">
-        <div className="title">{isWorkflowTask ? 'Workflow Run' : 'Live Feed'}</div>
-        {!isWorkflowTask ? (
+        <div className="title">{showWorkflowPanel ? 'Workflow Run' : 'Live Feed'}</div>
+        {!showWorkflowPanel ? (
           <div className={`live-badge status-${workflowStatusClass}`}>
             <div className="dot" />
             LIVE
@@ -314,8 +340,8 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
         ) : null}
       </div>
       <div className="side-panel-body">
-        {isWorkflowTask ? <WorkflowRuntime task={currentTask} /> : null}
-        {isWorkflowTask && agents.length > 0 ? (
+        {showWorkflowPanel ? <WorkflowRuntime task={workflowTaskMatchesDisplay ? currentTask : null} workflow={displayWorkflow} /> : null}
+        {showWorkflowPanel && agents.length > 0 ? (
           <div className="workflow-runtime-feed-head">
             <div className="workflow-runtime-feed-title">Agent activity</div>
             <div className={`live-badge workflow-runtime-feed-badge status-${workflowStatusClass}`}>
@@ -325,7 +351,7 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask }) {
           </div>
         ) : null}
         {agents.length === 0 ? (
-          !isWorkflowTask ? <div style={{color:'var(--dim-2)', fontSize:15, textAlign:'center', padding:'40px 12px', fontFamily:'Zpix'}}>
+          !showWorkflowPanel ? <div style={{color:'var(--dim-2)', fontSize:15, textAlign:'center', padding:'40px 12px', fontFamily:'Zpix'}}>
             Waiting for mission data...
           </div> : null
         ) : (

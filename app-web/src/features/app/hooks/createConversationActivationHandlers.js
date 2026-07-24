@@ -183,9 +183,17 @@ export function createConversationActivationHandlers(ctx) {
       if (!previousId || previousId === detail.conversation_id) return state;
       const previousRuntime = getRuntime(previousId);
       const snapshot = previousRuntime ? previousRuntime.worldTaskState : worldTaskStateRef.current;
-      const currentTasks = snapshot.taskOrder
-        .map((taskId) => snapshot.tasksById[taskId])
+      const currentTasks = (snapshot?.taskOrder || [])
+        .map((taskId) => snapshot?.tasksById?.[taskId])
         .filter(Boolean);
+      const pendingTask = snapshot?.pendingTask || null;
+      if (pendingTask) {
+        const pendingKey = pendingTask.taskId || pendingTask.id || null;
+        const alreadyPresent = pendingKey
+          ? currentTasks.some((task) => (task?.taskId || task?.id) === pendingKey)
+          : false;
+        if (!alreadyPresent) currentTasks.push(pendingTask);
+      }
       if (currentTasks.length === 0) return state;
       const now = Date.now();
       return normalizeWorkspaceOrdering({

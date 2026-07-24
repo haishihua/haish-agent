@@ -6,6 +6,17 @@ import { DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS } from './shared-con
 
 const PROVIDER_MODELS_STORAGE_KEY = 'haish_provider_models_v1';
 
+function preferredStorageKeyFromSelectionKey(storageKey) {
+  const key = String(storageKey || '').trim();
+  if (!key) return '';
+  // Conversation keys: haish_run_config_v1:<user>:<mode>:<conversation>[.bot]
+  // Preferred keys:    haish_preferred_run_config_v1:<user>:<mode>[.bot]
+  const match = key.match(/^(haish_run_config_v1):([^:]+):([^:]+):([^:.]+)(\.bot)?$/);
+  if (!match) return '';
+  const [, , userHash, modeHash, , botSuffix = ''] = match;
+  return `haish_preferred_run_config_v1:${userHash}:${modeHash}${botSuffix}`;
+}
+
 export function isAbsolutePathLike(value) {
   return value.startsWith('/') || value === '~' || value.startsWith('~/') || /^[A-Za-z]:[\\/]/.test(value);
 }
@@ -368,22 +379,34 @@ export function useProviderModels(providerOption) {
 
 export function resolveRunConfigSelection(storageKey, providerOptions, agentOptions, defaultAgentId) {
   const stored = safeReadRunConfigSelection(storageKey);
+  const preferredKey = preferredStorageKeyFromSelectionKey(storageKey);
+  const preferred = preferredKey ? safeReadRunConfigSelection(preferredKey) : null;
+  // Conversation-local config wins; otherwise fall back to the user's last pick
+  // so a new chat keeps the previously selected agent (e.g. Simple Agent).
+  const agentSource = optionHasId(agentOptions, stored?.agentId)
+    ? stored
+    : (optionHasId(agentOptions, preferred?.agentId) ? preferred : null);
+  const providerSource = optionHasId(providerOptions, stored?.providerId)
+    ? stored
+    : (optionHasId(providerOptions, preferred?.providerId) ? preferred : null);
   const storedReasoning = REASONING_EFFORT_OPTIONS.some((item) => item.id === stored?.reasoningEffort)
     ? stored.reasoningEffort
-    : '';
+    : (REASONING_EFFORT_OPTIONS.some((item) => item.id === preferred?.reasoningEffort)
+      ? preferred.reasoningEffort
+      : '');
   const fallbackProvider = firstRunProvider(providerOptions);
-  const storedProviderIsValid = optionHasId(providerOptions, stored?.providerId);
-  const providerId = storedProviderIsValid ? stored.providerId : (fallbackProvider?.id || '');
+  const storedProviderIsValid = Boolean(providerSource?.providerId);
+  const providerId = storedProviderIsValid ? providerSource.providerId : (fallbackProvider?.id || '');
   const provider = (providerOptions || []).find((item) => item.id === providerId) || fallbackProvider;
   const providerDefaultModelId = String(provider?.defaultModelId || '').trim();
-  const storedDefaultIsCurrent = stored?.providerDefaultModelId === providerDefaultModelId;
+  const sourceDefaultIsCurrent = providerSource?.providerDefaultModelId === providerDefaultModelId;
   return {
     providerId,
-    modelId: storedProviderIsValid && storedDefaultIsCurrent
-      ? stored?.modelId || providerDefaultModelId
+    modelId: storedProviderIsValid && sourceDefaultIsCurrent
+      ? providerSource?.modelId || providerDefaultModelId
       : providerDefaultModelId,
     providerDefaultModelId,
-    agentId: optionHasId(agentOptions, stored?.agentId) ? stored.agentId : defaultAgentId,
+    agentId: agentSource?.agentId || defaultAgentId,
     reasoningEffort: storedReasoning || DEFAULT_REASONING_EFFORT,
   };
 }
@@ -396,6 +419,9 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
     defaultAgentId,
   ));
   const storageKeyRef = React.useRef(selectionStorageKey || '');
+  // Prefer writing the user-level preferred agent only on intentional picker changes,
+  // not when switching conversations reloads a different conversation-local selection.
+  const preferWriteRef = React.useRef(false);
 
   React.useEffect(() => {
     const nextKey = selectionStorageKey || '';
@@ -438,21 +464,42 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
       && REASONING_EFFORT_OPTIONS.some((item) => item.id === selection.reasoningEffort)
     ) {
       safeWriteRunConfigSelection(selectionStorageKey, selection);
+      if (preferWriteRef.current) {
+        preferWriteRef.current = false;
+        const preferredKey = preferredStorageKeyFromSelectionKey(selectionStorageKey);
+        if (preferredKey) safeWriteRunConfigSelection(preferredKey, selection);
+      }
     }
   }, [selectionStorageKey, selection, providerOptions, agentOptions]);
+
+  const markPreferredWrite = React.useCallback(() => {
+    preferWriteRef.current = true;
+  }, []);
 
   return {
     providerId: selection.providerId,
     modelId: selection.modelId,
     agentId: selection.agentId,
     reasoningEffort: selection.reasoningEffort,
-    setProviderId: React.useCallback((providerId) => setSelection((current) => {
-      const provider = (providerOptions || []).find((item) => item.id === providerId);
-      const providerDefaultModelId = String(provider?.defaultModelId || '').trim();
-      return provider ? { ...current, providerId: provider.id, modelId: providerDefaultModelId, providerDefaultModelId } : current;
-    }), [providerOptions]),
-    setModelId: React.useCallback((modelId) => setSelection((current) => ({ ...current, modelId })), []),
-    setAgentId: React.useCallback((agentId) => setSelection((current) => ({ ...current, agentId })), []),
-    setReasoningEffort: React.useCallback((reasoningEffort) => setSelection((current) => ({ ...current, reasoningEffort })), []),
+    setProviderId: React.useCallback((providerId) => {
+      markPreferredWrite();
+      setSelection((current) => {
+        const provider = (providerOptions || []).find((item) => item.id === providerId);
+        const providerDefaultModelId = String(provider?.defaultModelId || '').trim();
+        return provider ? { ...current, providerId: provider.id, modelId: providerDefaultModelId, providerDefaultModelId } : current;
+      });
+    }, [providerOptions, markPreferredWrite]),
+    setModelId: React.useCallback((modelId) => {
+      markPreferredWrite();
+      setSelection((current) => ({ ...current, modelId }));
+    }, [markPreferredWrite]),
+    setAgentId: React.useCallback((agentId) => {
+      markPreferredWrite();
+      setSelection((current) => ({ ...current, agentId }));
+    }, [markPreferredWrite]),
+    setReasoningEffort: React.useCallback((reasoningEffort) => {
+      markPreferredWrite();
+      setSelection((current) => ({ ...current, reasoningEffort }));
+    }, [markPreferredWrite]),
   };
 }

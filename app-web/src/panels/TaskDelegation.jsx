@@ -14,13 +14,40 @@ import {
   useProviderModels,
 } from './path-utils.jsx';
 
-export function TaskDelegation({ onDeploy, onStop, onSelectFile, onClearFile, onSelectionChange, attachment, uploading, running, disabled, submitPending = false, contextUsage, workspacePath, homePath, activeTaskText, providerOptions = [], agentOptions, defaultAgentId, agentLoading = false, agentLocked = false, agentLockedReason = '', lockedAgentId = '', selectionStorageKey = '' }) {
+export function TaskDelegation({
+  onDeploy,
+  onStop,
+  onSelectFile,
+  onClearFile,
+  onSelectionChange,
+  attachment,
+  uploading,
+  running,
+  disabled,
+  submitPending = false,
+  contextUsage,
+  workspacePath,
+  homePath,
+  activeTaskText,
+  providerOptions = [],
+  agentOptions,
+  defaultAgentId,
+  agentLoading = false,
+  agentLocked = false,
+  agentLockedReason = '',
+  lockedAgentId = '',
+  selectionStorageKey = '',
+  draft: draftProp,
+  onDraftChange: onDraftChangeProp,
+}) {
   const resolvedProviderOptions = Array.isArray(providerOptions) && providerOptions.length > 0
     ? providerOptions
     : [];
   const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : DEFAULT_AGENT_OPTIONS;
   const resolvedDefaultAgentId = defaultAgentId || resolvedAgentOptions[0]?.id || DEFAULT_AGENT_OPTIONS[0].id;
-  const [v, setV] = React.useState('');
+  const [localDraft, setLocalDraft] = React.useState('');
+  const v = draftProp !== undefined ? draftProp : localDraft;
+  const setV = draftProp !== undefined ? onDraftChangeProp : setLocalDraft;
   const { providerId, setProviderId, modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort } = usePersistentRunConfig({
     selectionStorageKey,
     providerOptions: resolvedProviderOptions,

@@ -29,6 +29,7 @@ export function createDraftConversationHandlers(ctx) {
     normalizeWorkspaceOrdering,
     normalizeWorldEvents,
     pendingCreatedDetailRef,
+    rekeyChatDraft,
     runtimesRef,
     setAgentLive,
     setComposerAttachment,
@@ -211,6 +212,7 @@ export function createDraftConversationHandlers(ctx) {
       id: realId,
       serverCreated: true,
     };
+    rekeyChatDraft?.(previousDraftId, realId);
     conversationIdRef.current = realId;
     setConversationId(realId);
     // Still withhold from storage/sidebar until the first user message is sent.
@@ -243,8 +245,10 @@ export function createDraftConversationHandlers(ctx) {
     }
 
     const realId = detail.conversation_id;
+    const previousDraftId = draft.id;
     setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
     setStoredConversationId(realId);
+    rekeyChatDraft?.(previousDraftId, realId);
     conversationIdRef.current = realId;
     setConversationId(realId);
     applyConversationSnapshot(detail);
