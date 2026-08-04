@@ -20,7 +20,7 @@ export function normalizeWorkflowNode(node, fallback = {}) {
     if (data.input == null) data.input = data.prompt;
     data.prompt = '';
   }
-  ['prompt', 'input', 'output', 'expression', 'arguments', 'output_mapping'].forEach((key) => {
+  ['prompt', 'input', 'output', 'expression', 'arguments', 'parameters', 'output_mapping'].forEach((key) => {
     if (key in data) data[key] = sanitizeWorkflowTemplateValue(data[key]);
   });
   delete data.id;
@@ -42,10 +42,75 @@ export function normalizeWorkflowNode(node, fallback = {}) {
   };
 }
 
+export function workflowParameterEntries(parameters) {
+  if (Array.isArray(parameters)) {
+    return parameters
+      .filter((entry) => entry && typeof entry === 'object')
+      .map((entry, index) => ({
+        id: String(entry.id || `parameter_${index + 1}`),
+        name: String(entry.name || ''),
+        value: sanitizeWorkflowTemplateValue(entry.value ?? ''),
+      }));
+  }
+  if (parameters && typeof parameters === 'object') {
+    return Object.entries(parameters).map(([name, value], index) => ({
+      id: `parameter_${index + 1}`,
+      name,
+      value: sanitizeWorkflowTemplateValue(value),
+    }));
+  }
+  return [];
+}
+
+function replaceWorkflowTemplateToken(value, from, to) {
+  if (!from || from === to) return value;
+  if (typeof value === 'string') return value.split(from).join(to);
+  if (Array.isArray(value)) return value.map((item) => replaceWorkflowTemplateToken(item, from, to));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, replaceWorkflowTemplateToken(item, from, to)]),
+    );
+  }
+  return value;
+}
+
+export function workflowTemplateWithParameterAliases(value, parameters) {
+  return workflowParameterEntries(parameters).reduce((template, parameter) => {
+    const name = String(parameter.name || '').trim();
+    const source = String(parameter.value || '').trim();
+    if (!name || !workflowTemplateVariablePath(source)) return template;
+    return replaceWorkflowTemplateToken(template, source, `{{${name}}}`);
+  }, sanitizeWorkflowTemplateValue(value));
+}
+
+export function reconcileWorkflowParameterTemplate(value, previousParameters, nextParameters) {
+  const previous = workflowParameterEntries(previousParameters);
+  const next = workflowParameterEntries(nextParameters);
+  const nextById = new Map(next.map((parameter) => [parameter.id, parameter]));
+  let template = sanitizeWorkflowTemplateValue(value);
+  previous.forEach((parameter) => {
+    const oldName = String(parameter.name || '').trim();
+    if (!oldName) return;
+    const replacement = nextById.get(parameter.id);
+    if (!replacement) {
+      template = replaceWorkflowTemplateToken(template, `{{${oldName}}}`, parameter.value || '');
+      return;
+    }
+    const nextName = String(replacement.name || '').trim();
+    if (nextName && nextName !== oldName) {
+      template = replaceWorkflowTemplateToken(template, `{{${oldName}}}`, `{{${nextName}}}`);
+    }
+  });
+  return workflowTemplateWithParameterAliases(template, next);
+}
+
 export function normalizeWorkflowEdge(edge) {
+  const rawBranch = String(edge?.branch || edge?.source_handle || edge?.sourceHandle || '').trim().toLowerCase();
+  const branch = rawBranch === 'default' ? 'false' : rawBranch;
   return {
     from: String(edge?.from || edge?.source || '').trim(),
     to: String(edge?.to || edge?.target || '').trim(),
+    ...(branch === 'true' || branch === 'false' ? { branch } : {}),
   };
 }
 
@@ -59,7 +124,7 @@ export function normalizeWorkflowRow(item, fallback = DEFAULT_SOFTWARE_DEVELOPME
     ? item.display_name
     : (item?.name != null ? item.name : fallbackName);
   const isBlankDraft = Boolean(item?.draft && !String(resolvedDisplayName || '').trim());
-  const nodes = rawNodes
+  let nodes = rawNodes
     .map((node, index) => normalizeWorkflowNode(node, fallback.nodes?.[index] || {}))
     .filter((node) => node.id)
     .map((node) => {
@@ -82,6 +147,52 @@ export function normalizeWorkflowRow(item, fallback = DEFAULT_SOFTWARE_DEVELOPME
       }
       return node;
     });
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const normalizedEdges = rawEdges
+    .map(normalizeWorkflowEdge)
+    .filter((edge) => edge.from && edge.to);
+  const usedConditionBranches = new Map();
+  normalizedEdges.forEach((edge) => {
+    if (!edge.branch) return;
+    if (!usedConditionBranches.has(edge.from)) usedConditionBranches.set(edge.from, new Set());
+    usedConditionBranches.get(edge.from).add(edge.branch);
+  });
+  const edges = normalizedEdges
+    .map((edge) => {
+      if (edge.branch) return edge;
+      const source = nodeById.get(edge.from);
+      if (source?.type !== 'condition' || Array.isArray(source.cases)) return edge;
+      if (!usedConditionBranches.has(edge.from)) usedConditionBranches.set(edge.from, new Set());
+      const used = usedConditionBranches.get(edge.from);
+      const branch = !used.has('true') ? 'true' : !used.has('false') ? 'false' : '';
+      if (!branch) return edge;
+      used.add(branch);
+      return { ...edge, branch };
+    });
+  const incomingByTarget = new Map();
+  edges.forEach((edge) => {
+    if (!incomingByTarget.has(edge.to)) incomingByTarget.set(edge.to, []);
+    incomingByTarget.get(edge.to).push(edge.from);
+  });
+  nodes = nodes.map((node) => {
+    if (node.type !== 'output') return node;
+    const sources = incomingByTarget.get(node.id) || [];
+    if (sources.length !== 1 || nodeById.get(sources[0])?.type === 'start') return node;
+    const sourceSummary = `{{nodes.${sources[0]}.summary}}`;
+    const mapping = node.output_mapping && typeof node.output_mapping === 'object' && !Array.isArray(node.output_mapping)
+      ? node.output_mapping
+      : null;
+    const usesDefaultText = !mapping && String(node.output || '').trim() === '{{input.message}}';
+    const usesDefaultMapping = mapping
+      && Object.keys(mapping).length === 1
+      && String(mapping.answer || '').trim() === '{{input.message}}';
+    if (!usesDefaultText && !usesDefaultMapping) return node;
+    return {
+      ...node,
+      output: sourceSummary,
+      ...(mapping ? { output_mapping: { answer: sourceSummary } } : {}),
+    };
+  });
   return {
     ...fallback,
     ...(item && typeof item === 'object' ? item : {}),
@@ -99,7 +210,7 @@ export function normalizeWorkflowRow(item, fallback = DEFAULT_SOFTWARE_DEVELOPME
     executable: Boolean(item?.executable ?? workflowId === SOFTWARE_DEVELOPMENT_WORKFLOW_ID),
     draft: Boolean(item?.draft),
     nodes,
-    edges: rawEdges.map(normalizeWorkflowEdge).filter((edge) => edge.from && edge.to),
+    edges,
   };
 }
 
@@ -110,6 +221,9 @@ const WORKFLOW_NODE_LAYOUT_BRANCH_Y = 320;
 const WORKFLOW_NODE_LAYOUT_STEP_Y = 150;
 const WORKFLOW_NODE_OCCUPY_X = 200;
 const WORKFLOW_NODE_OCCUPY_Y = 100;
+const WORKFLOW_NODE_DROP_GRID = 20;
+const WORKFLOW_NODE_DROP_HALF_WIDTH = 107;
+const WORKFLOW_NODE_DROP_HALF_HEIGHT = 31;
 
 function workflowNodeCoord(node, axis = 'x', fallback = 0) {
   const value = Number(node?.position?.[axis]);
@@ -182,6 +296,29 @@ export function placeAddedWorkflowNode(nodes = [], newNode) {
   const position = { x: insertX, y: insertY };
   return {
     nodes: [...nextNodes, { ...candidate, position }],
+    position,
+  };
+}
+
+/** Place a dragged toolbar node with its center at the snapped canvas drop point. */
+export function placeDroppedWorkflowNode(nodes = [], newNode, dropPosition) {
+  const list = Array.isArray(nodes) ? nodes.filter((node) => node?.id) : [];
+  const candidate = newNode && typeof newNode === 'object' ? { ...newNode } : null;
+  const dropX = Number(dropPosition?.x);
+  const dropY = Number(dropPosition?.y);
+  if (!candidate?.id || !Number.isFinite(dropX) || !Number.isFinite(dropY)) {
+    return placeAddedWorkflowNode(list, candidate);
+  }
+
+  const position = {
+    x: Math.round((dropX - WORKFLOW_NODE_DROP_HALF_WIDTH) / WORKFLOW_NODE_DROP_GRID) * WORKFLOW_NODE_DROP_GRID,
+    y: Math.round((dropY - WORKFLOW_NODE_DROP_HALF_HEIGHT) / WORKFLOW_NODE_DROP_GRID) * WORKFLOW_NODE_DROP_GRID,
+  };
+  return {
+    nodes: [
+      ...list.filter((node) => node.id !== candidate.id),
+      { ...candidate, position },
+    ],
     position,
   };
 }
@@ -328,7 +465,15 @@ export function typeLabelForWorkflowNode(type) {
 
 export function workflowOutputFields(nodeOrType) {
   const type = typeof nodeOrType === 'string' ? nodeOrType : nodeOrType?.type;
-  return [...COMMON_WORKFLOW_OUTPUT_FIELDS, ...(WORKFLOW_NODE_OUTPUT_FIELDS[type] || [])];
+  const fields = [...COMMON_WORKFLOW_OUTPUT_FIELDS, ...(WORKFLOW_NODE_OUTPUT_FIELDS[type] || [])];
+  if (
+    type === 'llm'
+    && typeof nodeOrType === 'object'
+    && (nodeOrType?.response_format || 'text') !== 'json_object'
+  ) {
+    return fields.filter((field) => field.id !== 'json');
+  }
+  return fields;
 }
 
 export function workflowSchemaFields(schema) {
@@ -532,67 +677,6 @@ export function buildWorkflowOutputPatch(entries) {
   };
 }
 
-export function createWorkflowExamplePatch(agentOptions) {
-  const agentId = agentOptions.find((item) => item.id === 'preset.product')?.id
-    || agentOptions[0]?.id
-    || 'preset.general';
-  return {
-    display_name: 'Plan and Answer Example',
-    description: 'Analyze the request, format a final answer, and return structured fields.',
-    nodes: [
-      { id: 'start', type: 'start', label: 'Request', input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA, position: { x: 40, y: 160 } },
-      {
-        id: 'agent_1',
-        type: 'agent',
-        label: 'Analyze',
-        agent_id: agentId,
-        prompt: 'Read the user request and produce a concise plan.',
-        input: 'User request:\n{{input.message}}',
-        input_mapping: {
-          message: '{{input.message}}',
-          attachments: '{{input.attachments}}',
-          image_attachments: '{{input.image_attachments}}',
-        },
-        position: { x: 300, y: 160 },
-      },
-      {
-        id: 'llm_1',
-        type: 'llm',
-        label: 'Format',
-        response_format: 'json_object',
-        prompt: 'Turn the plan into a short final answer.\n\nOriginal request:\n{{input.message}}\n\nPlan:\n{{nodes.agent_1.summary}}',
-        position: { x: 560, y: 160 },
-      },
-      {
-        id: 'output',
-        type: 'output',
-        label: 'End',
-        output_mode: 'json_object',
-        output: '{{nodes.llm_1.text}}',
-        output_mapping: {
-          answer: '{{nodes.llm_1.text}}',
-          plan: '{{nodes.agent_1.summary}}',
-          request: '{{input.message}}',
-        },
-        output_schema: {
-          type: 'object',
-          fields: [
-            { id: 'answer', label: 'answer', type: 'string', path: 'output.answer' },
-            { id: 'plan', label: 'plan', type: 'string', path: 'output.plan' },
-            { id: 'request', label: 'request', type: 'string', path: 'output.request' },
-          ],
-        },
-        position: { x: 820, y: 160 },
-      },
-    ],
-    edges: [
-      { from: 'start', to: 'agent_1' },
-      { from: 'agent_1', to: 'llm_1' },
-      { from: 'llm_1', to: 'output' },
-    ],
-  };
-}
-
 export function createDefaultCustomWorkflowPayload() {
   const id = `custom.workflow-${Date.now()}`;
   return normalizeWorkflowRow({
@@ -642,6 +726,10 @@ export function payloadForCustomWorkflow(workflow) {
       const next = { ...node, id: node.id, type: node.type };
       return next;
     }),
-    edges: (workflow.edges || []).map((edge) => ({ from: edge.from, to: edge.to })),
+    edges: (workflow.edges || []).map((edge) => ({
+      from: edge.from,
+      to: edge.to,
+      ...(edge.branch === 'true' || edge.branch === 'false' ? { branch: edge.branch } : {}),
+    })),
   };
 }

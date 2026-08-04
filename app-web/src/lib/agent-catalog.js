@@ -923,6 +923,27 @@ export function agentCatalogFromSettings(settings) {
   };
 }
 
+export function workflowToolOptionsFromAgentSettings(settings) {
+  const normalized = normalizeAgentSettings(settings);
+  const seen = new Set();
+  const options = [];
+  const add = (id, label) => {
+    const value = String(id || '').trim();
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    options.push({ id: value, label: String(label || value).trim() || value });
+  };
+  normalized.tool_groups.forEach((group) => {
+    (group.tools || []).forEach((tool) => add(tool, tool));
+  });
+  normalized.mcp_servers.forEach((server) => {
+    (server.tools || []).forEach((tool) => {
+      add(tool.qualified_name || tool.name, `${server.name} · ${tool.name || tool.qualified_name}`);
+    });
+  });
+  return options;
+}
+
 export function agentListItems(settings) {
   const normalized = normalizeAgentSettings(settings);
   return [...normalized.presets, ...normalized.custom].map((item) => ({

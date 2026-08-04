@@ -1,6 +1,7 @@
 // @haish-esm
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { resolveTooltipPosition } from './tooltip-position.js';
 
 export function PortalTooltip({ text, position = 'below', multiline = false, children }) {
   const [visible, setVisible] = React.useState(false);
@@ -8,15 +9,27 @@ export function PortalTooltip({ text, position = 'below', multiline = false, chi
   const triggerRef = React.useRef(null);
   const bubbleRef = React.useRef(null);
   const suppressAfterClickRef = React.useRef(false);
+  const closeTimerRef = React.useRef(null);
+
+  const cancelClose = React.useCallback(() => {
+    window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }, []);
+
+  const scheduleClose = React.useCallback(() => {
+    cancelClose();
+    closeTimerRef.current = window.setTimeout(() => setVisible(false), 120);
+  }, [cancelClose]);
 
   const computeCoords = React.useCallback(() => {
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
     const triggerCenter = r.left + r.width / 2;
-    // Clamp to viewport so the tooltip doesn't get cut off at the screen edges.
     const margin = 8;
     const bubbleW = bubbleRef.current?.offsetWidth || 0;
+    const bubbleH = bubbleRef.current?.offsetHeight || 0;
+    const resolvedPosition = resolveTooltipPosition(position, r, bubbleH, window.innerHeight, margin);
     const halfW = bubbleW / 2;
     const minX = margin + halfW;
     const maxX = window.innerWidth - margin - halfW;
@@ -25,8 +38,9 @@ export function PortalTooltip({ text, position = 'below', multiline = false, chi
       : triggerCenter;
     setCoords({
       x,
-      y: position === 'above' ? r.top - 8 : r.bottom + 8,
-      arrow: triggerCenter - x, // px offset from bubble center to actual trigger
+      y: resolvedPosition === 'above' ? r.top - margin : r.bottom + margin,
+      arrow: triggerCenter - x,
+      position: resolvedPosition,
     });
   }, [position]);
 
@@ -45,31 +59,41 @@ export function PortalTooltip({ text, position = 'below', multiline = false, chi
     };
   }, [visible, computeCoords]);
 
+  React.useEffect(() => () => cancelClose(), [cancelClose]);
+
   const child = React.Children.only(children);
   const enhanced = React.cloneElement(child, {
     ref: triggerRef,
     onMouseEnter: (e) => {
+      cancelClose();
       if (!suppressAfterClickRef.current) setVisible(true);
       child.props.onMouseEnter && child.props.onMouseEnter(e);
     },
     onMouseLeave: (e) => {
       suppressAfterClickRef.current = false;
-      setVisible(false);
+      scheduleClose();
       child.props.onMouseLeave && child.props.onMouseLeave(e);
     },
     onFocus: (e) => {
+      cancelClose();
       if (!suppressAfterClickRef.current) setVisible(true);
       child.props.onFocus && child.props.onFocus(e);
     },
     onBlur: (e) => {
       suppressAfterClickRef.current = false;
-      setVisible(false);
+      scheduleClose();
       child.props.onBlur && child.props.onBlur(e);
     },
     onClick: (e) => {
+      cancelClose();
       suppressAfterClickRef.current = true;
       setVisible(false);
       child.props.onClick && child.props.onClick(e);
+    },
+    onDragStart: (e) => {
+      cancelClose();
+      setVisible(false);
+      child.props.onDragStart && child.props.onDragStart(e);
     },
   });
 
@@ -77,9 +101,14 @@ export function PortalTooltip({ text, position = 'below', multiline = false, chi
     ? createPortal(
         <div
           ref={bubbleRef}
-          className={`portal-tooltip portal-tooltip-${position}${multiline ? ' is-multiline' : ''}`}
+          className={`portal-tooltip portal-tooltip-${coords.position}${multiline ? ' is-multiline' : ''}`}
           style={{ left: coords.x, top: coords.y, '--arrow-offset': `${coords.arrow}px` }}
           role="tooltip"
+          tabIndex={multiline ? 0 : undefined}
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+          onFocus={cancelClose}
+          onBlur={scheduleClose}
         >
           {text}
         </div>,

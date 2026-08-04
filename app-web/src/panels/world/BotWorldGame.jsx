@@ -1,7 +1,7 @@
 // @haish-esm
 import React from 'react';
 import Phaser from 'phaser';
-import { basketballFlightPath } from '../../lib/bot-scene.js';
+import { basketballFlightPath, TABLE_SPOTS } from '../../lib/bot-scene.js';
 import { assertCoffeeSceneModel, COFFEE_SCENE } from './coffee-scene-model.js';
 
 const FRAME_COUNTS = {
@@ -10,6 +10,8 @@ const FRAME_COUNTS = {
   walk_back: 4,
   walk_left: 4,
   walk_right: 4,
+  thinking: 4,
+  special: 4,
   coffee_sit: 8,
 };
 
@@ -20,6 +22,8 @@ const ACTION_CONTENT_HEIGHTS = {
   'walk-back': 185,
   'walk-left': 178,
   'walk-right': 189,
+  thinking: 208,
+  'table-special': 223,
   'coffee-making': 340,
   'hold-cup-seated': 332,
   'drink-seated': 332,
@@ -46,17 +50,20 @@ function frameKey(action, frame) {
 }
 
 class CoffeePrototypeScene extends Phaser.Scene {
-  constructor(actor, environment, renderScale = 1) {
+  constructor(actor, environment, renderScale = 1, onActorRelease = null) {
     super('bot-world-coffee-prototype');
     this.actorData = actor;
     this.environmentState = environment || {};
     this.renderScale = renderScale;
+    this.onActorRelease = onActorRelease;
     this.route = [];
     this.onRouteComplete = null;
-    this.debugVisible = false;
     this.ballSprites = new Map();
     this.seenBallFlights = new Set();
     this.actorActive = false;
+    this.coffeeLoopCount = 0;
+    this.coffeeLoopsUntilTable = 2;
+    this.tableBreakCount = 0;
     this.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   }
 
@@ -104,11 +111,6 @@ class CoffeePrototypeScene extends Phaser.Scene {
       padding: { x: 8, y: 5 },
     }).setOrigin(0.5, 1).setDepth(COFFEE_SCENE.spawn.y + 2).setVisible(false);
 
-    this.debugGraphics = this.add.graphics().setDepth(3000).setVisible(false);
-    this.input.keyboard?.on('keydown-D', this.toggleDebug, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.input.keyboard?.off('keydown-D', this.toggleDebug, this);
-    });
     this.playLoop('idle');
     this.setActor(this.actorData);
     this.setEnvironmentState(this.environmentState);
@@ -285,6 +287,8 @@ class CoffeePrototypeScene extends Phaser.Scene {
 
   resetCoffeeInteraction() {
     this.coffeeBusy = false;
+    this.tableBreakTimer?.remove();
+    this.tableBreakTimer = null;
     this.tweens.killTweensOf([
       this.actor,
       this.coffeeStream,
@@ -344,6 +348,22 @@ class CoffeePrototypeScene extends Phaser.Scene {
     sprite.setPosition(landing.x, landing.y).setRotation(0).setDepth(240).setVisible(true);
   }
 
+  playBallBounce(sprite, landing) {
+    if (this.reducedMotion) return;
+    this.tweens.chain({
+      targets: sprite,
+      tweens: [
+        { y: landing.y - 28, duration: 150, ease: 'Quad.easeOut' },
+        { y: landing.y, duration: 170, ease: 'Quad.easeIn' },
+        { y: landing.y - 14, duration: 110, ease: 'Quad.easeOut' },
+        { y: landing.y, duration: 125, ease: 'Quad.easeIn' },
+        { y: landing.y - 6, duration: 80, ease: 'Quad.easeOut' },
+        { y: landing.y, duration: 90, ease: 'Quad.easeIn' },
+      ],
+      onComplete: () => sprite.setPosition(landing.x, landing.y).setRotation(0),
+    });
+  }
+
   playBallFlight(ball, key) {
     const start = this.pointFromRatio(ball.start);
     const canvasRect = this.game.canvas.getBoundingClientRect();
@@ -387,7 +407,10 @@ class CoffeePrototypeScene extends Phaser.Scene {
         );
         sprite.setRotation(0);
       },
-      onComplete: () => sprite.setPosition(landing.x, landing.y).setRotation(0).setDepth(240),
+      onComplete: () => {
+        sprite.setPosition(landing.x, landing.y).setRotation(0).setDepth(240);
+        this.playBallBounce(sprite, landing);
+      },
     });
   }
 
@@ -424,12 +447,25 @@ class CoffeePrototypeScene extends Phaser.Scene {
     create('walk-back', 'walk_back', 6, -1);
     create('walk-left', 'walk_left', 6, -1);
     create('walk-right', 'walk_right', 6, -1);
+    create('thinking', 'thinking', 3, -1);
+    create('table-special', 'special', 3, -1, [1, 2, 3, 4, 3, 2]);
     this.anims.create({ key: 'coffee-making', frames: [{ key: 'coffee-make-side' }], frameRate: 1, repeat: -1 });
     create('hold-cup-seated', 'coffee_sit', 1, -1, [1]);
     create('drink-seated', 'coffee_sit', 3, 1, [1, 2, 3, 4, 3, 2]);
   }
 
   setActor(actor) {
+    const previousActor = this.actorData;
+    if (!actor && this.actorActive && this.actor) {
+      const atTable = String(this.state || '').includes('table');
+      this.onActorRelease?.(previousActor, {
+        id: `phaser_release_${Date.now()}`,
+        kind: 'route',
+        nav: atTable ? 'park_hub' : 'cafe_east',
+        x: this.actor.x / COFFEE_SCENE.size.width,
+        y: this.actor.y / COFFEE_SCENE.size.height,
+      });
+    }
     this.actorData = actor;
     if (!this.actor) return;
     const shouldStart = Boolean(actor) && !this.actorActive;
@@ -446,6 +482,9 @@ class CoffeePrototypeScene extends Phaser.Scene {
     }
     this.label.setText(actor.label);
     if (shouldStart) {
+      this.coffeeLoopCount = 0;
+      this.coffeeLoopsUntilTable = Phaser.Math.Between(2, 4);
+      this.tableBreakCount = 0;
       this.actor.setPosition(COFFEE_SCENE.spawn.x, COFFEE_SCENE.spawn.y);
       this.playLoop('idle');
       this.syncAttachments();
@@ -482,8 +521,53 @@ class CoffeePrototypeScene extends Phaser.Scene {
     this.jumpBetween(COFFEE_SCENE.seat.use, COFFEE_SCENE.seat.approach, 34, 560, () => {
       this.state = 'path_from_seat';
       this.follow(COFFEE_SCENE.routes.seatToSpawn, () => {
+        this.coffeeLoopCount += 1;
         this.state = 'leisure_idle';
-        this.playOnce('idle-once', () => this.beginCoffeeLoop());
+        this.playOnce('idle-once', () => {
+          if (this.coffeeLoopCount >= this.coffeeLoopsUntilTable) this.beginTableBreak();
+          else this.beginCoffeeLoop();
+        });
+      });
+    });
+  }
+
+  beginTableBreak() {
+    if (!this.actorActive) return;
+    const seat = TABLE_SPOTS[this.actorData?.seatIndex] || TABLE_SPOTS[0];
+    const toPixels = (spot) => ({
+      x: spot.x * COFFEE_SCENE.size.width,
+      y: spot.y * COFFEE_SCENE.size.height,
+    });
+    const approach = toPixels(seat.approach);
+    const use = toPixels(seat);
+    const parkHub = {
+      x: 0.49 * COFFEE_SCENE.size.width,
+      y: 0.52 * COFFEE_SCENE.size.height,
+    };
+    this.state = 'path_to_table';
+    this.follow([parkHub, approach], () => {
+      this.state = 'jump_to_table';
+      this.playLoop('idle');
+      this.jumpBetween(approach, use, 38, 480, () => {
+        if (!this.actorActive) return;
+        this.state = 'table_break';
+        this.playLoop(this.tableBreakCount % 2 === 0 ? 'table-special' : 'thinking');
+        this.tableBreakTimer = this.time.delayedCall(Phaser.Math.Between(9000, 15000), () => {
+          this.tableBreakTimer = null;
+          if (!this.actorActive) return;
+          this.state = 'jump_from_table';
+          this.playLoop('idle');
+          this.jumpBetween(use, approach, 30, 360, () => {
+            this.state = 'path_from_table';
+            this.follow([parkHub, COFFEE_SCENE.spawn], () => {
+              this.tableBreakCount += 1;
+              this.coffeeLoopCount = 0;
+              this.coffeeLoopsUntilTable = Phaser.Math.Between(2, 4);
+              this.state = 'leisure_idle';
+              this.playOnce('idle-once', () => this.beginCoffeeLoop());
+            });
+          });
+        });
       });
     });
   }
@@ -515,7 +599,6 @@ class CoffeePrototypeScene extends Phaser.Scene {
   follow(points, onComplete) {
     this.route = points.map((point) => ({ ...point }));
     this.onRouteComplete = onComplete;
-    this.drawDebug();
   }
 
   playLoop(animation) {
@@ -588,33 +671,14 @@ class CoffeePrototypeScene extends Phaser.Scene {
     ).setDepth(depth + 2);
   }
 
-  toggleDebug() {
-    this.debugVisible = !this.debugVisible;
-    this.debugGraphics.setVisible(this.debugVisible);
-    this.drawDebug();
-  }
-
-  drawDebug() {
-    if (!this.debugGraphics) return;
-    const graphics = this.debugGraphics.clear();
-    if (!this.debugVisible) return;
-    graphics.fillStyle(0x45d483, 0.13);
-    COFFEE_SCENE.walkable.forEach((polygon) => graphics.fillPoints(polygon, true));
-    graphics.fillStyle(0xff5f6d, 0.2);
-    COFFEE_SCENE.blockers.forEach((blocker) => graphics.fillRect(blocker.x, blocker.y, blocker.width, blocker.height));
-    graphics.lineStyle(5, 0x66d9ff, 0.9);
-    graphics.strokePoints([{ x: this.actor.x, y: this.actor.y }, ...this.route], false);
-    graphics.fillStyle(0xffd166, 1);
-    [COFFEE_SCENE.seat.approach, COFFEE_SCENE.seat.use]
-      .forEach((point) => graphics.fillCircle(point.x, point.y, 8));
-  }
 }
 
-export function BotWorldGame({ actor, environment }) {
+export function BotWorldGame({ actor, environment, onActorRelease }) {
   const hostRef = React.useRef(null);
   const sceneRef = React.useRef(null);
   const initialActorRef = React.useRef(actor);
   const initialEnvironmentRef = React.useRef(environment);
+  const initialActorReleaseRef = React.useRef(onActorRelease);
 
   React.useEffect(() => {
     if (!hostRef.current) return undefined;
@@ -623,6 +687,7 @@ export function BotWorldGame({ actor, environment }) {
       initialActorRef.current,
       initialEnvironmentRef.current,
       renderScale,
+      initialActorReleaseRef.current,
     );
     sceneRef.current = scene;
     const game = new Phaser.Game({
@@ -642,9 +707,10 @@ export function BotWorldGame({ actor, environment }) {
     };
   }, []);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
+    if (sceneRef.current) sceneRef.current.onActorRelease = onActorRelease;
     sceneRef.current?.setActor(actor);
-  }, [actor]);
+  }, [actor, onActorRelease]);
 
   React.useEffect(() => {
     sceneRef.current?.setEnvironmentState(environment);

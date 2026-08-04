@@ -134,7 +134,6 @@ export function ApprovalModePicker({ disabled = false, readOnly = false }) {
                   className={`approval-mode-option ${active ? 'is-active' : ''} ${readOnly ? 'is-readonly' : ''}`}
                   aria-disabled={readOnly ? 'true' : undefined}
                   onClick={() => changeMode(opt.id)}
-                  title={opt.desc}
                 >
                   <span
                     className="approval-mode-option-icon"

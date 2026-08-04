@@ -9,10 +9,13 @@ import {
   actorWalkDirection,
   basketballFlightPath,
   buildPenguinCast,
+  canPlayLeisureAction,
+  createLeisureSchedule,
   isInsideSkateBoundary,
   leisureBehaviorStep,
   LEISURE_SPOTS,
   TABLE_SPOTS,
+  taskProgressText,
 } from './bot-scene.js';
 
 test('basketball trajectory is fixed at release and passes the planned contact point', () => {
@@ -48,17 +51,20 @@ test('builds a stable cast from executable workflow nodes', () => {
       { id: 'agent', type: 'agent', label: 'Planner' },
       { id: 'start', type: 'start' },
       { id: 'tool', type: 'tool', label: 'Builder' },
+      { id: 'qa', type: 'llm', label: 'QA' },
     ],
     edges: [
       { from: 'start', to: 'agent' },
       { from: 'agent', to: 'tool' },
-      { from: 'tool', to: 'output' },
+      { from: 'tool', to: 'qa' },
+      { from: 'qa', to: 'output' },
     ],
   };
   const cast = buildPenguinCast(workflow);
-  assert.deepEqual(cast.map((actor) => actor.nodeId), ['agent', 'tool']);
+  assert.deepEqual(cast.map((actor) => actor.nodeId), ['agent', 'tool', 'qa']);
   assert.equal(cast[0].spriteKey, 'penguin_1');
   assert.equal(cast[0].spawnSpot.id, cast[0].leisureSpotId);
+  assert.deepEqual(cast.map((actor) => actor.seatIndex), [1, 2, 0]);
   const runningTask = {
     executionMode: 'bot',
     status: 'running',
@@ -66,13 +72,53 @@ test('builds a stable cast from executable workflow nodes', () => {
   };
   assert.equal(actorPhase(cast[0], runningTask, false, cast.map((actor) => actor.nodeId)), 'working');
   assert.equal(actorPhase(cast[0], null, false, cast.map((actor) => actor.nodeId)), 'leisure');
-  assert.equal(actorSpot(cast[0], 'working').id, 'table_work');
+  assert.equal(actorSpot(cast[0], 'working').id, 'table_seat_1');
+  assert.equal(actorSpot(cast[1], 'walking_to_table').id, 'table_seat_2_approach');
+  assert.equal(actorSpot(cast[0], 'waiting').id, 'table_seat_1_approach');
+  assert.equal(actorSpot(cast[0], 'reporting').id, 'table_seat_1');
+  assert.deepEqual(TABLE_SPOTS.slice(0, 3).map((spot) => spot.nav), [
+    'table_west',
+    'table_northwest',
+    'table_northeast',
+  ]);
+  assert.deepEqual(TABLE_SPOTS.slice(0, 3).map(({ x, y }) => [x, y]), [
+    [0.552, 0.66],
+    [0.599, 0.56],
+    [0.811, 0.535],
+  ]);
+  assert.deepEqual(
+    [TABLE_SPOTS[2].approach.x, TABLE_SPOTS[2].approach.y],
+    [0.85, 0.51],
+  );
   assert.equal(actorWalkDirection({ x: 0.2, y: 0.4 }, { x: 0.8, y: 0.45 }), 'right');
   assert.equal(actorWalkDirection({ x: 0.8, y: 0.8 }, { x: 0.75, y: 0.2 }), 'back');
-  assert.match(actorSpriteSource(cast[0], 'working', { moving: true, direction: 'left', frame: 3 }), /walk_left_03\.png$/);
+  assert.match(actorSpriteSource(
+    cast[0],
+    'working',
+    { moving: true, direction: 'left', frame: 3 },
+    '',
+    2,
+  ), /walk_left_02\.png$/);
+  assert.match(actorSpriteSource(cast[0], 'working', null, 'table', 2), /special_02\.png$/);
+  assert.match(actorSpriteSource(
+    cast[1],
+    'working',
+    { moving: false, mode: 'settle' },
+    'table',
+    2,
+  ), /idle_02\.png$/);
+  assert.match(actorSpriteSource(cast[0], 'reporting', null, 'table', 2), /special_01\.png$/);
+  assert.match(actorSpriteSource(cast[1], 'reporting', null, 'table', 2), /special_03\.png$/);
   assert.match(actorSpriteSource(cast[0], 'leisure', null, 'coffee', 2), /coffee_02\.png$/);
   assert.match(actorSpriteSource(cast[0], 'leisure', null, 'basket', 3), /basketball_03\.png$/);
   assert.match(actorSpriteSource(cast[0], 'leisure', null, 'skate', 8), /belly_slide_08\.png$/);
+  assert.match(actorSpriteSource(
+    cast[2],
+    'leisure',
+    { moving: true, mode: 'skate', direction: 'right', frame: 2 },
+    'route',
+    4,
+  ), /belly_slide_04\.png$/);
   assert.match(actorSpriteSource(cast[0], 'leisure', null, 'basket', 6, 'basketball_shoot'), /basketball_shoot_06\.png$/);
   assert.match(actorSpriteSource(cast[0], 'leisure', { moving: true, mode: 'jump', direction: 'back', frame: 2 }, 'coffee', 2), /idle_02\.png$/);
   const coffeeMake = leisureBehaviorStep('coffee', 1, 0, LEISURE_SPOTS[0]);
@@ -96,6 +142,76 @@ test('builds a stable cast from executable workflow nodes', () => {
   const coffeeRoute = actorRoute(coffeeMake.spot, coffeeSit.spot);
   assert.ok(coffeeRoute.some((point) => point.id.endsWith('_approach')));
   assert.equal(coffeeRoute.at(-1).id, coffeeSit.spot.id);
+  const tableApproach = leisureBehaviorStep('coffee', 18, 0, LEISURE_SPOTS[0], TABLE_SPOTS[3]);
+  const tableHop = leisureBehaviorStep('coffee', 19, 0, LEISURE_SPOTS[0], TABLE_SPOTS[3]);
+  const tableThinking = leisureBehaviorStep('coffee', 20, 0, LEISURE_SPOTS[0], TABLE_SPOTS[3]);
+  const tableLeave = leisureBehaviorStep('coffee', 21, 0, LEISURE_SPOTS[0], TABLE_SPOTS[3]);
+  assert.equal(tableApproach.spot.id, TABLE_SPOTS[3].approach.id);
+  assert.equal(tableHop.spot.id, TABLE_SPOTS[3].id);
+  assert.equal(tableThinking.action, 'thinking');
+  assert.equal(tableThinking.tableBreak, true);
+  assert.equal(tableLeave.spot.id, TABLE_SPOTS[3].approach.id);
+  assert.equal(
+    leisureBehaviorStep('basket', 18, 1, LEISURE_SPOTS[1], TABLE_SPOTS[2]).action,
+    'special',
+  );
+  const shortBasketSchedule = createLeisureSchedule('basket', () => 0);
+  const longBasketSchedule = createLeisureSchedule('basket', () => 0.999);
+  assert.equal(createLeisureSchedule('coffee', () => 0).outdoorSteps, 12);
+  assert.equal(createLeisureSchedule('coffee', () => 0.999).outdoorSteps, 24);
+  assert.equal(createLeisureSchedule('skate', () => 0).outdoorSteps, 4);
+  assert.equal(createLeisureSchedule('skate', () => 0.999).outdoorSteps, 10);
+  assert.equal(shortBasketSchedule.outdoorSteps, 8);
+  assert.equal(longBasketSchedule.outdoorSteps, 24);
+  assert.equal(shortBasketSchedule.tableDuration, 9000);
+  assert.equal(longBasketSchedule.tableDuration, 15000);
+  assert.equal(shortBasketSchedule.tableAction, 'special');
+  assert.equal(longBasketSchedule.tableAction, 'special');
+  assert.equal(
+    leisureBehaviorStep(
+      'basket',
+      8,
+      1,
+      LEISURE_SPOTS[1],
+      TABLE_SPOTS[2],
+      shortBasketSchedule,
+    ).spot.id,
+    TABLE_SPOTS[2].approach.id,
+  );
+  assert.equal(
+    leisureBehaviorStep(
+      'basket',
+      9,
+      1,
+      LEISURE_SPOTS[1],
+      TABLE_SPOTS[2],
+      shortBasketSchedule,
+    ).action,
+    'special',
+  );
+  const basketTableRest = leisureBehaviorStep(
+    'basket', 10, 1, LEISURE_SPOTS[1], TABLE_SPOTS[2], shortBasketSchedule,
+  );
+  const basketReturnToBall = leisureBehaviorStep(
+    'basket', 12, 1, LEISURE_SPOTS[1], TABLE_SPOTS[2], shortBasketSchedule,
+  );
+  const basketRepick = leisureBehaviorStep(
+    'basket', 13, 1, LEISURE_SPOTS[1], TABLE_SPOTS[2], shortBasketSchedule,
+  );
+  const basketResume = leisureBehaviorStep(
+    'basket', 14, 1, LEISURE_SPOTS[1], TABLE_SPOTS[2], shortBasketSchedule,
+  );
+  assert.equal(basketTableRest.duration, 9000);
+  assert.equal(leisureBehaviorStep(
+    'basket', 10, 1, LEISURE_SPOTS[1], TABLE_SPOTS[2],
+    { ...shortBasketSchedule, tableAction: 'thinking' },
+  ).action, 'special');
+  assert.equal(basketTableRest.ball.state, 'landed');
+  assert.equal(basketReturnToBall.ball.state, 'landed');
+  assert.equal(basketReturnToBall.spot.id, basketRepick.spot.id);
+  assert.equal(basketRepick.action, 'basketball_pickup');
+  assert.equal(basketRepick.ball, undefined);
+  assert.equal(basketResume.scheduleComplete, true);
   const ballRelease = leisureBehaviorStep('basket', 3, 1);
   assert.equal(ballRelease.action, 'basketball_shoot');
   assert.equal(ballRelease.ball.state, 'flight');
@@ -105,6 +221,7 @@ test('builds a stable cast from executable workflow nodes', () => {
   const ballPickup = leisureBehaviorStep('basket', 6, 1);
   assert.equal(ballFlight.action, 'basketball_shoot');
   assert.equal(ballFlight.ball.state, 'flight');
+  assert.equal(ballFlight.duration, 3000);
   assert.equal(ballRelease.ball.key, ballFlight.ball.key);
   assert.equal(ballLanded.ball.state, 'landed');
   assert.equal(ballFlight.ball.key, ballLanded.ball.key);
@@ -125,21 +242,214 @@ test('builds a stable cast from executable workflow nodes', () => {
     2,
     'basketball',
   ), /basketball_02\.png$/);
+  assert.match(
+    actorSpriteSource(cast[0], 'leisure', null, 'table', 3, 'special'),
+    /special_03\.png$/,
+  );
   assert.equal(leisureBehaviorStep('skate', 2, 2).action, 'belly_slide');
+  const skateStart = leisureBehaviorStep('skate', 0, 2).spot;
+  const skateEnd = leisureBehaviorStep('skate', 1, 2).spot;
+  assert.ok(Math.hypot(
+    (skateEnd.x - skateStart.x) * 1536,
+    (skateEnd.y - skateStart.y) * 1024,
+  ) > 280);
   assert.ok(Array.from({ length: 24 }, (_, index) => (
-    isInsideSkateBoundary(leisureBehaviorStep('skate', index, 2).spot)
-  )).every(Boolean));
+    leisureBehaviorStep('skate', index, 2)
+  )).filter((step) => step.action === 'belly_slide').every((step) => (
+    isInsideSkateBoundary(step.spot)
+  )));
+  assert.equal(
+    leisureBehaviorStep('skate', 8, 2, LEISURE_SPOTS[2], TABLE_SPOTS[0]).tableBreak,
+    true,
+  );
   const route = actorRoute(LEISURE_SPOTS[2], TABLE_SPOTS[2]);
-  assert.ok(route.length >= 4);
+  assert.deepEqual(route.map((point) => point.id), [
+    'lake_gate',
+    'table_seat_2_approach',
+    'table_seat_2',
+  ]);
   assert.equal(route.at(-1).id, 'table_seat_2');
+  assert.deepEqual(
+    actorRoute(LEISURE_SPOTS[2], TABLE_SPOTS[0].approach).map((point) => point.id),
+    ['lake_gate', 'table_seat_0_approach'],
+  );
+  assert.deepEqual(
+    actorRoute(TABLE_SPOTS[2].approach, TABLE_SPOTS[2]).map((point) => point.id),
+    ['table_seat_2'],
+  );
+  assert.deepEqual(
+    actorRoute(TABLE_SPOTS[2], LEISURE_SPOTS[1]).map((point) => point.id),
+    ['table_seat_2_approach', 'leisure_basket_1'],
+  );
+  assert.deepEqual(
+    actorRoute(TABLE_SPOTS[2].approach, LEISURE_SPOTS[1]).map((point) => point.id),
+    ['leisure_basket_1'],
+  );
+  assert.deepEqual(
+    actorRoute(TABLE_SPOTS[0].approach, LEISURE_SPOTS[2]).map((point) => point.id),
+    ['lake_gate', 'leisure_skate_1'],
+  );
   assert.ok([...LEISURE_SPOTS, ...TABLE_SPOTS].every((spot) => (
     spot.x >= 0 && spot.x <= 1 && spot.y >= 0 && spot.y <= 1
   )));
-  assert.ok(actorTravelDuration(route[0], route[1]) >= 420);
+  const seatHopDuration = actorTravelDuration(route.at(-2), route.at(-1));
+  assert.ok(seatHopDuration >= 280 && seatHopDuration <= 700);
+  assert.ok(actorTravelDuration(
+    { x: 0.1, y: 0.1, kind: 'route' },
+    { x: 0.8, y: 0.8, kind: 'route' },
+  ) > seatHopDuration);
+  assert.equal(canPlayLeisureAction('leisure', 'basket', false, {
+    moving: true,
+    fromKind: 'table',
+    toKind: 'route',
+  }), false);
+  assert.equal(canPlayLeisureAction('leisure', 'basket', false, {
+    moving: true,
+    fromKind: 'basket',
+    toKind: 'basket',
+  }), true);
   const partialRun = {
     executionMode: 'bot',
     status: 'done',
     workflowRun: { status: 'done', nodes: { agent: { status: 'done', success: true } } },
   };
-  assert.equal(actorPhase(cast[0], partialRun, false, cast.map((actor) => actor.nodeId)), 'leisure');
+  assert.equal(actorPhase(cast[0], partialRun, false, cast.map((actor) => actor.nodeId)), 'reporting');
+  const completedRun = {
+    executionMode: 'bot',
+    status: 'done',
+    workflowRun: {
+      status: 'done',
+      nodes: Object.fromEntries(cast.map((actor) => [
+        actor.nodeId,
+        { status: 'done', success: true },
+      ])),
+    },
+  };
+  assert.deepEqual(
+    cast.map((actor) => actorPhase(
+      actor,
+      completedRun,
+      false,
+      cast.map((item) => item.nodeId),
+    )),
+    ['leisure', 'leisure', 'reporting'],
+  );
+});
+
+test('uses user-visible stream progress from the active workflow node window', () => {
+  const task = {
+    workflowRun: {
+      nodes: {
+        planner: { started_at: '2026-07-27T10:00:00.000Z' },
+      },
+    },
+    eventLog: [
+      { type: 'agent_progress_delta', timestamp: '2026-07-27T09:59:59.000Z', message: '旧节点内容' },
+      { type: 'llm_thinking_delta', timestamp: '2026-07-27T10:00:01.000Z', delta: '正在分析' },
+      { type: 'llm_thinking_delta', timestamp: '2026-07-27T10:00:02.000Z', delta: '用户需求' },
+    ],
+  };
+  assert.equal(taskProgressText(task, 'planner'), '正在分析用户需求');
+  assert.equal(taskProgressText({
+    workflowRun: { nodes: { planner: { summary: '完整节点结果' } } },
+    eventLog: [{ type: 'llm_answer_delta', delta: '流式片段' }],
+  }, 'planner'), '完整节点结果');
+  assert.equal(taskProgressText({
+    workflowRun: {
+      status: 'done',
+      nodes: {
+        product: { status: 'done', success: true, summary: '产品节点结果' },
+        qa: { status: 'done', success: true, summary: 'QA 节点结果' },
+      },
+    },
+    answerText: '整个工作流的最终结果',
+    eventLog: [{ type: 'llm_answer_delta', delta: '整个工作流的最终结果' }],
+  }, 'product'), '产品节点结果');
+  assert.equal(taskProgressText({
+    workflowRun: {
+      status: 'done',
+      nodes: {
+        qa: { status: 'done', success: true, summary: 'QA 节点结果' },
+      },
+    },
+    answerText: '整个工作流的最终结果',
+  }, 'qa', { isFinalNode: true }), 'QA 节点结果');
+  assert.equal(taskProgressText({
+    workflowRun: {
+      status: 'done',
+      nodes: {
+        qa: { status: 'done', success: true, summary: '最后节点的真实结果' },
+      },
+    },
+    answerText: '{"answer":"错误回显的用户输入"}',
+  }, 'qa', { isFinalNode: true }), '最后节点的真实结果');
+  assert.equal(taskProgressText({
+    workflowRun: {
+      status: 'done',
+      nodes: {
+        qa: { status: 'done', success: true },
+      },
+    },
+    answerText: '{"answer":"已解包的最终结果"}',
+  }, 'qa', { isFinalNode: true }), '已解包的最终结果');
+  assert.equal(taskProgressText({
+    workflowRun: {
+      status: 'done',
+      nodes: {
+        product: { status: 'done', success: true },
+      },
+    },
+    answerText: '不应串到产品节点的最终结果',
+    eventLog: [{ type: 'llm_answer_delta', delta: '不应串到产品节点的最终结果' }],
+  }, 'product'), '');
+  assert.equal(taskProgressText({ workflowRun: { nodes: {} }, eventLog: [] }, 'planner'), '');
+  assert.equal(taskProgressText({
+    workflowRun: { nodes: { planner: {} } },
+    eventLog: [{ type: 'tool_executor_started', message: '手动拼接的工具状态' }],
+  }, 'planner'), '');
+  assert.equal(taskProgressText({
+    workflowRun: {
+      current_node_id: 'planner',
+      nodes: { planner: { status: 'running' } },
+    },
+    eventLog: [],
+  }, 'planner'), 'Working…');
+  assert.equal(taskProgressText({
+    workflowRun: {
+      current_node_id: 'builder',
+      nodes: {
+        planner: { started_at: '2026-07-27T10:00:00.000Z' },
+        builder: { status: 'running', started_at: '2026-07-27T10:01:00.000Z' },
+      },
+    },
+    eventLog: [
+      { type: 'llm_answer_delta', workflowNodeId: 'planner', delta: '产品方案' },
+      { type: 'llm_final_answer', workflowNodeId: 'builder', message: '开发结果' },
+    ],
+  }, 'builder'), '开发结果');
+  assert.equal(taskProgressText({
+    workflowRun: {
+      nodes: {
+        planner: { status: 'done', success: true },
+      },
+    },
+    eventLog: [
+      { type: 'llm_answer_delta', workflowNodeId: 'planner', delta: '完成了' },
+      { type: 'llm_answer_delta', workflowNodeId: 'planner', delta: ' 产品分析' },
+    ],
+  }, 'planner'), '完成了 产品分析');
+  const longStream = `${'较早的流式内容'.repeat(30)}这是最新输出`;
+  const visibleLongStream = taskProgressText({
+    workflowRun: {
+      current_node_id: 'planner',
+      nodes: {
+        planner: { status: 'running' },
+      },
+    },
+    eventLog: [
+      { type: 'llm_answer_delta', workflowNodeId: 'planner', delta: longStream },
+    ],
+  }, 'planner');
+  assert.equal(visibleLongStream, `…${longStream.slice(-179)}`);
+  assert.ok(visibleLongStream.endsWith('这是最新输出'));
 });

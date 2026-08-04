@@ -1,5 +1,7 @@
 // @haish-esm
 // Extracted from AppShell.jsx (Phase C2). Behavior-preserving factory.
+import { finalWorkflowResultText } from '../../../lib/world-events.js';
+
 export function createScenePlayHandlers(ctx) {
   const {
     DEFAULT_WALK_MIN_DURATION_MS,
@@ -45,7 +47,6 @@ export function createScenePlayHandlers(ctx) {
     sleep,
     startThinkingPulse,
     summarizeText,
-    toDisplayText,
     updateNpc,
     updateTaskById,
     waitForSceneCompletion,
@@ -198,7 +199,10 @@ export function createScenePlayHandlers(ctx) {
       await sleep(640);
       setActorIdle(end.actor);
       const finalTask = getTaskById(taskId, targetConvId);
-      const result = toDisplayText(event.output || event.summary || finalTask?.answerText || finalTask?.error || bubble);
+      const result = finalWorkflowResultText(
+        finalTask,
+        event.summary || event.output || finalTask?.answerText || finalTask?.error || bubble,
+      );
       finalizeTaskPresentation(taskId, result, targetConvId);
     }
   }

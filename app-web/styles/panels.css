@@ -1552,18 +1552,6 @@
     image-rendering: auto;
 }
 
-.live-activity-desc[data-tooltip]:hover::after,
-.live-activity-desc[data-tooltip]:focus-visible::after {
-    left: 0;
-    transform: none;
-    bottom: calc(100% + 8px);
-    max-width: min(320px, calc(100vw - 64px));
-    white-space: normal;
-    line-height: 1.45;
-    text-wrap: pretty;
-    word-break: break-word;
-}
-
 .live-activity-meta {
     display: flex;
     align-items: center;
@@ -1647,7 +1635,6 @@
 }
 
 .workflow-runtime-meta,
-.workflow-runtime-detail-head,
 .workflow-runtime-feed-title {
     display: flex;
     align-items: center;
@@ -1662,167 +1649,42 @@
     font-weight: 760;
 }
 
-.workflow-runtime-meta span:last-child {
-    color: rgba(126, 216, 255, .84);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-}
-
-.workflow-runtime-steps {
+.workflow-runtime-cards {
     display: grid;
-    padding-left: 10px;
-    border-left: 1px solid rgba(123, 164, 222, .28);
 }
 
-.workflow-runtime-step {
-    min-width: 0;
-    min-height: 34px;
-    padding: 5px 8px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    text-align: left;
-    color: rgba(209, 220, 242, .82);
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    cursor: pointer;
-    transition: background .18s ease, color .18s ease;
+.workflow-node-card {
+    padding-inline: 4px;
 }
 
-.workflow-runtime-step:hover,
-.workflow-runtime-step.selected {
-    color: #f4f7ff;
-    background: rgba(121, 172, 255, .1);
+.workflow-node-card .avatar {
+    background:
+        radial-gradient(circle at 50% 36%, rgba(255, 225, 164, .18), transparent 57%),
+        rgba(20, 25, 38, .68);
 }
 
-.workflow-runtime-step:focus-visible {
-    outline: 2px solid var(--cyan);
-    outline-offset: 2px;
+.workflow-node-card .avatar .portrait {
+    width: 46px;
+    height: 46px;
+    padding: 3px;
+    object-fit: contain;
+    object-position: center;
 }
 
-.workflow-runtime-step-index {
-    width: 17px;
-    height: 17px;
-    flex: 0 0 17px;
-    display: grid;
-    place-items: center;
-    color: #1e1708;
-    border: 1px solid rgba(239, 191, 100, .82);
-    border-radius: 50%;
-    background: rgba(239, 191, 100, .92);
-    box-shadow: 0 0 10px rgba(239, 191, 100, .18);
-    font: 700 9px/1 'JetBrains Mono', monospace;
+.workflow-node-card.status-running {
+    background: linear-gradient(90deg, rgba(72, 134, 232, .10), transparent 78%);
 }
 
-.workflow-runtime-step.status-running .workflow-runtime-step-index,
-.workflow-runtime-step.status-done .workflow-runtime-step-index {
-    color: #1e1708;
-    border-color: rgba(239, 191, 100, .82);
-    background: rgba(239, 191, 100, .92);
-    animation: none;
+.workflow-node-output {
+    margin-top: 9px;
 }
 
-.workflow-runtime-step-title {
-    min-width: 0;
-    overflow: hidden;
-    font-size: 12px;
-    font-weight: 680;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.workflow-runtime-step-status {
-    margin-left: auto;
-    width: 16px;
-    height: 16px;
-    flex: 0 0 16px;
-    display: grid;
-    place-items: center;
-    color: rgba(157, 171, 202, .76);
-    border: 0;
-    border-radius: 50%;
-    background: rgba(20, 25, 38, 0.6);
-    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
-}
-
-.workflow-runtime-step-status .ico {
-    width: 14px;
-    height: 14px;
-}
-
-.workflow-runtime-step-status.status-running {
-    color: #8fb3ff;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-}
-
-.workflow-runtime-step-status.status-running .ico {
-    animation: live-loading-spin 1s linear infinite;
-}
-
-.workflow-runtime-step-status.status-done {
-    color: var(--green-2);
-    background: rgba(54, 211, 159, 0.16);
-    box-shadow: inset 0 0 0 0.5px rgba(54, 211, 159, 0.34);
-}
-
-.workflow-runtime-step-status.status-failed {
-    color: #ff7d8e;
-    background: rgba(255, 125, 142, 0.16);
-    box-shadow: inset 0 0 0 0.5px rgba(255, 125, 142, 0.34);
-}
-
-.workflow-runtime-step-status.status-pending::before {
-    content: '';
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: rgba(157, 171, 202, .72);
-}
-
-.workflow-runtime-detail {
-    margin: 2px 0 0 10px;
-    padding: 8px 10px;
-    display: grid;
-    gap: 8px;
-    border-left: 2px solid rgba(126, 216, 255, .52);
-    border-radius: 0 6px 6px 0;
-    background: rgba(9, 15, 27, .58);
-}
-
-.workflow-runtime-detail-head strong {
-    color: #edf2ff;
-    font-size: 12px;
-}
-
-.workflow-runtime-detail-head span {
-    color: var(--cyan);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-}
-
-.workflow-runtime-detail-row > span,
 .workflow-runtime-feed-title {
     color: #9ba7c0;
     font-size: 10px;
     font-weight: 700;
     letter-spacing: .08em;
     text-transform: uppercase;
-}
-
-.workflow-runtime-detail-row pre {
-    max-height: 150px;
-    margin: 5px 0 0;
-    padding: 8px;
-    overflow: auto;
-    color: #d9e2f5;
-    border-radius: 5px;
-    background: rgba(4, 6, 11, 0.72);
-    font: 10px/1.5 'JetBrains Mono', monospace;
-    white-space: pre-wrap;
-    word-break: break-word;
 }
 
 .workflow-runtime-feed-head {
@@ -1895,7 +1757,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .workflow-runtime-step.status-running .workflow-runtime-step-index,
     .side-panel-head .live-badge .dot {
         animation: none;
     }
@@ -1917,18 +1778,6 @@
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
-}
-
-.live-card .body .desc[data-tooltip]:hover::after,
-.live-card .body .desc[data-tooltip]:focus-visible::after {
-    left: 0;
-    transform: none;
-    bottom: calc(100% + 8px);
-    max-width: min(320px, calc(100vw - 64px));
-    white-space: normal;
-    line-height: 1.45;
-    text-wrap: pretty;
-    word-break: break-word;
 }
 
 .live-card .step-row {
@@ -2194,4 +2043,3 @@
 .runtime-item-body.output {
     color: #b8d4ff;
 }
-

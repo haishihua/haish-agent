@@ -194,7 +194,6 @@ export function TaskDelegation({
           disabled={disabled}
           maxLength={5000}
         />
-        <div className="char-count">{v.length} / 5000</div>
       </div>
       <div className="td-actions">
         <div className="td-tools">

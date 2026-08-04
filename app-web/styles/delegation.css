@@ -83,7 +83,7 @@
     max-height: 132px;
     line-height: 1.4;
     letter-spacing: 0;
-    padding: 0 64px 0 0;
+    padding: 0;
     margin: 0;
     overflow-y: auto;
     scrollbar-width: thin;
@@ -103,18 +103,6 @@
 
 .task-delegation textarea::placeholder {
     color: var(--dim-2);
-}
-
-.task-delegation .char-count {
-    position: absolute;
-    right: 12px;
-    bottom: 7px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: var(--dim-2);
-    pointer-events: none;
-    background: linear-gradient(180deg, rgba(18, 23, 37, 0) 0%, rgba(18, 23, 37, 0.62) 60%);
-    padding: 4px 4px 0 14px;
 }
 
 .task-delegation .td-actions {
@@ -617,14 +605,6 @@
     color: var(--gold);
 }
 
-.task-delegation .context-usage-btn[data-tooltip][data-tooltip-multiline="true"]:hover::after,
-.task-delegation .context-usage-btn[data-tooltip][data-tooltip-multiline="true"]:focus-visible::after {
-    white-space: pre-line;
-    line-height: 1.35;
-    text-align: left;
-    min-width: 250px;
-}
-
 .task-delegation .context-usage-btn.compressed {
     filter: drop-shadow(0 0 6px rgba(239, 191, 100, 0.22));
 }
@@ -737,4 +717,3 @@
     align-items: center;
     justify-content: center;
 }
-

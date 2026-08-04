@@ -94,15 +94,23 @@ export function createScenePlaybackHelpers(ctx) {
   }
 
   function appendTaskEvent(taskId, event) {
-    updateTaskById(taskId, (task) => ({
-      ...task,
-      loopIndex: Math.max(task.loopIndex || 0, event.loop_index || 0),
-      activeRole: event.actor || task.activeRole,
-      eventLog: [
-        ...task.eventLog,
-        worldEventToRuntimeLog(event),
-      ],
-    }));
+    updateTaskById(taskId, (task) => {
+      const runtimeEvent = worldEventToRuntimeLog(event);
+      return {
+        ...task,
+        loopIndex: Math.max(task.loopIndex || 0, event.loop_index || 0),
+        activeRole: event.actor || task.activeRole,
+        eventLog: [
+          ...task.eventLog,
+          {
+            ...runtimeEvent,
+            workflowNodeId: runtimeEvent.workflowNodeId
+              || task.workflowRun?.current_node_id
+              || null,
+          },
+        ],
+      };
+    });
   }
 
   function dropPendingSceneItems(taskId = null) {

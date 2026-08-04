@@ -180,13 +180,28 @@ export function summarizeText(text, limit = 88) {
 
 export function toDisplayText(value) {
   if (value == null) return '';
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+      try {
+        return toDisplayText(JSON.parse(text));
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  }
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (Array.isArray(value)) {
     return value.map((item) => toDisplayText(item)).filter(Boolean).join('\n');
   }
   if (typeof value === 'object') {
-    if (typeof value.content === 'string') return value.content;
+    for (const key of ['answer', 'summary', 'text', 'content', 'message', 'output', 'result']) {
+      if (value[key] != null) {
+        const displayText = toDisplayText(value[key]);
+        if (displayText) return displayText;
+      }
+    }
     try {
       return JSON.stringify(value);
     } catch {
@@ -194,6 +209,24 @@ export function toDisplayText(value) {
     }
   }
   return String(value);
+}
+
+export function finalWorkflowResultText(task, fallback = '') {
+  const nodeTypes = new Map(
+    (task?.workflowSnapshot?.nodes || []).map((node) => [String(node?.id || ''), String(node?.type || '')]),
+  );
+  const nodeResult = Object.entries(task?.workflowRun?.nodes || {})
+    .reverse()
+    .find(([nodeId, node]) => {
+      const nodeType = nodeTypes.get(nodeId) || (nodeId === 'start' || nodeId === 'output' ? nodeId : '');
+      return !['start', 'output', 'condition'].includes(nodeType)
+        && toDisplayText(node?.summary ?? node?.text ?? node?.output).trim();
+    });
+  if (nodeResult) {
+    const node = nodeResult[1];
+    return toDisplayText(node?.summary ?? node?.text ?? node?.output).trim();
+  }
+  return toDisplayText(fallback || task?.answerText || task?.error).trim();
 }
 
 export function skillDisplayName(event) {
@@ -280,6 +313,7 @@ export function worldEventToRuntimeLog(event) {
     skillPath: event.skill_path || '',
     provider: event.provider || null,
     providerKey: event.provider_key || null,
+    workflowNodeId: event.workflow_node_id || null,
     model: event.model || null,
     reason: event.reason || '',
     usedTokens: event.used_tokens || null,

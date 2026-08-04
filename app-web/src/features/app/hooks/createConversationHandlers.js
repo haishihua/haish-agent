@@ -1,5 +1,7 @@
 // @haish-esm
 // Extracted from AppShell.jsx (Phase C). Behavior-preserving factory.
+import { finalWorkflowResultText } from '../../../lib/world-events.js';
+
 export function createConversationHandlers(ctx) {
   const {
     API_BASE,
@@ -488,7 +490,10 @@ export function createConversationHandlers(ctx) {
     const workflowNodes = Object.entries(task?.workflowRun?.nodes || {}).map(([nodeId, node]) => (
       `${node?.success === false ? '✕' : '✓'} ${nodeId}: ${node?.summary || node?.error || node?.status || ''}`
     ));
-    const result = String(task?.answerText || workflowNodes.join('\n') || task?.error || '').trim();
+    const result = finalWorkflowResultText(
+      task,
+      task?.answerText || workflowNodes.join('\n') || task?.error || '',
+    );
     if (!result) return;
     setHollow({
       title: task?.title || 'Final Report',

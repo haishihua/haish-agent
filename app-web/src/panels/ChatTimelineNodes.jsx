@@ -454,13 +454,15 @@ export function ChatProcessConversation({ view }) {
         <div className="chat-imsg-row from-main">
           <div className="chat-imsg-bubble main">
             {view.mediaPath ? (
-              <div className="chat-imsg-attachment" title={view.mediaPath}>
-                <span className="chat-imsg-attachment-icon ico ico-image-describe" aria-hidden="true" />
-                <span className="chat-imsg-attachment-name">{fileName}</span>
-                {view.visionMode ? (
-                  <span className="chat-imsg-attachment-mode">{view.visionMode}</span>
-                ) : null}
-              </div>
+              <PortalTooltip text={view.mediaPath} position="above" multiline>
+                <div className="chat-imsg-attachment">
+                  <span className="chat-imsg-attachment-icon ico ico-image-describe" aria-hidden="true" />
+                  <span className="chat-imsg-attachment-name">{fileName}</span>
+                  {view.visionMode ? (
+                    <span className="chat-imsg-attachment-mode">{view.visionMode}</span>
+                  ) : null}
+                </div>
+              </PortalTooltip>
             ) : null}
             {fields.length > 0 ? (
               <div className="chat-imsg-fields">

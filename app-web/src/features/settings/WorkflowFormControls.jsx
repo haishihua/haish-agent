@@ -2,6 +2,7 @@
 import React from 'react';
 import {
   workflowOutputFields,
+  workflowParameterEntries,
   workflowSchemaFields,
   WORKFLOW_OUTPUT_FIELD_OPTIONS,
   workflowTemplateVariablePath,
@@ -85,6 +86,7 @@ export function WorkflowTemplateTextarea({
   variableHint = '',
   title = '',
   hint = '',
+  embedded = false,
 }) {
   const text = String(sanitizeWorkflowTemplateValue(value ?? ''));
   const textareaRef = useRef(null);
@@ -140,7 +142,7 @@ export function WorkflowTemplateTextarea({
   );
   if (!panelTitle) return body;
   return (
-    <div className="workflow-io-panel workflow-input-panel">
+    <div className={`workflow-io-panel workflow-input-panel${embedded ? ' is-embedded' : ''}`}>
       <div className="workflow-io-panel-head">
         <div className="workflow-io-panel-copy">
           {titleNode}
@@ -149,6 +151,95 @@ export function WorkflowTemplateTextarea({
       <div className="workflow-input-panel-body">
         {body}
       </div>
+    </div>
+  );
+}
+
+function nextParameterName(rows) {
+  let index = rows.length + 1;
+  while (rows.some((row) => row.name === `arg${index}`)) index += 1;
+  return `arg${index}`;
+}
+
+function sanitizeParameterName(value) {
+  return String(value || '')
+    .replace(/[^A-Za-z0-9_]/g, '_')
+    .replace(/^[0-9]+/, '');
+}
+
+export function WorkflowParameterEditor({
+  parameters,
+  variables,
+  onChange,
+  disabled = false,
+  children = null,
+}) {
+  const rows = workflowParameterEntries(parameters);
+  const updateRow = (id, patch) => {
+    onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+  };
+  return (
+    <div className="workflow-parameter-panel">
+      <div className="workflow-parameter-head">
+        <div>
+          <PortalTooltip text="Give upstream data short names for this node." position="above" multiline>
+            <strong className="settings-field-label has-hint" tabIndex={0}>Input parameters</strong>
+          </PortalTooltip>
+        </div>
+        {!disabled ? (
+          <button
+            type="button"
+            className="workflow-parameter-add"
+            onClick={() => onChange([
+              ...rows,
+              {
+                id: `parameter_${Date.now()}_${rows.length}`,
+                name: nextParameterName(rows),
+                value: '',
+              },
+            ])}
+          >
+            + parameter
+          </button>
+        ) : null}
+      </div>
+      {rows.length ? (
+        <div className="workflow-parameter-list">
+          {rows.map((row) => (
+            <div className="workflow-parameter-row" key={row.id}>
+              <input
+                className="workflow-parameter-name"
+                value={row.name}
+                disabled={disabled}
+                aria-label="Parameter name"
+                placeholder="arg1"
+                onChange={(event) => updateRow(row.id, {
+                  name: sanitizeParameterName(event.target.value),
+                })}
+              />
+              <WorkflowVariableSelect
+                value={row.value}
+                variables={variables}
+                disabled={disabled}
+                onChange={(value) => updateRow(row.id, { value })}
+              />
+              {!disabled ? (
+                <button
+                  type="button"
+                  className="workflow-parameter-delete"
+                  aria-label={`Delete parameter ${row.name || ''}`.trim()}
+                  onClick={() => onChange(rows.filter((item) => item.id !== row.id))}
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="workflow-parameter-empty">No parameters yet.</div>
+      )}
+      {children}
     </div>
   );
 }
@@ -295,5 +386,3 @@ export function WorkflowOutputContract({ node }) {
     </div>
   );
 }
-
-

@@ -17,6 +17,10 @@ import {
   normalizeTaskStatus,
 } from '../lib/task-runtime.js';
 import {
+  buildPenguinCast,
+  taskProgressText,
+} from '../lib/bot-scene.js';
+import {
   usePanelWidth,
 } from './TaskRecords.jsx';
 export function getLiveEntries(agentData) {
@@ -206,30 +210,49 @@ function workflowNodeLabel(node) {
   return node?.type === 'output' ? 'End' : (node?.label || node?.id || 'Node');
 }
 
-function WorkflowRuntimeStepStatusIcon({ status }) {
-  if (status === 'done') {
-    return <span className="workflow-runtime-step-status status-done" title="Done" aria-hidden="true"><span className="ico ico-check" /></span>;
-  }
-  if (status === 'failed') {
-    return <span className="workflow-runtime-step-status status-failed" title="Failed" aria-hidden="true"><span className="ico ico-close" /></span>;
-  }
-  if (status === 'running') {
-    return <span className="workflow-runtime-step-status status-running" title="Running" aria-hidden="true"><span className="ico ico-loading" /></span>;
-  }
-  return <span className="workflow-runtime-step-status status-pending" title="Pending" aria-hidden="true" />;
-}
-
-function runtimeValue(value) {
-  if (value == null || value === '') return '—';
-  if (typeof value === 'string') return value;
-  try { return JSON.stringify(value, null, 2); } catch { return String(value); }
-}
-
 function workflowIdentity(workflow) {
   return String(workflow?.workflow_id || workflow?.id || '').trim();
 }
 
-function WorkflowRuntime({ task, workflow: workflowProp = null }) {
+function WorkflowNodeCard({ node, index, status, actor, task, run, now, isFinalNode }) {
+  const spriteKey = actor?.spriteKey || `penguin_${(index % 4) + 1}`;
+  const result = run?.nodes?.[node.id];
+  const timestamp = result?.finished_at
+    || result?.started_at
+    || task?.updatedAt
+    || task?.ts;
+  const timestampMs = typeof timestamp === 'number' ? timestamp : Date.parse(String(timestamp || ''));
+  const visibleText = actor ? taskProgressText(task, node.id, { isFinalNode }) : '';
+  return (
+    <article className={`live-card workflow-node-card status-${status}`}>
+      <div className="avatar">
+        <img
+          className="portrait"
+          src={`assets/world/penguins/${spriteKey}/idle_01.png`}
+          alt=""
+          loading="lazy"
+        />
+      </div>
+      <div className="body">
+        <div className="row">
+          <div className="name">{workflowNodeLabel(node)}</div>
+          <div className="ago">{Number.isFinite(timestampMs) ? fmtAgoCompact(timestampMs, now) : ''}</div>
+        </div>
+        {visibleText ? (
+          <div className="live-activity-list workflow-node-output">
+            <LiveActivityRow entry={{
+              id: `${node.id}:visible-output`,
+              description: visibleText,
+              status: status === 'failed' ? 'failed' : status === 'done' ? 'done' : 'pending',
+            }} />
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function WorkflowRuntime({ task, workflow: workflowProp = null, now }) {
   const workflow = workflowProp || task?.workflowSnapshot || null;
   const taskWorkflowId = workflowIdentity(task?.workflowSnapshot);
   const displayWorkflowId = workflowIdentity(workflow);
@@ -238,15 +261,13 @@ function WorkflowRuntime({ task, workflow: workflowProp = null }) {
   const run = taskWorkflowId && displayWorkflowId && taskWorkflowId === displayWorkflowId
     ? task?.workflowRun
     : null;
-  const [selectedNodeId, setSelectedNodeId] = React.useState('');
-  const nodes = Array.isArray(workflow?.nodes) ? workflow.nodes : [];
-  const selectedNode = workflow?.nodes?.find((node) => node.id === selectedNodeId) || null;
-  const selectedResult = selectedNode ? run?.nodes?.[selectedNode.id] : null;
-  const doneCount = nodes.filter((node) => workflowNodeStatus(node.id, run) === 'done').length;
-
-  React.useEffect(() => {
-    setSelectedNodeId('');
-  }, [displayWorkflowId]);
+  const castByNode = new Map(buildPenguinCast(workflow).map((actor) => [actor.nodeId, actor]));
+  const nodes = workflowRuntimeLevels(workflow)
+    .flat()
+    .filter((node) => castByNode.has(String(node.id)));
+  const finalNodeId = normalizeTaskStatus(run?.status || task?.status) === 'done'
+    ? nodes.findLast((node) => run?.nodes?.[node.id])?.id
+    : null;
 
   if (!workflow?.nodes?.length) {
     return <div className="workflow-runtime-empty">Select or run a Bot workflow to see its nodes.</div>;
@@ -256,43 +277,25 @@ function WorkflowRuntime({ task, workflow: workflowProp = null }) {
     <section className="workflow-runtime" aria-label="Workflow runtime">
       <div className="workflow-runtime-meta">
         <span>{workflow.display_name || workflow.workflow_id || workflow.id}</span>
-        <span>{doneCount}/{nodes.length}</span>
       </div>
-      <div className="workflow-runtime-steps">
+      <div className="workflow-runtime-cards">
         {nodes.map((node, index) => {
           const status = workflowNodeStatus(node.id, run);
           return (
-            <button
+            <WorkflowNodeCard
               key={node.id}
-              type="button"
-              className={`workflow-runtime-step status-${status} ${selectedNodeId === node.id ? 'selected' : ''}`}
-              aria-pressed={selectedNodeId === node.id}
-              aria-label={`${workflowNodeLabel(node)}, ${status}`}
-              onClick={() => setSelectedNodeId((current) => current === node.id ? '' : node.id)}
-            >
-              <span className="workflow-runtime-step-index" aria-hidden="true">{index + 1}</span>
-              <span className="workflow-runtime-step-title">{workflowNodeLabel(node)}</span>
-              <WorkflowRuntimeStepStatusIcon status={status} />
-            </button>
+              node={node}
+              index={index}
+              status={status}
+              actor={castByNode.get(String(node.id))}
+              task={task}
+              run={run}
+              now={now}
+              isFinalNode={node.id === finalNodeId}
+            />
           );
         })}
       </div>
-      {selectedNode ? (
-        <div className="workflow-runtime-detail">
-          <div className="workflow-runtime-detail-head">
-            <strong>{workflowNodeLabel(selectedNode)}</strong>
-            <span>{selectedResult?.duration_ms != null ? `${selectedResult.duration_ms} ms` : workflowNodeStatus(selectedNode.id, run)}</span>
-          </div>
-          <div className="workflow-runtime-detail-row">
-            <span>Input</span>
-            <pre>{runtimeValue(selectedNode.arguments || selectedNode.input_mapping || selectedNode.prompt || run?.input)}</pre>
-          </div>
-          <div className="workflow-runtime-detail-row">
-            <span>{selectedResult?.success === false ? 'Error' : 'Output'}</span>
-            <pre>{runtimeValue(selectedResult?.error || selectedResult?.structured || selectedResult?.value || selectedResult?.summary)}</pre>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }
@@ -340,7 +343,7 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask, wor
         ) : null}
       </div>
       <div className="side-panel-body">
-        {showWorkflowPanel ? <WorkflowRuntime task={workflowTaskMatchesDisplay ? currentTask : null} workflow={displayWorkflow} /> : null}
+        {showWorkflowPanel ? <WorkflowRuntime task={workflowTaskMatchesDisplay ? currentTask : null} workflow={displayWorkflow} now={now} /> : null}
         {showWorkflowPanel && agents.length > 0 ? (
           <div className="workflow-runtime-feed-head">
             <div className="workflow-runtime-feed-title">Agent activity</div>

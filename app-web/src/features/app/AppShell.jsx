@@ -1733,7 +1733,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   }, [worldTaskState]);
   const worldWorkflow = useMemo(() => {
     const selected = workflowById(workflowSettingsDraft, selectedWorkflowId || defaultWorkflowId);
-    return currentTask?.executionMode === 'bot' && isTaskActuallyActive(currentTask) && currentTask.workflowSnapshot
+    return currentTask?.executionMode === 'bot' && currentTask.workflowSnapshot
       ? currentTask.workflowSnapshot
       : selected;
   }, [currentTask, defaultWorkflowId, selectedWorkflowId, workflowSettingsDraft]);

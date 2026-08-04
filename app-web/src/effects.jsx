@@ -526,7 +526,6 @@ export function HollowPurple({ open, title, result, onClose }) {
   return (
     <div className="hollow-overlay" onClick={onClose}>
       <div className="hollow-stage" onClick={e => e.stopPropagation()}>
-        <div className="hollow-visual" aria-hidden="true" />
         <div className="iv-modal">
           <section className="iv-header">
             <div className="iv-header-inner">

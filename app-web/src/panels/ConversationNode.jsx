@@ -80,7 +80,6 @@ export function ConversationNode({
         tabIndex={0}
         className="conversation-row"
         draggable={true}
-        title="Double-click to rename"
         onClick={() => onSelectConversation(project.id, conversation.id)}
         onDoubleClick={(event) => {
           // Rename via double-click on the row; ignore action buttons / expand toggle.

@@ -1,6 +1,7 @@
 // @haish-esm
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { PortalTooltip } from './panels/PortalTooltip.jsx';
 
 /**
  * Approval inline card：内嵌到最新一条 assistant 消息气泡（.chat-message-row.agent .chat-bubble）
@@ -258,9 +259,11 @@ import ReactDOM from 'react-dom/client';
           <span className="haish-approval-icon" aria-hidden="true" />
           <span className="haish-approval-title">{title}</span>
           {collapsed ? (
-            <span className="haish-approval-collapsed-preview" title={preview}>
-              {preview.slice(0, 80)}
-            </span>
+            <PortalTooltip text={preview} position="above" multiline>
+              <span className="haish-approval-collapsed-preview">
+                {preview.slice(0, 80)}
+              </span>
+            </PortalTooltip>
           ) : null}
           <span className="haish-approval-tool-badge">{request.tool_name}</span>
           <svg className={`haish-approval-chevron ${collapsed ? '' : 'is-open'}`} viewBox="0 0 12 12" aria-hidden="true">
@@ -358,14 +361,19 @@ import ReactDOM from 'react-dom/client';
                         Allow Once
                       </button>
                       {showAlways ? (
-                        <button
-                          type="button"
-                          className="haish-approval-btn haish-approval-btn-always"
-                          onClick={() => onDecide('allow_always')}
-                          title={`Approve and add ${request.suggested_pattern} to this project's permanent allowlist`}
+                        <PortalTooltip
+                          text={`Approve and add ${request.suggested_pattern} to this project's permanent allowlist`}
+                          position="above"
+                          multiline
                         >
-                          Approve and Remember
-                        </button>
+                          <button
+                            type="button"
+                            className="haish-approval-btn haish-approval-btn-always"
+                            onClick={() => onDecide('allow_always')}
+                          >
+                            Approve and Remember
+                          </button>
+                        </PortalTooltip>
                       ) : null}
                     </>
                   )}

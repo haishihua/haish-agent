@@ -217,7 +217,15 @@ export function createTaskStreamHandlers(ctx) {
                 ...(run.workflowRun?.nodes?.[event.workflow_node_id] || {}),
                 status: event.status || (event.success === false ? 'failed' : 'done'),
                 success: event.success !== false,
-                summary: event.summary || '',
+                summary: toDisplayText(
+                  event.summary
+                  ?? event.output
+                  ?? event.result
+                  ?? event.content
+                  ?? event.answer_text
+                  ?? event.answer
+                  ?? ''
+                ).trim() || run.workflowRun?.nodes?.[event.workflow_node_id]?.summary || '',
                 error: event.error || '',
                 started_at: event.started_at || run.workflowRun?.nodes?.[event.workflow_node_id]?.started_at,
                 finished_at: event.finished_at || event.created_at,

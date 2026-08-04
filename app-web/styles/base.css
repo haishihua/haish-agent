@@ -533,48 +533,6 @@ svg {
     height: 10px;
 }
 
-/* ============ Hover tooltip (data-tooltip) ============ */
-[data-tooltip] {
-    position: relative;
-}
-
-[data-tooltip]:hover::after,
-[data-tooltip]:focus-visible::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    background: linear-gradient(180deg, #161b29, #0e121d);
-    color: var(--gold);
-    border: 1px solid rgba(239, 191, 100, 0.55);
-    padding: 5px 9px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    letter-spacing: 0.5px;
-    line-height: 1;
-    white-space: nowrap;
-    border-radius: 3px;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-    pointer-events: none;
-    z-index: 200;
-    opacity: 0;
-    animation: tooltipIn .12s ease-out forwards .25s;
-}
-
-[data-tooltip][data-tooltip-pos="above"]:hover::after,
-[data-tooltip][data-tooltip-pos="above"]:focus-visible::after {
-    bottom: calc(100% + 8px);
-}
-
-[data-tooltip][data-tooltip-pos="below"]:hover::after,
-[data-tooltip][data-tooltip-pos="below"]:focus-visible::after {
-    top: calc(100% + 8px);
-}
-
-.filter-pill.open[data-tooltip]:hover::after {
-    display: none;
-}
-
 @keyframes tooltipIn {
     to {
         opacity: 1;
@@ -584,10 +542,9 @@ svg {
 /* Portal-rendered tooltip — Apple HIG 风格的深色磨砂胶囊，逃出 overflow:hidden / backdrop-filter 祖先 */
 .portal-tooltip {
     position: fixed;
-    display: inline-flex;
-    align-items: center;
+    display: -webkit-box;
     width: max-content;
-    max-width: min(280px, calc(100vw - 16px));
+    max-width: min(240px, calc(100vw - 16px));
     background: rgba(28, 28, 32, 0.92);
     color: #f4f4f6;
     border: 0;
@@ -596,8 +553,13 @@ svg {
     font-size: 12px;
     font-weight: 500;
     letter-spacing: 0;
-    line-height: 1.25;
-    white-space: nowrap;
+    line-height: 1.35;
+    white-space: normal;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    text-wrap: pretty;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
     border-radius: 6px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42),
     0 1px 2px rgba(0, 0, 0, 0.32),
@@ -616,11 +578,27 @@ svg {
 }
 
 .portal-tooltip.is-multiline {
+    display: block;
     white-space: pre-line;
-    line-height: 1.4;
     text-align: left;
-    min-width: 0;
     padding: 7px 11px;
+    max-height: min(240px, calc(100vh - 16px));
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    pointer-events: auto;
+    -webkit-line-clamp: unset;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.portal-tooltip.is-multiline::-webkit-scrollbar {
+    width: 4px;
+}
+
+.portal-tooltip.is-multiline::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
 }
 
 #root {
@@ -632,4 +610,3 @@ svg {
     radial-gradient(circle at calc(100% - 18px) 18px, rgba(105, 200, 246, 0.12), transparent 86px),
     linear-gradient(180deg, #02040a 0%, #050712 100%);
 }
-

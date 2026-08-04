@@ -8,7 +8,9 @@ import {
   Position,
   MarkerType,
   ReactFlowProvider,
+  applyEdgeChanges,
   useReactFlow,
+  useNodesState,
 } from '@xyflow/react';
 import {
   normalizeWorkflowNode,
@@ -25,6 +27,9 @@ import {
   sanitizeWorkflowTemplateValue,
   workflowTokenRangeAt,
   workflowArgumentsText,
+  workflowParameterEntries,
+  workflowTemplateWithParameterAliases,
+  reconcileWorkflowParameterTemplate,
   WORKFLOW_OUTPUT_FIELD_OPTIONS,
   DEFAULT_WORKFLOW_OUTPUT_MAPPING,
   DEFAULT_WORKFLOW_OUTPUT_SCHEMA,
@@ -33,12 +38,13 @@ import {
   workflowTemplateVariablePath,
   workflowVariableTypeForValue,
   buildWorkflowOutputPatch,
-  createWorkflowExamplePatch,
   payloadForCustomWorkflow,
   placeAddedWorkflowNode,
+  placeDroppedWorkflowNode,
 } from '../../lib/workflow-catalog.js';
 import {
   agentCatalogFromSettings,
+  workflowToolOptionsFromAgentSettings,
   DEFAULT_WORKFLOW_NODE_TYPES,
   DEFAULT_WORKFLOW_INPUT_SCHEMA,
   SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
@@ -53,61 +59,225 @@ import {
 import {
   WorkflowVariablePicker,
   WorkflowVariableSelect,
+  WorkflowParameterEditor,
   WorkflowTemplateTextarea,
   WorkflowSchemaList,
   WorkflowOutputContract,
 } from './WorkflowFormControls.jsx';
+import { PortalTooltip } from '../../panels/PortalTooltip.jsx';
 
 const { useState, useEffect, useRef, useMemo } = React;
-const ReactFlowNS = { ReactFlow, Background, Controls, Handle, Position, MarkerType, ReactFlowProvider, useReactFlow };
+const ReactFlowNS = {
+  ReactFlow,
+  Background,
+  Controls,
+  Handle,
+  Position,
+  MarkerType,
+  ReactFlowProvider,
+  applyEdgeChanges,
+  useReactFlow,
+};
+const WORKFLOW_NODE_DRAG_TYPE = 'application/x-haish-workflow-node';
 
 const WORKFLOW_NODE_META = {
-  start: { icon: 'play', badge: 'Start' },
-  agent: { icon: 'sparkles', badge: 'Agent' },
-  llm: { icon: 'message', badge: 'LLM' },
-  tool: { icon: 'wrench', badge: 'Tool' },
-  condition: { icon: 'git-branch', badge: 'Condition' },
-  output: { icon: 'circle-check', badge: 'End' },
+  start: { icon: 'play' },
+  agent: { icon: 'workflow-agent' },
+  llm: { icon: 'workflow-llm' },
+  tool: { icon: 'workflow-tool' },
+  condition: { icon: 'workflow-condition' },
+  output: { icon: 'circle-check' },
 };
 
 function workflowNodeMeta(nodeType) {
-  return WORKFLOW_NODE_META[nodeType] || { icon: 'box', badge: typeLabelForWorkflowNode(nodeType) };
+  return WORKFLOW_NODE_META[nodeType] || { icon: 'box' };
 }
 
 export function WorkflowFlowNode({ data, selected }) {
   const flow = ReactFlowNS;
   const Handle = flow.Handle;
-  const Position = flow.Position || { Left: 'left', Right: 'right' };
+  const Position = flow.Position || { Left: 'left', Right: 'right', Bottom: 'bottom' };
   const node = data?.workflowNode || {};
   const nodeType = node.type || 'agent';
   const meta = workflowNodeMeta(nodeType);
+  const incomingBranches = Array.isArray(data?.incomingBranches) ? data.incomingBranches : [];
   const iconName = nodeType === 'agent'
     ? (data?.agentIconName || agentIconNameForAgentId(node.agent_id, data?.agentOptions))
     : meta.icon;
   return (
-    <div className={`workflow-flow-node ${nodeType} ${selected ? 'active' : ''}`}>
-      {Handle && nodeType !== 'start' ? <Handle type="target" position={Position.Left} /> : null}
+    <div className={`workflow-flow-node ${nodeType} ${selected ? 'active' : ''}${data?.dropPreview ? ' is-drop-preview' : ''}`}>
+      {Handle && nodeType !== 'start' ? (
+        <>
+          <Handle type="target" position={Position.Left} />
+          {incomingBranches.includes('true') ? (
+            <Handle
+              id="condition-true"
+              className="workflow-condition-target-handle is-true"
+              type="target"
+              position={Position.Left}
+              aria-label="True branch input"
+              style={{ top: '24%' }}
+            />
+          ) : null}
+          {incomingBranches.includes('false') ? (
+            <Handle
+              id="condition-false"
+              className="workflow-condition-target-handle is-false"
+              type="target"
+              position={Position.Left}
+              aria-label="False default branch input"
+              style={{ top: '76%' }}
+            />
+          ) : null}
+        </>
+      ) : null}
       <span className="workflow-flow-node-icon" aria-hidden="true">
         <SettingsLucideIcon name={iconName} size={16} />
       </span>
       <span className="workflow-flow-node-copy">
-        <span className="workflow-flow-node-badge">{meta.badge}</span>
-        <strong>{node.label || typeLabelForWorkflowNode(nodeType)}</strong>
+        <strong>{node.label}</strong>
       </span>
-      {Handle && nodeType !== 'output' ? <Handle type="source" position={Position.Right} /> : null}
+      {Handle && nodeType === 'condition' ? (
+        <>
+          <Handle
+            id="true"
+            className="workflow-condition-handle is-true"
+            type="source"
+            position={Position.Right}
+            aria-label="True condition branch"
+          />
+          <Handle
+            id="false"
+            className="workflow-condition-handle is-false"
+            type="source"
+            position={Position.Bottom}
+            aria-label="False default branch"
+            style={{ left: 'calc(100% - 18px)' }}
+          />
+        </>
+      ) : null}
+      {Handle && nodeType !== 'condition' && nodeType !== 'output'
+        ? <Handle type="source" position={Position.Right} />
+        : null}
     </div>
   );
 }
 
-function WorkflowCanvasFitView({ workflowKey, nodeCount }) {
+function WorkflowCanvasFitView({ workflowKey }) {
   const { fitView } = useReactFlow();
   useEffect(() => {
     const timer = window.setTimeout(() => {
       fitView({ padding: 0.18, minZoom: 0.45, maxZoom: 1.15, duration: 220 });
     }, 40);
     return () => window.clearTimeout(timer);
-  }, [fitView, workflowKey, nodeCount]);
+  }, [fitView, workflowKey]);
   return null;
+}
+
+function WorkflowDropCanvas({
+  nodes,
+  onNodesChange,
+  onNodeDragStart,
+  onNodeDragStop,
+  draggedNodeType,
+  onDropNode,
+  onDropTargetChange,
+  ...props
+}) {
+  const { screenToFlowPosition } = useReactFlow();
+  const [canvasNodes, setCanvasNodes, onCanvasNodesChange] = useNodesState(nodes);
+  const [dropPreview, setDropPreview] = useState(null);
+  const isNodeDraggingRef = useRef(false);
+  const isWorkflowNodeDrag = (event) => (
+    Array.from(event.dataTransfer?.types || []).includes(WORKFLOW_NODE_DRAG_TYPE)
+  );
+
+  useEffect(() => {
+    if (!isNodeDraggingRef.current) setCanvasNodes(nodes);
+  }, [nodes, setCanvasNodes]);
+
+  useEffect(() => {
+    if (!draggedNodeType) setDropPreview(null);
+  }, [draggedNodeType]);
+
+  const previewNode = dropPreview
+    ? {
+      id: '__workflow_drop_preview__',
+      type: 'workflowNode',
+      position: dropPreview.position,
+      data: {
+        workflowNode: {
+          id: '__workflow_drop_preview__',
+          type: dropPreview.type,
+          label: typeLabelForWorkflowNode(dropPreview.type),
+        },
+        agentIconName: dropPreview.type === 'agent' ? 'workflow-agent' : undefined,
+        dropPreview: true,
+      },
+      draggable: false,
+      selectable: false,
+      connectable: false,
+      focusable: false,
+      className: 'workflow-drop-preview-node',
+    }
+    : null;
+
+  return (
+    <ReactFlow
+      {...props}
+      nodes={previewNode ? [...canvasNodes, previewNode] : canvasNodes}
+      onNodesChange={(changes) => {
+        onCanvasNodesChange(changes);
+        const persistedChanges = changes.filter((change) => change.type === 'remove');
+        if (persistedChanges.length) onNodesChange?.(persistedChanges);
+      }}
+      onNodeDragStart={(event, node, draggedNodes) => {
+        isNodeDraggingRef.current = true;
+        onNodeDragStart?.(event, node, draggedNodes);
+      }}
+      onNodeDragStop={(event, node, draggedNodes) => {
+        isNodeDraggingRef.current = false;
+        onNodeDragStop?.(event, node, draggedNodes);
+      }}
+      onDragEnter={(event) => {
+        if (!isWorkflowNodeDrag(event)) return;
+        event.preventDefault();
+        onDropTargetChange(true);
+      }}
+      onDragOver={(event) => {
+        if (!isWorkflowNodeDrag(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+        onDropTargetChange(true);
+        const flowPosition = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        const previewPosition = placeDroppedWorkflowNode(
+          [],
+          { id: '__workflow_drop_preview__' },
+          flowPosition,
+        ).position;
+        setDropPreview((current) => (
+          current?.type === draggedNodeType
+          && current.position.x === previewPosition.x
+          && current.position.y === previewPosition.y
+            ? current
+            : { type: draggedNodeType, position: previewPosition }
+        ));
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        onDropTargetChange(false);
+        setDropPreview(null);
+      }}
+      onDrop={(event) => {
+        const nodeType = event.dataTransfer?.getData(WORKFLOW_NODE_DRAG_TYPE);
+        if (!nodeType) return;
+        event.preventDefault();
+        onDropTargetChange(false);
+        setDropPreview(null);
+        onDropNode(nodeType, screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+      }}
+    />
+  );
 }
 
 const WORKFLOW_REACT_FLOW_NODE_TYPES = { workflowNode: WorkflowFlowNode };
@@ -116,8 +286,25 @@ export function canConnectWorkflowNodes(source, target) {
   return Boolean(source && target && source.id !== target.id && source.type !== 'output' && target.type !== 'start');
 }
 
-export function addWorkflowEdge(edges, from, to) {
-  if (!from || !to || from === to || edges.some((edge) => edge.from === from && edge.to === to)) return edges;
+export function workflowEdgeId(edge) {
+  return `${edge?.from || ''}:${edge?.branch || ''}->${edge?.to || ''}`;
+}
+
+export function addWorkflowEdge(edges, from, to, branch = '') {
+  if (!from || !to || from === to) return edges;
+  const normalizedBranch = branch === 'default' ? 'false' : branch;
+  if (edges.some((edge) => (
+    edge.from === from
+    && edge.to === to
+    && (edge.branch || '') === normalizedBranch
+  ))) return edges;
+  if (normalizedBranch === 'true' || normalizedBranch === 'false') {
+    return [
+      ...edges.filter((edge) => !(edge.from === from && edge.branch === normalizedBranch)),
+      { from, to, branch: normalizedBranch },
+    ];
+  }
+  if (edges.some((edge) => edge.from === from && edge.to === to && !edge.branch)) return edges;
   return [...edges, { from, to }];
 }
 
@@ -132,10 +319,13 @@ export function WorkflowConfigEditor({
 }) {
   const normalized = normalizeWorkflowSettings(settings);
   const agentOptions = agentCatalogFromSettings(agentSettings).options;
+  const toolOptions = workflowToolOptionsFromAgentSettings(agentSettings);
   const workflow = workflowById(normalized, selectedId);
   const [selectedNodeId, setSelectedNodeId] = useState('');
   const [selectedEdgeId, setSelectedEdgeId] = useState('');
   const [nodePanelWidth, setNodePanelWidth] = useState(340);
+  const [draggedNodeType, setDraggedNodeType] = useState('');
+  const [isCanvasDropTarget, setIsCanvasDropTarget] = useState(false);
   const nodePanelResizeRef = useRef(null);
 
   useEffect(() => {
@@ -160,7 +350,7 @@ export function WorkflowConfigEditor({
   const nodes = workflow.nodes || [];
   const edges = workflow.edges || [];
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
-  const selectedEdge = edges.find((edge) => `${edge.from}->${edge.to}` === selectedEdgeId) || null;
+  const selectedEdge = edges.find((edge) => workflowEdgeId(edge) === selectedEdgeId) || null;
   const availableVariables = workflowVariableCatalog(workflow, selectedNodeId);
   const typeOptions = normalized.node_types
     .filter((item) => item.id !== 'output')
@@ -193,6 +383,9 @@ export function WorkflowConfigEditor({
     data: {
       workflowNode: node,
       agentOptions,
+      incomingBranches: edges
+        .filter((edge) => edge.to === node.id && edge.branch)
+        .map((edge) => edge.branch),
       agentIconName: node.type === 'agent'
         ? agentIconNameForAgentId(node.agent_id, agentOptions)
         : undefined,
@@ -200,56 +393,69 @@ export function WorkflowConfigEditor({
     selected: node.id === selectedNodeId,
     draggable: isEditable,
   }));
-  const reactEdges = edges.map((edge) => ({
-    id: `${edge.from}->${edge.to}`,
+  const reactEdges = edges.map((edge) => {
+    const edgeId = workflowEdgeId(edge);
+    const isSelected = edgeId === selectedEdgeId;
+    const branchColor = edge.branch === 'true'
+      ? 'rgba(120, 218, 139, 0.42)'
+      : edge.branch === 'false'
+        ? 'rgba(176, 196, 220, 0.3)'
+        : 'rgba(185, 196, 216, 0.26)';
+    return {
+    id: edgeId,
     source: edge.from,
     target: edge.to,
-    // Straight keeps collinear nodes on a true line; smoothstep always elbows.
-    type: 'straight',
-    selected: `${edge.from}->${edge.to}` === selectedEdgeId,
+    sourceHandle: edge.branch || undefined,
+    targetHandle: edge.branch ? `condition-${edge.branch}` : undefined,
+    type: edge.branch ? 'smoothstep' : 'straight',
+    pathOptions: edge.branch ? { borderRadius: 10, offset: 20 } : undefined,
+    label: edge.branch === 'true'
+      ? 'True'
+      : edge.branch === 'false'
+        ? 'False · default'
+        : undefined,
+    labelStyle: edge.branch
+      ? {
+        fill: edge.branch === 'true'
+          ? 'rgba(144, 226, 158, 0.92)'
+          : 'rgba(205, 215, 232, 0.68)',
+        fontSize: 10,
+        fontWeight: 700,
+      }
+      : undefined,
+    labelBgStyle: edge.branch ? { fill: 'rgba(9, 14, 24, 0.92)' } : undefined,
+    labelBgPadding: edge.branch ? [5, 3] : undefined,
+    labelBgBorderRadius: edge.branch ? 5 : undefined,
+    selected: isSelected,
     interactionWidth: 28,
-    animated: `${edge.from}->${edge.to}` === selectedEdgeId,
+    zIndex: edge.branch ? 2 : 0,
+    animated: isSelected,
     style: {
-      stroke: `${edge.from}->${edge.to}` === selectedEdgeId
-        ? 'rgba(105, 200, 246, 0.95)'
-        : 'rgba(239, 191, 100, 0.62)',
-      strokeWidth: `${edge.from}->${edge.to}` === selectedEdgeId ? 2.5 : 2,
+      stroke: isSelected ? 'rgba(105, 200, 246, 0.58)' : branchColor,
+      strokeWidth: isSelected ? 1.8 : 1.5,
     },
     markerEnd: MarkerType.ArrowClosed
       ? {
         type: MarkerType.ArrowClosed,
-        width: 18,
-        height: 18,
-        color: `${edge.from}->${edge.to}` === selectedEdgeId
-          ? 'rgba(105, 200, 246, 0.95)'
-          : 'rgba(239, 191, 100, 0.72)',
+        width: 14,
+        height: 14,
+        color: isSelected ? 'rgba(105, 200, 246, 0.64)' : branchColor,
       }
       : undefined,
-  }));
+    };
+  });
   const onReactFlowNodesChange = (changes) => {
-    if (!isEditable || !flow.applyNodeChanges) return;
+    if (!isEditable) return;
     const removeIds = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id));
-    if (removeIds.size) {
-      const removableIds = new Set(nodes.filter((node) => removeIds.has(node.id) && !['start', 'output'].includes(node.type)).map((node) => node.id));
-      if (!removableIds.size) return;
-      updateWorkflow({
-        nodes: nodes.filter((node) => !removableIds.has(node.id)),
-        edges: edges.filter((edge) => !removableIds.has(edge.from) && !removableIds.has(edge.to)),
-      });
-      if (removableIds.has(selectedNodeId)) setSelectedNodeId('');
-      setSelectedEdgeId('');
-      return;
-    }
-    if (!changes.some((change) => change.type === 'position' && change.position)) return;
-    const updated = flow.applyNodeChanges(changes, reactNodes);
-    const updatedById = new Map(updated.map((node) => [node.id, node]));
+    if (!removeIds.size) return;
+    const removableIds = new Set(nodes.filter((node) => removeIds.has(node.id) && !['start', 'output'].includes(node.type)).map((node) => node.id));
+    if (!removableIds.size) return;
     updateWorkflow({
-      nodes: nodes.map((node) => {
-        const next = updatedById.get(node.id);
-        if (!next) return node;
-        return normalizeWorkflowNode({ ...node, position: next.position }, node);
-      }),
+      nodes: nodes.filter((node) => !removableIds.has(node.id)),
+      edges: edges.filter((edge) => !removableIds.has(edge.from) && !removableIds.has(edge.to)),
     });
+    if (removableIds.has(selectedNodeId)) setSelectedNodeId('');
+    setSelectedEdgeId('');
   };
   const onReactFlowEdgesChange = (changes) => {
     if (!isEditable || !flow.applyEdgeChanges) return;
@@ -259,7 +465,13 @@ export function WorkflowConfigEditor({
     updateWorkflow({
       edges: updated
         .filter((edge) => edge.source && edge.target)
-        .map((edge) => ({ from: edge.source, to: edge.target })),
+        .map((edge) => ({
+          from: edge.source,
+          to: edge.target,
+          ...(edge.sourceHandle === 'true' || edge.sourceHandle === 'false'
+            ? { branch: edge.sourceHandle }
+            : {}),
+        })),
     });
   };
   const onReactFlowConnect = (connection) => {
@@ -267,7 +479,9 @@ export function WorkflowConfigEditor({
     const source = nodes.find((node) => node.id === connection.source);
     const target = nodes.find((node) => node.id === connection.target);
     if (!canConnectWorkflowNodes(source, target)) return;
-    updateWorkflow({ edges: addWorkflowEdge(edges, connection.source, connection.target) });
+    const branch = source.type === 'condition' ? connection.sourceHandle : '';
+    if (source.type === 'condition' && branch !== 'true' && branch !== 'false') return;
+    updateWorkflow({ edges: addWorkflowEdge(edges, connection.source, connection.target, branch) });
   };
   const onReactFlowNodeDragStop = (_, draggedNode) => {
     if (!isEditable) return;
@@ -284,9 +498,10 @@ export function WorkflowConfigEditor({
       )),
     });
   };
-  const addNode = (type) => {
+  const addNode = (type, dropPosition = null) => {
     const baseType = type || 'agent';
-    const count = nodes.filter((node) => node.type === baseType).length + 1;
+    let count = nodes.filter((node) => node.type === baseType).length + 1;
+    while (nodes.some((node) => node.id === `${baseType}_${count}`)) count += 1;
     const id = `${baseType}_${count}`;
     const newNode = {
       id,
@@ -303,7 +518,7 @@ export function WorkflowConfigEditor({
         },
       } : {}),
       ...(baseType === 'llm' ? { prompt: '{{input.message}}', response_format: 'text' } : {}),
-      ...(baseType === 'tool' ? { tool_name: '', arguments: { query: '{{input.message}}' } } : {}),
+      ...(baseType === 'tool' ? { tool_name: toolOptions[0]?.id || '', arguments: { query: '{{input.message}}' } } : {}),
       ...(baseType === 'condition' ? { expression: '{{nodes.agent_1.success}} == true' } : {}),
       ...(baseType === 'output' ? {
         output_mode: 'json_object',
@@ -312,7 +527,9 @@ export function WorkflowConfigEditor({
         output_schema: DEFAULT_WORKFLOW_OUTPUT_SCHEMA,
       } : {}),
     };
-    const placed = placeAddedWorkflowNode(nodes, newNode);
+    const placed = dropPosition
+      ? placeDroppedWorkflowNode(nodes, newNode, dropPosition)
+      : placeAddedWorkflowNode(nodes, newNode);
     updateWorkflow({ nodes: placed.nodes });
     setSelectedNodeId(id);
     setSelectedEdgeId('');
@@ -329,7 +546,7 @@ export function WorkflowConfigEditor({
   };
   const deleteEdge = (edgeId) => {
     if (!edgeId) return;
-    updateWorkflow({ edges: edges.filter((edge) => `${edge.from}->${edge.to}` !== edgeId) });
+    updateWorkflow({ edges: edges.filter((edge) => workflowEdgeId(edge) !== edgeId) });
     setSelectedEdgeId('');
   };
   const deleteSelection = () => {
@@ -338,15 +555,6 @@ export function WorkflowConfigEditor({
       return;
     }
     if (selectedNode) deleteNode(selectedNode.id);
-  };
-  const loadExampleWorkflow = () => {
-    if (!isEditable) return;
-    const shouldReplace = nodes.length <= 2
-      || window.confirm('Replace this canvas with an example workflow?');
-    if (!shouldReplace) return;
-    updateWorkflow(createWorkflowExamplePatch(agentOptions));
-    setSelectedNodeId('output');
-    setSelectedEdgeId('');
   };
 
   const renderNodeFields = () => {
@@ -361,7 +569,26 @@ export function WorkflowConfigEditor({
         </>
       );
     }
+    const parameterEntries = workflowParameterEntries(selectedNode.parameters);
+    const renderInputParameters = (templateKey, templateValue, children) => (
+      <WorkflowParameterEditor
+        parameters={parameterEntries}
+        variables={availableVariables}
+        disabled={!isEditable}
+        onChange={(parameters) => updateNode(selectedNode.id, {
+          parameters,
+          [templateKey]: reconcileWorkflowParameterTemplate(
+            templateValue,
+            parameterEntries,
+            parameters,
+          ),
+        })}
+      >
+        {children}
+      </WorkflowParameterEditor>
+    );
     if (selectedNode.type === 'agent') {
+      const input = selectedNode.input ?? selectedNode.input_mapping?.message ?? '{{input.message}}';
       return (
         <>
           <FieldRow label="agent">
@@ -382,23 +609,41 @@ export function WorkflowConfigEditor({
               onChange={(event) => updateNode(selectedNode.id, { prompt: event.target.value })}
             />
           </FieldRow>
-          <WorkflowTemplateTextarea
-            title="Input"
-            hint="Dynamic user message sent after the cached agent prefix."
-            value={selectedNode.input ?? selectedNode.input_mapping?.message ?? '{{input.message}}'}
-            variables={availableVariables}
-            disabled={!isEditable}
-            rows={5}
-            variableHint="Insert values from earlier nodes or workflow inputs."
-            onChange={(input) => updateNode(selectedNode.id, { input })}
-          />
+          {renderInputParameters('input', input, (
+            <WorkflowTemplateTextarea
+              title="Input"
+              hint="Dynamic user message sent after the cached agent prefix."
+              value={workflowTemplateWithParameterAliases(input, parameterEntries)}
+              disabled={!isEditable}
+              rows={5}
+              showVariables={false}
+              embedded
+              onChange={(value) => updateNode(selectedNode.id, {
+                input: workflowTemplateWithParameterAliases(value, parameterEntries),
+              })}
+            />
+          ))}
           <WorkflowOutputContract node={selectedNode} />
         </>
       );
     }
     if (selectedNode.type === 'llm') {
+      const prompt = selectedNode.prompt || '{{input.message}}';
       return (
         <>
+          {renderInputParameters('prompt', prompt, (
+            <WorkflowTemplateTextarea
+              title="Prompt"
+              value={workflowTemplateWithParameterAliases(prompt, parameterEntries)}
+              disabled={!isEditable}
+              rows={6}
+              showVariables={false}
+              embedded
+              onChange={(value) => updateNode(selectedNode.id, {
+                prompt: workflowTemplateWithParameterAliases(value, parameterEntries),
+              })}
+            />
+          ))}
           <FieldRow label="response format">
             <SettingsMenuSelect
               className="workflow-menu-select"
@@ -411,51 +656,61 @@ export function WorkflowConfigEditor({
               disabled={!isEditable}
             />
           </FieldRow>
-          <FieldRow label="prompt">
-            <WorkflowTemplateTextarea
-              value={selectedNode.prompt || '{{input.message}}'}
-              variables={availableVariables}
-              disabled={!isEditable}
-              rows={6}
-              onChange={(prompt) => updateNode(selectedNode.id, { prompt })}
-            />
-          </FieldRow>
           <WorkflowOutputContract node={selectedNode} />
         </>
       );
     }
     if (selectedNode.type === 'tool') {
+      const argumentsValue = selectedNode.arguments ?? { query: '{{input.message}}' };
       return (
         <>
           <FieldRow label="tool name">
-            <input value={selectedNode.tool_name || ''} onChange={(event) => updateNode(selectedNode.id, { tool_name: event.target.value })} disabled={!isEditable} placeholder="tool name" />
-          </FieldRow>
-          <FieldRow label="arguments json" hint="Objects and arrays render variables recursively.">
-            <WorkflowTemplateTextarea
-              value={workflowArgumentsText(selectedNode.arguments)}
-              variables={availableVariables}
+            <SettingsMenuSelect
+              className="workflow-menu-select"
+              value={selectedNode.tool_name || ''}
+              options={toolOptions}
+              onChange={(tool_name) => updateNode(selectedNode.id, { tool_name })}
               disabled={!isEditable}
-              rows={6}
-              onChange={(argumentsText) => updateNode(selectedNode.id, { arguments: argumentsText })}
+              placeholder="Select a tool"
+              header="project tools"
             />
           </FieldRow>
+          {renderInputParameters('arguments', argumentsValue, (
+            <WorkflowTemplateTextarea
+              title="Arguments JSON"
+              hint="Objects and arrays render variables recursively."
+              value={workflowArgumentsText(workflowTemplateWithParameterAliases(argumentsValue, parameterEntries))}
+              disabled={!isEditable}
+              rows={6}
+              showVariables={false}
+              embedded
+              onChange={(value) => updateNode(selectedNode.id, {
+                arguments: workflowTemplateWithParameterAliases(value, parameterEntries),
+              })}
+            />
+          ))}
           <WorkflowOutputContract node={selectedNode} />
         </>
       );
     }
     if (selectedNode.type === 'condition') {
+      const expression = selectedNode.expression || '';
       return (
         <>
-          <FieldRow label="expression" hint="P0 supports restricted comparisons: equals, not equals, contains, exists, and truthiness.">
+          {renderInputParameters('expression', expression, (
             <WorkflowTemplateTextarea
-              value={selectedNode.expression || ''}
-              variables={availableVariables}
+              title="Expression"
+              hint="Supports equals, not equals, contains, exists, and truthiness."
+              value={workflowTemplateWithParameterAliases(expression, parameterEntries)}
               disabled={!isEditable}
               rows={4}
-              onChange={(expression) => updateNode(selectedNode.id, { expression })}
+              showVariables={false}
+              embedded
+              onChange={(value) => updateNode(selectedNode.id, {
+                expression: workflowTemplateWithParameterAliases(value, parameterEntries),
+              })}
             />
-          </FieldRow>
-          <WorkflowOutputContract node={selectedNode} />
+          ))}
         </>
       );
     }
@@ -640,34 +895,36 @@ export function WorkflowConfigEditor({
           <div className="workflow-toolbar">
             <div className="workflow-toolbar-actions">
               {isEditable ? (
-                <>
-                  <button type="button" className="workflow-toolbar-button is-muted" onClick={loadExampleWorkflow}>
-                    <SettingsLucideIcon name="layers" size={14} />
-                    <span>Load example</span>
-                  </button>
-                  <div className="workflow-toolbar-add-group" role="group" aria-label="Add node">
-                    {typeOptions.map((type) => {
-                      const meta = workflowNodeMeta(type.id);
-                      return (
+                <div className="workflow-toolbar-add-group" role="group" aria-label="Add node">
+                  {typeOptions.map((type) => {
+                    const meta = workflowNodeMeta(type.id);
+                    return (
+                      <PortalTooltip key={type.id} text={`Add ${type.label}`} position="below">
                         <button
                           type="button"
-                          className={`workflow-toolbar-button workflow-toolbar-add is-${type.id}`}
-                          key={type.id}
+                          className={`workflow-toolbar-button workflow-toolbar-add is-${type.id}${draggedNodeType === type.id ? ' is-dragging' : ''}`}
+                          draggable
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData(WORKFLOW_NODE_DRAG_TYPE, type.id);
+                            event.dataTransfer.setData('text/plain', type.id);
+                            event.dataTransfer.effectAllowed = 'copy';
+                            setDraggedNodeType(type.id);
+                          }}
+                          onDragEnd={() => {
+                            setDraggedNodeType('');
+                            setIsCanvasDropTarget(false);
+                          }}
                           onClick={() => addNode(type.id)}
-                          title={`Add ${type.label}`}
                         >
                           <span className="workflow-toolbar-add-icon" aria-hidden="true">
                             <SettingsLucideIcon name={meta.icon} size={16} />
                           </span>
                           <span>{type.label}</span>
-                          <span className="workflow-toolbar-add-plus" aria-hidden="true">
-                            <SettingsLucideIcon name="plus" size={12} />
-                          </span>
                         </button>
-                      );
-                    })}
-                  </div>
-                </>
+                      </PortalTooltip>
+                    );
+                  })}
+                </div>
               ) : null}
             </div>
             {canSave ? (
@@ -677,13 +934,16 @@ export function WorkflowConfigEditor({
             ) : null}
           </div>
         ) : null}
-        <div className="workflow-canvas">
+        <div className={`workflow-canvas${isCanvasDropTarget ? ' is-node-drag-over' : ''}`}>
           {ReactFlowCanvas ? (
             <ReactFlowProvider>
-              <ReactFlowCanvas
+              <WorkflowDropCanvas
                 nodes={reactNodes}
                 edges={reactEdges}
                 nodeTypes={WORKFLOW_REACT_FLOW_NODE_TYPES}
+                draggedNodeType={draggedNodeType}
+                onDropNode={addNode}
+                onDropTargetChange={setIsCanvasDropTarget}
                 onNodeClick={(_, node) => {
                   setSelectedNodeId(node.id);
                   setSelectedEdgeId('');
@@ -721,8 +981,8 @@ export function WorkflowConfigEditor({
               >
                 {Background ? <Background gap={22} size={1.2} color="rgba(176, 206, 255, 0.07)" /> : null}
                 {Controls ? <Controls showInteractive={false} position="bottom-left" /> : null}
-                <WorkflowCanvasFitView workflowKey={workflow.workflow_id} nodeCount={nodes.length} />
-              </ReactFlowCanvas>
+                <WorkflowCanvasFitView workflowKey={workflow.workflow_id} />
+              </WorkflowDropCanvas>
             </ReactFlowProvider>
           ) : (
             <div className="settings-empty">React Flow failed to load.</div>
@@ -744,7 +1004,11 @@ export function WorkflowConfigEditor({
           <div className="workflow-node-panel-head">
             <div className="workflow-node-panel-title">
               <span>{selectedEdge ? 'Connection' : 'Node'}</span>
-              <strong>{selectedEdge ? `${selectedEdge.from} -> ${selectedEdge.to}` : (selectedNode?.label || selectedNode?.id || 'None')}</strong>
+              <strong>
+                {selectedEdge
+                  ? `${selectedEdge.from}${selectedEdge.branch ? ` · ${selectedEdge.branch}` : ''} -> ${selectedEdge.to}`
+                  : (selectedNode?.label || selectedNode?.id || 'None')}
+              </strong>
             </div>
             {isEditable && selectedNode && !['start', 'output'].includes(selectedNode.type) ? (
               <SettingsTooltipIconButton
@@ -769,7 +1033,9 @@ export function WorkflowConfigEditor({
           </div>
           {selectedEdge ? (
             <div className="workflow-node-help">
-              Connection: {selectedEdge.from}{' -> '}{selectedEdge.to}
+              Connection: {selectedEdge.from}
+              {selectedEdge.branch ? ` · ${selectedEdge.branch}` : ''}
+              {' -> '}{selectedEdge.to}
             </div>
           ) : (
             <>
@@ -795,5 +1061,3 @@ export function WorkflowConfigEditor({
     </div>
   );
 }
-
-
