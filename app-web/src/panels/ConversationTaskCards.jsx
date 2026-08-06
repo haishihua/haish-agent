@@ -5,7 +5,7 @@ import { normalizeTaskStatus } from '../lib/task-runtime.js';
 import { getTaskPillMeta } from './TaskRecords.jsx';
 import { TaskStatusIcon } from './ConversationIcons.jsx';
 
-export function TaskRecordCompact({ task, now, onOpenReport, onRetry }) {
+export function TaskRecordCompact({ task, onOpenReport, onRetry }) {
   const stage = task.stage || 'assigned';
   const status = normalizeTaskStatus(task.status);
   const pill = getTaskPillMeta(status, stage);

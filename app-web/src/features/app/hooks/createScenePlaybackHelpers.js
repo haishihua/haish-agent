@@ -15,15 +15,12 @@ export function createScenePlaybackHelpers(ctx) {
     WORLD_KIND_MAP,
     WORLD_ROLE_TO_ACTOR,
     animateWalk,
-    busy,
     completeAgentLiveEntries,
-    conversationId,
     executorActorForToolGroup,
     getTaskById,
     legacyLiveEntries,
     mergeAgentLiveEntry,
     normalizeTaskStatus,
-    now,
     pendingPresentationTaskIdsRef,
     playWorldEventScene,
     resolvePathSpec,
@@ -297,8 +294,6 @@ export function createScenePlaybackHelpers(ctx) {
     baseBubble = 'Reasoning',
     kind = 'llm',
     tag = 'THINKING',
-    stepCurrent = 1,
-    stepTotal = 1,
   } = {}) {
     if (!actor || !STATIONS[actor]) return;
     stopThinkingPulse(actor);
@@ -461,21 +456,11 @@ export function createScenePlaybackHelpers(ctx) {
 
   return {
     distancePx,
-    resolveScenePlaybackContext,
-    buildSceneItem,
     appendTaskEvent,
     dropPendingSceneItems,
-    clearSceneWaitState,
-    sceneToolKey,
-    sceneThinkingKey,
-    rememberSceneCompletion,
-    resolveSceneThinkingWaitersForTask,
     waitForSceneCompletion,
-    findLastSceneItem,
     compactPendingSceneItems,
     markAgentLive,
-    stopThinkingPulse,
-    stopThinkingPulsesForTask,
     startThinkingPulse,
     setActorIdle,
     setActorActive,
@@ -485,8 +470,6 @@ export function createScenePlaybackHelpers(ctx) {
     finalizeTaskPresentation,
     isChatOriginTask,
     isBotWorkflowTask,
-    pumpSceneQueue,
-    enqueueSceneEvent,
     scheduleSceneEvent,
   };
 }

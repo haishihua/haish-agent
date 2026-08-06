@@ -1,5 +1,4 @@
 // @haish-esm
-import React from 'react';
 import {
   FieldRow,
   SettingsMenuSelect,

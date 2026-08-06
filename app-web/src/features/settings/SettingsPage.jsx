@@ -1,38 +1,29 @@
 // @haish-esm
 import React from 'react';
-import { ChevronDown, CircleCheck, LoaderCircle } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import {
   SETTINGS_SECTIONS,
   SETTINGS_SUBTABS,
   SETTINGS_SECTION_COPY,
   LLM_SUBTAB_COPY,
-  ADD_LABEL_BY_SECTION,
-  SETTINGS_CONNECTION_SECTIONS,
-  SETTINGS_PERSISTED_CONNECTION_STATES,
   SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
-  agentCatalogFromSettings,
-  agentListItems,
   normalizeAgentSettings,
 } from '../../lib/agent-catalog.js';
 import {
-  workflowListItems,
   normalizeWorkflowSettings,
   workflowById,
   normalizeWorkflowRow,
 } from '../../lib/workflow-catalog.js';
 import { PortalTooltip } from '../../panels/PortalTooltip.jsx';
 import {
-  getLlmConfigItems,
   configItemsForSection,
   createGenericRecord,
   createLlmProfile,
   connectionBadgeMeta,
-  toolsRecordSummary,
 } from './settings-payload.js';
 import {
   SettingsLucideIcon,
   SettingsTooltipIconButton,
-  SettingsMenuSelect,
   ProviderIcon,
   ConnectionBrandIcon,
   AgentListIcon,
@@ -91,7 +82,7 @@ export {
 } from './WorkflowConfigEditor.jsx';
 export { ToolsConfigEditor } from './ToolsConfigEditor.jsx';
 
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect } = React;
 
 export function SettingsPage({
   activeSection,
@@ -778,4 +769,3 @@ export function SettingsPage({
     </div>
   );
 }
-

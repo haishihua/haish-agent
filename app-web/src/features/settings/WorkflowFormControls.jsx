@@ -3,20 +3,16 @@ import React from 'react';
 import {
   workflowOutputFields,
   workflowParameterEntries,
-  workflowSchemaFields,
-  WORKFLOW_OUTPUT_FIELD_OPTIONS,
   workflowTemplateVariablePath,
   sanitizeWorkflowTemplateValue,
   workflowTokenRangeAt,
 } from '../../lib/workflow-catalog.js';
 import { PortalTooltip } from '../../panels/PortalTooltip.jsx';
 import {
-  FieldRow,
-  SettingsLucideIcon,
   SettingsMenuSelect,
 } from './settings-ui.jsx';
 
-const { useState, useRef, useEffect } = React;
+const { useRef } = React;
 
 export function WorkflowVariablePicker({ variables, onInsert, disabled = false, hint = '' }) {
   if (!variables.length) return null;

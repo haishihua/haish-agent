@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -52,6 +52,10 @@ const DEV_RUNTIME_REPO_CANDIDATES = [
 let child: ChildProcessWithoutNullStreams | null = null;
 let state: LocalRuntimeState = { status: 'idle', baseUrl: '' };
 let startPromise: Promise<LocalRuntimeState> | null = null;
+// 本进程 spawn 的后端 workdir，用于退出时清理 pid 文件（复用的进程不清理）。
+let currentWorkdir: string | null = null;
+
+const RUNTIME_PID_FILE = 'runtime.pid';
 
 function choosePython(runtimeRepo: string): string {
   if (process.env.HAISH_LOCAL_RUNTIME_PYTHON) {
@@ -81,7 +85,8 @@ function chooseRuntimeCommand(runtimeRepo: string): { command: string; argsPrefi
 }
 
 function runtimeRepoPath(paths: RuntimePaths): string {
-  if (process.env.HAISH_LOCAL_RUNTIME_CWD) {
+  // Packaged builds are self-contained and must never depend on a developer checkout.
+  if (!paths.isPackaged && process.env.HAISH_LOCAL_RUNTIME_CWD) {
     return process.env.HAISH_LOCAL_RUNTIME_CWD;
   }
   const bundledRuntime = path.join(paths.resourcesPath, BUNDLED_RUNTIME_DIR);
@@ -199,6 +204,118 @@ async function waitForRuntime(baseUrl: string, timeoutMs: number): Promise<void>
   throw lastError instanceof Error ? lastError : new Error('Local runtime did not become ready.');
 }
 
+function runtimePidFile(workdir: string): string {
+  return path.join(workdir, RUNTIME_PID_FILE);
+}
+
+function readPidRecord(workdir: string): { pid: number; port: number } | null {
+  try {
+    const raw = JSON.parse(fs.readFileSync(runtimePidFile(workdir), 'utf8'));
+    if (typeof raw.pid === 'number' && typeof raw.port === 'number') {
+      return { pid: raw.pid, port: raw.port };
+    }
+  } catch {
+    // 文件缺失或损坏：视为没有可复用的实例。
+  }
+  return null;
+}
+
+function writePidRecord(workdir: string, pid: number, port: number): void {
+  try {
+    fs.mkdirSync(workdir, { recursive: true });
+    fs.writeFileSync(runtimePidFile(workdir), JSON.stringify({ pid, port }), {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
+  } catch (error) {
+    console.error('[local-runtime] Failed to write runtime pid file:', error);
+  }
+}
+
+function removePidRecord(workdir: string): void {
+  try {
+    fs.rmSync(runtimePidFile(workdir), { force: true });
+  } catch {
+    // 清理失败忽略。
+  }
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException)?.code === 'EPERM';
+  }
+}
+
+function isHaishBackendCommand(command: string): boolean {
+  return command.includes('haish_agent_core.app.web') || command.includes('haish-runtime');
+}
+
+// 兜底清理：pid 文件丢失/损坏或升级前启动的旧后端仍可能残留，
+// 与新建后端共享同一个 auth.db 会让登录互相打架。这里按 workdir 精确匹配查杀，
+// 只在本进程即将启动新后端（没有可复用的健康实例）时调用。
+function reapStaleBackends(workdir: string): void {
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return;
+  let output: string;
+  try {
+    output = execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' });
+  } catch {
+    return;
+  }
+  for (const line of output.split('\n')) {
+    const match = line.match(/^\s*(\d+)\s+(.+)$/);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    const command = match[2];
+    if (!isHaishBackendCommand(command)) continue;
+    if (!command.includes('--workdir') || !command.includes(workdir)) continue;
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      // 已退出或无权限，忽略。
+    }
+  }
+}
+
+// 复用健康的旧后端：pid 文件指向的进程还活着且 /api/health 正常，
+// 就直接接管（密钥不变、会话不丢、不会出现双后端）。
+async function tryReuseExistingRuntime(paths: RuntimePaths): Promise<LocalRuntimeState | null> {
+  const workdir = runtimeWorkdir(paths.userDataPath);
+  const record = readPidRecord(workdir);
+  if (!record) {
+    return null;
+  }
+  const baseUrl = `http://127.0.0.1:${record.port}`;
+  if (!processAlive(record.pid)) {
+    removePidRecord(workdir);
+    return null;
+  }
+  try {
+    await waitForRuntime(baseUrl, 5_000);
+  } catch {
+    // 进程活着但健康检查不通（启动中卡死/半死）：关掉它，让下面重新拉起。
+    try {
+      process.kill(record.pid, 'SIGTERM');
+    } catch {
+      // 忽略。
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    if (processAlive(record.pid)) {
+      try {
+        process.kill(record.pid, 'SIGKILL');
+      } catch {
+        // 忽略。
+      }
+    }
+    removePidRecord(workdir);
+    return null;
+  }
+  state = { status: 'ready', baseUrl, pid: record.pid };
+  return state;
+}
+
 export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRuntimeState> {
   if (state.status === 'ready') {
     return state;
@@ -216,6 +333,9 @@ export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRunti
 
     fs.mkdirSync(workdir, { recursive: true });
     state = { status: 'starting', baseUrl };
+
+    // 兜底清理同 workdir 的残留后端，避免双后端共享 auth.db。
+    reapStaleBackends(workdir);
 
     child = spawn(
       runtimeCommand.command,
@@ -248,6 +368,14 @@ export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRunti
     child.stderr.on('data', (chunk) => {
       console.error(`[haish-runtime] ${String(chunk).trimEnd()}`);
     });
+    const launchFailure = new Promise<never>((_resolve, reject) => {
+      child?.once('error', (error) => reject(error));
+      child?.once('exit', (code, signal) => {
+        reject(new Error(
+          `Local runtime exited before becoming ready${code === null ? '' : ` with code ${code}`}${signal ? ` (${signal})` : ''}.`,
+        ));
+      });
+    });
     child.on('exit', (code, signal) => {
       const message = `Local runtime exited${code === null ? '' : ` with code ${code}`}${signal ? ` (${signal})` : ''}.`;
       if (state.status !== 'stopped') {
@@ -257,13 +385,23 @@ export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRunti
       startPromise = null;
     });
 
+    currentWorkdir = workdir;
+    const spawnedPid = child.pid;
+    if (spawnedPid !== undefined) {
+      writePidRecord(workdir, spawnedPid, port);
+    }
+
     try {
-      await waitForRuntime(baseUrl, START_TIMEOUT_MS);
+      await Promise.race([waitForRuntime(baseUrl, START_TIMEOUT_MS), launchFailure]);
       state = { status: 'ready', baseUrl, pid: child.pid };
       return state;
     } catch (error) {
       const message = String((error as Error)?.message || error);
       child?.kill();
+      if (currentWorkdir) {
+        removePidRecord(currentWorkdir);
+      }
+      currentWorkdir = null;
       state = { status: 'failed', baseUrl, message };
       throw new Error(`Local runtime failed to start: ${message}`);
     } finally {
@@ -277,6 +415,13 @@ export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRunti
 export async function ensureLocalRuntime(paths: RuntimePaths): Promise<LocalRuntimeState> {
   if (state.status === 'ready') {
     return state;
+  }
+  if (state.status === 'starting' && startPromise) {
+    return startPromise;
+  }
+  const reused = await tryReuseExistingRuntime(paths);
+  if (reused) {
+    return reused;
   }
   return startLocalRuntime(paths);
 }
@@ -327,4 +472,9 @@ export async function stopLocalRuntime(): Promise<void> {
 
     const reapTimer = setTimeout(finish, SHUTDOWN_GRACE_MS + 500);
   });
+
+  if (currentWorkdir) {
+    removePidRecord(currentWorkdir);
+  }
+  currentWorkdir = null;
 }

@@ -10,7 +10,7 @@ const outDir = path.resolve(appWebRoot, 'dist');
 
 /** Copy runtime static assets that are referenced by plain string URLs (not Vite imports). */
 function copyPublicAssetsPlugin(): Plugin {
-  const copyDirs = ['assets', 'agent-world'] as const;
+  const copyDirs = ['assets'] as const;
 
   const copyTree = (from: string, to: string) => {
     if (!fs.existsSync(from)) return;
@@ -29,14 +29,13 @@ function copyPublicAssetsPlugin(): Plugin {
   };
 }
 
-/** Serve /assets and /agent-world from app-web during vite preview/dev if ever used. */
+/** Serve /assets from app-web during vite preview/dev if ever used. */
 function serveStaticAssetsPlugin(): Plugin {
   return {
     name: 'haish-serve-static-assets',
     configureServer(server) {
       const roots: Record<string, string> = {
         '/assets': path.join(appWebRoot, 'assets'),
-        '/agent-world': path.join(appWebRoot, 'agent-world'),
       };
       server.middlewares.use((req, res, next) => {
         const url = req.url?.split('?')[0] || '';
@@ -100,7 +99,7 @@ export default defineConfig({
   build: {
     outDir,
     emptyOutDir: process.env.HAISH_DEV_WEB_WATCH === '1' ? false : true,
-    sourcemap: true,
+    sourcemap: process.env.HAISH_DEV_WEB_WATCH === '1',
     target: 'es2022',
     cssCodeSplit: false,
     assetsInlineLimit: 0,

@@ -425,7 +425,6 @@ export function createConversationActivationHandlers(ctx) {
   return {
     applyConversationSnapshot,
     detachActiveRunFromCurrentConversation,
-    runtimeTaskFromConversationTask,
     activateConversationShell,
     activateConversationDetail,
     fetchConversationDetail,

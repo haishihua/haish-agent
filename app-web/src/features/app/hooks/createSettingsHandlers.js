@@ -3,12 +3,8 @@
 export function createSettingsHandlers(ctx) {
   const {
     API_BASE,
-    CALIBRATION_IDS,
     LLM_SETTINGS_STORAGE_KEY,
-    MEET_POINTS,
-    NAV_POINTS,
     SETTINGS_RECORDS_STORAGE_KEY,
-    STATIONS,
     WEB_SEARCH_PROVIDER_OPTIONS,
     activeTab,
     agentCatalogFromSettings,
@@ -22,59 +18,36 @@ export function createSettingsHandlers(ctx) {
     buildMemorySettingsPayload,
     buildToolsSettingsPayload,
     busy,
-    calibrationTarget,
     clearAllPoseDebug,
-    clonePointMap,
     createDefaultCustomAgentPayload,
     createDefaultCustomWorkflowPayload,
     dragStateRef,
-    getIdsForTarget,
     getSelectedLlmConfig,
-    getSourceMapForTarget,
     llmProviderRequestPayload,
     llmSettingsDraft,
     normalizeAgentSettings,
     normalizeWorkflowSettings,
-    originalMeetRef,
-    originalNavRef,
-    originalStationsRef,
     parseResponseMessage,
     payloadForCustomWorkflow,
-    prepareWorldCalibration,
-    resetPoseMapping,
-    resolvePointTarget,
     setActiveTab,
     setAgentCatalog,
     setAgentSettingsDraft,
     setCalibrationMode,
     setCopiedCoords,
     setLlmSettingsDraft,
-    setMeetDrafts,
-    setNavDrafts,
     setSettingsRecordsDraft,
     setSettingsSection,
     setSkillActionBusy,
-    setStationDrafts,
     setWorkflowSettingsDraft,
     settingsConnectionSignatureFor,
     settingsRecordsDraft,
     showToast,
-    syncNpcPositions,
     syncSettingsConnectionStatus,
     updateSettingsConnectionStatus,
     withAlwaysAllowedAgentTools,
     workflowById,
     workflowSettingsDraft,
   } = ctx;
-
-  function handleSettingsSectionChange(section) {
-    setSettingsSection(section);
-    if (section === 'world') prepareWorldCalibration();
-    else {
-      dragStateRef.current = null;
-      clearAllPoseDebug();
-    }
-  }
 
   function handleToggleCalibration() {
     if (busy) return;
@@ -601,44 +574,12 @@ export function createSettingsHandlers(ctx) {
     }
   }
 
-  function handleResetCalibration() {
-    if (busy) return;
-    if (calibrationTarget === 'poses') {
-      for (const id of CALIBRATION_IDS) resetPoseMapping(id);
-      clearAllPoseDebug();
-      setCopiedCoords(false);
-      return;
-    }
-    const ids = getIdsForTarget(calibrationTarget);
-    const restored = calibrationTarget === 'routes' ? null : calibrationTarget === 'nav' ? clonePointMap(originalNavRef.current) : calibrationTarget === 'meet' ? clonePointMap(originalMeetRef.current) : clonePointMap(originalStationsRef.current);
-    if (calibrationTarget === 'routes') {
-      for (const id of ids) {
-        const rt = resolvePointTarget(id);
-        if (rt === 'meet') MEET_POINTS[id] = { ...originalMeetRef.current[id] };
-        else if (rt === 'stations') STATIONS[id] = { ...originalStationsRef.current[id] };
-        else NAV_POINTS[id] = { ...originalNavRef.current[id] };
-      }
-      setNavDrafts(clonePointMap(NAV_POINTS)); setMeetDrafts(clonePointMap(MEET_POINTS)); setStationDrafts(clonePointMap(STATIONS));
-      syncNpcPositions(STATIONS);
-    } else {
-      const tm = getSourceMapForTarget(calibrationTarget);
-      for (const id of ids) tm[id] = restored[id];
-      if (calibrationTarget === 'nav') setNavDrafts(restored);
-      else if (calibrationTarget === 'meet') setMeetDrafts(restored);
-      else { setStationDrafts(restored); syncNpcPositions(restored); }
-    }
-    setCopiedCoords(false);
-  }
-
-
   return {
-    handleSettingsSectionChange,
     handleToggleCalibration,
     handleSaveSettingsDraft,
     handleSaveToolsSettingsDraft,
     applyAgentSettingsPayload,
     fetchAgentSettingsPayload,
-    customAgentPayload,
     handleTogglePresetAgent,
     handleCreateCustomAgent,
     handleSaveCustomAgent,
@@ -656,6 +597,5 @@ export function createSettingsHandlers(ctx) {
     handleInstallSkillDirectory,
     handleToggleSkill,
     handleUninstallSkill,
-    handleResetCalibration,
   };
 }

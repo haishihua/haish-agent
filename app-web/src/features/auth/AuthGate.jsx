@@ -42,8 +42,24 @@ export function AuthGate() {
         setSession({ ...authMemorySession, user });
         setError('');
       } catch (authError) {
-        clearAuthSession({ notify: false });
-        markSignedOut('Please sign in to continue.');
+        if (cancelled) return;
+        // 只在确认会话失效时才登出：(1) 后端明确返回 401；(2) refresh 失败后
+        // authMemorySession 已被清空（authFetch 内部已发 haish-auth-expired）。
+        // runtime 未就绪(503)或网络错误时保留本地登录态并提示稍后重试，
+        // 避免升级/冷启动期间误删 session 导致“账号登不上”。
+        const status = Number(authError?.status || 0);
+        const sessionLost = !authMemorySession || status === 401;
+        if (sessionLost) {
+          clearAuthSession({ notify: false });
+          markSignedOut('Please sign in to continue.');
+        } else {
+          setSession(authMemorySession ? { ...authMemorySession } : null);
+          setPostAuthToast({
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            kind: 'error',
+            message: 'Service is not ready yet. Your sign-in is kept — please try again shortly.',
+          });
+        }
       }
     })();
 
@@ -111,4 +127,3 @@ export function AuthGate() {
   }
   return <App authUser={session.user} onLogout={handleLogout} initialToast={postAuthToast} />;
 }
-

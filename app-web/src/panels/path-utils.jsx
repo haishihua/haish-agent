@@ -68,7 +68,7 @@ export function normalizePastedPathLine(line, workspacePath, options = {}) {
   if (text.startsWith('file://')) {
     try {
       text = decodeURIComponent(text.replace(/^file:\/\//, ''));
-    } catch (error) {
+    } catch {
       text = text.replace(/^file:\/\//, '');
     }
   }
@@ -197,7 +197,7 @@ export async function copyTextToClipboard(text) {
       await clipboard.writeText(value);
       return true;
     }
-  } catch (error) {
+  } catch {
     // Fall through to the textarea copy path below.
   }
   try {
@@ -214,7 +214,7 @@ export async function copyTextToClipboard(text) {
     const ok = document.execCommand('copy');
     document.body.removeChild(el);
     return ok;
-  } catch (error) {
+  } catch {
     return false;
   }
 }

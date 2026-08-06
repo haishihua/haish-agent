@@ -17,11 +17,9 @@ import {
   normalizeWebSearchDraft,
 } from './settings-payload.js';
 import {
-  FieldRow,
   SecretKeyField,
   SettingsLucideIcon,
   SettingsTooltipIconButton,
-  SettingsMenuSelect,
   BrandLogoIcon,
   WEB_SEARCH_BRAND_LOGOS,
 } from './settings-ui.jsx';

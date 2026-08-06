@@ -1,6 +1,6 @@
 // @haish-esm
 import React from 'react';
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect } = React;
 
 export function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, error = '', errorKey = 0 }) {
   const [account, setAccount] = useState('');
@@ -370,5 +370,4 @@ export function AuthScreen({ mode, onModeChange, onSubmit, submitting = false, e
     </div>
   );
 }
-
 

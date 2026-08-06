@@ -8,7 +8,6 @@ import { skillDisplayName } from './world-events.js';
 
 export function getChatProgressLine(event) {
   const toolName = event.tool_name || event.toolName || 'tool';
-  const eventData = event.data || event.payload?.data || event.payload || event;
   const message = String(event.message || '').trim();
   switch (event.type) {
     case 'user_message_received':
@@ -184,20 +183,7 @@ export function upsertTraceItem(sectionMap, sectionId, item) {
   };
 }
 
-const TIMELINE_META_EVENT_TYPES = new Set([
-  'user_message_received',
-  'agent_gateway_received',
-  'provider_selected',
-  'context_compaction_started',
-  'context_compaction_completed',
-  'context_usage_updated',
-  'tool_budget_applied',
-  'llm_thinking_started',
-  'llm_thinking_completed',
-]);
-
 export function formatMetaDetail(event) {
-  const eventData = event.data || event.payload?.data || event.payload || event;
   switch (event.type) {
     case 'user_message_received':
       return 'Task accepted into the session.';
@@ -300,7 +286,7 @@ export function classifyToolForGroup(item) {
       || (name.includes('search') && !name.includes('web'))) {
     return { bucket: 'searched', verbPast: 'searched', verbPresent: 'searching', subject: '', unitSingular: 'time', unitPlural: 'times' };
   }
-  if (name === 'terminal' || name.includes('background_process')) {
+  if (name === 'terminal' || name === 'bash' || name.includes('background_process')) {
     return { bucket: 'executed', verbPast: 'executed', verbPresent: 'executing', subject: '', unitSingular: 'command', unitPlural: 'commands' };
   }
   if (name === 'vision_analyze' || name === 'visual_inspect' || name === 'image_describe'
@@ -943,5 +929,4 @@ export function pendingTaskToQuest(pendingTask) {
     serverFinished: !!pendingTask.serverFinished,
   };
 }
-
 

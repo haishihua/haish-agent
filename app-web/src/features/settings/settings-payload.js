@@ -1,35 +1,24 @@
 // @haish-esm
 import {
-  DEFAULT_AGENT_SETTINGS,
   DEFAULT_MCP_CONFIG_JSON,
-  DEFAULT_WORKFLOW_SETTINGS,
-  LLM_PROVIDER_OPTIONS,
-  SETTINGS_LLM_PROVIDER_OPTIONS,
   SETTINGS_SECTIONS,
   WEB_SEARCH_PROVIDER_OPTIONS,
   createDefaultSettingsRecords,
   createDefaultWebSearchSettings,
-  createDefaultCustomAgentPayload,
   getLlmProvider,
   normalizeLlmProviderId,
   modelChoicesFor,
   uniqueModelChoices,
   configuredModelOptions,
-  createDefaultLlmSettings,
-  normalizeLlmModelConfig,
   mergeDefaultRecords,
   mergeKnownDefaultRecords,
   normalizeNeo4jDraft,
   normalizeQdrantDraft,
-  agentCatalogFromSettings,
   agentListItems,
-  normalizeAgentSettings,
   runtimeProviderLabel,
 } from '../../lib/agent-catalog.js';
 import {
   workflowListItems,
-  normalizeWorkflowSettings,
-  createDefaultCustomWorkflowPayload,
 } from '../../lib/workflow-catalog.js';
 
 export function getLlmConfigItems(draft, activeSubtab = 'chat') {

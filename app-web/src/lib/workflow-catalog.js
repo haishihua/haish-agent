@@ -1,7 +1,6 @@
 // @haish-esm
 // Workflow catalog defaults + pure helpers (UI-free).
 import {
-  APP_DEFAULT_AGENT_OPTIONS,
   SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
   DEFAULT_WORKFLOW_NODE_TYPES,
   DEFAULT_WORKFLOW_INPUT_SCHEMA,

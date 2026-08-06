@@ -1,23 +1,14 @@
 // @haish-esm
 import React from 'react';
 import {
-  CHAR_DEFS } from '../../Sprites.jsx';
-import {
   STATIONS,
-  CALIBRATION_IDS,
   NAV_POINTS,
-  NAV_POINT_IDS,
   MEET_POINTS,
-  MEET_POINT_IDS,
   ROUTES,
-  ROUTE_IDS,
-  ROUTE_EDITOR_DEFS,
-  ROUTE_EDITOR_IDS,
   } from '../../World.jsx';
 import { HollowPurple } from '../../Effects.jsx';
 import { KIND_COLORS } from '../../orchestrator.js';
 import {
-  PortalTooltip,
   TopBar,
   ConversationsPanel,
   LiveFeedPanel,
@@ -27,7 +18,6 @@ import {
   TabPlaceholder,
   BottomNav,
   } from '../../panels.jsx';
-import { normalizeToolName } from '../../lib/tool-names.js';
 import { SettingsPage } from '../settings/SettingsPage.jsx';
 import {
   applyToolsSettingsPayloadToRecords,
@@ -43,16 +33,8 @@ import { API_BASE } from '../../api/base.js';
 import {
   authFetch,
   buildRunConfigStorageKey,
-  clearAuthSession,
-  getAuthAccessToken,
-  loadStoredAuthSession,
-  logoutCurrentSession,
   DEFAULT_PROJECT_ID,
-  DEFAULT_PROJECT_NAME,
   DEFAULT_SESSION_NAME,
-  DEFAULT_CONVERSATION_NAMES,
-  DEFAULT_CONTEXT_TOTAL_TOKENS,
-  RESTORED_CONTEXT_BASE_TOKENS,
   buildApiHeaders,
   parseResponseMessage,
   } from '../../api/auth.js';
@@ -60,26 +42,19 @@ import {
   APP_DEFAULT_AGENT_OPTIONS,
   DEFAULT_AGENT_SETTINGS,
   DEFAULT_WORKFLOW_SETTINGS,
-  SETTINGS_SECTIONS,
-  SETTINGS_SUBTABS,
   LLM_SETTINGS_STORAGE_KEY,
   SETTINGS_RECORDS_STORAGE_KEY,
-  SETTINGS_CONNECTION_STATUS_STORAGE_KEY,
   normalizeAgentSettings,
   agentCatalogFromSettings,
-  agentListItems,
   loadLlmSettingsDraft,
   loadSettingsRecordsDraft,
   loadSettingsConnectionStatus,
   persistSettingsConnectionStatus,
   applyLlmSettingsPayloadToDraft,
-  createDefaultLlmSettings,
-  createDefaultSettingsRecords,
   runtimeLlmProviderOptions,
   settingsConnectionSignatureFor,
   sanitizeSettingsConnectionStatus,
   createDefaultCustomAgentPayload,
-  normalizeAgentProfileRow,
   SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
   WEB_SEARCH_PROVIDER_OPTIONS,
   withAlwaysAllowedAgentTools,
@@ -88,29 +63,20 @@ import {
   normalizeWorkflowSettings,
   createDefaultCustomWorkflowPayload,
   payloadForCustomWorkflow,
-  workflowListItems,
-  normalizeWorkflowRow,
   workflowById,
 } from '../../lib/workflow-catalog.js';
 import {
   MAP_W,
   MAP_H,
-  CALIBRATION_NUDGE,
   DEFAULT_WALK_SPEED_PX_PER_SEC,
   WALK_SPEED_BY_ACTOR,
   DEFAULT_WALK_MIN_DURATION_MS,
   WALK_MIN_DURATION_BY_ACTOR,
   SCENE_WAIT_TIMEOUT_MS,
-  CONVERSATION_BOOTSTRAP_MAX_ATTEMPTS,
-  CONVERSATION_BOOTSTRAP_RETRY_DELAY_MS,
   THINKING_PULSE_INTERVAL_MS,
   STREAM_EVENT_BATCH_MS,
-  POSE_DEBUG_DEFAULTS,
-  POSE_DEBUG_OPTIONS,
-  POSE_MAPPING_FIELDS,
   WORLD_ROLE_TO_ACTOR,
   WORLD_KIND_MAP,
-  PROVIDER_ACTOR_MAP,
   workflowNodeActorBindings,
   } from '../../lib/world-runtime.js';
 import {
@@ -126,7 +92,11 @@ import {
   getStoredConversationId,
   setStoredConversationId,
   loadStoredWorkspaceState,
+  loadLegacyWorkspaceState,
   saveWorkspaceState,
+  filterWorkspaceStateByConversationIds,
+  legacyWorkspaceMigrationCompleted,
+  markLegacyWorkspaceMigrationCompleted,
   normalizeWorkspaceOrdering,
   workspaceStateWithConversationDetail,
   workspaceStateWithTouchedConversation,
@@ -137,24 +107,14 @@ import {
   conversationDetailToWorkspaceConversation,
   titleFromTaskText,
   isDefaultConversationName,
-  projectNameFromPath,
   normalizeChatImageRefs,
   mergeChatImageRefs,
-  chatImagePreviewUrl,
   createEmptyWorkspaceState,
   createDefaultProject,
   stripChatImageAugmentation,
-  isProtectedChatImagePreviewUrl,
-  mergeChatImageRefValue,
   chatImageFallbacksByTaskIdFromMessages,
   timestampValue,
   taskUpdatedTimestamp,
-  taskCreatedTimestamp,
-  conversationUpdatedTimestamp,
-  projectUpdatedTimestamp,
-  inferProjectCreatedAt,
-  projectCreatedTimestamp,
-  withDefaultExpansion,
   conversationHasActiveTask,
   isTaskActuallyActive,
   projectIdForWorkspacePath,
@@ -180,7 +140,6 @@ import {
   taskHasAssistantStreamContent,
   upsertToolCall,
   getLiveEventStatus,
-  normalizeLiveEntryStatus,
   legacyLiveEntries,
   } from '../../lib/task-runtime.js';
 import {
@@ -189,22 +148,18 @@ import {
   appendChatProgressText,
   appendAnswerDelta,
   eventDeltaText,
-  extractTodosFromToolItem,
   pendingTaskToQuest,
   getToolResponseTraceStatus,
 } from '../../lib/chat-timeline.js';
-import {
-  clonePointMap, clamp01, roundCoord, serializePointMap, serializePoseConfigMap,
-} from '../../lib/calibration-utils.js';
+import { clonePointMap, clamp01, roundCoord } from '../../lib/calibration-utils.js';
 import {
   normalizeWorldEvent, normalizeWorldEvents, worldEventToRuntimeLog, resolveProviderMeta,
-  normalizeProviderKey, getWorldEventTag, executorActorForToolGroup, sceneKeyForWorldEvent,
-  skillDisplayName, skillLoadingBubble, skillReadyBubble, summarizeText, toDisplayText,
-  defaultQuestDescription, getLoopIndexFromWorldEvents, getActiveRoleFromWorldEvents,
+  getWorldEventTag, executorActorForToolGroup, sceneKeyForWorldEvent,
+  skillLoadingBubble, skillReadyBubble, summarizeText, toDisplayText,
   WORLD_EVENT_ROUTE_MAP, WORLD_SCENE_EVENT_TYPES, PROVIDER_SCENE_EVENT_TYPES,
   WORKFLOW_SCENE_EVENT_TYPES,
   STREAM_IMMEDIATE_EVENT_TYPES, SCENE_CATCHUP_TOOL_EVENT_TYPES, SCENE_CATCHUP_KEEP_TYPES,
-  SCENE_TERMINAL_EVENT_TYPES, CHAT_FINAL_FOLLOWUP_EVENT_TYPES, WORLD_EVENT_TYPE_ALIASES,
+  SCENE_TERMINAL_EVENT_TYPES, CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
 } from '../../lib/world-events.js';
 import { BotWorld } from '../../panels/world/BotWorld.jsx';
 
@@ -247,7 +202,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const [conversationId, setConversationId] = useState(null);
   const [conversationReady, setConversationReady] = useState(false);
   const [conversationError, setConversationError] = useState('');
-  const [conversationAttachments, setConversationAttachments] = useState([]);
+  const [, setConversationAttachments] = useState([]);
   const [contextUsage, setContextUsage] = useState(() => createEmptyContextUsage(null));
   const [localWorkspace, setLocalWorkspace] = useState({ path: null, label: null });
   const [composerAttachment, setComposerAttachment] = useState(null);
@@ -266,9 +221,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const stageRef = useRef(null);
   const abortRef = useRef(false);
   const npcStatesRef = useRef(npcStates);
-  const originalStationsRef = useRef(clonePointMap(STATIONS));
-  const originalNavRef = useRef(clonePointMap(NAV_POINTS));
-  const originalMeetRef = useRef(clonePointMap(MEET_POINTS));
   const dragStateRef = useRef(null);
   const copyTimerRef = useRef(null);
   const [calibrationMode, setCalibrationMode] = useState(false);
@@ -286,16 +238,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     workflow: SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
   }));
   const [skillActionBusy, setSkillActionBusy] = useState('');
-  const [calibrationTarget, setCalibrationTarget] = useState('stations');
-  const [selectedMarkerId, setSelectedMarkerId] = useState(CALIBRATION_IDS[0]);
-  const [selectedRouteId, setSelectedRouteId] = useState(ROUTE_EDITOR_IDS[0] || ROUTE_IDS[0] || null);
-  const [selectedPoseNpcId, setSelectedPoseNpcId] = useState(CALIBRATION_IDS[0]);
-  const [selectedPoseMappingKey, setSelectedPoseMappingKey] = useState(POSE_MAPPING_FIELDS[0].key);
-  const [selectedPoseSourceKey, setSelectedPoseSourceKey] = useState(null);
-  const [stationDrafts, setStationDrafts] = useState(() => clonePointMap(STATIONS));
-  const [navDrafts, setNavDrafts] = useState(() => clonePointMap(NAV_POINTS));
-  const [meetDrafts, setMeetDrafts] = useState(() => clonePointMap(MEET_POINTS));
-  const [copiedCoords, setCopiedCoords] = useState(false);
+  const [, setStationDrafts] = useState(() => clonePointMap(STATIONS));
+  const [, setNavDrafts] = useState(() => clonePointMap(NAV_POINTS));
+  const [, setMeetDrafts] = useState(() => clonePointMap(MEET_POINTS));
+  const [, setCopiedCoords] = useState(false);
   const activeTaskIdRef = useRef(null);
   const activeRunIdRef = useRef(null);
   const conversationIdRef = useRef(null);
@@ -642,12 +588,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     ensureServerConversationForActiveDraft,
     materializeDraftConversationForSend,
     fetchTaskRuntimeDetail,
-    restoreTaskRuntime,
     restoreLatestTaskRuntime,
     restoreConversationTaskRuntimes,
     cancelActiveTask,
     cancelActiveConversationTask,
-    activeTaskIdFromConversationSnapshot,
     stopConversationRuntimeBeforeDelete,
     updateConversationTitle,
   } = createDraftConversationHandlers({
@@ -730,7 +674,17 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       try {
         const storedConversationIds = getWorkspaceConversationIds(workspaceState);
         let details = [];
-        if (storedConversationIds.length > 0) {
+        let serverListLoaded = false;
+        try {
+          const listResponse = await authFetch(`${API_BASE}/api/conversations`, { method: 'GET' }, { json: false });
+          if (!listResponse.ok) throw new Error(`conversation list failed: ${listResponse.status}`);
+          const listed = await listResponse.json();
+          details = Array.isArray(listed) ? listed : [];
+          serverListLoaded = true;
+        } catch (error) {
+          console.warn('conversation list restore failed; falling back to local cache:', error);
+        }
+        if (!serverListLoaded && storedConversationIds.length > 0) {
           const restoredDetails = await Promise.all(
             storedConversationIds.map((nextConversationId) => (
               fetchConversationDetail(nextConversationId).catch((error) => {
@@ -752,16 +706,29 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         }
         if (cancelled || !isConversationActivationCurrent(bootstrapActivationSeq)) return;
         const storedConversationId = getStoredConversationId();
-        const previousWorkspaceState = storedConversationIds.length > 0
+        let previousWorkspaceState = storedConversationIds.length > 0
           ? {
             ...workspaceState,
             activeConversationId: storedConversationId || workspaceState.activeConversationId,
           }
           : createEmptyWorkspaceState();
+        if (serverListLoaded && !legacyWorkspaceMigrationCompleted()) {
+          const serverConversationIds = details.map((detail) => detail.conversation_id).filter(Boolean);
+          const migratedLegacyState = filterWorkspaceStateByConversationIds(
+            loadLegacyWorkspaceState(),
+            serverConversationIds,
+          );
+          if (migratedLegacyState) previousWorkspaceState = migratedLegacyState;
+        }
         const nextWorkspaceState = buildWorkspaceStateFromConversationDetails(details, previousWorkspaceState);
+        saveWorkspaceState(nextWorkspaceState);
+        if (serverListLoaded) markLegacyWorkspaceMigrationCompleted();
         setWorkspaceState(nextWorkspaceState);
-        const activeDetail = details.find((detail) => detail.conversation_id === nextWorkspaceState.activeConversationId) || details[0];
-        if (activeDetail) {
+        const activeSummary = details.find((detail) => detail.conversation_id === nextWorkspaceState.activeConversationId) || details[0];
+        if (activeSummary) {
+          const activeDetail = Array.isArray(activeSummary.messages)
+            ? activeSummary
+            : await fetchConversationDetail(activeSummary.conversation_id);
           await activateConversationDetail(activeDetail);
         }
         setConversationReady(true);
@@ -787,7 +754,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   }, [conversationError]);
 
   const {
-    createEmptyRuntime,
     getRuntime,
     mutateRuntime,
     syncDisplayedRuntime,
@@ -800,7 +766,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     setRuntimeAnswerBuffer,
     readRuntimeAnswerBuffer,
     updateWorldTaskState,
-    cacheTaskImageAttachments,
     showToast,
   } = createConversationRuntime({
     activeRunIdRef,
@@ -834,7 +799,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const {
     applyConversationSnapshot,
     detachActiveRunFromCurrentConversation,
-    runtimeTaskFromConversationTask,
     activateConversationShell,
     activateConversationDetail,
     fetchConversationDetail,
@@ -934,64 +898,26 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   // World/calibration helpers first so scene playback can close over real bindings
   // (not TDZ placeholders). sleep stays the module import — do NOT redeclare it.
   const {
-    resolvePoint,
     resolvePathSpec,
     orientToward,
-    syncNpcPositions,
     clearAllPoseDebug,
-    setPoseDebug,
-    getPoseDebugForMapping,
-    syncPosePreview,
-    getCharPoseConfig,
-    getPoseMappingValue,
-    applyPoseMapping,
-    getPoseFrameOptions,
-    resetPoseMapping,
-    getIdsForTarget,
-    getDraftsForTarget,
-    getSourceMapForTarget,
-    resolvePointTarget,
-    getFirstRouteRef,
-    getPointDisplayName,
     setPointPosition,
     stagePointFromClient,
-    handleMarkerPointerDown,
-    prepareWorldCalibration,
   } = createWorldCalibrationHandlers({
-    CALIBRATION_IDS,
-    CHAR_DEFS,
-    MAP_H,
-    MAP_W,
     MEET_POINTS,
-    MEET_POINT_IDS,
     NAV_POINTS,
-    POSE_DEBUG_DEFAULTS,
-    POSE_DEBUG_OPTIONS,
-    POSE_MAPPING_FIELDS,
     ROUTES,
-    ROUTE_EDITOR_DEFS,
     STATIONS,
-    busy,
     clamp01,
-    clonePointMap,
     dirFromTo,
-    dragStateRef,
-    meetDrafts,
-    navDrafts,
     npcStatesRef,
     roundCoord,
-    selectedRouteId,
-    setCalibrationTarget,
-    setCopiedCoords,
     setMeetDrafts,
     setNavDrafts,
     setNpcStates,
-    setSelectedMarkerId,
     setStationDrafts,
     stageRef,
-    stationDrafts,
     updateNpc,
-    worldCalibrationActive,
   });
 
   worldRouteApiRef.current = {
@@ -1000,21 +926,11 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 
   const {
     distancePx,
-    resolveScenePlaybackContext,
-    buildSceneItem,
     appendTaskEvent,
     dropPendingSceneItems,
-    clearSceneWaitState,
-    sceneToolKey,
-    sceneThinkingKey,
-    rememberSceneCompletion,
-    resolveSceneThinkingWaitersForTask,
     waitForSceneCompletion,
-    findLastSceneItem,
     compactPendingSceneItems,
     markAgentLive,
-    stopThinkingPulse,
-    stopThinkingPulsesForTask,
     startThinkingPulse,
     setActorIdle,
     setActorActive,
@@ -1024,8 +940,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     finalizeTaskPresentation,
     isChatOriginTask,
     isBotWorkflowTask,
-    pumpSceneQueue,
-    enqueueSceneEvent,
     scheduleSceneEvent,
   } = createScenePlaybackHelpers({
     MAP_H,
@@ -1041,15 +955,12 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     WORLD_KIND_MAP,
     WORLD_ROLE_TO_ACTOR,
     animateWalk: (...args) => scenePlayRef.current.animateWalk?.(...args),
-    busy,
     completeAgentLiveEntries,
-    conversationId,
     executorActorForToolGroup,
     getTaskById,
     legacyLiveEntries,
     mergeAgentLiveEntry,
     normalizeTaskStatus,
-    now,
     pendingPresentationTaskIdsRef,
     playWorldEventScene: (...args) => scenePlayRef.current.playWorldEventScene?.(...args),
     resolvePathSpec,
@@ -1091,13 +1002,11 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   }, [busy, worldCalibrationActive]);
 
   const {
-    handleSettingsSectionChange,
     handleToggleCalibration,
     handleSaveSettingsDraft,
     handleSaveToolsSettingsDraft,
     applyAgentSettingsPayload,
     fetchAgentSettingsPayload,
-    customAgentPayload,
     handleTogglePresetAgent,
     handleCreateCustomAgent,
     handleSaveCustomAgent,
@@ -1115,15 +1024,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     handleInstallSkillDirectory,
     handleToggleSkill,
     handleUninstallSkill,
-    handleResetCalibration,
   } = createSettingsHandlers({
     API_BASE,
-    CALIBRATION_IDS,
     LLM_SETTINGS_STORAGE_KEY,
-    MEET_POINTS,
-    NAV_POINTS,
     SETTINGS_RECORDS_STORAGE_KEY,
-    STATIONS,
     WEB_SEARCH_PROVIDER_OPTIONS,
     activeTab,
     agentCatalogFromSettings,
@@ -1137,44 +1041,30 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     buildMemorySettingsPayload,
     buildToolsSettingsPayload,
     busy,
-    calibrationTarget,
     clearAllPoseDebug,
-    clonePointMap,
     createDefaultCustomAgentPayload,
     createDefaultCustomWorkflowPayload,
     dragStateRef,
-    getIdsForTarget,
     getSelectedLlmConfig,
-    getSourceMapForTarget,
     llmProviderRequestPayload,
     llmSettingsDraft,
     normalizeAgentSettings,
     normalizeWorkflowSettings,
-    originalMeetRef,
-    originalNavRef,
-    originalStationsRef,
     parseResponseMessage,
     payloadForCustomWorkflow,
-    prepareWorldCalibration,
-    resetPoseMapping,
-    resolvePointTarget,
     setActiveTab,
     setAgentCatalog,
     setAgentSettingsDraft,
     setCalibrationMode,
     setCopiedCoords,
     setLlmSettingsDraft,
-    setMeetDrafts,
-    setNavDrafts,
     setSettingsRecordsDraft,
     setSettingsSection,
     setSkillActionBusy,
-    setStationDrafts,
     setWorkflowSettingsDraft,
     settingsConnectionSignatureFor,
     settingsRecordsDraft,
     showToast,
-    syncNpcPositions,
     syncSettingsConnectionStatus,
     updateSettingsConnectionStatus,
     withAlwaysAllowedAgentTools,
@@ -1230,7 +1120,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     sleep,
     startThinkingPulse,
     summarizeText,
-    toDisplayText,
     updateNpc,
     updateTaskById,
     waitForSceneCompletion,
@@ -1249,7 +1138,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const {
     uploadAttachment,
     uploadChatImage,
-    pickLocalWorkspace,
     handleAttachmentSelect,
     handleAttachmentClear,
   } = createComposerHandlers({
@@ -1273,8 +1161,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   });
 
   const {
-    readNdjsonStream,
-    applyWorldEvent,
     executeQuest,
   } = createTaskStreamHandlers({
     API_BASE,
@@ -1291,32 +1177,23 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     applyTerminalTaskState,
     authFetch,
     buildApiHeaders,
-    buildAgentLiveSnapshot,
     chatFinalizedTaskIdsRef,
     compactPendingSceneItems,
-    completeAgentLiveEntries,
-    completeLatestAgentLiveEntry,
     completeTaskAgents,
     conversationId,
     conversationIdRef,
-    defaultQuestDescription,
     dropPendingSceneItems,
     ensureTaskForEvent,
     eventDeltaText,
-    extractTodosFromToolItem,
-    finalizeTaskPresentation,
     flushRuntimeTasksToWorkspace,
     generateHexId,
-    getActiveRoleFromWorldEvents,
     getChatProgressLine,
-    getLoopIndexFromWorldEvents,
     getRuntime,
     getTaskById,
     getToolResponseTraceStatus,
     isBotWorkflowTask,
     isChatOriginTask,
     isTerminalTaskStatus,
-    mergeAgentLiveEntry,
     mergeChatImageRefs,
     mutateRuntime,
     normalizeChatImageRefs,
@@ -1331,22 +1208,17 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     resolveProviderMeta,
     saveStoredContextUsage,
     scheduleSceneEvent,
-    setAgentLive,
     setComposerAttachment,
     setContextUsage,
-    setHollow,
     setRuntimeActiveTaskId,
     setRuntimeAnswerBuffer,
     setRuntimeBusy,
     setRuntimeFetchController,
     setUploadState,
     showToast,
-    stopThinkingPulse,
-    stopThinkingPulsesForTask,
     streamTargetConvIdRef,
     stripChatImageAugmentation,
     taskHasAssistantStreamContent,
-    taskImageAttachmentsRef,
     toDisplayText,
     updateTaskById,
     updateWorldTaskState,
@@ -1354,7 +1226,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     upsertToolCall,
     userCancelledTaskIdsRef,
     userIdRef,
-    worldEventToRuntimeLog,
   });
 
 
@@ -1404,9 +1275,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     findProjectByConversationId,
     invalidateConversationActivation,
     isConversationActivationCurrent,
-    materializeDraftConversationForSend,
     normalizeWorkspaceOrdering,
-    now,
     openDraftConversation,
     projectIdForWorkspacePath,
     setActiveTab,
@@ -1419,7 +1288,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     startDeploy: (...args) => deployApiRef.current.startDeploy?.(...args),
     stopConversationRuntimeBeforeDelete,
     viewModeRef,
-    withDefaultExpansion,
     workspaceState,
     workspaceStateWithConversationDetail,
   });
@@ -1447,20 +1315,16 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     startDeploy,
     handleDeploy,
   } = createDeployHandlers({
-    API_BASE,
     APP_DEFAULT_AGENT_OPTIONS,
     abortRef,
     activeRunIdRef,
     activeTaskIdRef,
     answerBufferRef,
     applyTerminalTaskState,
-    authFetch,
-    buildApiHeaders,
     busy,
     cancelActiveConversationTask,
     cancelActiveTask,
     chatFinalizedTaskIdsRef,
-    clearDraftConversationState,
     completeTaskAgents,
     conversationDetailToWorkspaceConversation,
     conversationError,
@@ -1486,26 +1350,19 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     normalizeWorkflowSettings,
     normalizeWorkspaceOrdering,
     pendingCreatedDetailRef,
-    pendingPresentationTaskIdsRef,
     queuedDeploy,
     readRuntimeAnswerBuffer,
     resetSceneActors,
     selectedConversationId,
-    setAgentLive,
     setBusy,
-    setChatDraft,
     setComposerAttachment,
-    setHollow,
     setQueuedDeploy,
     setRuntimeActiveRunId,
     setRuntimeActiveTaskId,
-    setRuntimeAnswerBuffer,
     setRuntimeBusy,
     setRuntimeFetchController,
-    setUploadState,
     setWorkspaceState,
     showToast,
-    streamTargetConvIdRef,
     taskHasAssistantStreamContent,
     taskUpdatedTimestamp,
     titleFromTaskText,
@@ -1518,7 +1375,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     workflowSettingsDraft,
     workspaceState,
     workspaceStateWithConversationDetail,
-    workspaceStateWithConversationRuntimeTask,
     workspaceStateWithTouchedConversation,
     worldTaskStateRef,
   });
@@ -1895,15 +1751,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const submitPending = Boolean(queuedDeploy);
   const agentSelectionLocked = Boolean(lockedAgentId || hasUserMessages);
 
-  const activeIds = getIdsForTarget(calibrationTarget);
-  const activeDrafts = getDraftsForTarget(calibrationTarget);
-  const calibrationExport = calibrationTarget === 'routes' ? `${serializePointMap('NAV_POINTS', NAV_POINT_IDS, navDrafts)}\n\n${serializePointMap('MEET_POINTS', MEET_POINT_IDS, meetDrafts)}` : calibrationTarget === 'nav' ? serializePointMap('NAV_POINTS', activeIds, navDrafts) : calibrationTarget === 'meet' ? serializePointMap('MEET_POINTS', activeIds, meetDrafts) : serializePointMap('STATIONS', activeIds, stationDrafts, true);
-  const selectedPoseLabel = CHAR_DEFS[selectedPoseNpcId]?.name || selectedPoseNpcId;
-  const routeEditorIds = ROUTE_EDITOR_IDS || [];
-  const selectedPoseMapping = POSE_MAPPING_FIELDS.find((item) => item.key === selectedPoseMappingKey) || POSE_MAPPING_FIELDS[0];
-  const selectedMappingFrame = getPoseMappingValue(selectedPoseNpcId, selectedPoseMapping.key);
-  const selectedPoseFrameOptions = getPoseFrameOptions(selectedPoseNpcId);
-  const poseExport = serializePoseConfigMap(CALIBRATION_IDS, getCharPoseConfig);
   const leftMapEdgeReached = !mapView || mapView.tx >= -2;
   const rightMapEdgeReached = !mapView || (mapView.tx + MAP_W * mapView.scale) <= (mapView.viewportWidth + 2);
   const baseMapExtensionStyle = mapView ? {
@@ -2001,6 +1848,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
                 <div className="app-chat-main">
 	                  <ChatPanel
 	                    conversationId={conversationId}
+	                    composerScopeId={draftConversationRef.current?.composerScopeId || conversationId}
 	                    messages={chatMessages}
 	                    running={currentConversationRunning}
 	                    disabled={composerDisabled}

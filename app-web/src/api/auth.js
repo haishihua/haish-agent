@@ -19,7 +19,7 @@ export function readStoredJson(storage, key) {
   try {
     const raw = storage?.getItem?.(key);
     return raw ? JSON.parse(raw) : null;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -31,6 +31,11 @@ export function stableHash(value) {
     hash = ((hash << 5) + hash) ^ input.charCodeAt(i);
   }
   return (hash >>> 0).toString(36);
+}
+
+export function buildUserScopedStorageKey(baseKey, authUser = authMemorySession?.user) {
+  const userKey = String(authUser?.id || authUser?.email || authUser?.username || 'anonymous').trim() || 'anonymous';
+  return `${baseKey}:${stableHash(userKey)}`;
 }
 
 export function buildRunConfigStorageKey(authUser, providerKey, conversationId = '') {
@@ -148,7 +153,7 @@ export async function parseResponseMessage(response, fallback) {
       return detail.map((item) => item?.msg || item?.message || String(item)).join(' ');
     }
     if (typeof payload?.message === 'string' && payload.message.trim()) return payload.message.trim();
-  } catch (error) {
+  } catch {
     // Keep the fallback when the server returns an empty or non-JSON response.
   }
   return fallback;
@@ -184,7 +189,7 @@ export async function authFetch(input, init = {}, options = {}) {
   if (!getAuthRefreshToken()) return response;
   try {
     await refreshAuthSession();
-  } catch (error) {
+  } catch {
     dispatchAuthExpired();
     return response;
   }
@@ -243,7 +248,11 @@ export async function fetchCurrentAuthUser() {
   const response = await authFetch(`${API_BASE}/api/auth/me`, { method: 'GET' }, { json: false });
   if (!response.ok) {
     const message = await parseResponseMessage(response, `session check failed: ${response.status}`);
-    throw new Error(message);
+    const error = new Error(message);
+    // 让调用方能区分“会话失效(401)”和“服务暂不可用(503/网络错误)”，
+    // 后者不应导致本地登录态被清除。
+    error.status = response.status;
+    throw error;
   }
   const user = await response.json();
   updateAuthSessionUser(user);
@@ -261,5 +270,3 @@ export async function logoutCurrentSession() {
   }
   clearAuthSession({ notify: false });
 }
-
-

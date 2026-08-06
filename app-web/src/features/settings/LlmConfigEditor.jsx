@@ -6,7 +6,7 @@ import {
   LoaderCircle,
 } from 'lucide-react';
 import { API_BASE } from '../../api/base.js';
-import { authFetch, parseResponseMessage } from '../../api/auth.js';
+import { authFetch } from '../../api/auth.js';
 import {
   getLlmProvider,
   LLM_OAUTH_UI_PROVIDERS,
@@ -28,10 +28,9 @@ import {
   SecretKeyField,
   SettingsMenuSelect,
   SettingsComboInput,
-  SettingsTooltipIconButton,
 } from './settings-ui.jsx';
 
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect } = React;
 
 export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = false, refreshModels = false }) {
   const config = getSelectedLlmConfig(draft, selectedId);
@@ -385,5 +384,4 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
     </div>
   );
 }
-
 

@@ -121,6 +121,7 @@ export function createDraftConversationHandlers(ctx) {
     const now = Date.now();
     draftConversationRef.current = {
       id: draftId,
+      composerScopeId: draftId,
       projectId: project.id,
       workspacePath: project.workspacePath || null,
       workspaceLabel: project.workspaceLabel || project.name || null,
@@ -405,12 +406,10 @@ export function createDraftConversationHandlers(ctx) {
     ensureServerConversationForActiveDraft,
     materializeDraftConversationForSend,
     fetchTaskRuntimeDetail,
-    restoreTaskRuntime,
     restoreLatestTaskRuntime,
     restoreConversationTaskRuntimes,
     cancelActiveTask,
     cancelActiveConversationTask,
-    activeTaskIdFromConversationSnapshot,
     stopConversationRuntimeBeforeDelete,
     updateConversationTitle,
   };

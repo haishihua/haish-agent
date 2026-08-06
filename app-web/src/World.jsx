@@ -1,6 +1,5 @@
 // @haish-esm
 import { CHAR_DEFS, WalkingSprite } from './Sprites.jsx';
-import React from 'react';
 
 // World — the office stage with characters
 // Position grid is in % of map (1700x950)

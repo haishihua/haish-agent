@@ -1,16 +1,14 @@
 // @haish-esm
-import { API_BASE } from '../api/base.js';
 import {
   normalizeChatImageRefs,
   mergeChatImageRefs,
-  chatImageFallbacksByTaskIdFromMessages,
   generateHexId,
   taskUpdatedTimestamp,
   taskCreatedTimestamp,
   registerTaskSummaryMapper,
 } from './workspace-state.js';
 import { stripChatImageAugmentation } from './chat-text.js';
-import { PROVIDER_ACTOR_MAP, WORLD_ROLE_TO_ACTOR, WORLD_KIND_MAP } from './world-runtime.js';
+import { WORLD_ROLE_TO_ACTOR, WORLD_KIND_MAP } from './world-runtime.js';
 import {
   resolveProviderMeta,
   normalizeWorldEvents,

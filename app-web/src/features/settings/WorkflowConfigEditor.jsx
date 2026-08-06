@@ -14,40 +14,27 @@ import {
 } from '@xyflow/react';
 import {
   normalizeWorkflowNode,
-  normalizeWorkflowEdge,
   normalizeWorkflowRow,
   normalizeWorkflowSettings,
   workflowById,
   typeLabelForWorkflowNode,
-  workflowOutputFields,
   workflowSchemaFields,
-  workflowUpstreamNodeIds,
-  workflowFriendlyVariableLabel,
   workflowVariableCatalog,
-  sanitizeWorkflowTemplateValue,
-  workflowTokenRangeAt,
   workflowArgumentsText,
   workflowParameterEntries,
   workflowTemplateWithParameterAliases,
   reconcileWorkflowParameterTemplate,
-  WORKFLOW_OUTPUT_FIELD_OPTIONS,
   DEFAULT_WORKFLOW_OUTPUT_MAPPING,
   DEFAULT_WORKFLOW_OUTPUT_SCHEMA,
-  workflowOutputFieldOptions,
   workflowOutputMappingEntries,
-  workflowTemplateVariablePath,
   workflowVariableTypeForValue,
   buildWorkflowOutputPatch,
-  payloadForCustomWorkflow,
   placeAddedWorkflowNode,
   placeDroppedWorkflowNode,
 } from '../../lib/workflow-catalog.js';
 import {
   agentCatalogFromSettings,
   workflowToolOptionsFromAgentSettings,
-  DEFAULT_WORKFLOW_NODE_TYPES,
-  DEFAULT_WORKFLOW_INPUT_SCHEMA,
-  SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
 } from '../../lib/agent-catalog.js';
 import {
   FieldRow,
@@ -57,7 +44,6 @@ import {
   agentIconNameForAgentId,
 } from './settings-ui.jsx';
 import {
-  WorkflowVariablePicker,
   WorkflowVariableSelect,
   WorkflowParameterEditor,
   WorkflowTemplateTextarea,
@@ -66,7 +52,7 @@ import {
 } from './WorkflowFormControls.jsx';
 import { PortalTooltip } from '../../panels/PortalTooltip.jsx';
 
-const { useState, useEffect, useRef, useMemo } = React;
+const { useState, useEffect, useRef } = React;
 const ReactFlowNS = {
   ReactFlow,
   Background,

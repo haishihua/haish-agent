@@ -16,6 +16,7 @@ export const TOOL_CHANGE_NAMES = new Set([
 ]);
 export const TOOL_SHELL_NAMES = new Set([
   'terminal',
+  'bash',
   'start_background_process',
   'background_process_status',
   'read_background_process_output',
@@ -518,7 +519,7 @@ export function toolActionLabel(item) {
   if (name === 'search_text') return 'Search text';
   if (name === 'glob_files') return 'Glob files';
   if (name === 'list_dir') return 'List dir';
-  if (name === 'terminal') return 'Shell';
+  if (name === 'terminal' || name === 'bash') return 'Shell';
   if (name === 'start_background_process') return 'Start background process';
   if (name === 'read_background_process_output') return 'Read background output';
   if (name === 'stop_background_process') return 'Stop background process';
@@ -586,7 +587,6 @@ export function buildToolView(item) {
   const name = normalizeToolName(item.toolName);
   const path = firstToolPath(item);
   if (isProcessTool(item, name)) {
-    const output = toolDisplayOutput(item);
     const streamLines = buildToolStreamLines(item);
     const streamAnswerText = buildToolStreamAnswerText(item);
     const finalText = extractProcessResultText(item);

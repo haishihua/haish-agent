@@ -1,18 +1,14 @@
 // @haish-esm
 import React from 'react';
-import { CHAR_DEFS } from '../Sprites.jsx';
 import { PortalTooltip } from './PortalTooltip.jsx';
 import { AttachmentFileChip } from './Format.jsx';
 import {
-  formatElapsedDuration,
-  formatMessageClock,
   handlePathPaste,
   formatContextUsageLabel,
   usePersistentRunConfig,
   useProviderModels,
-  copyTextToClipboard,
 } from './path-utils.jsx';
-import { DEFAULT_AGENT_OPTIONS, CATEGORY_ICON_CLASS, CATEGORY_LABEL } from './shared-constants.jsx';
+import { DEFAULT_AGENT_OPTIONS } from './shared-constants.jsx';
 import {
   ApprovalModePicker,
   ModelPicker,
@@ -21,14 +17,6 @@ import {
   ChatMessageRow,
   ImagePreviewOverlay,
 } from './ChatMessageRow.jsx';
-import {
-  ChatAgentTimeline,
-  ChatTimelineCollapsed,
-  ChatTimelineElapsedPill,
-} from './ChatTimelineNodes.jsx';
-
-const { useState, useEffect, useRef, useMemo } = React;
-
 export const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const CHAT_IMAGE_MAX_COUNT = 4;
 export const CHAT_IMAGE_ACCEPTED_MIME = new Set([
@@ -37,6 +25,7 @@ export const CHAT_IMAGE_ACCEPTED_MIME = new Set([
 
 export function ChatPanel({
   conversationId,
+  composerScopeId = conversationId,
   messages = [],
   running = false,
   disabled = false,
@@ -109,17 +98,18 @@ export function ChatPanel({
     if (nextModelId !== modelId) setModelId(nextModelId);
   }, [activeModelOptions, modelId, modelLoading, providerModels.defaultModelId, setModelId]);
 
-  // Clean up blob URLs + reset draft images when switching conversations.
+  // The logical composer scope remains stable while a local draft receives its
+  // server id, and changes only when the user actually switches conversations.
   React.useEffect(() => {
     return () => {
       composerImagesRef.current.forEach((img) => {
         if (img.previewUrl) URL.revokeObjectURL(img.previewUrl);
       });
     };
-  }, [conversationId]);
+  }, [composerScopeId]);
   React.useEffect(() => {
     setComposerImages([]);
-  }, [conversationId]);
+  }, [composerScopeId]);
 
   async function attachImageFile(file) {
     if (!file) return;
@@ -557,4 +547,3 @@ export function ChatPanel({
     </section>
   );
 }
-

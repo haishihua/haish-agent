@@ -210,7 +210,6 @@ export function createConversationRuntime(ctx) {
   }
 
   return {
-    createEmptyRuntime,
     getRuntime,
     mutateRuntime,
     syncDisplayedRuntime,
@@ -223,7 +222,6 @@ export function createConversationRuntime(ctx) {
     setRuntimeAnswerBuffer,
     readRuntimeAnswerBuffer,
     updateWorldTaskState,
-    cacheTaskImageAttachments,
     showToast,
   };
 }

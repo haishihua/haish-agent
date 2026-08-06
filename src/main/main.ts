@@ -13,7 +13,7 @@ import {
   isUpdateInstallInProgress,
   setupAppUpdater,
 } from './app-updater.js';
-import { ensureLocalRuntime, getLocalRuntimeState, startLocalRuntime, stopLocalRuntime } from './local-runtime.js';
+import { ensureLocalRuntime, getLocalRuntimeState, stopLocalRuntime } from './local-runtime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +55,20 @@ app.commandLine.appendSwitch('use-mock-keychain');
 if (devMode) {
   app.setPath('userData', path.join(app.getPath('appData'), 'Haish (Dev)'));
 }
+
+// 单实例锁：第二次启动直接退出。两个实例会各自拉起一个后端，
+// 共享同一个 auth.db、各签各的 JWT 密钥，导致登录时好时坏。
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+}
+app.on('second-instance', () => {
+  const [window] = BrowserWindow.getAllWindows();
+  if (window) {
+    if (window.isMinimized()) window.restore();
+    window.focus();
+  }
+});
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -291,10 +305,11 @@ ipcMain.handle('fs:read-file', async (_event, projectId: string, relativePath: s
 });
 
 app.whenReady().then(() => {
+  if (!gotTheLock) return;
   app.setName('Haish');
   applyDockIcon();
   setupAppUpdater();
-  startLocalRuntime(runtimePaths()).catch((error) => {
+  ensureLocalRuntime(runtimePaths()).catch((error) => {
     console.error('Failed to start local Haish runtime:', error);
   });
   registerWebProtocol();

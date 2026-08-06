@@ -1,7 +1,6 @@
 // @haish-esm
 import React from 'react';
 import { Markdown } from '../Effects.jsx';
-import { fmtAgo, AttachmentFileChip } from './Format.jsx';
 import { PortalTooltip } from './PortalTooltip.jsx';
 import {
   formatElapsedDuration,
@@ -13,8 +12,6 @@ import {
   ChatTimelineCollapsed,
   ChatTimelineElapsedPill,
 } from './ChatTimelineNodes.jsx';
-
-const { useState, useEffect, useRef } = React;
 
 function FinalAnswerMarkdown({ source, streaming }) {
   const text = String(source || '');
@@ -229,4 +226,3 @@ export function ImagePreviewOverlay({ image, onClose }) {
     </div>
   );
 }
-

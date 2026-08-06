@@ -2,12 +2,7 @@
 import React from 'react';
 import {
   DEFAULT_AGENT_TOOL_GROUPS,
-  DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS,
-  normalizeAgentProfileRow,
-  normalizeAgentToolGroups,
   normalizeAgentSettings,
-  agentCatalogFromSettings,
-  withAlwaysAllowedAgentTools,
   toolsForAgentGroups,
   groupIdsForAgentTools,
 } from '../../lib/agent-catalog.js';
@@ -15,12 +10,7 @@ import { PortalTooltip } from '../../panels/PortalTooltip.jsx';
 import {
   FieldRow,
   SettingsMenuSelect,
-  SettingsLucideIcon,
-  AgentListIcon,
-  agentIconNameForItem,
 } from './settings-ui.jsx';
-
-const { useMemo } = React;
 
 export function AgentConfigEditor({ selectedId, settings, onSettingsChange, readOnly = false }) {
   const normalized = normalizeAgentSettings(settings);
@@ -211,5 +201,4 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
     </div>
   );
 }
-
 

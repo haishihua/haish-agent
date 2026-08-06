@@ -1,5 +1,4 @@
 // @haish-esm
-import { API_BASE } from '../api/base.js';
 import {
   CONTEXT_USAGE_STORAGE_KEY,
   DEFAULT_CONTEXT_TOTAL_TOKENS,

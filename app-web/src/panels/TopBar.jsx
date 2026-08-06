@@ -4,7 +4,7 @@ import React from 'react';
 import {
   PortalTooltip,
 } from './PortalTooltip.jsx';
-export function TopBar({ now, viewMode = 'world', onToggleViewMode, calibrationActive = false, calibrationDisabled = false, onToggleCalibration }) {
+export function TopBar({ viewMode = 'world', onToggleViewMode, calibrationActive = false, calibrationDisabled = false, onToggleCalibration }) {
   const chatMode = viewMode === 'chat';
   return (
     <div className="app-topbar">

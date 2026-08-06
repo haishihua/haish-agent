@@ -65,36 +65,12 @@ export function createComposerHandlers(ctx) {
       try {
         const payload = await response.json();
         detail = String(payload?.detail || '');
-      } catch (error) {
+      } catch {
         detail = '';
       }
       throw new Error(detail || `image upload failed: ${response.status}`);
     }
     return response.json();
-  }
-
-  async function pickLocalWorkspace() {
-    if (!conversationId) return;
-    const response = await authFetch(`${API_BASE}/api/conversations/${conversationId}/workspace/pick`, {
-      method: 'POST',
-    });
-    if (response.status === 409) {
-      showToast('info', 'local workspace selection cancelled');
-      return;
-    }
-    if (!response.ok) {
-      let detail = '';
-      try {
-        const payload = await response.json();
-        detail = String(payload?.detail || '');
-      } catch (error) {
-        detail = '';
-      }
-      throw new Error(detail || `workspace pick failed: ${response.status}`);
-    }
-    const detail = await response.json();
-    applyConversationSnapshot(detail);
-    showToast('success', `local workspace set: ${detail?.workspace_label || 'selected folder'}`);
   }
 
   async function handleAttachmentSelect(file, selectionId, executionMode = viewModeRef.current || viewMode) {
@@ -175,7 +151,6 @@ export function createComposerHandlers(ctx) {
   return {
     uploadAttachment,
     uploadChatImage,
-    pickLocalWorkspace,
     handleAttachmentSelect,
     handleAttachmentClear,
   };

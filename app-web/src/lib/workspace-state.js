@@ -9,6 +9,7 @@ import {
   DEFAULT_CONVERSATION_NAMES,
   authFetch,
   buildApiHeaders,
+  buildUserScopedStorageKey,
 } from '../api/auth.js';
 import { API_BASE } from '../api/base.js';
 import {
@@ -32,15 +33,17 @@ export function generateHexId() {
 }
 
 export function getStoredConversationId() {
-  return String(window.localStorage.getItem(CONVERSATION_STORAGE_KEY) || '').trim() || null;
+  const key = buildUserScopedStorageKey(CONVERSATION_STORAGE_KEY);
+  return String(window.localStorage.getItem(key) || '').trim() || null;
 }
 
 export function setStoredConversationId(conversationId) {
+  const key = buildUserScopedStorageKey(CONVERSATION_STORAGE_KEY);
   if (!conversationId) {
-    window.localStorage.removeItem(CONVERSATION_STORAGE_KEY);
+    window.localStorage.removeItem(key);
     return;
   }
-  window.localStorage.setItem(CONVERSATION_STORAGE_KEY, conversationId);
+  window.localStorage.setItem(key, conversationId);
 }
 
 export function createDefaultProject() {
@@ -66,12 +69,11 @@ export function createEmptyWorkspaceState() {
   };
 }
 
-export function loadStoredWorkspaceState() {
+function parseStoredWorkspaceState(raw) {
+  if (!raw) return null;
   try {
-    const raw = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
-    if (!raw) return createEmptyWorkspaceState();
     const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.projects)) return createEmptyWorkspaceState();
+    if (!parsed || !Array.isArray(parsed.projects)) return null;
     const defaultProject = createDefaultProject();
     const projectsById = new Map(parsed.projects.map((project) => [project.id, project]));
     // Preserve the saved project order (manual drag). Only inject Default when
@@ -121,13 +123,49 @@ export function loadStoredWorkspaceState() {
     });
   } catch (error) {
     console.warn('Failed to load workspace state:', error);
-    return createEmptyWorkspaceState();
+    return null;
   }
+}
+
+export function loadStoredWorkspaceState() {
+  const key = buildUserScopedStorageKey(WORKSPACE_STORAGE_KEY);
+  return parseStoredWorkspaceState(window.localStorage.getItem(key)) || createEmptyWorkspaceState();
+}
+
+export function loadLegacyWorkspaceState() {
+  return parseStoredWorkspaceState(window.localStorage.getItem(WORKSPACE_STORAGE_KEY));
+}
+
+export function filterWorkspaceStateByConversationIds(state, conversationIds) {
+  if (!state) return null;
+  const allowed = new Set(conversationIds);
+  const projects = state.projects
+    .map((project) => ({
+      ...project,
+      conversations: project.conversations.filter((conversation) => allowed.has(conversation.id)),
+    }))
+    .filter((project) => project.id === DEFAULT_PROJECT_ID || project.conversations.length > 0);
+  if (!projects.some((project) => project.conversations.length > 0)) return null;
+  return normalizeWorkspaceOrdering({
+    ...state,
+    projects,
+    activeConversationId: allowed.has(state.activeConversationId) ? state.activeConversationId : null,
+  });
+}
+
+export function legacyWorkspaceMigrationCompleted() {
+  const key = buildUserScopedStorageKey(`${WORKSPACE_STORAGE_KEY}:legacy-migrated-v1`);
+  return window.localStorage.getItem(key) === '1';
+}
+
+export function markLegacyWorkspaceMigrationCompleted() {
+  const key = buildUserScopedStorageKey(`${WORKSPACE_STORAGE_KEY}:legacy-migrated-v1`);
+  window.localStorage.setItem(key, '1');
 }
 
 export function saveWorkspaceState(state) {
   try {
-    window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(buildUserScopedStorageKey(WORKSPACE_STORAGE_KEY), JSON.stringify(state));
   } catch (error) {
     console.warn('Failed to save workspace state:', error);
   }
@@ -426,7 +464,9 @@ export function conversationDetailToWorkspaceConversation(detail, previousConver
   const shouldKeepLocalTitle = isDefaultConversationName(detailName)
     && previousName
     && !isDefaultConversationName(previousName);
-  const tasks = Array.isArray(detail.tasks) ? detail.tasks.map((task) => taskSummaryMapper(task)) : [];
+  const tasks = Array.isArray(detail.tasks)
+    ? detail.tasks.map((task) => taskSummaryMapper(task))
+    : (Array.isArray(previousConversation?.tasks) ? previousConversation.tasks : []);
   return {
     id: detail.conversation_id,
     name: shouldKeepLocalTitle ? previousName : (detailName || previousName || DEFAULT_SESSION_NAME),
@@ -712,4 +752,3 @@ export async function createConversationWithRetry(payload, isCurrentActivation) 
   }
   throw new Error(`conversation bootstrap failed: ${lastStatus || 'unknown'}`);
 }
-

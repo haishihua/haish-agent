@@ -28,9 +28,7 @@ export function createConversationHandlers(ctx) {
     findProjectByConversationId,
     invalidateConversationActivation,
     isConversationActivationCurrent,
-    materializeDraftConversationForSend,
     normalizeWorkspaceOrdering,
-    now,
     openDraftConversation,
     projectIdForWorkspacePath,
     setActiveTab,
@@ -43,7 +41,6 @@ export function createConversationHandlers(ctx) {
     startDeploy,
     stopConversationRuntimeBeforeDelete,
     viewModeRef,
-    withDefaultExpansion,
     workspaceState,
     workspaceStateWithConversationDetail,
   } = ctx;

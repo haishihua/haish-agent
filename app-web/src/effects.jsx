@@ -308,6 +308,16 @@ function parseMarkdown(src) {
       || (listMatch(line) && listMatch(line).indent >= minIndent);
   };
 
+  // Numbered "pseudo list" lines that the strict listMatch() does not catch:
+  // `**5. Title** …`, `5、中文顿号`, `5．全角句点` etc. LLM output often writes
+  // consecutive `**N. …**` lines with NO blank line between them; without this,
+  // the paragraph collector would glue items 5,6,7,… into a single <p> and the
+  // numbers look "mixed together". (?!\d) keeps plain prose like "1.5 倍" intact.
+  const isNumberedLine = (line, minIndent) => {
+    const stripped = stripColumns(line, minIndent);
+    return /^\s*(\*\*)?\d{1,3}(?:\.|、|．|\)|）)(?!\d)/.test(stripped);
+  };
+
   const parseList = (startIndex, indent, ordered) => {
     const items = [];
     let i = startIndex;
@@ -439,6 +449,7 @@ function parseMarkdown(src) {
         lines[i].trim() !== '' &&
         !(stopOnOutdent && leadingColumns(lines[i]) < minIndent) &&
         !isBlockStart(lines[i], minIndent) &&
+        !isNumberedLine(lines[i], minIndent) &&
         !(stripColumns(lines[i], minIndent).includes('|') && i + 1 < lines.length && isTableSep(stripColumns(lines[i + 1], minIndent)))
       ) {
         paraLines.push(stripColumns(lines[i], minIndent));

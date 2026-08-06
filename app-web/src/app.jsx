@@ -1,5 +1,4 @@
 // @haish-esm
-import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthGate } from './features/auth/AuthGate.jsx';
 import { ErrorBoundary } from './lib/ErrorBoundary.jsx';

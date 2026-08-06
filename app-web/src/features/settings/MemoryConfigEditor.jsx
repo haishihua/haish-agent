@@ -1,5 +1,4 @@
 // @haish-esm
-import React from 'react';
 import { normalizeNeo4jDraft } from '../../lib/agent-catalog.js';
 import { FieldRow, SecretKeyField } from './settings-ui.jsx';
 

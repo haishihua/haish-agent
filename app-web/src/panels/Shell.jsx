@@ -80,7 +80,7 @@ export function MapViewport({ children, overlay, MAP_W, MAP_H, onViewChange }) {
     if (e.button !== 0) return;
     setDragging(true);
     dragStartRef.current = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty };
-    try { wrapRef.current.setPointerCapture?.(e.pointerId); } catch (err) {}
+    try { wrapRef.current.setPointerCapture?.(e.pointerId); } catch {}
   }
   function onPointerMove(e) {
     if (!dragging) return;
@@ -89,7 +89,7 @@ export function MapViewport({ children, overlay, MAP_W, MAP_H, onViewChange }) {
   }
   function onPointerUp(e) {
     setDragging(false);
-    try { wrapRef.current.releasePointerCapture?.(e.pointerId); } catch (err) {}
+    try { wrapRef.current.releasePointerCapture?.(e.pointerId); } catch {}
   }
 
   const pct = Math.round((view.scale / Math.max(0.0001, view.fit)) * 100);

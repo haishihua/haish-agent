@@ -12,7 +12,7 @@ export const APP_DEFAULT_AGENT_OPTIONS = [
 export const DEFAULT_AGENT_TOOL_GROUPS = [
   { id: 'workspace_read', label: 'File read', description: 'Read files, list directories, search text, and glob workspace paths.', tools: ['read_file', 'list_dir', 'search_text', 'glob_files'] },
   { id: 'file_edits', label: 'File edits', description: 'Create, edit, copy, delete, checkpoint, and roll back workspace files.', tools: ['write_file', 'edit_file', 'delete_file', 'copy_file', 'create_dir', 'delete_dir', 'list_checkpoints', 'rollback_workspace'] },
-  { id: 'terminal', label: 'Terminal', description: 'Run terminal commands and manage background processes.', tools: ['terminal', 'start_background_process', 'read_background_process_output', 'stop_background_process', 'list_background_processes'] },
+  { id: 'terminal', label: 'Terminal', description: 'Run terminal commands and manage background processes.', tools: ['terminal', 'bash', 'start_background_process', 'read_background_process_output', 'stop_background_process', 'list_background_processes'] },
   { id: 'browser', label: 'Browser', description: 'Navigate, inspect, click, type, scroll, evaluate, and screenshot browser pages.', tools: ['browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type', 'browser_scroll', 'browser_press_key', 'browser_console', 'browser_evaluate', 'browser_screenshot', 'browser_wait_for'] },
   { id: 'web', label: 'Web', description: 'Search the web and fetch pages.', tools: ['web_search', 'web_fetch'] },
   { id: 'memory', label: 'Memory', description: 'Search, add, and forget long-term memory entries.', tools: ['memory_search', 'memory_add', 'memory_forget'] },

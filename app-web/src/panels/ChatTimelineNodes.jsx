@@ -1,56 +1,12 @@
 // @haish-esm
 import React from 'react';
 import { Markdown } from '../Effects.jsx';
-import { CHAR_DEFS } from '../Sprites.jsx';
 import { PortalTooltip } from './PortalTooltip.jsx';
 import { CATEGORY_ICON_CLASS, CATEGORY_LABEL } from './shared-constants.jsx';
-import { normalizeToolName } from '../lib/tool-names.js';
 import {
-  TOOL_READ_NAMES,
-  TOOL_DIFF_NAMES,
-  TOOL_CHANGE_NAMES,
-  TOOL_SHELL_NAMES,
-  TOOL_PROCESS_NAMES,
-  TOOL_BLOCK_LIMIT,
-  compactToolText,
-  stableJson,
-  compactToolValue,
-  truncateToolString,
-  tailToolOutput,
-  sanitizeToolJson,
-  compactToolJsonPayload,
-  isEmptyToolJsonValue,
-  toolJsonText,
-  outputJsonText,
-  toolPlainObject,
-  isToolFailure,
-  firstToolDisplayValue,
-  isRawToolResponseText,
-  isVisualProcessTool,
-  isProcessTool,
-  getToolSubject,
-  firstToolPath,
-  toolStreamTextForEvent,
-  buildToolStreamAnswerText,
-  buildToolStreamLines,
-  subAgentEventText,
-  subAgentToolEventKey,
-  subAgentToolNameKey,
-  findPendingSubAgentTool,
-  subAgentToolCategory,
   buildSubAgentTimelineItems,
-  extractProcessResultText,
-  extractTerminalOutput,
-  toolDisplayOutput,
-  toolLineDelta,
-  getToolDiff,
-  toolActionLabel,
-  toolFailureActionLabel,
-  extractProcessChatMeta,
   buildToolView,
 } from '../lib/tool-view.js';
-
-const { useState, useEffect, useMemo, useRef } = React;
 
 export function resolveToolIconClass(toolName, defaultClass) {
   const name = String(toolName || '').toLowerCase();
@@ -64,7 +20,7 @@ export function resolveToolIconClass(toolName, defaultClass) {
   if (name === 'image_describe') {
     return 'ico-image-describe';
   }
-  if (name === 'terminal') {
+  if (name === 'terminal' || name === 'bash') {
     return 'ico-terminal';
   }
   if (name === 'copy_file') {
