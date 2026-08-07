@@ -674,7 +674,9 @@
 }
 
 .conversations-body {
-    padding: 10px 8px 14px;
+    /* 右 padding 归零：会话行/高亮背景直接延伸到面板右缘（滚动条处），
+       与收窄后的面板右边框对齐，避免高亮框右侧残留多余空隙 */
+    padding: 10px 0 14px;
 }
 
 /* Apple-style 侧栏：用留白与层级，不画框 */
@@ -795,6 +797,33 @@
     font-weight: 500;
 }
 
+/* 长标题轮播：平时省略号截断，仅悬停时无缝循环滚动显示完整内容（替代悬停 tooltip）。 */
+.conversation-name-track {
+    display: none;
+}
+
+.conversation-name.marquee:hover .conversation-name-static {
+    display: none;
+}
+
+.conversation-name.marquee:hover .conversation-name-track {
+    display: inline-flex;
+    min-width: 100%;
+    white-space: nowrap;
+    animation: conversation-name-marquee var(--marquee-duration, 14s) linear infinite;
+    will-change: transform;
+}
+
+.conversation-name-track > span {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+@keyframes conversation-name-marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+}
+
 .conversation-session-toggle {
     width: 24px;
     height: 24px;
@@ -902,7 +931,10 @@
 }
 
 .project-conversations {
-    padding: 0 8px 0 10px;
+    /* 右 padding 为 0：会话行（含 hover/active 高亮背景）右边界
+       与面板右缘对齐；配合 app-shell 中左栏收窄 28px，
+       面板右边框正好落在原高亮框右边界的位置 */
+    padding: 0 0 0 10px;
     display: flex;
     flex-direction: column;
     gap: 7px;

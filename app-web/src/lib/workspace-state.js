@@ -483,9 +483,13 @@ export function conversationDetailToWorkspaceConversation(detail, previousConver
       ? previousConversation.userExpanded
       : undefined,
     tasksExpanded: Boolean(previousConversation?.tasksExpanded),
-    // Prefer backend true (explicit pin), but never let backend default false
-    // override a local true — the PATCH may have failed silently.
-    pinned: detail.pinned === true ? true : Boolean(previousConversation?.pinned),
+    // 后端会话记录始终返回 pinned 布尔值，以其为准；仅在后端缺省该字段时
+    // 才回退到本地旧值（防止旧后端无此字段时误丢置顶）。
+    // 此前逻辑“后端 false 时保留本地 true”会让取消置顶在刷新后被本地旧值
+    // 覆盖回去，导致无法取消置顶。
+    pinned: typeof detail.pinned === 'boolean'
+      ? detail.pinned
+      : Boolean(previousConversation?.pinned),
     sortOrder: typeof detail.sort_order === 'number' ? detail.sort_order : (previousConversation?.sortOrder ?? 0),
   };
 }

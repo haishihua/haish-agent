@@ -40,8 +40,14 @@ export function ChatMessageRow({ message, now, onPreviewImage }) {
   const [copied, setCopied] = React.useState(false);
   const copyTimerRef = React.useRef(null);
   const nowMs = now instanceof Date ? now.getTime() : Number(now) || Date.now();
+  // 计时从"模型返回首字"那一刻起算：firstTokenAt 存在（SSE 已建连且模型开始输出）
+  // 才显示 elapsed pill；任务结束后仍按发送时间算总时长。
+  const firstTokenMs = Number(message.firstTokenAt) || 0;
   const elapsed = isAgent
-    ? formatElapsedDuration(message.createdAt, message.completedAt || (message.streaming ? nowMs : null))
+    ? formatElapsedDuration(
+        message.completedAt ? message.createdAt : (firstTokenMs || message.createdAt),
+        message.completedAt || (message.streaming ? nowMs : null),
+      )
     : '';
   const messageClock = formatMessageClock(isAgent ? (message.completedAt || message.createdAt) : message.createdAt);
   const timelineText = isAgent
@@ -117,7 +123,8 @@ export function ChatMessageRow({ message, now, onPreviewImage }) {
             ) : null}
           </>
         ) : null}
-        {message.streaming ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
+        {/* 首字未到（排队/建连/模型首字等待期）不显示计时器 */}
+        {message.streaming && firstTokenMs ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
         {showTimelineExpanded && !showTimelineCollapsed ? (
           <ChatAgentTimeline
             items={timeline}

@@ -1,6 +1,6 @@
 // @haish-esm
 import React from 'react';
-import { PortalTooltip } from './PortalTooltip.jsx';
+import { PortalTooltip, closeAllPortalTooltips } from './PortalTooltip.jsx';
 import { normalizeTaskStatus } from '../lib/task-runtime.js';
 import { getTaskPillMeta } from './TaskRecords.jsx';
 import { TaskStatusIcon } from './ConversationIcons.jsx';
@@ -51,10 +51,13 @@ export function TaskRecordCompact({ task, onOpenReport, onRetry }) {
   );
 }
 
-export function ConversationDialog({ dialog, onCancel }) {
+export function ConversationDialog({ dialog, onCancel, className = '', backdropClassName = '' }) {
   const [value, setValue] = React.useState('');
   React.useEffect(() => {
     setValue(dialog?.value || '');
+  }, [dialog]);
+  React.useEffect(() => {
+    if (dialog) closeAllPortalTooltips();
   }, [dialog]);
   if (!dialog) return null;
   const isRename = dialog.kind === 'rename';
@@ -68,9 +71,9 @@ export function ConversationDialog({ dialog, onCancel }) {
   }
 
   return (
-    <div className="conversation-dialog-backdrop" role="presentation" onMouseDown={onCancel}>
+    <div className={`conversation-dialog-backdrop ${backdropClassName}`.trim()} role="presentation" onMouseDown={onCancel}>
       <div
-        className={`conversation-dialog ${dialog.danger ? 'danger' : ''}`}
+        className={`conversation-dialog ${dialog.danger ? 'danger' : ''} ${className}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="conversation-dialog-title"

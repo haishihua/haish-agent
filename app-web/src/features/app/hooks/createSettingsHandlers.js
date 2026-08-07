@@ -17,7 +17,6 @@ export function createSettingsHandlers(ctx) {
     buildKnowledgeSettingsPayload,
     buildMemorySettingsPayload,
     buildToolsSettingsPayload,
-    busy,
     clearAllPoseDebug,
     createDefaultCustomAgentPayload,
     createDefaultCustomWorkflowPayload,
@@ -50,7 +49,6 @@ export function createSettingsHandlers(ctx) {
   } = ctx;
 
   function handleToggleCalibration() {
-    if (busy) return;
     if (activeTab !== 'dashboard') setActiveTab('dashboard');
     dragStateRef.current = null;
     setCalibrationMode((enabled) => {
@@ -141,6 +139,32 @@ export function createSettingsHandlers(ctx) {
       const payload = await response.json();
       setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
       if (successMessage) showToast('success', successMessage);
+      return true;
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+      return false;
+    }
+  }
+
+  async function handleDeleteLlmProvider(providerType, entryId) {
+    try {
+      const scope = String(providerType || '').trim().toLowerCase();
+      const target = String(entryId || '').trim() || scope;
+      if (!['chat', 'vision', 'embedding'].includes(scope) || !target) {
+        throw new Error('invalid llm provider delete scope');
+      }
+      const response = await authFetch(
+        `${API_BASE}/api/settings/llm/providers/${encodeURIComponent(scope)}/${encodeURIComponent(target)}`,
+        { method: 'DELETE' },
+        { json: false },
+      );
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `provider delete failed: ${response.status}`);
+        throw new Error(message);
+      }
+      const payload = await response.json();
+      setLlmSettingsDraft((prev) => applyLlmSettingsPayloadToDraft(prev, payload));
+      showToast('success', 'provider deleted');
       return true;
     } catch (error) {
       showToast('error', String(error?.message || error));
@@ -383,12 +407,14 @@ export function createSettingsHandlers(ctx) {
   async function handleTestLlmConfig(selectedId) {
     const config = getSelectedLlmConfig(llmSettingsDraft, selectedId);
     if (!config?.provider) return;
+    const providerType = selectedId === 'embedding' ? 'embedding' : selectedId === 'vision' ? 'vision' : 'chat';
     try {
       const response = await authFetch(`${API_BASE}/api/llm/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(llmProviderRequestPayload(config, {
           includeSecret: true,
+          providerType,
         })),
       }, { json: false });
       if (!response.ok) {
@@ -396,7 +422,7 @@ export function createSettingsHandlers(ctx) {
         throw new Error(message);
       }
       await response.json();
-      showToast('success', 'llm provider test passed');
+      showToast('success', providerType === 'embedding' ? 'embedding provider test passed' : 'llm provider test passed');
     } catch (error) {
       showToast('error', String(error?.message || error));
     }
@@ -578,6 +604,7 @@ export function createSettingsHandlers(ctx) {
     handleToggleCalibration,
     handleSaveSettingsDraft,
     handleSaveToolsSettingsDraft,
+    handleDeleteLlmProvider,
     applyAgentSettingsPayload,
     fetchAgentSettingsPayload,
     handleTogglePresetAgent,

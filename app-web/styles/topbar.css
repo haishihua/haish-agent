@@ -9,7 +9,7 @@
     padding: 0 16px 0 var(--topbar-left-space);
     background: linear-gradient(180deg, rgba(10, 15, 24, 0.34), rgba(9, 13, 20, 0.18));
     border-top: 0;
-    border-bottom: 1px solid rgba(170, 205, 255, 0.05);
+    border-bottom: 0;
     backdrop-filter: blur(18px) saturate(116%);
     -webkit-backdrop-filter: blur(18px) saturate(116%);
     z-index: 30;

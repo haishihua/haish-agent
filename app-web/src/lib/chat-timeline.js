@@ -492,6 +492,7 @@ export function buildChatTimeline(task, taskStatus) {
   const items = [];
   let textBuf = '';
   let textSegmentIndex = 0;
+  let textBufBlockId = '';
   let thinkingBuf = '';
   let thinkingSegmentIndex = 0;
   let currentSkillItem = null;
@@ -609,12 +610,14 @@ export function buildChatTimeline(task, taskStatus) {
   const flushText = () => {
     const value = textBuf.trim();
     const source = textBufSource;
+    const blockId = textBufBlockId;
     textBuf = '';
+    textBufBlockId = '';
     textBufSource = 'progress';
     if (!value.trim()) return;
     items.push({
       kind: 'text',
-      id: `text-${textSegmentIndex}`,
+      id: blockId || `text-${textSegmentIndex}`,
       text: value,
       source,
       streaming: false,
@@ -660,14 +663,31 @@ export function buildChatTimeline(task, taskStatus) {
     }
     if (type === 'llm_answer_delta') {
       flushThinking(false);
+      const blockId = event.textBlockId || event.text_block_id || '';
+      if (textBuf.trim() && blockId && textBufBlockId && blockId !== textBufBlockId) {
+        flushText();
+      }
+      textBufBlockId = blockId || textBufBlockId;
       textBuf += eventDeltaText(event);
-      textBufSource = 'answer';
+      textBufSource = event.messagePhase || event.message_phase || 'answer';
+      continue;
+    }
+    if (type === 'llm_text_phase_resolved') {
+      const blockId = event.textBlockId || event.text_block_id || '';
+      const messagePhase = event.messagePhase || event.message_phase || 'unknown';
+      if (blockId && blockId === textBufBlockId) {
+        textBufSource = messagePhase;
+      } else if (blockId) {
+        const item = items.find((candidate) => candidate.kind === 'text' && candidate.id === blockId);
+        if (item) item.source = messagePhase;
+      }
       continue;
     }
     if (type === 'agent_progress_delta') {
       flushThinking(false);
       if (textBuf.trim()) flushText();
       textBuf += event.message || '';
+      textBufBlockId = event.textBlockId || event.text_block_id || '';
       textBufSource = 'progress';
       flushText();
       continue;
@@ -688,6 +708,7 @@ export function buildChatTimeline(task, taskStatus) {
     }
     if (type === 'llm_tool_call_requested') {
       flushThinking(false);
+      if (textBufSource === 'unknown' || textBufSource === 'answer') textBufSource = 'commentary';
       if (textBuf.trim()) flushText();
       const callId = event.callId || '';
       if (callId && seenToolIds.has(callId)) {
@@ -766,6 +787,22 @@ export function buildChatTimeline(task, taskStatus) {
       );
       continue;
     }
+    if (type === 'tool_output_delta') {
+      // 实时命令输出：把 bash 等工具执行过程中的输出增量追加到对应工具卡片，
+      // 让 shell 卡片像终端一样边执行边滚动，而不是等命令跑完才一次性显示。
+      const callId = event.callId || event.toolCallId || event.tool_call_id || '';
+      if (callId) {
+        const toolItem = toolItemsByCallId.get(callId);
+        if (toolItem) {
+          const delta = String(event.delta || event.text || event.contentDelta || event.content || '');
+          if (delta) {
+            toolItem.toolOutput = `${toolItem.toolOutput || ''}${delta}`;
+            toolItem.status = getToolTraceStatus('running', finalStatus);
+          }
+        }
+      }
+      continue;
+    }
     if (type === 'tool_executor_completed' || type === 'tool_result_returned') {
       // Tool finished cleanly: flip the existing tool item to done. We do not
       // touch text / thinking buffers because these completion events
@@ -789,7 +826,7 @@ export function buildChatTimeline(task, taskStatus) {
   if (textBuf.trim()) {
     items.push({
       kind: 'text',
-      id: `text-${textSegmentIndex}`,
+      id: textBufBlockId || `text-${textSegmentIndex}`,
       text: textBuf.trim(),
       source: textBufSource,
       streaming: isRunning,
@@ -929,4 +966,3 @@ export function pendingTaskToQuest(pendingTask) {
     serverFinished: !!pendingTask.serverFinished,
   };
 }
-

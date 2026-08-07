@@ -3,6 +3,13 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { resolveTooltipPosition } from './tooltip-position.js';
 
+// 全局 tooltip 注册表：任何模态/弹窗打开时强制关闭所有已显示的 tooltip，避免气泡残留。
+const tooltipCloseFns = new Set();
+
+export function closeAllPortalTooltips() {
+  tooltipCloseFns.forEach((closeFn) => closeFn());
+}
+
 export function PortalTooltip({ text, position = 'below', multiline = false, children }) {
   const [visible, setVisible] = React.useState(false);
   const [coords, setCoords] = React.useState(null);
@@ -15,6 +22,33 @@ export function PortalTooltip({ text, position = 'below', multiline = false, chi
     window.clearTimeout(closeTimerRef.current);
     closeTimerRef.current = null;
   }, []);
+
+  const closeTooltip = React.useCallback(() => {
+    cancelClose();
+    setVisible(false);
+  }, [cancelClose]);
+
+  React.useEffect(() => {
+    tooltipCloseFns.add(closeTooltip);
+    return () => {
+      tooltipCloseFns.delete(closeTooltip);
+    };
+  }, [closeTooltip]);
+
+  // 点击 trigger / bubble 之外的任意位置立即关闭（弹窗遮罩、其他按钮等场景）。
+  React.useEffect(() => {
+    const onDocumentMouseDown = (event) => {
+      const target = event.target;
+      const trigger = triggerRef.current;
+      const bubble = bubbleRef.current;
+      if (trigger && trigger.contains(target)) return;
+      if (bubble && bubble.contains(target)) return;
+      cancelClose();
+      setVisible(false);
+    };
+    document.addEventListener('mousedown', onDocumentMouseDown, true);
+    return () => document.removeEventListener('mousedown', onDocumentMouseDown, true);
+  }, [cancelClose]);
 
   const scheduleClose = React.useCallback(() => {
     cancelClose();

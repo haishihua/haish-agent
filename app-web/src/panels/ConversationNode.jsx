@@ -5,6 +5,71 @@ import { ConversationAction } from './ConversationIcons.jsx';
 import { TaskRecordCompact } from './ConversationTaskCards.jsx';
 import { conversationHasRunningTask } from './conversation-status.js';
 
+/**
+ * 会话标题：不用悬停 tooltip 展示完整标题；
+ * 标题超出容器宽度时自动轮播（marquee）滚动显示完整内容。
+ * 非溢出状态渲染普通文本，溢出状态启用无缝循环动画。
+ */
+function ConversationMarqueeTitle({ name }) {
+  const containerRef = React.useRef(null);
+  const [marquee, setMarquee] = React.useState(false);
+  const [seconds, setSeconds] = React.useState(0);
+
+  React.useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return undefined;
+    let raf = 0;
+    const measure = () => {
+      // 经典溢出检测：容器自身 scrollWidth > clientWidth（容器是
+      // overflow:hidden + ellipsis，scrollWidth 即完整文本宽度）。
+      const overflow = el.scrollWidth > el.clientWidth + 2;
+      if (overflow) {
+        // 按文本宽度估算轮播时长，约 45px/s，至少 10s，保证可读。
+        const next = Math.max(10, Math.ceil(el.scrollWidth / 45));
+        setSeconds((prev) => (prev === next ? prev : next));
+        setMarquee(true);
+      } else {
+        setSeconds(0);
+        setMarquee(false);
+      }
+    };
+    measure();
+    // 字体/布局落定后再量一次，避免首次测量拿到未排版完成的宽度。
+    raf = requestAnimationFrame(measure);
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => measure());
+      ro.observe(el);
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+    };
+  }, [name]);
+
+  const active = marquee && seconds > 0;
+  return (
+    <span
+      ref={containerRef}
+      className={`conversation-name${active ? ' marquee' : ''}`}
+      style={active ? { '--marquee-duration': `${seconds}s` } : undefined}
+    >
+      {active ? (
+        <>
+          {/* 静态态：省略号截断显示，悬停时由 .conversation-name-track 接管 */}
+          <span className="conversation-name-static">{name}</span>
+          <span className="conversation-name-track">
+            <span>{name}</span>
+            <span aria-hidden="true">{name}</span>
+          </span>
+        </>
+      ) : (
+        <span>{name}</span>
+      )}
+    </span>
+  );
+}
+
 export function ConversationNode({
   project,
   conversation,
@@ -107,9 +172,7 @@ export function ConversationNode({
             aria-hidden="true"
           />
         </button>
-        <PortalTooltip text={conversation.name || ''} position="above">
-          <span className="conversation-name">{conversation.name}</span>
-        </PortalTooltip>
+        <ConversationMarqueeTitle name={conversation.name || ''} />
         {terminalStatus && !active ? (
           <span className={`conversation-terminal-notice chat-timeline-status status-${terminalStatus}`} aria-hidden="true" />
         ) : null}

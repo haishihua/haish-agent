@@ -138,6 +138,7 @@ import {
   normalizeTaskStatus,
   sortTaskIdsForRestore,
   taskHasAssistantStreamContent,
+  taskFirstStreamTimestamp,
   upsertToolCall,
   getLiveEventStatus,
   legacyLiveEntries,
@@ -1005,6 +1006,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     handleToggleCalibration,
     handleSaveSettingsDraft,
     handleSaveToolsSettingsDraft,
+    handleDeleteLlmProvider,
     applyAgentSettingsPayload,
     fetchAgentSettingsPayload,
     handleTogglePresetAgent,
@@ -1700,6 +1702,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           streaming,
           createdAt: task.createdAt,
           completedAt: task.completedAt,
+          firstTokenAt: taskFirstStreamTimestamp(task),
         });
       }
     }
@@ -1731,6 +1734,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
             streaming: pendingStreaming,
             createdAt: worldTaskState.pendingTask.createdAt,
             completedAt: worldTaskState.pendingTask.completedAt,
+            firstTokenAt: taskFirstStreamTimestamp(worldTaskState.pendingTask),
           });
         }
       }
@@ -1778,7 +1782,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         onToggleViewMode={() => { handleToggleViewMode().catch((error) => showToast('error', String(error?.message || error))); }}
         calibrationActive={calibrationMode}
         onToggleCalibration={handleToggleCalibration}
-        calibrationDisabled={busy}
       />
       <div className={`app-body ${calibrationMode ? 'settings-mode' : viewMode === 'chat' ? 'chat-mode' : 'world-mode'}`}>
         {calibrationMode ? (
@@ -1797,6 +1800,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
             onWorkflowSettingsChange={setWorkflowSettingsDraft}
             onSave={handleSaveSettingsDraft}
             onSaveTools={handleSaveToolsSettingsDraft}
+            onDeleteLlmProvider={handleDeleteLlmProvider}
             onTogglePresetAgent={handleTogglePresetAgent}
             onCreateCustomAgent={handleCreateCustomAgent}
             onSaveCustomAgent={handleSaveCustomAgent}

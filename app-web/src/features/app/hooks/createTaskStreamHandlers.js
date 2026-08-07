@@ -418,6 +418,27 @@ export function createTaskStreamHandlers(ctx) {
           };
         });
         break;
+      case 'tool_output_delta': {
+        updateTaskById(taskId, (run) => {
+          const deltaData = event.data && typeof event.data === 'object' ? event.data : {};
+          const callId = event.call_id || deltaData.call_id || deltaData.tool_call_id || null;
+          if (!callId || !Array.isArray(run.toolCalls)) return run;
+          const existingToolCall = run.toolCalls.find((item) => item.callId === callId);
+          if (!existingToolCall) return run;
+          const delta = String(event.delta || deltaData.delta || '');
+          if (!delta) return run;
+          return {
+            ...run,
+            stage: 'in_progress',
+            loopIndex,
+            toolCalls: upsertToolCall(run.toolCalls, callId, {
+              // 实时追加命令输出，卡片在 running 状态直接展示，像终端一样滚动。
+              toolOutput: `${existingToolCall.toolOutput || ''}${delta}`,
+            }),
+          };
+        });
+        break;
+      }
       case 'sub_agent_progress_delta':
       case 'sub_agent_answer_delta':
       case 'sub_agent_tool_call_requested':

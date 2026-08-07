@@ -22,7 +22,6 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
       .map((skill) => String(skill?.name || skill || '').trim())
       .filter(Boolean);
     const effectiveTools = (preset.effective_tools || []).map(String).filter(Boolean);
-    const effectiveMcpTools = (preset.effective_mcp_tools || []).map(String).filter(Boolean);
     const renderReadOnlyList = (items, emptyLabel) => (
       <div className="settings-check-grid">
         {items.map((item) => (
@@ -42,7 +41,6 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
           <textarea value={preset.description || ''} disabled />
         </FieldRow>
         <FieldRow label="Tools">{renderReadOnlyList(effectiveTools, 'No tools.')}</FieldRow>
-        <FieldRow label="MCP tools">{renderReadOnlyList(effectiveMcpTools, 'No MCP tools.')}</FieldRow>
         <FieldRow label="Skills">{renderReadOnlyList(effectiveSkills, 'No skills.')}</FieldRow>
       </div>
     );
@@ -160,32 +158,34 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
           ))}
         </div>
       </FieldRow>
-      <FieldRow label="MCP tools">
-        <div className="settings-check-grid">
-          {mcpServers.map((server) => (
-            <div key={server.name} className="settings-check-group">
-              <label className="settings-check-row">
-                <input type="checkbox" checked={allowedMcpServers.has(server.name)} onChange={() => toggleMcpServer(server.name)} disabled={readOnly} />
-                <span className="settings-check-label">{server.name} · all tools</span>
-                {server.error ? renderHelpDot(server.error) : null}
-              </label>
-              {(server.tools || []).map((tool) => (
-                <label className="settings-check-row" key={`${server.name}.${tool.name}`}>
-                  <input
-                    type="checkbox"
-                    checked={allowedMcpServers.has(server.name) || allowedMcpTools.has(`${server.name}.${tool.name}`)}
-                    onChange={() => toggleMcpTool(server.name, tool.name)}
-                    disabled={readOnly || allowedMcpServers.has(server.name)}
-                  />
-                  <span className="settings-check-label">{tool.name}</span>
-                  {tool.description ? renderHelpDot(tool.description) : null}
+      {!readOnly ? (
+        <FieldRow label="MCP tools">
+          <div className="settings-check-grid">
+            {mcpServers.map((server) => (
+              <div key={server.name} className="settings-check-group">
+                <label className="settings-check-row">
+                  <input type="checkbox" checked={allowedMcpServers.has(server.name)} onChange={() => toggleMcpServer(server.name)} disabled={readOnly} />
+                  <span className="settings-check-label">{server.name} · all tools</span>
+                  {server.error ? renderHelpDot(server.error) : null}
                 </label>
-              ))}
-            </div>
-          ))}
-          {!mcpServers.length ? <small>No configured MCP servers.</small> : null}
-        </div>
-      </FieldRow>
+                {(server.tools || []).map((tool) => (
+                  <label className="settings-check-row" key={`${server.name}.${tool.name}`}>
+                    <input
+                      type="checkbox"
+                      checked={allowedMcpServers.has(server.name) || allowedMcpTools.has(`${server.name}.${tool.name}`)}
+                      onChange={() => toggleMcpTool(server.name, tool.name)}
+                      disabled={readOnly || allowedMcpServers.has(server.name)}
+                    />
+                    <span className="settings-check-label">{tool.name}</span>
+                    {tool.description ? renderHelpDot(tool.description) : null}
+                  </label>
+                ))}
+              </div>
+            ))}
+            {!mcpServers.length ? <small>No configured MCP servers.</small> : null}
+          </div>
+        </FieldRow>
+      ) : null}
       <FieldRow label="Skills">
         <div className="settings-check-grid">
           {skillOptions.map((skill) => (

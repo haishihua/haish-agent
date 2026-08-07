@@ -998,8 +998,8 @@
 
 /* terminal / process mode 不再单独覆盖边框——全局边框已经统一成金色。 */
 /* ============ macOS-style terminal frame ============
-   Design philosophy: clean window chrome, centered title, refined
-   traffic-light controls, layered shadows, and SF Mono typography. */
+   参考图风格：命令直接显示在卡片顶部（绿色等宽），下方紧跟输出，
+   无独立标题栏/红绿灯，背景统一深色，简洁克制。 */
 .chat-terminal-frame {
     width: min(100%, 980px);
     max-height: 460px;
@@ -1008,14 +1008,13 @@
     padding: 0;
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 10px;
-    background: linear-gradient(180deg, #1e1f22 0%, #1a1b1e 100%);
-    color: rgba(234, 240, 250, 0.94);
+    background: #0d1218;
+    color: #c9cfd9;
     font-family: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
     font-size: 12px;
     line-height: 1.55;
     white-space: pre-wrap;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.04),
+    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.04),
     0 1px 1px rgba(0, 0, 0, 0.18),
     0 12px 30px rgba(0, 0, 0, 0.32);
     -webkit-font-smoothing: antialiased;
@@ -1023,116 +1022,33 @@
     font-feature-settings: 'liga' 0, 'calt' 0;
 }
 
-.chat-terminal-bar {
-    position: relative;
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-    height: 28px;
-    padding: 0 12px;
-    margin: 0;
-    background: linear-gradient(180deg, #3a3b3f 0%, #2c2d31 100%);
-    border-bottom: 0.5px solid rgba(0, 0, 0, 0.5);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    color: rgba(220, 224, 232, 0.7);
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.01em;
-    -webkit-app-region: drag;
-}
-
-.chat-terminal-dots {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    flex: 0 0 auto;
-    -webkit-app-region: no-drag;
-}
-
-.chat-terminal-dots span {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.18);
-    box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.32),
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.22);
-    transition: filter 120ms ease;
-}
-
-.chat-terminal-dots span:nth-child(1) {
-    background: radial-gradient(circle at 35% 30%, #ff8a82 0%, #ff5f57 60%, #e1473f 100%);
-}
-
-.chat-terminal-dots span:nth-child(2) {
-    background: radial-gradient(circle at 35% 30%, #ffd581 0%, #febc2e 60%, #d89826 100%);
-}
-
-.chat-terminal-dots span:nth-child(3) {
-    background: radial-gradient(circle at 35% 30%, #6fe17a 0%, #28c840 60%, #1da32f 100%);
-}
-
-.chat-terminal-frame:hover .chat-terminal-dots span {
-    filter: saturate(1.05);
-}
-
-.chat-terminal-cwd {
-    min-width: 0;
-    justify-self: center;
-    max-width: 100%;
-    color: rgba(220, 224, 232, 0.78);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: center;
-    font-variant-numeric: tabular-nums;
-}
-
-.chat-terminal-state {
-    flex: 0 0 auto;
-    justify-self: end;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 0.5px solid rgba(255, 255, 255, 0.08);
-    color: rgba(220, 224, 232, 0.72);
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.02em;
-    text-transform: lowercase;
-}
-
-.chat-terminal-state.running {
-    background: rgba(239, 191, 100, 0.14);
-    border-color: rgba(239, 191, 100, 0.28);
-    color: var(--gold);
-}
-
 .chat-terminal-command {
     display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 12px 16px 0;
-    color: rgba(238, 244, 255, 0.96);
+    align-items: baseline;
+    gap: 7px;
+    min-width: 0;
+    padding: 10px 16px 4px;
+    color: #2db36e;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
 
 .chat-terminal-prompt {
     flex: 0 0 auto;
-    color: var(--green-2);
+    color: inherit;
     font-weight: 600;
-    opacity: 0.9;
+}
+
+.chat-terminal-command-text {
+    min-width: 0;
 }
 
 .chat-terminal-output {
-    margin: 6px 0 0;
-    padding: 0 16px 14px;
+    margin: 0;
+    padding: 4px 16px 14px;
     border: 0;
     background: transparent;
-    color: rgba(219, 229, 246, 0.88);
+    color: #c9cfd9;
     font: inherit;
     line-height: 1.6;
     white-space: pre-wrap;

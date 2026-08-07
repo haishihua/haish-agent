@@ -76,7 +76,9 @@ export const STREAM_IMMEDIATE_EVENT_TYPES = new Set([
   'context_compaction_completed',
   'llm_thinking_delta',
   'llm_answer_delta',
+  'llm_text_phase_resolved',
   'agent_progress_delta',
+  'tool_output_delta',
   'llm_tool_call_requested',
   'tool_manager_received',
   'tool_dispatched',
@@ -322,6 +324,8 @@ export function worldEventToRuntimeLog(event) {
     estimatedTokens: event.estimated_tokens || null,
     compressed: Boolean(event.compressed),
     delta: deltaText,
+    textBlockId: event.text_block_id || event.textBlockId || null,
+    messagePhase: event.message_phase || event.messagePhase || null,
     message: toDisplayText(event.message || deltaText || event.content || null),
     loopIndex: event.loop_index || 0,
   };

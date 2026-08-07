@@ -126,6 +126,24 @@ export function taskHasAssistantStreamContent(task) {
   return false;
 }
 
+/** Milliseconds of the first assistant-visible stream event, or null when no
+ * model content has arrived yet (queueing / SSE handshake / first-char wait).
+ * The elapsed pill only appears once this timestamp exists, and its clock
+ * starts from it instead of from the send time. */
+export function taskFirstStreamTimestamp(task) {
+  if (!task) return null;
+  if (Array.isArray(task.eventLog)) {
+    for (const entry of task.eventLog) {
+      if (!eventLogEntryHasVisiblePayload(entry)) continue;
+      const raw = entry.timestamp || entry.created_at || entry.createdAt || '';
+      if (!raw) continue;
+      const ms = typeof raw === 'number' ? raw : Date.parse(String(raw));
+      if (Number.isFinite(ms) && ms > 0) return ms;
+    }
+  }
+  return null;
+}
+
 export function applyTerminalTaskState(task, status, options = {}) {
   if (!task) return task;
   const normalized = normalizeTaskStatus(status);

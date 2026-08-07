@@ -14,7 +14,8 @@ import {
   workflowById,
   normalizeWorkflowRow,
 } from '../../lib/workflow-catalog.js';
-import { PortalTooltip } from '../../panels/PortalTooltip.jsx';
+import { PortalTooltip, closeAllPortalTooltips } from '../../panels/PortalTooltip.jsx';
+import { ConversationDialog } from '../../panels/ConversationTaskCards.jsx';
 import {
   configItemsForSection,
   createGenericRecord,
@@ -99,6 +100,7 @@ export function SettingsPage({
   onWorkflowSettingsChange,
   onSave,
   onSaveTools,
+  onDeleteLlmProvider,
   onTogglePresetAgent,
   onCreateCustomAgent,
   onSaveCustomAgent,
@@ -119,6 +121,7 @@ export function SettingsPage({
 }) {
   const [editingSettings, setEditingSettings] = useState(null);
   const [settingsSearch, setSettingsSearch] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [expandedSettingsSections, setExpandedSettingsSections] = useState(() => new Set([activeSection]));
   const sectionMeta = SETTINGS_SECTIONS.find((item) => item.id === activeSection) || SETTINGS_SECTIONS[0];
   const subtabs = SETTINGS_SUBTABS[activeSection] || [];
@@ -148,7 +151,8 @@ export function SettingsPage({
   const filteredItems = !hideSettingsSearch && settingsSearch.trim()
     ? items.filter((item) => `${item.title} ${item.kind || ''} ${item.summary || ''}`.toLowerCase().includes(settingsSearch.trim().toLowerCase()))
     : items;
-  const canAddItem = !(['memory', 'knowledge'].includes(activeSection) || (activeSection === 'llm' && activeSubtab === 'embedding' && displayItems.length > 0));
+  // Memory/Knowledge 是单后端配置，隐藏添加；其他（含已配置的 Embedding）始终显示，点“连接”即重新打开配置入口。
+  const canAddItem = !['memory', 'knowledge'].includes(activeSection);
   const isMcpConfigPane = activeSection === 'tools' && activeSubtab === 'tools-mcp';
   const isSkillsConfigPane = activeSection === 'tools' && activeSubtab === 'tools-skills';
   const isWebConfigPane = activeSection === 'tools' && activeSubtab === 'tools-web';
@@ -340,10 +344,8 @@ export function SettingsPage({
       };
     });
   };
-  const deleteConfig = async (section, id) => {
+  const performDelete = async (section, id) => {
     const sectionItems = section === activeSection ? displayItems : configItemsForSection(section, llmDraft, records, activeSubtab, agentSettings, workflowSettings);
-    const target = sectionItems.find((item) => item.id === id);
-    if (!target || (target.protected && !target.canDelete)) return;
     if (section === 'agent') {
       const deleted = await onDeleteCustomAgent?.(id);
       if (deleted === false) return;
@@ -351,15 +353,8 @@ export function SettingsPage({
       const deleted = await onDeleteCustomWorkflow?.(id);
       if (deleted === false) return;
     } else if (section === 'llm') {
-      onLlmDraftChange((prev) => {
-        if (id === 'chat') return { ...prev, chat: {} };
-        if (id === 'vision') return { ...prev, vision: { ...prev.vision, enabled: false } };
-        if (id === 'embedding') return { ...prev, embedding: { ...prev.embedding, enabled: false } };
-        return {
-          ...prev,
-          profiles: (prev.profiles || []).filter((profile) => profile.id !== id),
-        };
-      });
+      const deleted = await onDeleteLlmProvider?.(activeSubtab, id);
+      if (deleted === false) return;
     } else {
       onRecordsChange((prev) => ({
         ...prev,
@@ -375,6 +370,21 @@ export function SettingsPage({
       }
     }
     if (editingSettings?.section === section && editingSettings?.id === id) closeEditor();
+  };
+  const requestDelete = (section, id) => {
+    const sectionItems = section === activeSection ? displayItems : configItemsForSection(section, llmDraft, records, activeSubtab, agentSettings, workflowSettings);
+    const target = sectionItems.find((item) => item.id === id);
+    if (!target || (target.protected && !target.canDelete)) return;
+    const label = String(target.title || target.id || 'this entry').trim();
+    closeAllPortalTooltips();
+    setDeleteConfirm({
+      kind: 'delete',
+      title: `Delete ${label}?`,
+      message: `"${label}" will be permanently removed. This cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+      onConfirm: () => { performDelete(section, id); },
+    });
   };
   const saveAndClose = async () => {
     const saved = panelSection === 'agent'
@@ -648,7 +658,7 @@ export function SettingsPage({
                             icon="delete"
                             danger
                             iconSize={20}
-                            onClick={() => deleteConfig('llm', item.id)}
+                            onClick={() => requestDelete('llm', item.id)}
                           />
                         ) : null}
                         {activeSection === 'agent' && item.custom ? (
@@ -657,7 +667,7 @@ export function SettingsPage({
                             icon="delete"
                             danger
                             iconSize={20}
-                            onClick={() => deleteConfig('agent', item.id)}
+                            onClick={() => requestDelete('agent', item.id)}
                           />
                         ) : null}
                         {activeSection === 'workflow' && item.custom ? (
@@ -666,7 +676,7 @@ export function SettingsPage({
                             icon="delete"
                             danger
                             iconSize={20}
-                            onClick={() => deleteConfig('workflow', item.id)}
+                            onClick={() => requestDelete('workflow', item.id)}
                           />
                         ) : null}
                       </div>
@@ -692,28 +702,40 @@ export function SettingsPage({
           {showSideEditor ? (
             <section className="settings-editor settings-detail-drawer is-editing">
               <div className="settings-editor-head">
-                <div>
-                  {panelSection === 'workflow' ? null : <span>{panelEyebrow}</span>}
-                  {panelSection === 'workflow' && panelWorkflow?.custom ? (
-                    <input
-                      className="workflow-title-input"
-                      value={panelWorkflow.display_name ?? ''}
-                      onChange={(event) => updatePanelWorkflow({ display_name: event.target.value })}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Backspace' || event.key === 'Delete') {
-                          event.stopPropagation();
-                        }
-                      }}
-                      placeholder="Workflow name"
-                      aria-label="Workflow name"
-                    />
-                  ) : (
-                    <strong>{panelSelectedItem?.title || listTitle}</strong>
-                  )}
+                <div className="settings-editor-title">
+                  {panelSection === 'workflow' ? (
+                    <button
+                      type="button"
+                      className="settings-pane-close"
+                      onClick={cancelEditor}
+                      aria-label="Back"
+                    >
+                      <SettingsLucideIcon name="back" size={18} />
+                    </button>
+                  ) : null}
+                  <div>
+                    {panelSection === 'workflow' ? null : <span>{panelEyebrow}</span>}
+                    {panelSection === 'workflow' && panelWorkflow?.custom ? (
+                      <input
+                        className="workflow-title-input"
+                        value={panelWorkflow.display_name ?? ''}
+                        onChange={(event) => updatePanelWorkflow({ display_name: event.target.value })}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Backspace' || event.key === 'Delete') {
+                            event.stopPropagation();
+                          }
+                        }}
+                        placeholder="Workflow name"
+                        aria-label="Workflow name"
+                      />
+                    ) : (
+                      <strong>{panelSelectedItem?.title || listTitle}</strong>
+                    )}
+                  </div>
                 </div>
                 {panelSection === 'llm' ? (
                   <SettingsTooltipIconButton label="Close" icon="close" iconSize={20} onClick={cancelEditor} />
-                ) : (
+                ) : panelSection === 'workflow' ? null : (
                   <button type="button" className="settings-pane-close" onClick={cancelEditor} aria-label="Close">x</button>
                 )}
               </div>
@@ -766,6 +788,12 @@ export function SettingsPage({
           ) : null}
         </div>
       </main>
+      <ConversationDialog
+        dialog={deleteConfirm}
+        onCancel={() => setDeleteConfirm(null)}
+        className="settings-confirm-dialog"
+        backdropClassName="settings-confirm-backdrop"
+      />
     </div>
   );
 }

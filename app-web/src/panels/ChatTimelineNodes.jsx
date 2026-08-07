@@ -1,7 +1,6 @@
 // @haish-esm
 import React from 'react';
 import { Markdown } from '../Effects.jsx';
-import { PortalTooltip } from './PortalTooltip.jsx';
 import { CATEGORY_ICON_CLASS, CATEGORY_LABEL } from './shared-constants.jsx';
 import {
   buildSubAgentTimelineItems,
@@ -116,6 +115,23 @@ export function ChatTimelineChevron({ open }) {
   );
 }
 
+/**
+ * 终端输出块：running 时自动滚动到底部，模拟真实终端行为。
+ */
+function ChatTerminalOutput({ text, running }) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (el && running) el.scrollTop = el.scrollHeight;
+  }, [text, running]);
+  if (!text) return null;
+  return (
+    <pre ref={ref} className="chat-terminal-output">
+      {text}
+    </pre>
+  );
+}
+
 export function ChatTimelineToolBody({ view }) {
   if (view.mode === 'terminal') {
     const hasTerminalContent = Boolean(view.command || view.stdout || view.stderr || view.running);
@@ -123,22 +139,13 @@ export function ChatTimelineToolBody({ view }) {
       <>
         {hasTerminalContent ? (
           <div className="chat-terminal-frame">
-            <div className="chat-terminal-bar">
-              <span className="chat-terminal-dots" aria-hidden="true"><span /><span /><span /></span>
-              {view.cwd ? <span className="chat-terminal-cwd">{view.cwd}</span> : null}
-              {view.running || (view.exitCode !== undefined && view.exitCode !== '') ? (
-                <span className={`chat-terminal-state ${view.running ? 'running' : ''}`}>
-                  {view.running ? 'running' : `exit ${view.exitCode}`}
-                </span>
-              ) : null}
-            </div>
             {view.command ? (
               <div className="chat-terminal-command">
-                <span className="chat-terminal-prompt">$</span>
-                <span>{view.command}</span>
+                <span className="chat-terminal-prompt" aria-hidden="true">$</span>
+                <span className="chat-terminal-command-text">{view.command}</span>
               </div>
             ) : null}
-            {view.stdout ? <pre className="chat-terminal-output">{view.stdout}</pre> : null}
+            {view.stdout ? <ChatTerminalOutput text={view.stdout} running={view.running} /> : null}
             {view.stderr ? <pre className="chat-terminal-output stderr">{view.stderr}</pre> : null}
             {view.running && !view.stdout && !view.stderr ? (
               <div className="chat-terminal-waiting">Waiting for output<span className="chat-terminal-cursor" aria-hidden="true" /></div>
@@ -410,15 +417,13 @@ export function ChatProcessConversation({ view }) {
         <div className="chat-imsg-row from-main">
           <div className="chat-imsg-bubble main">
             {view.mediaPath ? (
-              <PortalTooltip text={view.mediaPath} position="above" multiline>
-                <div className="chat-imsg-attachment">
-                  <span className="chat-imsg-attachment-icon ico ico-image-describe" aria-hidden="true" />
-                  <span className="chat-imsg-attachment-name">{fileName}</span>
-                  {view.visionMode ? (
-                    <span className="chat-imsg-attachment-mode">{view.visionMode}</span>
-                  ) : null}
-                </div>
-              </PortalTooltip>
+              <div className="chat-imsg-attachment">
+                <span className="chat-imsg-attachment-icon ico ico-image-describe" aria-hidden="true" />
+                <span className="chat-imsg-attachment-name">{fileName}</span>
+                {view.visionMode ? (
+                  <span className="chat-imsg-attachment-mode">{view.visionMode}</span>
+                ) : null}
+              </div>
             ) : null}
             {fields.length > 0 ? (
               <div className="chat-imsg-fields">
@@ -460,6 +465,10 @@ export function ChatTimelineToolNode({ item }) {
   const categoryLabel = CATEGORY_LABEL[category] || 'Tool';
   const view = buildToolView(item);
   const [open, setOpen] = React.useState(Boolean(view.defaultOpen));
+  // 命令执行中自动展开终端卡片，实时展示输出；完成后保持展开。
+  React.useEffect(() => {
+    if (view.mode === 'terminal' && view.running) setOpen(true);
+  }, [view.mode, view.running]);
   const fallbackLines = view.mode === 'read'
     ? []
     : [item.inputSummary, item.outputSummary].filter(Boolean).slice(0, 2);

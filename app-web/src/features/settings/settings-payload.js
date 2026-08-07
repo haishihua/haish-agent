@@ -389,7 +389,7 @@ export function updateSelectedLlmConfig(onDraftChange, selectedId, patch) {
   });
 }
 
-export function llmProviderRequestPayload(config, { includeSecret = false, refresh = false, includeOAuth = false } = {}) {
+export function llmProviderRequestPayload(config, { includeSecret = false, refresh = false, includeOAuth = false, providerType = '' } = {}) {
   const provider = normalizeLlmProviderId(config.provider);
   const payload = {
     provider,
@@ -398,6 +398,7 @@ export function llmProviderRequestPayload(config, { includeSecret = false, refre
     model: config.model || '',
     refresh,
   };
+  if (providerType) payload.provider_type = providerType;
   if (provider === 'custom') {
     payload.base_url = config.base_url || '';
   }
