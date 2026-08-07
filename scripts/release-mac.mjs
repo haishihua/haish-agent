@@ -84,6 +84,44 @@ function listReleaseAssets(version) {
     });
 }
 
+function verifyPackagedRuntime() {
+  const releaseDir = path.join(root, 'release');
+  const appCandidates = [];
+  const stack = [releaseDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || !existsSync(current)) continue;
+    const stat = statSync(current);
+    if (!stat.isDirectory()) continue;
+    if (current.endsWith('.app')) {
+      appCandidates.push(current);
+      continue;
+    }
+    for (const name of readdirSync(current)) {
+      stack.push(path.join(current, name));
+    }
+  }
+  const appPath = appCandidates.find((candidate) => path.basename(candidate) === 'Haish.app');
+  if (!appPath) {
+    fail('Packaged Haish.app was not found under release/.');
+  }
+  const certifiBundlePath = path.join(
+    appPath,
+    'Contents',
+    'Resources',
+    'haish-agent-core',
+    'bin',
+    'haish-runtime',
+    '_internal',
+    'certifi',
+    'cacert.pem',
+  );
+  if (!existsSync(certifiBundlePath)) {
+    fail('Packaged runtime is missing the TLS CA certificate.', [certifiBundlePath]);
+  }
+  console.log(`[release:mac] verified packaged TLS CA certificate: ${certifiBundlePath}`);
+}
+
 function main() {
   const pkg = readPackageJson();
   const version = pkg.version;
@@ -120,6 +158,7 @@ function main() {
   }
   console.log(`[release:mac] electron-builder ${builderArgs.join(' ')}`);
   run('npx', ['electron-builder', ...builderArgs]);
+  verifyPackagedRuntime();
 
   const assets = listReleaseAssets(version);
   if (!assets.length) {
