@@ -11,6 +11,7 @@ export function createDeployHandlers(ctx) {
     busy,
     cancelActiveConversationTask,
     cancelActiveTask,
+    queueTaskInput,
     chatFinalizedTaskIdsRef,
     completeTaskAgents,
     conversationDetailToWorkspaceConversation,
@@ -405,12 +406,46 @@ export function createDeployHandlers(ctx) {
   function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest) {
     const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest);
     const activeId = conversationIdRef.current || conversationId;
+    const activeRuntime = activeId ? getRuntime(activeId) : null;
+    const activeState = activeRuntime?.worldTaskState || worldTaskStateRef.current;
+    let runningTaskId = activeRuntime?.activeTaskId || activeState.activeTaskId || null;
+    if (!runningTaskId) {
+      const candidates = Object.values(activeState.tasksById || {})
+        .filter((task) => isTaskActuallyActive(task))
+        .sort((a, b) => taskUpdatedTimestamp(b) - taskUpdatedTimestamp(a));
+      runningTaskId = candidates[0]?.taskId || candidates[0]?.task_id || candidates[0]?.id || null;
+    }
+    const runtimeRunning = Boolean(
+      activeRuntime?.busy
+      || activeRuntime?.fetchController
+      || (activeId === conversationIdRef.current && busy)
+      || runningTaskId
+    );
+    if (runtimeRunning && viewModeRef.current === 'chat') {
+      if (!runningTaskId) {
+        showToast('error', 'The task is still starting. Try again in a moment.');
+        return false;
+      }
+      if (attachment || (Array.isArray(imageAttachments) && imageAttachments.length > 0)) {
+        showToast('error', 'Runtime instructions currently support text only.');
+        return false;
+      }
+      return queueTaskInput(runningTaskId, text)
+        .then(() => {
+          showToast('success', 'Instruction queued.');
+          return true;
+        })
+        .catch((error) => {
+          showToast('error', String(error?.message || error));
+          return false;
+        });
+    }
     // First send on a local draft: create the server conversation, insert the
     // sidebar record, then continue the normal deploy path.
     if (draftConversationRef.current) {
       if (!canStartDeployForConversation(request.targetConversationId)) {
         setQueuedDeploy(request);
-        return;
+        return true;
       }
       materializeDraftConversationForSend(request)
         .then((materialized) => {
@@ -427,14 +462,15 @@ export function createDeployHandlers(ctx) {
           console.error('draft conversation create failed', error);
           showToast('error', String(error?.message || error));
         });
-      return;
+      return true;
     }
     const deployConvId = activeId;
     if (!canStartDeployForConversation(request.targetConversationId)) {
       setQueuedDeploy(request);
-      return;
+      return true;
     }
     startDeploy(request, deployConvId);
+    return true;
   }
 
   return {

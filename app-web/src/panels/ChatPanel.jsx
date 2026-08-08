@@ -59,6 +59,7 @@ export function ChatPanel({
   const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : DEFAULT_AGENT_OPTIONS;
   const resolvedDefaultAgentId = defaultAgentId || resolvedAgentOptions[0]?.id || DEFAULT_AGENT_OPTIONS[0].id;
   const [localDraft, setLocalDraft] = React.useState('');
+  const [runtimeInputPending, setRuntimeInputPending] = React.useState(false);
   const draft = draftProp !== undefined ? draftProp : localDraft;
   const setDraft = draftProp !== undefined ? onDraftChangeProp : setLocalDraft;
 
@@ -112,7 +113,7 @@ export function ChatPanel({
   }, [composerScopeId]);
 
   async function attachImageFile(file) {
-    if (!file) return;
+    if (!file || running) return;
     if (!CHAT_IMAGE_ACCEPTED_MIME.has((file.type || '').toLowerCase())) {
       console.warn('Unsupported image type', file.type);
       return;
@@ -175,6 +176,10 @@ export function ChatPanel({
       handlePathPaste(event, draft, setDraft, workspacePath, homePath, 5000);
       return;
     }
+    if (running) {
+      event.preventDefault();
+      return;
+    }
     event.preventDefault();
     imageFiles.forEach((file) => attachImageFile(file));
   }
@@ -184,6 +189,7 @@ export function ChatPanel({
       .filter((file) => (file.type || '').toLowerCase().startsWith('image/'));
     if (!files.length) return;
     event.preventDefault();
+    if (running) return;
     files.forEach((file) => attachImageFile(file));
   }
 
@@ -293,11 +299,22 @@ export function ChatPanel({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [running, submitPending, activeTaskText, onStop]);
 
-  function submit(e) {
+  async function submit(e) {
     e?.preventDefault();
     if (Date.now() < suppressSubmitUntilRef.current) return;
     const text = draft.trim();
-    if (!text || disabled || submitPending || !providerConfigured) return;
+    if (!text || disabled || submitPending || runtimeInputPending) return;
+    if (running) {
+      setRuntimeInputPending(true);
+      try {
+        const accepted = await onSend?.(text, null, modelId, reasoningEffort, [], effectiveAgentId, providerRequest);
+        if (accepted !== false) setDraft('');
+      } finally {
+        setRuntimeInputPending(false);
+      }
+      return;
+    }
+    if (!providerConfigured) return;
     // Block while any pasted image is still uploading.
     if (imagesUploading) return;
     if (modelLoading || !activeModelOptions.some((o) => o.id === modelId)) return;
@@ -310,7 +327,8 @@ export function ChatPanel({
         mime: img.mime,
         previewUrl: img.previewUrl || null,
       }));
-    onSend?.(text, attachment, modelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest);
+    const accepted = onSend?.(text, attachment, modelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest);
+    if (accepted === false) return;
     setDraft('');
     onClearFile?.();
     // Ownership of the blob URLs transfers to the rendered chat message; the
@@ -468,7 +486,7 @@ export function ChatPanel({
               historyCursorRef.current = -1;
             }
           }}
-          placeholder={!providerConfigured ? 'Configure an LLM provider in Settings first...' : submitPending ? 'Preparing conversation...' : running ? 'Assistant is currently processing...' : 'Ask, draft, or delegate...'}
+          placeholder={!providerConfigured ? 'Configure an LLM provider in Settings first...' : submitPending ? 'Preparing conversation...' : running ? 'Add instructions while the assistant is working...' : 'Ask, draft, or delegate...'}
           disabled={disabled}
           maxLength={5000}
         />
@@ -481,7 +499,7 @@ export function ChatPanel({
                     type="button"
                     className="chat-tool-btn chat-tool-attach icon-only"
                     onClick={pickFile}
-                    disabled={disabled || submitPending}
+                    disabled={disabled || submitPending || running}
                     aria-label="Attach File"
                   >
                     <span className="ico ico-attach" aria-hidden="true" />
@@ -531,8 +549,19 @@ export function ChatPanel({
               agentLocked={agentLocked}
               agentLockedReason={agentLockedReason}
             />
-            {submitPending || running ? (
-              <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label={submitPending ? 'Cancel pending request' : 'Stop'}>
+            {submitPending ? (
+              <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Cancel pending request">
+                <span className="ico ico-stop" aria-hidden="true" />
+              </button>
+            ) : running && draft.trim() ? (
+              // Running + user typed a mid-run instruction: replace Stop with Send,
+              // so Stop and Send never appear side by side. Sending clears the
+              // draft and the button flips back to Stop.
+              <button type="submit" className="chat-send" disabled={disabled || runtimeInputPending} aria-label="Add instruction">
+                <span className="ico ico-deploy" aria-hidden="true" />
+              </button>
+            ) : running ? (
+              <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Stop">
                 <span className="ico ico-stop" aria-hidden="true" />
               </button>
             ) : (

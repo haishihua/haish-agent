@@ -330,6 +330,19 @@ export function createDraftConversationHandlers(ctx) {
     });
   }
 
+  async function queueTaskInput(taskId, message) {
+    const response = await authFetch(`${API_BASE}/api/tasks/${taskId}/inputs`, {
+      method: 'POST',
+      headers: buildApiHeaders(),
+      body: JSON.stringify({ message }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.detail || `Failed to queue instruction (${response.status})`);
+    }
+    return response.json();
+  }
+
   async function cancelActiveConversationTask(nextConversationId) {
     if (!nextConversationId) return null;
     return authFetch(`${API_BASE}/api/conversations/${nextConversationId}/tasks/cancel`, {
@@ -409,6 +422,7 @@ export function createDraftConversationHandlers(ctx) {
     restoreLatestTaskRuntime,
     restoreConversationTaskRuntimes,
     cancelActiveTask,
+    queueTaskInput,
     cancelActiveConversationTask,
     stopConversationRuntimeBeforeDelete,
     updateConversationTitle,

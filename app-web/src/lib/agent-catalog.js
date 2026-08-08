@@ -1005,6 +1005,7 @@ export function createDefaultCustomAgentPayload(agentSettings) {
     display_name: '',
     description: '',
     enabled: true,
+    custom: true,
     draft: true,
     system_prompt: '',
     tool_policy: {

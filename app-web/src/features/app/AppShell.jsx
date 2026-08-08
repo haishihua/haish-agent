@@ -592,6 +592,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     restoreLatestTaskRuntime,
     restoreConversationTaskRuntimes,
     cancelActiveTask,
+    queueTaskInput,
     cancelActiveConversationTask,
     stopConversationRuntimeBeforeDelete,
     updateConversationTitle,
@@ -1326,6 +1327,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     busy,
     cancelActiveConversationTask,
     cancelActiveTask,
+    queueTaskInput,
     chatFinalizedTaskIdsRef,
     completeTaskAgents,
     conversationDetailToWorkspaceConversation,
@@ -1687,22 +1689,53 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         // synthetic "Task was cancelled." message. Keep the chronological trace
         // intact, though: it is the running process (LLM stream + tool calls)
         // the user saw before pressing Stop.
-        const visibleTimelineItems = timelineItems;
         const bubbleText = streaming
           ? ''
           : (status === 'cancelled' ? '' : (error || answer));
-        rows.push({
-          id: `${taskId}-agent`,
-          role: 'agent',
-          text: bubbleText,
-          progressLines,
-          traceTimeline: visibleTimelineItems,
-          traceLatestTodos: timeline?.latestTodos || null,
-          status,
-          streaming,
-          createdAt: task.createdAt,
-          completedAt: task.completedAt,
-          firstTokenAt: taskFirstStreamTimestamp(task),
+        // Mid-run steering inputs ("user_input" timeline items) render as
+        // independent user bubbles — exactly like normal asks — instead of
+        // being embedded inside the assistant trace. Split the trace at each
+        // runtime input so the message list reads:
+        //   user ask → assistant work → user steer → assistant work → …
+        const traceSegments = [];
+        let currentSegment = { timeline: [], userInput: null };
+        for (const item of timelineItems) {
+          if (item.kind === 'user_input') {
+            traceSegments.push(currentSegment);
+            currentSegment = { timeline: [], userInput: item };
+          } else {
+            currentSegment.timeline.push(item);
+          }
+        }
+        traceSegments.push(currentSegment);
+        traceSegments.forEach((segment, segmentIndex) => {
+          const isLast = segmentIndex === traceSegments.length - 1;
+          if (segment.userInput) {
+            rows.push({
+              id: `${taskId}-runtime-input-${segment.userInput.id || segmentIndex}`,
+              role: 'user',
+              text: String(segment.userInput.text || ''),
+              status: '',
+              createdAt: segment.userInput.timestamp || task.createdAt,
+              completedAt: task.completedAt,
+              images: [],
+            });
+          }
+          if (segment.timeline.length > 0 || isLast) {
+            rows.push({
+              id: `${taskId}-agent-${segmentIndex}`,
+              role: 'agent',
+              text: isLast ? bubbleText : '',
+              progressLines: isLast ? progressLines : [],
+              traceTimeline: segment.timeline,
+              traceLatestTodos: isLast ? (timeline?.latestTodos || null) : null,
+              status,
+              streaming: isLast && streaming,
+              createdAt: task.createdAt,
+              completedAt: task.completedAt,
+              firstTokenAt: taskFirstStreamTimestamp(task),
+            });
+          }
         });
       }
     }
@@ -1772,7 +1805,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     ...baseMapExtensionStyle,
     '--panel-map-opacity': rightMapEdgeReached ? '0' : '0.62',
   } : undefined;
-  const composerDisabled = currentConversationRunning || uploadState.active || calibrationMode || !!conversationError;
+  const composerDisabled = uploadState.active
+    || calibrationMode
+    || !!conversationError
+    || (viewMode !== 'chat' && currentConversationRunning);
 
   return (
     <div className="app-shell">

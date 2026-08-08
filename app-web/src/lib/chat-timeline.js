@@ -504,6 +504,7 @@ export function buildChatTimeline(task, taskStatus) {
   // which is what caused the "all tool calls yellow" regression after a
   // tab-switch round-trip rebuilds the timeline from the event log alone.
   const toolItemsByCallId = new Map();
+  const runtimeInputItemsById = new Map();
   const canNestToolChildren = (toolItem) => {
     if (!toolItem) return false;
     const status = String(toolItem.status || '').toLowerCase();
@@ -628,6 +629,47 @@ export function buildChatTimeline(task, taskStatus) {
 
   for (const event of events) {
     const type = event.type;
+    if (type === 'task_input_queued') {
+      flushThinking(false);
+      if (textBuf.trim()) flushText();
+      const inputId = event.inputId || event.input_id || event.id || `task-input-${items.length}`;
+      const item = {
+        kind: 'user_input',
+        id: inputId,
+        text: String(event.message || '').trim(),
+        status: 'pending',
+        timestamp: event.timestamp || null,
+      };
+      runtimeInputItemsById.set(inputId, item);
+      items.push(item);
+      currentSkillItem = null;
+      continue;
+    }
+    if (type === 'task_input_applied') {
+      flushThinking(false);
+      if (textBuf.trim()) flushText();
+      const inputs = Array.isArray(event.inputs) ? event.inputs : [];
+      for (const input of inputs) {
+        const inputId = input?.input_id || input?.inputId || `task-input-${items.length}`;
+        const existing = runtimeInputItemsById.get(inputId);
+        if (existing) {
+          existing.status = 'applied';
+          existing.text = String(input?.message || existing.text || '').trim();
+          continue;
+        }
+        const item = {
+          kind: 'user_input',
+          id: inputId,
+          text: String(input?.message || '').trim(),
+          status: 'applied',
+          timestamp: event.timestamp || null,
+        };
+        runtimeInputItemsById.set(inputId, item);
+        items.push(item);
+      }
+      currentSkillItem = null;
+      continue;
+    }
     if (type === 'llm_thinking_delta') {
       thinkingBuf += eventDeltaText(event);
       continue;
