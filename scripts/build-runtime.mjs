@@ -226,8 +226,21 @@ function main() {
     'haish_agent_core',
     '--collect-data',
     'tiktoken',
+    '--collect-data',
+    'certifi',
     runtimeLauncherPath,
   ]);
+  const certifiBundlePath = path.join(
+    runtimeRoot,
+    'bin',
+    'haish-runtime',
+    '_internal',
+    'certifi',
+    'cacert.pem',
+  );
+  if (!fs.existsSync(certifiBundlePath)) {
+    throw new Error(`Bundled TLS CA certificate is missing: ${certifiBundlePath}`);
+  }
   console.log(`Built minimal runtime at ${runtimeRoot}`);
 }
 
