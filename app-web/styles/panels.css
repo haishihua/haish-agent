@@ -881,12 +881,13 @@
     transition: opacity .14s, visibility .14s;
 }
 
+/* 图标只在鼠标悬停时显示；点击选中后行元素持有焦点，不再因 :focus/:focus-within
+   而持续显示（鼠标移开即隐藏）。键盘用户 Tab 聚焦到行内图标按钮时
+   (:not(:focus):focus-within) 仍会显示，保留可访问性。 */
 .project-row:hover .conversation-actions,
 .conversation-row:hover .conversation-actions,
-.project-row:focus .conversation-actions,
-.conversation-row:focus .conversation-actions,
-.project-row:focus-within .conversation-actions,
-.conversation-row:focus-within .conversation-actions {
+.project-row:not(:focus):focus-within .conversation-actions,
+.conversation-row:not(:focus):focus-within .conversation-actions {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
@@ -1666,19 +1667,11 @@
     image-rendering: auto;
 }
 
-.workflow-runtime-meta,
 .workflow-runtime-feed-title {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-}
-
-.workflow-runtime-meta {
-    padding: 0 4px 6px;
-    color: rgba(238, 242, 255, .9);
-    font-size: 13px;
-    font-weight: 760;
 }
 
 .workflow-runtime-cards {

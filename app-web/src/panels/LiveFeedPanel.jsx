@@ -214,14 +214,8 @@ function workflowIdentity(workflow) {
   return String(workflow?.workflow_id || workflow?.id || '').trim();
 }
 
-function WorkflowNodeCard({ node, index, status, actor, task, run, now, isFinalNode }) {
+function WorkflowNodeCard({ node, index, status, actor, task, isFinalNode }) {
   const spriteKey = actor?.spriteKey || `penguin_${(index % 4) + 1}`;
-  const result = run?.nodes?.[node.id];
-  const timestamp = result?.finished_at
-    || result?.started_at
-    || task?.updatedAt
-    || task?.ts;
-  const timestampMs = typeof timestamp === 'number' ? timestamp : Date.parse(String(timestamp || ''));
   const visibleText = actor ? taskProgressText(task, node.id, { isFinalNode }) : '';
   return (
     <article className={`live-card workflow-node-card status-${status}`}>
@@ -236,7 +230,6 @@ function WorkflowNodeCard({ node, index, status, actor, task, run, now, isFinalN
       <div className="body">
         <div className="row">
           <div className="name">{workflowNodeLabel(node)}</div>
-          <div className="ago">{Number.isFinite(timestampMs) ? fmtAgoCompact(timestampMs, now) : ''}</div>
         </div>
         {visibleText ? (
           <div className="live-activity-list workflow-node-output">
@@ -252,7 +245,7 @@ function WorkflowNodeCard({ node, index, status, actor, task, run, now, isFinalN
   );
 }
 
-function WorkflowRuntime({ task, workflow: workflowProp = null, now }) {
+function WorkflowRuntime({ task, workflow: workflowProp = null }) {
   const workflow = workflowProp || task?.workflowSnapshot || null;
   const taskWorkflowId = workflowIdentity(task?.workflowSnapshot);
   const displayWorkflowId = workflowIdentity(workflow);
@@ -275,9 +268,6 @@ function WorkflowRuntime({ task, workflow: workflowProp = null, now }) {
 
   return (
     <section className="workflow-runtime" aria-label="Workflow runtime">
-      <div className="workflow-runtime-meta">
-        <span>{workflow.display_name || workflow.workflow_id || workflow.id}</span>
-      </div>
       <div className="workflow-runtime-cards">
         {nodes.map((node, index) => {
           const status = workflowNodeStatus(node.id, run);
@@ -289,8 +279,6 @@ function WorkflowRuntime({ task, workflow: workflowProp = null, now }) {
               status={status}
               actor={castByNode.get(String(node.id))}
               task={task}
-              run={run}
-              now={now}
               isFinalNode={node.id === finalNodeId}
             />
           );
@@ -330,11 +318,15 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask, wor
   const workflowStatusLabel = workflowStatusClass === 'done'
     ? 'COMPLETED'
     : String(workflowStatus || 'idle').toUpperCase();
+  // 面板标题直接用动态 workflow 名称；没有可用名称时才回退到通用文案。
+  const workflowPanelTitle = showWorkflowPanel
+    ? (String(displayWorkflow?.display_name || displayWorkflow?.workflow_id || displayWorkflow?.id || '').trim() || 'Workflow Run')
+    : 'Live Feed';
 
   return (
     <div className="side-panel right" ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
       <div className="side-panel-head">
-        <div className="title">{showWorkflowPanel ? 'Workflow Run' : 'Live Feed'}</div>
+        <div className="title">{workflowPanelTitle}</div>
         {!showWorkflowPanel ? (
           <div className={`live-badge status-${workflowStatusClass}`}>
             <div className="dot" />
@@ -343,7 +335,7 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask, wor
         ) : null}
       </div>
       <div className="side-panel-body">
-        {showWorkflowPanel ? <WorkflowRuntime task={workflowTaskMatchesDisplay ? currentTask : null} workflow={displayWorkflow} now={now} /> : null}
+        {showWorkflowPanel ? <WorkflowRuntime task={workflowTaskMatchesDisplay ? currentTask : null} workflow={displayWorkflow} /> : null}
         {showWorkflowPanel && agents.length > 0 ? (
           <div className="workflow-runtime-feed-head">
             <div className="workflow-runtime-feed-title">Agent activity</div>

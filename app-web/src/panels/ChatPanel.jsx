@@ -60,6 +60,9 @@ export function ChatPanel({
   const resolvedDefaultAgentId = defaultAgentId || resolvedAgentOptions[0]?.id || DEFAULT_AGENT_OPTIONS[0].id;
   const [localDraft, setLocalDraft] = React.useState('');
   const [runtimeInputPending, setRuntimeInputPending] = React.useState(false);
+  // 空状态卡片 hover：'secondary' | 'tertiary' | null。悬停某张卡时它与第一张换位，
+  // 只有指针离开整个插图区才还原，避免卡片移动后指针落点变化导致来回抖动。
+  const [emptyHoverCard, setEmptyHoverCard] = React.useState(null);
   const draft = draftProp !== undefined ? draftProp : localDraft;
   const setDraft = draftProp !== undefined ? onDraftChangeProp : setLocalDraft;
 
@@ -358,12 +361,25 @@ export function ChatPanel({
       <div ref={listRef} className="chat-message-list" onScroll={handleMessageListScroll}>
         {messages.length === 0 ? (
           <div className="chat-empty">
-            <div className="chat-empty-illustration" aria-hidden="true">
+            <div
+              className={`chat-empty-illustration${emptyHoverCard === 'secondary' ? ' swap-secondary' : ''}${emptyHoverCard === 'tertiary' ? ' swap-tertiary' : ''}`}
+              onMouseLeave={() => setEmptyHoverCard(null)}
+              aria-hidden="true"
+            >
               <div className="chat-empty-card chat-empty-card-primary">
                 <img src="/assets/ui/empty-state/penguin-relax-card.png" alt="" />
               </div>
-              <div className="chat-empty-card chat-empty-card-secondary">
+              <div
+                className="chat-empty-card chat-empty-card-secondary"
+                onMouseEnter={() => setEmptyHoverCard('secondary')}
+              >
                 <img src="/assets/ui/empty-state/penguin-sleepy-card.png" alt="" />
+              </div>
+              <div
+                className="chat-empty-card chat-empty-card-tertiary"
+                onMouseEnter={() => setEmptyHoverCard('tertiary')}
+              >
+                <img src="/assets/ui/empty-state/penguin-hug-card.png" alt="" />
               </div>
             </div>
             <div className="chat-empty-title">What's on your mind?</div>

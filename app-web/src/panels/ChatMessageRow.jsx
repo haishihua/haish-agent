@@ -98,15 +98,14 @@ export function ChatMessageRow({ message, now, onPreviewImage }) {
         </div>
       )}
       <div className={`chat-bubble ${message.status || ''}`}>
-        <div className="chat-bubble-meta">
-          <span className="chat-bubble-meta-main">
-            <span
-              className={`chat-bubble-avatar ${isUser ? 'ico-user-avatar' : 'ico-assistant-avatar'}`}
-              aria-hidden="true"
-            />
-            <span>{isUser ? 'You' : 'Assistant'}</span>
-          </span>
-        </div>
+        {!isUser ? (
+          <div className="chat-bubble-meta">
+            <span className="chat-bubble-meta-main">
+              <span className="chat-bubble-avatar ico-assistant-avatar" aria-hidden="true" />
+              <span>Assistant</span>
+            </span>
+          </div>
+        ) : null}
         {showTimelineCollapsed ? (
           <>
             <ChatTimelineCollapsed

@@ -75,8 +75,8 @@
 
 .chat-empty-illustration {
     position: relative;
-    width: 160px;
-    height: 150px;
+    width: 236px;
+    height: 190px;
     margin: 0 auto 16px;
     isolation: isolate;
 }
@@ -120,26 +120,55 @@
     left: 56px;
     top: 18px;
     z-index: 1;
-    opacity: 0.88;
+    opacity: 1;
     transform: rotate(6deg);
 }
 
-.chat-empty-illustration:hover .chat-empty-card-primary {
+/* 第三张在最底层：只露出约 1/3、微微透明、向右倾斜。 */
+.chat-empty-card-tertiary {
+    left: 94px;
+    top: 36px;
+    z-index: 0;
+    opacity: 0.85;
+    transform: rotate(8deg);
+}
+
+/* 悬停第二张：第二张移到第一位，第一张退到第二张位置；移开还原。 */
+.chat-empty-illustration.swap-secondary .chat-empty-card-primary {
     left: 56px;
     top: 18px;
     z-index: 1;
-    opacity: 0.88;
+    opacity: 1;
     transform: rotate(6deg);
 }
 
-.chat-empty-illustration:hover .chat-empty-card-secondary {
+.chat-empty-illustration.swap-secondary .chat-empty-card-secondary {
     left: 18px;
     top: 0;
     z-index: 2;
     opacity: 1;
     transform: rotate(-5deg);
     box-shadow: 0 20px 38px rgba(0, 0, 0, 0.34),
-    0 2px 0 rgba(255, 255, 255, 0.38) inset;
+        0 2px 0 rgba(255, 255, 255, 0.38) inset;
+}
+
+/* 悬停第三张：第三张移到第一位，第一张退到第三张位置；移开还原。 */
+.chat-empty-illustration.swap-tertiary .chat-empty-card-primary {
+    left: 94px;
+    top: 36px;
+    z-index: 0;
+    opacity: 0.85;
+    transform: rotate(8deg);
+}
+
+.chat-empty-illustration.swap-tertiary .chat-empty-card-tertiary {
+    left: 18px;
+    top: 0;
+    z-index: 2;
+    opacity: 1;
+    transform: rotate(-5deg);
+    box-shadow: 0 20px 38px rgba(0, 0, 0, 0.34),
+        0 2px 0 rgba(255, 255, 255, 0.38) inset;
 }
 
 .chat-empty-title {
