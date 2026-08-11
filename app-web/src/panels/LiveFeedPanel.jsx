@@ -318,6 +318,13 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask, wor
   const workflowStatusLabel = workflowStatusClass === 'done'
     ? 'COMPLETED'
     : String(workflowStatus || 'idle').toUpperCase();
+  // Agent 模式：运行中不显示徽标（运行状态由会话行图标表达），
+  // 只在任务结束时展示完成/失败状态。
+  const agentTaskStatusClass = !showWorkflowPanel && currentTask
+    ? normalizeTaskStatus(currentTask.status || currentTask.stage || 'idle')
+    : 'idle';
+  const showAgentStatusBadge = !showWorkflowPanel
+    && (agentTaskStatusClass === 'done' || agentTaskStatusClass === 'failed');
   // 面板标题直接用动态 workflow 名称；没有可用名称时才回退到通用文案。
   const workflowPanelTitle = showWorkflowPanel
     ? (String(displayWorkflow?.display_name || displayWorkflow?.workflow_id || displayWorkflow?.id || '').trim() || 'Workflow Run')
@@ -327,10 +334,10 @@ export function LiveFeedPanel({ agentLive, now, extensionStyle, currentTask, wor
     <div className="side-panel right" ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
       <div className="side-panel-head">
         <div className="title">{workflowPanelTitle}</div>
-        {!showWorkflowPanel ? (
-          <div className={`live-badge status-${workflowStatusClass}`}>
+        {showAgentStatusBadge ? (
+          <div className={`live-badge status-${agentTaskStatusClass}`}>
             <div className="dot" />
-            LIVE
+            {agentTaskStatusClass === 'done' ? 'COMPLETED' : 'FAILED'}
           </div>
         ) : null}
       </div>

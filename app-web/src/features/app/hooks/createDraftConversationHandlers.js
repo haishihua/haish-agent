@@ -340,7 +340,47 @@ export function createDraftConversationHandlers(ctx) {
       const payload = await response.json().catch(() => ({}));
       throw new Error(payload.detail || `Failed to queue instruction (${response.status})`);
     }
-    return response.json();
+    const payload = await response.json();
+    // The SSE stream only emits `task_input_applied` once the agent loop picks
+    // the steering message up; `task_input_queued` is persisted server-side but
+    // never streamed back. Append it to the running task's event log right away
+    // so the user's instruction appears in the chat as soon as it enters the
+    // queue, while the trace above keeps showing the in-flight tool calls.
+    // The later `task_input_applied` stream event then flips it to "applied".
+    const queuedEvent = payload?.event;
+    const queuedPayload = queuedEvent?.payload || {};
+    if (queuedEvent && taskId) {
+      const queuedMessage = String(queuedPayload.message ?? message ?? '').trim();
+      const queuedInputId = queuedPayload.input_id || payload?.input_id || null;
+      updateWorldTaskState((state) => {
+        const task = state?.tasksById?.[taskId];
+        if (!task) return state;
+        const eventLog = Array.isArray(task.eventLog) ? task.eventLog : [];
+        return {
+          ...state,
+          tasksById: {
+            ...state.tasksById,
+            [taskId]: {
+              ...task,
+              updatedAt: Date.now(),
+              eventLog: [
+                ...eventLog,
+                {
+                  type: 'task_input_queued',
+                  timestamp: queuedEvent.created_at || new Date().toISOString(),
+                  inputId: queuedInputId,
+                  message: queuedMessage,
+                  status: 'pending',
+                  taskId,
+                  conversationId: queuedEvent.conversation_id || null,
+                },
+              ],
+            },
+          },
+        };
+      });
+    }
+    return payload;
   }
 
   async function cancelActiveConversationTask(nextConversationId) {

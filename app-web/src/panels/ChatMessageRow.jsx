@@ -34,8 +34,10 @@ export function ChatMessageRow({ message, now, onPreviewImage }) {
   // Streaming 时即使 timeline 还没积累任何事件，也要渲染 ChatAgentTimeline，
   // 让黄色 `* Reasoning…` 活动指示器出来——否则刚发出消息那几百毫秒 bubble
   // 是完全空白的，用户以为前端卡了。
-  const showTimelineExpanded = isAgent && (message.streaming || (hasTimeline && traceExpanded));
-  const showTimelineCollapsed = isAgent && !message.streaming && hasTimeline;
+  // traceOpen: mid-run steering segments keep the previous tool calls visible
+  // while the task is still running, instead of collapsing behind the toggle.
+  const showTimelineExpanded = isAgent && (message.streaming || message.traceOpen || (hasTimeline && traceExpanded));
+  const showTimelineCollapsed = isAgent && !message.streaming && !message.traceOpen && hasTimeline;
   const isUser = message.role === 'user';
   const [copied, setCopied] = React.useState(false);
   const copyTimerRef = React.useRef(null);
@@ -123,7 +125,7 @@ export function ChatMessageRow({ message, now, onPreviewImage }) {
           </>
         ) : null}
         {/* 首字未到（排队/建连/模型首字等待期）不显示计时器 */}
-        {message.streaming && firstTokenMs ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
+        {(message.streaming || message.traceOpen) && firstTokenMs ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
         {showTimelineExpanded && !showTimelineCollapsed ? (
           <ChatAgentTimeline
             items={timeline}

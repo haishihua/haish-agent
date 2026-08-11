@@ -105,7 +105,11 @@ async function proxyApiRequest(request: Request, url: URL): Promise<Response> {
   return net.fetch(targetUrl, {
     method: request.method,
     headers,
-    body
+    body,
+    // 透传渲染进程的取消信号：Cmd+R / 页面销毁时渲染进程的 fetch 会被
+    // Chromium 中止，这里让后端转发请求也一并取消，避免“孤儿请求”在
+    // 服务端完成刷新令牌轮换后结果丢失（新页面再用旧 token 刷新必 401）。
+    signal: request.signal
   });
 }
 

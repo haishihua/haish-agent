@@ -1697,16 +1697,36 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         // being embedded inside the assistant trace. Split the trace at each
         // runtime input so the message list reads:
         //   user ask → assistant work → user steer → assistant work → …
+        // Each segment keeps its own time window (start → steering time / end),
+        // so every segment shows its elapsed time instead of the generic
+        // "Trace" fallback. While the run is still active, all earlier segments
+        // stay expanded (traceOpen) so the previous tool calls & progress stay
+        // visible above, and they collapse to their own time pill on completion.
+        const timelineToMs = (value) => {
+          if (!value) return null;
+          const ms = typeof value === 'number' ? value : Date.parse(String(value));
+          return Number.isFinite(ms) && ms > 0 ? ms : null;
+        };
         const traceSegments = [];
-        let currentSegment = { timeline: [], userInput: null };
+        let currentSegment = { timeline: [], userInput: null, startAt: null, endAt: null };
+        let lastBoundaryMs = null;
         for (const item of timelineItems) {
           if (item.kind === 'user_input') {
+            const boundaryMs = timelineToMs(item.timestamp);
+            currentSegment.endAt = boundaryMs || lastBoundaryMs || null;
             traceSegments.push(currentSegment);
-            currentSegment = { timeline: [], userInput: item };
+            currentSegment = {
+              timeline: [],
+              userInput: item,
+              startAt: boundaryMs || null,
+              endAt: null,
+            };
+            lastBoundaryMs = boundaryMs || lastBoundaryMs || null;
           } else {
             currentSegment.timeline.push(item);
           }
         }
+        currentSegment.endAt = timelineToMs(task.completedAt);
         traceSegments.push(currentSegment);
         traceSegments.forEach((segment, segmentIndex) => {
           const isLast = segmentIndex === traceSegments.length - 1;
@@ -1716,7 +1736,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               role: 'user',
               text: String(segment.userInput.text || ''),
               status: '',
-              createdAt: segment.userInput.timestamp || task.createdAt,
+              createdAt: timelineToMs(segment.userInput.timestamp) || task.createdAt,
               completedAt: task.completedAt,
               images: [],
             });
@@ -1731,8 +1751,13 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               traceLatestTodos: isLast ? (timeline?.latestTodos || null) : null,
               status,
               streaming: isLast && streaming,
-              createdAt: task.createdAt,
-              completedAt: task.completedAt,
+              // Earlier segments freeze at the steering boundary while the run
+              // is active so their previous tool calls stay visible with their
+              // own time pill; the final segment keeps the task-level clock,
+              // identical to a normal task run.
+              traceOpen: !isLast && streaming,
+              createdAt: isLast ? task.createdAt : (segment.startAt || task.createdAt),
+              completedAt: isLast ? task.completedAt : (segment.endAt || task.completedAt),
               firstTokenAt: taskFirstStreamTimestamp(task),
             });
           }

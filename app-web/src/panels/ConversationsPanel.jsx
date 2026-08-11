@@ -42,29 +42,11 @@ export function ConversationsPanel({
   const [dialog, setDialog] = React.useState(null);
   const [terminalNotices, setTerminalNotices] = React.useState({});
   const previousRunningRef = React.useRef(new Map());
-  // Conversations the user was actively viewing while a task was running.
-  // Their completion was already seen, so they must never produce a
-  // lingering notice — even after the user switches to another conversation.
-  const seenWhileRunningRef = React.useRef(new Set());
   const activeProjectId = workspaceState?.activeProjectId;
   const activeConversationId = workspaceState?.activeConversationId;
 
   React.useEffect(() => {
     const nextRunning = collectConversationRunningStates(workspaceState);
-    // Remember any conversation the user is actively viewing while its
-    // task is still running.
-    (workspaceState?.projects || []).forEach((project) => {
-      (project?.conversations || []).forEach((conversation) => {
-        if (!conversation?.id) return;
-        if (
-          project.id === activeProjectId &&
-          conversation.id === activeConversationId &&
-          nextRunning.get(conversation.id)
-        ) {
-          seenWhileRunningRef.current.add(conversation.id);
-        }
-      });
-    });
     setTerminalNotices((current) => {
       let changed = false;
       const next = { ...current };
@@ -74,13 +56,11 @@ export function ConversationsPanel({
           const wasRunning = previousRunningRef.current.get(conversation.id) === true;
           const isRunning = nextRunning.get(conversation.id) === true;
           if (!wasRunning || isRunning) return;
-          // The user was viewing this conversation while its task was
-          // running, so the completion was already seen — skip the
-          // notice and forget the "seen" marker.
-          if (seenWhileRunningRef.current.has(conversation.id)) {
-            seenWhileRunningRef.current.delete(conversation.id);
-            return;
-          }
+          // 任务刚结束：只有用户此刻正在查看该会话时才视为“已看到”，
+          // 不点亮绿点；用户一旦切走，任务在后台完成时绿点照常点亮。
+          const viewingNow = project.id === activeProjectId
+            && conversation.id === activeConversationId;
+          if (viewingNow) return;
           const status = conversationLatestTerminalStatus(conversation);
           if (!status || next[conversation.id] === status) return;
           next[conversation.id] = status;
@@ -89,19 +69,6 @@ export function ConversationsPanel({
       });
       return changed ? next : current;
     });
-    // Prune "seen" markers for conversations that are gone or no longer
-    // running, so the set cannot grow without bound.
-    const liveRunningIds = new Set();
-    (workspaceState?.projects || []).forEach((project) => {
-      (project?.conversations || []).forEach((conversation) => {
-        if (conversation?.id && nextRunning.get(conversation.id)) {
-          liveRunningIds.add(conversation.id);
-        }
-      });
-    });
-    seenWhileRunningRef.current = new Set(
-      [...seenWhileRunningRef.current].filter((id) => liveRunningIds.has(id))
-    );
     previousRunningRef.current = nextRunning;
   }, [workspaceState, activeProjectId, activeConversationId]);
 
