@@ -1,5 +1,8 @@
 // @haish-esm
 // Extracted from AppShell.jsx (Phase C3). Behavior-preserving factory.
+import { eventDeltaText } from '../../../lib/chat-text.js';
+import { compactStreamEvents } from '../../../lib/stream-events.js';
+
 export function createDraftConversationHandlers(ctx) {
   const {
     API_BASE,
@@ -43,6 +46,7 @@ export function createDraftConversationHandlers(ctx) {
     setUploadState,
     setWorkspaceState,
     taskDetailToRuntimeTask,
+    taskRuntimeEventCacheRef,
     taskUpdatedTimestamp,
     titleFromTaskText,
     updateWorldTaskState,
@@ -262,60 +266,98 @@ export function createDraftConversationHandlers(ctx) {
 
   async function fetchTaskRuntimeDetail(taskId) {
     if (!taskId) return null;
-    const response = await authFetch(`${API_BASE}/api/tasks/${taskId}`, {
+    const cached = taskRuntimeEventCacheRef.current.get(taskId) || null;
+    const cursorQuery = cached?.lastEventId
+      ? `&after_event_id=${encodeURIComponent(cached.lastEventId)}`
+      : '';
+    const response = await authFetch(`${API_BASE}/api/tasks/${taskId}?event_view=runtime${cursorQuery}`, {
       method: 'GET',
     }, { json: false });
     if (!response.ok) {
-      throw new Error(`task restore failed: ${response.status}`);
+      const payload = await response.json().catch(() => ({}));
+      const error = new Error(payload?.detail || `task restore failed: ${response.status}`);
+      error.status = response.status;
+      error.taskId = taskId;
+      throw error;
     }
     const task = await response.json();
-    const events = normalizeWorldEvents(task.events);
-    return { normalizedTask: { ...task, events }, events };
+    const incomingEvents = normalizeWorldEvents(task.events);
+    const appendToCache = Boolean(task.events_delta && cached);
+    const events = compactStreamEvents(
+      appendToCache ? [...cached.events, ...incomingEvents] : incomingEvents,
+      eventDeltaText,
+    );
+    const lastEventId = incomingEvents[incomingEvents.length - 1]?.event_id
+      || cached?.lastEventId
+      || null;
+    taskRuntimeEventCacheRef.current.set(taskId, { lastEventId, events });
+    return { normalizedTask: { ...task, events, events_delta: false }, events };
   }
 
-  async function restoreTaskRuntime(taskId, { isCurrentActivation = () => true, updateLiveSnapshot = false } = {}) {
+  async function restoreTaskRuntime(taskId, {
+    targetConversationId,
+    isCurrentActivation,
+    updateLiveSnapshot = false,
+  }) {
+    if (!targetConversationId) throw new Error('task restore requires a target conversation');
+    if (typeof isCurrentActivation !== 'function') throw new Error('task restore requires an activation guard');
     if (!isCurrentActivation()) return;
     const detail = await fetchTaskRuntimeDetail(taskId);
     if (!detail || !isCurrentActivation()) return;
     const { normalizedTask, events } = detail;
+    if (normalizedTask.conversation_id !== targetConversationId) {
+      throw new Error(`task ${taskId} does not belong to conversation ${targetConversationId}`);
+    }
     updateWorldTaskState((state) => ({
       ...state,
       tasksById: {
         ...state.tasksById,
         [taskId]: taskDetailToRuntimeTask(normalizedTask, state.tasksById[taskId] || null, userIdRef.current),
       },
-    }));
-    if (updateLiveSnapshot) {
+    }), targetConversationId);
+    if (updateLiveSnapshot && conversationIdRef.current === targetConversationId) {
       setAgentLive(buildAgentLiveSnapshot(normalizedTask, events));
     }
   }
 
-  async function restoreLatestTaskRuntime(taskId, isCurrentActivation = () => true) {
+  async function restoreLatestTaskRuntime(taskId, { targetConversationId, isCurrentActivation }) {
+    if (!targetConversationId) throw new Error('latest task restore requires a target conversation');
+    if (typeof isCurrentActivation !== 'function') throw new Error('latest task restore requires an activation guard');
     if (!taskId) {
-      if (isCurrentActivation()) setAgentLive({});
+      if (isCurrentActivation() && conversationIdRef.current === targetConversationId) setAgentLive({});
       return;
     }
-    await restoreTaskRuntime(taskId, { isCurrentActivation, updateLiveSnapshot: true });
+    await restoreTaskRuntime(taskId, {
+      targetConversationId,
+      isCurrentActivation,
+      updateLiveSnapshot: true,
+    });
   }
 
-  async function restoreConversationTaskRuntimes(taskIds, latestTaskId, isCurrentActivation = () => true) {
+  async function restoreConversationTaskRuntimes(
+    taskIds,
+    latestTaskId,
+    { targetConversationId, isCurrentActivation },
+  ) {
+    if (!targetConversationId) throw new Error('conversation task restore requires a target conversation');
+    if (typeof isCurrentActivation !== 'function') throw new Error('conversation task restore requires an activation guard');
     const uniqueTaskIds = [...new Set((Array.isArray(taskIds) ? taskIds : []).filter(Boolean))];
     if (latestTaskId && uniqueTaskIds.includes(latestTaskId)) {
       try {
-        await restoreLatestTaskRuntime(latestTaskId, isCurrentActivation);
+        await restoreLatestTaskRuntime(latestTaskId, { targetConversationId, isCurrentActivation });
       } catch (error) {
         if (isCurrentActivation()) {
           console.warn(`task detail restore skipped: ${latestTaskId}`, error);
         }
       }
-    } else if (isCurrentActivation()) {
+    } else if (isCurrentActivation() && conversationIdRef.current === targetConversationId) {
       setAgentLive({});
     }
     const detailTaskIds = uniqueTaskIds.filter((taskId) => taskId !== latestTaskId);
     for (const taskId of detailTaskIds) {
       if (!isCurrentActivation()) return;
       try {
-        await restoreTaskRuntime(taskId, { isCurrentActivation });
+        await restoreTaskRuntime(taskId, { targetConversationId, isCurrentActivation });
       } catch (error) {
         if (isCurrentActivation()) {
           console.warn(`task detail restore skipped: ${taskId}`, error);

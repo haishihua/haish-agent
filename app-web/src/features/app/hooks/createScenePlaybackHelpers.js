@@ -1,5 +1,7 @@
 // @haish-esm
 // Extracted from AppShell.jsx (Phase C). Behavior-preserving factory.
+import { appendStreamEvent } from '../../../lib/stream-events.js';
+
 export function createScenePlaybackHelpers(ctx) {
   const {
     MAP_H,
@@ -97,15 +99,12 @@ export function createScenePlaybackHelpers(ctx) {
         ...task,
         loopIndex: Math.max(task.loopIndex || 0, event.loop_index || 0),
         activeRole: event.actor || task.activeRole,
-        eventLog: [
-          ...task.eventLog,
-          {
-            ...runtimeEvent,
-            workflowNodeId: runtimeEvent.workflowNodeId
-              || task.workflowRun?.current_node_id
-              || null,
-          },
-        ],
+        eventLog: appendStreamEvent(task.eventLog, {
+          ...runtimeEvent,
+          workflowNodeId: runtimeEvent.workflowNodeId
+            || task.workflowRun?.current_node_id
+            || null,
+        }),
       };
     });
   }

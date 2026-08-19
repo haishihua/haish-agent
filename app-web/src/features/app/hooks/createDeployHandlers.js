@@ -163,9 +163,20 @@ export function createDeployHandlers(ctx) {
       chatFinalizedTaskIdsRef.current.add(key);
     });
     if (taskId) {
-      cancelActiveTask(taskId).catch((error) => {
-        console.error('cancel failed', error);
-      });
+      cancelActiveTask(taskId)
+        .then(async (response) => {
+          if (!response.ok) throw new Error(`cancel failed (${response.status})`);
+          const result = await response.json().catch(() => ({}));
+          // A restored UI can briefly hold a stale task id. Fall back to the
+          // conversation's active control only when that exact task was not cancelled.
+          if (!result.cancelled && targetConvId) {
+            const fallback = await cancelActiveConversationTask(targetConvId);
+            if (!fallback.ok) throw new Error(`conversation cancel failed (${fallback.status})`);
+          }
+        })
+        .catch((error) => {
+          console.error('cancel failed', error);
+        });
     } else {
       cancelActiveConversationTask(targetConvId).catch((error) => {
         console.error('conversation cancel failed', error);
@@ -311,6 +322,9 @@ export function createDeployHandlers(ctx) {
     const deployTaskState = getRuntime(deployConvId)?.worldTaskState
       || worldTaskStateRef.current
       || createEmptyWorldTaskState();
+    const activeTaskIdBeforeDeploy = getRuntime(deployConvId)?.activeTaskId
+      || deployTaskState.activeTaskId
+      || null;
     const shouldUpdateConversationTitle = Boolean(
       nextConversationTitle
       && currentConversation
@@ -366,7 +380,10 @@ export function createDeployHandlers(ctx) {
       }
       console.error(error);
       const errorMessage = String(error?.message || error);
-      const ownedTaskId = deployRuntime ? deployRuntime.activeTaskId : activeTaskIdRef.current;
+      const currentActiveTaskId = deployRuntime ? deployRuntime.activeTaskId : activeTaskIdRef.current;
+      const ownedTaskId = currentActiveTaskId && currentActiveTaskId !== activeTaskIdBeforeDeploy
+        ? currentActiveTaskId
+        : null;
       if (ownedTaskId) {
         chatFinalizedTaskIdsRef.current.add(ownedTaskId);
         updateTaskById(ownedTaskId, (task) => ({
@@ -377,16 +394,16 @@ export function createDeployHandlers(ctx) {
         }), deployConvId);
         updateWorldTaskState((state) => ({ ...state, activeTaskId: null }), deployConvId);
       } else {
+        const pendingTaskId = pendingTask.taskId || pendingTask.id || null;
         updateWorldTaskState((state) => ({
           ...state,
-          pendingTask: state.pendingTask
-            ? applyTerminalTaskState(state.pendingTask, 'failed', {
-                error: errorMessage,
-                aborted: false,
-              })
-            : null,
+          pendingTask: (state.pendingTask?.taskId || state.pendingTask?.id) === pendingTaskId
+            ? null
+            : state.pendingTask,
         }), deployConvId);
+        if (pendingTaskId) removeConversationTaskFromWorkspace(deployConvId, pendingTaskId);
       }
+      showToast('error', errorMessage);
       setRuntimeBusy(false, deployConvId);
       if (ownedTaskId) {
         dropPendingSceneItems(ownedTaskId);

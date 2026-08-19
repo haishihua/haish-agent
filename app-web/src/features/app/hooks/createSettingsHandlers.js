@@ -1,5 +1,9 @@
 // @haish-esm
 // Extracted from AppShell.jsx (Phase C). Behavior-preserving factory.
+export function skillAllowPayload(value) {
+  return value === null ? null : (Array.isArray(value) ? value : []);
+}
+
 export function createSettingsHandlers(ctx) {
   const {
     API_BASE,
@@ -209,7 +213,7 @@ export function createSettingsHandlers(ctx) {
         allow_tools: Array.isArray(current.mcp_policy?.allow_tools) ? current.mcp_policy.allow_tools : [],
       },
       skill_policy: {
-        allow: Array.isArray(current.skill_policy?.allow) ? current.skill_policy.allow : [],
+        allow: skillAllowPayload(current.skill_policy?.allow),
         deny: Array.isArray(current.skill_policy?.deny) ? current.skill_policy.deny : [],
       },
     };

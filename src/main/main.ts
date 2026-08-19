@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, net, protocol, shell } from 'electron';
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -20,6 +20,8 @@ const __dirname = path.dirname(__filename);
 const projectRoot = () => path.resolve(__dirname, '../..');
 
 const projectsFile = () => path.join(app.getPath('userData'), 'projects.json');
+const CLIPBOARD_IMAGE_MAX_DATA_URL_LENGTH = 14 * 1024 * 1024;
+const CLIPBOARD_IMAGE_MAX_PIXELS = 16 * 1024 * 1024;
 // Vite builds the product UI into app-web/dist. Prefer dist so the renderer always
 // loads the production bundle (no Babel-in-browser, production React).
 const webRoot = () => {
@@ -273,6 +275,19 @@ ipcMain.handle('app-update:check', () => checkForAppUpdates());
 ipcMain.handle('app-update:download', () => downloadAppUpdate());
 ipcMain.handle('app-update:install', () => installAppUpdate());
 ipcMain.handle('app-update:apply', () => applyLatestAppUpdate());
+ipcMain.handle('clipboard:write-image', (_event, dataUrl: string): boolean => {
+  if (
+    typeof dataUrl !== 'string'
+    || dataUrl.length > CLIPBOARD_IMAGE_MAX_DATA_URL_LENGTH
+    || !dataUrl.startsWith('data:image/')
+  ) return false;
+  const image = nativeImage.createFromDataURL(dataUrl);
+  if (image.isEmpty()) return false;
+  const { width, height } = image.getSize();
+  if (!width || !height || width * height > CLIPBOARD_IMAGE_MAX_PIXELS) return false;
+  clipboard.writeImage(image);
+  return true;
+});
 
 ipcMain.handle('fs:list-directory', async (_event, projectId: string, relativePath = ''): Promise<FileEntry[]> => {
   const target = await resolveInsideProject(projectId, relativePath);

@@ -315,6 +315,13 @@ svg {
     height: 14px;
 }
 
+.ico-browser {
+    -webkit-mask-image: url("../assets/ui/icons/browser.svg");
+    mask-image: url("../assets/ui/icons/browser.svg");
+    width: 14px;
+    height: 14px;
+}
+
 .ico-skill {
     -webkit-mask-image: url("../assets/ui/icons/skill.png");
     mask-image: url("../assets/ui/icons/skill.png");

@@ -6,7 +6,7 @@ import {
   SETTINGS_SUBTABS,
   SETTINGS_SECTION_COPY,
   LLM_SUBTAB_COPY,
-  SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
+  settingsSectionMeta,
   normalizeAgentSettings,
 } from '../../lib/agent-catalog.js';
 import {
@@ -123,7 +123,7 @@ export function SettingsPage({
   const [settingsSearch, setSettingsSearch] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [expandedSettingsSections, setExpandedSettingsSections] = useState(() => new Set([activeSection]));
-  const sectionMeta = SETTINGS_SECTIONS.find((item) => item.id === activeSection) || SETTINGS_SECTIONS[0];
+  const sectionMeta = settingsSectionMeta(activeSection) || SETTINGS_SECTIONS[0];
   const subtabs = SETTINGS_SUBTABS[activeSection] || [];
   const activeSubtab = subtabs.some((item) => item.id === selectionBySection[activeSection])
     ? selectionBySection[activeSection]
@@ -158,7 +158,15 @@ export function SettingsPage({
   const isWebConfigPane = activeSection === 'tools' && activeSubtab === 'tools-web';
   const isPlainToolsPane = isMcpConfigPane || isSkillsConfigPane || isWebConfigPane;
   useEffect(() => {
-    setExpandedSettingsSections((prev) => new Set([...prev, activeSection]));
+    setExpandedSettingsSections((prev) => {
+      const next = new Set([...prev, activeSection]);
+      // memory / knowledge 归属 Context 分组：激活子项时自动展开所属分组。
+      const group = SETTINGS_SECTIONS.find((item) => (
+        Array.isArray(item.children) && item.children.some((child) => child.id === activeSection)
+      ));
+      if (group) next.add(group.id);
+      return next;
+    });
   }, [activeSection]);
   const selectItem = (id) => onSelectionChange((prev) => ({ ...prev, [selectionKey]: id }));
   const selectListItem = (id) => {
@@ -210,7 +218,7 @@ export function SettingsPage({
         };
       });
       if (selectionBySection.workflow === draft.id) {
-        onSelectionChange((prev) => ({ ...prev, workflow: SOFTWARE_DEVELOPMENT_WORKFLOW_ID }));
+        onSelectionChange((prev) => ({ ...prev, workflow: '' }));
       }
       return;
     }
@@ -363,7 +371,7 @@ export function SettingsPage({
     }
     if (section === activeSection) {
       if (section === 'workflow') {
-        selectItem(SOFTWARE_DEVELOPMENT_WORKFLOW_ID);
+        selectItem('');
       } else {
         const fallback = sectionItems.find((item) => item.id !== id);
         selectItem(fallback?.id || '');
@@ -468,6 +476,63 @@ export function SettingsPage({
         </div>
         <nav className="settings-side-tabs">
           {SETTINGS_SECTIONS.map((section) => {
+            // 分组导航（如 Context → Memory / Knowledge）：子项是真实的 section id，
+            // 点击子项直接切换 onSectionChange(child.id)，后端/存储逻辑完全不变。
+            const isGroup = Array.isArray(section.children) && section.children.length > 0;
+            if (isGroup) {
+              const isActive = section.children.some((child) => child.id === activeSection);
+              const isExpanded = expandedSettingsSections.has(section.id);
+              return (
+                <div className="settings-side-section" key={section.id}>
+                  <button
+                    type="button"
+                    className={isActive ? 'active' : ''}
+                    aria-expanded={isExpanded}
+                    onClick={() => {
+                      setExpandedSettingsSections((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(section.id)) next.delete(section.id);
+                        else next.add(section.id);
+                        return next;
+                      });
+                    }}
+                  >
+                    <span>{section.label}</span>
+                    <ChevronDown
+                      className={`settings-side-section-chevron${isExpanded ? ' expanded' : ''}`}
+                      size={16}
+                      aria-hidden="true"
+                    />
+                  </button>
+                  {isExpanded ? (
+                    <div className="settings-side-subtabs" role="tablist" aria-label={`${section.label} settings`}>
+                      {section.children.map((child) => {
+                        const isChildActive = activeSection === child.id;
+                        return (
+                          <button
+                            key={child.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={isChildActive}
+                            className={isChildActive ? 'active' : ''}
+                            onClick={() => {
+                              cancelEditor();
+                              setExpandedSettingsSections((prev) => new Set([...prev, section.id]));
+                              onSectionChange(child.id);
+                            }}
+                          >
+                            <span className="settings-side-subtab-icon">
+                              <SettingsLucideIcon name={child.icon || 'database'} size={16} />
+                            </span>
+                            <span>{child.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
             const sectionSubtabs = SETTINGS_SUBTABS[section.id] || [];
             const sectionSubtab = sectionSubtabs.some((item) => item.id === selectionBySection[section.id])
               ? selectionBySection[section.id]
@@ -643,9 +708,9 @@ export function SettingsPage({
                         ) : null}
                         {activeSection !== 'agent' || item.canConfigure || item.readonly ? (
                           <SettingsTooltipIconButton
-                            label={item.readonly ? 'View' : 'Configure'}
-                            icon="configure"
-                            iconSize={18}
+                            label={item.readonly ? 'View' : 'Edit'}
+                            icon={item.readonly ? 'book-open' : 'configure'}
+                            iconSize={item.readonly ? 20 : 18}
                             onClick={() => {
                               selectItem(item.id);
                               openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit');

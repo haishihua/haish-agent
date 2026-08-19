@@ -3,17 +3,14 @@
 
 export const APP_DEFAULT_AGENT_OPTIONS = [
   { id: 'preset.general', label: 'Task Assistant', description: 'All-purpose agent with full tools for everyday work.' },
-  { id: 'preset.product', label: 'Product Planner', description: 'Shape requirements, PRDs, scope, risks, and acceptance criteria.' },
-  { id: 'preset.development', label: 'Coding Assistant', description: 'Build, debug, and refactor code with lightweight self-checks.' },
-  { id: 'preset.qa', label: 'Test Engineer', description: 'Design tests, reproduce issues, verify changes, and gate releases.' },
-  { id: 'preset.document-qa', label: 'Docs Search', description: 'Answer from indexed documents with retrieved, citable evidence.' },
 ];
 
 export const DEFAULT_AGENT_TOOL_GROUPS = [
   { id: 'workspace_read', label: 'File read', description: 'Read files, list directories, search text, and glob workspace paths.', tools: ['read_file', 'list_dir', 'search_text', 'glob_files'] },
   { id: 'file_edits', label: 'File edits', description: 'Create, edit, copy, delete, checkpoint, and roll back workspace files.', tools: ['write_file', 'edit_file', 'delete_file', 'copy_file', 'create_dir', 'delete_dir', 'list_checkpoints', 'rollback_workspace'] },
   { id: 'terminal', label: 'Terminal', description: 'Run terminal commands and manage background processes.', tools: ['terminal', 'bash', 'start_background_process', 'read_background_process_output', 'stop_background_process', 'list_background_processes'] },
-  { id: 'browser', label: 'Browser', description: 'Navigate, inspect, click, type, scroll, evaluate, and screenshot browser pages.', tools: ['browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type', 'browser_scroll', 'browser_press_key', 'browser_console', 'browser_evaluate', 'browser_screenshot', 'browser_wait_for'] },
+  { id: 'browser', label: 'Browser', description: 'Run model-written browser automation in a controlled browser-use session.', tools: ['browser_use'] },
+  { id: 'user_input', label: 'Ask user', description: 'Pause the agent to ask the user structured or open questions, then continue with the answers.', tools: ['ask_user'] },
   { id: 'web', label: 'Web', description: 'Search the web and fetch pages.', tools: ['web_search', 'web_fetch'] },
   { id: 'memory', label: 'Memory', description: 'Search, add, and forget long-term memory entries.', tools: ['memory_search', 'memory_add', 'memory_forget'] },
   { id: 'knowledge', label: 'RAG', description: 'List indexed documents and search retrieval collections.', tools: ['document_list', 'rag_search'] },
@@ -46,12 +43,13 @@ export const DEFAULT_AGENT_SETTINGS = {
 };
 
 export const DIRECT_AGENT_WORKFLOW_ID = 'workflow.direct-agent';
-export const SOFTWARE_DEVELOPMENT_WORKFLOW_ID = 'workflow.software-development';
 export const DEFAULT_WORKFLOW_NODE_TYPES = [
   { id: 'agent', label: 'Agent', description: 'Invoke an assistant profile over A2A.' },
   { id: 'llm', label: 'LLM', description: 'Run a direct model call with prompt parameters.' },
   { id: 'tool', label: 'Tool', description: 'Call an exposed tool with mapped arguments.' },
   { id: 'condition', label: 'Condition', description: 'Route execution based on an expression.' },
+  { id: 'human_approval', label: 'Approval', description: 'Pause for an approve or reject decision.' },
+  { id: 'loop', label: 'Loop', description: 'Retry until success, with an optional rerun limit.' },
   { id: 'output', label: 'End', description: 'Return the workflow result.' },
 ];
 
@@ -260,6 +258,80 @@ export const WORKFLOW_NODE_OUTPUT_FIELDS = {
       description: 'Next node chosen by this condition.',
     },
   ],
+  human_approval: [
+    {
+      id: 'decision',
+      label: 'Decision',
+      type: 'string',
+      group: 'result',
+      description: 'Approved or rejected decision.',
+    },
+    {
+      id: 'feedback',
+      label: 'Feedback',
+      type: 'string',
+      group: 'result',
+      description: 'Correction feedback supplied on rejection.',
+    },
+    {
+      id: 'reviewed_input',
+      label: 'Reviewed input',
+      type: 'object',
+      group: 'result',
+      description: 'The title, content, and payload shown for review.',
+    },
+    {
+      id: 'structured',
+      label: 'Structured',
+      type: 'object',
+      group: 'result',
+      description: 'Full normalized approval result.',
+    },
+    {
+      id: 'attempt',
+      label: 'Attempt',
+      type: 'number',
+      group: 'debug',
+      description: 'Approval attempt number.',
+    },
+  ],
+  loop: [
+    {
+      id: 'count',
+      label: 'Loop count',
+      type: 'number',
+      group: 'result',
+      description: 'Number of times this loop has been entered.',
+    },
+    {
+      id: 'max_loops',
+      label: 'Maximum loops',
+      type: 'number',
+      group: 'result',
+      description: 'Maximum number of reruns allowed, or null when unlimited.',
+    },
+    {
+      id: 'remaining',
+      label: 'Remaining loops',
+      type: 'number',
+      group: 'result',
+      description: 'Reruns still available, or null when unlimited.',
+    },
+    {
+      id: 'exhausted',
+      label: 'Exhausted',
+      type: 'boolean',
+      group: 'status',
+      description: 'Whether the loop limit has been exceeded.',
+    },
+    {
+      id: 'selected_branch',
+      label: 'Selected branch',
+      type: 'string',
+      group: 'result',
+      description: 'Retry or exhausted branch selected by this loop.',
+    },
+  ],
   output: [
     {
       id: 'value',
@@ -328,53 +400,43 @@ export const DEFAULT_DIRECT_WORKFLOW = {
   ],
 };
 
-export const DEFAULT_SOFTWARE_DEVELOPMENT_WORKFLOW = {
-  id: SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
-  workflow_id: SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
-  version: '1.0.0',
-  display_name: 'Software Development',
-  description: 'Product planning, implementation, and QA verification in one workflow.',
-  enabled: true,
-  system: true,
-  custom: false,
-  default: true,
-  editable: false,
-  deletable: false,
-  executable: true,
-  input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA,
-  nodes: [
-    { id: 'start', type: 'start', label: 'Start', input_schema: DEFAULT_WORKFLOW_INPUT_SCHEMA, position: { x: 48, y: 148 } },
-    { id: 'product', type: 'agent', label: 'Product', agent_id: 'preset.product', prompt: 'Decide whether the request is actionable. If clarification is needed, return NEEDS_CLARIFICATION: followed by one concise question. Otherwise return a READY: implementation brief.', input: 'User request: {{input.message}}', position: { x: 328, y: 148 } },
-    { id: 'scope_gate', type: 'condition', label: 'Scope Gate', cases: [{ name: 'clarify', when: '{{nodes.product.summary}} contains NEEDS_CLARIFICATION:', to: 'output' }], default: 'development', position: { x: 608, y: 148 } },
-    { id: 'development', type: 'agent', label: 'Development', agent_id: 'preset.development', prompt: 'Implement the software task in the current workspace and report the changes for QA.', input: 'User request: {{input.message}}\nProduct brief: {{nodes.product.summary}}', position: { x: 888, y: 148 } },
-    { id: 'qa', type: 'agent', label: 'QA', agent_id: 'preset.qa', prompt: 'Verify the completed software task and return a clear release conclusion.', input: 'User request: {{input.message}}\nProduct brief: {{nodes.product.summary}}\nDevelopment report: {{nodes.development.summary}}', position: { x: 1168, y: 148 } },
-    { id: 'output', type: 'output', label: 'End', output_mode: 'text', output: '{{nodes.qa.summary}}', fallback_output: '{{nodes.product.summary}}', strip_prefix: 'NEEDS_CLARIFICATION:', position: { x: 1448, y: 148 } },
-  ],
-  edges: [
-    { from: 'start', to: 'product' },
-    { from: 'product', to: 'scope_gate' },
-    { from: 'scope_gate', to: 'development' },
-    { from: 'scope_gate', to: 'output' },
-    { from: 'development', to: 'qa' },
-    { from: 'qa', to: 'output' },
-  ],
-};
-
 export const DEFAULT_WORKFLOW_SETTINGS = {
-  default_workflow_id: SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
-  presets: [DEFAULT_SOFTWARE_DEVELOPMENT_WORKFLOW],
+  default_workflow_id: DIRECT_AGENT_WORKFLOW_ID,
+  presets: [],
   custom: [],
   node_types: DEFAULT_WORKFLOW_NODE_TYPES,
 };
 
+// 侧边栏导航：memory / knowledge 在 UI 上合并为 Context 分组下的两个子 tab，
+// 但内部 section id 仍是 memory / knowledge（后端、存储、连接检测全部按这两个
+// id 工作），children 仅用于侧边栏展示。主行（大标题）不带图标，
+// 只有子 tab（children / SETTINGS_SUBTABS）带图标。
 export const SETTINGS_SECTIONS = [
   { id: 'llm', label: 'Providers' },
   { id: 'tools', label: 'Tools' },
-  { id: 'memory', label: 'Memory' },
-  { id: 'knowledge', label: 'Knowledge' },
+  {
+    id: 'context',
+    label: 'Context',
+    children: [
+      { id: 'memory', label: 'Memory', icon: 'database' },
+      { id: 'knowledge', label: 'Knowledge', icon: 'book-open' },
+    ],
+  },
   { id: 'agent', label: 'Agent' },
   { id: 'workflow', label: 'Agentic Workflow' },
 ];
+
+// 平铺查找（含分组 children），供 label / copy 等元数据查询使用。
+export function settingsSectionMeta(sectionId) {
+  for (const section of SETTINGS_SECTIONS) {
+    if (section.id === sectionId) return section;
+    if (Array.isArray(section.children)) {
+      const child = section.children.find((item) => item.id === sectionId);
+      if (child) return child;
+    }
+  }
+  return null;
+}
 
 export const SETTINGS_SUBTABS = {
   llm: [

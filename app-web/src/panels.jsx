@@ -12,7 +12,6 @@ export {
   getTaskPillMeta,
 } from './panels/TaskRecords.jsx';
 export { ConversationsPanel } from './panels/ConversationsPanel.jsx';
-export { LiveFeedPanel } from './panels/LiveFeedPanel.jsx';
 export {
   resolveModelCatalog,
   ApprovalModePicker,
@@ -21,7 +20,7 @@ export {
 export { TaskDelegation } from './panels/TaskDelegation.jsx';
 export { ChatPanel } from './panels/ChatPanel.jsx';
 export { normalizeToolName } from './lib/tool-names.js';
-export { NAV_TABS, BottomNav, MapViewport, TabPlaceholder } from './panels/Shell.jsx';
+export { NAV_TABS, BottomNav, TabPlaceholder } from './panels/Shell.jsx';
 export {
   LIVE_FEED_VISIBLE_COUNT,
   MODEL_OPTIONS,

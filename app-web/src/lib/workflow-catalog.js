@@ -1,13 +1,12 @@
 // @haish-esm
 // Workflow catalog defaults + pure helpers (UI-free).
 import {
-  SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
+  DIRECT_AGENT_WORKFLOW_ID,
   DEFAULT_WORKFLOW_NODE_TYPES,
   DEFAULT_WORKFLOW_INPUT_SCHEMA,
   COMMON_WORKFLOW_OUTPUT_FIELDS,
   WORKFLOW_NODE_OUTPUT_FIELDS,
   DEFAULT_DIRECT_WORKFLOW,
-  DEFAULT_SOFTWARE_DEVELOPMENT_WORKFLOW,
   DEFAULT_WORKFLOW_SETTINGS,
 } from './agent-catalog.js';
 
@@ -109,11 +108,11 @@ export function normalizeWorkflowEdge(edge) {
   return {
     from: String(edge?.from || edge?.source || '').trim(),
     to: String(edge?.to || edge?.target || '').trim(),
-    ...(branch === 'true' || branch === 'false' ? { branch } : {}),
+    ...(['true', 'false', 'approved', 'rejected', 'retry', 'exhausted'].includes(branch) ? { branch } : {}),
   };
 }
 
-export function normalizeWorkflowRow(item, fallback = DEFAULT_SOFTWARE_DEVELOPMENT_WORKFLOW) {
+export function normalizeWorkflowRow(item, fallback = DEFAULT_DIRECT_WORKFLOW) {
   const workflowId = String(item?.workflow_id || item?.id || fallback.workflow_id || fallback.id || '').trim();
   const rawNodes = Array.isArray(item?.nodes) && item.nodes.length ? item.nodes : fallback.nodes;
   const rawEdges = Array.isArray(item?.edges) ? item.edges : fallback.edges;
@@ -206,7 +205,7 @@ export function normalizeWorkflowRow(item, fallback = DEFAULT_SOFTWARE_DEVELOPME
     default: Boolean(item?.default),
     editable: Boolean(item?.editable ?? item?.custom),
     deletable: Boolean(item?.deletable ?? item?.custom),
-    executable: Boolean(item?.executable ?? workflowId === SOFTWARE_DEVELOPMENT_WORKFLOW_ID),
+    executable: Boolean(item?.executable ?? fallback.executable),
     draft: Boolean(item?.draft),
     nodes,
     edges,
@@ -400,7 +399,7 @@ export function layoutWorkflowNodes(nodes = [], edges = []) {
 
 function withCanonicalWorkflowLayout(workflow) {
   if (!workflow || workflow.custom) return workflow;
-  if (workflow.workflow_id !== SOFTWARE_DEVELOPMENT_WORKFLOW_ID && !workflow.system) return workflow;
+  if (!workflow.system) return workflow;
   return {
     ...workflow,
     nodes: layoutWorkflowNodes(workflow.nodes, workflow.edges),
@@ -409,9 +408,9 @@ function withCanonicalWorkflowLayout(workflow) {
 
 export function normalizeWorkflowSettings(payload) {
   const source = payload && typeof payload === 'object' ? payload : DEFAULT_WORKFLOW_SETTINGS;
-  const presets = Array.isArray(source.presets) && source.presets.length
+  const presets = Array.isArray(source.presets)
     ? source.presets
-      .map((item, index) => normalizeWorkflowRow(item, DEFAULT_WORKFLOW_SETTINGS.presets[index] || DEFAULT_SOFTWARE_DEVELOPMENT_WORKFLOW))
+      .map((item) => normalizeWorkflowRow(item, DEFAULT_DIRECT_WORKFLOW))
       .map((item) => withCanonicalWorkflowLayout(item))
       .filter((item) => item.workflow_id)
     : DEFAULT_WORKFLOW_SETTINGS.presets.map((item) => withCanonicalWorkflowLayout(item));
@@ -422,7 +421,7 @@ export function normalizeWorkflowSettings(payload) {
     ? source.node_types
     : DEFAULT_WORKFLOW_NODE_TYPES;
   return {
-    default_workflow_id: String(source.default_workflow_id || SOFTWARE_DEVELOPMENT_WORKFLOW_ID),
+    default_workflow_id: String(source.default_workflow_id || DIRECT_AGENT_WORKFLOW_ID),
     presets,
     custom,
     node_types: nodeTypes,
@@ -440,7 +439,7 @@ export function workflowListItems(settings) {
     enabled: item.enabled !== false,
     custom: Boolean(item.custom),
     default: item.workflow_id === normalized.default_workflow_id || item.default === true,
-    canToggle: item.workflow_id !== SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
+    canToggle: item.custom || item.editable,
     canConfigure: Boolean(item.custom) || item.editable,
   }));
 }
@@ -458,6 +457,8 @@ export function typeLabelForWorkflowNode(type) {
     llm: 'LLM',
     tool: 'Tool',
     condition: 'Condition',
+    human_approval: 'Approval',
+    loop: 'Loop',
   };
   return known[type] || type || 'Node';
 }
@@ -525,6 +526,10 @@ export function workflowFriendlyVariableLabel(item) {
     raw: 'raw',
     matched_case: 'matched_case',
     selected_target: 'selected_target',
+    decision: 'decision',
+    feedback: 'feedback',
+    reviewed_input: 'reviewed_input',
+    attempt: 'attempt',
     value: 'value',
   };
   const fieldLabel = String(
@@ -605,6 +610,43 @@ export function workflowArgumentsText(value) {
   } catch {
     return '{}';
   }
+}
+
+function workflowDisplayString(value) {
+  const raw = String(value || '');
+  const trimmed = raw.trim();
+  if (/^(?:\{|\[|")/.test(trimmed)) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed !== raw) return workflowInputDisplayText(parsed);
+    } catch {
+      // Not JSON: keep the original user text and only restore escaped line breaks.
+    }
+  }
+  return raw.replace(/\\r\\n|\\n|\\r/g, '\n');
+}
+
+function hasWorkflowDisplayValue(value) {
+  if (value == null || value === '') return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+export function workflowInputDisplayText(value) {
+  if (value == null || value === '') return '';
+  if (typeof value === 'string') return workflowDisplayString(value);
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const message = typeof value.message === 'string' ? workflowDisplayString(value.message).trim() : '';
+    const metadata = Object.fromEntries(
+      Object.entries(value).filter(([key, item]) => key !== 'message' && hasWorkflowDisplayValue(item)),
+    );
+    if (message && Object.keys(metadata).length === 0) return message;
+    const metadataText = Object.keys(metadata).length > 0 ? workflowArgumentsText(metadata) : '';
+    if (message && metadataText) return `${message}\n\n**Input metadata**\n\n\`\`\`json\n${metadataText}\n\`\`\``;
+    if (metadataText) return `\`\`\`json\n${metadataText}\n\`\`\``;
+  }
+  return `\`\`\`json\n${workflowArgumentsText(value)}\n\`\`\``;
 }
 
 export const WORKFLOW_OUTPUT_FIELD_OPTIONS = ['answer', 'summary', 'plan', 'request', 'citations', 'artifacts', 'metadata'];
@@ -728,7 +770,9 @@ export function payloadForCustomWorkflow(workflow) {
     edges: (workflow.edges || []).map((edge) => ({
       from: edge.from,
       to: edge.to,
-      ...(edge.branch === 'true' || edge.branch === 'false' ? { branch: edge.branch } : {}),
+      ...(['true', 'false', 'approved', 'rejected', 'retry', 'exhausted'].includes(edge.branch)
+        ? { branch: edge.branch }
+        : {}),
     })),
   };
 }

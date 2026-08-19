@@ -8,6 +8,7 @@ import {
   registerTaskSummaryMapper,
 } from './workspace-state.js';
 import { stripChatImageAugmentation } from './chat-text.js';
+import { compactStreamEvents } from './stream-events.js';
 import { WORLD_ROLE_TO_ACTOR, WORLD_KIND_MAP } from './world-runtime.js';
 import {
   resolveProviderMeta,
@@ -24,7 +25,7 @@ import {
   WORLD_EVENT_ROUTE_MAP,
   PROVIDER_SCENE_EVENT_TYPES,
 } from './world-events.js';
-import { STATIONS } from '../World.jsx';
+import { STATIONS } from './world-layout.js';
 
 export function createEmptyWorldTaskState() {
   return {
@@ -59,6 +60,7 @@ export function isTerminalTaskStatus(status) {
 const ASSISTANT_VISIBLE_STREAM_EVENT_TYPES = new Set([
   'llm_thinking_delta',
   'llm_answer_delta',
+  'llm_attempt_failed',
   'llm_final_answer',
   'llm_tool_call_requested',
   'agent_progress_delta',
@@ -148,8 +150,41 @@ export function applyTerminalTaskState(task, status, options = {}) {
   if (!task) return task;
   const normalized = normalizeTaskStatus(status);
   const now = Date.now();
+  let workflowRun = task.workflowRun;
+  if (normalized === 'cancelled' && workflowRun) {
+    const currentNodeId = String(workflowRun.current_node_id || '');
+    const nodes = { ...(workflowRun.nodes || {}) };
+    const currentNode = nodes[currentNodeId];
+    const currentNodeStatus = normalizeTaskStatus(currentNode?.status || '');
+    const currentNodeFinished = Boolean(
+      currentNode
+      && (
+        typeof currentNode.success === 'boolean'
+        || currentNode.finished_at
+        || currentNode.finishedAt
+        || currentNode.decision
+        || currentNode.structured?.decision
+        || ['done', 'failed', 'cancelled', 'approved', 'rejected'].includes(currentNodeStatus)
+      )
+    );
+    if (currentNodeId && !currentNodeFinished) {
+      nodes[currentNodeId] = {
+        ...(currentNode || {}),
+        status: 'cancelled',
+        success: false,
+        finished_at: new Date(now).toISOString(),
+      };
+    }
+    workflowRun = {
+      ...workflowRun,
+      status: 'cancelled',
+      current_node_id: null,
+      nodes,
+    };
+  }
   return {
     ...task,
+    workflowRun,
     status: normalized,
     stage: 'done',
     updatedAt: now,
@@ -232,6 +267,9 @@ export function buildWorldTaskRecord(event, pendingTask) {
     originViewMode: pendingTask?.originViewMode || 'world',
     workflowSnapshot: pendingTask?.workflowSnapshot || null,
     workflowRun: pendingTask?.workflowRun || null,
+    sourceTaskId: pendingTask?.sourceTaskId || event.source_task_id || null,
+    sourceRunId: pendingTask?.sourceRunId || event.source_run_id || null,
+    rerunFromNodeId: pendingTask?.rerunFromNodeId || event.start_node_id || null,
     providerState: pendingTask?.requestedProvider ? {
       provider: pendingTask.requestedProvider,
       state: 'selected',
@@ -292,6 +330,9 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = [], ow
     originViewMode: task.execution_mode === 'bot' ? 'world' : 'chat',
     workflowSnapshot: task.workflow_snapshot || null,
     workflowRun: task.workflow_run || null,
+    sourceTaskId: task.source_task_id || null,
+    sourceRunId: task.source_run_id || null,
+    rerunFromNodeId: task.rerun_from_node_id || null,
     requestedModelId: task.model || '',
     profileId: task.profile_id || task.agent_id || '',
     profileDisplayName: task.profile_display_name || '',
@@ -323,7 +364,7 @@ export function taskDetailToRuntimeTask(task, previousTask = null, ownerId = '')
     ...summaryTask,
     loopIndex: getLoopIndexFromWorldEvents(events),
     activeRole: getActiveRoleFromWorldEvents(events),
-    eventLog: events.map(worldEventToRuntimeLog),
+    eventLog: compactStreamEvents(events.map(worldEventToRuntimeLog)),
   };
   return nextTask;
 }

@@ -37,6 +37,10 @@ import {
   workflowToolOptionsFromAgentSettings,
 } from '../../lib/agent-catalog.js';
 import {
+  layoutRuntimeWorkflow,
+  useWorkflowCanvasWidth,
+} from '../../lib/runtime-workflow-layout.js';
+import {
   FieldRow,
   SettingsLucideIcon,
   SettingsMenuSelect,
@@ -72,50 +76,123 @@ const WORKFLOW_NODE_META = {
   llm: { icon: 'workflow-llm' },
   tool: { icon: 'workflow-tool' },
   condition: { icon: 'workflow-condition' },
+  human_approval: { icon: 'workflow-approval' },
+  loop: { icon: 'workflow-loop' },
   output: { icon: 'circle-check' },
 };
+
+const WORKFLOW_RUNTIME_STATUS_ICON = {
+  pending: 'clock',
+  running: 'loader',
+  waiting_input: 'message',
+  approval: 'pause-circle',
+  approved: 'circle-check',
+  rejected: 'circle-x',
+  done: 'circle-check',
+  failed: 'circle-x',
+  cancelled: 'ban',
+};
+
+const WORKFLOW_BRANCHES = {
+  condition: ['true', 'false'],
+  human_approval: ['approved', 'rejected'],
+  loop: ['retry', 'exhausted'],
+};
+
+export const WORKFLOW_BRANCH_META = {
+  true: { label: 'True', tone: 'positive' },
+  false: { label: 'False', tone: 'muted' },
+  approved: { label: 'Approved', tone: 'positive' },
+  rejected: { label: 'Rejected', tone: 'negative' },
+  retry: { label: 'Retry', tone: 'warning' },
+  exhausted: { label: 'Exhausted', tone: 'negative' },
+};
+
+export function workflowEdgeAppearance(edge, { active = false } = {}) {
+  const branchTone = WORKFLOW_BRANCH_META[edge?.branch]?.tone;
+  const branchColor = branchTone === 'positive'
+    ? 'rgba(120, 218, 139, 0.42)'
+    : branchTone === 'negative'
+      ? 'rgba(238, 122, 145, 0.42)'
+      : branchTone === 'warning'
+        ? 'rgba(238, 182, 96, 0.46)'
+        : edge?.branch
+          ? 'rgba(176, 196, 220, 0.3)'
+          : 'rgba(185, 196, 216, 0.26)';
+  return {
+    sourceHandle: edge?.branch || undefined,
+    type: edge?.branch ? 'smoothstep' : 'straight',
+    pathOptions: edge?.branch ? { borderRadius: 10, offset: edge.branch === 'retry' ? 0 : 20 } : undefined,
+    label: WORKFLOW_BRANCH_META[edge?.branch]?.label,
+    labelStyle: edge?.branch
+      ? {
+        fill: branchTone === 'positive'
+          ? 'rgba(144, 226, 158, 0.92)'
+          : branchTone === 'negative'
+            ? 'rgba(250, 170, 189, 0.92)'
+            : branchTone === 'warning'
+              ? 'rgba(246, 202, 132, 0.94)'
+              : 'rgba(205, 215, 232, 0.68)',
+        fontSize: 10,
+        fontWeight: 700,
+        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+      }
+      : undefined,
+    labelBgStyle: edge?.branch ? { fill: 'rgba(9, 14, 24, 0.92)' } : undefined,
+    labelBgPadding: edge?.branch ? [5, 3] : undefined,
+    labelBgBorderRadius: edge?.branch ? 5 : undefined,
+    interactionWidth: 28,
+    zIndex: edge?.branch ? 2 : 0,
+    style: {
+      stroke: active ? 'rgba(105, 200, 246, 0.58)' : branchColor,
+      strokeWidth: active ? 1.8 : 1.5,
+    },
+    markerEnd: MarkerType.ArrowClosed
+      ? {
+        type: MarkerType.ArrowClosed,
+        width: 14,
+        height: 14,
+        color: active ? 'rgba(105, 200, 246, 0.64)' : branchColor,
+      }
+      : undefined,
+  };
+}
 
 function workflowNodeMeta(nodeType) {
   return WORKFLOW_NODE_META[nodeType] || { icon: 'box' };
 }
 
-export function WorkflowFlowNode({ data, selected }) {
+export function WorkflowFlowNode({ data, selected, sourcePosition, targetPosition }) {
   const flow = ReactFlowNS;
   const Handle = flow.Handle;
-  const Position = flow.Position || { Left: 'left', Right: 'right', Bottom: 'bottom' };
+  const Position = flow.Position || { Left: 'left', Right: 'right', Top: 'top', Bottom: 'bottom' };
   const node = data?.workflowNode || {};
   const nodeType = node.type || 'agent';
   const meta = workflowNodeMeta(nodeType);
-  const incomingBranches = Array.isArray(data?.incomingBranches) ? data.incomingBranches : [];
   const iconName = nodeType === 'agent'
     ? (data?.agentIconName || agentIconNameForAgentId(node.agent_id, data?.agentOptions))
     : meta.icon;
+  const runtimeStatus = String(data?.runtimeStatus || '');
+  const runtimeDetailAvailable = Boolean(data?.runtimeDetailAvailable);
+  const resolvedSourcePosition = data?.sourcePosition || sourcePosition || Position.Right;
+  const resolvedTargetPosition = data?.targetPosition || targetPosition || Position.Left;
+  const branchSourcePositions = data?.branchSourcePositions || {};
+  const branchHandleStyles = data?.branchHandleStyles || {};
   return (
-    <div className={`workflow-flow-node ${nodeType} ${selected ? 'active' : ''}${data?.dropPreview ? ' is-drop-preview' : ''}`}>
-      {Handle && nodeType !== 'start' ? (
-        <>
-          <Handle type="target" position={Position.Left} />
-          {incomingBranches.includes('true') ? (
-            <Handle
-              id="condition-true"
-              className="workflow-condition-target-handle is-true"
-              type="target"
-              position={Position.Left}
-              aria-label="True branch input"
-              style={{ top: '24%' }}
-            />
-          ) : null}
-          {incomingBranches.includes('false') ? (
-            <Handle
-              id="condition-false"
-              className="workflow-condition-target-handle is-false"
-              type="target"
-              position={Position.Left}
-              aria-label="False default branch input"
-              style={{ top: '76%' }}
-            />
-          ) : null}
-        </>
+    <div
+      className={`workflow-flow-node ${nodeType} ${selected ? 'active' : ''}${data?.dropPreview ? ' is-drop-preview' : ''}${runtimeStatus ? ` is-runtime status-${runtimeStatus}` : ''}${runtimeDetailAvailable ? ' has-runtime-detail' : ''}`}
+    >
+      {Handle && nodeType !== 'start'
+        ? <Handle type="target" position={resolvedTargetPosition} />
+        : null}
+      {Handle && data?.feedbackTarget ? (
+        <Handle
+          id="runtime-feedback"
+          className="workflow-feedback-target-handle"
+          type="target"
+          position={Position.Bottom}
+          style={{ left: '24%' }}
+        />
       ) : null}
       <span className="workflow-flow-node-icon" aria-hidden="true">
         <SettingsLucideIcon name={iconName} size={16} />
@@ -123,27 +200,30 @@ export function WorkflowFlowNode({ data, selected }) {
       <span className="workflow-flow-node-copy">
         <strong>{node.label}</strong>
       </span>
-      {Handle && nodeType === 'condition' ? (
-        <>
-          <Handle
-            id="true"
-            className="workflow-condition-handle is-true"
-            type="source"
-            position={Position.Right}
-            aria-label="True condition branch"
-          />
-          <Handle
-            id="false"
-            className="workflow-condition-handle is-false"
-            type="source"
-            position={Position.Bottom}
-            aria-label="False default branch"
-            style={{ left: 'calc(100% - 18px)' }}
-          />
-        </>
+      {runtimeStatus ? (
+        <span
+          className={`workflow-run-node-status status-${runtimeStatus}`}
+          aria-label={`Status: ${data.runtimeStatusLabel || runtimeStatus}`}
+          title={data.runtimeStatusLabel || runtimeStatus}
+        >
+          <SettingsLucideIcon name={WORKFLOW_RUNTIME_STATUS_ICON[runtimeStatus] || 'clock'} size={16} />
+        </span>
       ) : null}
-      {Handle && nodeType !== 'condition' && nodeType !== 'output'
-        ? <Handle type="source" position={Position.Right} />
+      {Handle && WORKFLOW_BRANCHES[nodeType] ? (
+        WORKFLOW_BRANCHES[nodeType].map((branch, index) => (
+          <Handle
+            key={branch}
+            id={branch}
+            className={`workflow-condition-handle is-${branch}`}
+            type="source"
+            position={branchSourcePositions[branch] || (index === 0 ? resolvedSourcePosition : Position.Bottom)}
+            aria-label={`${WORKFLOW_BRANCH_META[branch]?.label || branch} branch`}
+            style={branchHandleStyles[branch] || (index === 1 ? { left: '50%' } : undefined)}
+          />
+        ))
+      ) : null}
+      {Handle && !WORKFLOW_BRANCHES[nodeType] && nodeType !== 'output'
+        ? <Handle type="source" position={resolvedSourcePosition} />
         : null}
     </div>
   );
@@ -162,6 +242,7 @@ function WorkflowCanvasFitView({ workflowKey }) {
 
 function WorkflowDropCanvas({
   nodes,
+  workflowKey,
   onNodesChange,
   onNodeDragStart,
   onNodeDragStop,
@@ -174,13 +255,22 @@ function WorkflowDropCanvas({
   const [canvasNodes, setCanvasNodes, onCanvasNodesChange] = useNodesState(nodes);
   const [dropPreview, setDropPreview] = useState(null);
   const isNodeDraggingRef = useRef(false);
+  const draggedNodePositionsRef = useRef(new Map());
+  const previousWorkflowKeyRef = useRef(workflowKey);
   const isWorkflowNodeDrag = (event) => (
     Array.from(event.dataTransfer?.types || []).includes(WORKFLOW_NODE_DRAG_TYPE)
   );
 
   useEffect(() => {
-    if (!isNodeDraggingRef.current) setCanvasNodes(nodes);
-  }, [nodes, setCanvasNodes]);
+    const resetPositions = previousWorkflowKeyRef.current !== workflowKey;
+    if (resetPositions) draggedNodePositionsRef.current.clear();
+    previousWorkflowKeyRef.current = workflowKey;
+    if (isNodeDraggingRef.current) return;
+    setCanvasNodes(nodes.map((node) => {
+      const draggedPosition = draggedNodePositionsRef.current.get(node.id);
+      return draggedPosition ? { ...node, position: draggedPosition } : node;
+    }));
+  }, [nodes, setCanvasNodes, workflowKey]);
 
   useEffect(() => {
     if (!draggedNodeType) setDropPreview(null);
@@ -222,6 +312,7 @@ function WorkflowDropCanvas({
         onNodeDragStart?.(event, node, draggedNodes);
       }}
       onNodeDragStop={(event, node, draggedNodes) => {
+        draggedNodePositionsRef.current.set(node.id, node.position);
         isNodeDraggingRef.current = false;
         onNodeDragStop?.(event, node, draggedNodes);
       }}
@@ -284,7 +375,7 @@ export function addWorkflowEdge(edges, from, to, branch = '') {
     && edge.to === to
     && (edge.branch || '') === normalizedBranch
   ))) return edges;
-  if (normalizedBranch === 'true' || normalizedBranch === 'false') {
+  if (WORKFLOW_BRANCH_META[normalizedBranch]) {
     return [
       ...edges.filter((edge) => !(edge.from === from && edge.branch === normalizedBranch)),
       { from, to, branch: normalizedBranch },
@@ -312,7 +403,9 @@ export function WorkflowConfigEditor({
   const [nodePanelWidth, setNodePanelWidth] = useState(340);
   const [draggedNodeType, setDraggedNodeType] = useState('');
   const [isCanvasDropTarget, setIsCanvasDropTarget] = useState(false);
+  const canvasRef = useRef(null);
   const nodePanelResizeRef = useRef(null);
+  const canvasWidth = useWorkflowCanvasWidth(canvasRef, selectedId);
 
   useEffect(() => {
     if (!workflow) {
@@ -358,76 +451,63 @@ export function WorkflowConfigEditor({
   const ReactFlowCanvas = flow.ReactFlow;
   const Background = flow.Background;
   const Controls = flow.Controls;
-  const MarkerType = flow.MarkerType || {};
+  const layout = layoutRuntimeWorkflow(nodes, edges, canvasWidth);
+  const feedbackTargetIds = new Set(
+    edges.flatMap((edge) => (
+      layout.meta.get(String(edge.from))?.kind === 'secondary'
+      && layout.meta.get(String(edge.to))?.kind === 'primary'
+        ? [String(edge.to)]
+        : []
+    )),
+  );
   const reactNodes = nodes.map((node) => ({
     id: node.id,
     type: 'workflowNode',
-    position: {
-      x: Number(node.position?.x || 0),
-      y: Number(node.position?.y || 0),
-    },
+    position: layout.positions.get(String(node.id)) || node.position || { x: 0, y: 0 },
     data: {
       workflowNode: node,
       agentOptions,
-      incomingBranches: edges
-        .filter((edge) => edge.to === node.id && edge.branch)
-        .map((edge) => edge.branch),
       agentIconName: node.type === 'agent'
         ? agentIconNameForAgentId(node.agent_id, agentOptions)
         : undefined,
+      sourcePosition: layout.meta.get(String(node.id))?.kind === 'secondary'
+        ? (layout.meta.get(String(node.id))?.direction === 'right' ? Position.Left : Position.Right)
+        : (layout.meta.get(String(node.id))?.direction === 'left' ? Position.Left : Position.Right),
+      targetPosition: layout.meta.get(String(node.id))?.kind === 'secondary'
+        ? Position.Top
+        : (layout.meta.get(String(node.id))?.direction === 'left' ? Position.Right : Position.Left),
+      feedbackTarget: feedbackTargetIds.has(String(node.id)),
+      branchSourcePositions: layout.meta.get(String(node.id))?.kind === 'secondary' && node.type === 'loop'
+        ? { retry: Position.Top }
+        : undefined,
     },
     selected: node.id === selectedNodeId,
-    draggable: isEditable,
+    draggable: true,
   }));
   const reactEdges = edges.map((edge) => {
     const edgeId = workflowEdgeId(edge);
     const isSelected = edgeId === selectedEdgeId;
-    const branchColor = edge.branch === 'true'
-      ? 'rgba(120, 218, 139, 0.42)'
-      : edge.branch === 'false'
-        ? 'rgba(176, 196, 220, 0.3)'
-        : 'rgba(185, 196, 216, 0.26)';
+    const sourceLayout = layout.meta.get(String(edge.from));
+    const targetLayout = layout.meta.get(String(edge.to));
+    const curved = sourceLayout?.row !== targetLayout?.row
+      || sourceLayout?.kind === 'secondary'
+      || targetLayout?.kind === 'secondary';
+    const reworkEdge = sourceLayout?.kind !== targetLayout?.kind;
+    const feedback = sourceLayout?.kind === 'secondary' && targetLayout?.kind === 'primary';
+    const appearance = workflowEdgeAppearance(edge, { active: isSelected });
     return {
-    id: edgeId,
-    source: edge.from,
-    target: edge.to,
-    sourceHandle: edge.branch || undefined,
-    targetHandle: edge.branch ? `condition-${edge.branch}` : undefined,
-    type: edge.branch ? 'smoothstep' : 'straight',
-    pathOptions: edge.branch ? { borderRadius: 10, offset: 20 } : undefined,
-    label: edge.branch === 'true'
-      ? 'True'
-      : edge.branch === 'false'
-        ? 'False · default'
-        : undefined,
-    labelStyle: edge.branch
-      ? {
-        fill: edge.branch === 'true'
-          ? 'rgba(144, 226, 158, 0.92)'
-          : 'rgba(205, 215, 232, 0.68)',
-        fontSize: 10,
-        fontWeight: 700,
-      }
-      : undefined,
-    labelBgStyle: edge.branch ? { fill: 'rgba(9, 14, 24, 0.92)' } : undefined,
-    labelBgPadding: edge.branch ? [5, 3] : undefined,
-    labelBgBorderRadius: edge.branch ? 5 : undefined,
-    selected: isSelected,
-    interactionWidth: 28,
-    zIndex: edge.branch ? 2 : 0,
-    animated: isSelected,
-    style: {
-      stroke: isSelected ? 'rgba(105, 200, 246, 0.58)' : branchColor,
-      strokeWidth: isSelected ? 1.8 : 1.5,
-    },
-    markerEnd: MarkerType.ArrowClosed
-      ? {
-        type: MarkerType.ArrowClosed,
-        width: 14,
-        height: 14,
-        color: isSelected ? 'rgba(105, 200, 246, 0.64)' : branchColor,
-      }
-      : undefined,
+      id: edgeId,
+      source: edge.from,
+      target: edge.to,
+      ...appearance,
+      targetHandle: feedback ? 'runtime-feedback' : undefined,
+      type: curved ? 'smoothstep' : appearance.type,
+      pathOptions: curved
+        ? { borderRadius: 18, offset: reworkEdge ? 0 : 28 }
+        : appearance.pathOptions,
+      zIndex: 0,
+      selected: isSelected,
+      animated: isSelected,
     };
   });
   const onReactFlowNodesChange = (changes) => {
@@ -454,7 +534,7 @@ export function WorkflowConfigEditor({
         .map((edge) => ({
           from: edge.source,
           to: edge.target,
-          ...(edge.sourceHandle === 'true' || edge.sourceHandle === 'false'
+          ...(WORKFLOW_BRANCH_META[edge.sourceHandle]
             ? { branch: edge.sourceHandle }
             : {}),
         })),
@@ -465,17 +545,12 @@ export function WorkflowConfigEditor({
     const source = nodes.find((node) => node.id === connection.source);
     const target = nodes.find((node) => node.id === connection.target);
     if (!canConnectWorkflowNodes(source, target)) return;
-    const branch = source.type === 'condition' ? connection.sourceHandle : '';
-    if (source.type === 'condition' && branch !== 'true' && branch !== 'false') return;
+    const allowedBranches = WORKFLOW_BRANCHES[source.type] || [];
+    const branch = allowedBranches.length ? connection.sourceHandle : '';
+    if (allowedBranches.length && !allowedBranches.includes(branch)) return;
+    if (source.type === 'loop' && branch === 'retry' && ['start', 'output', 'loop'].includes(target.type)) return;
+    if (source.type === 'loop' && branch === 'exhausted' && target.type !== 'output') return;
     updateWorkflow({ edges: addWorkflowEdge(edges, connection.source, connection.target, branch) });
-  };
-  const onReactFlowNodeDragStop = (_, draggedNode) => {
-    if (!isEditable) return;
-    updateWorkflow({
-      nodes: nodes.map((node) => (
-        node.id === draggedNode.id ? normalizeWorkflowNode({ ...node, position: draggedNode.position }, node) : node
-      )),
-    });
   };
   const updateNode = (nodeId, patch) => {
     updateWorkflow({
@@ -506,6 +581,14 @@ export function WorkflowConfigEditor({
       ...(baseType === 'llm' ? { prompt: '{{input.message}}', response_format: 'text' } : {}),
       ...(baseType === 'tool' ? { tool_name: toolOptions[0]?.id || '', arguments: { query: '{{input.message}}' } } : {}),
       ...(baseType === 'condition' ? { expression: '{{nodes.agent_1.success}} == true' } : {}),
+      ...(baseType === 'human_approval' ? {
+        input: {
+          title: 'Approval required',
+          summaryText: '{{input.message}}',
+          payload: '{{input.message}}',
+        },
+      } : {}),
+      ...(baseType === 'loop' ? { max_loops: 3 } : {}),
       ...(baseType === 'output' ? {
         output_mode: 'json_object',
         output: '{{input.message}}',
@@ -697,6 +780,84 @@ export function WorkflowConfigEditor({
               })}
             />
           ))}
+        </>
+      );
+    }
+    if (selectedNode.type === 'human_approval') {
+      const approvalInput = selectedNode.input && typeof selectedNode.input === 'object' && !Array.isArray(selectedNode.input)
+        ? selectedNode.input
+        : {};
+      return (
+        <>
+          <FieldRow label="title" hint="Short heading shown in the approval card.">
+            <input
+              value={approvalInput.title || ''}
+              disabled={!isEditable}
+              placeholder="Approval required"
+              onChange={(event) => updateNode(selectedNode.id, {
+                input: { ...approvalInput, title: event.target.value },
+              })}
+            />
+          </FieldRow>
+          <WorkflowTemplateTextarea
+            title="Review content"
+            hint="Content the user must approve or reject."
+            value={approvalInput.summaryText || ''}
+            variables={availableVariables}
+            disabled={!isEditable}
+            rows={6}
+            placeholder="Select or describe the upstream result to review"
+            onChange={(summaryText) => updateNode(selectedNode.id, {
+              input: { ...approvalInput, summaryText },
+            })}
+          />
+          <FieldRow label="payload" hint="Optional structured upstream value preserved with the decision.">
+            <WorkflowVariableSelect
+              value={approvalInput.payload || ''}
+              variables={availableVariables}
+              disabled={!isEditable}
+              onChange={(payload) => updateNode(selectedNode.id, {
+                input: { ...approvalInput, payload },
+              })}
+            />
+          </FieldRow>
+          <WorkflowOutputContract node={selectedNode} />
+        </>
+      );
+    }
+    if (selectedNode.type === 'loop') {
+      const unlimited = selectedNode.max_loops === null;
+      return (
+        <>
+          <FieldRow label="rerun limit" hint="Choose Unlimited to keep retrying until the workflow succeeds or is stopped manually.">
+            <SettingsMenuSelect
+              className="workflow-menu-select"
+              value={unlimited ? 'unlimited' : 'limited'}
+              options={[
+                { id: 'limited', label: 'Limited' },
+                { id: 'unlimited', label: 'Unlimited' },
+              ]}
+              disabled={!isEditable}
+              onChange={(value) => updateNode(selectedNode.id, {
+                max_loops: value === 'unlimited' ? null : 3,
+              })}
+            />
+          </FieldRow>
+          {!unlimited ? (
+            <FieldRow label="maximum reruns" hint="After this many retries, the next entry follows Exhausted to End and fails the workflow.">
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={selectedNode.max_loops || 3}
+                disabled={!isEditable}
+                onChange={(event) => updateNode(selectedNode.id, {
+                  max_loops: Math.max(1, Number.parseInt(event.target.value || '1', 10)),
+                })}
+              />
+            </FieldRow>
+          ) : null}
+          <WorkflowOutputContract node={selectedNode} />
         </>
       );
     }
@@ -920,10 +1081,11 @@ export function WorkflowConfigEditor({
             ) : null}
           </div>
         ) : null}
-        <div className={`workflow-canvas${isCanvasDropTarget ? ' is-node-drag-over' : ''}`}>
+        <div ref={canvasRef} className={`workflow-canvas${isCanvasDropTarget ? ' is-node-drag-over' : ''}`}>
           {ReactFlowCanvas ? (
             <ReactFlowProvider>
               <WorkflowDropCanvas
+                workflowKey={`${workflow.workflow_id}:${workflow.version || ''}`}
                 nodes={reactNodes}
                 edges={reactEdges}
                 nodeTypes={WORKFLOW_REACT_FLOW_NODE_TYPES}
@@ -945,8 +1107,7 @@ export function WorkflowConfigEditor({
                 onNodesChange={onReactFlowNodesChange}
                 onEdgesChange={onReactFlowEdgesChange}
                 onConnect={onReactFlowConnect}
-                onNodeDragStop={onReactFlowNodeDragStop}
-                nodesDraggable={isEditable}
+                nodesDraggable
                 nodesConnectable={isEditable}
                 edgesFocusable={isEditable}
                 elementsSelectable
@@ -967,7 +1128,7 @@ export function WorkflowConfigEditor({
               >
                 {Background ? <Background gap={22} size={1.2} color="rgba(176, 206, 255, 0.07)" /> : null}
                 {Controls ? <Controls showInteractive={false} position="bottom-left" /> : null}
-                <WorkflowCanvasFitView workflowKey={workflow.workflow_id} />
+                <WorkflowCanvasFitView workflowKey={`${workflow.workflow_id}:${layout.columns}:${layout.rowCount}:${canvasWidth}`} />
               </WorkflowDropCanvas>
             </ReactFlowProvider>
           ) : (

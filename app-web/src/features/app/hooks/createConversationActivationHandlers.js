@@ -221,8 +221,9 @@ export function createConversationActivationHandlers(ctx) {
     const messageImageFallbacks = chatImageFallbacksByTaskIdFromMessages(detail.messages, restoredConversationId, userIdRef.current);
     const latestTaskId = detail.last_task_id || (restoredTasks.length ? restoredTasks[restoredTasks.length - 1].task_id : null);
     const latestTask = restoredTasks.find((task) => task.task_id === latestTaskId);
-    if (restoreLatest && latestTask) {
-      const restoredMode = latestTask.execution_mode === 'bot' ? 'world' : 'chat';
+    const restoredExecutionMode = latestTask?.execution_mode || detail.execution_mode;
+    if (restoreLatest && restoredExecutionMode) {
+      const restoredMode = restoredExecutionMode === 'bot' ? 'world' : 'chat';
       viewModeRef.current = restoredMode;
       setViewMode(restoredMode);
     }
@@ -289,7 +290,7 @@ export function createConversationActivationHandlers(ctx) {
         await restoreConversationTaskRuntimes(
           restoredTasks.map((task) => task.task_id),
           latestTaskId,
-          isCurrentActivation,
+          { targetConversationId: restoredConversationId, isCurrentActivation },
         );
       } catch (error) {
         if (!isCurrentActivation()) return;
@@ -346,14 +347,17 @@ export function createConversationActivationHandlers(ctx) {
 
     updateWorldTaskState((state) => {
       const existingTask = state.tasksById[taskId];
+      if (existingTask) {
+        return state.activeTaskId === taskId ? state : { ...state, activeTaskId: taskId };
+      }
       const pendingTask = state.pendingTask;
-      const baseTask = existingTask || buildWorldTaskRecord(event, pendingTask);
+      const baseTask = buildWorldTaskRecord(event, pendingTask);
       const updatedAt = timestampValue(event.created_at) || timestampValue(event.timestamp) || Date.now();
       return {
         ...state,
         activeTaskId: taskId,
-        pendingTask: existingTask ? state.pendingTask : null,
-        taskOrder: existingTask ? state.taskOrder : [...state.taskOrder, taskId],
+        pendingTask: null,
+        taskOrder: [...state.taskOrder, taskId],
         tasksById: {
           ...state.tasksById,
           [taskId]: {
@@ -369,14 +373,18 @@ export function createConversationActivationHandlers(ctx) {
     }, ownerConvId);
 
     if (ownerConvId) {
-      mutateRuntime(ownerConvId, (rt) => { rt.activeTaskId = taskId; });
+      mutateRuntime(ownerConvId, (rt) => {
+        if (rt.activeTaskId === taskId) return false;
+        rt.activeTaskId = taskId;
+        return true;
+      });
     } else {
       activeTaskIdRef.current = taskId;
     }
     return taskId;
   }
 
-  function updateTaskById(taskId, updater, targetConvId = null) {
+  function updateTaskById(taskId, updater, targetConvId = null, options = {}) {
     if (!taskId) return;
     updateWorldTaskState((state) => {
       const task = state.tasksById[taskId];
@@ -386,12 +394,13 @@ export function createConversationActivationHandlers(ctx) {
         return state;
       }
       const rawNextTask = typeof updater === 'function' ? updater(task) : { ...task, ...updater };
+      if (rawNextTask === task) return state;
       // Terminal status (done/failed/cancelled) is sticky. Late-arriving stream
       // events must not regress a finished task back into running/queued — that's
       // what made the sidebar show a loading spinner for already-cancelled tasks.
       const taskWasTerminal = isTerminalTaskStatus(task.status);
       const nextWouldBeTerminal = isTerminalTaskStatus(rawNextTask?.status);
-      const nextTask = taskWasTerminal && !nextWouldBeTerminal
+      const nextTask = taskWasTerminal && !nextWouldBeTerminal && !options.allowTerminalReset
         ? {
             ...rawNextTask,
             status: task.status,

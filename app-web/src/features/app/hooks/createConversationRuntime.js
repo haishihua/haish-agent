@@ -52,11 +52,31 @@ export function createConversationRuntime(ctx) {
   function mutateRuntime(convId, mutator) {
     if (!convId) return null;
     const rt = getRuntime(convId, { create: true });
-    mutator(rt);
+    const changed = mutator(rt);
+    if (changed === false) return rt;
     if (convId === conversationIdRef.current) {
-      syncDisplayedRuntime(rt);
+      if (rt.syncBatchDepth > 0) {
+        rt.syncBatchPending = true;
+      } else {
+        syncDisplayedRuntime(rt);
+      }
     }
     return rt;
+  }
+
+  function batchRuntimeMutations(convId, callback) {
+    if (!convId || typeof callback !== 'function') return callback?.();
+    const rt = getRuntime(convId, { create: true });
+    rt.syncBatchDepth = (rt.syncBatchDepth || 0) + 1;
+    try {
+      return callback();
+    } finally {
+      rt.syncBatchDepth -= 1;
+      if (rt.syncBatchDepth === 0 && rt.syncBatchPending) {
+        rt.syncBatchPending = false;
+        if (convId === conversationIdRef.current) syncDisplayedRuntime(rt);
+      }
+    }
   }
 
   // Snapshot a runtime's task state into the displayed React state + refs.
@@ -181,7 +201,10 @@ export function createConversationRuntime(ctx) {
       return;
     }
     mutateRuntime(convId, (rt) => {
-      rt.worldTaskState = updater(rt.worldTaskState);
+      const next = updater(rt.worldTaskState);
+      if (next === rt.worldTaskState) return false;
+      rt.worldTaskState = next;
+      return true;
     });
   }
 
@@ -212,6 +235,7 @@ export function createConversationRuntime(ctx) {
   return {
     getRuntime,
     mutateRuntime,
+    batchRuntimeMutations,
     syncDisplayedRuntime,
     activeRuntimeTargetConvId,
     setRuntimeBusy,

@@ -31,6 +31,7 @@ export function createConversationHandlers(ctx) {
     normalizeWorkspaceOrdering,
     openDraftConversation,
     projectIdForWorkspacePath,
+    removeProjectModeFromWorkspace,
     setActiveTab,
     setCalibrationMode,
     setCopiedCoords,
@@ -417,8 +418,12 @@ export function createConversationHandlers(ctx) {
   async function handleRemoveProject(projectId) {
     const project = workspaceState.projects.find((item) => item.id === projectId);
     if (!project?.removable) return;
-    await Promise.all(project.conversations.map((item) => stopConversationRuntimeBeforeDelete(item.id, item)));
-    await Promise.all(project.conversations.map(async (item) => {
+    const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
+    const conversationsToRemove = project.conversations.filter(
+      (item) => item.executionMode === executionMode,
+    );
+    await Promise.all(conversationsToRemove.map((item) => stopConversationRuntimeBeforeDelete(item.id, item)));
+    await Promise.all(conversationsToRemove.map(async (item) => {
       const response = await authFetch(`${API_BASE}/api/conversations/${item.id}`, {
         method: 'DELETE',
       });
@@ -426,15 +431,9 @@ export function createConversationHandlers(ctx) {
         throw new Error(`conversation delete failed: ${response.status}`);
       }
     }));
-    const nextState = normalizeWorkspaceOrdering({
-      ...workspaceState,
-      projects: workspaceState.projects.filter((item) => item.id !== projectId),
-      activeProjectId: DEFAULT_PROJECT_ID,
-      activeConversationId: null,
-    });
+    const nextState = removeProjectModeFromWorkspace(workspaceState, projectId, executionMode);
     setWorkspaceState(nextState);
     const defaultProject = nextState.projects.find((item) => item.id === DEFAULT_PROJECT_ID) || createDefaultProject();
-    const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
     const fallbackConversation = defaultProject.conversations.find((item) => item.executionMode === executionMode);
     if (fallbackConversation) {
       const detail = await fetchConversationDetail(fallbackConversation.id);
@@ -475,9 +474,9 @@ export function createConversationHandlers(ctx) {
           currentProject?.id === DEFAULT_PROJECT_ID ? DEFAULT_SESSION_NAME : 'New Conversation',
           nextExecutionMode,
         );
-    // The mode toggle is an explicit user choice. Do not let the selected
-    // conversation's latest task override it while its detail is restored.
-    await activateConversationDetail(detail, { restoreLatest: false });
+    // Restore the selected mode's latest task as well, so switching back to
+    // Workflow immediately shows the current run instead of its idle template.
+    await activateConversationDetail(detail);
   }
 
   function handleOpenTaskReport(task) {

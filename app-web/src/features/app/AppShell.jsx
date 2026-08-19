@@ -5,16 +5,14 @@ import {
   NAV_POINTS,
   MEET_POINTS,
   ROUTES,
-  } from '../../World.jsx';
+  KIND_COLORS,
+} from '../../lib/world-layout.js';
 import { HollowPurple } from '../../Effects.jsx';
-import { KIND_COLORS } from '../../orchestrator.js';
 import {
   TopBar,
   ConversationsPanel,
-  LiveFeedPanel,
   ChatPanel,
   TaskDelegation,
-  MapViewport,
   TabPlaceholder,
   BottomNav,
   } from '../../panels.jsx';
@@ -55,7 +53,7 @@ import {
   settingsConnectionSignatureFor,
   sanitizeSettingsConnectionStatus,
   createDefaultCustomAgentPayload,
-  SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
+  DIRECT_AGENT_WORKFLOW_ID,
   WEB_SEARCH_PROVIDER_OPTIONS,
   withAlwaysAllowedAgentTools,
   } from '../../lib/agent-catalog.js';
@@ -81,6 +79,7 @@ import {
   } from '../../lib/world-runtime.js';
 import {
   createEmptyContextUsage,
+  configureContextTotalTokens,
   loadStoredContextUsage,
   saveStoredContextUsage,
   estimateContextUsageFromConversationDetail,
@@ -118,6 +117,7 @@ import {
   conversationHasActiveTask,
   isTaskActuallyActive,
   projectIdForWorkspacePath,
+  removeProjectModeFromWorkspace,
   getWorkspaceConversationIds,
   sleep,
   createConversationWithRetry,
@@ -162,7 +162,7 @@ import {
   STREAM_IMMEDIATE_EVENT_TYPES, SCENE_CATCHUP_TOOL_EVENT_TYPES, SCENE_CATCHUP_KEEP_TYPES,
   SCENE_TERMINAL_EVENT_TYPES, CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
 } from '../../lib/world-events.js';
-import { BotWorld } from '../../panels/world/BotWorld.jsx';
+import { WorkflowRuntimePage } from '../workflow/WorkflowRuntimePage.jsx';
 
 import { createConversationHandlers } from './hooks/createConversationHandlers.js';
 import { createComposerHandlers } from './hooks/createComposerHandlers.js';
@@ -186,6 +186,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const [activeTab, setActiveTab] = useState('dashboard');
   const [viewMode, setViewMode] = useState('chat');
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
+  const [viewedWorkflowTask, setViewedWorkflowTask] = useState(null);
+  const [conversationPanelCollapsed, setConversationPanelCollapsed] = useState(false);
   const viewModeRef = useRef('chat');
   const [npcStates, setNpcStates] = useState(() => {
     const s = {};
@@ -199,7 +201,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const [hollow, setHollow] = useState(null);
   const [, setBursts] = useState([]);
   const [now, setNow] = useState(() => new Date());
-  const [mapView, setMapView] = useState(null);
   const [conversationId, setConversationId] = useState(null);
   const [conversationReady, setConversationReady] = useState(false);
   const [conversationError, setConversationError] = useState('');
@@ -236,7 +237,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     memory: 'memory-neo4j',
     knowledge: 'knowledge-qdrant',
     agent: 'agent-default',
-    workflow: SOFTWARE_DEVELOPMENT_WORKFLOW_ID,
+    workflow: '',
   }));
   const [skillActionBusy, setSkillActionBusy] = useState('');
   const [, setStationDrafts] = useState(() => clonePointMap(STATIONS));
@@ -250,9 +251,11 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const fetchAbortRef = useRef(null);
   const conversationDetailAbortRef = useRef(null);
   const answerBufferRef = useRef('');
+  const chatMessageRowsCacheRef = useRef(new WeakMap());
   const chatFinalizedTaskIdsRef = useRef(new Set());
   const userCancelledTaskIdsRef = useRef(new Set());
   const taskImageAttachmentsRef = useRef(new Map());
+  const taskRuntimeEventCacheRef = useRef(new Map());
   const pendingPresentationTaskIdsRef = useRef(new Set());
   const previewObjectUrlCacheRef = useRef(new Map());
   const previewMountedRef = useRef(true);
@@ -329,6 +332,19 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
+        const contextWindowTokens = configureContextTotalTokens(
+          data?.runtime?.context_window_tokens,
+        );
+        if (contextWindowTokens > 0) {
+          setContextUsage((usage) => {
+            const next = normalizeContextUsage({
+              ...usage,
+              totalTokens: contextWindowTokens,
+            }, usage?.conversationId || null);
+            saveStoredContextUsage(next);
+            return next;
+          });
+        }
         const rows = Array.isArray(data) ? data : (Array.isArray(data.agents) ? data.agents : []);
         const options = rows
           .map((item) => {
@@ -359,15 +375,32 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 
   useEffect(() => {
     let cancelled = false;
-    fetchWorkflowSettingsPayload()
-      .then((payload) => {
-        if (!cancelled) applyWorkflowSettingsPayload(payload);
-      })
-      .catch((error) => console.warn('failed to fetch workflow catalog', error))
-      .finally(() => {
-        if (!cancelled) setWorkflowLoading(false);
-      });
-    return () => { cancelled = true; };
+    let retryTimer = null;
+    const load = async (attempt = 0) => {
+      try {
+        const payload = await fetchWorkflowSettingsPayload();
+        if (cancelled) return;
+        applyWorkflowSettingsPayload(payload);
+        setWorkflowLoading(false);
+      } catch (error) {
+        if (cancelled) return;
+        // Desktop startup can render before the local Python runtime is ready.
+        if (attempt < 8) {
+          retryTimer = window.setTimeout(
+            () => load(attempt + 1),
+            Math.min(400 * (attempt + 1), 2000),
+          );
+          return;
+        }
+        console.warn('failed to fetch workflow catalog', error);
+        setWorkflowLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
   }, []);
 
   useEffect(() => {
@@ -384,7 +417,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   }, [calibrationMode, settingsSection]);
 
   useEffect(() => {
-    if (!calibrationMode || settingsSection !== 'agent') return undefined;
+    if (!calibrationMode || !['agent', 'workflow'].includes(settingsSection)) return undefined;
     let cancelled = false;
     let retryTimer = null;
     const load = async (attempt = 0) => {
@@ -504,7 +537,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   }, [workflowSettingsDraft]);
   const defaultWorkflowId = workflowOptions.find((item) => item.id === workflowSettingsDraft.default_workflow_id)?.id
     || workflowOptions[0]?.id
-    || SOFTWARE_DEVELOPMENT_WORKFLOW_ID;
+    || DIRECT_AGENT_WORKFLOW_ID;
 
   useEffect(() => { npcStatesRef.current = npcStates; }, [npcStates]);
   useEffect(() => { worldTaskStateRef.current = worldTaskState; }, [worldTaskState]);
@@ -639,6 +672,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     setUploadState,
     setWorkspaceState,
     taskDetailToRuntimeTask,
+    taskRuntimeEventCacheRef,
     taskUpdatedTimestamp,
     titleFromTaskText,
     updateWorldTaskState: (...args) => runtimeApiRef.current.updateWorldTaskState?.(...args),
@@ -758,6 +792,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const {
     getRuntime,
     mutateRuntime,
+    batchRuntimeMutations,
     syncDisplayedRuntime,
     activeRuntimeTargetConvId,
     setRuntimeBusy,
@@ -1165,6 +1200,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 
   const {
     executeQuest,
+    executeWorkflowNodeRerun,
   } = createTaskStreamHandlers({
     API_BASE,
     CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
@@ -1177,6 +1213,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     appendChatProgressText,
     appendTaskEvent,
     applyConversationSnapshot,
+    batchRuntimeMutations,
     applyTerminalTaskState,
     authFetch,
     buildApiHeaders,
@@ -1236,7 +1273,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     handleSelectConversation,
     handleSelectProject,
     handleToggleProject,
-    handleToggleConversation,
     handleToggleConversationTasks,
     handleToggleProjectConversations,
     handlePinConversation,
@@ -1281,6 +1317,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     normalizeWorkspaceOrdering,
     openDraftConversation,
     projectIdForWorkspacePath,
+    removeProjectModeFromWorkspace,
     setActiveTab,
     setCalibrationMode,
     setCopiedCoords,
@@ -1391,6 +1428,35 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     removeConversationTaskFromWorkspace,
   };
 
+  function removeMissingTask(targetConversationId, taskId) {
+    if (!targetConversationId || !taskId) return;
+    const runtime = getRuntime(targetConversationId);
+    const wasActive = runtime?.activeTaskId === taskId
+      || runtime?.worldTaskState?.activeTaskId === taskId
+      || (runtime?.worldTaskState?.pendingTask?.taskId || runtime?.worldTaskState?.pendingTask?.id) === taskId;
+    updateWorldTaskState((state) => {
+      const tasksById = { ...(state.tasksById || {}) };
+      delete tasksById[taskId];
+      return {
+        ...state,
+        tasksById,
+        taskOrder: (state.taskOrder || []).filter((id) => id !== taskId),
+        activeTaskId: state.activeTaskId === taskId ? null : state.activeTaskId,
+        pendingTask: (state.pendingTask?.taskId || state.pendingTask?.id) === taskId
+          ? null
+          : state.pendingTask,
+      };
+    }, targetConversationId);
+    removeConversationTaskFromWorkspace(targetConversationId, taskId);
+    taskRuntimeEventCacheRef.current.delete(taskId);
+    if (wasActive) {
+      setRuntimeActiveTaskId(null, targetConversationId);
+      setRuntimeFetchController(null, targetConversationId);
+      setRuntimeBusy(false, targetConversationId);
+    }
+    if (targetConversationId === conversationIdRef.current) setAgentLive({});
+  }
+
   const panelWorkspaceState = useMemo(() => normalizeWorkspaceOrdering({
     ...workspaceState,
     activeConversationId: workspaceState.activeConversationId,
@@ -1415,12 +1481,14 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     activeConversationId: findConversationById(panelWorkspaceState, conversationId)?.executionMode === visibleConversationMode
       ? conversationId
       : null,
-    projects: panelWorkspaceState.projects.map((project) => ({
-      ...project,
-      conversations: project.conversations.filter(
-        (conversation) => conversation.executionMode === visibleConversationMode,
-      ),
-    })),
+    projects: panelWorkspaceState.projects
+      .filter((project) => !project.hiddenModes?.includes(visibleConversationMode))
+      .map((project) => ({
+        ...project,
+        conversations: project.conversations.filter(
+          (conversation) => conversation.executionMode === visibleConversationMode,
+        ),
+      })),
   }), [panelWorkspaceState, conversationId, visibleConversationMode]);
   // True when the currently-viewed conversation has at least one task in
   // `running` / `queued` state. Drives both the composer disabled state and
@@ -1535,9 +1603,20 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     if (!activeTaskIdForPolling) return undefined;
     if (activeRunIdRef.current) return undefined;
     let cancelled = false;
+    const targetConversationId = conversationId;
+    const isCurrentPoll = () => (
+      !cancelled && conversationIdRef.current === targetConversationId
+    );
     const tick = () => {
       if (cancelled) return;
-      restoreLatestTaskRuntime(activeTaskIdForPolling).catch((error) => {
+      restoreLatestTaskRuntime(activeTaskIdForPolling, {
+        targetConversationId,
+        isCurrentActivation: isCurrentPoll,
+      }).catch((error) => {
+        if (error?.status === 404) {
+          removeMissingTask(targetConversationId, activeTaskIdForPolling);
+          return;
+        }
         console.warn('task poll failed', error);
       });
     };
@@ -1550,7 +1629,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTaskIdForPolling]);
+  }, [activeTaskIdForPolling, conversationId]);
   useEffect(() => {
     if (!backgroundTaskPollKey) return undefined;
     let cancelled = false;
@@ -1569,6 +1648,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
             });
           })
           .catch((error) => {
+            if (error?.status === 404) {
+              removeMissingTask(targetConversationId, taskId);
+              return;
+            }
             if (!cancelled) console.warn('background task poll failed', error);
           });
       });
@@ -1581,7 +1664,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backgroundTaskPollKey]);
-  const currentTask = useMemo(() => {
+  const runtimeCurrentTask = useMemo(() => {
     if (worldTaskState.activeTaskId && worldTaskState.tasksById[worldTaskState.activeTaskId]) {
       return worldTaskState.tasksById[worldTaskState.activeTaskId];
     }
@@ -1591,16 +1674,71 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     const latestTaskId = worldTaskState.taskOrder[worldTaskState.taskOrder.length - 1];
     return latestTaskId ? worldTaskState.tasksById[latestTaskId] || null : null;
   }, [worldTaskState]);
+  const currentTask = useMemo(() => {
+    if (viewMode !== 'chat' && viewedWorkflowTask?.conversationId === conversationId) {
+      const viewedTask = worldTaskState.tasksById[viewedWorkflowTask.taskId];
+      if (viewedTask) return viewedTask;
+    }
+    return runtimeCurrentTask;
+  }, [conversationId, runtimeCurrentTask, viewedWorkflowTask, viewMode, worldTaskState.tasksById]);
   const worldWorkflow = useMemo(() => {
     const selected = workflowById(workflowSettingsDraft, selectedWorkflowId || defaultWorkflowId);
     return currentTask?.executionMode === 'bot' && currentTask.workflowSnapshot
       ? currentTask.workflowSnapshot
       : selected;
   }, [currentTask, defaultWorkflowId, selectedWorkflowId, workflowSettingsDraft]);
+  const currentWorkflowTask = currentTask?.executionMode === 'bot' ? currentTask : null;
+  async function handleSelectWorkflowTask(projectId, targetConversationId, task) {
+    const taskId = task?.taskId || task?.task_id || task?.id;
+    if (!targetConversationId || !taskId) return;
+    setViewedWorkflowTask({ conversationId: targetConversationId, taskId });
+    await handleSelectConversation(projectId, targetConversationId);
+    try {
+      await restoreLatestTaskRuntime(taskId, {
+        targetConversationId,
+        isCurrentActivation: () => conversationIdRef.current === targetConversationId,
+      });
+    } catch (error) {
+      if (error?.status !== 404) throw error;
+      removeMissingTask(targetConversationId, taskId);
+      showToast('error', 'Task no longer exists. Removed the stale entry.');
+      return;
+    }
+  }
+  async function handleDeleteWorkflowTask(_projectId, targetConversationId, task) {
+    const taskId = task?.taskId || task?.task_id || task?.id;
+    if (!targetConversationId || !taskId) return;
+    if (viewedWorkflowTask?.conversationId === targetConversationId && viewedWorkflowTask.taskId === taskId) {
+      setViewedWorkflowTask(null);
+    }
+    const response = await authFetch(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok && response.status !== 404) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload?.detail || `task delete failed: ${response.status}`);
+    }
+    updateWorldTaskState((state) => {
+      const tasksById = { ...(state.tasksById || {}) };
+      delete tasksById[taskId];
+      const taskOrder = (state.taskOrder || []).filter((id) => id !== taskId);
+      return {
+        ...state,
+        tasksById,
+        taskOrder,
+        activeTaskId: state.activeTaskId === taskId ? (taskOrder.at(-1) || null) : state.activeTaskId,
+        pendingTask: (state.pendingTask?.taskId || state.pendingTask?.id) === taskId ? null : state.pendingTask,
+      };
+    }, targetConversationId);
+    removeConversationTaskFromWorkspace(targetConversationId, taskId);
+    chatFinalizedTaskIdsRef.current.delete(taskId);
+    userCancelledTaskIdsRef.current.delete(taskId);
+    pendingPresentationTaskIdsRef.current.delete(taskId);
+  }
   useEffect(() => {
     const activeTaskId = worldTaskState.activeTaskId || activeTaskIdRef.current;
-    if (!activeTaskId || !currentTask) return;
-    if (isTaskActuallyActive(currentTask)) return;
+    if (!activeTaskId || !runtimeCurrentTask) return;
+    if (isTaskActuallyActive(runtimeCurrentTask)) return;
     if (!busy && !currentConversationActive) return;
     // This sanity reset only ever applies to the conversation currently shown
     // — `worldTaskState` is the mirror of the displayed runtime.
@@ -1612,7 +1750,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         ? { ...state, activeTaskId: null }
         : state
     ));
-  }, [busy, currentConversationActive, currentTask, worldTaskState.activeTaskId]);
+  }, [busy, currentConversationActive, runtimeCurrentTask, worldTaskState.activeTaskId]);
   useEffect(() => {
     if (!busy || currentConversationActive) return;
     const activeTaskId = worldTaskState.activeTaskId || activeTaskIdRef.current;
@@ -1639,7 +1777,14 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     const orderedTasks = worldTaskState.taskOrder
       .map((taskId) => worldTaskState.tasksById[taskId])
       .filter(Boolean);
+    const rowCache = chatMessageRowsCacheRef.current;
     for (const task of orderedTasks) {
+      const cachedRows = rowCache.get(task);
+      if (cachedRows) {
+        rows.push(...cachedRows);
+        continue;
+      }
+      const taskRows = [];
       const taskId = task.taskId || task.id || task.title;
       const status = normalizeTaskStatus(task.status);
       const answer = String(task.answerText || '').trim();
@@ -1660,7 +1805,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       // Cancelled tasks that already streamed content stay in history so the
       // partial answer / trace remains visible.
       if (task.title) {
-        rows.push({
+        taskRows.push({
           id: `${taskId}-user`,
           role: 'user',
           text: task.title,
@@ -1731,7 +1876,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         traceSegments.forEach((segment, segmentIndex) => {
           const isLast = segmentIndex === traceSegments.length - 1;
           if (segment.userInput) {
-            rows.push({
+            taskRows.push({
               id: `${taskId}-runtime-input-${segment.userInput.id || segmentIndex}`,
               role: 'user',
               text: String(segment.userInput.text || ''),
@@ -1742,8 +1887,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
             });
           }
           if (segment.timeline.length > 0 || isLast) {
-            rows.push({
+            taskRows.push({
               id: `${taskId}-agent-${segmentIndex}`,
+              taskId,
+              conversationId,
               role: 'agent',
               text: isLast ? bubbleText : '',
               progressLines: isLast ? progressLines : [],
@@ -1763,6 +1910,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           }
         });
       }
+      rowCache.set(task, taskRows);
+      rows.push(...taskRows);
     }
     if (worldTaskState.pendingTask && !worldTaskState.activeTaskId) {
       const pendingStatus = normalizeTaskStatus(worldTaskState.pendingTask.status);
@@ -1784,6 +1933,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           const pendingStreaming = (pendingStatus === 'running' || pendingStatus === 'queued') && !pendingError;
           rows.push({
             id: `${worldTaskState.pendingTask.id || 'pending'}-agent`,
+            taskId: worldTaskState.pendingTask.id || '',
+            conversationId,
             role: 'agent',
             text: pendingStreaming ? '' : (pendingStatus === 'cancelled' ? '' : pendingError),
             progressLines: [],
@@ -1798,7 +1949,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       }
     }
     return rows;
-  }, [worldTaskState]);
+  }, [conversationId, worldTaskState]);
   const currentConversation = useMemo(
     () => findConversationById(panelWorkspaceState, conversationId),
     [panelWorkspaceState, conversationId],
@@ -1813,23 +1964,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const submitPending = Boolean(queuedDeploy);
   const agentSelectionLocked = Boolean(lockedAgentId || hasUserMessages);
 
-  const leftMapEdgeReached = !mapView || mapView.tx >= -2;
-  const rightMapEdgeReached = !mapView || (mapView.tx + MAP_W * mapView.scale) <= (mapView.viewportWidth + 2);
-  const baseMapExtensionStyle = mapView ? {
-    '--panel-map-width': `${MAP_W * mapView.scale}px`,
-    '--panel-map-height': `${MAP_H * mapView.scale}px`,
-    '--panel-map-tx': `${mapView.tx}px`,
-    '--panel-map-ty': `${mapView.ty}px`,
-    '--map-viewport-width': `${mapView.viewportWidth}px`,
-  } : null;
-  const leftPanelExtensionStyle = baseMapExtensionStyle ? {
-    ...baseMapExtensionStyle,
-    '--panel-map-opacity': leftMapEdgeReached ? '0' : '0.62',
-  } : undefined;
-  const rightPanelExtensionStyle = baseMapExtensionStyle ? {
-    ...baseMapExtensionStyle,
-    '--panel-map-opacity': rightMapEdgeReached ? '0' : '0.62',
-  } : undefined;
   const composerDisabled = uploadState.active
     || calibrationMode
     || !!conversationError
@@ -1844,7 +1978,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         calibrationActive={calibrationMode}
         onToggleCalibration={handleToggleCalibration}
       />
-      <div className={`app-body ${calibrationMode ? 'settings-mode' : viewMode === 'chat' ? 'chat-mode' : 'world-mode'}`}>
+      <div className={`app-body ${calibrationMode ? 'settings-mode' : viewMode === 'chat' ? 'chat-mode' : 'world-mode'} ${!calibrationMode && conversationPanelCollapsed ? 'conversations-collapsed' : ''}`}>
         {calibrationMode ? (
           <SettingsPage
             activeSection={settingsSection}
@@ -1885,20 +2019,25 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
             <ConversationsPanel
               workspaceState={visiblePanelWorkspaceState}
               now={now}
+              collapsed={conversationPanelCollapsed}
+              onToggleCollapsed={() => setConversationPanelCollapsed((collapsed) => !collapsed)}
               authUser={authUser}
               onLogout={onLogout}
               onToast={showToast}
-              extensionStyle={leftPanelExtensionStyle}
               onAddProject={() => { handleAddProject().catch((error) => { console.error('project add failed', error); showToast('error', String(error?.message || error)); }); }}
               onSelectProject={(projectId) => { handleSelectProject(projectId).catch((error) => { console.error('project select failed', error); showToast('error', String(error?.message || error)); }); }}
               onToggleProject={handleToggleProject}
               onRemoveProject={(projectId) => { handleRemoveProject(projectId).catch((error) => { console.error('project remove failed', error); showToast('error', String(error?.message || error)); }); }}
               onAddConversation={(projectId) => { handleAddConversation(projectId).catch((error) => { console.error('conversation add failed', error); showToast('error', String(error?.message || error)); }); }}
               onSelectConversation={(projectId, nextConversationId) => { handleSelectConversation(projectId, nextConversationId).catch((error) => { console.error('conversation select failed', error); showToast('error', String(error?.message || error)); }); }}
-              onToggleConversation={handleToggleConversation}
+              onSelectTask={(projectId, targetConversationId, task) => { handleSelectWorkflowTask(projectId, targetConversationId, task).catch((error) => { console.error('task select failed', error); showToast('error', String(error?.message || error)); }); }}
+              showTaskRecords={viewMode === 'chat'}
+              workflowTaskMode={viewMode !== 'chat'}
+              activeTaskId={currentWorkflowTask?.taskId || currentWorkflowTask?.id || null}
               onToggleConversationTasks={handleToggleConversationTasks}
               onToggleProjectConversations={handleToggleProjectConversations}
               onDeleteConversation={(projectId, nextConversationId) => { handleDeleteConversation(projectId, nextConversationId).catch((error) => { console.error('conversation delete failed', error); showToast('error', String(error?.message || error)); }); }}
+              onDeleteTask={(projectId, targetConversationId, task) => { handleDeleteWorkflowTask(projectId, targetConversationId, task).catch((error) => { console.error('task delete failed', error); showToast('error', String(error?.message || error)); }); }}
               onRenameConversation={(projectId, nextConversationId, title) => { handleRenameConversation(projectId, nextConversationId, title).catch((error) => { console.error('conversation rename failed', error); showToast('error', String(error?.message || error)); }); }}
               onPinConversation={handlePinConversation}
               onPinProject={handlePinProject}
@@ -1944,24 +2083,22 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 	                </div>
 	              </div>
 	            ) : (
-	              <>
-                <div className="app-center-stage">
-                  <MapViewport
-	                    MAP_W={MAP_W}
-	                    MAP_H={MAP_H}
-	                    onViewChange={setMapView}
-                    overlay={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} attachment={composerAttachment} uploading={uploadState.active} running={currentConversationRunning} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={`${runConfigStorageKey}.bot`} draft={chatDraft} onDraftChange={setChatDraft} />}
-                  >
-                    <BotWorld
-                      stageRef={stageRef}
-                      workflow={worldWorkflow}
-                      task={currentTask}
-                      onOpenReport={handleOpenTaskReport}
-                    />
-	                  </MapViewport>
-	                </div>
-	                <LiveFeedPanel agentLive={agentLive} now={now} extensionStyle={rightPanelExtensionStyle} currentTask={currentTask} workflow={worldWorkflow} />
-	              </>
+	              <div className="app-workflow-stage">
+                  <WorkflowRuntimePage
+                    workflow={worldWorkflow}
+                    task={currentWorkflowTask}
+                    agentOptions={agentOptions}
+                    now={now}
+                    onRetry={(nodeId) => {
+                      if (!currentWorkflowTask) return;
+                      executeWorkflowNodeRerun(currentWorkflowTask, nodeId).catch((error) => {
+                        console.error('workflow node rerun failed', error);
+                        showToast('error', String(error?.message || error));
+                      });
+                    }}
+                    composer={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} attachment={composerAttachment} uploading={uploadState.active} running={currentConversationRunning} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={`${runConfigStorageKey}.bot`} draft={chatDraft} onDraftChange={setChatDraft} />}
+                  />
+	              </div>
             )}
           </>
         ) : (

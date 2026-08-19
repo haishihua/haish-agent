@@ -612,13 +612,9 @@
         grid-template-columns: 240px minmax(320px, 1fr) 240px;
     }
 
-    .map-viewport {
-        --task-panel-edge-x: 14px;
-    }
-
     .task-delegation {
-        left: var(--task-panel-edge-x);
-        right: var(--task-panel-edge-x);
+        left: 14px;
+        right: 14px;
         bottom: 14px;
     }
 }
@@ -626,11 +622,6 @@
 @media (max-width: 1024px) {
     .app-body {
         grid-template-columns: 220px minmax(320px, 1fr) 220px;
-    }
-
-    .zoom-controls button {
-        width: 28px;
-        height: 28px;
     }
 
     .task-delegation textarea {

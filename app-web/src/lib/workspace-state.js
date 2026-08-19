@@ -57,6 +57,7 @@ export function createDefaultProject() {
     createdAt: null,
     updatedAt: null,
     conversationsExpanded: false,
+    hiddenModes: [],
     conversations: [],
   };
 }
@@ -101,18 +102,27 @@ function parseStoredWorkspaceState(raw) {
         userExpanded: typeof project.userExpanded === 'boolean' ? project.userExpanded : undefined,
         conversationsExpanded: Boolean(project.conversationsExpanded),
         pinned: Boolean(project.pinned),
+        hiddenModes: Array.isArray(project.hiddenModes)
+          ? project.hiddenModes.filter((mode) => mode === 'chat' || mode === 'bot')
+          : [],
         conversations: Array.isArray(project.conversations)
-          ? project.conversations.map((conversation) => ({
-            id: conversation.id,
-            name: conversation.name || DEFAULT_SESSION_NAME,
-            tasks: Array.isArray(conversation.tasks) ? conversation.tasks : [],
-            createdAt: conversation.createdAt || conversation.created_at || null,
-            updatedAt: conversation.updatedAt || conversation.updated_at || null,
-            userExpanded: typeof conversation.userExpanded === 'boolean' ? conversation.userExpanded : undefined,
-            tasksExpanded: Boolean(conversation.tasksExpanded),
-            pinned: Boolean(conversation.pinned),
-            sortOrder: typeof conversation.sortOrder === 'number' ? conversation.sortOrder : 0,
-          })).filter((conversation) => conversation.id)
+          ? project.conversations.flatMap((conversation) => {
+            if (!conversation?.id || !['chat', 'bot'].includes(conversation.executionMode)) return [];
+            return [{
+              id: conversation.id,
+              name: conversation.name || DEFAULT_SESSION_NAME,
+              executionMode: conversation.executionMode,
+              tasks: Array.isArray(conversation.tasks)
+                ? conversation.tasks.filter((task) => task?.executionMode === conversation.executionMode)
+                : [],
+              createdAt: conversation.createdAt || conversation.created_at || null,
+              updatedAt: conversation.updatedAt || conversation.updated_at || null,
+              userExpanded: typeof conversation.userExpanded === 'boolean' ? conversation.userExpanded : undefined,
+              tasksExpanded: Boolean(conversation.tasksExpanded),
+              pinned: Boolean(conversation.pinned),
+              sortOrder: typeof conversation.sortOrder === 'number' ? conversation.sortOrder : 0,
+            }];
+          })
           : [],
       };
     });
@@ -165,10 +175,39 @@ export function markLegacyWorkspaceMigrationCompleted() {
 
 export function saveWorkspaceState(state) {
   try {
-    window.localStorage.setItem(buildUserScopedStorageKey(WORKSPACE_STORAGE_KEY), JSON.stringify(state));
+    window.localStorage.setItem(
+      buildUserScopedStorageKey(WORKSPACE_STORAGE_KEY),
+      JSON.stringify(compactWorkspaceStateForStorage(state)),
+    );
   } catch (error) {
     console.warn('Failed to save workspace state:', error);
   }
+}
+
+export function compactWorkspaceStateForStorage(state) {
+  return {
+    ...state,
+    projects: (state?.projects || []).map((project) => ({
+      ...project,
+      conversations: (project.conversations || []).map((conversation) => ({
+        ...conversation,
+        tasks: (conversation.tasks || [])
+          .filter((task) => task?.executionMode === conversation.executionMode)
+          .map((task) => ({
+            id: task.id || task.taskId || task.task_id || null,
+            taskId: task.taskId || task.id || task.task_id || null,
+            title: task.title || 'Task',
+            description: task.description || '',
+            status: task.status || null,
+            stage: task.stage || null,
+            createdAt: task.createdAt || task.created_at || null,
+            updatedAt: task.updatedAt || task.updated_at || null,
+            completedAt: task.completedAt || task.completed_at || null,
+            executionMode: task.executionMode,
+          })),
+      })),
+    })),
+  };
 }
 
 export function getWorkspaceConversationIds(state) {
@@ -176,6 +215,28 @@ export function getWorkspaceConversationIds(state) {
     .flatMap((project) => project.conversations || [])
     .map((conversation) => conversation.id)
     .filter(Boolean);
+}
+
+export function removeProjectModeFromWorkspace(state, projectId, executionMode) {
+  const mode = executionMode === 'bot' ? 'bot' : 'chat';
+  const projects = (state?.projects || []).flatMap((project) => {
+    if (project.id !== projectId) return [project];
+    const conversations = (project.conversations || []).filter(
+      (conversation) => conversation.executionMode !== mode,
+    );
+    if (conversations.length === 0) return [];
+    return [{
+      ...project,
+      hiddenModes: [...new Set([...(project.hiddenModes || []), mode])],
+      conversations,
+    }];
+  });
+  return normalizeWorkspaceOrdering({
+    ...state,
+    projects,
+    activeProjectId: DEFAULT_PROJECT_ID,
+    activeConversationId: null,
+  });
 }
 
 export function projectIdForWorkspacePath(workspacePath) {
@@ -305,6 +366,22 @@ export function taskUpdatedTimestamp(task) {
     timestampValue(task.createdAt),
     timestampValue(task.created_at),
   );
+}
+
+export function projectWorkflowTasks(project) {
+  return (Array.isArray(project?.conversations) ? project.conversations : [])
+    .flatMap((conversation) => (
+      (Array.isArray(conversation?.tasks) ? conversation.tasks : []).map((task) => ({
+        task,
+        conversation,
+        conversationId: conversation.id,
+      }))
+    ))
+    .filter((entry) => entry.conversationId && (entry.task?.taskId || entry.task?.task_id || entry.task?.id))
+    .sort((a, b) => (
+      Number(Boolean(b.conversation?.pinned)) - Number(Boolean(a.conversation?.pinned))
+      || taskUpdatedTimestamp(b.task) - taskUpdatedTimestamp(a.task)
+    ));
 }
 
 export function taskCreatedTimestamp(task) {
@@ -515,6 +592,7 @@ export function buildWorkspaceStateFromConversationDetails(details, previousStat
     updatedAt: previousProjects.get(DEFAULT_PROJECT_ID)?.updatedAt || null,
     conversationsExpanded: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.conversationsExpanded),
     pinned: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.pinned),
+    hiddenModes: previousProjects.get(DEFAULT_PROJECT_ID)?.hiddenModes || [],
     userExpanded: typeof previousProjects.get(DEFAULT_PROJECT_ID)?.userExpanded === 'boolean'
       ? previousProjects.get(DEFAULT_PROJECT_ID).userExpanded
       : undefined,
@@ -542,6 +620,7 @@ export function buildWorkspaceStateFromConversationDetails(details, previousStat
           : undefined,
         conversationsExpanded: Boolean(previousProject?.conversationsExpanded),
         pinned: Boolean(previousProject?.pinned),
+        hiddenModes: previousProject?.hiddenModes || [],
         conversations: [],
       });
     }
@@ -611,6 +690,11 @@ export function workspaceStateWithConversationDetail(state, detail, activate = t
       workspacePath: projectId === DEFAULT_PROJECT_ID ? null : workspacePath,
       workspaceLabel: projectId === DEFAULT_PROJECT_ID ? null : projectLabel,
       userExpanded: activate ? true : project.userExpanded,
+      hiddenModes: activate
+        ? (project.hiddenModes || []).filter(
+            (mode) => mode !== (detail.execution_mode === 'bot' ? 'bot' : 'chat'),
+          )
+        : (project.hiddenModes || []),
       conversations: conversationFound
         ? conversations
         : [
@@ -634,6 +718,7 @@ export function workspaceStateWithConversationDetail(state, detail, activate = t
       updatedAt: detail.updated_at || detail.last_message_at || new Date().toISOString(),
       userExpanded: activate ? true : undefined,
       conversationsExpanded: false,
+      hiddenModes: [],
       conversations: [
         (() => {
           const fresh = conversationDetailToWorkspaceConversation(detail);

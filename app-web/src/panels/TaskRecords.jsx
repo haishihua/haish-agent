@@ -71,6 +71,8 @@ export function getTaskPillMeta(status, stage) {
   if (normalizedStatus === 'failed') return { className: 'failed', text: 'FAILED' };
   if (normalizedStatus === 'cancelled') return { className: 'cancelled', text: 'CANCELLED' };
   if (normalizedStatus === 'done') return { className: 'done', text: 'COMPLETED' };
+  if (normalizedStatus === 'approval') return { className: 'approval', text: 'AWAITING APPROVAL' };
+  if (normalizedStatus === 'waiting_input') return { className: 'waiting_input', text: 'WAITING FOR INPUT' };
   if (normalizedStatus === 'running') {
     return {
       className: stage === 'check' ? 'check' : 'in_progress',

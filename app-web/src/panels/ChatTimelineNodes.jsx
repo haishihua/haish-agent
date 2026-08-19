@@ -1,11 +1,11 @@
 // @haish-esm
 import React from 'react';
 import { Markdown } from '../Effects.jsx';
+import { AskUserInlineForm } from './AskUserInlineForm.jsx';
+import { selectActiveAskUserItemId } from '../lib/pending-user-input.js';
 import { CATEGORY_ICON_CLASS, CATEGORY_LABEL } from './shared-constants.jsx';
-import {
-  buildSubAgentTimelineItems,
-  buildToolView,
-} from '../lib/tool-view.js';
+import { BrowserRuntimeCard, selectBrowserRuntimeRequest, useBrowserRuntimeRequests } from '../approval-overlay.jsx';
+import { buildSubAgentTimelineItems, buildToolView } from '../lib/tool-view.js';
 
 export function resolveToolIconClass(toolName, defaultClass) {
   const name = String(toolName || '').toLowerCase();
@@ -18,6 +18,9 @@ export function resolveToolIconClass(toolName, defaultClass) {
   }
   if (name === 'image_describe') {
     return 'ico-image-describe';
+  }
+  if (name === 'browser_use' || name === 'browser') {
+    return 'ico-browser';
   }
   if (name === 'terminal' || name === 'bash') {
     return 'ico-terminal';
@@ -61,8 +64,14 @@ export function resolveToolIconClass(toolName, defaultClass) {
   if (name === 'edit_file' || name === 'replace_lines' || name === 'multi_edit' || name === 'apply_patch') {
     return 'ico-file-write';
   }
-  if (name.startsWith('document_') || name.includes('rag') || name.includes('knowledge') || name.includes('retrieve')
-      || name.includes('vector') || name.includes('embed')) {
+  if (
+    name.startsWith('document_') ||
+    name.includes('rag') ||
+    name.includes('knowledge') ||
+    name.includes('retrieve') ||
+    name.includes('vector') ||
+    name.includes('embed')
+  ) {
     return 'ico-rag';
   }
   if (name.includes('memory') || name.includes('remember') || name.includes('recall')) {
@@ -74,12 +83,22 @@ export function resolveToolIconClass(toolName, defaultClass) {
   if (name.includes('write') || name.includes('create_file') || name.includes('save_file') || name.includes('patch')) {
     return 'ico-file-write';
   }
-  if (name.includes('read_file') || name.includes('read_text') || name.includes('open_file')
-      || name.includes('cat_file') || name.includes('view_file')) {
+  if (
+    name.includes('read_file') ||
+    name.includes('read_text') ||
+    name.includes('open_file') ||
+    name.includes('cat_file') ||
+    name.includes('view_file')
+  ) {
     return 'ico-file-read';
   }
-  if (name.includes('web') || name.includes('search') || name.includes('fetch')
-      || name.includes('http') || name.includes('url')) {
+  if (
+    name.includes('web') ||
+    name.includes('search') ||
+    name.includes('fetch') ||
+    name.includes('http') ||
+    name.includes('url')
+  ) {
     return 'ico-web';
   }
   return defaultClass;
@@ -108,9 +127,7 @@ export function ChatTimelineChevron({ open }) {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      {open
-        ? <polyline points="6 9 12 16 18 9" />   /* down */
-        : <polyline points="9 6 16 12 9 18" />   /* next */}
+      {open ? <polyline points="6 9 12 16 18 9" /> /* down */ : <polyline points="9 6 16 12 9 18" /> /* next */}
     </svg>
   );
 }
@@ -141,14 +158,19 @@ export function ChatTimelineToolBody({ view }) {
           <div className="chat-terminal-frame">
             {view.command ? (
               <div className="chat-terminal-command">
-                <span className="chat-terminal-prompt" aria-hidden="true">$</span>
+                <span className="chat-terminal-prompt" aria-hidden="true">
+                  $
+                </span>
                 <span className="chat-terminal-command-text">{view.command}</span>
               </div>
             ) : null}
             {view.stdout ? <ChatTerminalOutput text={view.stdout} running={view.running} /> : null}
             {view.stderr ? <pre className="chat-terminal-output stderr">{view.stderr}</pre> : null}
             {view.running && !view.stdout && !view.stderr ? (
-              <div className="chat-terminal-waiting">Waiting for output<span className="chat-terminal-cursor" aria-hidden="true" /></div>
+              <div className="chat-terminal-waiting">
+                Waiting for output
+                <span className="chat-terminal-cursor" aria-hidden="true" />
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -164,14 +186,19 @@ export function ChatTimelineToolBody({ view }) {
     return (
       <pre className="chat-timeline-tool-code diff">
         {view.body.split('\n').map((line, index) => {
-          const kind = line.startsWith('+') && !line.startsWith('+++')
-            ? 'add'
-            : line.startsWith('-') && !line.startsWith('---')
-              ? 'remove'
-              : line.startsWith('@@')
-                ? 'hunk'
-                : 'context';
-          return <span key={index} className={`chat-tool-diff-line ${kind}`}>{line || ' '}</span>;
+          const kind =
+            line.startsWith('+') && !line.startsWith('+++')
+              ? 'add'
+              : line.startsWith('-') && !line.startsWith('---')
+                ? 'remove'
+                : line.startsWith('@@')
+                  ? 'hunk'
+                  : 'context';
+          return (
+            <span key={index} className={`chat-tool-diff-line ${kind}`}>
+              {line || ' '}
+            </span>
+          );
         })}
       </pre>
     );
@@ -195,9 +222,7 @@ export function ChatTodoPanel({ todos = [], streaming = false }) {
   const pending = safeTodos.filter((t) => t.status === 'pending');
   const completed = safeTodos.filter((t) => t.status === 'completed');
 
-  const visibleCompleted = showAllCompleted
-    ? completed
-    : completed.slice(-CHAT_TODO_COLLAPSED_COMPLETED_LIMIT);
+  const visibleCompleted = showAllCompleted ? completed : completed.slice(-CHAT_TODO_COLLAPSED_COMPLETED_LIMIT);
   const hiddenCount = completed.length - visibleCompleted.length;
 
   return (
@@ -212,11 +237,7 @@ export function ChatTodoPanel({ todos = [], streaming = false }) {
         <ChatTodoRow key={`co-${index}`} todo={todo} streaming={streaming} />
       ))}
       {hiddenCount > 0 ? (
-        <button
-          type="button"
-          className="chat-todo-expand"
-          onClick={() => setShowAllCompleted(true)}
-        >
+        <button type="button" className="chat-todo-expand" onClick={() => setShowAllCompleted(true)}>
           … +{hiddenCount} completed
         </button>
       ) : null}
@@ -259,21 +280,15 @@ export function ChatTodoStatusIcon({ status, live = false }) {
 
 export function ChatJsonBlock({ text, compact = false }) {
   if (!text) return null;
-  return (
-    <pre className={`chat-json-block ${compact ? 'compact' : ''}`}>
-      {text}
-    </pre>
-  );
+  return <pre className={`chat-json-block ${compact ? 'compact' : ''}`}>{text}</pre>;
 }
 
 export function ChatJsonPair({ requestJson, responseJson }) {
-  if (!requestJson && !responseJson) return null;
   const segments = [];
   if (requestJson) segments.push({ id: 'request', label: 'Request', text: requestJson });
   if (responseJson) segments.push({ id: 'response', label: 'Response', text: responseJson });
-  const defaultId = responseJson ? 'response' : 'request';
-  const [activeId, setActiveId] = React.useState(defaultId);
-  const active = segments.find((seg) => seg.id === activeId) || segments[0];
+  const [activeId, setActiveId] = React.useState('response');
+  const active = segments.find((seg) => seg.id === activeId) || segments[segments.length - 1];
   if (!active) return null;
   return (
     <div className="chat-json-card">
@@ -320,13 +335,17 @@ export function ChatImsgCollapsible({ children, maxHeight = 360 }) {
       setOverflows((prev) => (prev === overflow ? prev : overflow));
     };
     check();
-    const ro = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(check) : null;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(check) : null;
     if (ro) ro.observe(el);
-    return () => { if (ro) ro.disconnect(); };
+    return () => {
+      if (ro) ro.disconnect();
+    };
   }, [children, expanded]);
   const showToggle = overflows || expanded;
   return (
-    <div className={`chat-imsg-collapsible ${expanded ? 'is-expanded' : ''} ${overflows && !expanded ? 'is-collapsed' : ''}`}>
+    <div
+      className={`chat-imsg-collapsible ${expanded ? 'is-expanded' : ''} ${overflows && !expanded ? 'is-collapsed' : ''}`}
+    >
       <div
         ref={bodyRef}
         className="chat-imsg-collapsible-body"
@@ -335,11 +354,7 @@ export function ChatImsgCollapsible({ children, maxHeight = 360 }) {
         {children}
       </div>
       {showToggle ? (
-        <button
-          type="button"
-          className="chat-imsg-show-toggle"
-          onClick={() => setExpanded((v) => !v)}
-        >
+        <button type="button" className="chat-imsg-show-toggle" onClick={() => setExpanded((v) => !v)}>
           {expanded ? 'Collapse' : 'View All'}
         </button>
       ) : null}
@@ -361,13 +376,16 @@ export function ChatProcessConversation({ view }) {
   const fileName = chatProcessFileName(view.mediaPath);
   const fields = [];
   if (view.role) fields.push({ label: 'Role', value: view.role });
-  if (view.systemPrompt) fields.push({ label: 'System Prompt', value: view.systemPrompt, multiline: true, markdown: true });
+  if (view.systemPrompt)
+    fields.push({ label: 'System Prompt', value: view.systemPrompt, multiline: true, markdown: true });
   if (view.task) fields.push({ label: 'Task', value: view.task, multiline: true, markdown: true });
   const renderSubContent = () => {
     if (hasFinal) {
-      const inner = view.isVision
-        ? <div className="chat-imsg-plain">{view.finalText}</div>
-        : <Markdown source={view.finalText} />;
+      const inner = view.isVision ? (
+        <div className="chat-imsg-plain">{view.finalText}</div>
+      ) : (
+        <Markdown source={view.finalText} />
+      );
       return <ChatImsgCollapsible maxHeight={360}>{inner}</ChatImsgCollapsible>;
     }
     if (hasSubTimeline) {
@@ -410,7 +428,7 @@ export function ChatProcessConversation({ view }) {
     );
   };
   const showSub = hasSubTimeline || hasStreamAnswer || hasStream || hasFinal || view.isRunning;
-  const subState = hasFinal ? 'final' : ((hasSubTimeline || hasStreamAnswer || hasStream) ? 'stream' : 'thinking');
+  const subState = hasFinal ? 'final' : hasSubTimeline || hasStreamAnswer || hasStream ? 'stream' : 'thinking';
   return (
     <div className="chat-imsg">
       {hasPrompt ? (
@@ -420,9 +438,7 @@ export function ChatProcessConversation({ view }) {
               <div className="chat-imsg-attachment">
                 <span className="chat-imsg-attachment-icon ico ico-image-describe" aria-hidden="true" />
                 <span className="chat-imsg-attachment-name">{fileName}</span>
-                {view.visionMode ? (
-                  <span className="chat-imsg-attachment-mode">{view.visionMode}</span>
-                ) : null}
+                {view.visionMode ? <span className="chat-imsg-attachment-mode">{view.visionMode}</span> : null}
               </div>
             ) : null}
             {fields.length > 0 ? (
@@ -449,14 +465,13 @@ export function ChatProcessConversation({ view }) {
         </div>
       ) : null}
 
-      {!hasPrompt && !showSub && view.requestJson ? (
-        <ChatJsonBlock text={view.requestJson} compact />
-      ) : null}
+      {!hasPrompt && !showSub && view.requestJson ? <ChatJsonBlock text={view.requestJson} compact /> : null}
     </div>
   );
 }
 
-export function ChatTimelineToolNode({ item }) {
+export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', askUserActive = false }) {
+  const isAskUser = String(item.toolName || '').toLowerCase() === 'ask_user';
   const status = item.status || 'pending';
   const category = item.category || 'tool';
   const defaultIconClass = CATEGORY_ICON_CLASS[category] || CATEGORY_ICON_CLASS.tool;
@@ -464,27 +479,41 @@ export function ChatTimelineToolNode({ item }) {
   const iconClass = resolveToolIconClass(item.toolName, defaultIconClass);
   const categoryLabel = CATEGORY_LABEL[category] || 'Tool';
   const view = buildToolView(item);
+  // 默认折叠：shell/terminal 卡片不自动展开，用户点击头部才展开查看输出。
   const [open, setOpen] = React.useState(Boolean(view.defaultOpen));
-  // 命令执行中自动展开终端卡片，实时展示输出；完成后保持展开。
-  React.useEffect(() => {
-    if (view.mode === 'terminal' && view.running) setOpen(true);
-  }, [view.mode, view.running]);
-  const fallbackLines = view.mode === 'read'
-    ? []
-    : [item.inputSummary, item.outputSummary].filter(Boolean).slice(0, 2);
+  const fallbackLines = view.mode === 'read' ? [] : [item.inputSummary, item.outputSummary].filter(Boolean).slice(0, 2);
   const hasChildren = Array.isArray(item.children) && item.children.length > 0;
-  const hasBody = Boolean(view.body)
-    || Boolean(view.command)
-    || Boolean(view.stdout)
-    || Boolean(view.stderr)
-    || Boolean(view.requestJson)
-    || Boolean(view.responseJson)
-    || (Array.isArray(view.streamLines) && view.streamLines.length > 0)
-    || Boolean(view.finalText)
-    || fallbackLines.length > 0
-    || hasChildren;
+  const isBrowserUse = String(item.toolName || '').toLowerCase() === 'browser_use';
+  // Browser-runtime install requests render inline inside the browser_use
+  // tool call that triggered them, instead of opening a separate chat row /
+  // dialog. Matching tolerates the backend's call-id remapping (world ids),
+  // so unanchored requests attach to the active browser_use node when the
+  // scope is unambiguous; everything else stays in the standalone slot.
+  const pendingBrowserRuntime = useBrowserRuntimeRequests(isBrowserUse);
+  const browserRuntimeRequest = selectBrowserRuntimeRequest(pendingBrowserRuntime, {
+    toolName: item.toolName,
+    callId: item.callId,
+    status,
+    conversationId,
+    taskId,
+  });
+  const hasBody =
+    Boolean(view.body) ||
+    Boolean(view.command) ||
+    Boolean(view.stdout) ||
+    Boolean(view.stderr) ||
+    Boolean(view.requestJson) ||
+    Boolean(view.responseJson) ||
+    (Array.isArray(view.streamLines) && view.streamLines.length > 0) ||
+    Boolean(view.finalText) ||
+    fallbackLines.length > 0 ||
+    hasChildren;
   return (
-    <div className={`chat-timeline-tool category-${category} status-${status} mode-${view.mode}`}>
+    <div
+      className={`chat-timeline-tool category-${category} status-${status} mode-${view.mode}`}
+      data-tool-call-id={item.callId || ''}
+      data-tool-name={String(item.toolName || '').toLowerCase()}
+    >
       <button
         type="button"
         className="chat-timeline-tool-head"
@@ -495,25 +524,42 @@ export function ChatTimelineToolNode({ item }) {
         <span className={`chat-timeline-status status-${status}`} aria-hidden="true" />
         <span className={`ico ${iconClass}`} aria-label={categoryLabel} role="img" />
         <span className="chat-timeline-tool-name">{view.label}</span>
-        {hasBody ? (
-          <ChatTimelineChevron open={open} />
-        ) : null}
+        {hasBody ? <ChatTimelineChevron open={open} /> : null}
       </button>
       {open && hasBody ? (
         <div className="chat-timeline-tool-body">
           {view.mode !== 'read' ? <ChatTimelineToolBody view={view} /> : null}
-          {view.mode === 'read' && fallbackLines.map((line, index) => (
-            <div key={index} className="chat-timeline-tool-line">{line}</div>
-          ))}
+          {view.mode === 'read' &&
+            fallbackLines.map((line, index) => (
+              <div key={index} className="chat-timeline-tool-line">
+                {line}
+              </div>
+            ))}
           {hasChildren ? (
             <div className="chat-timeline-tool-children">
               {item.children.map((child) => (
-                <ChatTimelineToolNode key={child.id} item={child} />
+                <ChatTimelineToolNode
+                  key={child.id}
+                  item={child}
+                  conversationId={conversationId}
+                  taskId={taskId}
+                  askUserActive={askUserActive}
+                />
               ))}
             </div>
           ) : null}
         </div>
       ) : null}
+      {isAskUser ? (
+        <AskUserInlineForm
+          toolCallId={item.callId || ''}
+          toolInput={item.toolInput || null}
+          conversationId={conversationId}
+          taskId={taskId}
+          active={askUserActive}
+        />
+      ) : null}
+      {browserRuntimeRequest ? <BrowserRuntimeCard request={browserRuntimeRequest} embedded /> : null}
     </div>
   );
 }
@@ -522,11 +568,22 @@ export function ChatTimelineToolNode({ item }) {
 // tool chip (same .chat-timeline-tool-head border / pill) but the label is a
 // verb-counted summary like "read 3 files · executed 2 commands · used
 // chrome devtools 11 tools". Click expands to the original per-tool chips.
-export function ChatTimelineToolGroup({ item }) {
-  const [open, setOpen] = React.useState(false);
+export function ChatTimelineToolGroup({
+  item,
+  conversationId = '',
+  taskId = '',
+  askUserActive = false,
+  expandedByDefault = false,
+}) {
+  const [open, setOpen] = React.useState(expandedByDefault);
   const status = item.status || 'done';
   const tools = Array.isArray(item.tools) ? item.tools : [];
   const summary = item.summary || `used ${tools.length} tools`;
+
+  React.useEffect(() => {
+    if (expandedByDefault) setOpen(true);
+  }, [expandedByDefault]);
+
   return (
     <div className={`chat-timeline-tool category-tool status-${status} is-group`}>
       <button
@@ -544,7 +601,13 @@ export function ChatTimelineToolGroup({ item }) {
       {open ? (
         <div className="chat-timeline-tool-group-body">
           {tools.map((tool) => (
-            <ChatTimelineToolNode key={tool.id} item={tool} />
+            <ChatTimelineToolNode
+              key={tool.id}
+              item={tool}
+              conversationId={conversationId}
+              taskId={taskId}
+              askUserActive={askUserActive}
+            />
           ))}
         </div>
       ) : null}
@@ -556,12 +619,7 @@ export function ChatTimelineMetaNode({ item }) {
   const isContextCompaction = String(item.summary || '').toLowerCase() === 'auto-compacting context';
   return (
     <div className={`chat-timeline-meta status-${item.status || 'done'} ${isContextCompaction ? 'is-compaction' : ''}`}>
-      <button
-        type="button"
-        className="chat-timeline-meta-head"
-        aria-expanded="false"
-        disabled
-      >
+      <button type="button" className="chat-timeline-meta-head" aria-expanded="false" disabled>
         <span className={`chat-timeline-status status-${item.status || 'done'}`} aria-hidden="true" />
         {isContextCompaction ? <span className="chat-timeline-compaction-icon" aria-hidden="true" /> : null}
         <span className="chat-timeline-meta-label">{item.summary || 'Thinking…'}</span>
@@ -586,21 +644,24 @@ export function ChatTimelineThinkingNode({ item }) {
       >
         <span className={`chat-timeline-status status-${item.status || 'done'}`} aria-hidden="true" />
         <span className="ico ico-thinking" aria-label="Thinking" role="img" />
-        {hasText ? (
-          <span className="chat-timeline-thinking-count">{charCount} chars</span>
-        ) : null}
+        {hasText ? <span className="chat-timeline-thinking-count">{charCount} chars</span> : null}
         <ChatTimelineChevron open={open} />
       </button>
-      {open && hasText ? (
-        <div className="chat-timeline-thinking-body">{text}</div>
-      ) : null}
+      {open && hasText ? <div className="chat-timeline-thinking-body">{text}</div> : null}
     </div>
   );
 }
 
-export function ChatAgentTimeline({ items = [], streaming = false, latestTodos = null }) {
+export function ChatAgentTimeline({
+  items = [],
+  streaming = false,
+  latestTodos = null,
+  conversationId = '',
+  taskId = '',
+}) {
   const safeItems = Array.isArray(items) ? items : [];
   const todos = Array.isArray(latestTodos) && latestTodos.length > 0 ? latestTodos : null;
+  const activeAskUserItemId = selectActiveAskUserItemId(safeItems, streaming);
   // Empty timeline + done + no todos = nothing to show.
   // Empty timeline + streaming = activity indicator carries the "alive" hint.
   // Has todos = always show the panel even if there are no other items.
@@ -617,10 +678,27 @@ export function ChatAgentTimeline({ items = [], streaming = false, latestTodos =
           );
         }
         if (item.kind === 'tool') {
-          return <ChatTimelineToolNode key={item.id} item={item} />;
+          return (
+            <ChatTimelineToolNode
+              key={item.id}
+              item={item}
+              conversationId={conversationId}
+              taskId={taskId}
+              askUserActive={item.id === activeAskUserItemId}
+            />
+          );
         }
         if (item.kind === 'tool_group') {
-          return <ChatTimelineToolGroup key={item.id} item={item} />;
+          return (
+            <ChatTimelineToolGroup
+              key={item.id}
+              item={item}
+              conversationId={conversationId}
+              taskId={taskId}
+              askUserActive={false}
+              expandedByDefault={streaming}
+            />
+          );
         }
         if (item.kind === 'thinking') {
           return <ChatTimelineThinkingNode key={item.id} item={item} />;
@@ -632,8 +710,10 @@ export function ChatAgentTimeline({ items = [], streaming = false, latestTodos =
       })}
       {streaming ? (
         <div className="chat-timeline-activity" aria-label="Agent activity">
-          <span className="chat-timeline-spark" aria-hidden="true">*</span>
-          <span className="chat-timeline-verb" aria-hidden="true" />
+          <span className="chat-timeline-spark animated-gradient-text" aria-hidden="true">
+            *
+          </span>
+          <span className="chat-timeline-verb animated-gradient-text" aria-hidden="true" />
         </div>
       ) : null}
       {todos ? <ChatTodoPanel todos={todos} streaming={streaming} /> : null}

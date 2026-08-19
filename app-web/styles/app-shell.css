@@ -306,16 +306,17 @@
     padding: 4px 8px 10px;
 }
 
+.app-body.conversations-collapsed {
+    grid-template-columns: 52px minmax(320px, 1fr) clamp(340px, 21vw, 420px);
+}
+
+.app-body.conversations-collapsed .app-chat-stage,
+.app-body.conversations-collapsed .app-workflow-stage {
+    grid-column: 2 / -1;
+}
+
 .app-body::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(6, 10, 18, 0.16), rgba(5, 9, 16, 0.22)),
-    url('../assets/world/map-winter-park-clean.png') center center / cover no-repeat;
-    filter: blur(30px) saturate(94%) brightness(0.7);
-    opacity: 0.46;
-    transform: scale(1.04);
-    pointer-events: none;
+    content: none;
 }
 
 .app-body.chat-mode::before {
@@ -326,7 +327,8 @@
     transform: none;
 }
 
-.app-body.chat-mode {
+.app-body.chat-mode,
+.app-body.world-mode {
     background: radial-gradient(circle at 72% 12%, rgba(105, 200, 246, 0.05), transparent 32%),
     linear-gradient(180deg, #080a12 0%, #05060b 100%);
 }
@@ -336,20 +338,11 @@
     min-width: 0;
 }
 
-.app-center-stage,
 .app-tab-stage {
     position: relative;
     min-height: 0;
     display: grid;
     gap: 0;
-}
-
-.app-center-stage {
-    min-width: 0;
-    overflow: hidden;
-    isolation: isolate;
-    z-index: 10;
-    grid-template-rows: minmax(0, 1fr);
 }
 
 .app-tab-stage {
@@ -395,6 +388,22 @@
     color: rgba(235, 240, 252, 0.94);
     font-family: var(--content-font);
     letter-spacing: 0;
+}
+
+/* Settings contains several independent scroll areas (navigation, lists,
+   detail forms, dropdowns, JSON editors and workflow panels). Hide every
+   scrollbar in this page while preserving wheel, trackpad and keyboard scroll. */
+.settings-page,
+.settings-page * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.settings-page::-webkit-scrollbar,
+.settings-page *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
 }
 
 .settings-sidebar {
@@ -905,6 +914,7 @@
     text-align: left;
 }
 
+/* 一级标题（Providers / Tools / Context）：保持原有简洁样式，选中仅文字提亮。 */
 .settings-side-section > button:hover,
 .settings-side-section > button.active {
     border-color: transparent;
@@ -964,18 +974,23 @@
     transform: rotate(0deg);
 }
 
+/* 叶子行（Agent / Agentic Workflow）：它们是父标题，与 Providers / Tools /
+   Context 同级。保持完全相同的尺寸与左对齐位置（文字起点严格一致，不缩进）；
+   选中态使用圆角金色卡片（与 Memory / Knowledge 选中风格一致）。
+   边框用 inset 阴影绘制且保持 border: 0，避免引入边框后文字右移 1px。 */
 .settings-side-section > button.settings-side-leaf {
-    min-height: 40px;
-    padding: 0 14px;
-    border: 1px solid transparent;
+    min-height: 32px;
+    padding: 0 8px;
+    border: 0;
     border-radius: 8px;
 }
 
 .settings-side-section > button.settings-side-leaf.active {
-    border-color: rgba(239, 191, 100, 0.58);
+    border-color: transparent;
     background: linear-gradient(90deg, rgba(239, 191, 100, 0.14), rgba(239, 191, 100, 0.045) 52%, rgba(176, 206, 255, 0.035)),
     rgba(20, 23, 30, 0.76);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.025),
+    box-shadow: inset 0 0 0 1px rgba(239, 191, 100, 0.58),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.025),
     0 10px 24px rgba(0, 0, 0, 0.2);
 }
 
@@ -2727,6 +2742,18 @@
     color: rgba(166, 236, 204, 0.96);
 }
 
+.workflow-toolbar-add.is-human_approval .workflow-toolbar-add-icon {
+    border-color: rgba(244, 160, 180, 0.22);
+    background: rgba(232, 126, 157, 0.1);
+    color: rgba(250, 184, 201, 0.96);
+}
+
+.workflow-toolbar-add.is-loop .workflow-toolbar-add-icon {
+    border-color: rgba(239, 191, 100, 0.24);
+    background: rgba(239, 191, 100, 0.1);
+    color: rgba(246, 210, 140, 0.96);
+}
+
 .workflow-toolbar-add.is-agent:hover {
     background: rgba(168, 140, 255, 0.1);
 }
@@ -2741,6 +2768,14 @@
 
 .workflow-toolbar-add.is-condition:hover {
     background: rgba(120, 220, 180, 0.1);
+}
+
+.workflow-toolbar-add.is-human_approval:hover {
+    background: rgba(232, 126, 157, 0.1);
+}
+
+.workflow-toolbar-add.is-loop:hover {
+    background: rgba(239, 191, 100, 0.1);
 }
 
 .workflow-toolbar-end {
@@ -2944,6 +2979,34 @@
     color: rgba(145, 214, 248, 0.96);
 }
 
+.workflow-flow-node.human_approval {
+    border-color: rgba(244, 160, 180, 0.24);
+}
+
+.workflow-flow-node.human_approval .workflow-flow-node-icon {
+    border-color: rgba(244, 160, 180, 0.22);
+    background: rgba(232, 126, 157, 0.11);
+    color: rgba(250, 184, 201, 0.96);
+}
+
+.workflow-flow-node.human_approval strong {
+    color: rgba(250, 202, 214, 0.98);
+}
+
+.workflow-flow-node.loop {
+    border-color: rgba(239, 191, 100, 0.26);
+}
+
+.workflow-flow-node.loop .workflow-flow-node-icon {
+    border-color: rgba(239, 191, 100, 0.24);
+    background: rgba(239, 191, 100, 0.1);
+    color: rgba(246, 210, 140, 0.96);
+}
+
+.workflow-flow-node.loop strong {
+    color: rgba(246, 218, 162, 0.98);
+}
+
 .workflow-flow-node.condition .workflow-condition-handle.is-true {
     background: rgba(120, 218, 139, 0.98);
     box-shadow: 0 0 0 3px rgba(120, 218, 139, 0.12);
@@ -2955,18 +3018,22 @@
     box-shadow: 0 0 0 3px rgba(176, 196, 220, 0.1);
 }
 
-.workflow-flow-node .workflow-condition-target-handle {
-    width: 9px;
-    height: 9px;
-    box-shadow: 0 0 0 2px rgba(176, 196, 220, 0.08);
+.workflow-flow-node .workflow-condition-handle.is-approved,
+.workflow-flow-node .workflow-condition-handle.is-true {
+    background: rgba(120, 218, 139, 0.98);
+    box-shadow: 0 0 0 3px rgba(120, 218, 139, 0.12);
 }
 
-.workflow-flow-node .workflow-condition-target-handle.is-true {
-    background: rgba(120, 218, 139, 0.92);
+.workflow-flow-node .workflow-condition-handle.is-retry {
+    background: rgba(239, 191, 100, 0.98);
+    box-shadow: 0 0 0 3px rgba(239, 191, 100, 0.12);
 }
 
-.workflow-flow-node .workflow-condition-target-handle.is-false {
-    background: rgba(176, 196, 220, 0.82);
+.workflow-flow-node .workflow-condition-handle.is-rejected,
+.workflow-flow-node .workflow-condition-handle.is-exhausted {
+    bottom: -7px;
+    background: rgba(238, 122, 145, 0.96);
+    box-shadow: 0 0 0 3px rgba(238, 122, 145, 0.12);
 }
 
 .workflow-flow-node.output {

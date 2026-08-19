@@ -58,22 +58,29 @@ function inlineMarkdown(text) {
   const out = [];
   // Order matters: code first (greedy quoting), then link `[text](url)`, then bold/italic, then bare URL.
   // Underscore emphasis is intentionally not parsed because it breaks IDs such as mem_408719a58646.
-  const re = /(`[^`]+`)|(\[([^\]]+)\]\(([^)\s]+)\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|((?:https?|file):\/\/[^\s<>"`)]+)/g;
+  // Code spans may use multi-backtick delimiters so literal fences can be quoted:
+  // ```` ```diff ```` renders as <code>```diff</code> instead of literal backticks.
+  const re = /(`+)((?:[^`]|`(?!\1))+?)\1(?!`)|(\[([^\]]+)\]\(([^)\s]+)\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|((?:https?|file):\/\/[^\s<>"`)]+)/g;
   let lastIdx = 0;
   let m;
   let key = 0;
   while ((m = re.exec(text)) !== null) {
     if (m.index > lastIdx) out.push(text.slice(lastIdx, m.index));
     if (m[1]) {
-      out.push(<code key={`ic-${key++}`} className="md-icode">{m[1].slice(1, -1)}</code>);
-    } else if (m[2]) {
-      out.push(<a key={`a-${key++}`} className="md-link" href={m[4]} target="_blank" rel="noopener noreferrer">{m[3]}</a>);
-    } else if (m[5]) {
-      out.push(<strong key={`b-${key++}`}>{m[5].slice(2, -2)}</strong>);
+      let content = m[2];
+      // CommonMark: drop one padding space on each side of a code span when both exist.
+      if (content.length >= 2 && content.startsWith(' ') && content.endsWith(' ') && content.trim() !== '') {
+        content = content.slice(1, -1);
+      }
+      out.push(<code key={`ic-${key++}`} className="md-icode">{content}</code>);
+    } else if (m[3]) {
+      out.push(<a key={`a-${key++}`} className="md-link" href={m[5]} target="_blank" rel="noopener noreferrer">{m[4]}</a>);
     } else if (m[6]) {
-      out.push(<em key={`i-${key++}`}>{m[6].slice(1, -1)}</em>);
+      out.push(<strong key={`b-${key++}`}>{m[6].slice(2, -2)}</strong>);
     } else if (m[7]) {
-      out.push(<a key={`au-${key++}`} className="md-link" href={m[7]} target="_blank" rel="noopener noreferrer">{m[7]}</a>);
+      out.push(<em key={`i-${key++}`}>{m[7].slice(1, -1)}</em>);
+    } else if (m[8]) {
+      out.push(<a key={`au-${key++}`} className="md-link" href={m[8]} target="_blank" rel="noopener noreferrer">{m[8]}</a>);
     }
     lastIdx = m.index + m[0].length;
   }
@@ -118,6 +125,13 @@ function matchFenceOpen(line) {
   let rest = text.slice(marker.length);
   // Drop one optional space/tab after the opening fence.
   if (rest.startsWith(' ') || rest.startsWith('\t')) rest = rest.slice(1);
+
+  // ```` ```diff ```` and friends are inline code spans quoting a literal fence, not
+  // block fences. When the info string itself starts with a backtick/tilde run (and
+  // is not merely a same-line closing fence), treat the whole line as prose so that
+  // inlineMarkdown() renders the quoted fence as a code span instead of opening a
+  // bogus block that swallows the surrounding paragraph.
+  if (/^[`~]/.test(rest) && !/^[`~]+[ \t]*$/.test(rest)) return null;
 
   // Same-line close: ```python code``` or ```code```
   const closeIdx = rest.search(new RegExp(`${char}{${marker.length},}[ \t]*$`));
@@ -376,18 +390,29 @@ function parseMarkdown(src) {
         if (fenceOpen.firstLine) codeLines.push(fenceOpen.firstLine);
         i += 1;
         if (!fenceOpen.selfClosing) {
-          while (i < lines.length) {
-            // Unclosed fences must not swallow later list items (breaks 1.2.3.4 numbering).
-            const bodyList = listMatch(lines[i]);
-            if (bodyList && bodyList.indent <= minIndent) break;
-            const body = stripColumns(lines[i], minIndent);
-            if (matchFenceClose(body, fenceOpen)) {
-              i += 1;
+          // Locate the real closing fence first. When the block never closes, do not
+          // let it swallow later list items (breaks 1.2.3.4 numbering); but when a
+          // closing fence DOES exist, list-marker-looking code lines (e.g. ```diff
+          // bodies like "- foo" or "1. bar") must stay inside the block and must not
+          // truncate it.
+          let closeIndex = -1;
+          for (let j = i; j < lines.length; j += 1) {
+            if (matchFenceClose(stripColumns(lines[j], minIndent), fenceOpen)) {
+              closeIndex = j;
               break;
             }
-            codeLines.push(body);
+          }
+          const limit = closeIndex >= 0 ? closeIndex : lines.length;
+          while (i < limit) {
+            if (closeIndex < 0) {
+              // Unclosed fences must not swallow later list items (breaks 1.2.3.4 numbering).
+              const bodyList = listMatch(lines[i]);
+              if (bodyList && bodyList.indent <= minIndent) break;
+            }
+            codeLines.push(stripColumns(lines[i], minIndent));
             i += 1;
           }
+          if (closeIndex >= 0) i = closeIndex + 1;
         }
         nodes.push(renderCodeBlock(codeLines, fenceOpen.lang, `pre-${state.key++}`));
         continue;

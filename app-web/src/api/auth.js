@@ -7,7 +7,6 @@ export const CONTEXT_USAGE_STORAGE_KEY = 'agent_world_context_usage_v1';
 export const AUTH_SESSION_STORAGE_KEY = 'haish_auth_session_v1';
 export const RUN_CONFIG_STORAGE_PREFIX = 'haish_run_config_v1';
 export const PREFERRED_RUN_CONFIG_STORAGE_PREFIX = 'haish_preferred_run_config_v1';
-export const DEFAULT_CONTEXT_TOTAL_TOKENS = 128000;
 export const RESTORED_CONTEXT_BASE_TOKENS = 4200;
 export const DEFAULT_PROJECT_ID = 'default-project';
 export const DEFAULT_PROJECT_NAME = 'Default project';

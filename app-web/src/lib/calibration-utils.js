@@ -1,5 +1,5 @@
 // @haish-esm
-import { STATIONS } from '../World.jsx';
+import { STATIONS } from './world-layout.js';
 import { POSE_DEBUG_OPTIONS } from './world-runtime.js';
 
 export function clonePointMap(source) {
@@ -49,5 +49,4 @@ export function serializePoseConfigMap(ids, getConfig) {
   }).join('\n');
   return `const POSE_CONFIG_OVERRIDES = {\n${rows}\n};`;
 }
-
 

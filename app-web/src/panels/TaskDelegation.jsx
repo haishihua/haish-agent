@@ -58,8 +58,8 @@ export function TaskDelegation({
   const fileRef = React.useRef(null);
   const suppressSubmitUntilRef = React.useRef(0);
   const usedTokens = Math.max(0, Math.round(Number(contextUsage?.usedTokens) || 0));
-  const totalTokens = Math.max(1, Math.round(Number(contextUsage?.totalTokens) || 128000));
-  const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (usedTokens / totalTokens)));
+  const totalTokens = Math.max(0, Math.round(Number(contextUsage?.totalTokens) || 0));
+  const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (totalTokens > 0 ? usedTokens / totalTokens : 0)));
   const visibleContextRatio = usedTokens > 0 ? Math.max(contextRatio, 0.01) : 0;
   const contextTooltip = `${formatContextUsageLabel(usedTokens, totalTokens)}${contextUsage?.overLimit ? ' · Over limit' : ''}`;
   const contextRingStyle = {
@@ -225,7 +225,7 @@ export function TaskDelegation({
           <ApprovalModePicker readOnly={runConfigReadOnly} disabled={runConfigDisabled} />
         </div>
         <div className="td-submit-cluster">
-          <PortalTooltip text={contextTooltip} position="above">
+          {totalTokens > 0 ? <PortalTooltip text={contextTooltip} position="above">
             <button
               type="button"
               className={`context-usage-btn icon-only ${contextUsage?.compressed ? 'compressed' : ''} ${contextUsage?.overLimit ? 'over-limit' : ''}`}
@@ -234,7 +234,7 @@ export function TaskDelegation({
             >
               <span className="context-usage-icon" style={contextRingStyle} aria-hidden="true" />
             </button>
-          </PortalTooltip>
+          </PortalTooltip> : null}
           <ModelPicker
             value={modelId}
             reasoningEffort={reasoningEffort}
@@ -258,7 +258,7 @@ export function TaskDelegation({
             <PortalTooltip text={submitPending ? 'Cancel pending request' : 'Stop'} position="above">
               <button
                 type="button"
-                className="deploy-btn stop icon-only"
+                className="chat-send stop"
                 onMouseDown={handleStopPress}
                 onKeyDown={handleStopKey}
                 aria-label={submitPending ? 'Cancel pending request' : 'Stop'}
@@ -267,12 +267,13 @@ export function TaskDelegation({
               </button>
             </PortalTooltip>
           ) : (
-            <PortalTooltip text="Deploy" position="above">
+            <PortalTooltip text="Send" position="above">
               <button
-                className="deploy-btn icon-only"
+                type="button"
+                className="chat-send"
                 onClick={submit}
                 disabled={disabled || !v.trim() || !providerConfigured}
-                aria-label="Deploy"
+                aria-label="Send"
               >
                 <span className="ico ico-deploy" aria-hidden="true" />
               </button>

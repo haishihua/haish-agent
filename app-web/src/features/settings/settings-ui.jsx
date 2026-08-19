@@ -15,7 +15,6 @@ import serpapiLogo from '../../../assets/ui/icons/serpapi.svg';
 import neo4jLogo from '../../../assets/ui/icons/neo4j.svg';
 import qdrantLogo from '../../../assets/ui/icons/qdrant.svg';
 import { PortalTooltip } from '../../panels/PortalTooltip.jsx';
-import { SOFTWARE_DEVELOPMENT_WORKFLOW_ID } from '../../lib/agent-catalog.js';
 
 const { useState, useEffect, useRef } = React;
 
@@ -80,14 +79,6 @@ export function ConnectionBrandIcon({ itemId, title }) {
 
 const PRESET_AGENT_ICON_NAMES = {
   'preset.general': 'sparkles',
-  'preset.product': 'clipboard-list',
-  'preset.development': 'code-2',
-  'preset.qa': 'flask-conical',
-  'preset.document-qa': 'book-open',
-};
-
-const PRESET_WORKFLOW_ICON_NAMES = {
-  [SOFTWARE_DEVELOPMENT_WORKFLOW_ID]: 'git-branch',
 };
 
 export function agentIconNameForItem(item) {
@@ -129,7 +120,7 @@ export function WorkflowListIcon({ item }) {
       </span>
     );
   }
-  const iconName = PRESET_WORKFLOW_ICON_NAMES[item?.id] || 'git-branch';
+  const iconName = 'git-branch';
   return (
     <span className="settings-provider-icon" aria-hidden="true">
       <SettingsLucideIcon name={iconName} size={22} className="settings-provider-glyph" />
@@ -320,6 +311,17 @@ const SETTINGS_LUCIDE_ICONS = {
     ['path', { d: 'M12 7v14' }],
     ['path', { d: 'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z' }],
   ],
+  server: [
+    ['rect', { x: '2', y: '3', width: '20', height: '7', rx: '2' }],
+    ['rect', { x: '2', y: '14', width: '20', height: '7', rx: '2' }],
+    ['line', { x1: '6', x2: '6.01', y1: '6.5', y2: '6.5' }],
+    ['line', { x1: '6', x2: '6.01', y1: '17.5', y2: '17.5' }],
+  ],
+  database: [
+    ['ellipse', { cx: '12', cy: '5', rx: '9', ry: '3' }],
+    ['path', { d: 'M3 5v14a9 3 0 0 0 18 0V5' }],
+    ['path', { d: 'M3 12a9 3 0 0 0 18 0' }],
+  ],
   box: [
     ['path', { d: 'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z' }],
     ['path', { d: 'm3.3 7 8.7 5 8.7-5' }],
@@ -349,12 +351,44 @@ const SETTINGS_LUCIDE_ICONS = {
     ['path', { d: 'M6 8.5V10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8.5' }],
     ['path', { d: 'M12 12v3.5' }],
   ],
+  'workflow-approval': [
+    ['path', { d: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' }],
+    ['circle', { cx: '9', cy: '7', r: '4' }],
+    ['path', { d: 'm16 11 2 2 4-4' }],
+  ],
+  'workflow-loop': [
+    ['path', { d: 'M20 7h-9a5 5 0 0 0-5 5v1' }],
+    ['path', { d: 'm16 3 4 4-4 4' }],
+    ['path', { d: 'M4 17h9a5 5 0 0 0 5-5v-1' }],
+    ['path', { d: 'm8 21-4-4 4-4' }],
+  ],
   play: [
     ['path', { d: 'M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z' }],
   ],
   'circle-check': [
     ['circle', { cx: '12', cy: '12', r: '10' }],
     ['path', { d: 'm9 12 2 2 4-4' }],
+  ],
+  clock: [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['path', { d: 'M12 6v6l4 2' }],
+  ],
+  loader: [
+    ['path', { d: 'M21 12a9 9 0 1 1-6.22-8.56' }],
+  ],
+  'pause-circle': [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['path', { d: 'M10 9v6' }],
+    ['path', { d: 'M14 9v6' }],
+  ],
+  'circle-x': [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['path', { d: 'm9 9 6 6' }],
+    ['path', { d: 'm15 9-6 6' }],
+  ],
+  ban: [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['path', { d: 'm4.9 4.9 14.2 14.2' }],
   ],
 };
 
@@ -404,6 +438,57 @@ export function SettingsTooltipIconButton({
   return <PortalTooltip text={label} position="above">{button}</PortalTooltip>;
 }
 
+// 下拉菜单永远向下展开（方向保持一致）；但触发控件靠近表单底部时可用空间不足，
+// 菜单会超出裁剪容器（表单滚动区）被底缘裁掉。这里把菜单最大高度压缩到触发
+// 控件下方的剩余空间内（不足部分菜单内部滚动），保证列表完整可见且方向统一。
+function useMenuMaxHeight(rootRef, open, itemsCount) {
+  const [menuMaxHeight, setMenuMaxHeight] = useState(260);
+
+  React.useLayoutEffect(() => {
+    if (!open) return undefined;
+    const root = rootRef.current;
+    if (!root) return undefined;
+    const trigger = root.querySelector('.model-picker-trigger')
+      || root.querySelector('input, button')
+      || root;
+    if (!trigger || typeof window === 'undefined') return undefined;
+
+    const findClipContainer = () => {
+      let node = trigger.parentElement;
+      while (node) {
+        const style = window.getComputedStyle(node);
+        if (style.overflowY !== 'visible' || style.overflowX !== 'visible') return node;
+        node = node.parentElement;
+      }
+      return document.documentElement;
+    };
+
+    const compute = () => {
+      const clipEl = findClipContainer();
+      const clipRect = clipEl.getBoundingClientRect();
+      const triggerRect = trigger.getBoundingClientRect();
+      // 触发控件下方到容器底缘的可用空间（减去 6px 间距 + 2px 边框余量）。
+      const spaceBelow = Math.max(0, clipRect.bottom - triggerRect.bottom - 8);
+      // 菜单理想高度按实际选项数量估算（上限 260px）。
+      const count = Math.max(1, Number(itemsCount) || 1);
+      const ideal = Math.min(260, 46 + count * 36);
+      // 始终向下展开；放不下就压缩高度，菜单内部滚动。
+      setMenuMaxHeight(Math.max(72, Math.min(ideal, spaceBelow)));
+    };
+
+    compute();
+    window.addEventListener('resize', compute);
+    const clipEl = findClipContainer();
+    clipEl.addEventListener('scroll', compute, true);
+    return () => {
+      window.removeEventListener('resize', compute);
+      clipEl.removeEventListener('scroll', compute, true);
+    };
+  }, [open, itemsCount, rootRef]);
+
+  return menuMaxHeight;
+}
+
 export function SettingsMenuSelect({
   value,
   options,
@@ -419,6 +504,7 @@ export function SettingsMenuSelect({
   const items = Array.isArray(options) ? options : [];
   const current = items.find((item) => item.id === value);
   const label = current?.label || value || placeholder;
+  const menuMaxHeight = useMenuMaxHeight(rootRef, open, items.length);
 
   const cancelClose = () => {
     if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
@@ -467,7 +553,7 @@ export function SettingsMenuSelect({
         <span className="model-picker-caret" aria-hidden="true" />
       </button>
       {open ? (
-        <div className="model-picker-menu" role="listbox">
+        <div className="model-picker-menu" role="listbox" style={{ maxHeight: `${menuMaxHeight}px` }}>
           {header ? <div className="model-picker-header">{header}</div> : null}
           <div className="model-picker-list">
             {items.map((item) => {
@@ -514,6 +600,7 @@ export function SettingsComboInput({
   const rootRef = useRef(null);
   const closeTimerRef = useRef(null);
   const items = Array.isArray(options) ? options : [];
+  const menuMaxHeight = useMenuMaxHeight(rootRef, open, items.length);
 
   const cancelClose = () => {
     if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
@@ -568,7 +655,7 @@ export function SettingsComboInput({
         <span className="model-picker-caret" aria-hidden="true" />
       </button>
       {open ? (
-        <div className="model-picker-menu" role="listbox">
+        <div className="model-picker-menu" role="listbox" style={{ maxHeight: `${menuMaxHeight}px` }}>
           {header ? <div className="model-picker-header">{header}</div> : null}
           <div className="model-picker-list">
             {items.map((item) => {
@@ -602,4 +689,3 @@ export function SettingsComboInput({
     </div>
   );
 }
-

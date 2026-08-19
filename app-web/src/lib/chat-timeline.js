@@ -2,7 +2,6 @@
 import { eventDeltaText } from './chat-text.js';
 export { eventDeltaText } from './chat-text.js';
 import { normalizeToolName } from './tool-names.js';
-import { DEFAULT_CONTEXT_TOTAL_TOKENS } from '../api/auth.js';
 import { normalizeTaskStatus } from './task-runtime.js';
 import { skillDisplayName } from './world-events.js';
 
@@ -203,12 +202,13 @@ export function formatMetaDetail(event) {
     case 'context_usage_updated': {
       if (event.source === 'provider_usage' && event.context_used_tokens == null && event.usedTokens == null) return '';
       const usedValue = Number(event.usedTokens ?? event.used_tokens ?? 0);
-      const totalValue = Number(event.totalTokens ?? event.total_tokens ?? DEFAULT_CONTEXT_TOTAL_TOKENS);
+      const totalValue = Number(event.totalTokens ?? event.total_tokens ?? 0);
       if (event.valid_context_usage === false || (usedValue > 0 && totalValue > 0 && usedValue > totalValue)) return '';
       const used = formatTraceTokens(event.usedTokens);
       const total = formatTraceTokens(event.totalTokens);
       if (!used && !total) return '';
-      return `Context · ${used || '0'} / ${total || '128k'} tokens${event.compressed ? ' · compressed' : ''}`;
+      if (!total) return '';
+      return `Context · ${used || '0'} / ${total} tokens${event.compressed ? ' · compressed' : ''}`;
     }
     case 'tool_budget_applied': {
       const selected = Number(event.selectedToolCount || 0);
@@ -399,6 +399,9 @@ export function groupConsecutiveTools(items) {
     it && it.kind === 'tool'
     && it.category !== 'skill'
     && it.category !== 'subagent'
+    // ask_user owns an inline answer form and must remain a stable top-level
+    // timeline item. Grouping it would remove its chip/slot during rerenders.
+    && normalizeToolName(it.toolName) !== 'ask_user'
   );
   let groupIdx = 0;
   let i = 0;
@@ -416,7 +419,10 @@ export function groupConsecutiveTools(items) {
       const summary = summarizeToolGroup(run, groupStatus);
       result.push({
         kind: 'tool_group',
-        id: `tool-group-${groupIdx}`,
+        // Anchor the React key to the first call in the run. A positional key
+        // changes when an earlier live event creates/splits another group,
+        // remounting this group and losing its expanded state.
+        id: `tool-group-${run[0]?.id || groupIdx}`,
         summary: summary.short,
         tools: run,
         status: groupStatus,
@@ -479,14 +485,19 @@ export function toolProgressSummary(event) {
   }
 }
 
+const CHAT_TIMELINE_CACHE = new WeakMap();
+
 export function buildChatTimeline(task, taskStatus) {
+  const finalStatus = normalizeTaskStatus(taskStatus || task?.status);
+  const cached = task && typeof task === 'object' ? CHAT_TIMELINE_CACHE.get(task) : null;
+  if (cached?.status === finalStatus) return cached.timeline;
+
   const events = Array.isArray(task?.eventLog) ? task.eventLog : [];
   const toolCalls = Array.isArray(task?.toolCalls) ? task.toolCalls : [];
   const toolByCallId = new Map();
   for (const call of toolCalls) {
     if (call?.callId) toolByCallId.set(call.callId, call);
   }
-  const finalStatus = normalizeTaskStatus(taskStatus || task?.status);
   const isRunning = finalStatus === 'running' || finalStatus === 'queued';
 
   const items = [];
@@ -712,6 +723,20 @@ export function buildChatTimeline(task, taskStatus) {
       textBufBlockId = blockId || textBufBlockId;
       textBuf += eventDeltaText(event);
       textBufSource = event.messagePhase || event.message_phase || 'answer';
+      continue;
+    }
+    if (type === 'llm_attempt_failed') {
+      flushThinking(false);
+      const blockId = event.textBlockId || event.text_block_id || '';
+      if (textBuf.trim() && blockId && textBufBlockId && blockId !== textBufBlockId) {
+        flushText();
+      }
+      textBufBlockId = blockId || textBufBlockId;
+      const errorMessage = String(
+        event.errorMessage || event.error_message || event.message || 'Model stream failed.'
+      ).trim();
+      textBuf = `${textBuf.replace(/\s+$/, '')}\n\nError: ${errorMessage}\n\n`;
+      textBufSource = event.messagePhase || event.message_phase || textBufSource || 'answer';
       continue;
     }
     if (type === 'llm_text_phase_resolved') {
@@ -959,7 +984,11 @@ export function buildChatTimeline(task, taskStatus) {
   // 折叠"两段文本之间"的连续工具调用为单行聚合 chip。聊天阅读时关心解决思路
   // (text + thinking)，不关心 read_file / chrome_devtools_* 反复的细节；想看
   // 单条工具调用时点开 chip 还能看到原来的 ChatTimelineToolNode 列表。
-  return { items: groupConsecutiveTools(displayItems), latestTodos };
+  const timeline = { items: groupConsecutiveTools(displayItems), latestTodos };
+  if (task && typeof task === 'object') {
+    CHAT_TIMELINE_CACHE.set(task, { status: finalStatus, timeline });
+  }
+  return timeline;
 }
 
 export function extractTodosFromToolItem(item) {

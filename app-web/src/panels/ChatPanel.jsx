@@ -1,5 +1,6 @@
 // @haish-esm
 import React from 'react';
+import { ApprovalInline } from '../approval-overlay.jsx';
 import { PortalTooltip } from './PortalTooltip.jsx';
 import { AttachmentFileChip } from './Format.jsx';
 import {
@@ -17,6 +18,7 @@ import {
   ChatMessageRow,
   ImagePreviewOverlay,
 } from './ChatMessageRow.jsx';
+import { ScrollToBottomButton } from './ScrollToBottomButton.jsx';
 export const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const CHAT_IMAGE_MAX_COUNT = 4;
 export const CHAT_IMAGE_ACCEPTED_MIME = new Set([
@@ -93,6 +95,9 @@ export function ChatPanel({
   const modelLoading = providerModels.loading;
   const providerRequest = currentProvider?.requestProvider || currentProvider?.provider || providerId || '';
   const providerConfigured = Boolean(currentProvider && providerRequest);
+  const sendModelId = activeModelOptions.some((item) => item.id === modelId)
+    ? modelId
+    : (providerModels.defaultModelId || currentProvider?.defaultModelId || modelId);
 
   React.useEffect(() => {
     if (modelLoading) return;
@@ -219,11 +224,12 @@ export function ChatPanel({
   const historyCursorRef = React.useRef(-1);
   const historySavedDraftRef = React.useRef('');
   const shouldAutoScrollRef = React.useRef(true);
+  const autoScrollFrameRef = React.useRef(null);
   const lastMessageCountRef = React.useRef(messages.length);
   const lastConversationIdRef = React.useRef(conversationId || null);
   const usedTokens = Math.max(0, Math.round(Number(contextUsage?.usedTokens) || 0));
-  const totalTokens = Math.max(1, Math.round(Number(contextUsage?.totalTokens) || 128000));
-  const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (usedTokens / totalTokens)));
+  const totalTokens = Math.max(0, Math.round(Number(contextUsage?.totalTokens) || 0));
+  const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (totalTokens > 0 ? usedTokens / totalTokens : 0)));
   const visibleContextRatio = usedTokens > 0 ? Math.max(contextRatio, 0.01) : 0;
   const contextTooltip = `${formatContextUsageLabel(usedTokens, totalTokens)}${contextUsage?.overLimit ? ' · Over limit' : ''}`;
   const contextRingStyle = {
@@ -249,12 +255,19 @@ export function ChatPanel({
     }
     lastConversationIdRef.current = normalizedConversationId;
     lastMessageCountRef.current = messages.length;
-    if (!shouldAutoScrollRef.current) return;
-    requestAnimationFrame(() => {
+    if (!shouldAutoScrollRef.current) return undefined;
+    if (autoScrollFrameRef.current) cancelAnimationFrame(autoScrollFrameRef.current);
+    autoScrollFrameRef.current = requestAnimationFrame(() => {
+      autoScrollFrameRef.current = null;
       if (listRef.current) {
         listRef.current.scrollTop = listRef.current.scrollHeight;
       }
     });
+    return () => {
+      if (!autoScrollFrameRef.current) return;
+      cancelAnimationFrame(autoScrollFrameRef.current);
+      autoScrollFrameRef.current = null;
+    };
   }, [conversationId, messages, running]);
 
   React.useLayoutEffect(() => {
@@ -310,7 +323,7 @@ export function ChatPanel({
     if (running) {
       setRuntimeInputPending(true);
       try {
-        const accepted = await onSend?.(text, null, modelId, reasoningEffort, [], effectiveAgentId, providerRequest);
+        const accepted = await onSend?.(text, null, sendModelId, reasoningEffort, [], effectiveAgentId, providerRequest);
         if (accepted !== false) setDraft('');
       } finally {
         setRuntimeInputPending(false);
@@ -320,7 +333,7 @@ export function ChatPanel({
     if (!providerConfigured) return;
     // Block while any pasted image is still uploading.
     if (imagesUploading) return;
-    if (modelLoading || !activeModelOptions.some((o) => o.id === modelId)) return;
+    if (!sendModelId) return;
     if (!resolvedAgentOptions.some((o) => o.id === effectiveAgentId)) return;
     const readyImages = composerImages
       .filter((img) => img.imageId && !img.error)
@@ -330,7 +343,7 @@ export function ChatPanel({
         mime: img.mime,
         previewUrl: img.previewUrl || null,
       }));
-    const accepted = onSend?.(text, attachment, modelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest);
+    const accepted = onSend?.(text, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest);
     if (accepted === false) return;
     setDraft('');
     onClearFile?.();
@@ -358,36 +371,40 @@ export function ChatPanel({
 
   return (
     <section className="chat-workspace" aria-label="Chat">
-      <div ref={listRef} className="chat-message-list" onScroll={handleMessageListScroll}>
-        {messages.length === 0 ? (
-          <div className="chat-empty">
-            <div
-              className={`chat-empty-illustration${emptyHoverCard === 'secondary' ? ' swap-secondary' : ''}${emptyHoverCard === 'tertiary' ? ' swap-tertiary' : ''}`}
-              onMouseLeave={() => setEmptyHoverCard(null)}
-              aria-hidden="true"
-            >
-              <div className="chat-empty-card chat-empty-card-primary">
-                <img src="/assets/ui/empty-state/penguin-relax-card.png" alt="" />
-              </div>
+      <div className="chat-message-region">
+        <div ref={listRef} className="chat-message-list" onScroll={handleMessageListScroll}>
+          {messages.length === 0 ? (
+            <div className="chat-empty">
               <div
-                className="chat-empty-card chat-empty-card-secondary"
-                onMouseEnter={() => setEmptyHoverCard('secondary')}
+                className={`chat-empty-illustration${emptyHoverCard === 'secondary' ? ' swap-secondary' : ''}${emptyHoverCard === 'tertiary' ? ' swap-tertiary' : ''}`}
+                onMouseLeave={() => setEmptyHoverCard(null)}
+                aria-hidden="true"
               >
-                <img src="/assets/ui/empty-state/penguin-sleepy-card.png" alt="" />
+                <div className="chat-empty-card chat-empty-card-primary">
+                  <img src="/assets/ui/empty-state/penguin-relax-card.png" alt="" />
+                </div>
+                <div
+                  className="chat-empty-card chat-empty-card-secondary"
+                  onMouseEnter={() => setEmptyHoverCard('secondary')}
+                >
+                  <img src="/assets/ui/empty-state/penguin-sleepy-card.png" alt="" />
+                </div>
+                <div
+                  className="chat-empty-card chat-empty-card-tertiary"
+                  onMouseEnter={() => setEmptyHoverCard('tertiary')}
+                >
+                  <img src="/assets/ui/empty-state/penguin-hug-card.png" alt="" />
+                </div>
               </div>
-              <div
-                className="chat-empty-card chat-empty-card-tertiary"
-                onMouseEnter={() => setEmptyHoverCard('tertiary')}
-              >
-                <img src="/assets/ui/empty-state/penguin-hug-card.png" alt="" />
-              </div>
+              <div className="chat-empty-title">What's on your mind?</div>
+              <div className="chat-empty-copy">Drop a task, a question, or a loose idea. I'll take it from there.</div>
             </div>
-            <div className="chat-empty-title">What's on your mind?</div>
-            <div className="chat-empty-copy">Drop a task, a question, or a loose idea. I'll take it from there.</div>
-          </div>
-        ) : messages.map((message) => (
-          <ChatMessageRow key={message.id} message={message} now={now} onPreviewImage={openImagePreview} />
-        ))}
+          ) : messages.map((message) => (
+            <ChatMessageRow key={message.id} message={message} now={now} onPreviewImage={openImagePreview} />
+          ))}
+          <ApprovalInline />
+        </div>
+        <ScrollToBottomButton scrollRef={listRef} />
       </div>
       <form
         className="chat-composer"
@@ -536,7 +553,7 @@ export function ChatPanel({
             <ApprovalModePicker readOnly={runConfigReadOnly} disabled={runConfigDisabled} />
           </div>
           <div className="chat-composer-submit">
-            <PortalTooltip text={contextTooltip} position="above">
+            {totalTokens > 0 ? <PortalTooltip text={contextTooltip} position="above">
               <button
                 type="button"
                 className={`context-usage-btn icon-only ${contextUsage?.compressed ? 'compressed' : ''} ${contextUsage?.overLimit ? 'over-limit' : ''}`}
@@ -545,7 +562,7 @@ export function ChatPanel({
               >
                 <span className="context-usage-icon" style={contextRingStyle} aria-hidden="true" />
               </button>
-            </PortalTooltip>
+            </PortalTooltip> : null}
             <ModelPicker
               value={modelId}
               reasoningEffort={reasoningEffort}
@@ -581,7 +598,7 @@ export function ChatPanel({
                 <span className="ico ico-stop" aria-hidden="true" />
               </button>
             ) : (
-              <button type="submit" className="chat-send" disabled={disabled || !draft.trim() || !providerConfigured} aria-label="Send">
+              <button type="submit" className="chat-send" disabled={disabled || !draft.trim() || !providerConfigured || !sendModelId} aria-label="Send">
                 <span className="ico ico-deploy" aria-hidden="true" />
               </button>
             )}

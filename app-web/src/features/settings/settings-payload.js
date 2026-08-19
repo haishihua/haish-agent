@@ -1,7 +1,7 @@
 // @haish-esm
 import {
   DEFAULT_MCP_CONFIG_JSON,
-  SETTINGS_SECTIONS,
+  settingsSectionMeta,
   WEB_SEARCH_PROVIDER_OPTIONS,
   createDefaultSettingsRecords,
   createDefaultWebSearchSettings,
@@ -115,7 +115,7 @@ export function configItemsForSection(section, llmDraft, records, activeSubtab =
 }
 
 export function createGenericRecord(section) {
-  const label = SETTINGS_SECTIONS.find((item) => item.id === section)?.label || 'Config';
+  const label = settingsSectionMeta(section)?.label || 'Config';
   return {
     id: `${section}-${Date.now()}`,
     name: `New ${label} Config`,

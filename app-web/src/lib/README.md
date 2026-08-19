@@ -24,7 +24,7 @@ app-web/src/
   main.jsx                 # Vite entry
   app.jsx                  # AuthGate + ErrorBoundary mount
   approval-overlay.jsx     # Approval side-effect mount
-  Effects.jsx / Sprites.jsx / World.jsx / orchestrator.js
+  Effects.jsx / lib/world-layout.js
   panels.jsx               # Barrel re-exports
   panels/                  # UI building blocks (PascalCase components)
   features/

@@ -15,16 +15,22 @@ export function ConversationsPanel({
   workspaceState,
   now,
   extensionStyle,
+  collapsed = false,
+  onToggleCollapsed,
   onAddProject,
   onSelectProject,
   onToggleProject,
   onRemoveProject,
   onAddConversation,
   onSelectConversation,
-  onToggleConversation,
+  onSelectTask,
   onToggleConversationTasks,
+  showTaskRecords = true,
+  workflowTaskMode = false,
+  activeTaskId = null,
   onToggleProjectConversations,
   onDeleteConversation,
+  onDeleteTask,
   onRenameConversation,
   onPinConversation,
   onPinProject,
@@ -213,11 +219,22 @@ export function ConversationsPanel({
     });
   }
 
+  function requestDeleteTask(project, conversation, task) {
+    setDialog({
+      kind: 'delete-task',
+      title: 'Delete task',
+      message: `Delete "${task?.title || 'this task'}"? Other tasks in this project will not be affected.`,
+      confirmLabel: 'Delete',
+      danger: true,
+      onConfirm: () => onDeleteTask(project.id, conversation.id, task),
+    });
+  }
+
   function requestRemoveProject(project) {
     setDialog({
       kind: 'delete-project',
       title: 'Remove project',
-      message: `Remove "${project.name || 'this project'}" from the workspace list? Local files will not be deleted.`,
+      message: `Remove "${project.name || 'this project'}" from the current mode? Other modes and local files will not be affected.`,
       confirmLabel: 'Remove',
       danger: true,
       onConfirm: () => onRemoveProject(project.id),
@@ -225,21 +242,41 @@ export function ConversationsPanel({
   }
 
   return (
-    <div className="side-panel left conversations-panel" ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
+    <div className={`side-panel left conversations-panel${collapsed ? ' is-collapsed' : ''}`} ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
       <div className="side-panel-head">
-        <div className="title">Conversation</div>
-        <PortalTooltip text="Add Project" position="below">
-          <button
-            type="button"
-            className="conversation-head-action"
-            onClick={onAddProject}
-            aria-label="Add project"
-          >
-            <span className="ico ico-folder-plus-circle" aria-hidden="true" />
-          </button>
-        </PortalTooltip>
+        <div className="conversation-head-primary">
+          <PortalTooltip text={collapsed ? `Expand ${workflowTaskMode ? 'Tasks' : 'Conversation'}` : `Collapse ${workflowTaskMode ? 'Tasks' : 'Conversation'}`} position="below">
+            <button
+              type="button"
+              className="conversation-head-action conversation-panel-toggle"
+              onClick={onToggleCollapsed}
+              aria-label={collapsed ? 'Expand conversation panel' : 'Collapse conversation panel'}
+              aria-expanded={!collapsed}
+            >
+              <span
+                className={`ico ico-conversation-panel-toggle${collapsed ? ' is-expand' : ''}`}
+                aria-hidden="true"
+              />
+            </button>
+          </PortalTooltip>
+          {!collapsed ? <div className="title">{workflowTaskMode ? 'Tasks' : 'Conversation'}</div> : null}
+        </div>
+        {!collapsed ? (
+          <div className="conversation-head-actions">
+            <PortalTooltip text="Add Project" position="below">
+              <button
+                type="button"
+                className="conversation-head-action"
+                onClick={onAddProject}
+                aria-label="Add project"
+              >
+                <span className="ico ico-folder-plus-circle" aria-hidden="true" />
+              </button>
+            </PortalTooltip>
+          </div>
+        ) : null}
       </div>
-      <div className="side-panel-body conversations-body" ref={scrollBodyRef}>
+      <div className="side-panel-body conversations-body" ref={scrollBodyRef} hidden={collapsed}>
         {workspaceState.projects.map((project) => (
           <ProjectNode
             key={project.id}
@@ -254,10 +291,14 @@ export function ConversationsPanel({
             onRemoveProject={requestRemoveProject}
             onAddConversation={onAddConversation}
             onSelectConversation={selectConversationAndClearNotice}
-            onToggleConversation={onToggleConversation}
+            onSelectTask={onSelectTask}
+            showTaskRecords={showTaskRecords}
+            workflowTaskMode={workflowTaskMode}
+            activeTaskId={activeTaskId}
             onToggleConversationTasks={onToggleConversationTasks}
             onToggleProjectConversations={onToggleProjectConversations}
             onRequestDeleteConversation={requestDeleteConversation}
+            onRequestDeleteTask={requestDeleteTask}
             onRequestRenameConversation={requestRenameConversation}
             onPinConversation={onPinConversation}
             onPinProject={onPinProject}
@@ -275,7 +316,7 @@ export function ConversationsPanel({
         ))}
         <ProjectDropEnd onDropProject={dropProject} />
       </div>
-      {authUser ? <UserSessionFooter authUser={authUser} onLogout={onLogout} onToast={onToast} /> : null}
+      {!collapsed && authUser ? <UserSessionFooter authUser={authUser} onLogout={onLogout} onToast={onToast} /> : null}
       <ConversationDialog dialog={dialog} onCancel={() => setDialog(null)} />
     </div>
   );

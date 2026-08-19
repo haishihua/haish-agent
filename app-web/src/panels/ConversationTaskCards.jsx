@@ -4,25 +4,42 @@ import { PortalTooltip, closeAllPortalTooltips } from './PortalTooltip.jsx';
 import { normalizeTaskStatus } from '../lib/task-runtime.js';
 import { getTaskPillMeta } from './TaskRecords.jsx';
 import { TaskStatusIcon } from './ConversationIcons.jsx';
+import { workflowTaskDisplayStatus } from './conversation-status.js';
 
-export function TaskRecordCompact({ task, onOpenReport, onRetry }) {
+export function TaskRecordCompact({
+  task,
+  active = false,
+  onSelect,
+  onOpenReport,
+  onRetry,
+  showStatusIcon = true,
+  actions = null,
+}) {
   const stage = task.stage || 'assigned';
-  const status = normalizeTaskStatus(task.status);
+  const status = normalizeTaskStatus(workflowTaskDisplayStatus(task));
   const pill = getTaskPillMeta(status, stage);
   const hasReport = (status === 'done' && !!String(task.answerText || '').trim())
     || (task.executionMode === 'bot' && !!task.workflowRun)
     || ((status === 'failed' || status === 'cancelled') && !!String(task.error || '').trim());
   const canRetry = status === 'failed' || status === 'cancelled';
   return (
-    <div className={`conversation-task-card ${pill.className}`}>
+    <div
+      className={`conversation-task-card ${pill.className}${active ? ' active' : ''}${onSelect ? ' selectable' : ''}${actions ? ' has-actions' : ''}`}
+      role={onSelect ? 'button' : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      onClick={() => onSelect?.(task)}
+      onKeyDown={(event) => {
+        if (onSelect && (event.key === 'Enter' || event.key === ' ')) onSelect(task);
+      }}
+    >
       <div className="conversation-task-main">
-        <TaskStatusIcon statusClass={pill.className} />
+        {showStatusIcon ? <TaskStatusIcon statusClass={pill.className} /> : null}
         <div className="conversation-task-copy">
           <PortalTooltip text={task.title || ''} position="above" multiline>
             <div className="conversation-task-title">{task.title || 'Untitled task'}</div>
           </PortalTooltip>
         </div>
-        {hasReport && (
+        {actions || (hasReport && (
           <PortalTooltip text="View report" position="above">
             <button
               type="button"
@@ -33,8 +50,11 @@ export function TaskRecordCompact({ task, onOpenReport, onRetry }) {
               <span className="ico ico-report" aria-hidden="true" />
             </button>
           </PortalTooltip>
-        )}
-        {canRetry && (
+        ))}
+        {!showStatusIcon && ['running', 'queued', 'approval', 'waiting_input'].includes(status)
+          ? <TaskStatusIcon statusClass={pill.className} />
+          : null}
+        {!actions && canRetry && (
           <PortalTooltip text="Run again" position="above">
             <button
               type="button"

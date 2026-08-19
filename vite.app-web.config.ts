@@ -7,6 +7,7 @@ import react from '@vitejs/plugin-react';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appWebRoot = path.resolve(__dirname, 'app-web');
 const outDir = path.resolve(appWebRoot, 'dist');
+const legacyWorldAssets = new Set(['office.png', 'atlases', 'world']);
 
 /** Copy runtime static assets that are referenced by plain string URLs (not Vite imports). */
 function copyPublicAssetsPlugin(): Plugin {
@@ -15,7 +16,15 @@ function copyPublicAssetsPlugin(): Plugin {
   const copyTree = (from: string, to: string) => {
     if (!fs.existsSync(from)) return;
     fs.mkdirSync(path.dirname(to), { recursive: true });
-    fs.cpSync(from, to, { recursive: true, force: true });
+    fs.cpSync(from, to, {
+      recursive: true,
+      force: true,
+      filter(source) {
+        const relative = path.relative(from, source);
+        const topLevel = relative.split(path.sep)[0];
+        return !legacyWorldAssets.has(topLevel);
+      },
+    });
   };
 
   return {

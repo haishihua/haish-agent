@@ -1,14 +1,20 @@
 // @haish-esm
 import {
   CONTEXT_USAGE_STORAGE_KEY,
-  DEFAULT_CONTEXT_TOTAL_TOKENS,
   RESTORED_CONTEXT_BASE_TOKENS,
 } from '../api/auth.js';
+
+let runtimeContextTotalTokens = 0;
+
+export function configureContextTotalTokens(value) {
+  runtimeContextTotalTokens = Math.max(0, Math.round(Number(value) || 0));
+  return runtimeContextTotalTokens;
+}
 
 export function normalizeContextUsage(value, fallbackConversationId = null) {
   const rawUsedValue = Number(value?.contextUsedTokens ?? value?.context_used_tokens ?? value?.usedTokens ?? value?.used_tokens ?? 0);
   const rawUsedTokens = Math.max(0, Math.round(rawUsedValue || 0));
-  const totalTokens = Math.max(1, Math.round(Number(value?.contextTotalTokens ?? value?.context_total_tokens ?? value?.totalTokens ?? value?.total_tokens ?? value?.effective_budget ?? DEFAULT_CONTEXT_TOTAL_TOKENS) || DEFAULT_CONTEXT_TOTAL_TOKENS));
+  const totalTokens = Math.max(0, Math.round(Number(value?.contextTotalTokens ?? value?.context_total_tokens ?? value?.totalTokens ?? value?.total_tokens ?? value?.effective_budget ?? runtimeContextTotalTokens) || runtimeContextTotalTokens));
   const valid = Number.isFinite(rawUsedValue) && rawUsedValue >= 0;
   const usedTokens = valid ? rawUsedTokens : 0;
   const compressedCount = Math.max(0, Math.round(Number(value?.compressedCount ?? value?.compressed_count ?? 0) || 0));
@@ -17,7 +23,7 @@ export function normalizeContextUsage(value, fallbackConversationId = null) {
     usedTokens,
     totalTokens,
     ratio: Math.max(0, Math.min(1, totalTokens > 0 ? usedTokens / totalTokens : 0)),
-    overLimit: usedTokens > totalTokens,
+    overLimit: totalTokens > 0 && usedTokens > totalTokens,
     compressed: Boolean(value?.compressed) || compressedCount > 0,
     compressedCount,
     valid,
@@ -29,7 +35,7 @@ export function createEmptyContextUsage(conversationId = null) {
   return normalizeContextUsage({
     conversationId,
     usedTokens: 0,
-    totalTokens: DEFAULT_CONTEXT_TOTAL_TOKENS,
+    totalTokens: runtimeContextTotalTokens,
   }, conversationId);
 }
 
@@ -38,7 +44,10 @@ export function loadStoredContextUsage(conversationId) {
   try {
     const raw = window.localStorage.getItem(CONTEXT_USAGE_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
-    return normalizeContextUsage(parsed?.[conversationId] || null, conversationId);
+    return normalizeContextUsage({
+      ...(parsed?.[conversationId] || {}),
+      totalTokens: runtimeContextTotalTokens,
+    }, conversationId);
   } catch (error) {
     console.warn('Failed to load context usage:', error);
     return createEmptyContextUsage(conversationId);
@@ -87,7 +96,7 @@ export function estimateContextUsageFromConversationDetail(detail) {
   return normalizeContextUsage({
     conversationId: detail.conversation_id,
     usedTokens,
-    totalTokens: DEFAULT_CONTEXT_TOTAL_TOKENS,
+    totalTokens: runtimeContextTotalTokens,
   }, detail.conversation_id);
 }
 

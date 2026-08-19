@@ -1,19 +1,30 @@
 // @haish-esm
 // Extracted from AppShell.jsx (Phase C2). Behavior-preserving factory.
+import { mergeAdjacentStreamEvent } from '../../../lib/stream-events.js';
+
+export function workflowNodeStartedState(event) {
+  return {
+    status: 'running',
+    success: null,
+    input: event.input ?? event.node_input ?? null,
+    attempt: event.attempt ?? event.node_attempt ?? null,
+    started_at: event.started_at || event.created_at,
+  };
+}
+
 export function createTaskStreamHandlers(ctx) {
   const {
     API_BASE,
     CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
     STREAM_EVENT_BATCH_MS,
     STREAM_IMMEDIATE_EVENT_TYPES,
-    WORKFLOW_SCENE_EVENT_TYPES,
-    WORLD_SCENE_EVENT_TYPES,
     activeRuntimeTargetConvId,
     appendAnswerDelta,
     appendChatProgressText,
     appendTaskEvent,
     applyConversationSnapshot,
     applyTerminalTaskState,
+    batchRuntimeMutations,
     authFetch,
     buildApiHeaders,
     chatFinalizedTaskIdsRef,
@@ -30,7 +41,6 @@ export function createTaskStreamHandlers(ctx) {
     getRuntime,
     getTaskById,
     getToolResponseTraceStatus,
-    isBotWorkflowTask,
     isChatOriginTask,
     isTerminalTaskStatus,
     mergeChatImageRefs,
@@ -45,7 +55,6 @@ export function createTaskStreamHandlers(ctx) {
     resetSceneActors,
     resolveProviderMeta,
     saveStoredContextUsage,
-    scheduleSceneEvent,
     setComposerAttachment,
     setContextUsage,
     setRuntimeActiveTaskId,
@@ -65,6 +74,10 @@ export function createTaskStreamHandlers(ctx) {
     userCancelledTaskIdsRef,
     userIdRef,
   } = ctx;
+
+  const coalesceStreamEvent = (previous, event) => (
+    mergeQueuedStreamDelta(previous, event, eventDeltaText)
+  );
 
   async function readNdjsonStream(response, onEvent, signal) {
     const reader = response.body.getReader();
@@ -168,8 +181,26 @@ export function createTaskStreamHandlers(ctx) {
             status: 'running',
             current_node_id: null,
             nodes: {},
+            input: event.input ?? null,
           },
         }));
+        break;
+      case 'workflow_resumed':
+        updateTaskById(taskId, (run) => {
+          const nodes = { ...(run.workflowRun?.nodes || {}) };
+          for (const nodeId of event.invalidated_node_ids || []) delete nodes[nodeId];
+          return {
+            ...run,
+            workflowRun: {
+              ...(run.workflowRun || {}),
+              workflow_id: event.workflow_id || run.requestedWorkflowId,
+              run_id: event.workflow_run_id || run.workflowRun?.run_id || '',
+              status: 'running',
+              current_node_id: event.start_node_id || event.workflow_node_id || null,
+              nodes,
+            },
+          };
+        });
         break;
       case 'workflow_node_started':
         updateTaskById(taskId, (run) => ({
@@ -180,15 +211,52 @@ export function createTaskStreamHandlers(ctx) {
             current_node_id: event.workflow_node_id,
             nodes: {
               ...(run.workflowRun?.nodes || {}),
-              [event.workflow_node_id]: {
-                ...(run.workflowRun?.nodes?.[event.workflow_node_id] || {}),
-                status: 'running',
-                success: null,
-                started_at: event.started_at || event.created_at,
-              },
+              // A node snapshot represents one attempt. Never carry terminal
+              // fields such as decision/error/summary into the next attempt.
+              [event.workflow_node_id]: workflowNodeStartedState(event),
             },
           },
         }));
+        break;
+      case 'workflow_run_waiting':
+        updateTaskById(taskId, (run) => {
+          const nodeId = event.workflow_node_id || event.node_id || run.workflowRun?.current_node_id;
+          const waitStatus = event.status === 'waiting_approval' ? 'approval' : 'waiting_input';
+          return {
+            ...run,
+            workflowRun: {
+              ...(run.workflowRun || {}),
+              status: event.status || 'waiting_input',
+              current_node_id: nodeId || null,
+              nodes: nodeId ? {
+                ...(run.workflowRun?.nodes || {}),
+                [nodeId]: {
+                  ...(run.workflowRun?.nodes?.[nodeId] || {}),
+                  status: waitStatus,
+                },
+              } : (run.workflowRun?.nodes || {}),
+            },
+          };
+        });
+        break;
+      case 'workflow_run_resumed':
+        updateTaskById(taskId, (run) => {
+          const nodeId = run.workflowRun?.current_node_id;
+          return {
+            ...run,
+            workflowRun: {
+              ...(run.workflowRun || {}),
+              status: 'running',
+              nodes: nodeId ? {
+                ...(run.workflowRun?.nodes || {}),
+                [nodeId]: {
+                  ...(run.workflowRun?.nodes?.[nodeId] || {}),
+                  status: 'running',
+                },
+              } : (run.workflowRun?.nodes || {}),
+            },
+          };
+        });
         break;
       case 'workflow_node_finished':
         updateTaskById(taskId, (run) => ({
@@ -212,6 +280,8 @@ export function createTaskStreamHandlers(ctx) {
                   ?? ''
                 ).trim() || run.workflowRun?.nodes?.[event.workflow_node_id]?.summary || '',
                 error: event.error || '',
+                decision: event.decision || run.workflowRun?.nodes?.[event.workflow_node_id]?.decision || '',
+                feedback: event.feedback ?? run.workflowRun?.nodes?.[event.workflow_node_id]?.feedback ?? '',
                 started_at: event.started_at || run.workflowRun?.nodes?.[event.workflow_node_id]?.started_at,
                 finished_at: event.finished_at || event.created_at,
                 duration_ms: event.duration_ms,
@@ -222,7 +292,6 @@ export function createTaskStreamHandlers(ctx) {
         break;
       case 'workflow_finished':
       case 'workflow_failed':
-        pendingPresentationTaskIdsRef.current.add(taskId);
         updateTaskById(taskId, (run) => ({
           ...run,
           workflowRun: {
@@ -343,10 +412,13 @@ export function createTaskStreamHandlers(ctx) {
         break;
       }
       case 'llm_tool_call_requested': {
-        updateTaskById(taskId, (run) => ({
-          ...run,
-          stage: 'in_progress',
-          loopIndex,
+        updateTaskById(taskId, (run) => {
+          const waitingForInput = String(event.tool_name || '').toLowerCase() === 'ask_user';
+          const nodeId = event.workflow_node_id || run.workflowRun?.current_node_id;
+          return {
+            ...run,
+            stage: 'in_progress',
+            loopIndex,
             toolCalls: upsertToolCall(run.toolCalls, event.call_id, {
               callId: event.call_id,
               loopIndex,
@@ -363,8 +435,21 @@ export function createTaskStreamHandlers(ctx) {
             toolResponse: event.tool_response || null,
             toolOutput: event.tool_output || '',
             message: event.message || '',
-          }),
-          }));
+            }),
+            workflowRun: waitingForInput ? {
+              ...(run.workflowRun || {}),
+              status: 'waiting_input',
+              current_node_id: nodeId || null,
+              nodes: nodeId ? {
+                ...(run.workflowRun?.nodes || {}),
+                [nodeId]: {
+                  ...(run.workflowRun?.nodes?.[nodeId] || {}),
+                  status: 'waiting_input',
+                },
+              } : (run.workflowRun?.nodes || {}),
+            } : run.workflowRun,
+          };
+        });
         break;
       }
       case 'tool_manager_received':
@@ -391,6 +476,9 @@ export function createTaskStreamHandlers(ctx) {
           } else if (responseState === 'done' && (nextState === 'completed' || nextState === 'returned')) {
             nextState = 'completed';
           }
+          const askUserResolved = String(existingToolCall?.toolName || event.tool_name || '').toLowerCase() === 'ask_user'
+            && (event.type === 'tool_executor_completed' || event.type === 'tool_result_returned');
+          const nodeId = event.workflow_node_id || run.workflowRun?.current_node_id;
           return {
             ...run,
             stage: 'in_progress',
@@ -415,6 +503,17 @@ export function createTaskStreamHandlers(ctx) {
               toolOutput: event.tool_output || existingToolCall?.toolOutput || '',
               message: event.message || existingToolCall?.message || '',
             }),
+            workflowRun: askUserResolved ? {
+              ...(run.workflowRun || {}),
+              status: 'running',
+              nodes: nodeId ? {
+                ...(run.workflowRun?.nodes || {}),
+                [nodeId]: {
+                  ...(run.workflowRun?.nodes?.[nodeId] || {}),
+                  status: 'running',
+                },
+              } : (run.workflowRun?.nodes || {}),
+            } : run.workflowRun,
           };
         });
         break;
@@ -465,6 +564,15 @@ export function createTaskStreamHandlers(ctx) {
           stage: 'in_progress',
           answerText: readRuntimeAnswerBuffer(),
           chatStreamText: run.chatStreamText,
+          loopIndex,
+        }));
+        break;
+      }
+      case 'llm_attempt_failed': {
+        updateTaskById(taskId, (run) => ({
+          ...run,
+          status: isTerminalTaskStatus(run.status) ? run.status : 'running',
+          stage: 'in_progress',
           loopIndex,
         }));
         break;
@@ -594,7 +702,7 @@ export function createTaskStreamHandlers(ctx) {
         resetSceneActors();
         completeTaskAgents(taskId, 'failed');
         break;
-      case 'run_finished':
+      case 'run_finished': {
         const shouldWaitForPresentation = pendingPresentationTaskIdsRef.current.has(taskId)
           || !!getTaskById(taskId)?.presentationPending;
         updateTaskById(taskId, (run) => {
@@ -632,6 +740,9 @@ export function createTaskStreamHandlers(ctx) {
             executionMode: persistedTask?.execution_mode === 'bot' ? 'bot' : (run.executionMode || 'chat'),
             originViewMode: persistedTask?.execution_mode === 'bot' ? 'world' : (run.originViewMode || 'chat'),
             workflowSnapshot: persistedTask?.workflow_snapshot || run.workflowSnapshot || null,
+            sourceTaskId: persistedTask?.source_task_id || run.sourceTaskId || null,
+            sourceRunId: persistedTask?.source_run_id || run.sourceRunId || null,
+            rerunFromNodeId: persistedTask?.rerun_from_node_id || run.rerunFromNodeId || null,
             profileId: persistedTask?.profile_id || run.profileId || null,
             profileDisplayName: persistedTask?.profile_display_name || run.profileDisplayName || '',
             completedAt: persistedTask?.completed_at
@@ -672,25 +783,46 @@ export function createTaskStreamHandlers(ctx) {
         resetSceneActors();
         completeTaskAgents(taskId, getTaskById(taskId)?.status || event.status || 'done');
         break;
+      }
       default:
         break;
     }
 
-    if (
-      (isBotWorkflowTask(taskId, ownerConvId) && WORKFLOW_SCENE_EVENT_TYPES.has(event.type))
-      || (!isBotWorkflowTask(taskId, ownerConvId) && WORLD_SCENE_EVENT_TYPES.has(event.type) && !isChatOriginTask(taskId, ownerConvId))
-    ) {
-      scheduleSceneEvent(event, taskId, ownerConvId);
-    }
   }
 
-  async function executeQuest(pendingTask, targetConversationId) {
+  async function executeQuest(pendingTask, targetConversationId, streamRequest = null) {
     const runConversationId = targetConversationId;
     if (!runConversationId) {
       throw new Error('conversation is not ready');
     }
-    const runId = pendingTask.id || generateHexId();
+    const rerunningNode = Boolean(streamRequest?.rerunNodeId);
+    const sourceTaskId = pendingTask.id || pendingTask.taskId || null;
+    const runId = rerunningNode ? generateHexId() : (sourceTaskId || generateHexId());
+    if (rerunningNode) {
+      pendingTask = {
+        ...pendingTask,
+        id: runId,
+        taskId: runId,
+        sourceTaskId,
+        sourceRunId: pendingTask.workflowRun?.run_id || null,
+        rerunFromNodeId: streamRequest.rerunNodeId,
+        status: 'running',
+        stage: 'assigned',
+        completedAt: null,
+        serverFinished: false,
+        error: null,
+        answerText: '',
+        chatStreamText: '',
+        sources: [],
+        memory: [],
+      };
+    }
     pendingTask.id = runId;
+    if (rerunningNode) {
+      chatFinalizedTaskIdsRef.current.delete(runId);
+      userCancelledTaskIdsRef.current.delete(runId);
+      pendingPresentationTaskIdsRef.current.delete(runId);
+    }
     // Ensure the runtime exists and prime its run-local state.
     mutateRuntime(runConversationId, (rt) => {
       rt.activeRunId = runId;
@@ -708,8 +840,39 @@ export function createTaskStreamHandlers(ctx) {
         stage: 'assigned',
       },
     }), runConversationId);
+    if (rerunningNode) {
+      setRuntimeActiveTaskId(runId, runConversationId);
+      setRuntimeBusy(true, runConversationId);
+    }
 
-    if (pendingTask.attachment?.file && !pendingTask.attachment?.uploaded) {
+    const rollbackUnconfirmedRerun = () => {
+      if (!rerunningNode) return;
+      updateWorldTaskState((state) => {
+        const tasksById = { ...(state.tasksById || {}) };
+        delete tasksById[runId];
+        return {
+          ...state,
+          tasksById,
+          taskOrder: (state.taskOrder || []).filter((taskId) => taskId !== runId),
+          activeTaskId: state.activeTaskId === runId ? null : state.activeTaskId,
+          pendingTask: (state.pendingTask?.taskId || state.pendingTask?.id) === runId
+            ? null
+            : state.pendingTask,
+        };
+      }, runConversationId);
+      mutateRuntime(runConversationId, (rt) => {
+        if (rt.activeRunId === runId) rt.activeRunId = null;
+      });
+      setRuntimeActiveTaskId(null, runConversationId);
+      setRuntimeFetchController(null, runConversationId);
+      setRuntimeBusy(false, runConversationId);
+      removeConversationTaskFromWorkspace(runConversationId, runId);
+      chatFinalizedTaskIdsRef.current.delete(runId);
+      userCancelledTaskIdsRef.current.delete(runId);
+      pendingPresentationTaskIdsRef.current.delete(runId);
+    };
+
+    if (!rerunningNode && pendingTask.attachment?.file && !pendingTask.attachment?.uploaded) {
       const uploadController = new AbortController();
       const uploadName = pendingTask.attachment.name || pendingTask.attachment.file.name || 'document';
       setRuntimeFetchController(uploadController, runConversationId);
@@ -758,37 +921,56 @@ export function createTaskStreamHandlers(ctx) {
 
     const controller = new AbortController();
     setRuntimeFetchController(controller, runConversationId);
-    const response = await authFetch(`${API_BASE}/api/conversations/${runConversationId}/tasks/stream`, {
-      method: 'POST',
-      headers: buildApiHeaders(),
-      body: JSON.stringify({
-        message: pendingTask.title,
-        attachments: pendingTask.attachment ? [{
-          name: pendingTask.attachment.name,
-          size: pendingTask.attachment.size,
-          type: pendingTask.attachment.type,
-          title: pendingTask.attachment.title || pendingTask.attachment.name,
-          file_name: pendingTask.attachment.name,
-          attachment_id: pendingTask.attachment.attachmentId || null,
-          document_id: pendingTask.attachment.documentId || null,
-        }] : [],
-        image_attachments: Array.isArray(pendingTask.imageAttachments) ? pendingTask.imageAttachments : [],
-        options: {
-          provider: pendingTask.requestedProvider || null,
-          model_id: pendingTask.requestedModelId || null,
-          agent_id: pendingTask.requestedAgentId || null,
-          workflow_id: pendingTask.requestedWorkflowId || null,
-          execution_mode: pendingTask.executionMode === 'bot' ? 'bot' : 'chat',
-          // Fallback when no per-task choice exists. Matches DEFAULT_REASONING_EFFORT
-          // in panels.jsx — kept in sync so request payload mirrors UI default.
-          reasoning_effort: pendingTask.requestedReasoningEffort || 'high',
-          use_history: true,
-        },
-      }),
-      signal: controller.signal,
+    const streamUrl = rerunningNode
+      ? `${API_BASE}/api/tasks/${sourceTaskId}/workflow/nodes/${encodeURIComponent(streamRequest.rerunNodeId)}/rerun/stream`
+      : `${API_BASE}/api/conversations/${runConversationId}/tasks/stream`;
+    const requestBody = rerunningNode ? undefined : JSON.stringify({
+      message: pendingTask.title,
+      attachments: pendingTask.attachment ? [{
+        name: pendingTask.attachment.name,
+        size: pendingTask.attachment.size,
+        type: pendingTask.attachment.type,
+        title: pendingTask.attachment.title || pendingTask.attachment.name,
+        file_name: pendingTask.attachment.name,
+        attachment_id: pendingTask.attachment.attachmentId || null,
+        document_id: pendingTask.attachment.documentId || null,
+      }] : [],
+      image_attachments: Array.isArray(pendingTask.imageAttachments) ? pendingTask.imageAttachments : [],
+      options: {
+        provider: pendingTask.requestedProvider || null,
+        model_id: pendingTask.requestedModelId || null,
+        agent_id: pendingTask.requestedAgentId || null,
+        workflow_id: pendingTask.requestedWorkflowId || null,
+        execution_mode: pendingTask.executionMode === 'bot' ? 'bot' : 'chat',
+        // Fallback when no per-task choice exists. Matches DEFAULT_REASONING_EFFORT
+        // in panels.jsx — kept in sync so request payload mirrors UI default.
+        reasoning_effort: pendingTask.requestedReasoningEffort || 'high',
+        use_history: true,
+      },
     });
-    if (!response.ok || !response.body) {
-      throw new Error(`world stream failed: ${response.status}`);
+    let response;
+    try {
+      response = await authFetch(streamUrl, {
+        method: 'POST',
+        headers: buildApiHeaders(),
+        body: requestBody,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      rollbackUnconfirmedRerun();
+      throw error;
+    }
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const detail = typeof payload?.detail === 'string'
+        ? payload.detail
+        : (payload?.detail ? JSON.stringify(payload.detail) : '');
+      rollbackUnconfirmedRerun();
+      throw new Error(detail || `world stream failed: ${response.status}`);
+    }
+    if (!response.body) {
+      rollbackUnconfirmedRerun();
+      throw new Error('world stream failed: empty response');
     }
 
     const queuedEvents = [];
@@ -800,24 +982,31 @@ export function createTaskStreamHandlers(ctx) {
         flushTimer = null;
       }
       const batch = queuedEvents.splice(0);
+      if (!batch.length) return;
       const previousTarget = streamTargetConvIdRef.current;
       streamTargetConvIdRef.current = runConversationId;
       try {
-        for (const event of batch) {
-          if (
-            controller.signal.aborted
-            || runRuntime.abortRequested
-            || runRuntime.activeRunId !== runId
-            || runRuntime.cancelledRunIds.has(runId)
-            || (event.conversation_id && event.conversation_id !== runConversationId)
-          ) {
-            continue;
+        batchRuntimeMutations(runConversationId, () => {
+          for (const event of batch) {
+            if (
+              controller.signal.aborted
+              || runRuntime.abortRequested
+              || runRuntime.activeRunId !== runId
+              || runRuntime.cancelledRunIds.has(runId)
+              || (event.conversation_id && event.conversation_id !== runConversationId)
+            ) {
+              continue;
+            }
+            if (
+              event.task_id
+              && runRuntime.activeTaskId !== event.task_id
+              && !chatFinalizedTaskIdsRef.current.has(event.task_id)
+            ) {
+              setRuntimeActiveTaskId(event.task_id, runConversationId);
+            }
+            applyWorldEvent(event, runConversationId);
           }
-          if (event.task_id && !chatFinalizedTaskIdsRef.current.has(event.task_id)) {
-            setRuntimeActiveTaskId(event.task_id, runConversationId);
-          }
-          applyWorldEvent(event, runConversationId);
-        }
+        });
       } finally {
         streamTargetConvIdRef.current = previousTarget;
       }
@@ -829,7 +1018,10 @@ export function createTaskStreamHandlers(ctx) {
         flushQueuedEvents();
         return;
       }
-      queuedEvents.push(event);
+      const lastIndex = queuedEvents.length - 1;
+      const mergedEvent = coalesceStreamEvent(queuedEvents[lastIndex], event);
+      if (mergedEvent) queuedEvents[lastIndex] = mergedEvent;
+      else queuedEvents.push(event);
       if (!flushTimer) {
         flushTimer = setTimeout(flushQueuedEvents, STREAM_EVENT_BATCH_MS);
       }
@@ -847,5 +1039,14 @@ export function createTaskStreamHandlers(ctx) {
 
   return {
     executeQuest,
+    executeWorkflowNodeRerun: (task, nodeId) => executeQuest(
+      { ...task, id: task?.taskId || task?.id },
+      task?.conversationId || task?.conversation_id,
+      { rerunNodeId: nodeId },
+    ),
   };
+}
+
+export function mergeQueuedStreamDelta(previous, event, eventDeltaTextFn) {
+  return mergeAdjacentStreamEvent(previous, event, eventDeltaTextFn);
 }

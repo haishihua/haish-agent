@@ -225,14 +225,16 @@ export function ToolsConfigEditor({
                     onClick={() => onToggleSkill(skill.name, !skillEnabled)}
                     disabled={Boolean(skillActionBusy)}
                   />
-                  <SettingsTooltipIconButton
-                    label="Uninstall"
-                    icon="delete"
-                    danger
-                    iconSize={22}
-                    onClick={() => onUninstallSkill(skill.name)}
-                    disabled={Boolean(skillActionBusy)}
-                  />
+                  {skill.can_uninstall === true ? (
+                    <SettingsTooltipIconButton
+                      label="Uninstall"
+                      icon="delete"
+                      danger
+                      iconSize={22}
+                      onClick={() => onUninstallSkill(skill.name)}
+                      disabled={Boolean(skillActionBusy)}
+                    />
+                  ) : null}
                 </div>
               </div>
             );
@@ -336,5 +338,4 @@ export function ToolsConfigEditor({
 
   return <GenericConfigEditor section="tools" selectedId={selectedId} records={records} onRecordsChange={onRecordsChange} />;
 }
-
 

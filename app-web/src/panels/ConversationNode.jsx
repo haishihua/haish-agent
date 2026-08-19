@@ -19,13 +19,19 @@ function ConversationMarqueeTitle({ name }) {
     const el = containerRef.current;
     if (!el) return undefined;
     let raf = 0;
+    let timer = 0;
     const measure = () => {
-      // 经典溢出检测：容器自身 scrollWidth > clientWidth（容器是
-      // overflow:hidden + ellipsis，scrollWidth 即完整文本宽度）。
-      const overflow = el.scrollWidth > el.clientWidth + 2;
+      // 测量始终渲染的 .conversation-name-static：它自带 overflow:hidden +
+      // ellipsis，其自身 scrollWidth 恒等于完整文本宽度（元素自身的溢出内容
+      // 会计入自己的 scrollWidth）。不能量容器——容器在激活态下子元素各自
+      // 裁剪/隐藏溢出，scrollWidth 会塌缩回 clientWidth，导致误判为不溢出、
+      // marquee 状态被反复复位，轮播永远不触发。
+      const staticEl = el.querySelector('.conversation-name-static');
+      if (!staticEl) return;
+      const overflow = staticEl.scrollWidth > staticEl.clientWidth + 1;
       if (overflow) {
         // 按文本宽度估算轮播时长，约 45px/s，至少 10s，保证可读。
-        const next = Math.max(10, Math.ceil(el.scrollWidth / 45));
+        const next = Math.max(10, Math.ceil(staticEl.scrollWidth / 45));
         setSeconds((prev) => (prev === next ? prev : next));
         setMarquee(true);
       } else {
@@ -34,8 +40,11 @@ function ConversationMarqueeTitle({ name }) {
       }
     };
     measure();
-    // 字体/布局落定后再量一次，避免首次测量拿到未排版完成的宽度。
+    // 自定义字体加载前后文本宽度会变，而块级元素宽度固定、ResizeObserver
+    // 不会触发；所以额外在 rAF 和 300ms 后再各量一次，避免首次测量拿到
+    // 未排版完成的宽度而误判为不溢出。
     raf = requestAnimationFrame(measure);
+    timer = window.setTimeout(measure, 300);
     let ro = null;
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(() => measure());
@@ -43,6 +52,7 @@ function ConversationMarqueeTitle({ name }) {
     }
     return () => {
       cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
       if (ro) ro.disconnect();
     };
   }, [name]);
@@ -54,18 +64,13 @@ function ConversationMarqueeTitle({ name }) {
       className={`conversation-name${active ? ' marquee' : ''}`}
       style={active ? { '--marquee-duration': `${seconds}s` } : undefined}
     >
+      <span className="conversation-name-static">{name}</span>
       {active ? (
-        <>
-          {/* 静态态：省略号截断显示，悬停时由 .conversation-name-track 接管 */}
-          <span className="conversation-name-static">{name}</span>
-          <span className="conversation-name-track">
-            <span>{name}</span>
-            <span aria-hidden="true">{name}</span>
-          </span>
-        </>
-      ) : (
-        <span>{name}</span>
-      )}
+        <span className="conversation-name-track" aria-hidden="true">
+          <span>{name}</span>
+          <span>{name}</span>
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -79,8 +84,8 @@ export function ConversationNode({
   now,
   taskPreviewLimit = 5,
   onSelectConversation,
-  onToggleConversation,
   onToggleConversationTasks,
+  showTaskRecords = true,
   onRequestDeleteConversation,
   onRequestRenameConversation,
   onPinConversation,
@@ -95,8 +100,8 @@ export function ConversationNode({
   const visibleLimit = Math.max(1, Number(taskPreviewLimit) || 5);
   const visibleTasks = conversation.tasksExpanded ? tasks.slice().reverse() : tasks.slice(-visibleLimit).reverse();
   const hiddenCount = Math.max(0, tasks.length - visibleLimit);
+  const showTaskList = showTaskRecords && conversation.expanded && tasks.length > 0;
   const runningTask = conversationHasRunningTask(conversation);
-  const showTaskList = conversation.expanded && tasks.length > 0;
   const isPinned = Boolean(conversation.pinned);
 
   const [dropPosition, setDropPosition] = React.useState(null);
@@ -148,7 +153,7 @@ export function ConversationNode({
         onClick={() => onSelectConversation(project.id, conversation.id)}
         onDoubleClick={(event) => {
           // Rename via double-click on the row; ignore action buttons / expand toggle.
-          if (event.target.closest?.('.conversation-actions, .conversation-session-toggle, .conversation-icon-btn')) return;
+          if (event.target.closest?.('.conversation-actions, .conversation-icon-btn')) return;
           event.preventDefault();
           event.stopPropagation();
           onRequestRenameConversation?.(project, conversation);
@@ -160,18 +165,6 @@ export function ConversationNode({
         onDrop={handleDrop}
         onDragEnd={handleDragEnd}
       >
-        <button
-          type="button"
-          className="conversation-session-toggle"
-          aria-label={conversation.expanded ? 'Collapse conversation' : 'Expand conversation'}
-          aria-expanded={conversation.expanded}
-          onClick={(event) => { event.stopPropagation(); onToggleConversation(project.id, conversation.id); }}
-        >
-          <span
-            className={`ico ${runningTask ? 'ico-loading' : (conversation.expanded ? 'ico-comment-alt-dots' : 'ico-mobile-message')}`}
-            aria-hidden="true"
-          />
-        </button>
         <ConversationMarqueeTitle name={conversation.name || ''} />
         {terminalStatus && !active ? (
           <span className={`conversation-terminal-notice chat-timeline-status status-${terminalStatus}`} aria-hidden="true" />
@@ -192,6 +185,11 @@ export function ConversationNode({
           </PortalTooltip>
           <ConversationAction label="Delete conversation" icon="trash" onClick={() => onRequestDeleteConversation(project, conversation)} />
         </span>
+        {runningTask ? (
+          <span className="conversation-running-indicator" role="status" aria-label="Task running">
+            <span className="ico ico-loading" aria-hidden="true" />
+          </span>
+        ) : null}
       </div>
 
       {showTaskList && (

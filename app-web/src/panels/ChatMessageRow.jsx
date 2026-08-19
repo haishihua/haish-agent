@@ -13,6 +13,18 @@ import {
   ChatTimelineElapsedPill,
 } from './ChatTimelineNodes.jsx';
 
+const IMAGE_COPY_MAX_BYTES = 10 * 1024 * 1024;
+const IMAGE_COPY_MAX_PIXELS = 16 * 1024 * 1024;
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Image encoding failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 function FinalAnswerMarkdown({ source, streaming }) {
   const text = String(source || '');
 
@@ -24,7 +36,7 @@ function FinalAnswerMarkdown({ source, streaming }) {
   );
 }
 
-export function ChatMessageRow({ message, now, onPreviewImage }) {
+function ChatMessageRowComponent({ message, now, onPreviewImage }) {
   const timeline = Array.isArray(message.traceTimeline) ? message.traceTimeline : [];
   const hasTimeline = timeline.length > 0;
   const isAgent = message.role === 'agent';
@@ -112,7 +124,7 @@ export function ChatMessageRow({ message, now, onPreviewImage }) {
           <>
             <ChatTimelineCollapsed
               onExpand={() => setTraceExpanded((value) => !value)}
-              label={elapsed || 'Trace'}
+              label={elapsed || '0s'}
               expanded={traceExpanded}
             />
             {traceExpanded ? (
@@ -120,6 +132,8 @@ export function ChatMessageRow({ message, now, onPreviewImage }) {
                 items={timeline}
                 streaming={false}
                 latestTodos={message.traceLatestTodos || null}
+                conversationId={message.conversationId || ''}
+                taskId={message.taskId || ''}
               />
             ) : null}
           </>
@@ -131,12 +145,18 @@ export function ChatMessageRow({ message, now, onPreviewImage }) {
             items={timeline}
             streaming={message.streaming}
             latestTodos={message.traceLatestTodos || null}
+            conversationId={message.conversationId || ''}
+            taskId={message.taskId || ''}
           />
         ) : null}
         {isAgent ? (
           <FinalAnswerMarkdown source={message.text} streaming={message.streaming} />
         ) : message.text ? (
-          <div className="chat-bubble-text"><span className="chat-stream-text">{message.text}</span></div>
+          <div className="chat-bubble-text">
+            {(isUser || message.markdown) && Markdown
+              ? <Markdown source={String(message.text)} />
+              : <span className="chat-stream-text">{message.text}</span>}
+          </div>
         ) : null}
       </div>
       {(messageClock || copyText) ? (
@@ -160,14 +180,27 @@ export function ChatMessageRow({ message, now, onPreviewImage }) {
   );
 }
 
+export const ChatMessageRow = React.memo(
+  ChatMessageRowComponent,
+  (previous, next) => (
+    previous.message === next.message
+    && previous.onPreviewImage === next.onPreviewImage
+    && (!(next.message?.streaming || next.message?.traceOpen) || previous.now === next.now)
+  ),
+);
+
 export function ImagePreviewOverlay({ image, onClose }) {
   const [scale, setScale] = React.useState(1);
+  const [copied, setCopied] = React.useState(false);
+  const copyTimerRef = React.useRef(null);
+  const imageElementRef = React.useRef(null);
   const src = image?.src || '';
   const title = image?.title || 'image';
 
   React.useEffect(() => {
     if (!image) return undefined;
     setScale(1);
+    setCopied(false);
     function handleKeyDown(event) {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -178,10 +211,38 @@ export function ImagePreviewOverlay({ image, onClose }) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [image, onClose]);
 
+  React.useEffect(() => () => {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+  }, []);
+
   if (!image || !src) return null;
 
   function adjustScale(delta) {
     setScale((value) => Math.max(0.25, Math.min(3, Number((value + delta).toFixed(2)))));
+  }
+
+  async function copyImage() {
+    try {
+      const imageElement = imageElementRef.current;
+      await imageElement?.decode?.().catch(() => undefined);
+      const width = Number(imageElement?.naturalWidth) || 0;
+      const height = Number(imageElement?.naturalHeight) || 0;
+      if (!width || !height || width * height > IMAGE_COPY_MAX_PIXELS) {
+        throw new Error('Image dimensions are too large to copy safely');
+      }
+      const response = await fetch(src);
+      if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
+      const blob = await response.blob();
+      if (blob.size > IMAGE_COPY_MAX_BYTES) throw new Error('Image file is too large to copy safely');
+      const dataUrl = await blobToDataUrl(blob);
+      const ok = await window.haish?.copyImage?.(dataUrl);
+      if (!ok) return;
+      setCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 1200);
+    } catch (error) {
+      console.error('image copy failed', error);
+    }
   }
 
   function downloadImage() {
@@ -204,22 +265,41 @@ export function ImagePreviewOverlay({ image, onClose }) {
       }}
     >
       <div className="image-preview-toolbar" aria-label="Image preview actions">
-        <button type="button" className="image-preview-action" onClick={downloadImage} aria-label="Download image">
+        <PortalTooltip text={copied ? 'Copied' : 'Copy'} position="below">
+          <button type="button" className={`image-preview-action ${copied ? 'copied' : ''}`} onClick={copyImage} aria-label={copied ? 'Image copied' : 'Copy image'}>
+            {copied ? (
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m5 12 4 4 10-10" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="8" y="8" width="11" height="11" rx="2" />
+                <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+              </svg>
+            )}
+          </button>
+        </PortalTooltip>
+        <PortalTooltip text="Download" position="below">
+          <button type="button" className="image-preview-action" onClick={downloadImage} aria-label="Download image">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3v10" />
             <path d="m7 9 5 5 5-5" />
             <path d="M5 20h14" />
           </svg>
-        </button>
-        <button type="button" className="image-preview-action image-preview-close" onClick={onClose} aria-label="Close preview">
+          </button>
+        </PortalTooltip>
+        <PortalTooltip text="Close" position="below">
+          <button type="button" className="image-preview-action image-preview-close" onClick={onClose} aria-label="Close preview">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M18 6 6 18" />
             <path d="m6 6 12 12" />
-          </svg>
-        </button>
+            </svg>
+          </button>
+        </PortalTooltip>
       </div>
       <div className="image-preview-stage">
         <img
+          ref={imageElementRef}
           src={src}
           alt=""
           draggable={false}

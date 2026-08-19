@@ -16,7 +16,7 @@ export const SCENE_WAIT_TIMEOUT_MS = 45000;
 export const CONVERSATION_BOOTSTRAP_MAX_ATTEMPTS = 8;
 export const CONVERSATION_BOOTSTRAP_RETRY_DELAY_MS = 2000;
 export const THINKING_PULSE_INTERVAL_MS = 1000;
-export const STREAM_EVENT_BATCH_MS = 80;
+export const STREAM_EVENT_BATCH_MS = 32;
 export const POSE_DEBUG_DEFAULTS = { pose: 'idle', dir: 'front', movement: 'idle' };
 export const POSE_DEBUG_OPTIONS = [
   { key: 'idle', label: 'Idle' },
@@ -69,10 +69,6 @@ export const WORLD_KIND_MAP = {
 
 const WORKFLOW_AGENT_ACTORS = ['kurisu', 'okabe', 'itachi', 'levi'];
 const WORKFLOW_AGENT_ACTOR_BY_PROFILE = {
-  'preset.product': 'kurisu',
-  'preset.development': 'okabe',
-  'preset.qa': 'itachi',
-  'preset.document-qa': 'levi',
   'preset.general': 'levi',
 };
 const WORKFLOW_NODE_ACTOR_BY_TYPE = {
