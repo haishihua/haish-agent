@@ -107,19 +107,6 @@ export function tailToolOutput(value) {
   return `... output truncated, showing tail ...\n${lineTail.slice(-TOOL_SHELL_TAIL_CHARS)}`;
 }
 
-export function summarizeProgressEvents(events) {
-  if (!Array.isArray(events)) return [];
-  return events
-    .map((event) => {
-      if (!event) return '';
-      const state = String(event.state || '').trim();
-      const summary = compactToolValue(event.summary || event.outputSummary || event.inputSummary || event.message, 760);
-      if (!summary) return '';
-      return state ? `${state}: ${summary}` : summary;
-    })
-    .filter(Boolean);
-}
-
 export function sanitizeToolJson(value, depth = 0, keyName = '') {
   if (value == null || typeof value === 'number' || typeof value === 'boolean') return value;
   if (typeof value === 'string') return truncateToolString(value);

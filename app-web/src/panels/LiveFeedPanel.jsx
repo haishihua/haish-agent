@@ -1,7 +1,6 @@
 // @haish-esm
 import React from 'react';
-import {
-  CHAR_DEFS } from '../Sprites.jsx';
+import { STATIONS } from '../World.jsx';
 import {
   fmtAgoCompact,
 } from './Format.jsx';
@@ -82,7 +81,7 @@ export function LiveActivityRow({ entry }) {
 
 export function LiveCard({ agentId, agentData, now, titleOverride = '' }) {
   const [expanded, setExpanded] = React.useState(false);
-  const char = CHAR_DEFS[agentId];
+  const char = STATIONS[agentId];
   if (!char) return null;
   const entries = getLiveEntries(agentData).filter((entry) => entry.taskId === agentData.taskId);
   const orderedEntries = entries.slice().sort((a, b) => a.ts - b.ts);
@@ -100,13 +99,13 @@ export function LiveCard({ agentId, agentData, now, titleOverride = '' }) {
           className="portrait"
           data-agent={agentId}
           src={`assets/portraits/${agentId}.png`}
-          alt={char.name}
+          alt={char.label}
           loading="lazy"
         />
       </div>
       <div className="body">
         <div className="row">
-          <div className={nameClass}>{titleOverride || char.name}</div>
+          <div className={nameClass}>{titleOverride || char.label}</div>
           <div className="ago">{ago}</div>
         </div>
         <div className="live-activity-list">
@@ -128,11 +127,6 @@ export function LiveCard({ agentId, agentData, now, titleOverride = '' }) {
   );
 }
 
-export function shortRuntimeId(id) {
-  if (!id) return '—';
-  return String(id).slice(0, 8).toUpperCase();
-}
-
 export function asRenderableText(value) {
   if (value == null) return '';
   if (typeof value === 'string') return value;
@@ -149,21 +143,6 @@ export function asRenderableText(value) {
     }
   }
   return String(value);
-}
-
-export function RuntimeList({ title, items, renderItem, emptyText = 'No data.' }) {
-  return (
-    <div className="runtime-section">
-      <div className="runtime-section-title">{title}</div>
-      {items.length === 0 ? (
-        <div className="runtime-empty">{emptyText}</div>
-      ) : (
-        <div className="runtime-list">
-          {items.map(renderItem)}
-        </div>
-      )}
-    </div>
-  );
 }
 
 export function workflowRuntimeLevels(workflow) {

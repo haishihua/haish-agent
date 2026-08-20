@@ -7,23 +7,36 @@ import react from '@vitejs/plugin-react';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appWebRoot = path.resolve(__dirname, 'app-web');
 const outDir = path.resolve(appWebRoot, 'dist');
+const runtimeAssetPaths = [
+  'auth/login-hero.png',
+  'portraits',
+  'ui/avatar_default.png',
+  'ui/empty-state/penguin-hug-card.png',
+  'ui/empty-state/penguin-relax-card.png',
+  'ui/empty-state/penguin-sleepy-card.png',
+  'ui/icons/ask-for-help.png',
+  'ui/icons/cyber-security.png',
+  'ui/icons/generative.png',
+  'ui/icons/warning.png',
+  'ui/penguin_logo_user.png',
+  'world/map-winter-park-tidy.png',
+  'world/penguins',
+  'world/props/basketball-hoop-court-aligned.png',
+  'world/props/coffee-machine.png',
+] as const;
 
 /** Copy runtime static assets that are referenced by plain string URLs (not Vite imports). */
 function copyPublicAssetsPlugin(): Plugin {
-  const copyDirs = ['assets'] as const;
-
-  const copyTree = (from: string, to: string) => {
-    if (!fs.existsSync(from)) return;
-    fs.mkdirSync(path.dirname(to), { recursive: true });
-    fs.cpSync(from, to, { recursive: true, force: true });
-  };
-
   return {
     name: 'haish-copy-public-assets',
     apply: 'build',
     closeBundle() {
-      for (const dir of copyDirs) {
-        copyTree(path.join(appWebRoot, dir), path.join(outDir, dir));
+      for (const relativePath of runtimeAssetPaths) {
+        const from = path.join(appWebRoot, 'assets', relativePath);
+        const to = path.join(outDir, 'assets', relativePath);
+        if (!fs.existsSync(from)) throw new Error(`Missing runtime asset: ${relativePath}`);
+        fs.mkdirSync(path.dirname(to), { recursive: true });
+        fs.cpSync(from, to, { recursive: true, force: true });
       }
     },
   };

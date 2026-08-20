@@ -1,57 +1,6 @@
 // @haish-esm
 import React from 'react';
 
-// Visual effects layer — particles, rings, energy lines
-
-export function FXRing({ x, y }) {
-  return <div className="fx-ring" style={{ left: x, top: y }} />;
-}
-export function FXParticles({ x, y, count = 12, color = 'var(--gold)' }) {
-  const particles = React.useMemo(() => {
-    return Array.from({ length: count }, (_, i) => {
-      const a = (i / count) * Math.PI * 2;
-      const r = 24 + Math.random() * 16;
-      return { dx: Math.cos(a) * r, dy: Math.sin(a) * r, d: 0.6 + Math.random() * 0.4 };
-    });
-  }, [count]);
-  return (
-    <>
-      {particles.map((p, i) => (
-        <div key={i} className="fx-particle"
-          style={{
-            left: x, top: y, background: color, boxShadow: `0 0 8px ${color}`,
-            animation: `fx-fly-${i} ${p.d}s ease-out forwards`,
-          }} />
-      ))}
-      <style>{particles.map((p, i) => `
-        @keyframes fx-fly-${i} {
-          0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-          100% { transform: translate(calc(-50% + ${p.dx}px), calc(-50% + ${p.dy}px)) scale(.3); opacity: 0; }
-        }
-      `).join('\n')}</style>
-    </>
-  );
-}
-// Burst of FX at a point. Auto-removes after 1.5s.
-export function useFXBursts() {
-  const [bursts, setBursts] = React.useState([]);
-  const fire = React.useCallback((x, y, color) => {
-    const id = Math.random().toString(36).slice(2);
-    setBursts(b => [...b, { id, x, y, color }]);
-    setTimeout(() => setBursts(b => b.filter(x => x.id !== id)), 1400);
-  }, []);
-  const node = (
-    <>
-      {bursts.map(b => (
-        <React.Fragment key={b.id}>
-          <FXRing x={b.x} y={b.y} />
-          <FXParticles x={b.x} y={b.y} color={b.color || 'var(--gold)'} />
-        </React.Fragment>
-      ))}
-    </>
-  );
-  return [node, fire];
-}
 // ─── Lightweight markdown renderer (no external deps) ──────────────────────
 function inlineMarkdown(text) {
   if (!text) return '';
@@ -504,32 +453,6 @@ export function exportReport(title, md) {
   } catch (e) {
     console.error('Export failed', e);
   }
-}
-// Reusable octagonal pixel frame: transparent fill that lets the backdrop
-// show through, with explicit edge + corner decorations on top.
-function PixelFrameDecorations() {
-  return (
-    <>
-      <span className="hp-edge top" aria-hidden="true" />
-      <span className="hp-edge bottom" aria-hidden="true" />
-      <span className="hp-edge left" aria-hidden="true" />
-      <span className="hp-edge right" aria-hidden="true" />
-      <span className="hp-corner tl" aria-hidden="true" />
-      <span className="hp-corner tr" aria-hidden="true" />
-      <span className="hp-corner bl" aria-hidden="true" />
-      <span className="hp-corner br" aria-hidden="true" />
-    </>
-  );
-}
-
-export function PixelFrame({ className, children }) {
-  return (
-    <div className={`hp-frame ${className || ''}`}>
-      <span className="hp-frame-bg" aria-hidden="true" />
-      <PixelFrameDecorations />
-      <div className="hp-frame-content">{children}</div>
-    </div>
-  );
 }
 // Hollow Purple result modal
 export function HollowPurple({ open, title, result, onClose }) {

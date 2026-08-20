@@ -359,10 +359,6 @@ export function inferProjectCreatedAt(project) {
   return earliest?.createdAt || null;
 }
 
-export function projectCreatedTimestamp(project) {
-  return timestampValue(inferProjectCreatedAt(project));
-}
-
 export function withDefaultExpansion(project) {
   // The sidebar expansion is purely user-driven now: `userExpanded` is the
   // single source of truth. Activation handlers below set it to true on the

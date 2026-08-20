@@ -2,22 +2,11 @@
 // Extracted from AppShell.jsx (Phase C3). Behavior-preserving factory.
 export function createWorldRouteHelpers(ctx) {
   const {
-    MAP_H,
-    MAP_W,
     npcStatesRef,
     orientToward,
-    setBursts,
     setNpcStates,
     sleep,
   } = ctx;
-
-  function pushBurst(pos, color) {
-    const id = Math.random().toString(36).slice(2);
-    const x = pos.x * MAP_W;
-    const y = pos.y * MAP_H - 32;
-    setBursts(B => [...B, { id, x, y, color }]);
-    setTimeout(() => setBursts(B => B.filter(b => b.id !== id)), 1400);
-  }
 
   function updateNpc(actor, patchOrFn) {
     setNpcStates(state => {
@@ -76,7 +65,6 @@ export function createWorldRouteHelpers(ctx) {
   }
 
   return {
-    pushBurst,
     updateNpc,
     dirFromTo,
     walkDirFor,

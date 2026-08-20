@@ -7,7 +7,6 @@ import {
   ROUTES,
   } from '../../World.jsx';
 import { HollowPurple } from '../../Effects.jsx';
-import { KIND_COLORS } from '../../orchestrator.js';
 import {
   TopBar,
   ConversationsPanel,
@@ -45,6 +44,7 @@ import {
   LLM_SETTINGS_STORAGE_KEY,
   SETTINGS_RECORDS_STORAGE_KEY,
   normalizeAgentSettings,
+  agentCatalogFromProfiles,
   agentCatalogFromSettings,
   loadLlmSettingsDraft,
   loadSettingsRecordsDraft,
@@ -197,7 +197,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const [agentLive, setAgentLive] = useState({});
   const [busy, setBusy] = useState(false);
   const [hollow, setHollow] = useState(null);
-  const [, setBursts] = useState([]);
   const [now, setNow] = useState(() => new Date());
   const [mapView, setMapView] = useState(null);
   const [conversationId, setConversationId] = useState(null);
@@ -325,37 +324,22 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 
   useEffect(() => {
     let cancelled = false;
-    authFetch(`${API_BASE}/api/agents`, { method: 'GET' }, { json: false })
+    const workspaceQuery = localWorkspace.path
+      ? `?workspace_path=${encodeURIComponent(localWorkspace.path)}`
+      : '';
+    authFetch(`${API_BASE}/api/agents${workspaceQuery}`, { method: 'GET' }, { json: false })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
-        const rows = Array.isArray(data) ? data : (Array.isArray(data.agents) ? data.agents : []);
-        const options = rows
-          .map((item) => {
-            const id = String(item?.agent_id || item?.id || item?.profile_id || '').trim();
-            if (!id) return null;
-            return {
-              id,
-              label: String(item?.display_name || item?.label || id).trim() || id,
-              description: String(item?.description || '').trim(),
-              custom: Boolean(item?.custom),
-              canUploadDocuments: item?.can_upload_documents === true,
-            };
-          })
-          .filter(Boolean);
-        if (options.length > 0) {
-          setAgentCatalog({
-            options,
-            defaultAgentId: options.find((item) => item.id === 'preset.general')?.id || options[0].id,
-          });
-        }
+        const catalog = agentCatalogFromProfiles(data);
+        if (catalog.options.length > 0) setAgentCatalog(catalog);
       })
       .catch((error) => console.warn('failed to fetch assistant agents', error))
       .finally(() => {
         if (!cancelled) setAgentLoading(false);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [localWorkspace.path]);
 
   useEffect(() => {
     let cancelled = false;
@@ -876,7 +860,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 
 
   const {
-    pushBurst,
     updateNpc,
     dirFromTo,
     walkDirFor,
@@ -887,12 +870,9 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     pauseForHandoff,
     getProviderToolRequestAction,
   } = createWorldRouteHelpers({
-    MAP_H,
-    MAP_W,
     npcStatesRef,
     // Late-bound: created by createWorldCalibrationHandlers below.
     orientToward: (...args) => worldRouteApiRef.current.orientToward?.(...args),
-    setBursts,
     setNpcStates,
     sleep,
   });
@@ -1082,7 +1062,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   } = createScenePlayHandlers({
     DEFAULT_WALK_MIN_DURATION_MS,
     DEFAULT_WALK_SPEED_PX_PER_SEC,
-    KIND_COLORS,
     PROVIDER_SCENE_EVENT_TYPES,
     STATIONS,
     WALK_MIN_DURATION_BY_ACTOR,
@@ -1109,7 +1088,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     npcStatesRef,
     orientToward,
     pauseForHandoff,
-    pushBurst,
     resolvePathSpec,
     resolveProviderMeta,
     returnActorHome,

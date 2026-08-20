@@ -607,7 +607,6 @@ export function workflowArgumentsText(value) {
   }
 }
 
-export const WORKFLOW_OUTPUT_FIELD_OPTIONS = ['answer', 'summary', 'plan', 'request', 'citations', 'artifacts', 'metadata'];
 export const DEFAULT_WORKFLOW_OUTPUT_MAPPING = {
   answer: '{{input.message}}',
 };
@@ -615,15 +614,6 @@ export const DEFAULT_WORKFLOW_OUTPUT_SCHEMA = {
   type: 'object',
   fields: [{ id: 'answer', label: 'answer', type: 'string', path: 'output.answer' }],
 };
-
-export function workflowOutputFieldOptions(entries) {
-  const keys = new Set(WORKFLOW_OUTPUT_FIELD_OPTIONS);
-  entries.forEach((entry) => {
-    const key = String(entry.key || '').trim();
-    if (key) keys.add(key);
-  });
-  return [...keys].map((key) => ({ id: key, label: key }));
-}
 
 export function workflowOutputMappingEntries(node) {
   const schemaFields = Array.isArray(node?.output_schema?.fields) ? node.output_schema.fields : [];

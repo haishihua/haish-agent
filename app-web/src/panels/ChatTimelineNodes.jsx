@@ -632,8 +632,8 @@ export function ChatAgentTimeline({ items = [], streaming = false, latestTodos =
       })}
       {streaming ? (
         <div className="chat-timeline-activity" aria-label="Agent activity">
-          <span className="chat-timeline-spark" aria-hidden="true">*</span>
-          <span className="chat-timeline-verb" aria-hidden="true" />
+          <span className="chat-timeline-spark animated-gradient-text" aria-hidden="true">*</span>
+          <span className="chat-timeline-verb animated-gradient-text" aria-hidden="true" />
         </div>
       ) : null}
       {todos ? <ChatTodoPanel todos={todos} streaming={streaming} /> : null}

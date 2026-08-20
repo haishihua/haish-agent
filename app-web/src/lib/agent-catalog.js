@@ -407,13 +407,6 @@ export const LLM_SUBTAB_COPY = {
   'tools-web': 'Search providers',
 };
 
-export const ADD_LABEL_BY_SECTION = {
-  memory: 'Add',
-  knowledge: 'Add',
-  agent: 'Add',
-  workflow: 'Add',
-};
-
 export const LLM_PROVIDER_MODELS = {
   openai: ['gpt-5.5', 'gpt-5.4'],
   xai: ['grok-4.5'],
@@ -909,6 +902,11 @@ export function normalizeAgentSettings(payload) {
 
 export function agentCatalogFromSettings(settings) {
   const normalized = normalizeAgentSettings(settings);
+  const skillsByName = new Map(
+    normalized.skills
+      .filter((skill) => skill?.enabled !== false)
+      .map((skill) => [String(skill?.name || skill?.id || ''), skill]),
+  );
   const options = [...normalized.presets, ...normalized.custom]
     .filter((item) => item.enabled !== false && !item.draft)
     .map((item) => ({
@@ -916,11 +914,58 @@ export function agentCatalogFromSettings(settings) {
       label: item.display_name,
       description: item.description,
       custom: Boolean(item.custom),
+      skills: (item.effective_skills || item.skill_policy?.effective_skills || [])
+        .map((name) => skillsByName.get(String(name)))
+        .filter(Boolean)
+        .map((skill) => ({
+          name: String(skill.name || skill.id),
+          description: String(skill.description || ''),
+        })),
     }));
   return {
     options: options.length ? options : APP_DEFAULT_AGENT_OPTIONS,
     defaultAgentId: options.find((item) => item.id === 'preset.general')?.id || options[0]?.id || APP_DEFAULT_AGENT_OPTIONS[0].id,
   };
+}
+
+export function agentCatalogFromProfiles(payload) {
+  const rows = Array.isArray(payload) ? payload : (Array.isArray(payload?.agents) ? payload.agents : []);
+  const options = rows
+    .map((item) => {
+      const id = String(item?.agent_id || item?.id || item?.profile_id || '').trim();
+      if (!id) return null;
+      return {
+        id,
+        label: String(item?.display_name || item?.label || id).trim() || id,
+        description: String(item?.description || '').trim(),
+        custom: Boolean(item?.custom),
+        canUploadDocuments: item?.can_upload_documents === true,
+        skills: (item?.effective_skill_items || item?.effective_skills || []).map((skill) => ({
+          name: String(skill?.name || skill || '').trim(),
+          description: String(skill?.description || '').trim(),
+        })).filter((skill) => skill.name),
+      };
+    })
+    .filter(Boolean);
+  return {
+    options,
+    defaultAgentId: options.find((item) => item.id === 'preset.general')?.id || options[0]?.id || APP_DEFAULT_AGENT_OPTIONS[0].id,
+  };
+}
+
+export function matchingAgentSkills(draft, skills = []) {
+  const match = String(draft || '').match(/^\/([a-z0-9-]*)$/i);
+  if (!match) return null;
+  const query = match[1].toLowerCase();
+  return skills.filter((skill) => (
+    String(skill.name || '').toLowerCase().includes(query)
+    || String(skill.description || '').toLowerCase().includes(query)
+  ));
+}
+
+export function withSelectedSkillInstruction(text, skill) {
+  const prompt = String(text || '').trim();
+  return skill?.name ? `Use the ${skill.name} skill.\n${prompt}` : prompt;
 }
 
 export function workflowToolOptionsFromAgentSettings(settings) {
