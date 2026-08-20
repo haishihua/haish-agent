@@ -341,6 +341,7 @@ export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRunti
       runtimeCommand.command,
       [
         ...runtimeCommand.argsPrefix,
+        ...(!paths.isPackaged ? ['--training-trace'] : []),
         '--host',
         '127.0.0.1',
         '--port',

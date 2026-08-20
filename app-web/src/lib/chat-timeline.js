@@ -99,13 +99,6 @@ export function isMcpTraceItem(item) {
   return group === 'external' || kind === 'mcp' || role.includes('external tool');
 }
 
-export function getToolTraceSection(item) {
-  if (isSubAgentTraceItem(item)) return 'subagents';
-  if (isSkillTraceItem(item)) return 'skills';
-  if (isMcpTraceItem(item)) return 'mcp';
-  return 'tools';
-}
-
 export function getToolTraceStatus(state, fallbackStatus = 'running') {
   const normalized = String(state || '').toLowerCase();
   const fallback = normalizeTaskStatus(fallbackStatus);
@@ -145,83 +138,6 @@ export function getToolResponseTraceStatus(response, fallback = '') {
     return 'done';
   }
   return fallback || '';
-}
-
-export function formatTraceTokens(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number <= 0) return '';
-  if (number >= 1000) return `${(number / 1000).toFixed(number >= 10000 ? 0 : 1)}k`;
-  return String(Math.round(number));
-}
-
-export function pushTraceItem(sectionMap, sectionId, item) {
-  if (!sectionMap[sectionId]) return;
-  const nextItem = {
-    id: item.id || `${sectionId}-${sectionMap[sectionId].items.length}`,
-    label: item.label || '',
-    summary: item.summary || '',
-    meta: item.meta || '',
-    status: item.status || 'pending',
-  };
-  if (!nextItem.label && !nextItem.summary) return;
-  sectionMap[sectionId].items.push(nextItem);
-}
-
-export function upsertTraceItem(sectionMap, sectionId, item) {
-  if (!sectionMap[sectionId]) return;
-  const itemId = item.id || `${sectionId}-${sectionMap[sectionId].items.length}`;
-  const existingIndex = sectionMap[sectionId].items.findIndex((entry) => entry.id === itemId);
-  if (existingIndex < 0) {
-    pushTraceItem(sectionMap, sectionId, { ...item, id: itemId });
-    return;
-  }
-  sectionMap[sectionId].items[existingIndex] = {
-    ...sectionMap[sectionId].items[existingIndex],
-    ...item,
-    id: itemId,
-  };
-}
-
-export function formatMetaDetail(event) {
-  switch (event.type) {
-    case 'user_message_received':
-      return 'Task accepted into the session.';
-    case 'agent_gateway_received':
-      return 'Execution route selected.';
-    case 'provider_selected': {
-      const provider = event.provider || event.providerKey || 'auto';
-      const model = event.model ? ` · ${event.model}` : '';
-      return `Model · ${provider}${model}`;
-    }
-    case 'context_compaction_started': {
-      return 'Auto-Compacting context';
-    }
-    case 'context_compaction_completed': {
-      return 'Auto-Compacting context';
-    }
-    case 'context_usage_updated': {
-      if (event.source === 'provider_usage' && event.context_used_tokens == null && event.usedTokens == null) return '';
-      const usedValue = Number(event.usedTokens ?? event.used_tokens ?? 0);
-      const totalValue = Number(event.totalTokens ?? event.total_tokens ?? 0);
-      if (event.valid_context_usage === false || (usedValue > 0 && totalValue > 0 && usedValue > totalValue)) return '';
-      const used = formatTraceTokens(event.usedTokens);
-      const total = formatTraceTokens(event.totalTokens);
-      if (!used && !total) return '';
-      if (!total) return '';
-      return `Context · ${used || '0'} / ${total} tokens${event.compressed ? ' · compressed' : ''}`;
-    }
-    case 'tool_budget_applied': {
-      const selected = Number(event.selectedToolCount || 0);
-      const tokens = formatTraceTokens(event.estimatedTokens);
-      return `Tool budget · ${selected || 0} tools${tokens ? ` · ${tokens} tokens` : ''}`;
-    }
-    case 'llm_thinking_started':
-      return event.message || 'Reasoning has started.';
-    case 'llm_thinking_completed':
-      return event.message || 'Reasoning step complete.';
-    default:
-      return '';
-  }
 }
 
 export function categorizeToolCall(call) {

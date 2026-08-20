@@ -2174,6 +2174,31 @@
     animation: chatActivityBlink 0.9s steps(2, start) infinite;
 }
 
+.animated-gradient-text {
+    color: transparent;
+    background: linear-gradient(
+        90deg,
+        #efbf64 0%,
+        #ffe9a8 14%,
+        #69c8f6 30%,
+        #8f8cff 44%,
+        #d58cff 58%,
+        #69c8f6 72%,
+        #ffe9a8 86%,
+        #efbf64 100%
+    );
+    background-size: 240% 100%;
+    background-position: 100% 50%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    filter: drop-shadow(0 0 7px rgba(105, 200, 246, 0.22));
+    animation: chat-title-gradient 2.6s linear infinite;
+}
+
+@keyframes chat-title-gradient {
+    to { background-position: -140% 50%; }
+}
+
 .chat-timeline-verb::after {
     content: 'Synthesis...';
     animation: chatActivityWords 28s step-end infinite;
@@ -3129,6 +3154,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .animated-gradient-text {
+        animation: none;
+        background-position: 50% 50%;
+    }
+
     .chat-send {
         transition: none;
     }

@@ -469,13 +469,6 @@ export const LLM_SUBTAB_COPY = {
   'tools-web': 'Search providers',
 };
 
-export const ADD_LABEL_BY_SECTION = {
-  memory: 'Add',
-  knowledge: 'Add',
-  agent: 'Add',
-  workflow: 'Add',
-};
-
 export const LLM_PROVIDER_MODELS = {
   openai: ['gpt-5.5', 'gpt-5.4'],
   xai: ['grok-4.5'],

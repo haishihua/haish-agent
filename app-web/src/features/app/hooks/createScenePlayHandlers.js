@@ -6,7 +6,6 @@ export function createScenePlayHandlers(ctx) {
   const {
     DEFAULT_WALK_MIN_DURATION_MS,
     DEFAULT_WALK_SPEED_PX_PER_SEC,
-    KIND_COLORS,
     PROVIDER_SCENE_EVENT_TYPES,
     STATIONS,
     WALK_MIN_DURATION_BY_ACTOR,
@@ -33,7 +32,6 @@ export function createScenePlayHandlers(ctx) {
     npcStatesRef,
     orientToward,
     pauseForHandoff,
-    pushBurst,
     resolvePathSpec,
     resolveProviderMeta,
     returnActorHome,
@@ -104,7 +102,6 @@ export function createScenePlayHandlers(ctx) {
     }
     if (step.faceToFaceWith) { orientToward(actor, step.faceToFaceWith); orientToward(step.faceToFaceWith, actor); }
     if (step.forceDir) updateNpc(actor, { dir: step.forceDir });
-    if (step.fx || step.kind === 'llm') pushBurst(npcStatesRef.current[actor].pos, KIND_COLORS[step.kind]);
     await sleep(step.duration || 1200);
     updateNpc(actor, { action: null, bubble: null, busy: false, thinking: false });
     if (step.faceToFaceWith) updateNpc(step.faceToFaceWith, { dir: 'front' });
@@ -158,8 +155,6 @@ export function createScenePlayHandlers(ctx) {
       setActorActive(target.actor, { kind: 'think', bubble: 'Task received.', thinking: true });
       orientToward(source.actor, target.actor);
       orientToward(target.actor, source.actor);
-      pushBurst(npcStatesRef.current[source.actor]?.pos || STATIONS[source.actor], KIND_COLORS?.deliver || '#efbf64');
-      pushBurst(npcStatesRef.current[target.actor]?.pos || STATIONS[target.actor], KIND_COLORS?.think || '#efbf64');
       await sleep(440);
       setActorIdle(source.actor);
       updateNpc(target.actor, { dir: 'front' });
@@ -171,9 +166,6 @@ export function createScenePlayHandlers(ctx) {
       const bubble = node.type === 'start' ? 'Task ready. Delegating now.' : `${node.label} is working.`;
       markWorkflowLive(node, bubble, 'RUNNING', nodeKind);
       setActorActive(node.actor, { kind: nodeKind, bubble, thinking: nodeKind === 'think' || nodeKind === 'llm' });
-      if (nodeKind === 'tool' || nodeKind === 'llm') {
-        pushBurst(npcStatesRef.current[node.actor]?.pos || STATIONS[node.actor], KIND_COLORS?.[nodeKind] || '#efbf64');
-      }
       return;
     }
 
@@ -195,7 +187,6 @@ export function createScenePlayHandlers(ctx) {
       const bubble = failed ? 'Workflow failed. Reporting the blocker.' : 'Final report ready.';
       markWorkflowLive(end, bubble, failed ? 'FAILED' : 'REPORT', 'report', failed ? 'failed' : 'done');
       setActorActive(end.actor, { kind: 'report', bubble });
-      pushBurst(npcStatesRef.current[end.actor]?.pos || STATIONS[end.actor], KIND_COLORS?.report || '#efbf64');
       await sleep(640);
       setActorIdle(end.actor);
       const finalTask = getTaskById(taskId, targetConvId);
@@ -241,10 +232,6 @@ export function createScenePlayHandlers(ctx) {
         status: liveStatus,
       });
     };
-
-    if (kind === 'llm' || kind === 'tool' || kind === 'mcp' || kind === 'skill') {
-      pushBurst(npcStatesRef.current[actor]?.pos || STATIONS[actor], KIND_COLORS?.[kind] || '#efbf64');
-    }
 
     if (event.type === 'user_message_received') {
       markSceneLive('gojo', bubble || 'Task submitted.', 'RECEIVED', 'deliver');
@@ -554,7 +541,6 @@ export function createScenePlayHandlers(ctx) {
           bubble: 'Let me review it myself.',
           thinking: false,
         });
-        pushBurst(npcStatesRef.current.gojo?.pos || STATIONS.gojo, KIND_COLORS?.llm || '#efbf64');
         await sleep(760);
         setActorIdle('gojo');
         const finalTask = getTaskById(taskId, targetConvId);

@@ -36,7 +36,7 @@ test('startup restores an empty workflow conversation from its own execution mod
 
 test('mode switching restores the selected conversation latest task runtime', () => {
   const toggleHandler = conversationHandlersSource.match(
-    /async function handleToggleViewMode\(\) \{[\s\S]*?\n  \}/,
+    /async function handleToggleViewMode\(\) \{[\s\S]*?\n {2}\}/,
   )?.[0] || '';
   assert.match(toggleHandler, /await activateConversationDetail\(detail\);/);
   assert.doesNotMatch(toggleHandler, /restoreLatest: false/);

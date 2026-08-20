@@ -6,7 +6,6 @@ export const WORKSPACE_STORAGE_KEY = 'agent_world_workspaces_v2';
 export const CONTEXT_USAGE_STORAGE_KEY = 'agent_world_context_usage_v1';
 export const AUTH_SESSION_STORAGE_KEY = 'haish_auth_session_v1';
 export const RUN_CONFIG_STORAGE_PREFIX = 'haish_run_config_v1';
-export const PREFERRED_RUN_CONFIG_STORAGE_PREFIX = 'haish_preferred_run_config_v1';
 export const RESTORED_CONTEXT_BASE_TOKENS = 4200;
 export const DEFAULT_PROJECT_ID = 'default-project';
 export const DEFAULT_PROJECT_NAME = 'Default project';
@@ -43,13 +42,6 @@ export function buildRunConfigStorageKey(authUser, providerKey, conversationId =
   const conversation = String(conversationId || '').trim();
   if (provider === 'unknown' || !conversation) return '';
   return `${RUN_CONFIG_STORAGE_PREFIX}:${stableHash(userKey)}:${stableHash(provider)}:${stableHash(conversation)}`;
-}
-
-/** User-scoped last-used run config (agent/model/provider) for new conversations. */
-export function buildPreferredRunConfigStorageKey(authUser, providerKey = 'chat') {
-  const userKey = String(authUser?.id || authUser?.email || authUser?.username || 'anonymous').trim() || 'anonymous';
-  const provider = String(providerKey || 'chat').trim() || 'chat';
-  return `${PREFERRED_RUN_CONFIG_STORAGE_PREFIX}:${stableHash(userKey)}:${stableHash(provider)}`;
 }
 
 export function clearStoredAuthSession() {
@@ -209,25 +201,8 @@ export async function requestAuthJson(path, payload) {
   return response.json();
 }
 
-export function accountToRegisterPayload(account, password) {
-  const normalized = String(account || '').trim();
-  const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized);
-  const baseName = isEmail ? normalized.split('@', 1)[0] : normalized;
-  return {
-    username: isEmail ? undefined : normalized,
-    email: isEmail ? normalized : undefined,
-    password,
-    display_name: baseName || 'User',
-  };
-}
-
 export async function loginWithPassword(account, password, remember) {
   const payload = await requestAuthJson('/api/auth/login', { account, password });
-  return saveAuthSession(payload, remember);
-}
-
-export async function registerWithPassword(account, password, remember) {
-  const payload = await requestAuthJson('/api/auth/register', accountToRegisterPayload(account, password));
   return saveAuthSession(payload, remember);
 }
 
