@@ -6,6 +6,7 @@ import {
   mergeWorkflowNodeAttempts,
   workflowApprovalDecisionStatus,
   workflowNodeOutcomesFromEvents,
+  workflowTraversedLoopNodeIds,
 } from './runtime-workflow-layout.js';
 import { worldEventToRuntimeLog } from './world-events.js';
 
@@ -122,7 +123,7 @@ test('runtime details use executed node data and real workflow transitions', () 
   assert.match(runtimeSource, /if \(event\.type === 'workflow_node_started'\) active\.add\(nodeId\);/);
   assert.match(runtimeSource, /if \(event\.type === 'workflow_node_finished'\) active\.delete\(nodeId\);/);
   assert.match(runtimeSource, /if \(activeFromEvents\)[\s\S]*?return 'running';/);
-  assert.match(runtimeSource, /nodeStatus\(selectedNode, run, task\?\.status, activeEventNodeIds, eventNodeOutcomes\)/);
+  assert.match(runtimeSource, /nodeStatus\(selectedNode, run, task\?\.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds\)/);
 
   const edge = worldEventToRuntimeLog({
     type: 'workflow_edge_selected',
@@ -206,6 +207,26 @@ test('a selected outgoing edge completes its source node when the finish receipt
 
   assert.equal(outcomes.get('requirements_rework'), 'done');
   assert.match(runtimeSource, /active\.delete\(String\(event\.fromNodeId \|\| event\.from_node_id \|\| ''\)\)/);
+});
+
+test('historical rejected attempts keep their traversed loop node completed', () => {
+  const traversed = workflowTraversedLoopNodeIds({
+    nodes: [
+      { id: 'approval', type: 'human_approval' },
+      { id: 'rework', type: 'loop' },
+    ],
+    edges: [{ from: 'approval', to: 'rework', branch: 'rejected' }],
+  }, {
+    nodes: { approval: { decision: 'approved' } },
+    node_attempts: {
+      approval: [
+        { status: 'done', success: true, decision: 'rejected', selected_branch: 'rejected' },
+        { status: 'done', success: true, decision: 'approved', selected_branch: 'approved' },
+      ],
+    },
+  });
+
+  assert.deepEqual([...traversed], ['rework']);
 });
 
 test('secondary loop nodes normalize their top input and retry output to one handle', () => {

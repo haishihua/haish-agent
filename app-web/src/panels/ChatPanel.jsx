@@ -1,6 +1,7 @@
 // @haish-esm
 import React from 'react';
 import { ApprovalInline } from '../approval-overlay.jsx';
+import { matchingAgentSkills, withSelectedSkillInstruction } from '../lib/agent-catalog.js';
 import { PortalTooltip } from './PortalTooltip.jsx';
 import { AttachmentFileChip } from './Format.jsx';
 import {
@@ -24,6 +25,7 @@ export const CHAT_IMAGE_MAX_COUNT = 4;
 export const CHAT_IMAGE_ACCEPTED_MIME = new Set([
   'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
 ]);
+const EMPTY_AGENT_SKILLS = [];
 
 export function ChatPanel({
   conversationId,
@@ -62,6 +64,9 @@ export function ChatPanel({
   const resolvedDefaultAgentId = defaultAgentId || resolvedAgentOptions[0]?.id || DEFAULT_AGENT_OPTIONS[0].id;
   const [localDraft, setLocalDraft] = React.useState('');
   const [runtimeInputPending, setRuntimeInputPending] = React.useState(false);
+  const [selectedSkillName, setSelectedSkillName] = React.useState('');
+  const [skillMenuIndex, setSkillMenuIndex] = React.useState(0);
+  const [skillMenuDismissed, setSkillMenuDismissed] = React.useState(false);
   // 空状态卡片 hover：'secondary' | 'tertiary' | null。悬停某张卡时它与第一张换位，
   // 只有指针离开整个插图区才还原，避免卡片移动后指针落点变化导致来回抖动。
   const [emptyHoverCard, setEmptyHoverCard] = React.useState(null);
@@ -88,6 +93,10 @@ export function ChatPanel({
   React.useEffect(() => { composerImagesRef.current = composerImages; }, [composerImages]);
   const effectiveAgentId = agentLocked && lockedAgentId ? lockedAgentId : agentId;
   const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
+  const currentAgentSkills = currentSelection?.skills || EMPTY_AGENT_SKILLS;
+  const selectedSkill = currentAgentSkills.find((skill) => skill.name === selectedSkillName) || null;
+  const matchingSkills = matchingAgentSkills(draft, currentAgentSkills);
+  const skillMenuOpen = Boolean(matchingSkills?.length && !selectedSkill && !skillMenuDismissed);
   const canUploadDocuments = currentSelection?.canUploadDocuments === true;
   const currentProvider = resolvedProviderOptions.find((item) => item.id === providerId) || resolvedProviderOptions[0];
   const providerModels = useProviderModels(currentProvider);
@@ -118,7 +127,15 @@ export function ChatPanel({
   }, [composerScopeId]);
   React.useEffect(() => {
     setComposerImages([]);
+    setSelectedSkillName('');
+    setSkillMenuDismissed(false);
   }, [composerScopeId]);
+
+  React.useEffect(() => {
+    if (selectedSkillName && !currentAgentSkills.some((skill) => skill.name === selectedSkillName)) {
+      setSelectedSkillName('');
+    }
+  }, [currentAgentSkills, selectedSkillName]);
 
   async function attachImageFile(file) {
     if (!file || running) return;
@@ -320,11 +337,15 @@ export function ChatPanel({
     if (Date.now() < suppressSubmitUntilRef.current) return;
     const text = draft.trim();
     if (!text || disabled || submitPending || runtimeInputPending) return;
+    const submittedText = withSelectedSkillInstruction(text, selectedSkill);
     if (running) {
       setRuntimeInputPending(true);
       try {
-        const accepted = await onSend?.(text, null, sendModelId, reasoningEffort, [], effectiveAgentId, providerRequest);
-        if (accepted !== false) setDraft('');
+        const accepted = await onSend?.(submittedText, null, sendModelId, reasoningEffort, [], effectiveAgentId, providerRequest);
+        if (accepted !== false) {
+          setDraft('');
+          setSelectedSkillName('');
+        }
       } finally {
         setRuntimeInputPending(false);
       }
@@ -343,9 +364,10 @@ export function ChatPanel({
         mime: img.mime,
         previewUrl: img.previewUrl || null,
       }));
-    const accepted = onSend?.(text, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest);
+    const accepted = onSend?.(submittedText, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest);
     if (accepted === false) return;
     setDraft('');
+    setSelectedSkillName('');
     onClearFile?.();
     // Ownership of the blob URLs transfers to the rendered chat message; the
     // unmount cleanup at the conversationId boundary will revoke them. Do NOT
@@ -363,6 +385,14 @@ export function ChatPanel({
     e.stopPropagation();
     onClearFile?.();
     if (fileRef.current) fileRef.current.value = '';
+  }
+
+  function selectSkill(skill) {
+    if (!skill) return;
+    setSelectedSkillName(skill.name);
+    setDraft('');
+    setSkillMenuDismissed(false);
+    requestAnimationFrame(() => inputRef.current?.focus?.());
   }
 
   React.useEffect(() => {
@@ -412,6 +442,30 @@ export function ChatPanel({
         onDragOver={handleComposerDragOver}
         onDrop={handleComposerDrop}
       >
+        {skillMenuOpen && (
+          <div className="chat-skill-menu" role="listbox" aria-label="Available skills">
+            {matchingSkills.map((skill, index) => (
+              <button
+                key={skill.name}
+                type="button"
+                role="option"
+                aria-selected={index === skillMenuIndex}
+                className={`chat-skill-menu-item${index === skillMenuIndex ? ' is-active' : ''}`}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  selectSkill(skill);
+                }}
+                onMouseEnter={() => setSkillMenuIndex(index)}
+              >
+                <span className="ico ico-skill chat-skill-icon" aria-hidden="true" />
+                <span className="chat-skill-menu-name">{skill.name}</span>
+                {skill.description ? (
+                  <span className="chat-skill-menu-description">{skill.description}</span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        )}
         {(composerImages.length > 0 || attachment) && (
           <div className="chat-composer-attachments" aria-label="Attachments">
             {attachment && (
@@ -458,13 +512,60 @@ export function ChatPanel({
             )}
           </div>
         )}
-        <textarea
+        <div className="chat-composer-input-row">
+          {selectedSkill && (
+            <button
+              type="button"
+              className="chat-skill-chip"
+              onClick={() => setSelectedSkillName('')}
+              aria-label={`Remove ${selectedSkill.name} skill`}
+              title="Click to remove skill"
+            >
+              <span className="ico ico-skill chat-skill-icon" aria-hidden="true" />
+              <span>{selectedSkill.name}</span>
+            </button>
+          )}
+          <textarea
           ref={inputRef}
           rows={1}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setSkillMenuDismissed(false);
+            setSkillMenuIndex(0);
+          }}
           onPaste={handleComposerPaste}
           onKeyDown={(event) => {
+            if (
+              event.key === 'Backspace'
+              && !event.nativeEvent.isComposing
+              && !draft
+              && selectedSkill
+            ) {
+              event.preventDefault();
+              setSelectedSkillName('');
+              return;
+            }
+            if (skillMenuOpen && !event.nativeEvent.isComposing) {
+              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (matchingSkills.length) {
+                  const delta = event.key === 'ArrowDown' ? 1 : -1;
+                  setSkillMenuIndex((index) => (index + delta + matchingSkills.length) % matchingSkills.length);
+                }
+                return;
+              }
+              if ((event.key === 'Enter' || event.key === 'Tab') && matchingSkills.length) {
+                event.preventDefault();
+                selectSkill(matchingSkills[skillMenuIndex] || matchingSkills[0]);
+                return;
+              }
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setSkillMenuDismissed(true);
+                return;
+              }
+            }
             if (event.key === 'Escape' && running && !event.nativeEvent.isComposing) {
               event.preventDefault();
               event.stopPropagation();
@@ -522,7 +623,8 @@ export function ChatPanel({
           placeholder={!providerConfigured ? 'Configure an LLM provider in Settings first...' : submitPending ? 'Preparing conversation...' : running ? 'Add instructions while the assistant is working...' : 'Ask, draft, or delegate...'}
           disabled={disabled}
           maxLength={5000}
-        />
+          />
+        </div>
         <div className="chat-composer-actions">
           <div className="chat-composer-tools">
             {canUploadDocuments ? (

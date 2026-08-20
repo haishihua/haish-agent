@@ -18,6 +18,7 @@ import {
   useWorkflowCanvasWidth,
   workflowApprovalDecisionStatus,
   workflowNodeOutcomesFromEvents,
+  workflowTraversedLoopNodeIds,
 } from '../../lib/runtime-workflow-layout.js';
 import {
   typeLabelForWorkflowNode,
@@ -63,7 +64,14 @@ function workflowIdentity(workflow) {
   return String(workflow?.workflow_id || workflow?.id || '').trim();
 }
 
-function nodeStatus(node, run, taskStatus = '', activeEventNodeIds = new Set(), eventNodeOutcomes = new Map()) {
+function nodeStatus(
+  node,
+  run,
+  taskStatus = '',
+  activeEventNodeIds = new Set(),
+  eventNodeOutcomes = new Map(),
+  traversedLoopNodeIds = new Set(),
+) {
   const result = run?.nodes?.[node.id];
   const approvalDecision = workflowApprovalDecisionStatus(node, result);
   const normalized = normalizeTaskStatus(result?.status || '');
@@ -103,6 +111,7 @@ function nodeStatus(node, run, taskStatus = '', activeEventNodeIds = new Set(), 
     return node.type === 'human_approval' ? 'approval' : 'running';
   }
   if (result) return normalized === 'cancelled' ? 'cancelled' : 'done';
+  if (node.type === 'loop' && traversedLoopNodeIds.has(String(node.id))) return 'done';
   return 'pending';
 }
 
@@ -462,6 +471,10 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
     () => workflowNodeOutcomesFromEvents(task?.eventLog),
     [task?.eventLog],
   );
+  const traversedLoopNodeIds = React.useMemo(
+    () => workflowTraversedLoopNodeIds(workflow, run),
+    [run, workflow],
+  );
   const workflowKey = `${displayWorkflowId}:${workflow?.version || ''}`;
   const layout = React.useMemo(
     () => layoutRuntimeWorkflow(workflow?.nodes, workflow?.edges, canvasWidth),
@@ -493,7 +506,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
   React.useEffect(() => setSelectedNodeId(''), [workflowKey]);
 
   const layoutNodes = React.useMemo(() => (workflow?.nodes || []).map((node) => {
-    const status = nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes);
+    const status = nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds);
     const id = String(node.id);
     const layoutMeta = layout.meta.get(id);
     const direction = layoutMeta?.direction || 'right';
@@ -522,7 +535,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
       draggable: true,
       connectable: false,
     };
-  }), [activeEventNodeIds, agentOptions, canOpenNodeDetail, eventNodeOutcomes, feedbackTargetIds, layout, run, task?.status, workflow?.nodes]);
+  }), [activeEventNodeIds, agentOptions, canOpenNodeDetail, eventNodeOutcomes, feedbackTargetIds, layout, run, task?.status, traversedLoopNodeIds, workflow?.nodes]);
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes);
   const isNodeDraggingRef = React.useRef(false);
   const draggedNodePositionsRef = React.useRef(new Map());
@@ -539,8 +552,8 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
   }, [layoutNodes, setNodes, workflowKey]);
   const nodeById = React.useMemo(() => new Map((workflow?.nodes || []).map((node) => [String(node.id), node])), [workflow?.nodes]);
   const statusById = React.useMemo(
-    () => new Map((workflow?.nodes || []).map((node) => [String(node.id), nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes)])),
-    [activeEventNodeIds, eventNodeOutcomes, run, task?.status, workflow?.nodes],
+    () => new Map((workflow?.nodes || []).map((node) => [String(node.id), nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)])),
+    [activeEventNodeIds, eventNodeOutcomes, run, task?.status, traversedLoopNodeIds, workflow?.nodes],
   );
   const selectedTransitions = React.useMemo(() => (task?.eventLog || [])
     .filter((event) => event.type === 'workflow_edge_selected')
@@ -594,7 +607,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
   const selectedNodeCandidate = selectedNodeId ? nodeById.get(selectedNodeId) || null : null;
   const selectedNode = canOpenNodeDetail(selectedNodeCandidate) ? selectedNodeCandidate : null;
   const selectedStatus = selectedNode
-    ? nodeStatus(selectedNode, run, task?.status, activeEventNodeIds, eventNodeOutcomes)
+    ? nodeStatus(selectedNode, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)
     : 'pending';
   const displayRunStatus = normalizeTaskStatus(task?.status) === 'cancelled'
     ? 'cancelled'

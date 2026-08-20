@@ -72,6 +72,29 @@ export function workflowNodeOutcomesFromEvents(eventLog = []) {
   return outcomes;
 }
 
+/** A persisted branch attempt proves its target loop node was traversed. */
+export function workflowTraversedLoopNodeIds(workflow, run) {
+  const loopIds = new Set(
+    (workflow?.nodes || []).filter((node) => node?.type === 'loop').map((node) => String(node.id)),
+  );
+  const traversed = new Set();
+  for (const edge of workflow?.edges || []) {
+    const target = String(edge?.to || edge?.target || '');
+    const source = String(edge?.from || edge?.source || '');
+    const branch = String(edge?.branch || '').toLowerCase();
+    if (!loopIds.has(target) || !source || !branch) continue;
+    const attempts = run?.node_attempts?.[source] || [];
+    if (attempts.some((attempt) => {
+      const selected = String(
+        attempt?.selected_branch || attempt?.branch || attempt?.decision || attempt?.structured?.decision || '',
+      ).toLowerCase();
+      const status = String(attempt?.status || '').toLowerCase();
+      return selected === branch && attempt?.success !== false && status !== 'failed' && status !== 'cancelled';
+    })) traversed.add(target);
+  }
+  return traversed;
+}
+
 /** Keep every workflow surface on the same responsive column count. */
 export function useWorkflowCanvasWidth(ref, observeKey = '') {
   const [width, setWidth] = React.useState(1200);

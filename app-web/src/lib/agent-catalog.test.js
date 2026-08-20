@@ -7,8 +7,12 @@ import {
   DEFAULT_WORKFLOW_SETTINGS,
   DEFAULT_AGENT_TOOL_GROUPS,
   WORKFLOW_NODE_OUTPUT_FIELDS,
+  agentCatalogFromProfiles,
+  agentCatalogFromSettings,
   groupIdsForAgentTools,
+  matchingAgentSkills,
   toolsForAgentGroups,
+  withSelectedSkillInstruction,
 } from './agent-catalog.js';
 import { normalizeWorkflowSettings } from './workflow-catalog.js';
 
@@ -28,6 +32,59 @@ test('workflow settings load the agent catalog used by agent nodes', () => {
   assert.match(
     appShellSource,
     /!\['agent', 'workflow'\]\.includes\(settingsSection\)/,
+  );
+});
+
+test('agent catalog exposes only enabled effective skills to the composer', () => {
+  const catalog = agentCatalogFromSettings({
+    presets: [{
+      agent_id: 'preset.general',
+      display_name: 'Task Assistant',
+      enabled: true,
+      effective_skills: ['esx', 'disabled-skill'],
+    }],
+    skills: [
+      { name: 'esx', description: 'ESX workflow', enabled: true },
+      { name: 'disabled-skill', description: 'Disabled', enabled: false },
+    ],
+  });
+
+  assert.deepEqual(catalog.options[0].skills, [
+    { name: 'esx', description: 'ESX workflow' },
+  ]);
+});
+
+test('runtime agent catalog keeps effective skills for the composer', () => {
+  const catalog = agentCatalogFromProfiles({
+    agents: [{
+      agent_id: 'custom.code',
+      display_name: 'Code Agent',
+      effective_skills: ['esx', 'autest'],
+      effective_skill_items: [
+        { name: 'esx', description: 'Requirement workflow' },
+        { name: 'autest', description: 'Unit testing' },
+      ],
+    }],
+  });
+
+  assert.deepEqual(catalog.options[0].skills, [
+    { name: 'esx', description: 'Requirement workflow' },
+    { name: 'autest', description: 'Unit testing' },
+  ]);
+});
+
+test('skill composer filters slash input and prefixes the submitted prompt', () => {
+  const skills = [
+    { name: 'esx', description: 'Requirement workflow' },
+    { name: 'autest', description: 'Unit testing' },
+  ];
+
+  assert.deepEqual(matchingAgentSkills('/', skills), skills);
+  assert.deepEqual(matchingAgentSkills('/req', skills), [skills[0]]);
+  assert.equal(matchingAgentSkills('read /tmp/file', skills), null);
+  assert.equal(
+    withSelectedSkillInstruction('分析需求 20707', skills[0]),
+    'Use the esx skill.\n分析需求 20707',
   );
 });
 
