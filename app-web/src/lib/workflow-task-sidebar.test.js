@@ -81,6 +81,13 @@ test('failed task creation cannot leave a restorable local-only task', () => {
   assert.match(deployHandlersSource, /showToast\('error', errorMessage\)/);
 });
 
+test('first draft send is visible before server conversation materialization', () => {
+  assert.match(deployHandlersSource, /stagePendingDeploy\(request, draftConversationId\)/);
+  assert.match(deployHandlersSource, /pendingTask\.requestText = request\.text/);
+  assert.match(deployHandlersSource, /function failPendingDeploy\(request, error\)/);
+  assert.match(streamHandlersSource, /message: pendingTask\.requestText \|\| pendingTask\.title/);
+});
+
 test('missing restored tasks are removed and stream errors retain backend detail', () => {
   assert.match(draftHandlersSource, /error\.status = response\.status/);
   assert.match(appShellSource, /if \(error\?\.status === 404\) \{[\s\S]*?removeMissingTask/);

@@ -3,6 +3,7 @@ import React from 'react';
 import { Markdown } from './Effects.jsx';
 import { normalizeWorkflowApprovalMarkdown } from './lib/workflow-approval-markdown.js';
 import { PortalTooltip } from './panels/PortalTooltip.jsx';
+import { copyTextToClipboard, formatMessageClock } from './panels/path-utils.jsx';
 
 /** Command approval and browser-runtime confirmation rendered in the chat tree. */
 
@@ -453,7 +454,6 @@ function WorkflowApprovalCard({ request, busy, onDecide, collapsed, onToggleColl
             <span className="haish-approval-collapsed-preview">{preview.slice(0, 80)}</span>
           </PortalTooltip>
         ) : null}
-        <span className="haish-approval-tool-badge">Approval · {request.attempt || 1}</span>
         <svg className={`haish-approval-chevron ${collapsed ? '' : 'is-open'}`} viewBox="0 0 12 12" aria-hidden="true">
           <path
             d={collapsed ? 'M4.25 2.5L7.75 6L4.25 9.5' : 'M2.5 4.25L6 7.75L9.5 4.25'}
@@ -471,18 +471,18 @@ function WorkflowApprovalCard({ request, busy, onDecide, collapsed, onToggleColl
           {resolved ? (
             <div className={`haish-workflow-resolution is-${request.decision || 'cancelled'}`}>
               <strong>{request.decision === 'approved' ? 'Approved' : request.decision === 'rejected' ? 'Rejected' : 'Cancelled'}</strong>
-              {request.feedback ? <span>{request.feedback}</span> : null}
+              {request.feedback ? <p>{request.feedback}</p> : null}
             </div>
           ) : (
             <>
               {request.previous_feedback ? (
                 <div className="haish-workflow-previous-feedback">
-                  <strong>Previous rejection</strong>
+                  <strong>Previous feedback</strong>
                   <span>{request.previous_feedback}</span>
                 </div>
               ) : null}
               <label className="haish-workflow-feedback-label" htmlFor={`workflow-feedback-${request.request_id}`}>
-                Feedback <span>required when rejecting</span>
+                Feedback <span>required when going back</span>
               </label>
               <textarea
                 id={`workflow-feedback-${request.request_id}`}
@@ -497,20 +497,20 @@ function WorkflowApprovalCard({ request, busy, onDecide, collapsed, onToggleColl
                 {isBusy ? (
                   <div className="haish-approval-progress" role="status" aria-live="polite">
                     <span className="haish-approval-spinner" aria-hidden="true" />
-                    <span>{busy === 'reject' ? 'Rejecting...' : 'Approving...'}</span>
+                    <span>{busy === 'reject' ? 'Going back...' : 'Continuing...'}</span>
                   </div>
                 ) : (
                   <>
                     <button type="button" className="haish-approval-btn haish-approval-btn-once" onClick={() => onDecide('approve', feedback)}>
-                      Approve
+                      Next
                     </button>
                     <button
                       type="button"
-                      className="haish-approval-btn haish-approval-btn-deny"
+                      className="haish-approval-btn haish-approval-btn-always"
                       disabled={!feedback.trim()}
                       onClick={() => onDecide('reject', feedback)}
                     >
-                      Reject
+                      Back
                     </button>
                   </>
                 )}
@@ -664,14 +664,12 @@ export function ApprovalInline() {
     return unsubscribe;
   }, []);
 
-  const handleDecide = useCallback(async (request, decision, feedback = '') => {
+  const handleDecide = useCallback(async (request, decision) => {
     setError('');
     setBusy((prev) => ({ ...prev, [request.request_id]: decision }));
     try {
       if (isBrowserRuntimeRequest(request)) {
         await postBrowserRuntimeResolve(request, decision);
-      } else if (isWorkflowApprovalRequest(request)) {
-        await postWorkflowApprovalResolve(request.request_id, decision, feedback);
       } else {
         await postResolve(request.request_id, decision);
       }
@@ -693,10 +691,11 @@ export function ApprovalInline() {
 
   // Browser-runtime requests are rendered inside their browser_use tool node
   // (BrowserRuntimeCard claims them while the node is on screen). Only keep
-  // standalone rows for: regular approvals, and browser-runtime requests
-  // whose tool node is not currently mounted (unclaimed).
+  // Workflow approvals belong to WorkflowApprovalInline. This shared chat
+  // slot only renders regular approvals and unclaimed browser-runtime requests.
   const renderable = pending.filter(
-    (request) => !isBrowserRuntimeRequest(request) || !approvalStore.isBrowserRuntimeClaimed(request.request_id),
+    (request) => !isWorkflowApprovalRequest(request)
+      && (!isBrowserRuntimeRequest(request) || !approvalStore.isBrowserRuntimeClaimed(request.request_id)),
   );
   if (!renderable.length) return null;
 
@@ -708,23 +707,13 @@ export function ApprovalInline() {
       <div className="chat-bubble">
         <div className="haish-approval-slot">
           {error ? <div className="haish-approval-error">{error}</div> : null}
-          {isWorkflowApprovalRequest(current) ? (
-            <WorkflowApprovalCard
-              request={current}
-              busy={busy[current.request_id] || ''}
-              collapsed={!!collapsedRids[current.request_id]}
-              onToggleCollapsed={() => toggleCollapsed(current.request_id)}
-              onDecide={(decision, feedback) => handleDecide(current, decision, feedback)}
-            />
-          ) : (
-            <ApprovalCard
-              request={current}
-              busy={!!busy[current.request_id]}
-              collapsed={!!collapsedRids[current.request_id]}
-              onToggleCollapsed={() => toggleCollapsed(current.request_id)}
-              onDecide={(decision) => handleDecide(current, decision)}
-            />
-          )}
+          <ApprovalCard
+            request={current}
+            busy={!!busy[current.request_id]}
+            collapsed={!!collapsedRids[current.request_id]}
+            onToggleCollapsed={() => toggleCollapsed(current.request_id)}
+            onDecide={(decision) => handleDecide(current, decision)}
+          />
           {rest > 0 ? (
             <div className="haish-approval-queue">
               {rest} pending request{rest === 1 ? '' : 's'} queued
@@ -742,10 +731,15 @@ export function WorkflowApprovalInline({
   conversationId = '',
   allowLiveRequest = true,
   resolvedRequest = null,
+  onRetry = null,
+  createdAt = null,
+  completedAt = null,
 }) {
   const [request, setRequest] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = React.useRef(null);
 
   useEffect(() => {
     ensureStyles();
@@ -766,13 +760,20 @@ export function WorkflowApprovalInline({
     });
   }, [allowLiveRequest, conversationId, nodeId, taskId]);
 
+  useEffect(() => {
+    setBusy('');
+    setError('');
+  }, [request?.request_id]);
+
   const handleDecide = useCallback(async (decision, feedback = '') => {
     if (!request) return;
+    const requestId = request.request_id;
     setError('');
     setBusy(decision);
     try {
-      await postWorkflowApprovalResolve(request.request_id, decision, feedback);
-      approvalStore.remove(request.request_id);
+      await postWorkflowApprovalResolve(requestId, decision, feedback);
+      setBusy('');
+      approvalStore.remove(requestId);
     } catch (err) {
       setError(String(err && err.message ? err.message : err));
       setBusy('');
@@ -781,6 +782,20 @@ export function WorkflowApprovalInline({
 
   const activeRequest = allowLiveRequest ? request : null;
   const displayRequest = activeRequest || resolvedRequest;
+  const copyText = normalizeWorkflowApprovalMarkdown(displayRequest?.summaryText || '');
+  const messageClock = formatMessageClock(completedAt || createdAt);
+
+  useEffect(() => () => {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    if (!await copyTextToClipboard(copyText)) return;
+    setCopied(true);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 1200);
+  }, [copyText]);
+
   if (!displayRequest) return null;
   return (
     <div className="chat-message-row agent workflow-detail-approval" aria-live="polite">
@@ -794,6 +809,7 @@ export function WorkflowApprovalInline({
         <div className="haish-approval-slot">
           {error ? <div className="haish-approval-error">{error}</div> : null}
           <WorkflowApprovalCard
+            key={displayRequest.request_id}
             request={displayRequest}
             busy={activeRequest ? busy : ''}
             collapsed={false}
@@ -803,6 +819,33 @@ export function WorkflowApprovalInline({
           />
         </div>
       </div>
+      {(messageClock || copyText || onRetry) ? (
+        <div className="chat-message-actions">
+          {messageClock ? <span className="chat-bubble-clock">{messageClock}</span> : null}
+          {copyText ? (
+            <PortalTooltip text={copied ? 'Copied' : 'Copy'} position="above">
+              <button
+                type="button"
+                className={`chat-bubble-copy ${copied ? 'copied' : ''}`}
+                onClick={handleCopy}
+                aria-label={copied ? 'Copied' : 'Copy message'}
+              >
+                <span className="ico-copy-message" aria-hidden="true" />
+              </button>
+            </PortalTooltip>
+          ) : null}
+          {onRetry ? (
+            <PortalTooltip text="ReRun" position="above">
+              <button type="button" className="chat-bubble-copy" onClick={onRetry} aria-label="ReRun this node">
+                <svg className="chat-bubble-rerun-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                  <path d="M3 3v5h5" />
+                </svg>
+              </button>
+            </PortalTooltip>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -999,12 +1042,8 @@ function ensureStyles() {
   background: #f472b6;
   box-shadow: 0 0 8px rgba(244, 114, 182, 0.3);
 }
-.haish-workflow-approval-card .haish-approval-tool-badge,
 .haish-workflow-approval-card .haish-approval-chevron {
   color: #f9a8d4;
-}
-.haish-workflow-approval-card .haish-approval-tool-badge {
-  background: rgba(244, 114, 182, 0.12);
 }
 .haish-workflow-feedback-label {
   display: flex;
@@ -1032,6 +1071,10 @@ function ensureStyles() {
 .haish-workflow-previous-feedback strong {
   color: #f9a8d4;
   font-size: 11px;
+}
+.haish-workflow-previous-feedback span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .haish-workflow-feedback {
   box-sizing: border-box;
@@ -1062,18 +1105,42 @@ function ensureStyles() {
 .haish-workflow-resolution {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 9px 10px;
-  border-radius: 6px;
-  background: rgba(16, 24, 38, 0.5);
-  color: rgba(214, 223, 241, 0.86);
+  align-items: flex-start;
+  gap: 9px;
+  padding: 12px 13px;
+  border: 1px solid rgba(74, 222, 128, 0.16);
+  border-radius: 9px;
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.06), rgba(16, 24, 38, 0.42));
 }
 .haish-workflow-resolution strong {
+  padding: 2px 7px;
+  border: 1px solid rgba(74, 222, 128, 0.28);
+  border-radius: 999px;
+  background: rgba(74, 222, 128, 0.08);
   color: var(--green-2);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.haish-workflow-resolution.is-rejected,
+.haish-workflow-resolution.is-cancelled {
+  border-color: rgba(255, 154, 170, 0.18);
+  background: linear-gradient(135deg, rgba(255, 106, 130, 0.07), rgba(16, 24, 38, 0.42));
 }
 .haish-workflow-resolution.is-rejected strong,
 .haish-workflow-resolution.is-cancelled strong {
+  border-color: rgba(255, 154, 170, 0.3);
+  background: rgba(255, 106, 130, 0.08);
   color: #ff9aaa;
+}
+.haish-workflow-resolution p {
+  width: 100%;
+  margin: 0;
+  color: rgba(225, 232, 246, 0.88);
+  font-family: var(--content-font, 'PingFang SC'), 'Microsoft YaHei', sans-serif;
+  font-size: 12px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .haish-approval-cmd-label {

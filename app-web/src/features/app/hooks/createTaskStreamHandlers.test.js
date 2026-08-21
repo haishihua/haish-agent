@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { eventDeltaText } from '../../../lib/chat-text.js';
 import {
   mergeQueuedStreamDelta,
+  workflowNodeFinishedState,
   workflowNodeStartedState,
 } from './createTaskStreamHandlers.js';
 
@@ -102,4 +103,43 @@ test('a new workflow node attempt starts without terminal state from the previou
   assert.equal('decision' in next, false);
   assert.equal('error' in next, false);
   assert.equal('reviewed_input' in next, false);
+});
+
+test('a completed rerun appends its result without replacing previous attempts', () => {
+  const previous = {
+    attempt: 1,
+    status: 'done',
+    summary: 'first result',
+    started_at: '2026-08-20T10:31:40Z',
+    finished_at: '2026-08-20T10:35:46Z',
+  };
+  const completed = workflowNodeFinishedState({
+    status: 'done',
+    success: true,
+    summary: 'revised result',
+    started_at: '2026-08-20T11:45:17Z',
+    finished_at: '2026-08-20T11:46:09Z',
+  }, {
+    status: 'running',
+    started_at: '2026-08-20T11:45:17Z',
+  }, [previous]);
+
+  assert.equal(completed.attempts.length, 2);
+  assert.equal(completed.attempts[0], previous);
+  assert.equal(completed.attempts[1].attempt, 2);
+  assert.equal(completed.attempts[1].summary, 'revised result');
+  assert.equal(completed.node, completed.attempts[1]);
+});
+
+test('a repeated workflow finish receipt does not duplicate attempt history', () => {
+  const event = {
+    status: 'done',
+    summary: 'result',
+    started_at: '2026-08-20T11:45:17Z',
+    finished_at: '2026-08-20T11:46:09Z',
+  };
+  const first = workflowNodeFinishedState(event, { status: 'running' }, []);
+  const repeated = workflowNodeFinishedState(event, first.node, first.attempts);
+
+  assert.equal(repeated.attempts.length, 1);
 });

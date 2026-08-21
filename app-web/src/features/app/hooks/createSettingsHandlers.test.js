@@ -36,8 +36,26 @@ test('startup restores an empty workflow conversation from its own execution mod
 
 test('mode switching restores the selected conversation latest task runtime', () => {
   const toggleHandler = conversationHandlersSource.match(
-    /async function handleToggleViewMode\(\) \{[\s\S]*?\n {2}\}/,
+    /async function performToggleViewMode\(\) \{[\s\S]*?\n {2}\}/,
   )?.[0] || '';
-  assert.match(toggleHandler, /await activateConversationDetail\(detail\);/);
+  assert.match(toggleHandler, /const requestSeq = invalidateConversationActivation\(\);/);
+  assert.match(toggleHandler, /fetchConversationDetail\(targetConversationId, \{ signal: detailController\.signal \}\)/);
+  assert.match(toggleHandler, /activateConversationDetail\(detail, \{ activationSeq: requestSeq \}\)/);
+  assert.match(toggleHandler, /modeLocationRef\.current\[currentViewMode\]/);
+  assert.match(toggleHandler, /const rememberedLocation = modeLocationRef\.current\[nextViewMode\]/);
+  assert.match(toggleHandler, /const currentProject = rememberedProject/);
+  assert.match(
+    toggleHandler,
+    /activateConversationShell\(currentProject\?\.id, targetConversationId\);\s*viewModeRef\.current = nextViewMode;\s*setViewMode\(nextViewMode\);/,
+  );
   assert.doesNotMatch(toggleHandler, /restoreLatest: false/);
+});
+
+test('mode switching reuses the in-flight toggle instead of creating duplicate conversations', () => {
+  assert.match(appShellSource, /const viewModeTogglePromiseRef = useRef\(null\);/);
+  assert.match(
+    conversationHandlersSource,
+    /if \(!viewModeTogglePromiseRef\.current\) \{\s*viewModeTogglePromiseRef\.current = performToggleViewMode\(\)\.finally/,
+  );
+  assert.match(conversationHandlersSource, /return viewModeTogglePromiseRef\.current;/);
 });

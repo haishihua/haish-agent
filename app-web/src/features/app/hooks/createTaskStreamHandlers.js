@@ -1,6 +1,7 @@
 // @haish-esm
 // Extracted from AppShell.jsx (Phase C2). Behavior-preserving factory.
 import { mergeAdjacentStreamEvent } from '../../../lib/stream-events.js';
+import { usableWorkflowSnapshot } from '../../../lib/workflow-snapshot.js';
 
 export function workflowNodeStartedState(event) {
   return {
@@ -9,6 +10,42 @@ export function workflowNodeStartedState(event) {
     input: event.input ?? event.node_input ?? null,
     attempt: event.attempt ?? event.node_attempt ?? null,
     started_at: event.started_at || event.created_at,
+  };
+}
+
+export function workflowNodeFinishedState(event, currentNode = {}, savedAttempts = [], toText = String) {
+  const attempts = Array.isArray(savedAttempts) ? savedAttempts : [];
+  const finishedAt = event.finished_at || event.created_at;
+  const completed = {
+    ...currentNode,
+    status: event.status || (event.success === false ? 'failed' : 'done'),
+    success: event.success !== false,
+    summary: toText(
+      event.summary
+      ?? event.output
+      ?? event.result
+      ?? event.content
+      ?? event.answer_text
+      ?? event.answer
+      ?? ''
+    ).trim() || currentNode.summary || '',
+    error: event.error || '',
+    decision: event.decision || currentNode.decision || '',
+    feedback: event.feedback ?? currentNode.feedback ?? '',
+    attempt: event.attempt ?? currentNode.attempt ?? attempts.length + 1,
+    started_at: event.started_at || currentNode.started_at,
+    finished_at: finishedAt,
+    duration_ms: event.duration_ms,
+  };
+  const lastAttempt = attempts.at(-1);
+  const duplicate = Boolean(
+    finishedAt
+    && lastAttempt?.finished_at === finishedAt
+    && lastAttempt?.started_at === completed.started_at
+  );
+  return {
+    node: completed,
+    attempts: duplicate ? attempts : [...attempts, completed],
   };
 }
 
@@ -259,36 +296,31 @@ export function createTaskStreamHandlers(ctx) {
         });
         break;
       case 'workflow_node_finished':
-        updateTaskById(taskId, (run) => ({
-          ...run,
-          workflowRun: {
-            ...(run.workflowRun || {}),
-            current_node_id: event.workflow_node_id,
-            nodes: {
-              ...(run.workflowRun?.nodes || {}),
-              [event.workflow_node_id]: {
-                ...(run.workflowRun?.nodes?.[event.workflow_node_id] || {}),
-                status: event.status || (event.success === false ? 'failed' : 'done'),
-                success: event.success !== false,
-                summary: toDisplayText(
-                  event.summary
-                  ?? event.output
-                  ?? event.result
-                  ?? event.content
-                  ?? event.answer_text
-                  ?? event.answer
-                  ?? ''
-                ).trim() || run.workflowRun?.nodes?.[event.workflow_node_id]?.summary || '',
-                error: event.error || '',
-                decision: event.decision || run.workflowRun?.nodes?.[event.workflow_node_id]?.decision || '',
-                feedback: event.feedback ?? run.workflowRun?.nodes?.[event.workflow_node_id]?.feedback ?? '',
-                started_at: event.started_at || run.workflowRun?.nodes?.[event.workflow_node_id]?.started_at,
-                finished_at: event.finished_at || event.created_at,
-                duration_ms: event.duration_ms,
+        updateTaskById(taskId, (run) => {
+          const nodeId = event.workflow_node_id;
+          if (!nodeId) return run;
+          const completed = workflowNodeFinishedState(
+            event,
+            run.workflowRun?.nodes?.[nodeId],
+            run.workflowRun?.node_attempts?.[nodeId],
+            toDisplayText,
+          );
+          return {
+            ...run,
+            workflowRun: {
+              ...(run.workflowRun || {}),
+              current_node_id: nodeId,
+              nodes: {
+                ...(run.workflowRun?.nodes || {}),
+                [nodeId]: completed.node,
+              },
+              node_attempts: {
+                ...(run.workflowRun?.node_attempts || {}),
+                [nodeId]: completed.attempts,
               },
             },
-          },
-        }));
+          };
+        });
         break;
       case 'workflow_finished':
       case 'workflow_failed':
@@ -739,7 +771,10 @@ export function createTaskStreamHandlers(ctx) {
             requestedWorkflowId: persistedTask?.workflow_id || run.requestedWorkflowId || null,
             executionMode: persistedTask?.execution_mode === 'bot' ? 'bot' : (run.executionMode || 'chat'),
             originViewMode: persistedTask?.execution_mode === 'bot' ? 'world' : (run.originViewMode || 'chat'),
-            workflowSnapshot: persistedTask?.workflow_snapshot || run.workflowSnapshot || null,
+            workflowSnapshot: usableWorkflowSnapshot(
+              persistedTask?.workflow_snapshot,
+              run.workflowSnapshot || null,
+            ),
             sourceTaskId: persistedTask?.source_task_id || run.sourceTaskId || null,
             sourceRunId: persistedTask?.source_run_id || run.sourceRunId || null,
             rerunFromNodeId: persistedTask?.rerun_from_node_id || run.rerunFromNodeId || null,
@@ -925,7 +960,7 @@ export function createTaskStreamHandlers(ctx) {
       ? `${API_BASE}/api/tasks/${sourceTaskId}/workflow/nodes/${encodeURIComponent(streamRequest.rerunNodeId)}/rerun/stream`
       : `${API_BASE}/api/conversations/${runConversationId}/tasks/stream`;
     const requestBody = rerunningNode ? undefined : JSON.stringify({
-      message: pendingTask.title,
+      message: pendingTask.requestText || pendingTask.title,
       attachments: pendingTask.attachment ? [{
         name: pendingTask.attachment.name,
         size: pendingTask.attachment.size,

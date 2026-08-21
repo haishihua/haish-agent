@@ -46,6 +46,46 @@ export function mergeWorkflowNodeAttempts(persisted, streamed, nodeId) {
   return [...prefix, ...merged];
 }
 
+function timestampsMatch(left, right) {
+  const leftMs = Date.parse(String(left || ''));
+  const rightMs = Date.parse(String(right || ''));
+  return Number.isFinite(leftMs) && Number.isFinite(rightMs)
+    ? leftMs === rightMs
+    : Boolean(left) && String(left) === String(right);
+}
+
+export function workflowResultForAttempt(attempt, latestResult, isLatestAttempt, fallbackAttempt = 1) {
+  const finishedEvent = attempt?.events?.findLast((event) => event.type === 'workflow_node_finished');
+  const latestBelongsToAttempt = Boolean(
+    isLatestAttempt
+    && latestResult
+    && attempt?.finishedAt
+    && timestampsMatch(attempt.finishedAt, latestResult.finished_at),
+  );
+  const base = {
+    ...(latestBelongsToAttempt ? latestResult : {}),
+    ...(attempt?.result || {}),
+  };
+
+  return {
+    ...base,
+    attempt: base.attempt || base.structured?.attempt || fallbackAttempt,
+    status: base.status || finishedEvent?.status,
+    success: base.success ?? (finishedEvent ? finishedEvent.status !== 'failed' && !finishedEvent.error : undefined),
+    summary: base.summary || finishedEvent?.summary || finishedEvent?.outputSummary || finishedEvent?.message || '',
+    error: base.error || finishedEvent?.error || finishedEvent?.errorMessage || '',
+    decision: base.decision || base.structured?.decision || finishedEvent?.decision || '',
+    feedback: base.feedback ?? base.structured?.feedback ?? finishedEvent?.feedback ?? '',
+    started_at: base.started_at || attempt?.startedAt,
+    finished_at: base.finished_at || attempt?.finishedAt,
+  };
+}
+
+export function workflowToolCallsForAttempt(toolCalls, events) {
+  const callIds = new Set((events || []).map((event) => event.callId).filter(Boolean));
+  return (toolCalls || []).filter((call) => callIds.has(call.callId));
+}
+
 /** Infer node outcomes from receipts; selecting an outgoing edge proves its source finished. */
 export function workflowNodeOutcomesFromEvents(eventLog = []) {
   const outcomes = new Map();

@@ -94,7 +94,7 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
   const inheritsAllSkills = current.skill_policy?.allow === null;
   const allowedSkills = new Set(
     inheritsAllSkills
-      ? skillOptions.map((skill) => skill.id)
+      ? skillOptions.filter((skill) => skill.enabled).map((skill) => skill.id)
       : (Array.isArray(current.skill_policy?.allow) ? current.skill_policy.allow : []),
   );
   const mcpServers = Array.isArray(normalized.mcp_servers) ? normalized.mcp_servers : [];
@@ -192,16 +192,17 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
         </FieldRow>
       ) : null}
       <FieldRow label="Skills">
+        <label className="settings-check-row">
+          <input
+            type="checkbox"
+            checked={inheritsAllSkills}
+            onChange={() => updateSkillPolicy({ allow: inheritsAllSkills ? [] : null })}
+            disabled={readOnly}
+          />
+          <span className="settings-check-label">Automatically allow all skills</span>
+          {renderHelpDot('Checked saves null and automatically allows every current and future enabled skill. Unchecked allows only the skills selected below.')}
+        </label>
         <div className="settings-check-grid">
-          <label className="settings-check-row">
-            <input
-              type="checkbox"
-              checked={inheritsAllSkills}
-              onChange={() => updateSkillPolicy({ allow: inheritsAllSkills ? [] : null })}
-              disabled={readOnly}
-            />
-            <span className="settings-check-label">Automatically allow all installed skills</span>
-          </label>
           {skillOptions.map((skill) => (
             <label className="settings-check-row" key={skill.id}>
               <input type="checkbox" checked={allowedSkills.has(skill.id)} onChange={() => toggleSkill(skill.id)} disabled={readOnly || !skill.enabled} />

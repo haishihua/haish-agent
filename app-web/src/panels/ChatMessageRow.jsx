@@ -36,20 +36,18 @@ function FinalAnswerMarkdown({ source, streaming }) {
   );
 }
 
-function ChatMessageRowComponent({ message, now, onPreviewImage }) {
+function ChatMessageRowComponent({ message, now, onPreviewImage, onRetry }) {
   const timeline = Array.isArray(message.traceTimeline) ? message.traceTimeline : [];
   const hasTimeline = timeline.length > 0;
   const isAgent = message.role === 'agent';
-  // While streaming: keep the timeline expanded so users see the live thinking + tools.
-  // When the task is done: collapse it behind a one-liner; clicking reveals the trace.
   const [traceExpanded, setTraceExpanded] = React.useState(false);
-  // Streaming 时即使 timeline 还没积累任何事件，也要渲染 ChatAgentTimeline，
-  // 让黄色 `* Reasoning…` 活动指示器出来——否则刚发出消息那几百毫秒 bubble
-  // 是完全空白的，用户以为前端卡了。
-  // traceOpen: mid-run steering segments keep the previous tool calls visible
-  // while the task is still running, instead of collapsing behind the toggle.
-  const showTimelineExpanded = isAgent && (message.streaming || message.traceOpen || (hasTimeline && traceExpanded));
-  const showTimelineCollapsed = isAgent && !message.streaming && !message.traceOpen && hasTimeline;
+  React.useEffect(() => setTraceExpanded(false), [message.conversationId, message.id]);
+  const hasTraceDisclosure = isAgent && (hasTimeline || message.streaming);
+  // The live trace is the task's progress view, so keep it visible by default.
+  // Individual tool cards inside ChatAgentTimeline manage their own collapsed state.
+  const traceForcedOpen = message.streaming || message.traceOpen;
+  const showTimelineExpanded = hasTraceDisclosure && (traceForcedOpen || traceExpanded);
+  const showTimelineCollapsed = hasTraceDisclosure && !traceForcedOpen && !traceExpanded;
   const isUser = message.role === 'user';
   const [copied, setCopied] = React.useState(false);
   const copyTimerRef = React.useRef(null);
@@ -139,7 +137,7 @@ function ChatMessageRowComponent({ message, now, onPreviewImage }) {
           </>
         ) : null}
         {/* 首字未到（排队/建连/模型首字等待期）不显示计时器 */}
-        {(message.streaming || message.traceOpen) && firstTokenMs ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
+        {traceForcedOpen && firstTokenMs ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
         {showTimelineExpanded && !showTimelineCollapsed ? (
           <ChatAgentTimeline
             items={timeline}
@@ -159,7 +157,7 @@ function ChatMessageRowComponent({ message, now, onPreviewImage }) {
           </div>
         ) : null}
       </div>
-      {(messageClock || copyText) ? (
+      {(messageClock || copyText || onRetry) ? (
         <div className="chat-message-actions">
           {messageClock ? <span className="chat-bubble-clock">{messageClock}</span> : null}
           {copyText ? (
@@ -174,6 +172,21 @@ function ChatMessageRowComponent({ message, now, onPreviewImage }) {
               </button>
             </PortalTooltip>
           ) : null}
+          {onRetry ? (
+            <PortalTooltip text="ReRun" position="above">
+              <button
+                type="button"
+                className="chat-bubble-copy"
+                onClick={onRetry}
+                aria-label="ReRun this node"
+              >
+                <svg className="chat-bubble-rerun-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                  <path d="M3 3v5h5" />
+                </svg>
+              </button>
+            </PortalTooltip>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -185,7 +198,8 @@ export const ChatMessageRow = React.memo(
   (previous, next) => (
     previous.message === next.message
     && previous.onPreviewImage === next.onPreviewImage
-    && (!(next.message?.streaming || next.message?.traceOpen) || previous.now === next.now)
+    && previous.onRetry === next.onRetry
+    && (!next.message?.streaming || previous.now === next.now)
   ),
 );
 

@@ -9,6 +9,7 @@ import {
 } from './workspace-state.js';
 import { stripChatImageAugmentation } from './chat-text.js';
 import { compactStreamEvents } from './stream-events.js';
+import { usableWorkflowSnapshot } from './workflow-snapshot.js';
 import { WORLD_ROLE_TO_ACTOR, WORLD_KIND_MAP } from './world-runtime.js';
 import {
   resolveProviderMeta,
@@ -328,7 +329,7 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = [], ow
     requestedWorkflowId: task.workflow_id || '',
     executionMode: task.execution_mode === 'bot' ? 'bot' : 'chat',
     originViewMode: task.execution_mode === 'bot' ? 'world' : 'chat',
-    workflowSnapshot: task.workflow_snapshot || null,
+    workflowSnapshot: usableWorkflowSnapshot(task.workflow_snapshot),
     workflowRun: task.workflow_run || null,
     sourceTaskId: task.source_task_id || null,
     sourceRunId: task.source_run_id || null,
@@ -365,6 +366,7 @@ export function taskDetailToRuntimeTask(task, previousTask = null, ownerId = '')
     loopIndex: getLoopIndexFromWorldEvents(events),
     activeRole: getActiveRoleFromWorldEvents(events),
     eventLog: compactStreamEvents(events.map(worldEventToRuntimeLog)),
+    workflowSnapshot: usableWorkflowSnapshot(task.workflow_snapshot, previousTask?.workflowSnapshot || null),
   };
   return nextTask;
 }

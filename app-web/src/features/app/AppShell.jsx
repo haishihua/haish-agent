@@ -190,6 +190,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const [viewedWorkflowTask, setViewedWorkflowTask] = useState(null);
   const [conversationPanelCollapsed, setConversationPanelCollapsed] = useState(false);
   const viewModeRef = useRef('chat');
+  const viewModeTogglePromiseRef = useRef(null);
+  const modeLocationRef = useRef({ chat: null, world: null });
   const [npcStates, setNpcStates] = useState(() => {
     const s = {};
     for (const id of Object.keys(STATIONS)) {
@@ -1301,6 +1303,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     findProjectByConversationId,
     invalidateConversationActivation,
     isConversationActivationCurrent,
+    modeLocationRef,
     normalizeWorkspaceOrdering,
     openDraftConversation,
     projectIdForWorkspacePath,
@@ -1315,6 +1318,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     startDeploy: (...args) => deployApiRef.current.startDeploy?.(...args),
     stopConversationRuntimeBeforeDelete,
     viewModeRef,
+    viewModeTogglePromiseRef,
     workspaceState,
     workspaceStateWithConversationDetail,
   });
@@ -1339,6 +1343,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     handleStop,
     buildDeployRequest,
     canStartDeployForConversation,
+    failPendingDeploy,
     startDeploy,
     handleDeploy,
   } = createDeployHandlers({
@@ -1409,6 +1414,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   deployApiRef.current = {
     buildDeployRequest,
     canStartDeployForConversation,
+    failPendingDeploy,
     startDeploy,
     handleDeploy,
     handleStop,
@@ -1507,6 +1513,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           const realConversationId = materialized?.id || null;
           if (!realConversationId) return;
           request.targetConversationId = realConversationId;
+          request.runtimeConversationId = realConversationId;
           if (!canStartDeployForConversation(realConversationId)) {
             setQueuedDeploy(request);
             return;
@@ -1515,6 +1522,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         })
         .catch((error) => {
           console.error('draft conversation create failed', error);
+          failPendingDeploy(request, error);
           showToast('error', String(error?.message || error));
         });
       return;
@@ -1831,9 +1839,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         //   user ask → assistant work → user steer → assistant work → …
         // Each segment keeps its own time window (start → steering time / end),
         // so every segment shows its elapsed time instead of the generic
-        // "Trace" fallback. While the run is still active, all earlier segments
-        // stay expanded (traceOpen) so the previous tool calls & progress stay
-        // visible above, and they collapse to their own time pill on completion.
+        // "Trace" fallback.
         const timelineToMs = (value) => {
           if (!value) return null;
           const ms = typeof value === 'number' ? value : Date.parse(String(value));
@@ -1889,7 +1895,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               // is active so their previous tool calls stay visible with their
               // own time pill; the final segment keeps the task-level clock,
               // identical to a normal task run.
-              traceOpen: !isLast && streaming,
               createdAt: isLast ? task.createdAt : (segment.startAt || task.createdAt),
               completedAt: isLast ? task.completedAt : (segment.endAt || task.completedAt),
               firstTokenAt: taskFirstStreamTimestamp(task),
@@ -2044,7 +2049,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
 	                    running={currentConversationRunning}
 	                    disabled={composerDisabled}
 	                    submitPending={submitPending}
-	                    onSend={(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest)}
+	                    onSend={(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText)}
                     onStop={handleStop}
                     onSelectFile={(file, selectedAgentId) => { handleAttachmentSelect(file, selectedAgentId, 'chat').catch((error) => console.error('attachment upload failed', error)); }}
                     onClearFile={handleAttachmentClear}
@@ -2078,6 +2083,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
                     now={now}
                     onRetry={(nodeId) => {
                       if (!currentWorkflowTask) return;
+                      setViewedWorkflowTask(null);
                       executeWorkflowNodeRerun(currentWorkflowTask, nodeId).catch((error) => {
                         console.error('workflow node rerun failed', error);
                         showToast('error', String(error?.message || error));

@@ -247,7 +247,7 @@ export function createDeployHandlers(ctx) {
     return hasAssistantOutput ? '' : restoreText;
   }
 
-  function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, selectionId, providerRequest) {
+  function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, selectionId, providerRequest, displayText = text) {
     const sanitizedImageAttachments = Array.isArray(imageAttachments)
       ? imageAttachments
           .filter((ref) => ref && ref.image_id && ref.path)
@@ -261,6 +261,7 @@ export function createDeployHandlers(ctx) {
     return {
       id: `queued-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       text,
+      displayText: String(displayText || text || '').trim(),
       attachment,
       modelId,
       reasoningEffort,
@@ -271,6 +272,62 @@ export function createDeployHandlers(ctx) {
       providerRequest: providerRequest || '',
       targetConversationId: selectedConversationId || conversationIdRef.current || conversationId || null,
     };
+  }
+
+  function preparePendingTask(request) {
+    if (request.pendingTask) return request.pendingTask;
+    const pendingTask = createPendingTaskDraft(
+      request.displayText || request.text,
+      request.attachment || null,
+      request.imageAttachments,
+    );
+    pendingTask.requestText = request.text;
+    pendingTask.requestedModelId = request.modelId || '';
+    pendingTask.requestedAgentId = request.executionMode === 'chat'
+      ? (request.agentId || defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id)
+      : null;
+    pendingTask.requestedWorkflowId = request.executionMode === 'bot'
+      ? (request.workflowId || defaultWorkflowId)
+      : null;
+    pendingTask.executionMode = request.executionMode === 'bot' ? 'bot' : 'chat';
+    if (pendingTask.executionMode === 'bot') {
+      const workflows = normalizeWorkflowSettings(workflowSettingsDraft);
+      pendingTask.workflowSnapshot = [...workflows.presets, ...workflows.custom]
+        .find((item) => item.workflow_id === pendingTask.requestedWorkflowId) || null;
+    }
+    pendingTask.requestedReasoningEffort = request.reasoningEffort || 'high';
+    pendingTask.requestedProvider = request.providerRequest || '';
+    pendingTask.originViewMode = viewModeRef.current || viewMode;
+    request.pendingTask = pendingTask;
+    return pendingTask;
+  }
+
+  function stagePendingDeploy(request, targetConversationId) {
+    if (!targetConversationId) return null;
+    const pendingTask = preparePendingTask(request);
+    request.runtimeConversationId = targetConversationId;
+    updateWorldTaskState((state) => ({ ...state, pendingTask }), targetConversationId);
+    return pendingTask;
+  }
+
+  function failPendingDeploy(request, error) {
+    const targetConversationId = request?.runtimeConversationId || request?.targetConversationId;
+    const pendingTask = request?.pendingTask;
+    if (!targetConversationId || !pendingTask) return;
+    const pendingKey = pendingTask.taskId || pendingTask.id;
+    updateWorldTaskState((state) => {
+      const currentKey = state.pendingTask?.taskId || state.pendingTask?.id;
+      if (currentKey !== pendingKey) return state;
+      return {
+        ...state,
+        pendingTask: {
+          ...state.pendingTask,
+          status: 'failed',
+          error: String(error?.message || error),
+          completedAt: Date.now(),
+        },
+      };
+    }, targetConversationId);
   }
 
   function canStartDeployForConversation(targetConversationId = null) {
@@ -290,33 +347,8 @@ export function createDeployHandlers(ctx) {
   function startDeploy(request, deployConvId, seedDetail = null) {
     if (!deployConvId) return;
     const text = request.text;
-    const attachment = request.attachment || null;
-    const modelId = request.modelId || '';
-    const reasoningEffort = request.reasoningEffort || 'high';
-    const executionMode = request.executionMode === 'bot' ? 'bot' : 'chat';
-    const agentId = executionMode === 'chat'
-      ? (request.agentId || defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id)
-      : null;
-    const workflowId = executionMode === 'bot'
-      ? (request.workflowId || defaultWorkflowId)
-      : null;
-    const sanitizedImageAttachments = Array.isArray(request.imageAttachments) ? request.imageAttachments : [];
-    const pendingTask = createPendingTaskDraft(text, attachment, sanitizedImageAttachments);
-    pendingTask.requestedModelId = modelId || '';
-    pendingTask.requestedAgentId = agentId;
-    pendingTask.requestedWorkflowId = workflowId;
-    pendingTask.executionMode = executionMode;
-    if (executionMode === 'bot') {
-      const workflows = normalizeWorkflowSettings(workflowSettingsDraft);
-      pendingTask.workflowSnapshot = [...workflows.presets, ...workflows.custom]
-        .find((item) => item.workflow_id === workflowId) || null;
-    }
-    // Match DEFAULT_REASONING_EFFORT in panels.jsx (kept in sync).
-    pendingTask.requestedReasoningEffort = reasoningEffort || 'high';
-    pendingTask.requestedProvider = request.providerRequest || '';
-    pendingTask.originViewMode = viewModeRef.current || viewMode;
-    pendingTask.imageAttachments = sanitizedImageAttachments;
-    const nextConversationTitle = titleFromTaskText(text);
+    const pendingTask = preparePendingTask(request);
+    const nextConversationTitle = titleFromTaskText(request.displayText || text);
     const currentConversation = findConversationById(workspaceState, deployConvId)
       || (seedDetail ? conversationDetailToWorkspaceConversation(seedDetail) : null);
     const deployTaskState = getRuntime(deployConvId)?.worldTaskState
@@ -420,8 +452,8 @@ export function createDeployHandlers(ctx) {
     });
   }
 
-  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest) {
-    const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest);
+  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText = text) {
+    const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText);
     const activeId = conversationIdRef.current || conversationId;
     const activeRuntime = activeId ? getRuntime(activeId) : null;
     const activeState = activeRuntime?.worldTaskState || worldTaskStateRef.current;
@@ -460,6 +492,8 @@ export function createDeployHandlers(ctx) {
     // First send on a local draft: create the server conversation, insert the
     // sidebar record, then continue the normal deploy path.
     if (draftConversationRef.current) {
+      const draftConversationId = draftConversationRef.current.id;
+      stagePendingDeploy(request, draftConversationId);
       if (!canStartDeployForConversation(request.targetConversationId)) {
         setQueuedDeploy(request);
         return true;
@@ -469,6 +503,7 @@ export function createDeployHandlers(ctx) {
           const realConversationId = materialized?.id || null;
           if (!realConversationId) return;
           request.targetConversationId = realConversationId;
+          request.runtimeConversationId = realConversationId;
           if (!canStartDeployForConversation(realConversationId)) {
             setQueuedDeploy(request);
             return;
@@ -477,6 +512,7 @@ export function createDeployHandlers(ctx) {
         })
         .catch((error) => {
           console.error('draft conversation create failed', error);
+          failPendingDeploy(request, error);
           showToast('error', String(error?.message || error));
         });
       return true;
@@ -495,6 +531,7 @@ export function createDeployHandlers(ctx) {
     handleStop,
     buildDeployRequest,
     canStartDeployForConversation,
+    failPendingDeploy,
     startDeploy,
     handleDeploy,
   };

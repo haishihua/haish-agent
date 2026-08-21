@@ -83,13 +83,15 @@ export function ProjectNode({
   const allConversations = Array.isArray(project.conversations) ? project.conversations : [];
   const allWorkflowTasks = workflowTaskMode ? projectWorkflowTasks(project) : [];
   const conversationLimit = Math.max(1, Number(conversationPreviewLimit) || 3);
-  const conversationsExpanded = Boolean(project.conversationsExpanded);
-  const visibleConversations = conversationsExpanded
+  const listExpanded = Boolean(workflowTaskMode
+    ? project.workflowTasksExpanded
+    : project.chatConversationsExpanded);
+  const visibleConversations = listExpanded
     ? allConversations
     : allConversations.slice(0, conversationLimit);
   const hiddenConversationCount = Math.max(0, allConversations.length - conversationLimit);
   const taskLimit = Math.max(1, Number(taskPreviewLimit) || 5);
-  const visibleWorkflowTasks = conversationsExpanded
+  const visibleWorkflowTasks = listExpanded
     ? allWorkflowTasks
     : allWorkflowTasks.slice(0, taskLimit);
   const hiddenWorkflowTaskCount = Math.max(0, allWorkflowTasks.length - taskLimit);
@@ -267,9 +269,9 @@ export function ProjectNode({
             <button
               type="button"
               className="conversation-show-more"
-              onClick={() => onToggleProjectConversations?.(project.id)}
+              onClick={() => onToggleProjectConversations?.(project.id, workflowTaskMode)}
             >
-              {conversationsExpanded
+              {listExpanded
                 ? 'Show less'
                 : `Show ${workflowTaskMode ? hiddenWorkflowTaskCount : hiddenConversationCount} more`}
             </button>

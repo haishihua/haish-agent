@@ -1,12 +1,14 @@
 // @haish-esm
 import React from 'react';
 import { ApprovalInline } from '../approval-overlay.jsx';
-import { matchingAgentSkills, withSelectedSkillInstruction } from '../lib/agent-catalog.js';
+import { extractAgentSkillInvocation, matchingAgentSkills, withSelectedSkillInstruction } from '../lib/agent-catalog.js';
 import { PortalTooltip } from './PortalTooltip.jsx';
 import { AttachmentFileChip } from './Format.jsx';
 import {
-  handlePathPaste,
+  clipboardFilesToPathText,
+  clipboardUriListToPathText,
   formatContextUsageLabel,
+  normalizePastedPathText,
   usePersistentRunConfig,
   useProviderModels,
 } from './path-utils.jsx';
@@ -20,6 +22,7 @@ import {
   ImagePreviewOverlay,
 } from './ChatMessageRow.jsx';
 import { ScrollToBottomButton } from './ScrollToBottomButton.jsx';
+import { LexicalComposerInput } from './LexicalComposerInput.jsx';
 export const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const CHAT_IMAGE_MAX_COUNT = 4;
 export const CHAT_IMAGE_ACCEPTED_MIME = new Set([
@@ -67,6 +70,8 @@ export function ChatPanel({
   const [selectedSkillName, setSelectedSkillName] = React.useState('');
   const [skillMenuIndex, setSkillMenuIndex] = React.useState(0);
   const [skillMenuDismissed, setSkillMenuDismissed] = React.useState(false);
+  const selectedSkillNameRef = React.useRef('');
+  const skillSelectionPendingRef = React.useRef(false);
   // 空状态卡片 hover：'secondary' | 'tertiary' | null。悬停某张卡时它与第一张换位，
   // 只有指针离开整个插图区才还原，避免卡片移动后指针落点变化导致来回抖动。
   const [emptyHoverCard, setEmptyHoverCard] = React.useState(null);
@@ -128,14 +133,28 @@ export function ChatPanel({
   React.useEffect(() => {
     setComposerImages([]);
     setSelectedSkillName('');
+    selectedSkillNameRef.current = '';
+    skillSelectionPendingRef.current = false;
     setSkillMenuDismissed(false);
   }, [composerScopeId]);
 
   React.useEffect(() => {
     if (selectedSkillName && !currentAgentSkills.some((skill) => skill.name === selectedSkillName)) {
       setSelectedSkillName('');
+      selectedSkillNameRef.current = '';
+      skillSelectionPendingRef.current = false;
     }
   }, [currentAgentSkills, selectedSkillName]);
+
+  React.useEffect(() => {
+    if (selectedSkill || !/^\s*\/[a-z0-9-]+\s+/i.test(draft)) return;
+    const invocation = extractAgentSkillInvocation(draft, currentAgentSkills);
+    if (!invocation) return;
+    selectedSkillNameRef.current = invocation.skill.name;
+    skillSelectionPendingRef.current = !invocation.prompt;
+    setSelectedSkillName(invocation.skill.name);
+    setDraft(invocation.prompt);
+  }, [currentAgentSkills, draft, selectedSkill, setDraft]);
 
   async function attachImageFile(file) {
     if (!file || running) return;
@@ -197,8 +216,15 @@ export function ChatPanel({
       .filter(Boolean);
 
     if (imageFiles.length === 0) {
-      // Fall through to existing path-paste behavior.
-      handlePathPaste(event, draft, setDraft, workspacePath, homePath, 5000);
+      const clipboard = event.clipboardData;
+      if (!clipboard) return;
+      const normalizedText = clipboardUriListToPathText(clipboard.getData('text/uri-list'), workspacePath, homePath)
+        || clipboardFilesToPathText(clipboard.files, workspacePath, homePath)
+        || normalizePastedPathText(clipboard.getData('text/plain'), workspacePath, homePath);
+      if (normalizedText) {
+        event.preventDefault();
+        inputRef.current?.insertText(normalizedText);
+      }
       return;
     }
     if (running) {
@@ -240,10 +266,6 @@ export function ChatPanel({
   const suppressSubmitUntilRef = React.useRef(0);
   const historyCursorRef = React.useRef(-1);
   const historySavedDraftRef = React.useRef('');
-  const shouldAutoScrollRef = React.useRef(true);
-  const autoScrollFrameRef = React.useRef(null);
-  const lastMessageCountRef = React.useRef(messages.length);
-  const lastConversationIdRef = React.useRef(conversationId || null);
   const usedTokens = Math.max(0, Math.round(Number(contextUsage?.usedTokens) || 0));
   const totalTokens = Math.max(0, Math.round(Number(contextUsage?.totalTokens) || 0));
   const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (totalTokens > 0 ? usedTokens / totalTokens : 0)));
@@ -255,52 +277,13 @@ export function ChatPanel({
   const runConfigReadOnly = running || submitPending;
   const runConfigDisabled = !runConfigReadOnly && (disabled || submitPending);
 
-  function isMessageListNearBottom(el) {
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= 48;
-  }
-
-  function handleMessageListScroll(event) {
-    shouldAutoScrollRef.current = isMessageListNearBottom(event.currentTarget);
-  }
-
-  React.useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    const normalizedConversationId = conversationId || null;
-    if (normalizedConversationId !== lastConversationIdRef.current || messages.length < lastMessageCountRef.current) {
-      shouldAutoScrollRef.current = true;
-    }
-    lastConversationIdRef.current = normalizedConversationId;
-    lastMessageCountRef.current = messages.length;
-    if (!shouldAutoScrollRef.current) return undefined;
-    if (autoScrollFrameRef.current) cancelAnimationFrame(autoScrollFrameRef.current);
-    autoScrollFrameRef.current = requestAnimationFrame(() => {
-      autoScrollFrameRef.current = null;
-      if (listRef.current) {
-        listRef.current.scrollTop = listRef.current.scrollHeight;
-      }
-    });
-    return () => {
-      if (!autoScrollFrameRef.current) return;
-      cancelAnimationFrame(autoScrollFrameRef.current);
-      autoScrollFrameRef.current = null;
-    };
-  }, [conversationId, messages, running]);
-
-  React.useLayoutEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-  }, [draft]);
-
   function restoreActiveTaskText(value = activeTaskText) {
     const text = String(value || '').trim();
     if (!text) return;
+    skillSelectionPendingRef.current = false;
     setDraft(text);
     requestAnimationFrame(() => {
-      inputRef.current?.focus?.();
-      inputRef.current?.setSelectionRange?.(text.length, text.length);
+      inputRef.current?.focusAtEnd?.();
     });
   }
 
@@ -334,17 +317,26 @@ export function ChatPanel({
 
   async function submit(e) {
     e?.preventDefault();
+    e?.stopPropagation?.();
     if (Date.now() < suppressSubmitUntilRef.current) return;
+    if (skillSelectionPendingRef.current) return;
     const text = draft.trim();
     if (!text || disabled || submitPending || runtimeInputPending) return;
-    const submittedText = withSelectedSkillInstruction(text, selectedSkill);
+    const skillInvocation = selectedSkill ? null : extractAgentSkillInvocation(text, currentAgentSkills);
+    const submittedText = selectedSkill
+      ? withSelectedSkillInstruction(text, selectedSkill)
+      : skillInvocation
+        ? withSelectedSkillInstruction(skillInvocation.prompt, skillInvocation.skill)
+        : text;
     if (running) {
       setRuntimeInputPending(true);
       try {
-        const accepted = await onSend?.(submittedText, null, sendModelId, reasoningEffort, [], effectiveAgentId, providerRequest);
+        const accepted = await onSend?.(submittedText, null, sendModelId, reasoningEffort, [], effectiveAgentId, providerRequest, text);
         if (accepted !== false) {
           setDraft('');
           setSelectedSkillName('');
+          selectedSkillNameRef.current = '';
+          skillSelectionPendingRef.current = false;
         }
       } finally {
         setRuntimeInputPending(false);
@@ -364,10 +356,12 @@ export function ChatPanel({
         mime: img.mime,
         previewUrl: img.previewUrl || null,
       }));
-    const accepted = onSend?.(submittedText, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest);
+    const accepted = onSend?.(submittedText, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text);
     if (accepted === false) return;
     setDraft('');
     setSelectedSkillName('');
+    selectedSkillNameRef.current = '';
+    skillSelectionPendingRef.current = false;
     onClearFile?.();
     // Ownership of the blob URLs transfers to the rendered chat message; the
     // unmount cleanup at the conversationId boundary will revoke them. Do NOT
@@ -387,12 +381,16 @@ export function ChatPanel({
     if (fileRef.current) fileRef.current.value = '';
   }
 
-  function selectSkill(skill) {
+  function selectSkill(skill, event) {
     if (!skill) return;
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    selectedSkillNameRef.current = skill.name;
+    skillSelectionPendingRef.current = true;
     setSelectedSkillName(skill.name);
     setDraft('');
     setSkillMenuDismissed(false);
-    requestAnimationFrame(() => inputRef.current?.focus?.());
+    requestAnimationFrame(() => inputRef.current?.focusAtEnd?.());
   }
 
   React.useEffect(() => {
@@ -402,7 +400,7 @@ export function ChatPanel({
   return (
     <section className="chat-workspace" aria-label="Chat">
       <div className="chat-message-region">
-        <div ref={listRef} className="chat-message-list" onScroll={handleMessageListScroll}>
+        <div ref={listRef} className="chat-message-list">
           {messages.length === 0 ? (
             <div className="chat-empty">
               <div
@@ -434,7 +432,7 @@ export function ChatPanel({
           ))}
           <ApprovalInline />
         </div>
-        <ScrollToBottomButton scrollRef={listRef} />
+        <ScrollToBottomButton scrollRef={listRef} autoFollow resetKey={conversationId || ''} />
       </div>
       <form
         className="chat-composer"
@@ -452,8 +450,7 @@ export function ChatPanel({
                 aria-selected={index === skillMenuIndex}
                 className={`chat-skill-menu-item${index === skillMenuIndex ? ' is-active' : ''}`}
                 onMouseDown={(event) => {
-                  event.preventDefault();
-                  selectSkill(skill);
+                  selectSkill(skill, event);
                 }}
                 onMouseEnter={() => setSkillMenuIndex(index)}
               >
@@ -513,42 +510,50 @@ export function ChatPanel({
           </div>
         )}
         <div className="chat-composer-input-row">
-          {selectedSkill && (
-            <button
-              type="button"
-              className="chat-skill-chip"
-              onClick={() => setSelectedSkillName('')}
-              aria-label={`Remove ${selectedSkill.name} skill`}
-              title="Click to remove skill"
-            >
-              <span className="ico ico-skill chat-skill-icon" aria-hidden="true" />
-              <span>{selectedSkill.name}</span>
-            </button>
-          )}
-          <textarea
-          ref={inputRef}
-          rows={1}
-          value={draft}
-          onChange={(event) => {
-            setDraft(event.target.value);
-            setSkillMenuDismissed(false);
-            setSkillMenuIndex(0);
-          }}
-          onPaste={handleComposerPaste}
-          onKeyDown={(event) => {
+          <LexicalComposerInput
+            ref={inputRef}
+            value={draft}
+            selectedSkill={selectedSkill}
+            onRemoveSkill={() => {
+              selectedSkillNameRef.current = '';
+              skillSelectionPendingRef.current = false;
+              setSelectedSkillName('');
+            }}
+            onChange={(nextDraft) => {
+              if (skillSelectionPendingRef.current) {
+                const selectedQuery = selectedSkillNameRef.current
+                  ? `/${selectedSkillNameRef.current}`.toLowerCase()
+                  : '';
+                const normalizedDraft = String(nextDraft || '').trim().toLowerCase();
+                if (!normalizedDraft || normalizedDraft === selectedQuery) {
+                  setDraft('');
+                  return;
+                }
+                skillSelectionPendingRef.current = false;
+              }
+              setDraft(nextDraft);
+              setSkillMenuDismissed(false);
+              setSkillMenuIndex(0);
+            }}
+            onPaste={handleComposerPaste}
+            onKeyDown={(event) => {
             if (
               event.key === 'Backspace'
               && !event.nativeEvent.isComposing
-              && !draft
               && selectedSkill
+              && inputRef.current?.isSelectionAtStart()
             ) {
               event.preventDefault();
+              event.stopPropagation();
+              selectedSkillNameRef.current = '';
+              skillSelectionPendingRef.current = false;
               setSelectedSkillName('');
               return;
             }
             if (skillMenuOpen && !event.nativeEvent.isComposing) {
               if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                 event.preventDefault();
+                event.stopPropagation();
                 if (matchingSkills.length) {
                   const delta = event.key === 'ArrowDown' ? 1 : -1;
                   setSkillMenuIndex((index) => (index + delta + matchingSkills.length) % matchingSkills.length);
@@ -556,12 +561,12 @@ export function ChatPanel({
                 return;
               }
               if ((event.key === 'Enter' || event.key === 'Tab') && matchingSkills.length) {
-                event.preventDefault();
-                selectSkill(matchingSkills[skillMenuIndex] || matchingSkills[0]);
+                selectSkill(matchingSkills[skillMenuIndex] || matchingSkills[0], event);
                 return;
               }
               if (event.key === 'Escape') {
                 event.preventDefault();
+                event.stopPropagation();
                 setSkillMenuDismissed(true);
                 return;
               }
@@ -579,9 +584,9 @@ export function ChatPanel({
             }
             // ArrowUp / ArrowDown history navigation (terminal-style).
             if (event.key === 'ArrowUp' && !event.shiftKey && !event.nativeEvent.isComposing) {
-              const el = event.currentTarget;
-              if (el.selectionStart !== 0 || el.selectionEnd !== 0) return;
+              if (!inputRef.current?.isSelectionAtStart()) return;
               event.preventDefault();
+              event.stopPropagation();
               const history = userMessageHistory;
               if (history.length === 0) return;
               const cursor = historyCursorRef.current;
@@ -591,15 +596,13 @@ export function ChatPanel({
               const nextCursor = Math.min(cursor + 1, history.length - 1);
               historyCursorRef.current = nextCursor;
               setDraft(history[nextCursor]);
-              requestAnimationFrame(() => {
-                el.setSelectionRange(history[nextCursor].length, history[nextCursor].length);
-              });
+              requestAnimationFrame(() => inputRef.current?.focusAtEnd());
               return;
             }
             if (event.key === 'ArrowDown' && !event.shiftKey && !event.nativeEvent.isComposing) {
-              const el = event.currentTarget;
-              if (el.selectionStart !== el.value.length || el.selectionEnd !== el.value.length) return;
+              if (!inputRef.current?.isSelectionAtEnd()) return;
               event.preventDefault();
+              event.stopPropagation();
               const cursor = historyCursorRef.current;
               if (cursor <= 0) {
                 historyCursorRef.current = -1;
@@ -610,19 +613,17 @@ export function ChatPanel({
               historyCursorRef.current = nextCursor;
               const history = userMessageHistory;
               setDraft(history[nextCursor]);
-              requestAnimationFrame(() => {
-                el.setSelectionRange(history[nextCursor].length, history[nextCursor].length);
-              });
+              requestAnimationFrame(() => inputRef.current?.focusAtEnd());
               return;
             }
             // Any non-modifier key resets the history cursor.
             if (!['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(event.key)) {
               historyCursorRef.current = -1;
             }
-          }}
-          placeholder={!providerConfigured ? 'Configure an LLM provider in Settings first...' : submitPending ? 'Preparing conversation...' : running ? 'Add instructions while the assistant is working...' : 'Ask, draft, or delegate...'}
-          disabled={disabled}
-          maxLength={5000}
+            }}
+            placeholder={!providerConfigured ? 'Configure an LLM provider in Settings first...' : submitPending ? 'Preparing conversation...' : running ? 'Add instructions while the assistant is working...' : 'Ask, draft, or delegate...'}
+            disabled={disabled}
+            maxLength={5000}
           />
         </div>
         <div className="chat-composer-actions">

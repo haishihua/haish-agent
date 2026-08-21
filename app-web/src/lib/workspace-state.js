@@ -56,7 +56,8 @@ export function createDefaultProject() {
     removable: false,
     createdAt: null,
     updatedAt: null,
-    conversationsExpanded: false,
+    chatConversationsExpanded: false,
+    workflowTasksExpanded: false,
     hiddenModes: [],
     conversations: [],
   };
@@ -100,7 +101,8 @@ function parseStoredWorkspaceState(raw) {
         // user last left it. We intentionally drop the legacy `expanded` field
         // on load so old snapshots don't carry forward "every project expanded".
         userExpanded: typeof project.userExpanded === 'boolean' ? project.userExpanded : undefined,
-        conversationsExpanded: Boolean(project.conversationsExpanded),
+        chatConversationsExpanded: Boolean(project.chatConversationsExpanded),
+        workflowTasksExpanded: Boolean(project.workflowTasksExpanded),
         pinned: Boolean(project.pinned),
         hiddenModes: Array.isArray(project.hiddenModes)
           ? project.hiddenModes.filter((mode) => mode === 'chat' || mode === 'bot')
@@ -466,7 +468,8 @@ export function withDefaultExpansion(project) {
     createdAt: inferProjectCreatedAt({ ...project, conversations }),
     updatedAt: projectUpdatedTimestamp({ ...project, conversations }) || project.updatedAt || null,
     expanded: project.userExpanded === true,
-    conversationsExpanded: Boolean(project.conversationsExpanded),
+    chatConversationsExpanded: Boolean(project.chatConversationsExpanded),
+    workflowTasksExpanded: Boolean(project.workflowTasksExpanded),
   };
 }
 
@@ -590,7 +593,8 @@ export function buildWorkspaceStateFromConversationDetails(details, previousStat
     removable: false,
     createdAt: previousProjects.get(DEFAULT_PROJECT_ID)?.createdAt || null,
     updatedAt: previousProjects.get(DEFAULT_PROJECT_ID)?.updatedAt || null,
-    conversationsExpanded: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.conversationsExpanded),
+    chatConversationsExpanded: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.chatConversationsExpanded),
+    workflowTasksExpanded: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.workflowTasksExpanded),
     pinned: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.pinned),
     hiddenModes: previousProjects.get(DEFAULT_PROJECT_ID)?.hiddenModes || [],
     userExpanded: typeof previousProjects.get(DEFAULT_PROJECT_ID)?.userExpanded === 'boolean'
@@ -618,7 +622,8 @@ export function buildWorkspaceStateFromConversationDetails(details, previousStat
         userExpanded: typeof previousProject?.userExpanded === 'boolean'
           ? previousProject.userExpanded
           : undefined,
-        conversationsExpanded: Boolean(previousProject?.conversationsExpanded),
+        chatConversationsExpanded: Boolean(previousProject?.chatConversationsExpanded),
+        workflowTasksExpanded: Boolean(previousProject?.workflowTasksExpanded),
         pinned: Boolean(previousProject?.pinned),
         hiddenModes: previousProject?.hiddenModes || [],
         conversations: [],
@@ -717,7 +722,8 @@ export function workspaceStateWithConversationDetail(state, detail, activate = t
       createdAt: detail.created_at || new Date().toISOString(),
       updatedAt: detail.updated_at || detail.last_message_at || new Date().toISOString(),
       userExpanded: activate ? true : undefined,
-      conversationsExpanded: false,
+      chatConversationsExpanded: false,
+      workflowTasksExpanded: false,
       hiddenModes: [],
       conversations: [
         (() => {

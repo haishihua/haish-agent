@@ -233,7 +233,7 @@ export function createDraftConversationHandlers(ctx) {
       return existingId ? { id: existingId, detail: null } : null;
     }
 
-    const nextTitle = titleFromTaskText(request?.text || '') || draft.name || DEFAULT_SESSION_NAME;
+    const nextTitle = titleFromTaskText(request?.displayText || request?.text || '') || draft.name || DEFAULT_SESSION_NAME;
     let detail = pendingCreatedDetailRef.current;
     if (!detail?.conversation_id) {
       detail = await ensureServerConversationForActiveDraft({ title: nextTitle });

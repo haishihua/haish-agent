@@ -481,6 +481,7 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
   const view = buildToolView(item);
   // 默认折叠：shell/terminal 卡片不自动展开，用户点击头部才展开查看输出。
   const [open, setOpen] = React.useState(Boolean(view.defaultOpen));
+  React.useEffect(() => setOpen(false), [conversationId, taskId, item.id]);
   const fallbackLines = view.mode === 'read' ? [] : [item.inputSummary, item.outputSummary].filter(Boolean).slice(0, 2);
   const hasChildren = Array.isArray(item.children) && item.children.length > 0;
   const isBrowserUse = String(item.toolName || '').toLowerCase() === 'browser_use';
@@ -573,16 +574,12 @@ export function ChatTimelineToolGroup({
   conversationId = '',
   taskId = '',
   askUserActive = false,
-  expandedByDefault = false,
 }) {
-  const [open, setOpen] = React.useState(expandedByDefault);
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => setOpen(false), [conversationId, taskId, item.id]);
   const status = item.status || 'done';
   const tools = Array.isArray(item.tools) ? item.tools : [];
   const summary = item.summary || `used ${tools.length} tools`;
-
-  React.useEffect(() => {
-    if (expandedByDefault) setOpen(true);
-  }, [expandedByDefault]);
 
   return (
     <div className={`chat-timeline-tool category-tool status-${status} is-group`}>
@@ -616,14 +613,33 @@ export function ChatTimelineToolGroup({
 }
 
 export function ChatTimelineMetaNode({ item }) {
+  const [open, setOpen] = React.useState(false);
   const isContextCompaction = String(item.summary || '').toLowerCase() === 'auto-compacting context';
+  const summaryText = String(item.summaryText || '').trim();
+  const details = Array.isArray(item.details) ? item.details : [];
+  const expandable = isContextCompaction && Boolean(summaryText);
   return (
     <div className={`chat-timeline-meta status-${item.status || 'done'} ${isContextCompaction ? 'is-compaction' : ''}`}>
-      <button type="button" className="chat-timeline-meta-head" aria-expanded="false" disabled>
+      <button
+        type="button"
+        className="chat-timeline-meta-head"
+        onClick={() => expandable && setOpen((value) => !value)}
+        aria-expanded={expandable ? open : false}
+        disabled={!expandable}
+      >
         <span className={`chat-timeline-status status-${item.status || 'done'}`} aria-hidden="true" />
         {isContextCompaction ? <span className="chat-timeline-compaction-icon" aria-hidden="true" /> : null}
         <span className="chat-timeline-meta-label">{item.summary || 'Thinking…'}</span>
+        {expandable ? <ChatTimelineChevron open={open} /> : null}
       </button>
+      {open && expandable ? (
+        <div className="chat-timeline-meta-body">
+          {details.length > 0 ? (
+            <div className="chat-timeline-meta-stats">{details.join(' · ')}</div>
+          ) : null}
+          <div className="chat-timeline-meta-summary"><Markdown source={summaryText} /></div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -696,7 +712,6 @@ export function ChatAgentTimeline({
               conversationId={conversationId}
               taskId={taskId}
               askUserActive={false}
-              expandedByDefault={streaming}
             />
           );
         }

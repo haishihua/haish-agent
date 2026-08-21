@@ -90,3 +90,20 @@ test('stored conversations keep their explicit execution mode and reject untyped
   const agentConversation = project.conversations.find((item) => item.id === 'agent-conversation');
   assert.deepEqual(agentConversation.tasks.map((task) => task.id), ['agent-task']);
 });
+
+test('agent conversations and workflow tasks keep separate expansion state', () => {
+  storedValues.clear();
+  saveWorkspaceState({
+    activeProjectId: 'project',
+    projects: [{
+      id: 'project',
+      chatConversationsExpanded: false,
+      workflowTasksExpanded: true,
+      conversations: [],
+    }],
+  });
+
+  const project = loadStoredWorkspaceState().projects.find((item) => item.id === 'project');
+  assert.equal(project.chatConversationsExpanded, false);
+  assert.equal(project.workflowTasksExpanded, true);
+});

@@ -6,6 +6,8 @@ import {
   mergeWorkflowNodeAttempts,
   workflowApprovalDecisionStatus,
   workflowNodeOutcomesFromEvents,
+  workflowResultForAttempt,
+  workflowToolCallsForAttempt,
   workflowTraversedLoopNodeIds,
 } from './runtime-workflow-layout.js';
 import { worldEventToRuntimeLog } from './world-events.js';
@@ -22,6 +24,10 @@ const chatMessageSource = fs.readFileSync(
   new URL('../panels/ChatMessageRow.jsx', import.meta.url),
   'utf8',
 );
+const chatTimelineSource = fs.readFileSync(
+  new URL('../panels/ChatTimelineNodes.jsx', import.meta.url),
+  'utf8',
+);
 const runtimeStyles = fs.readFileSync(
   new URL('../../styles/workflow-runtime.css', import.meta.url),
   'utf8',
@@ -32,6 +38,10 @@ const baseStyles = fs.readFileSync(
 );
 const taskStreamSource = fs.readFileSync(
   new URL('../features/app/hooks/createTaskStreamHandlers.js', import.meta.url),
+  'utf8',
+);
+const appShellSource = fs.readFileSync(
+  new URL('../features/app/AppShell.jsx', import.meta.url),
   'utf8',
 );
 
@@ -110,6 +120,15 @@ test('assistant messages keep the original penguin icon', () => {
   assert.match(baseStyles, /\.ico-assistant-avatar\s*\{[^}]*penguin\.png/s);
 });
 
+test('live traces stay visible while their tool cards remain collapsed', () => {
+  assert.match(chatMessageSource, /const traceForcedOpen = message\.streaming \|\| message\.traceOpen/);
+  assert.match(chatMessageSource, /const showTimelineExpanded = hasTraceDisclosure && \(traceForcedOpen \|\| traceExpanded\)/);
+  assert.match(chatMessageSource, /const showTimelineCollapsed = hasTraceDisclosure && !traceForcedOpen && !traceExpanded/);
+  assert.match(chatMessageSource, /setTraceExpanded\(false\).*message\.conversationId, message\.id/s);
+  assert.match(chatMessageSource, /traceForcedOpen && firstTokenMs \? <ChatTimelineElapsedPill/);
+  assert.doesNotMatch(chatTimelineSource, /expandedByDefault/);
+});
+
 test('runtime details use executed node data and real workflow transitions', () => {
   assert.match(runtimeSource, /DETAIL_NODE_TYPES = new Set\(\['agent', 'llm', 'tool', 'human_approval'\]\)/);
   assert.match(runtimeSource, /executedNodeIds\.has\(String\(node\.id\)\)/);
@@ -148,8 +167,18 @@ test('runtime details use executed node data and real workflow transitions', () 
 
 test('completed approval nodes preserve their explicit decision', () => {
   assert.match(taskStreamSource, /decision: event\.decision \|\|/);
-  assert.match(runtimeSource, /decision: base\?\.decision \|\| base\?\.structured\?\.decision \|\| finishedEvent\.decision/);
   assert.doesNotMatch(runtimeSource, /status === 'done' \? 'approved'/);
+  assert.equal(
+    workflowResultForAttempt(
+      {
+        finishedAt: '2026-08-18T18:17:00Z',
+        events: [{ type: 'workflow_node_finished', decision: 'rejected', status: 'done' }],
+      },
+      null,
+      true,
+    ).decision,
+    'rejected',
+  );
   assert.equal(
     workflowApprovalDecisionStatus(
       { type: 'human_approval' },
@@ -188,6 +217,60 @@ test('an active streamed attempt does not inherit the previous persisted result'
   assert.equal(attempts[0].result.attempt, 9);
   assert.equal(attempts[1].result.attempt, 10);
   assert.equal(attempts[2].result, null);
+
+  const activeResult = workflowResultForAttempt(
+    {
+      ...attempts[2],
+      startedAt: '2026-08-18T18:16:00Z',
+      events: [{ type: 'workflow_node_started', nodeInput: { message: 'new input' } }],
+    },
+    { attempt: 10, summary: 'previous output', finished_at: '2026-08-18T18:15:30Z' },
+    true,
+    11,
+  );
+  assert.equal(activeResult.attempt, 11);
+  assert.equal(activeResult.summary, '');
+});
+
+test('a completed attempt only receives the latest node result when their timestamps match', () => {
+  const current = workflowResultForAttempt(
+    {
+      startedAt: '2026-08-18T18:16:00Z',
+      finishedAt: '2026-08-18T18:17:00Z',
+      events: [{ type: 'workflow_node_finished', summary: 'current event output', status: 'done' }],
+    },
+    { attempt: 11, summary: 'current persisted output', finished_at: '2026-08-18T18:17:00Z' },
+    true,
+    11,
+  );
+  assert.equal(current.attempt, 11);
+  assert.equal(current.summary, 'current persisted output');
+
+  const stale = workflowResultForAttempt(
+    {
+      startedAt: '2026-08-18T18:16:00Z',
+      finishedAt: '2026-08-18T18:17:00Z',
+      events: [{ type: 'workflow_node_finished', summary: 'current event output', status: 'done' }],
+    },
+    { attempt: 10, summary: 'previous output', finished_at: '2026-08-18T18:15:30Z' },
+    true,
+    11,
+  );
+  assert.equal(stale.attempt, 11);
+  assert.equal(stale.summary, 'current event output');
+});
+
+test('a new loop attempt never reuses tool calls from the previous attempt', () => {
+  const toolCalls = [
+    { callId: 'previous-call', toolName: 'read_file' },
+    { callId: 'current-call', toolName: 'write_file' },
+  ];
+
+  assert.deepEqual(workflowToolCallsForAttempt(toolCalls, []), []);
+  assert.deepEqual(
+    workflowToolCallsForAttempt(toolCalls, [{ callId: 'current-call' }]),
+    [{ callId: 'current-call', toolName: 'write_file' }],
+  );
 });
 
 test('current approval waiting state wins over an older rejected decision', () => {
@@ -239,17 +322,31 @@ test('only the latest approval attempt binds to the live approval request', () =
   assert.match(runtimeSource, /showApproval=\{isLatestAttempt\}/);
 });
 
+test('approval decisions follow the next executed detail node', () => {
+  assert.match(runtimeSource, /previous\.status === 'approval'/);
+  assert.match(runtimeSource, /\['approved', 'rejected'\]\.includes\(selectedStatus\)/);
+  assert.match(runtimeSource, /events\.slice\(approvalFinishedIndex \+ 1\)\.find/);
+  assert.match(runtimeSource, /event\.type !== 'workflow_node_started'/);
+  assert.match(runtimeSource, /setSelectedNodeId\(nextNodeId\)/);
+});
+
 test('running node details keep time and open at the latest event', () => {
   assert.match(runtimeSource, /const completedAt = running\s*\? null/);
-  assert.match(runtimeSource, /element\.scrollTop = element\.scrollHeight/);
+  assert.match(runtimeSource, /<ScrollToBottomButton[\s\S]*?autoFollow/);
 });
 
 test('terminal workflow tasks can rerun an executed business node', () => {
-  assert.match(runtimeSource, /Run from this node/);
+  assert.match(runtimeSource, /onRetry={isLatestAttempt && canRetry \? retryLatest : null}/);
+  assert.match(chatMessageSource, /text="ReRun"/);
+  assert.match(chatMessageSource, /aria-label="ReRun this node"/);
+  assert.doesNotMatch(runtimeSource, /workflow-detail-retry-row/);
+  assert.doesNotMatch(runtimeSource, /workflow-detail-footer/);
+  assert.doesNotMatch(runtimeSource, /Upstream results and previous attempts will be kept/);
   assert.match(runtimeSource, /\['agent', 'llm', 'tool', 'human_approval'\]\.includes\(node\.type\)/);
-  assert.match(runtimeSource, /onRetry\(node\.id\)/);
+  assert.match(runtimeSource, /onRetry\?\.\(node\.id\)/);
   assert.match(taskStreamSource, /workflow\/nodes\/\$\{encodeURIComponent\(streamRequest\.rerunNodeId\)\}\/rerun\/stream/);
   assert.match(taskStreamSource, /const runId = rerunningNode \? generateHexId\(\)/);
+  assert.match(appShellSource, /setViewedWorkflowTask\(null\);\s*executeWorkflowNodeRerun\(currentWorkflowTask, nodeId\)/);
   assert.match(taskStreamSource, /sourceTaskId/);
   assert.doesNotMatch(taskStreamSource, /allowTerminalReset: true/);
   assert.match(taskStreamSource, /case 'workflow_resumed'/);

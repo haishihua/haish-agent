@@ -605,15 +605,29 @@ export function buildChatTimeline(task, taskStatus) {
       flushThinking(false);
       if (textBuf.trim()) flushText();
       if (type === 'context_compaction_completed') {
+        const completedItem = {
+          summaryText: String(event.compactionSummary || event.summary_text || '').trim(),
+          details: [
+            (event.compactedMessageCount ?? event.message_count) != null
+              ? `${Number(event.compactedMessageCount ?? event.message_count).toLocaleString()} messages`
+              : '',
+            (event.promptTokensBeforeCompaction ?? event.prompt_tokens_before_compaction) != null
+              ? `${Number(event.promptTokensBeforeCompaction ?? event.prompt_tokens_before_compaction).toLocaleString()} → ${Number(event.promptTokensAfterCompaction ?? event.prompt_tokens_after_compaction ?? 0).toLocaleString()} tokens`
+              : '',
+            (event.summaryTokens ?? event.summary_tokens) != null
+              ? `${Number(event.summaryTokens ?? event.summary_tokens).toLocaleString()} summary tokens`
+              : '',
+          ].filter(Boolean),
+          status: 'done',
+        };
         if (currentCompactionItem) {
-          currentCompactionItem.status = 'done';
+          Object.assign(currentCompactionItem, completedItem);
         } else {
           items.push({
             kind: 'meta',
             id: event.event_id || `meta-${items.length}`,
             summary: 'Auto-Compacting context',
-            details: [],
-            status: 'done',
+            ...completedItem,
           });
         }
         currentCompactionItem = null;

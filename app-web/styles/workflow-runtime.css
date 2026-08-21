@@ -317,7 +317,7 @@
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
     border-left: 1px solid rgba(139, 165, 205, 0.2);
     background: linear-gradient(180deg, rgba(18, 27, 43, 0.98), rgba(9, 15, 26, 0.99));
     box-shadow: -18px 0 38px rgba(0, 0, 0, 0.2);
@@ -562,40 +562,6 @@
     width: 100%;
     max-width: none;
     margin: 0;
-}
-
-.workflow-detail-footer {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 7px;
-    padding: 14px 18px 16px;
-    border-top: 1px solid rgba(139, 165, 205, 0.14);
-}
-
-.workflow-detail-run.chat-send {
-    width: 100%;
-    min-height: 44px;
-    height: auto;
-    padding: 0 14px 0 18px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.workflow-detail-run-label {
-    color: inherit;
-    font-size: 13px;
-    font-weight: 750;
-}
-
-.workflow-detail-note {
-    align-self: stretch;
-    color: rgba(166, 183, 211, 0.6);
-    font-size: 10px;
-    line-height: 1.4;
 }
 
 .workflow-run-empty {

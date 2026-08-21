@@ -28,6 +28,7 @@ export function createConversationHandlers(ctx) {
     findProjectByConversationId,
     invalidateConversationActivation,
     isConversationActivationCurrent,
+    modeLocationRef,
     normalizeWorkspaceOrdering,
     openDraftConversation,
     projectIdForWorkspacePath,
@@ -42,6 +43,7 @@ export function createConversationHandlers(ctx) {
     startDeploy,
     stopConversationRuntimeBeforeDelete,
     viewModeRef,
+    viewModeTogglePromiseRef,
     workspaceState,
     workspaceStateWithConversationDetail,
   } = ctx;
@@ -150,12 +152,13 @@ export function createConversationHandlers(ctx) {
     }));
   }
 
-  function handleToggleProjectConversations(projectId) {
+  function handleToggleProjectConversations(projectId, workflowTaskMode = false) {
+    const expandedKey = workflowTaskMode ? 'workflowTasksExpanded' : 'chatConversationsExpanded';
     setWorkspaceState((state) => normalizeWorkspaceOrdering({
       ...state,
       projects: state.projects.map((project) => project.id === projectId ? {
         ...project,
-        conversationsExpanded: !project.conversationsExpanded,
+        [expandedKey]: !project[expandedKey],
       } : project),
     }));
   }
@@ -444,11 +447,13 @@ export function createConversationHandlers(ctx) {
     }
   }
 
-  async function handleToggleViewMode() {
-    const nextViewMode = viewModeRef.current === 'chat' ? 'world' : 'chat';
+  async function performToggleViewMode() {
+    const requestSeq = invalidateConversationActivation();
+    conversationDetailAbortRef.current?.abort?.();
+    conversationDetailAbortRef.current = null;
+    const currentViewMode = viewModeRef.current === 'chat' ? 'chat' : 'world';
+    const nextViewMode = currentViewMode === 'chat' ? 'world' : 'chat';
     const nextExecutionMode = nextViewMode === 'chat' ? 'chat' : 'bot';
-    viewModeRef.current = nextViewMode;
-    setViewMode(nextViewMode);
     setActiveTab('dashboard');
     // Settings overlays the main workspace; leaving via bot/chat must exit it
     // so the corresponding chat/world page is shown instead of staying under settings.
@@ -460,23 +465,81 @@ export function createConversationHandlers(ctx) {
     }
 
     const currentConversation = findConversationById(workspaceState, conversationIdRef.current);
-    if (currentConversation?.executionMode === nextExecutionMode) return;
-    const currentProject = findProjectByConversationId(workspaceState, conversationIdRef.current)
+    const outgoingProject = findProjectByConversationId(workspaceState, conversationIdRef.current);
+    if (currentConversation && outgoingProject) {
+      modeLocationRef.current[currentViewMode] = {
+        projectId: outgoingProject.id,
+        conversationId: currentConversation.id,
+      };
+    }
+    if (currentConversation?.executionMode === nextExecutionMode) {
+      viewModeRef.current = nextViewMode;
+      setViewMode(nextViewMode);
+      return;
+    }
+    const rememberedLocation = modeLocationRef.current[nextViewMode];
+    const rememberedConversation = rememberedLocation?.conversationId
+      ? findConversationById(workspaceState, rememberedLocation.conversationId)
+      : null;
+    const rememberedProject = rememberedConversation?.executionMode === nextExecutionMode
+      ? findProjectByConversationId(workspaceState, rememberedConversation.id)
+      : null;
+    const currentProject = rememberedProject
+      || findProjectByConversationId(workspaceState, conversationIdRef.current)
       || workspaceState.projects.find((project) => project.id === workspaceState.activeProjectId)
       || workspaceState.projects[0];
-    const matchingConversation = currentProject?.conversations.find(
-      (conversation) => conversation.executionMode === nextExecutionMode,
-    );
-    const detail = matchingConversation
-      ? await fetchConversationDetail(matchingConversation.id)
+    const matchingConversation = rememberedProject
+      ? rememberedConversation
+      : currentProject?.conversations.find(
+          (conversation) => conversation.executionMode === nextExecutionMode,
+        );
+    const createdDetail = matchingConversation
+      ? null
       : await createConversationInProject(
           currentProject,
           currentProject?.id === DEFAULT_PROJECT_ID ? DEFAULT_SESSION_NAME : 'New Conversation',
           nextExecutionMode,
         );
-    // Restore the selected mode's latest task as well, so switching back to
-    // Workflow immediately shows the current run instead of its idle template.
-    await activateConversationDetail(detail);
+    if (!isConversationActivationCurrent(requestSeq)) return;
+    const targetConversationId = matchingConversation?.id || createdDetail?.conversation_id;
+    modeLocationRef.current[nextViewMode] = {
+      projectId: currentProject?.id || null,
+      conversationId: targetConversationId || null,
+    };
+    // Swap the displayed runtime before the page mode. Otherwise the new Agent
+    // page briefly renders the still-running Workflow state while detail loads.
+    activateConversationShell(currentProject?.id, targetConversationId);
+    viewModeRef.current = nextViewMode;
+    setViewMode(nextViewMode);
+    if (createdDetail) {
+      await activateConversationDetail(createdDetail, { activationSeq: requestSeq });
+      return;
+    }
+    const detailController = new AbortController();
+    conversationDetailAbortRef.current = detailController;
+    try {
+      const detail = await fetchConversationDetail(targetConversationId, { signal: detailController.signal });
+      if (!isConversationActivationCurrent(requestSeq) || detailController.signal.aborted) return;
+      // Restore the selected mode's latest task as well, so switching back to
+      // Workflow immediately shows the current run instead of its idle template.
+      await activateConversationDetail(detail, { activationSeq: requestSeq });
+    } catch (error) {
+      if (detailController.signal.aborted || error?.name === 'AbortError') return;
+      if (isConversationActivationCurrent(requestSeq)) throw error;
+    } finally {
+      if (conversationDetailAbortRef.current === detailController) {
+        conversationDetailAbortRef.current = null;
+      }
+    }
+  }
+
+  function handleToggleViewMode() {
+    if (!viewModeTogglePromiseRef.current) {
+      viewModeTogglePromiseRef.current = performToggleViewMode().finally(() => {
+        viewModeTogglePromiseRef.current = null;
+      });
+    }
+    return viewModeTogglePromiseRef.current;
   }
 
   function handleOpenTaskReport(task) {

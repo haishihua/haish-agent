@@ -1016,13 +1016,20 @@ export function agentCatalogFromProfiles(payload) {
 }
 
 export function matchingAgentSkills(draft, skills = []) {
-  const match = String(draft || '').match(/^\/([a-z0-9-]*)$/i);
+  const match = String(draft || '').match(/^\s*\/([a-z0-9-]*)$/i);
   if (!match) return null;
   const query = match[1].toLowerCase();
   return skills.filter((skill) => (
     String(skill.name || '').toLowerCase().includes(query)
     || String(skill.description || '').toLowerCase().includes(query)
   ));
+}
+
+export function extractAgentSkillInvocation(draft, skills = []) {
+  const match = String(draft || '').match(/^\s*\/([a-z0-9-]+)(?:\s+([\s\S]*))?$/i);
+  if (!match) return null;
+  const skill = skills.find((item) => String(item.name || '').toLowerCase() === match[1].toLowerCase());
+  return skill ? { skill, prompt: match[2] || '' } : null;
 }
 
 export function withSelectedSkillInstruction(text, skill) {

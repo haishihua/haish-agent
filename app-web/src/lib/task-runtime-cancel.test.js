@@ -41,3 +41,15 @@ test('cancelling a task preserves an active node that already finished successfu
   assert.equal(cancelled.workflowRun.current_node_id, null);
   assert.deepEqual(cancelled.workflowRun.nodes.rework, task.workflowRun.nodes.rework);
 });
+
+test('an empty terminal snapshot cannot erase the visible workflow', async () => {
+  const { usableWorkflowSnapshot } = await import('./workflow-snapshot.js');
+  const current = { id: 'development-loop', nodes: [{ id: 'start' }], edges: [] };
+
+  assert.equal(usableWorkflowSnapshot({}, current), current);
+  assert.equal(usableWorkflowSnapshot('{"nodes":[]}', current), current);
+  assert.deepEqual(
+    usableWorkflowSnapshot('{"id":"next","nodes":[{"id":"start"}]}', current),
+    { id: 'next', nodes: [{ id: 'start' }] },
+  );
+});

@@ -12,12 +12,15 @@ import {
 import { WorkflowApprovalInline } from '../../approval-overlay.jsx';
 import { buildChatTimeline } from '../../lib/chat-timeline.js';
 import { normalizeTaskStatus, taskFirstStreamTimestamp } from '../../lib/task-runtime.js';
+import { workflowApprovalInput } from '../../lib/workflow-approval-markdown.js';
 import {
   layoutRuntimeWorkflow,
   mergeWorkflowNodeAttempts,
   useWorkflowCanvasWidth,
   workflowApprovalDecisionStatus,
   workflowNodeOutcomesFromEvents,
+  workflowResultForAttempt,
+  workflowToolCallsForAttempt,
   workflowTraversedLoopNodeIds,
 } from '../../lib/runtime-workflow-layout.js';
 import {
@@ -182,11 +185,10 @@ function nodeAttempts(task, nodeId) {
 
 function attemptTask(task, attempt, result) {
   const events = attempt?.events || [];
-  const callIds = new Set(events.map((event) => event.callId).filter(Boolean));
   return {
     ...task,
     eventLog: events.filter((event) => !event.type?.startsWith('workflow_')),
-    toolCalls: (task?.toolCalls || []).filter((call) => !callIds.size || callIds.has(call.callId)),
+    toolCalls: workflowToolCallsForAttempt(task?.toolCalls, events),
     answerText: result?.summary || '',
   };
 }
@@ -197,7 +199,7 @@ function detailText(value, fallback = '') {
   return workflowArgumentsText(value);
 }
 
-function nodeConversationInput(node, attempt, result) {
+function nodeConversationInputValue(node, attempt, result) {
   const startedEvent = attempt?.events?.find((event) => event.type === 'workflow_node_started');
   const inputEvent = node.type === 'tool'
     ? attempt?.events?.find((event) => (
@@ -207,19 +209,17 @@ function nodeConversationInput(node, attempt, result) {
       || event?.json != null
     )) || startedEvent
     : startedEvent;
-  return workflowInputDisplayText(
-    inputEvent?.nodeInput
-      ?? inputEvent?.toolInput
-      ?? inputEvent?.inputSummary
-      ?? inputEvent?.value
-      ?? inputEvent?.json
-      ?? inputEvent?.message
-      ?? result?.input
-      ?? result?.prompt
-      ?? (result?.arguments != null ? { tool_name: result?.tool_name || node.tool_name, arguments: result.arguments } : null)
-      ?? result?.reviewed_input
-      ?? '',
-  );
+  return inputEvent?.nodeInput
+    ?? inputEvent?.toolInput
+    ?? inputEvent?.inputSummary
+    ?? inputEvent?.value
+    ?? inputEvent?.json
+    ?? inputEvent?.message
+    ?? result?.input
+    ?? result?.prompt
+    ?? (result?.arguments != null ? { tool_name: result?.tool_name || node.tool_name, arguments: result.arguments } : null)
+    ?? result?.reviewed_input
+    ?? '';
 }
 
 function timestampMs(value) {
@@ -228,7 +228,7 @@ function timestampMs(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function NodeConversation({ node, task, attempt, result, status, running, now, showApproval }) {
+function NodeConversation({ node, task, attempt, result, status, running, now, showApproval, onRetry }) {
   const scopedTask = React.useMemo(() => attemptTask(task, attempt, result), [attempt, result, task]);
   const timelineStatus = running ? 'running' : normalizeTaskStatus(result?.status || status);
   const timeline = React.useMemo(
@@ -240,10 +240,11 @@ function NodeConversation({ node, task, attempt, result, status, running, now, s
     [timeline?.items],
   );
   const resultText = detailText(result?.error || result?.summary || result?.text || result?.output);
-  const inputText = React.useMemo(
-    () => nodeConversationInput(node, attempt, result),
+  const inputValue = React.useMemo(
+    () => nodeConversationInputValue(node, attempt, result),
     [attempt, node, result],
   );
+  const inputText = React.useMemo(() => workflowInputDisplayText(inputValue), [inputValue]);
   const createdAt = timestampMs(attempt?.startedAt || result?.started_at || task?.createdAt);
   const completedAt = running
     ? null
@@ -276,7 +277,7 @@ function NodeConversation({ node, task, attempt, result, status, running, now, s
     : Boolean(resultText) || timelineItems.length > 0;
 
   if (node.type === 'human_approval') {
-    const reviewedInput = result?.input || result?.reviewed_input || result?.structured?.reviewed_input || {};
+    const reviewedInput = workflowApprovalInput(inputValue);
     const resolvedRequest = status === 'approval' && showApproval ? null : {
       request_id: `${task?.taskId || 'task'}-${node.id}-${attempt?.id || 'attempt'}`,
       title: reviewedInput?.title || node.label || 'Approval required',
@@ -292,6 +293,9 @@ function NodeConversation({ node, task, attempt, result, status, running, now, s
         conversationId={task?.conversationId || ''}
         allowLiveRequest={showApproval}
         resolvedRequest={resolvedRequest}
+        onRetry={onRetry}
+        createdAt={createdAt}
+        completedAt={completedAt}
       />
     );
   }
@@ -299,30 +303,9 @@ function NodeConversation({ node, task, attempt, result, status, running, now, s
   return (
     <>
       {inputText ? <ChatMessageRow message={inputMessage} now={now} /> : null}
-      {showAssistant ? <ChatMessageRow message={assistantMessage} now={now} /> : null}
+      {showAssistant ? <ChatMessageRow message={assistantMessage} now={now} onRetry={onRetry} /> : null}
     </>
   );
-}
-
-function resultForAttempt(attempt, latestResult, isLatestAttempt) {
-  const base = {
-    ...(attempt?.result || {}),
-    ...(isLatestAttempt ? (latestResult || {}) : {}),
-  };
-  if (!attempt) return base || latestResult || null;
-  const finishedEvent = attempt.events?.findLast((event) => event.type === 'workflow_node_finished');
-  if (!finishedEvent) return base || latestResult || null;
-  return {
-    ...(base || {}),
-    status: base?.status || finishedEvent.status,
-    success: base?.success ?? (finishedEvent.status !== 'failed' && !finishedEvent.error),
-    summary: base?.summary || finishedEvent.summary || finishedEvent.outputSummary || finishedEvent.message || '',
-    error: base?.error || finishedEvent.error || finishedEvent.errorMessage || '',
-    decision: base?.decision || base?.structured?.decision || finishedEvent.decision || '',
-    feedback: base?.feedback ?? base?.structured?.feedback ?? finishedEvent.feedback ?? '',
-    started_at: base?.started_at || attempt.startedAt,
-    finished_at: base?.finished_at || attempt.finishedAt,
-  };
 }
 
 function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, onRetry, now }) {
@@ -340,35 +323,34 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
       }] : []);
   const historicalAttempts = visibleAttempts.slice(0, -1);
   const latestAttempt = visibleAttempts.at(-1) || null;
-  const latestEventCount = latestAttempt?.events?.length || 0;
+  const canRetry = onRetry
+    && ['done', 'failed', 'cancelled'].includes(normalizeTaskStatus(task?.status))
+    && ['agent', 'llm', 'tool', 'human_approval'].includes(node.type);
+  const retryLatest = React.useCallback(() => onRetry?.(node.id), [node.id, onRetry]);
 
-  const renderAttempt = (attempt, index, isLatestAttempt) => (
-    <section className={`workflow-detail-attempt${isLatestAttempt ? ' is-latest' : ''}`} key={attempt?.id || `${node.id}-${index}`}>
-      {visibleAttempts.length > 1 ? (
-        <div className="workflow-detail-attempt-label">
-          {isLatestAttempt ? 'latest Attempt' : 'attempt'} #{attempt?.result?.attempt || index + 1}
-        </div>
-      ) : null}
-      <NodeConversation
-        node={node}
-        task={task}
-        attempt={attempt}
-        result={resultForAttempt(attempt, latestResult, isLatestAttempt)}
-        status={status}
-        running={isLatestAttempt && (status === 'running' || status === 'waiting_input' || status === 'approval')}
-        now={now}
-        showApproval={isLatestAttempt}
-      />
-    </section>
-  );
-
-  React.useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      const element = detailBodyRef.current;
-      if (element) element.scrollTop = element.scrollHeight;
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [latestEventCount, latestResult?.finished_at, node.id, status, visibleAttempts.length]);
+  const renderAttempt = (attempt, index, isLatestAttempt) => {
+    const attemptNumber = attempt?.result?.attempt || index + 1;
+    return (
+      <section className={`workflow-detail-attempt${isLatestAttempt ? ' is-latest' : ''}`} key={attempt?.id || `${node.id}-${index}`}>
+        {visibleAttempts.length > 1 ? (
+          <div className="workflow-detail-attempt-label">
+            {isLatestAttempt ? 'latest Attempt' : 'attempt'} #{attemptNumber}
+          </div>
+        ) : null}
+        <NodeConversation
+          node={node}
+          task={task}
+          attempt={attempt}
+          result={workflowResultForAttempt(attempt, latestResult, isLatestAttempt, attemptNumber)}
+          status={status}
+          running={isLatestAttempt && (status === 'running' || status === 'waiting_input' || status === 'approval')}
+          now={now}
+          showApproval={isLatestAttempt}
+          onRetry={isLatestAttempt && canRetry ? retryLatest : null}
+        />
+      </section>
+    );
+  };
 
   return (
     <aside className="workflow-detail-panel" aria-label={`${node.label || node.id} execution details`}>
@@ -430,30 +412,21 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
           ) : null}
           {latestAttempt ? renderAttempt(latestAttempt, visibleAttempts.length - 1, true) : null}
         </div>
-        <ScrollToBottomButton scrollRef={detailBodyRef} />
+        <ScrollToBottomButton
+          scrollRef={detailBodyRef}
+          autoFollow
+          resetKey={`${node.id}:${latestAttempt?.id || ''}`}
+        />
       </div>
 
-      {onRetry
-        && ['done', 'failed', 'cancelled'].includes(normalizeTaskStatus(task?.status))
-        && ['agent', 'llm', 'tool', 'human_approval'].includes(node.type) ? (
-        <footer className="workflow-detail-footer">
-          <button
-            type="button"
-            className="chat-send workflow-detail-run"
-            onClick={() => onRetry(node.id)}
-          >
-            <span className="workflow-detail-run-label">Run from this node</span>
-            <span className="ico ico-deploy" aria-hidden="true" />
-          </button>
-          <span className="workflow-detail-note">Upstream results and previous attempts will be kept.</span>
-        </footer>
-      ) : null}
     </aside>
   );
 }
 
 function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], now }) {
   const [selectedNodeId, setSelectedNodeId] = React.useState('');
+  const previousSelectionRef = React.useRef({ nodeId: '', status: 'pending' });
+  const followApprovalBranchRef = React.useRef('');
   const [detailWidth, setDetailWidth] = React.useState(460);
   const layoutRef = React.useRef(null);
   const canvasRef = React.useRef(null);
@@ -609,6 +582,41 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
   const selectedStatus = selectedNode
     ? nodeStatus(selectedNode, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)
     : 'pending';
+  React.useEffect(() => {
+    const previous = previousSelectionRef.current;
+    if (
+      selectedNode?.type === 'human_approval'
+      && previous.nodeId === selectedNodeId
+      && previous.status === 'approval'
+      && ['approved', 'rejected'].includes(selectedStatus)
+    ) {
+      followApprovalBranchRef.current = selectedNodeId;
+    }
+    previousSelectionRef.current = { nodeId: selectedNodeId, status: selectedStatus };
+  }, [selectedNode?.type, selectedNodeId, selectedStatus]);
+  React.useEffect(() => {
+    const approvalNodeId = followApprovalBranchRef.current;
+    if (!approvalNodeId) return;
+    const events = task?.eventLog || [];
+    const finishedIndex = events.findLastIndex((event) => (
+      event.type === 'workflow_node_finished' && eventNodeId(event) === approvalNodeId
+    ));
+    const branchIndex = events.findLastIndex((event) => (
+      event.type === 'workflow_edge_selected'
+      && String(event.fromNodeId || event.from_node_id || '') === approvalNodeId
+    ));
+    const approvalFinishedIndex = finishedIndex >= 0 ? finishedIndex : branchIndex;
+    if (approvalFinishedIndex < 0) return;
+    const nextEvent = events.slice(approvalFinishedIndex + 1).find((event) => {
+      if (event.type !== 'workflow_node_started') return false;
+      const nodeId = eventNodeId(event);
+      return nodeId !== approvalNodeId && canOpenNodeDetail(nodeById.get(nodeId));
+    });
+    const nextNodeId = eventNodeId(nextEvent);
+    if (!nextNodeId) return;
+    followApprovalBranchRef.current = '';
+    setSelectedNodeId(nextNodeId);
+  }, [canOpenNodeDetail, nodeById, selectedNodeId, task?.eventLog]);
   const displayRunStatus = normalizeTaskStatus(task?.status) === 'cancelled'
     ? 'cancelled'
     : normalizeTaskStatus(run?.status);
