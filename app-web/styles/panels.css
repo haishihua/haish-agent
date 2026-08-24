@@ -616,15 +616,14 @@
 .conversation-head-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
 
 .ico-conversation-panel-toggle {
     width: 18px;
     height: 18px;
-    -webkit-mask-image: url('../assets/ui/icons/conversation-panel-collapse.png');
-    mask-image: url('../assets/ui/icons/conversation-panel-collapse.png');
-    transform: translateY(-2px);
+    -webkit-mask-image: url('../assets/ui/icons/conversation-panel-collapse.svg');
+    mask-image: url('../assets/ui/icons/conversation-panel-collapse.svg');
     transition: transform .18s ease-out;
 }
 
@@ -633,7 +632,7 @@
 }
 
 .ico-conversation-panel-toggle.is-expand {
-    transform: translateY(-2px) scaleX(-1);
+    transform: scaleX(-1);
 }
 
 .conversation-head-action:focus-visible {
@@ -656,8 +655,7 @@
 }
 
 .conversation-head-action,
-.conversation-icon-btn,
-.conversation-show-more {
+.conversation-icon-btn {
     font-family: "Nunito Sans", "SF Pro Rounded", "Quicksand", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -790,18 +788,18 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: "Nunito Sans", "SF Pro Rounded", "Quicksand", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--conversation-font);
     letter-spacing: 0.01em;
 }
 
 .project-name {
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 400;
 }
 
 .conversation-name {
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 400;
     /* 为行尾 loading 图标与悬停操作按钮（固定/删除）预留空间，标题文字不会压到按钮 */
     padding-right: 40px;
 }
@@ -930,8 +928,7 @@
 }
 
 .conversation-row:hover .conversation-running-indicator,
-.conversation-row:focus .conversation-running-indicator,
-.conversation-row:focus-within .conversation-running-indicator {
+.conversation-row:not(:focus):focus-within .conversation-running-indicator {
     opacity: 0;
 }
 
@@ -1286,9 +1283,9 @@
 }
 
 .conversation-task-title {
-    font-family: "Nunito Sans", "SF Pro Rounded", "Quicksand", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--conversation-font);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 400;
     color: #e7ecfa;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1350,8 +1347,9 @@
     gap: 8px;
     cursor: pointer;
     padding: 0 8px;
+    font-family: var(--conversation-font);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 400;
     letter-spacing: 0.01em;
     transition: color .14s, background .14s;
 }

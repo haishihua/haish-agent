@@ -29,6 +29,7 @@ export const CHAT_IMAGE_ACCEPTED_MIME = new Set([
   'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
 ]);
 const EMPTY_AGENT_SKILLS = [];
+const EMPTY_CARD_HOVER_DELAY_MS = 140;
 
 export function ChatPanel({
   conversationId,
@@ -75,8 +76,25 @@ export function ChatPanel({
   // 空状态卡片 hover：'secondary' | 'tertiary' | null。悬停某张卡时它与第一张换位，
   // 只有指针离开整个插图区才还原，避免卡片移动后指针落点变化导致来回抖动。
   const [emptyHoverCard, setEmptyHoverCard] = React.useState(null);
+  const emptyHoverTimerRef = React.useRef(null);
   const draft = draftProp !== undefined ? draftProp : localDraft;
   const setDraft = draftProp !== undefined ? onDraftChangeProp : setLocalDraft;
+
+  function cancelEmptyCardHover() {
+    if (!emptyHoverTimerRef.current) return;
+    window.clearTimeout(emptyHoverTimerRef.current);
+    emptyHoverTimerRef.current = null;
+  }
+
+  function scheduleEmptyCardHover(card) {
+    cancelEmptyCardHover();
+    emptyHoverTimerRef.current = window.setTimeout(() => {
+      setEmptyHoverCard(card);
+      emptyHoverTimerRef.current = null;
+    }, EMPTY_CARD_HOVER_DELAY_MS);
+  }
+
+  React.useEffect(() => () => cancelEmptyCardHover(), []);
 
   // Collect user messages for ArrowUp history navigation (most recent first).
   const userMessageHistory = React.useMemo(() => {
@@ -145,16 +163,6 @@ export function ChatPanel({
       skillSelectionPendingRef.current = false;
     }
   }, [currentAgentSkills, selectedSkillName]);
-
-  React.useEffect(() => {
-    if (selectedSkill || !/^\s*\/[a-z0-9-]+\s+/i.test(draft)) return;
-    const invocation = extractAgentSkillInvocation(draft, currentAgentSkills);
-    if (!invocation) return;
-    selectedSkillNameRef.current = invocation.skill.name;
-    skillSelectionPendingRef.current = !invocation.prompt;
-    setSelectedSkillName(invocation.skill.name);
-    setDraft(invocation.prompt);
-  }, [currentAgentSkills, draft, selectedSkill, setDraft]);
 
   async function attachImageFile(file) {
     if (!file || running) return;
@@ -385,10 +393,11 @@ export function ChatPanel({
     if (!skill) return;
     event?.preventDefault?.();
     event?.stopPropagation?.();
+    const prompt = String(draft || '').match(/^\s*\/[a-z0-9-]*(?:\s+([\s\S]*))?$/i)?.[1] || '';
     selectedSkillNameRef.current = skill.name;
-    skillSelectionPendingRef.current = true;
+    skillSelectionPendingRef.current = !prompt.trim();
     setSelectedSkillName(skill.name);
-    setDraft('');
+    setDraft(prompt);
     setSkillMenuDismissed(false);
     requestAnimationFrame(() => inputRef.current?.focusAtEnd?.());
   }
@@ -405,7 +414,10 @@ export function ChatPanel({
             <div className="chat-empty">
               <div
                 className={`chat-empty-illustration${emptyHoverCard === 'secondary' ? ' swap-secondary' : ''}${emptyHoverCard === 'tertiary' ? ' swap-tertiary' : ''}`}
-                onMouseLeave={() => setEmptyHoverCard(null)}
+                onMouseLeave={() => {
+                  cancelEmptyCardHover();
+                  setEmptyHoverCard(null);
+                }}
                 aria-hidden="true"
               >
                 <div className="chat-empty-card chat-empty-card-primary">
@@ -413,13 +425,15 @@ export function ChatPanel({
                 </div>
                 <div
                   className="chat-empty-card chat-empty-card-secondary"
-                  onMouseEnter={() => setEmptyHoverCard('secondary')}
+                  onMouseEnter={() => scheduleEmptyCardHover('secondary')}
+                  onMouseLeave={cancelEmptyCardHover}
                 >
                   <img src="/assets/ui/empty-state/penguin-sleepy-card.png" alt="" />
                 </div>
                 <div
                   className="chat-empty-card chat-empty-card-tertiary"
-                  onMouseEnter={() => setEmptyHoverCard('tertiary')}
+                  onMouseEnter={() => scheduleEmptyCardHover('tertiary')}
+                  onMouseLeave={cancelEmptyCardHover}
                 >
                   <img src="/assets/ui/empty-state/penguin-hug-card.png" alt="" />
                 </div>

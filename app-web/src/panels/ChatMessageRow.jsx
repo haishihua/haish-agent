@@ -47,7 +47,7 @@ function ChatMessageRowComponent({ message, now, onPreviewImage, onRetry }) {
   // Individual tool cards inside ChatAgentTimeline manage their own collapsed state.
   const traceForcedOpen = message.streaming || message.traceOpen;
   const showTimelineExpanded = hasTraceDisclosure && (traceForcedOpen || traceExpanded);
-  const showTimelineCollapsed = hasTraceDisclosure && !traceForcedOpen && !traceExpanded;
+  const showTimelineToggle = hasTraceDisclosure && !traceForcedOpen;
   const isUser = message.role === 'user';
   const [copied, setCopied] = React.useState(false);
   const copyTimerRef = React.useRef(null);
@@ -118,27 +118,16 @@ function ChatMessageRowComponent({ message, now, onPreviewImage, onRetry }) {
             </span>
           </div>
         ) : null}
-        {showTimelineCollapsed ? (
-          <>
-            <ChatTimelineCollapsed
-              onExpand={() => setTraceExpanded((value) => !value)}
-              label={elapsed || '0s'}
-              expanded={traceExpanded}
-            />
-            {traceExpanded ? (
-              <ChatAgentTimeline
-                items={timeline}
-                streaming={false}
-                latestTodos={message.traceLatestTodos || null}
-                conversationId={message.conversationId || ''}
-                taskId={message.taskId || ''}
-              />
-            ) : null}
-          </>
+        {showTimelineToggle ? (
+          <ChatTimelineCollapsed
+            onExpand={() => setTraceExpanded((value) => !value)}
+            label={elapsed || '0s'}
+            expanded={traceExpanded}
+          />
         ) : null}
         {/* 首字未到（排队/建连/模型首字等待期）不显示计时器 */}
         {traceForcedOpen && firstTokenMs ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
-        {showTimelineExpanded && !showTimelineCollapsed ? (
+        {showTimelineExpanded ? (
           <ChatAgentTimeline
             items={timeline}
             streaming={message.streaming}

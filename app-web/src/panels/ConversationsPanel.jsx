@@ -241,25 +241,28 @@ export function ConversationsPanel({
     });
   }
 
+  const panelToggle = (
+    <PortalTooltip text={collapsed ? `Expand ${workflowTaskMode ? 'Task' : 'Conversation'}` : `Collapse ${workflowTaskMode ? 'Task' : 'Conversation'}`} position="below">
+      <button
+        type="button"
+        className="conversation-head-action conversation-panel-toggle"
+        onClick={onToggleCollapsed}
+        aria-label={collapsed ? 'Expand conversation panel' : 'Collapse conversation panel'}
+        aria-expanded={!collapsed}
+      >
+        <span
+          className={`ico ico-conversation-panel-toggle${collapsed ? ' is-expand' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+    </PortalTooltip>
+  );
+
   return (
     <div className={`side-panel left conversations-panel${collapsed ? ' is-collapsed' : ''}`} ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
       <div className="side-panel-head">
         <div className="conversation-head-primary">
-          <PortalTooltip text={collapsed ? `Expand ${workflowTaskMode ? 'Tasks' : 'Conversation'}` : `Collapse ${workflowTaskMode ? 'Tasks' : 'Conversation'}`} position="below">
-            <button
-              type="button"
-              className="conversation-head-action conversation-panel-toggle"
-              onClick={onToggleCollapsed}
-              aria-label={collapsed ? 'Expand conversation panel' : 'Collapse conversation panel'}
-              aria-expanded={!collapsed}
-            >
-              <span
-                className={`ico ico-conversation-panel-toggle${collapsed ? ' is-expand' : ''}`}
-                aria-hidden="true"
-              />
-            </button>
-          </PortalTooltip>
-          {!collapsed ? <div className="title">{workflowTaskMode ? 'Tasks' : 'Conversation'}</div> : null}
+          {collapsed ? panelToggle : <div className="title">{workflowTaskMode ? 'Task' : 'Conversation'}</div>}
         </div>
         {!collapsed ? (
           <div className="conversation-head-actions">
@@ -273,6 +276,7 @@ export function ConversationsPanel({
                 <span className="ico ico-folder-plus-circle" aria-hidden="true" />
               </button>
             </PortalTooltip>
+            {panelToggle}
           </div>
         ) : null}
       </div>

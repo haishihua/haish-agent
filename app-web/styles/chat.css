@@ -705,13 +705,14 @@
     flex-direction: column;
     gap: 8px;
     margin: 0 0 10px;
-    font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: var(--conversation-font);
 }
 
 .chat-timeline-text {
     position: relative;
     padding: 2px 0;
     color: rgba(222, 229, 246, 0.92);
+    font-family: var(--conversation-font);
     font-size: 14px;
     line-height: 1.65;
     white-space: pre-wrap;
@@ -2280,7 +2281,7 @@
        few pixels past the Markdown content box. Clipping this wrapper cuts off
        the left half of markers such as 4. and 5. */
     overflow: visible;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: var(--conversation-font);
     font-size: 14px;
     line-height: 1.65;
     letter-spacing: 0;
@@ -2408,7 +2409,7 @@
     padding: 2px 0;
     background: transparent;
     color: var(--ink);
-    font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: var(--conversation-font);
     font-size: 14px;
     font-weight: 600;
     line-height: 1.5;
@@ -3256,6 +3257,17 @@
 .chat-bubble-text .md-bq,
 .chat-bubble-text .md-table {
     white-space: normal;
+}
+
+/* Prose follows the conversation font; code/pre remain on the Markdown
+   renderer's explicit monospace stack. */
+.chat-bubble-text .md-root .md-h,
+.chat-bubble-text .md-root .md-table {
+    font-family: inherit;
+}
+
+.chat-bubble-text .md-root .md-h {
+    font-weight: 400;
 }
 
 .chat-bubble-text .md-root em,

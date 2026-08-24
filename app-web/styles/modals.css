@@ -371,6 +371,23 @@
     border-radius: 2px;
     color: rgba(255, 255, 255, 0.9);
     overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.md-root .md-pre::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.md-root .md-pre::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.md-root .md-pre::-webkit-scrollbar-thumb,
+.md-root .md-pre::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
 }
 
 .md-root .md-code-line {

@@ -3,6 +3,7 @@
 // Command approvals, browser-runtime confirmation, and ask_user are rendered
 // declaratively inside the main React tree.
 
+import 'lxgw-wenkai-screen-webfont/lxgwwenkaiscreen.css';
 import '../styles.css';
 import '@xyflow/react/dist/style.css';
 

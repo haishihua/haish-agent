@@ -1016,7 +1016,7 @@ export function agentCatalogFromProfiles(payload) {
 }
 
 export function matchingAgentSkills(draft, skills = []) {
-  const match = String(draft || '').match(/^\s*\/([a-z0-9-]*)$/i);
+  const match = String(draft || '').match(/^\s*\/([a-z0-9-]*)(?:\s+[\s\S]*)?$/i);
   if (!match) return null;
   const query = match[1].toLowerCase();
   return skills.filter((skill) => (

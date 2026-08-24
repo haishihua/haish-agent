@@ -29,7 +29,7 @@
     background: rgba(12, 18, 30, 0.55);
     z-index: 2;
     -webkit-app-region: no-drag;
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: var(--conversation-font);
 }
 
 .user-session-row {
@@ -82,7 +82,7 @@
 .user-meta .user-name {
     color: rgba(235, 240, 252, 0.96);
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 400;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -4082,4 +4082,22 @@
 .settings-page .settings-confirm-dialog.danger .conversation-dialog-btn.primary:hover {
     border-color: #ff8b95;
     background: linear-gradient(180deg, #ee626b 0%, #d9454f 55%, #b8333d 100%);
+}
+
+/* Settings typography: use the conversation reading font for navigation
+   items, controls and configuration content. Keep the page/section titles on
+   the original UI font so the visual hierarchy does not change. */
+.settings-page,
+.settings-page button,
+.settings-page input,
+.settings-page textarea,
+.settings-page select {
+    font-family: var(--conversation-font);
+}
+
+.settings-sidebar-head,
+.settings-side-section > button,
+.settings-list-title > strong,
+.settings-main-head h1 {
+    font-family: var(--content-font);
 }

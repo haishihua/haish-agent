@@ -783,12 +783,6 @@ export function createTaskStreamHandlers(ctx) {
             completedAt: persistedTask?.completed_at
               ? (Date.parse(persistedTask.completed_at) || Date.now())
               : (hasPresentationPending ? run.completedAt : Date.now()),
-            sources: Array.isArray(persistedTask?.sources)
-              ? persistedTask.sources
-              : (Array.isArray(event.sources) ? event.sources : run.sources),
-            memory: Array.isArray(persistedTask?.memory)
-              ? persistedTask.memory
-              : (Array.isArray(event.memory) ? event.memory : run.memory),
             attachment: Array.isArray(persistedTask?.attachments) && persistedTask.attachments.length
               ? { ...persistedTask.attachments[0], uploaded: true }
               : run.attachment,
@@ -848,8 +842,6 @@ export function createTaskStreamHandlers(ctx) {
         error: null,
         answerText: '',
         chatStreamText: '',
-        sources: [],
-        memory: [],
       };
     }
     pendingTask.id = runId;

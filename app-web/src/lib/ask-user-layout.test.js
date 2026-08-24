@@ -44,7 +44,9 @@ test('ask_user option state stays inside the main React tree with square control
   assert.doesNotMatch(formSource, /pending\.length === 1 \? pending\[0\]/);
   assert.match(formSource, /scheduleInitialRetry\(\);/);
   assert.match(formSource, /if \(!response\.ok\) throw new Error/);
-  assert.match(formSource, /eventSource\.close\(\)/);
+  assert.match(formSource, /unsubscribeEvents = subscribeApprovalEvents/);
+  assert.doesNotMatch(formSource, /new EventSource/);
+  assert.equal((overlaySource.match(/new EventSource/g) || []).length, 1);
   assert.match(formSource, /if \(payload\.type === 'input_resolved'\) remove\(payload\.request_id\);/);
   assert.match(formSource, /if \(!controller\.signal\.aborted && pending\.length === 0\) scheduleInitialRetry\(\);/);
   assert.doesNotMatch(formSource, /function closeWhenResolved/);

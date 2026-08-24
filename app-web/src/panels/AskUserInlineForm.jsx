@@ -1,5 +1,6 @@
 // @haish-esm
 import React from 'react';
+import { subscribeApprovalEvents } from '../approval-overlay.jsx';
 import { selectPendingUserInput } from '../lib/pending-user-input.js';
 
 function resolveApiBase() {
@@ -12,7 +13,7 @@ const INITIAL_STATE_RETRY_MS = 2000;
 
 const inputStore = (() => {
   let pending = [];
-  let eventSource = null;
+  let unsubscribeEvents = null;
   let initialPromise = null;
   let initialController = null;
   let initialRetryTimer = null;
@@ -39,11 +40,9 @@ const inputStore = (() => {
   }
 
   function closeStream() {
-    if (!eventSource) return;
-    eventSource.onmessage = null;
-    eventSource.onerror = null;
-    eventSource.close();
-    eventSource = null;
+    if (!unsubscribeEvents) return;
+    unsubscribeEvents();
+    unsubscribeEvents = null;
   }
 
   function clearInitialRetry() {
@@ -107,24 +106,11 @@ const inputStore = (() => {
   }
 
   function ensureStream() {
-    if (eventSource) return;
-    try {
-      eventSource = new EventSource(`${API_BASE}/api/approvals/stream`);
-    } catch (error) {
-      console.warn('[ask_user] EventSource construction failed', error);
-      eventSource = null;
-      return;
-    }
-    eventSource.onmessage = (event) => {
-      let payload;
-      try {
-        payload = JSON.parse(event.data);
-      } catch (_) {
-        return;
-      }
+    if (unsubscribeEvents) return;
+    unsubscribeEvents = subscribeApprovalEvents((payload) => {
       if (payload.type === 'input_requested') add(payload);
       if (payload.type === 'input_resolved') remove(payload.request_id);
-    };
+    });
   }
 
   return {

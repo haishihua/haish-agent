@@ -24,6 +24,12 @@ const appShellSource = fs.readFileSync(
 const chatPanelSource = fs.readFileSync(new URL('../panels/ChatPanel.jsx', import.meta.url), 'utf8');
 const chatStyles = fs.readFileSync(new URL('../../styles/chat.css', import.meta.url), 'utf8');
 
+test('empty-state cards require hover intent before swapping', () => {
+  assert.match(chatPanelSource, /const EMPTY_CARD_HOVER_DELAY_MS = 140/);
+  assert.match(chatPanelSource, /window\.setTimeout\([\s\S]*EMPTY_CARD_HOVER_DELAY_MS/);
+  assert.match(chatPanelSource, /onMouseLeave=\{cancelEmptyCardHover\}/);
+});
+
 test('defaults expose only Task Assistant and no preset workflow', () => {
   assert.deepEqual(APP_DEFAULT_AGENT_OPTIONS.map((item) => item.id), ['preset.general']);
   assert.equal(DEFAULT_WORKFLOW_SETTINGS.default_workflow_id, 'workflow.direct-agent');
@@ -86,6 +92,8 @@ test('skill composer filters slash input and prefixes the submitted prompt', () 
   assert.deepEqual(matchingAgentSkills('   /', skills), skills);
   assert.deepEqual(matchingAgentSkills('/req', skills), [skills[0]]);
   assert.deepEqual(matchingAgentSkills('  /req', skills), [skills[0]]);
+  assert.deepEqual(matchingAgentSkills('/esx 分析需求 20707', skills), [skills[0]]);
+  assert.deepEqual(matchingAgentSkills('/es 分析需求 20707', skills), skills);
   assert.equal(matchingAgentSkills('read /tmp/file', skills), null);
   assert.deepEqual(extractAgentSkillInvocation('/esx', skills), { skill: skills[0], prompt: '' });
   assert.deepEqual(extractAgentSkillInvocation('/esx ', skills), { skill: skills[0], prompt: '' });
@@ -114,7 +122,10 @@ test('selected skill renders as an inline Lexical token inside the composer', ()
   assert.match(lexicalInputSource, /onKeyDownCapture=\{onKeyDown\}/);
   assert.match(chatStyles, /\.chat-skill-token\s*\{/);
   assert.doesNotMatch(chatStyles, /--skill-chip-indent/);
-  assert.match(chatPanelSource, /function selectSkill\(skill, event\)[\s\S]*skillSelectionPendingRef\.current = true/);
+  assert.match(
+    chatPanelSource,
+    /function selectSkill\(skill, event\)[\s\S]*skillSelectionPendingRef\.current = !prompt\.trim\(\)[\s\S]*setDraft\(prompt\)/,
+  );
   assert.match(chatPanelSource, /async function submit\(e\)[\s\S]*if \(skillSelectionPendingRef\.current\) return/);
 });
 

@@ -98,6 +98,7 @@ async function postBrowserRuntimeResolve(request, decision) {
 const approvalStore = (() => {
   let pending = [];
   const listeners = new Set();
+  const eventListeners = new Set();
   let es = null;
   let initialFetchInflight = null;
   // Browser-runtime cards embedded in the chat timeline claim their request
@@ -131,6 +132,11 @@ const approvalStore = (() => {
         payload = JSON.parse(ev.data);
       } catch (_) {
         return;
+      }
+      for (const listener of eventListeners) {
+        try {
+          listener(payload);
+        } catch (_) {}
       }
       if (payload.type === 'approval_requested') {
         if (pending.some((p) => p.request_id === payload.request_id)) return;
@@ -190,6 +196,13 @@ const approvalStore = (() => {
         listeners.delete(fn);
       };
     },
+    subscribeEvents(fn) {
+      eventListeners.add(fn);
+      ensureStream();
+      return () => {
+        eventListeners.delete(fn);
+      };
+    },
     remove(requestId) {
       const before = pending.length;
       pending = pending.filter((p) => p.request_id !== requestId);
@@ -211,6 +224,10 @@ const approvalStore = (() => {
     },
   };
 })();
+
+export function subscribeApprovalEvents(listener) {
+  return approvalStore.subscribeEvents(listener);
+}
 
 function isBrowserRuntimeRequest(request) {
   return request?.type === 'browser_runtime_install_required' || request?.action === 'install_browser_runtime';
@@ -864,6 +881,12 @@ function ensureStyles() {
   font-family: 'JetBrains Mono', monospace;
 }
 
+/* Workflow node details are conversation content, so their prose should use
+   the same bundled reading font as chat instead of the tool-card monospace. */
+.workflow-detail-body .haish-approval-slot {
+  font-family: var(--conversation-font, 'PingFang SC', 'Microsoft YaHei', sans-serif);
+}
+
 /* 嵌入 browser_use 工具节点内部时，与工具头保持一点间距 */
 .chat-timeline-tool > .haish-approval-slot {
   margin-top: 10px;
@@ -1208,6 +1231,13 @@ function ensureStyles() {
   min-width: 0;
   padding-top: 8px;
   overflow: hidden;
+}
+
+.workflow-detail-body .haish-user-input-card .haish-approval-intent,
+.workflow-detail-body .haish-user-input-card .haish-user-input-question legend,
+.workflow-detail-body .haish-user-input-card .haish-user-input-option-copy,
+.workflow-detail-body .haish-user-input-card .haish-user-input-textarea {
+  font-family: var(--conversation-font, 'PingFang SC', 'Microsoft YaHei', sans-serif);
 }
 
 .haish-user-input-questions {

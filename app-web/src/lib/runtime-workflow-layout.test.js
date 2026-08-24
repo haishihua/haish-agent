@@ -123,7 +123,9 @@ test('assistant messages keep the original penguin icon', () => {
 test('live traces stay visible while their tool cards remain collapsed', () => {
   assert.match(chatMessageSource, /const traceForcedOpen = message\.streaming \|\| message\.traceOpen/);
   assert.match(chatMessageSource, /const showTimelineExpanded = hasTraceDisclosure && \(traceForcedOpen \|\| traceExpanded\)/);
-  assert.match(chatMessageSource, /const showTimelineCollapsed = hasTraceDisclosure && !traceForcedOpen && !traceExpanded/);
+  assert.match(chatMessageSource, /const showTimelineToggle = hasTraceDisclosure && !traceForcedOpen/);
+  assert.match(chatMessageSource, /showTimelineToggle \? \(\s*<ChatTimelineCollapsed/);
+  assert.match(chatMessageSource, /expanded=\{traceExpanded\}/);
   assert.match(chatMessageSource, /setTraceExpanded\(false\).*message\.conversationId, message\.id/s);
   assert.match(chatMessageSource, /traceForcedOpen && firstTokenMs \? <ChatTimelineElapsedPill/);
   assert.doesNotMatch(chatTimelineSource, /expandedByDefault/);

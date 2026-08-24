@@ -435,8 +435,23 @@
     min-height: 0;
     overflow-y: auto;
     padding: 16px 18px 28px;
+    font-family: var(--conversation-font);
     scrollbar-width: thin;
     scrollbar-color: rgba(128, 151, 190, 0.3) transparent;
+}
+
+/* The approval/ask-user renderer injects its base tool-card styles at runtime.
+   Keep this scoped override here as well so Vite HMR updates an open node
+   detail immediately without requiring the app process to restart. */
+.workflow-detail-body .haish-approval-slot {
+    font-family: var(--conversation-font) !important;
+}
+
+/* Markdown assigns its own fonts, so container inheritance is not enough. */
+.workflow-detail-body .md-root,
+.workflow-detail-body .md-root .md-h,
+.workflow-detail-body .md-root .md-table {
+    font-family: var(--conversation-font) !important;
 }
 
 .workflow-detail-history {
