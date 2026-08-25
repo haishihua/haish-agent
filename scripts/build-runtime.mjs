@@ -15,6 +15,8 @@ const buildVenvPath = path.join(buildRoot, '.pyinstaller-venv');
 const pyinstallerWorkPath = path.join(buildRoot, 'pyinstaller-work');
 const pyinstallerSpecPath = path.join(buildRoot, 'pyinstaller-spec');
 const runtimeLauncherPath = path.join(buildRoot, 'haish-runtime-launcher.py');
+const runtimeRequirementsPath = path.join(__dirname, 'runtime-requirements.lock');
+const runtimePipVersion = '26.2.1';
 
 // Never ship a real developer `.env` in release artifacts.
 // Packaged apps should use placeholders / user-provided runtime.env instead.
@@ -157,6 +159,9 @@ function main() {
   if (!fs.existsSync(path.join(sourceRoot, 'pyproject.toml'))) {
     throw new Error(`Runtime source is missing pyproject.toml: ${sourceRoot}`);
   }
+  if (!fs.existsSync(runtimeRequirementsPath)) {
+    throw new Error(`Runtime dependency lock is missing: ${runtimeRequirementsPath}`);
+  }
 
   fs.rmSync(runtimeRoot, { recursive: true, force: true });
   fs.mkdirSync(runtimeRoot, { recursive: true });
@@ -179,27 +184,19 @@ function main() {
   fs.rmSync(pyinstallerSpecPath, { recursive: true, force: true });
   run(python, ['-m', 'venv', '--copies', buildVenvPath]);
   const venvPython = path.join(buildVenvPath, 'bin', 'python');
-  run(venvPython, ['-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel']);
+  run(venvPython, ['-m', 'pip', 'install', '--upgrade', `pip==${runtimePipVersion}`]);
   run(venvPython, [
     '-m',
     'pip',
     'install',
-    'pyinstaller',
-    'httpx',
-    'openai',
-    'python-dotenv',
-    'tiktoken',
-    'fastapi',
-    'mcp',
-    'neo4j',
-    'pypdf',
-    'qdrant-client',
-    'python-multipart',
-    'uvicorn',
+    '--no-cache-dir',
+    '--requirement',
+    runtimeRequirementsPath,
   ]);
   removeSourceBuildArtifacts();
   removeInstalledRuntimePackage(venvPython);
   run(venvPython, ['-m', 'pip', 'install', '--no-cache-dir', '--force-reinstall', '--no-deps', sourceRoot]);
+  run(venvPython, ['-m', 'pip', 'check']);
   pruneRuntime();
   writeRuntimeLauncher();
   run(venvPython, [
