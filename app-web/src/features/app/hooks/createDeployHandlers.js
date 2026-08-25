@@ -479,7 +479,7 @@ export function createDeployHandlers(ctx) {
         showToast('error', 'Runtime instructions currently support text only.');
         return false;
       }
-      return queueTaskInput(runningTaskId, text)
+      return queueTaskInput(runningTaskId, text, request.displayText)
         .then(() => {
           showToast('success', 'Instruction queued.');
           return true;

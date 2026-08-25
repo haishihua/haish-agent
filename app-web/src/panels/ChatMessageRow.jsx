@@ -1,6 +1,7 @@
 // @haish-esm
 import React from 'react';
 import { Markdown } from '../Effects.jsx';
+import { stripInjectedSkillInstruction } from '../lib/chat-text.js';
 import { PortalTooltip } from './PortalTooltip.jsx';
 import {
   formatElapsedDuration,
@@ -49,6 +50,7 @@ function ChatMessageRowComponent({ message, now, onPreviewImage, onRetry }) {
   const showTimelineExpanded = hasTraceDisclosure && (traceForcedOpen || traceExpanded);
   const showTimelineToggle = hasTraceDisclosure && !traceForcedOpen;
   const isUser = message.role === 'user';
+  const visibleText = isUser ? stripInjectedSkillInstruction(message.text) : message.text;
   const [copied, setCopied] = React.useState(false);
   const copyTimerRef = React.useRef(null);
   const nowMs = now instanceof Date ? now.getTime() : Number(now) || Date.now();
@@ -65,7 +67,7 @@ function ChatMessageRowComponent({ message, now, onPreviewImage, onRetry }) {
   const timelineText = isAgent
     ? timeline.filter((item) => item.kind === 'text').map((item) => item.text || '').join('\n').trim()
     : '';
-  const copyText = String(message.text || timelineText || '').trim();
+  const copyText = String(visibleText || timelineText || '').trim();
 
   React.useEffect(() => () => {
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
@@ -138,11 +140,11 @@ function ChatMessageRowComponent({ message, now, onPreviewImage, onRetry }) {
         ) : null}
         {isAgent ? (
           <FinalAnswerMarkdown source={message.text} streaming={message.streaming} />
-        ) : message.text ? (
+        ) : visibleText ? (
           <div className="chat-bubble-text">
             {(isUser || message.markdown) && Markdown
-              ? <Markdown source={String(message.text)} />
-              : <span className="chat-stream-text">{message.text}</span>}
+              ? <Markdown source={String(visibleText)} />
+              : <span className="chat-stream-text">{visibleText}</span>}
           </div>
         ) : null}
       </div>

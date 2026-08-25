@@ -372,7 +372,7 @@ export function createDraftConversationHandlers(ctx) {
     });
   }
 
-  async function queueTaskInput(taskId, message) {
+  async function queueTaskInput(taskId, message, displayMessage = message) {
     const response = await authFetch(`${API_BASE}/api/tasks/${taskId}/inputs`, {
       method: 'POST',
       headers: buildApiHeaders(),
@@ -392,7 +392,7 @@ export function createDraftConversationHandlers(ctx) {
     const queuedEvent = payload?.event;
     const queuedPayload = queuedEvent?.payload || {};
     if (queuedEvent && taskId) {
-      const queuedMessage = String(queuedPayload.message ?? message ?? '').trim();
+      const queuedMessage = String(displayMessage || queuedPayload.message || message || '').trim();
       const queuedInputId = queuedPayload.input_id || payload?.input_id || null;
       updateWorldTaskState((state) => {
         const task = state?.tasksById?.[taskId];

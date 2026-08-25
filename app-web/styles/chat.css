@@ -1527,6 +1527,21 @@
     color: #fff;
 }
 
+.chat-imsg-bubble.main,
+.chat-imsg-bubble.sub.final,
+.chat-imsg-stream-answer,
+.chat-imsg-subtimeline .chat-timeline-text,
+.chat-imsg-bubble.main .md-root,
+.chat-imsg-bubble.main .md-root .md-h,
+.chat-imsg-bubble.main .md-root .md-table,
+.chat-imsg-bubble.main .md-root .md-icode,
+.chat-imsg-bubble.sub.final .md-root,
+.chat-imsg-bubble.sub.final .md-root .md-h,
+.chat-imsg-bubble.sub.final .md-root .md-table,
+.chat-imsg-bubble.sub.final .md-root .md-icode {
+    font-family: var(--conversation-font, 'PingFang SC', 'Microsoft YaHei', sans-serif);
+}
+
 .chat-imsg-bubble.sub.final .md-root > *:first-child {
     margin-top: 0;
 }

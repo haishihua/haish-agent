@@ -2,6 +2,7 @@
 // Extracted from AppShell.jsx (Phase C2). Behavior-preserving factory.
 import { mergeAdjacentStreamEvent } from '../../../lib/stream-events.js';
 import { usableWorkflowSnapshot } from '../../../lib/workflow-snapshot.js';
+import { stripInjectedSkillInstruction } from '../../../lib/chat-text.js';
 
 export function workflowNodeStartedState(event) {
   return {
@@ -762,7 +763,11 @@ export function createTaskStreamHandlers(ctx) {
             ...terminalBase,
             taskId: persistedTask?.task_id || run.taskId,
             conversationId: persistedTask?.conversation_id || event.conversation_id || run.conversationId,
-            title: stripChatImageAugmentation(persistedTask?.title || run.title).text || run.title,
+            // Keep the local display title. The persisted title contains the
+            // transport-only skill instruction sent to the model.
+            title: run.title
+              || stripChatImageAugmentation(stripInjectedSkillInstruction(persistedTask?.title)).text
+              || 'Task',
             status: terminalStatus,
             stage: terminalStatus === 'done'
               ? (hasPresentationPending ? (persistedTask?.stage || run.stage) : (persistedTask?.stage || 'done'))

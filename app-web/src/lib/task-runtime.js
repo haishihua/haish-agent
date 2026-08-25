@@ -7,7 +7,7 @@ import {
   taskCreatedTimestamp,
   registerTaskSummaryMapper,
 } from './workspace-state.js';
-import { stripChatImageAugmentation } from './chat-text.js';
+import { stripChatImageAugmentation, stripInjectedSkillInstruction } from './chat-text.js';
 import { compactStreamEvents } from './stream-events.js';
 import { usableWorkflowSnapshot } from './workflow-snapshot.js';
 import { WORLD_ROLE_TO_ACTOR, WORLD_KIND_MAP } from './world-runtime.js';
@@ -293,14 +293,14 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = [], ow
   const taskAttachments = Array.isArray(task.attachments)
     ? task.attachments.map((attachment) => ({ ...attachment, uploaded: true }))
     : [];
-  const titleParts = stripChatImageAugmentation(task.title);
+  const titleParts = stripChatImageAugmentation(stripInjectedSkillInstruction(task.title));
   const descriptionParts = stripChatImageAugmentation(task.description);
   const imageAttachments = normalizeChatImageRefs(
     mergeChatImageRefs(task.image_attachments || task.imageAttachments || [], fallbackImageAttachments, titleParts.imageRefs, descriptionParts.imageRefs),
     task.conversation_id,
     ownerId,
   );
-  const title = titleParts.text || String(task.title || '').trim() || 'Task';
+  const title = titleParts.text || 'Task';
   return {
     taskId: task.task_id,
     conversationId: task.conversation_id,

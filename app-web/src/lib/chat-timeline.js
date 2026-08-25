@@ -1,5 +1,5 @@
 // @haish-esm
-import { eventDeltaText } from './chat-text.js';
+import { eventDeltaText, stripInjectedSkillInstruction } from './chat-text.js';
 export { eventDeltaText } from './chat-text.js';
 import { normalizeToolName } from './tool-names.js';
 import { normalizeTaskStatus } from './task-runtime.js';
@@ -563,7 +563,7 @@ export function buildChatTimeline(task, taskStatus) {
       const item = {
         kind: 'user_input',
         id: inputId,
-        text: String(event.message || '').trim(),
+        text: stripInjectedSkillInstruction(event.message),
         status: 'pending',
         timestamp: event.timestamp || null,
       };
@@ -581,13 +581,13 @@ export function buildChatTimeline(task, taskStatus) {
         const existing = runtimeInputItemsById.get(inputId);
         if (existing) {
           existing.status = 'applied';
-          existing.text = String(input?.message || existing.text || '').trim();
+          existing.text = existing.text || stripInjectedSkillInstruction(input?.message);
           continue;
         }
         const item = {
           kind: 'user_input',
           id: inputId,
-          text: String(input?.message || '').trim(),
+          text: stripInjectedSkillInstruction(input?.message),
           status: 'applied',
           timestamp: event.timestamp || null,
         };

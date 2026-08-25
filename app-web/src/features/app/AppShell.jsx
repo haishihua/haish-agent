@@ -8,6 +8,7 @@ import {
   KIND_COLORS,
 } from '../../lib/world-layout.js';
 import { HollowPurple } from '../../Effects.jsx';
+import { stripInjectedSkillInstruction } from '../../lib/chat-text.js';
 import {
   TopBar,
   ConversationsPanel,
@@ -1803,7 +1804,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         taskRows.push({
           id: `${taskId}-user`,
           role: 'user',
-          text: task.title,
+          text: stripInjectedSkillInstruction(task.title),
           status,
           createdAt: task.createdAt,
           completedAt: task.completedAt,
@@ -1891,6 +1892,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               traceLatestTodos: isLast ? (timeline?.latestTodos || null) : null,
               status,
               streaming: isLast && streaming,
+              // A steering input closes the preceding assistant segment. Keep
+              // that segment open while the same task continues so the user
+              // can see the answer they are correcting.
+              traceOpen: !isLast && streaming,
               // Earlier segments freeze at the steering boundary while the run
               // is active so their previous tool calls stay visible with their
               // own time pill; the final segment keeps the task-level clock,
@@ -1913,7 +1918,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         rows.push({
           id: `${worldTaskState.pendingTask.id || 'pending'}-user`,
           role: 'user',
-          text: worldTaskState.pendingTask.title,
+          text: stripInjectedSkillInstruction(worldTaskState.pendingTask.title),
           status: pendingStatus,
           createdAt: worldTaskState.pendingTask.createdAt,
           completedAt: worldTaskState.pendingTask.completedAt,

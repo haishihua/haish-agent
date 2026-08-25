@@ -446,7 +446,9 @@ export function ChatPanel({
           ))}
           <ApprovalInline />
         </div>
-        <ScrollToBottomButton scrollRef={listRef} autoFollow resetKey={conversationId || ''} />
+        {messages.length > 0 ? (
+          <ScrollToBottomButton scrollRef={listRef} autoFollow resetKey={conversationId || ''} />
+        ) : null}
       </div>
       <form
         className="chat-composer"

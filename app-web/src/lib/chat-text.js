@@ -22,6 +22,12 @@ export function stripChatImageAugmentation(value) {
   return { text, imageRefs };
 }
 
+export function stripInjectedSkillInstruction(value) {
+  return String(value || '')
+    .replace(/^\s*Use the [a-z0-9_.-]+ skill\.(?:\s+|$)/i, '')
+    .trim();
+}
+
 export function eventDeltaText(event) {
   return String(
     event?.delta
