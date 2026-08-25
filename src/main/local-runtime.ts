@@ -420,9 +420,13 @@ export async function ensureLocalRuntime(paths: RuntimePaths): Promise<LocalRunt
   if (state.status === 'starting' && startPromise) {
     return startPromise;
   }
-  const reused = await tryReuseExistingRuntime(paths);
-  if (reused) {
-    return reused;
+  // Packaged apps must start the backend bundled with their own version.
+  // Reusing a healthy orphan from an older .app makes the new UI run against old code.
+  if (!paths.isPackaged) {
+    const reused = await tryReuseExistingRuntime(paths);
+    if (reused) {
+      return reused;
+    }
   }
   return startLocalRuntime(paths);
 }
