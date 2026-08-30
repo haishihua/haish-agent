@@ -1,8 +1,9 @@
 // @haish-esm
 // Extracted from AppShell.jsx (Phase C2). Behavior-preserving factory.
-import { mergeAdjacentStreamEvent } from '../../../lib/stream-events.js';
+import { appendStreamEvent, mergeAdjacentStreamEvent } from '../../../lib/stream-events.js';
 import { usableWorkflowSnapshot } from '../../../lib/workflow-snapshot.js';
 import { stripInjectedSkillInstruction } from '../../../lib/chat-text.js';
+import { runtimeEventToLog } from '../../../lib/runtime-events.js';
 
 export function workflowNodeStartedState(event) {
   return {
@@ -59,18 +60,14 @@ export function createTaskStreamHandlers(ctx) {
     activeRuntimeTargetConvId,
     appendAnswerDelta,
     appendChatProgressText,
-    appendTaskEvent,
     applyConversationSnapshot,
     applyTerminalTaskState,
     batchRuntimeMutations,
     authFetch,
     buildApiHeaders,
     chatFinalizedTaskIdsRef,
-    compactPendingSceneItems,
-    completeTaskAgents,
     conversationId,
     conversationIdRef,
-    dropPendingSceneItems,
     ensureTaskForEvent,
     eventDeltaText,
     flushRuntimeTasksToWorkspace,
@@ -79,18 +76,15 @@ export function createTaskStreamHandlers(ctx) {
     getRuntime,
     getTaskById,
     getToolResponseTraceStatus,
-    isChatOriginTask,
     isTerminalTaskStatus,
     mergeChatImageRefs,
     mutateRuntime,
     normalizeChatImageRefs,
     normalizeContextUsage,
     normalizeTaskStatus,
-    normalizeWorldEvent,
-    pendingPresentationTaskIdsRef,
+    normalizeRuntimeEvent,
     readRuntimeAnswerBuffer,
     removeConversationTaskFromWorkspace,
-    resetSceneActors,
     resolveProviderMeta,
     saveStoredContextUsage,
     setComposerAttachment,
@@ -106,12 +100,32 @@ export function createTaskStreamHandlers(ctx) {
     taskHasAssistantStreamContent,
     toDisplayText,
     updateTaskById,
-    updateWorldTaskState,
+    updateTaskRuntimeState,
     uploadAttachment,
     upsertToolCall,
     userCancelledTaskIdsRef,
     userIdRef,
   } = ctx;
+
+  const isChatOriginTask = (taskId, targetConvId = null) => (
+    getTaskById(taskId, targetConvId)?.originViewMode === 'chat'
+  );
+
+  const appendTaskEvent = (taskId, event) => {
+    updateTaskById(taskId, (task) => {
+      const runtimeEvent = runtimeEventToLog(event);
+      return {
+        ...task,
+        loopIndex: Math.max(task.loopIndex || 0, event.loop_index || 0),
+        eventLog: appendStreamEvent(task.eventLog, {
+          ...runtimeEvent,
+          workflowNodeId: runtimeEvent.workflowNodeId
+            || task.workflowRun?.current_node_id
+            || null,
+        }),
+      };
+    });
+  };
 
   const coalesceStreamEvent = (previous, event) => (
     mergeQueuedStreamDelta(previous, event, eventDeltaText)
@@ -141,7 +155,7 @@ export function createTaskStreamHandlers(ctx) {
           const line = buffer.slice(0, newlineIndex).trim();
           buffer = buffer.slice(newlineIndex + 1);
           if (line) {
-            const event = normalizeWorldEvent(JSON.parse(line));
+            const event = normalizeRuntimeEvent(JSON.parse(line));
             if (event && !signal?.aborted) onEvent(event);
           }
           newlineIndex = buffer.indexOf('\n');
@@ -150,7 +164,7 @@ export function createTaskStreamHandlers(ctx) {
       if (signal?.aborted) return;
       const tail = buffer.trim();
       if (tail) {
-        const event = normalizeWorldEvent(JSON.parse(tail));
+        const event = normalizeRuntimeEvent(JSON.parse(tail));
         if (event && !signal?.aborted) onEvent(event);
       }
     } catch (error) {
@@ -161,7 +175,7 @@ export function createTaskStreamHandlers(ctx) {
     }
   }
 
-  function applyWorldEvent(event, targetConvId = null) {
+  function applyRuntimeEvent(event, targetConvId = null) {
     const eventConversationId = event.conversation_id || null;
     const ownerConvId = activeRuntimeTargetConvId(targetConvId);
     if (eventConversationId && ownerConvId && eventConversationId !== ownerConvId) {
@@ -169,8 +183,7 @@ export function createTaskStreamHandlers(ctx) {
     }
     const ownerRuntime = ownerConvId ? getRuntime(ownerConvId) : null;
     // Stop-before-visualization: drop every late event for the aborted run,
-    // including CHAT_FINAL_FOLLOWUP types like run_cancelled that would otherwise
-    // rehydrate empty You / Assistant shells.
+    // including run_finished, which would otherwise rehydrate empty shells.
     if (ownerRuntime?.abortRequested) {
       if (event.task_id) {
         userCancelledTaskIdsRef.current.add(event.task_id);
@@ -192,7 +205,7 @@ export function createTaskStreamHandlers(ctx) {
       chatFinalizedTaskIdsRef.current.has(taskId)
       && !CHAT_FINAL_FOLLOWUP_EVENT_TYPES.has(event.type)
     ) {
-      updateWorldTaskState((state) => (
+      updateTaskRuntimeState((state) => (
         state.activeTaskId === taskId ? { ...state, activeTaskId: null } : state
       ), ownerConvId);
       return;
@@ -359,19 +372,14 @@ export function createTaskStreamHandlers(ctx) {
         saveStoredContextUsage(nextContextUsage);
         break;
       }
-      case 'user_message_received':
+      case 'run_started':
         chatFinalizedTaskIdsRef.current.delete(taskId);
-        dropPendingSceneItems();
-        resetSceneActors();
         updateTaskById(taskId, (run) => ({
           ...run,
-          status: 'queued',
-          stage: 'assigned',
+          status: 'running',
+          stage: 'in_progress',
           loopIndex: 0,
         }));
-        break;
-      case 'agent_gateway_received':
-        updateTaskById(taskId, (run) => ({ ...run, status: 'running', stage: 'in_progress' }));
         break;
       case 'provider_selected': {
         const providerMeta = resolveProviderMeta(event, getTaskById(taskId));
@@ -401,6 +409,16 @@ export function createTaskStreamHandlers(ctx) {
         break;
       }
       case 'context_compaction_completed': {
+        updateTaskById(taskId, (run) => ({
+          ...run,
+          status: 'running',
+          stage: 'in_progress',
+          loopIndex,
+          providerState: run.providerState ? { ...run.providerState, state: 'ready' } : run.providerState,
+        }));
+        break;
+      }
+      case 'context_compaction_failed': {
         updateTaskById(taskId, (run) => ({
           ...run,
           status: 'running',
@@ -444,7 +462,7 @@ export function createTaskStreamHandlers(ctx) {
         }));
         break;
       }
-      case 'llm_tool_call_requested': {
+      case 'tool_call_started': {
         updateTaskById(taskId, (run) => {
           const waitingForInput = String(event.tool_name || '').toLowerCase() === 'ask_user';
           const nodeId = event.workflow_node_id || run.workflowRun?.current_node_id;
@@ -458,8 +476,6 @@ export function createTaskStreamHandlers(ctx) {
             toolGroup: event.tool_group || 'external',
             kind: event.kind || 'tool',
             toolName: event.tool_name || 'unknown',
-              executorRole: event.executor_role || null,
-              executorActorId: event.executor_actor_id || null,
               skillName: event.skill_name || '',
               skillPath: event.skill_path || '',
             state: 'requested',
@@ -485,32 +501,20 @@ export function createTaskStreamHandlers(ctx) {
         });
         break;
       }
-      case 'tool_manager_received':
-      case 'tool_dispatched':
-      case 'tool_executor_started':
-      case 'tool_executor_completed':
-      case 'tool_result_returned':
+      case 'tool_call_completed':
         updateTaskById(taskId, (run) => {
           const existingToolCall = Array.isArray(run.toolCalls)
             ? run.toolCalls.find((item) => item.callId === event.call_id)
             : null;
-          let nextState = event.type === 'tool_manager_received'
-            ? 'received'
-            : event.type === 'tool_dispatched'
-              ? 'dispatched'
-              : event.type === 'tool_executor_started'
-                ? 'running'
-                : event.type === 'tool_executor_completed'
-                  ? 'completed'
-                  : 'returned';
+          let nextState = 'completed';
           const responseState = getToolResponseTraceStatus(event.tool_response, '');
           if (responseState === 'failed') {
             nextState = 'failed';
-          } else if (responseState === 'done' && (nextState === 'completed' || nextState === 'returned')) {
+          } else if (responseState === 'done') {
             nextState = 'completed';
           }
           const askUserResolved = String(existingToolCall?.toolName || event.tool_name || '').toLowerCase() === 'ask_user'
-            && (event.type === 'tool_executor_completed' || event.type === 'tool_result_returned');
+            && event.type === 'tool_call_completed';
           const nodeId = event.workflow_node_id || run.workflowRun?.current_node_id;
           return {
             ...run,
@@ -522,13 +526,9 @@ export function createTaskStreamHandlers(ctx) {
               toolGroup: event.tool_group || 'external',
               kind: event.kind || existingToolCall?.kind || 'tool',
               toolName: event.tool_name || 'unknown',
-              executorRole: event.executor_role || existingToolCall?.executorRole || event.target || event.actor || null,
-              executorActorId: event.executor_actor_id || existingToolCall?.executorActorId || null,
               skillName: event.skill_name || existingToolCall?.skillName || '',
               skillPath: event.skill_path || existingToolCall?.skillPath || '',
               state: nextState,
-              // 关键：必须用 existing 值兜底，否则后续事件（tool_manager_received / tool_dispatched 等）
-              // 不携带 input_summary 时，patch 里的 undefined 会通过 spread 把已设值覆盖回 undefined。
               inputSummary: event.input_summary || existingToolCall?.inputSummary || '',
               outputSummary: event.output_summary || existingToolCall?.outputSummary || '',
               toolInput: event.tool_input || existingToolCall?.toolInput || null,
@@ -549,6 +549,9 @@ export function createTaskStreamHandlers(ctx) {
             } : run.workflowRun,
           };
         });
+        break;
+      case 'todo_updated':
+        updateTaskById(taskId, (run) => ({ ...run, stage: 'in_progress', loopIndex }));
         break;
       case 'tool_output_delta': {
         updateTaskById(taskId, (run) => {
@@ -573,8 +576,8 @@ export function createTaskStreamHandlers(ctx) {
       }
       case 'sub_agent_progress_delta':
       case 'sub_agent_answer_delta':
-      case 'sub_agent_tool_call_requested':
-      case 'sub_agent_tool_executor_completed':
+      case 'sub_agent_tool_call_started':
+      case 'sub_agent_tool_call_completed':
       case 'sub_agent_started':
       case 'sub_agent_finished':
         updateTaskById(taskId, (run) => ({
@@ -610,7 +613,7 @@ export function createTaskStreamHandlers(ctx) {
         }));
         break;
       }
-      case 'llm_final_answer': {
+      case 'final_answer': {
         const finalAnswerText = toDisplayText(
           event.content
           ?? event.answer_text
@@ -641,101 +644,50 @@ export function createTaskStreamHandlers(ctx) {
         }));
         break;
       }
-      case 'agent_gateway_reported':
-        if (isChatOriginTask(taskId, ownerConvId)) {
-          chatFinalizedTaskIdsRef.current.add(taskId);
-          updateTaskById(taskId, (run) => ({
-            ...run,
-            stage: isTerminalTaskStatus(run.status) ? run.stage : 'check',
-            answerText: run.answerText || event.content || readRuntimeAnswerBuffer(),
-          }));
-          break;
-        }
-        pendingPresentationTaskIdsRef.current.add(taskId);
-        updateTaskById(taskId, (run) => ({
-          ...run,
-          stage: 'check',
-          loopIndex,
-          answerText: event.content || readRuntimeAnswerBuffer(),
-          presentationPending: true,
-        }));
-        break;
-      case 'run_cancelled': {
-        pendingPresentationTaskIdsRef.current.delete(taskId);
-        chatFinalizedTaskIdsRef.current.add(taskId);
-        userCancelledTaskIdsRef.current.add(taskId);
-        const existing = getTaskById(taskId, ownerConvId);
-        const answerBuffer = String(readRuntimeAnswerBuffer(ownerConvId) || '').trim();
-        // Any cancel that never produced agent-visible content must drop both
-        // bubbles. Do not require the local cancel-id set: late server task ids
-        // after a pending-only Stop may not match the original pending draft id.
-        const shouldRollbackEmptyCancel = Boolean(
-          !taskHasAssistantStreamContent(existing)
-          && !answerBuffer
-        );
-        if (shouldRollbackEmptyCancel) {
-          updateWorldTaskState((state) => {
-            const nextTasksById = { ...(state.tasksById || {}) };
-            delete nextTasksById[taskId];
-            return {
-              ...state,
-              activeTaskId: null,
-              pendingTask: null,
-              taskOrder: (state.taskOrder || []).filter((id) => id !== taskId),
-              tasksById: nextTasksById,
-            };
-          }, ownerConvId);
-          removeConversationTaskFromWorkspace(ownerConvId, taskId);
-          if (ownerConvId) flushRuntimeTasksToWorkspace(ownerConvId);
-        } else {
-          updateTaskById(taskId, (run) => applyTerminalTaskState(run, 'cancelled', { aborted: true }), ownerConvId);
-          updateWorldTaskState((state) => ({ ...state, activeTaskId: null }), ownerConvId);
-        }
-        setRuntimeBusy(false, ownerConvId);
-        setRuntimeActiveTaskId(null, ownerConvId);
-        setRuntimeFetchController(null, ownerConvId);
-        dropPendingSceneItems(taskId);
-        resetSceneActors();
-        completeTaskAgents(taskId, 'cancelled');
-        break;
-      }
-      case 'run_error':
-        pendingPresentationTaskIdsRef.current.delete(taskId);
-        chatFinalizedTaskIdsRef.current.add(taskId);
-        updateTaskById(taskId, (run) => applyTerminalTaskState(run, 'failed', {
-          error: toDisplayText(event.message),
-          aborted: false,
-        }));
-        updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
-        setRuntimeBusy(false);
-        setRuntimeActiveTaskId(null);
-        setRuntimeFetchController(null);
-        dropPendingSceneItems(taskId);
-        resetSceneActors();
-        completeTaskAgents(taskId, 'failed');
-        break;
       case 'run_finished': {
-        const shouldWaitForPresentation = pendingPresentationTaskIdsRef.current.has(taskId)
-          || !!getTaskById(taskId)?.presentationPending;
+        const persistedTask = event.task || null;
+        const terminalStatus = normalizeTaskStatus(persistedTask?.status || event.status);
+        if (terminalStatus === 'cancelled') {
+          chatFinalizedTaskIdsRef.current.add(taskId);
+          userCancelledTaskIdsRef.current.add(taskId);
+          const existing = getTaskById(taskId, ownerConvId);
+          const answerBuffer = String(readRuntimeAnswerBuffer(ownerConvId) || '').trim();
+          if (!taskHasAssistantStreamContent(existing) && !answerBuffer) {
+            updateTaskRuntimeState((state) => {
+              const nextTasksById = { ...(state.tasksById || {}) };
+              delete nextTasksById[taskId];
+              return {
+                ...state,
+                activeTaskId: null,
+                pendingTask: null,
+                taskOrder: (state.taskOrder || []).filter((id) => id !== taskId),
+                tasksById: nextTasksById,
+              };
+            }, ownerConvId);
+            removeConversationTaskFromWorkspace(ownerConvId, taskId);
+            if (ownerConvId) flushRuntimeTasksToWorkspace(ownerConvId);
+            setRuntimeBusy(false, ownerConvId);
+            setRuntimeActiveTaskId(null, ownerConvId);
+            setRuntimeFetchController(null, ownerConvId);
+            break;
+          }
+        }
         updateTaskById(taskId, (run) => {
-          const hasPresentationPending = pendingPresentationTaskIdsRef.current.has(taskId)
-            || !!run.presentationPending;
-          const persistedTask = event.task || null;
           const persistedImages = normalizeChatImageRefs(
             persistedTask?.image_attachments || persistedTask?.imageAttachments || [],
             persistedTask?.conversation_id || event.conversation_id || run.conversationId,
             userIdRef.current,
           );
-          const terminalStatus = normalizeTaskStatus(
+          const resolvedStatus = normalizeTaskStatus(
             persistedTask?.status
             || event.status
             || run.status
           );
-          const terminalError = persistedTask?.error || run.error;
-          const terminalBase = isTerminalTaskStatus(terminalStatus) && terminalStatus !== 'done'
-            ? applyTerminalTaskState(run, terminalStatus, {
+          const terminalError = persistedTask?.error || event.error || run.error;
+          const terminalBase = isTerminalTaskStatus(resolvedStatus) && resolvedStatus !== 'done'
+            ? applyTerminalTaskState(run, resolvedStatus, {
                 error: terminalError,
-                aborted: terminalStatus === 'cancelled' ? true : run.aborted,
+                aborted: resolvedStatus === 'cancelled' ? true : run.aborted,
               })
             : run;
           return {
@@ -747,14 +699,12 @@ export function createTaskStreamHandlers(ctx) {
             title: run.title
               || stripChatImageAugmentation(stripInjectedSkillInstruction(persistedTask?.title)).text
               || 'Task',
-            status: terminalStatus,
-            stage: terminalStatus === 'done'
-              ? (hasPresentationPending ? (persistedTask?.stage || run.stage) : (persistedTask?.stage || 'done'))
-              : 'done',
+            status: resolvedStatus,
+            stage: 'done',
             requestedAgentId: persistedTask?.agent_id || persistedTask?.profile_id || run.requestedAgentId || null,
             requestedWorkflowId: persistedTask?.workflow_id || run.requestedWorkflowId || null,
             executionMode: persistedTask?.execution_mode === 'bot' ? 'bot' : (run.executionMode || 'chat'),
-            originViewMode: persistedTask?.execution_mode === 'bot' ? 'world' : (run.originViewMode || 'chat'),
+            originViewMode: persistedTask?.execution_mode === 'bot' ? 'workflow' : (run.originViewMode || 'chat'),
             workflowSnapshot: usableWorkflowSnapshot(
               persistedTask?.workflow_snapshot,
               run.workflowSnapshot || null,
@@ -766,7 +716,7 @@ export function createTaskStreamHandlers(ctx) {
             profileDisplayName: persistedTask?.profile_display_name || run.profileDisplayName || '',
             completedAt: persistedTask?.completed_at
               ? (Date.parse(persistedTask.completed_at) || Date.now())
-              : (hasPresentationPending ? run.completedAt : Date.now()),
+              : Date.now(),
             attachment: Array.isArray(persistedTask?.attachments) && persistedTask.attachments.length
               ? { ...persistedTask.attachments[0], uploaded: true }
               : run.attachment,
@@ -778,23 +728,16 @@ export function createTaskStreamHandlers(ctx) {
               : run.imageAttachments,
             answerText: chatFinalizedTaskIdsRef.current.has(taskId) && run.answerText
               ? run.answerText
-              : (persistedTask?.answer_text || (terminalStatus === 'done' ? (toDisplayText(event.message) || run.answerText) : run.answerText)),
+              : (persistedTask?.answer_text || (resolvedStatus === 'done' ? (toDisplayText(event.message) || run.answerText) : run.answerText)),
             error: terminalError,
             serverFinished: true,
-            sceneCatchup: hasPresentationPending,
           };
         });
-        if (shouldWaitForPresentation && !isChatOriginTask(taskId, ownerConvId)) {
-          compactPendingSceneItems(taskId, ownerConvId);
-          break;
-        }
-        updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
-        setRuntimeBusy(false);
-        setRuntimeActiveTaskId(null);
-        setRuntimeFetchController(null);
-        dropPendingSceneItems(taskId);
-        resetSceneActors();
-        completeTaskAgents(taskId, getTaskById(taskId)?.status || event.status || 'done');
+        chatFinalizedTaskIdsRef.current.add(taskId);
+        updateTaskRuntimeState((state) => ({ ...state, activeTaskId: null }), ownerConvId);
+        setRuntimeBusy(false, ownerConvId);
+        setRuntimeActiveTaskId(null, ownerConvId);
+        setRuntimeFetchController(null, ownerConvId);
         break;
       }
       default:
@@ -832,7 +775,6 @@ export function createTaskStreamHandlers(ctx) {
     if (rerunningNode) {
       chatFinalizedTaskIdsRef.current.delete(runId);
       userCancelledTaskIdsRef.current.delete(runId);
-      pendingPresentationTaskIdsRef.current.delete(runId);
     }
     // Ensure the runtime exists and prime its run-local state.
     mutateRuntime(runConversationId, (rt) => {
@@ -843,7 +785,7 @@ export function createTaskStreamHandlers(ctx) {
       rt.abortRequested = false;
       rt.shellSeeded = false;
     });
-    updateWorldTaskState((state) => ({
+    updateTaskRuntimeState((state) => ({
       ...state,
       pendingTask: {
         ...pendingTask,
@@ -858,7 +800,7 @@ export function createTaskStreamHandlers(ctx) {
 
     const rollbackUnconfirmedRerun = () => {
       if (!rerunningNode) return;
-      updateWorldTaskState((state) => {
+      updateTaskRuntimeState((state) => {
         const tasksById = { ...(state.tasksById || {}) };
         delete tasksById[runId];
         return {
@@ -880,7 +822,6 @@ export function createTaskStreamHandlers(ctx) {
       removeConversationTaskFromWorkspace(runConversationId, runId);
       chatFinalizedTaskIdsRef.current.delete(runId);
       userCancelledTaskIdsRef.current.delete(runId);
-      pendingPresentationTaskIdsRef.current.delete(runId);
     };
 
     if (!rerunningNode && pendingTask.attachment?.file && !pendingTask.attachment?.uploaded) {
@@ -977,11 +918,11 @@ export function createTaskStreamHandlers(ctx) {
         ? payload.detail
         : (payload?.detail ? JSON.stringify(payload.detail) : '');
       rollbackUnconfirmedRerun();
-      throw new Error(detail || `world stream failed: ${response.status}`);
+      throw new Error(detail || `task stream failed: ${response.status}`);
     }
     if (!response.body) {
       rollbackUnconfirmedRerun();
-      throw new Error('world stream failed: empty response');
+      throw new Error('task stream failed: empty response');
     }
 
     const queuedEvents = [];
@@ -1015,14 +956,14 @@ export function createTaskStreamHandlers(ctx) {
             ) {
               setRuntimeActiveTaskId(event.task_id, runConversationId);
             }
-            applyWorldEvent(event, runConversationId);
+            applyRuntimeEvent(event, runConversationId);
           }
         });
       } finally {
         streamTargetConvIdRef.current = previousTarget;
       }
     };
-    const queueWorldEvent = (event) => {
+    const queueRuntimeEvent = (event) => {
       if (STREAM_IMMEDIATE_EVENT_TYPES.has(event.type)) {
         flushQueuedEvents();
         queuedEvents.push(event);
@@ -1038,7 +979,7 @@ export function createTaskStreamHandlers(ctx) {
       }
     };
     try {
-      await readNdjsonStream(response, queueWorldEvent, controller.signal);
+      await readNdjsonStream(response, queueRuntimeEvent, controller.signal);
     } finally {
       flushQueuedEvents();
       const guardRt = getRuntime(runConversationId);

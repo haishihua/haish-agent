@@ -487,7 +487,7 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
   const isBrowserUse = String(item.toolName || '').toLowerCase() === 'browser_use';
   // Browser-runtime install requests render inline inside the browser_use
   // tool call that triggered them, instead of opening a separate chat row /
-  // dialog. Matching tolerates the backend's call-id remapping (world ids),
+  // dialog. Matching tolerates the backend's opaque call-id remapping,
   // so unanchored requests attach to the active browser_use node when the
   // scope is unambiguous; everything else stays in the standalone slot.
   const pendingBrowserRuntime = useBrowserRuntimeRequests(isBrowserUse);

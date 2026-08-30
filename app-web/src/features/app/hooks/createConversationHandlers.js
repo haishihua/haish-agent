@@ -1,6 +1,6 @@
 // @haish-esm
 // Extracted from AppShell.jsx (Phase C). Behavior-preserving factory.
-import { finalWorkflowResultText } from '../../../lib/world-events.js';
+import { finalWorkflowResultText } from '../../../lib/runtime-events.js';
 
 export function createConversationHandlers(ctx) {
   const {
@@ -13,16 +13,14 @@ export function createConversationHandlers(ctx) {
     authFetch,
     buildApiHeaders,
     buildDeployRequest,
-    calibrationMode,
+    settingsMode,
     canStartDeployForConversation,
-    clearAllPoseDebug,
     clearDraftConversationState,
     conversationDetailAbortRef,
     conversationId,
     conversationIdRef,
     createDefaultProject,
     draftConversationRef,
-    dragStateRef,
     fetchConversationDetail,
     findConversationById,
     findProjectByConversationId,
@@ -34,8 +32,7 @@ export function createConversationHandlers(ctx) {
     projectIdForWorkspacePath,
     removeProjectModeFromWorkspace,
     setActiveTab,
-    setCalibrationMode,
-    setCopiedCoords,
+    setSettingsMode,
     setHollow,
     setViewMode,
     setWorkspaceState,
@@ -451,17 +448,14 @@ export function createConversationHandlers(ctx) {
     const requestSeq = invalidateConversationActivation();
     conversationDetailAbortRef.current?.abort?.();
     conversationDetailAbortRef.current = null;
-    const currentViewMode = viewModeRef.current === 'chat' ? 'chat' : 'world';
-    const nextViewMode = currentViewMode === 'chat' ? 'world' : 'chat';
+    const currentViewMode = viewModeRef.current === 'chat' ? 'chat' : 'workflow';
+    const nextViewMode = currentViewMode === 'chat' ? 'workflow' : 'chat';
     const nextExecutionMode = nextViewMode === 'chat' ? 'chat' : 'bot';
     setActiveTab('dashboard');
     // Settings overlays the main workspace; leaving via bot/chat must exit it
-    // so the corresponding chat/world page is shown instead of staying under settings.
-    if (calibrationMode) {
-      dragStateRef.current = null;
-      clearAllPoseDebug();
-      setCalibrationMode(false);
-      setCopiedCoords(false);
+    // so the corresponding chat/workflow page is shown instead of staying under settings.
+    if (settingsMode) {
+      setSettingsMode(false);
     }
 
     const currentConversation = findConversationById(workspaceState, conversationIdRef.current);
@@ -543,7 +537,7 @@ export function createConversationHandlers(ctx) {
   }
 
   function handleOpenTaskReport(task) {
-    const restoredMode = task?.executionMode === 'bot' ? 'world' : 'chat';
+    const restoredMode = task?.executionMode === 'bot' ? 'workflow' : 'chat';
     viewModeRef.current = restoredMode;
     setViewMode(restoredMode);
     const workflowNodes = Object.entries(task?.workflowRun?.nodes || {}).map(([nodeId, node]) => (
@@ -568,7 +562,7 @@ export function createConversationHandlers(ctx) {
       const detail = await fetchConversationDetail(targetConversationId);
       await activateConversationDetail(detail, { restoreLatest: false });
     }
-    const restoredMode = task?.executionMode === 'bot' ? 'world' : 'chat';
+    const restoredMode = task?.executionMode === 'bot' ? 'workflow' : 'chat';
     viewModeRef.current = restoredMode;
     setViewMode(restoredMode);
     const selectionId = task?.executionMode === 'bot'

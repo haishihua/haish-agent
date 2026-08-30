@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 test('cancelling a task also terminates its active workflow node', async () => {
-  globalThis.window = { AGENT_WORLD_API_BASE: '' };
+  globalThis.window = { HAISH_API_BASE: '' };
   const { applyTerminalTaskState } = await import('./task-runtime.js');
   const task = {
     status: 'running',
@@ -22,7 +22,7 @@ test('cancelling a task also terminates its active workflow node', async () => {
 });
 
 test('cancelling a task preserves an active node that already finished successfully', async () => {
-  globalThis.window = { AGENT_WORLD_API_BASE: '' };
+  globalThis.window = { HAISH_API_BASE: '' };
   const { applyTerminalTaskState } = await import('./task-runtime.js');
   const task = {
     status: 'running',

@@ -162,8 +162,8 @@ function runtimeEnv(paths: RuntimePaths, runtimeRepo: string, workdir: string): 
     ...process.env,
     ...(!explicitMcpConfig ? { HAISH_MCP_CONFIG: ensureRuntimeMcpConfig(runtimeRepo, workdir) } : {}),
     ...userEnv,
-    HAISH_AGENT_WORLD_APP_HOME: workdir,
-    HAISH_AGENT_WORLD_APP_WORKDIR: workdir,
+    HAISH_APP_HOME: workdir,
+    HAISH_APP_WORKDIR: workdir,
     PYTHONPATH: process.env.PYTHONPATH ? `${pythonPath}${path.delimiter}${process.env.PYTHONPATH}` : pythonPath,
     PYTHONUNBUFFERED: '1',
   };

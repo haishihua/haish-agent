@@ -10,25 +10,14 @@ import {
 import { stripChatImageAugmentation, stripInjectedSkillInstruction } from './chat-text.js';
 import { compactStreamEvents } from './stream-events.js';
 import { usableWorkflowSnapshot } from './workflow-snapshot.js';
-import { WORLD_ROLE_TO_ACTOR, WORLD_KIND_MAP } from './world-runtime.js';
 import {
-  resolveProviderMeta,
-  normalizeWorldEvents,
-  worldEventToRuntimeLog,
-  getLoopIndexFromWorldEvents,
-  getActiveRoleFromWorldEvents,
-  executorActorForToolGroup,
-  sceneKeyForWorldEvent,
-  getWorldEventTag,
-  summarizeText,
+  normalizeRuntimeEvents,
+  runtimeEventToLog,
+  getLoopIndexFromEvents,
   defaultQuestDescription,
-  WORLD_SCENE_EVENT_TYPES,
-  WORLD_EVENT_ROUTE_MAP,
-  PROVIDER_SCENE_EVENT_TYPES,
-} from './world-events.js';
-import { STATIONS } from './world-layout.js';
+} from './runtime-events.js';
 
-export function createEmptyWorldTaskState() {
+export function createEmptyTaskRuntimeState() {
   return {
     activeTaskId: null,
     pendingTask: null,
@@ -52,8 +41,8 @@ export function isTerminalTaskStatus(status) {
  * Events that actually become agent-visible chat content (trace / answer / tools).
  *
  * Lifecycle receipts and markers that never render in the chat bubble must NOT
- * count — e.g. user_message_received, agent_gateway_received, provider_selected,
- * llm_thinking_started/completed. Otherwise Stop-before-visualization keeps an
+ * count — e.g. run_started, provider_selected, llm_thinking_started/completed.
+ * Otherwise Stop-before-visualization keeps an
  * empty You/Assistant shell instead of rolling the turn back.
  *
  * Keep this aligned with buildChatTimeline's rendered event kinds.
@@ -62,22 +51,20 @@ const ASSISTANT_VISIBLE_STREAM_EVENT_TYPES = new Set([
   'llm_thinking_delta',
   'llm_answer_delta',
   'llm_attempt_failed',
-  'llm_final_answer',
-  'llm_tool_call_requested',
+  'final_answer',
+  'tool_call_started',
   'agent_progress_delta',
   'context_compaction_started',
   'context_compaction_completed',
-  'tool_manager_received',
-  'tool_dispatched',
-  'tool_executor_started',
-  'tool_executor_completed',
-  'tool_result_returned',
+  'context_compaction_failed',
+  'tool_call_completed',
+  'todo_updated',
   'sub_agent_started',
   'sub_agent_finished',
   'sub_agent_progress_delta',
   'sub_agent_answer_delta',
-  'sub_agent_tool_call_requested',
-  'sub_agent_tool_executor_completed',
+  'sub_agent_tool_call_started',
+  'sub_agent_tool_call_completed',
 ]);
 
 function eventLogEntryType(entry) {
@@ -192,8 +179,6 @@ export function applyTerminalTaskState(task, status, options = {}) {
     completedAt: task.completedAt || now,
     error: options.error ?? task.error ?? null,
     aborted: options.aborted ?? task.aborted ?? normalized === 'cancelled',
-    presentationPending: false,
-    sceneCatchup: false,
     serverFinished: true,
   };
 }
@@ -226,18 +211,16 @@ export function createPendingTaskDraft(text, attachment, imageAttachments) {
     updatedAt: now,
     stage: 'assigned',
     status: 'queued',
-    assignedTo: 'guts',
-    assignedToLabel: 'Assistant',
     requestedProvider: '',
     attachment: attachment ? { ...attachment } : null,
     imageAttachments: Array.isArray(imageAttachments)
       ? imageAttachments.map((ref) => ({ ...ref }))
       : [],
-    originViewMode: 'world',
+    originViewMode: 'workflow',
   };
 }
 
-export function buildWorldTaskRecord(event, pendingTask) {
+export function buildTaskRuntimeRecord(event, pendingTask) {
   const pendingImages = Array.isArray(pendingTask?.imageAttachments)
     ? pendingTask.imageAttachments.map((ref) => ({ ...ref }))
     : [];
@@ -253,19 +236,16 @@ export function buildWorldTaskRecord(event, pendingTask) {
     updatedAt: pendingTask?.updatedAt || pendingTask?.createdAt || Date.now(),
     imageAttachments: pendingImages,
     completedAt: null,
-    assignedTo: 'guts',
-    assignedToLabel: 'Assistant',
     attachment: pendingTask?.attachment || null,
     attachments: pendingTask?.attachment ? [{ ...pendingTask.attachment }] : [],
     loopIndex: Math.max(0, event.loop_index || 0),
-    activeRole: event.actor || null,
     provider: null,
     providerKey: pendingTask?.requestedProvider || '',
     requestedProvider: pendingTask?.requestedProvider || '',
     requestedAgentId: pendingTask?.requestedAgentId || '',
     requestedWorkflowId: pendingTask?.requestedWorkflowId || '',
     executionMode: pendingTask?.executionMode === 'bot' ? 'bot' : 'chat',
-    originViewMode: pendingTask?.originViewMode || 'world',
+    originViewMode: pendingTask?.originViewMode || 'workflow',
     workflowSnapshot: pendingTask?.workflowSnapshot || null,
     workflowRun: pendingTask?.workflowRun || null,
     sourceTaskId: pendingTask?.sourceTaskId || event.source_task_id || null,
@@ -283,9 +263,7 @@ export function buildWorldTaskRecord(event, pendingTask) {
     toolCalls: [],
     eventLog: [],
     error: null,
-    presentationPending: false,
     serverFinished: false,
-    sceneCatchup: false,
   };
 }
 
@@ -313,20 +291,17 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = [], ow
       ? Date.parse(task.updated_at) || null
       : (task.completed_at ? Date.parse(task.completed_at) || null : null),
     completedAt: task.completed_at ? Date.parse(task.completed_at) || null : null,
-    assignedTo: 'guts',
-    assignedToLabel: 'Assistant',
     attachment: taskAttachments[0] || null,
     attachments: taskAttachments,
     imageAttachments,
     loopIndex: 0,
-    activeRole: null,
     provider: task.provider,
     providerKey: task.provider_key || 'auto',
     requestedProvider: task.provider_key || 'auto',
     requestedAgentId: task.agent_id || task.profile_id || '',
     requestedWorkflowId: task.workflow_id || '',
     executionMode: task.execution_mode === 'bot' ? 'bot' : 'chat',
-    originViewMode: task.execution_mode === 'bot' ? 'world' : 'chat',
+    originViewMode: task.execution_mode === 'bot' ? 'workflow' : 'chat',
     workflowSnapshot: usableWorkflowSnapshot(task.workflow_snapshot),
     workflowRun: task.workflow_run || null,
     sourceTaskId: task.source_task_id || null,
@@ -347,192 +322,21 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = [], ow
     toolCalls: [],
     eventLog: [],
     error: task.error || null,
-    presentationPending: false,
     serverFinished: task.status === 'done' || task.status === 'failed' || task.status === 'cancelled',
-    sceneCatchup: false,
   };
 }
 
 export function taskDetailToRuntimeTask(task, previousTask = null, ownerId = '') {
-  const events = normalizeWorldEvents(task.events);
+  const events = normalizeRuntimeEvents(task.events);
   const summaryTask = taskSummaryToRuntimeTask(task, previousTask?.imageAttachments || [], ownerId);
   const nextTask = {
     ...(previousTask || summaryTask),
     ...summaryTask,
-    loopIndex: getLoopIndexFromWorldEvents(events),
-    activeRole: getActiveRoleFromWorldEvents(events),
-    eventLog: compactStreamEvents(events.map(worldEventToRuntimeLog)),
+    loopIndex: getLoopIndexFromEvents(events),
+    eventLog: compactStreamEvents(events.map(runtimeEventToLog)),
     workflowSnapshot: usableWorkflowSnapshot(task.workflow_snapshot, previousTask?.workflowSnapshot || null),
   };
   return nextTask;
-}
-
-export function buildAgentLiveSnapshot(task, events) {
-  const next = {};
-  const providerMeta = resolveProviderMeta(task);
-  for (const event of events) {
-    if (!WORLD_SCENE_EVENT_TYPES.has(event.type)) continue;
-    const actorId = event.actor_id || WORLD_ROLE_TO_ACTOR[event.actor];
-    const executorActorId = event.executor_actor_id || executorActorForToolGroup(event.tool_group);
-    const sceneKey = sceneKeyForWorldEvent(event, executorActorId);
-    const routeConfig = WORLD_EVENT_ROUTE_MAP[sceneKey] || WORLD_EVENT_ROUTE_MAP[event.type];
-    const actor = PROVIDER_SCENE_EVENT_TYPES.has(event.type)
-      ? providerMeta.actor
-      : event.tool_group === 'skill'
-        ? providerMeta.actor
-      : routeConfig?.actor || actorId;
-    if (!actor || !STATIONS[actor]) continue;
-    const bubble = event.type === 'provider_selected'
-      ? providerMeta.label
-      : event.message || event.delta || routeConfig?.bubble || '';
-    const kind = event.kind || routeConfig?.kind || WORLD_KIND_MAP[actor] || 'deliver';
-    next[actor] = mergeAgentLiveEntry(next[actor], {
-      taskId: task.task_id || task.taskId,
-      description: summarizeText(bubble || event.content || event.tool_name || event.type),
-      stepCurrent: Math.max(1, event.loop_index || 1),
-      stepTotal: Math.max(1, event.loop_index || 1),
-      tag: getWorldEventTag(event.type, kind),
-      kind,
-      ts: Date.parse(event.timestamp) || Date.now(),
-      status: getLiveEventStatus(event.type),
-    });
-  }
-  if (task.status === 'done' || task.status === 'failed' || task.status === 'cancelled') {
-    const outcome = normalizeTaskStatus(task.status);
-    for (const actor of Object.keys(next)) {
-      next[actor] = completeAgentLiveEntries(next[actor], task.task_id || task.taskId, outcome);
-    }
-  }
-  return next;
-}
-
-export function getLiveEventStatus(eventType) {
-  if (eventType === 'agent_gateway_received'
-    || eventType === 'context_compaction_started'
-    || eventType === 'llm_thinking_started'
-    || eventType === 'llm_tool_call_requested'
-    || eventType === 'tool_manager_received'
-    || eventType === 'tool_dispatched'
-    || eventType === 'tool_executor_started') {
-    return 'pending';
-  }
-  return 'done';
-}
-
-export function normalizeLiveEntryStatus(status, outcome, completed) {
-  const normalizedOutcome = normalizeTaskStatus(outcome);
-  if (normalizedOutcome === 'failed') return 'failed';
-  if (normalizedOutcome === 'cancelled') return 'cancelled';
-  if (normalizedOutcome === 'done') return 'done';
-  if (status === 'failed' || status === 'cancelled' || status === 'done' || status === 'pending') return status;
-  return completed ? 'done' : 'pending';
-}
-
-export function legacyLiveEntries(agentState) {
-  if (!agentState) return [];
-  if (Array.isArray(agentState.entries)) return agentState.entries;
-  if (!agentState.description && !agentState.tag) return [];
-  return [{
-    id: agentState.id || `${agentState.taskId || 'task'}:${agentState.ts || Date.now()}:legacy`,
-    taskId: agentState.taskId,
-    description: agentState.description || '',
-    stepCurrent: agentState.stepCurrent || 1,
-    stepTotal: agentState.stepTotal || 1,
-    tag: agentState.tag || 'WORKING',
-    kind: agentState.kind || 'info',
-    ts: agentState.ts || Date.now(),
-    status: normalizeLiveEntryStatus(agentState.status, agentState.outcome, agentState.completed),
-    outcome: agentState.outcome,
-  }];
-}
-
-export function mergeAgentLiveEntry(agentState, payload) {
-  const ts = payload.ts || Date.now();
-  const entries = legacyLiveEntries(agentState);
-  const id = payload.entryKey || `${payload.taskId || 'task'}:${ts}:${entries.length}`;
-  const status = normalizeLiveEntryStatus(payload.status, payload.outcome, payload.completed);
-  const entry = {
-    id,
-    taskId: payload.taskId,
-    description: payload.description || '',
-    stepCurrent: payload.stepCurrent || 1,
-    stepTotal: payload.stepTotal || 1,
-    tag: payload.tag || 'WORKING',
-    kind: payload.kind || 'info',
-    ts,
-    status,
-    outcome: payload.outcome,
-  };
-  const settledEntries = entries.map((item) => (
-    item.taskId === entry.taskId && item.id !== id && item.status === 'pending'
-      ? { ...item, status: 'done', outcome: item.outcome || 'done' }
-      : item
-  ));
-  const existingIndex = settledEntries.findIndex((item) => item.id === id);
-  const nextEntries = existingIndex >= 0
-    ? settledEntries.map((item, index) => (index === existingIndex ? { ...item, ...entry } : item))
-    : [...settledEntries, entry];
-  const trimmedEntries = nextEntries
-    .sort((a, b) => a.ts - b.ts)
-    .slice(-80);
-  return {
-    ...(agentState || {}),
-    ...payload,
-    ts,
-    completed: entry.status !== 'pending',
-    outcome: payload.outcome,
-    status: entry.status,
-    entries: trimmedEntries,
-  };
-}
-
-export function completeAgentLiveEntries(agentState, taskId, outcome = 'done') {
-  const normalizedOutcome = normalizeTaskStatus(outcome);
-  const status = normalizedOutcome === 'failed'
-    ? 'failed'
-    : normalizedOutcome === 'cancelled'
-      ? 'cancelled'
-      : normalizedOutcome === 'done'
-        ? 'done'
-        : 'pending';
-  const entries = legacyLiveEntries(agentState).map((entry) => (
-    entry.taskId === taskId
-      ? { ...entry, status, outcome: normalizedOutcome }
-      : entry
-  ));
-  return {
-    ...(agentState || {}),
-    completed: status !== 'pending',
-    outcome: normalizedOutcome,
-    status,
-    ts: Date.now(),
-    entries,
-  };
-}
-
-export function completeLatestAgentLiveEntry(agentState, taskId, outcome = 'done') {
-  const entries = legacyLiveEntries(agentState);
-  const index = entries
-    .map((entry, entryIndex) => ({ entry, entryIndex }))
-    .filter(({ entry }) => entry.taskId === taskId && entry.status === 'pending')
-    .sort((a, b) => (b.entry.ts || 0) - (a.entry.ts || 0))[0]?.entryIndex;
-  if (index == null) return agentState;
-  const normalizedOutcome = normalizeTaskStatus(outcome);
-  const status = normalizedOutcome === 'failed'
-    ? 'failed'
-    : normalizedOutcome === 'cancelled'
-      ? 'cancelled'
-      : 'done';
-  return {
-    ...(agentState || {}),
-    completed: true,
-    outcome: normalizedOutcome,
-    status,
-    ts: Date.now(),
-    entries: entries.map((entry, entryIndex) => (
-      entryIndex === index ? { ...entry, status, outcome: normalizedOutcome } : entry
-    )),
-  };
 }
 
 export function upsertToolCall(toolCalls, callId, patch) {
@@ -558,8 +362,6 @@ export function runtimeTaskToQuest(task) {
     updatedAt: taskUpdatedTimestamp(task) || task.createdAt,
     completedAt: task.completedAt,
     stage: task.stage,
-    assignedTo: task.assignedTo,
-    assignedToLabel: task.assignedToLabel,
     taskId: task.taskId,
     provider: task.provider,
     requestedProvider: task.requestedProvider,

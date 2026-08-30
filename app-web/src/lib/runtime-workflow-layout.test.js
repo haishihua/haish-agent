@@ -10,7 +10,7 @@ import {
   workflowToolCallsForAttempt,
   workflowTraversedLoopNodeIds,
 } from './runtime-workflow-layout.js';
-import { worldEventToRuntimeLog } from './world-events.js';
+import { runtimeEventToLog } from './runtime-events.js';
 
 const runtimeSource = fs.readFileSync(
   new URL('../features/workflow/WorkflowRuntimePage.jsx', import.meta.url),
@@ -147,7 +147,7 @@ test('runtime details use executed node data and real workflow transitions', () 
   assert.match(runtimeSource, /if \(activeFromEvents\)[\s\S]*?return 'running';/);
   assert.match(runtimeSource, /nodeStatus\(selectedNode, run, task\?\.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds\)/);
 
-  const edge = worldEventToRuntimeLog({
+  const edge = runtimeEventToLog({
     type: 'workflow_edge_selected',
     from_node_id: 'agent',
     to_node_id: 'tool',
@@ -155,7 +155,7 @@ test('runtime details use executed node data and real workflow transitions', () 
   assert.equal(edge.fromNodeId, 'agent');
   assert.equal(edge.toNodeId, 'tool');
 
-  const started = worldEventToRuntimeLog({
+  const started = runtimeEventToLog({
     type: 'workflow_node_started',
     workflow_node_id: 'agent',
     input: { message: 'real resolved input' },

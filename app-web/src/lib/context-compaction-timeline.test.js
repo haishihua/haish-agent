@@ -4,14 +4,14 @@ import fs from 'node:fs';
 
 globalThis.window = {};
 const { buildChatTimeline } = await import('./chat-timeline.js');
-const { worldEventToRuntimeLog } = await import('./world-events.js');
+const { runtimeEventToLog } = await import('./runtime-events.js');
 
 test('completed context compaction keeps its summary snapshot and metrics', () => {
-  const started = worldEventToRuntimeLog({
+  const started = runtimeEventToLog({
     type: 'context_compaction_started',
     event_id: 'compact-start',
   });
-  const event = worldEventToRuntimeLog({
+  const event = runtimeEventToLog({
     type: 'context_compaction_completed',
     event_id: 'compact-1',
     summary_text: '## Goal\nKeep the implementation focused.',
@@ -35,4 +35,24 @@ test('context compaction summary is rendered only after expanding the card', () 
   const source = fs.readFileSync(new URL('../panels/ChatTimelineNodes.jsx', import.meta.url), 'utf8');
   assert.match(source, /const expandable = isContextCompaction && Boolean\(summaryText\);/);
   assert.match(source, /<Markdown source=\{summaryText\} \/>/);
+});
+
+test('todo panel consumes todo_updated instead of tool response artifacts', () => {
+  const event = runtimeEventToLog({
+    type: 'todo_updated',
+    event_id: 'todo-1',
+    items: [
+      { content: 'Inspect protocol', status: 'completed', activeForm: 'Inspecting protocol' },
+      { content: 'Update frontend', status: 'in_progress', activeForm: 'Updating frontend' },
+    ],
+    counts: { pending: 0, in_progress: 1, completed: 1 },
+    write_count: 2,
+  });
+  const timeline = buildChatTimeline({ eventLog: [event], toolCalls: [] }, 'running');
+
+  assert.deepEqual(timeline.latestTodos, [
+    { content: 'Inspect protocol', status: 'completed', activeForm: 'Inspecting protocol' },
+    { content: 'Update frontend', status: 'in_progress', activeForm: 'Updating frontend' },
+  ]);
+  assert.deepEqual(timeline.items, []);
 });

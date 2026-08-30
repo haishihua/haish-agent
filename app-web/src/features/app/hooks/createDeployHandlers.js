@@ -13,19 +13,17 @@ export function createDeployHandlers(ctx) {
     cancelActiveTask,
     queueTaskInput,
     chatFinalizedTaskIdsRef,
-    completeTaskAgents,
     conversationDetailToWorkspaceConversation,
     conversationError,
     conversationId,
     conversationIdRef,
     conversationReady,
     conversationSelectionPending,
-    createEmptyWorldTaskState,
+    createEmptyTaskRuntimeState,
     createPendingTaskDraft,
     defaultAgentId,
     defaultWorkflowId,
     draftConversationRef,
-    dropPendingSceneItems,
     executeQuest,
     fetchAbortRef,
     findConversationById,
@@ -40,7 +38,6 @@ export function createDeployHandlers(ctx) {
     pendingCreatedDetailRef,
     queuedDeploy,
     readRuntimeAnswerBuffer,
-    resetSceneActors,
     selectedConversationId,
     setBusy,
     setComposerAttachment,
@@ -56,7 +53,7 @@ export function createDeployHandlers(ctx) {
     titleFromTaskText,
     updateConversationTitle,
     updateTaskById,
-    updateWorldTaskState,
+    updateTaskRuntimeState,
     userCancelledTaskIdsRef,
     viewMode,
     viewModeRef,
@@ -64,7 +61,7 @@ export function createDeployHandlers(ctx) {
     workspaceState,
     workspaceStateWithConversationDetail,
     workspaceStateWithTouchedConversation,
-    worldTaskStateRef,
+    taskRuntimeStateRef,
   } = ctx;
 
   function removeConversationTaskFromWorkspace(convId, taskKey) {
@@ -101,7 +98,7 @@ export function createDeployHandlers(ctx) {
     // conversations continue running. All ref/state reads scope to its runtime.
     const targetConvId = conversationIdRef.current;
     const targetRuntime = targetConvId ? getRuntime(targetConvId) : null;
-    const currentTaskState = targetRuntime ? targetRuntime.worldTaskState : worldTaskStateRef.current;
+    const currentTaskState = targetRuntime ? targetRuntime.taskRuntimeState : taskRuntimeStateRef.current;
     let taskId = (targetRuntime ? targetRuntime.activeTaskId : activeTaskIdRef.current)
       || currentTaskState.activeTaskId
       || null;
@@ -133,7 +130,7 @@ export function createDeployHandlers(ctx) {
     const hasActiveRun = runtimeBusy || taskId || pendingTask || controllerToAbort || hadQueuedDeploy;
     if (!hasActiveRun) return '';
     // Mark abort BEFORE any async cancel / abort side effects so in-flight
-    // NDJSON flushes and late applyWorldEvent calls cannot recreate the turn.
+    // NDJSON flushes and late applyRuntimeEvent calls cannot recreate the turn.
     if (targetRuntime) {
       targetRuntime.abortRequested = true;
       if (runId) targetRuntime.cancelledRunIds.add(runId);
@@ -187,7 +184,7 @@ export function createDeployHandlers(ctx) {
       if (hasAssistantOutput) {
         // Assistant already produced visible content: keep the partial turn.
         updateTaskById(taskId, (task) => applyTerminalTaskState(task, 'cancelled', { aborted: true }), targetConvId);
-        updateWorldTaskState((state) => ({
+        updateTaskRuntimeState((state) => ({
           ...state,
           activeTaskId: null,
           pendingTask: null,
@@ -195,7 +192,7 @@ export function createDeployHandlers(ctx) {
         }), targetConvId);
       } else {
         // No agent-visible content yet: drop both bubbles and restore composer.
-        updateWorldTaskState((state) => {
+        updateTaskRuntimeState((state) => {
           const nextTasksById = { ...(state.tasksById || {}) };
           delete nextTasksById[taskId];
           return {
@@ -208,20 +205,17 @@ export function createDeployHandlers(ctx) {
         }, targetConvId);
         removeConversationTaskFromWorkspace(targetConvId, taskId);
       }
-      dropPendingSceneItems(taskId);
     } else if (pendingTask) {
       const pendingKey = pendingTask.id || pendingTask.taskId || null;
       // Pending-only turns never have agent-visible content yet.
-      updateWorldTaskState((state) => ({
+      updateTaskRuntimeState((state) => ({
         ...state,
         activeTaskId: null,
         pendingTask: null,
       }), targetConvId);
       if (pendingKey) removeConversationTaskFromWorkspace(targetConvId, pendingKey);
-      dropPendingSceneItems();
     } else {
       // Queued deploy only — nothing rendered yet; just restore composer text.
-      dropPendingSceneItems();
     }
     if (targetConvId) {
       mutateRuntime(targetConvId, (rt) => {
@@ -243,7 +237,6 @@ export function createDeployHandlers(ctx) {
       answerBufferRef.current = '';
       setBusy(false);
     }
-    resetSceneActors();
     return hasAssistantOutput ? '' : restoreText;
   }
 
@@ -306,7 +299,7 @@ export function createDeployHandlers(ctx) {
     if (!targetConversationId) return null;
     const pendingTask = preparePendingTask(request);
     request.runtimeConversationId = targetConversationId;
-    updateWorldTaskState((state) => ({ ...state, pendingTask }), targetConversationId);
+    updateTaskRuntimeState((state) => ({ ...state, pendingTask }), targetConversationId);
     return pendingTask;
   }
 
@@ -315,7 +308,7 @@ export function createDeployHandlers(ctx) {
     const pendingTask = request?.pendingTask;
     if (!targetConversationId || !pendingTask) return;
     const pendingKey = pendingTask.taskId || pendingTask.id;
-    updateWorldTaskState((state) => {
+    updateTaskRuntimeState((state) => {
       const currentKey = state.pendingTask?.taskId || state.pendingTask?.id;
       if (currentKey !== pendingKey) return state;
       return {
@@ -351,9 +344,9 @@ export function createDeployHandlers(ctx) {
     const nextConversationTitle = titleFromTaskText(request.displayText || text);
     const currentConversation = findConversationById(workspaceState, deployConvId)
       || (seedDetail ? conversationDetailToWorkspaceConversation(seedDetail) : null);
-    const deployTaskState = getRuntime(deployConvId)?.worldTaskState
-      || worldTaskStateRef.current
-      || createEmptyWorldTaskState();
+    const deployTaskState = getRuntime(deployConvId)?.taskRuntimeState
+      || taskRuntimeStateRef.current
+      || createEmptyTaskRuntimeState();
     const activeTaskIdBeforeDeploy = getRuntime(deployConvId)?.activeTaskId
       || deployTaskState.activeTaskId
       || null;
@@ -395,7 +388,7 @@ export function createDeployHandlers(ctx) {
         })
         .catch((error) => console.warn('conversation title update skipped:', error));
     }
-    updateWorldTaskState((state) => ({
+    updateTaskRuntimeState((state) => ({
       ...state,
       pendingTask,
     }), deployConvId);
@@ -424,10 +417,10 @@ export function createDeployHandlers(ctx) {
             aborted: false,
           }),
         }), deployConvId);
-        updateWorldTaskState((state) => ({ ...state, activeTaskId: null }), deployConvId);
+        updateTaskRuntimeState((state) => ({ ...state, activeTaskId: null }), deployConvId);
       } else {
         const pendingTaskId = pendingTask.taskId || pendingTask.id || null;
-        updateWorldTaskState((state) => ({
+        updateTaskRuntimeState((state) => ({
           ...state,
           pendingTask: (state.pendingTask?.taskId || state.pendingTask?.id) === pendingTaskId
             ? null
@@ -437,15 +430,6 @@ export function createDeployHandlers(ctx) {
       }
       showToast('error', errorMessage);
       setRuntimeBusy(false, deployConvId);
-      if (ownedTaskId) {
-        dropPendingSceneItems(ownedTaskId);
-      } else {
-        dropPendingSceneItems();
-      }
-      resetSceneActors();
-      if (ownedTaskId) {
-        completeTaskAgents(ownedTaskId, 'failed');
-      }
       setRuntimeActiveTaskId(null, deployConvId);
       setRuntimeActiveRunId(null, deployConvId);
       setRuntimeFetchController(null, deployConvId);
@@ -456,7 +440,7 @@ export function createDeployHandlers(ctx) {
     const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText);
     const activeId = conversationIdRef.current || conversationId;
     const activeRuntime = activeId ? getRuntime(activeId) : null;
-    const activeState = activeRuntime?.worldTaskState || worldTaskStateRef.current;
+    const activeState = activeRuntime?.taskRuntimeState || taskRuntimeStateRef.current;
     let runningTaskId = activeRuntime?.activeTaskId || activeState.activeTaskId || null;
     if (!runningTaskId) {
       const candidates = Object.values(activeState.tasksById || {})

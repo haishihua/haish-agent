@@ -21,10 +21,8 @@ export function createSettingsHandlers(ctx) {
     buildKnowledgeSettingsPayload,
     buildMemorySettingsPayload,
     buildToolsSettingsPayload,
-    clearAllPoseDebug,
     createDefaultCustomAgentPayload,
     createDefaultCustomWorkflowPayload,
-    dragStateRef,
     getSelectedLlmConfig,
     llmProviderRequestPayload,
     llmSettingsDraft,
@@ -35,8 +33,7 @@ export function createSettingsHandlers(ctx) {
     setActiveTab,
     setAgentCatalog,
     setAgentSettingsDraft,
-    setCalibrationMode,
-    setCopiedCoords,
+    setSettingsMode,
     setLlmSettingsDraft,
     setSettingsRecordsDraft,
     setSettingsSection,
@@ -52,16 +49,13 @@ export function createSettingsHandlers(ctx) {
     workflowSettingsDraft,
   } = ctx;
 
-  function handleToggleCalibration() {
+  function handleToggleSettings() {
     if (activeTab !== 'dashboard') setActiveTab('dashboard');
-    dragStateRef.current = null;
-    setCalibrationMode((enabled) => {
+    setSettingsMode((enabled) => {
       const next = !enabled;
       if (next) setSettingsSection('llm');
-      else clearAllPoseDebug();
       return next;
     });
-    setCopiedCoords(false);
   }
 
   async function handleSaveSettingsDraft() {
@@ -605,7 +599,7 @@ export function createSettingsHandlers(ctx) {
   }
 
   return {
-    handleToggleCalibration,
+    handleToggleSettings,
     handleSaveSettingsDraft,
     handleSaveToolsSettingsDraft,
     handleDeleteLlmProvider,

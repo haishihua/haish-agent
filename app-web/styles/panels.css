@@ -1329,7 +1329,7 @@
 }
 
 /* chat 模式下侧栏不展示任务报告按钮——chat 流里所有「报告」内容已经在
-   消息气泡里直接呈现，再多一个入口反而冗余。world/bot 模式保留。 */
+   消息气泡里直接呈现，再多一个入口反而冗余。workflow 模式保留。 */
 .app-body.chat-mode .conversation-report-btn {
     display: none;
 }

@@ -31,7 +31,7 @@ test('workflow catalog waits for the local runtime during desktop startup', () =
 
 test('startup restores an empty workflow conversation from its own execution mode', () => {
   assert.match(activationSource, /latestTask\?\.execution_mode \|\| detail\.execution_mode/);
-  assert.match(activationSource, /restoredExecutionMode === 'bot' \? 'world' : 'chat'/);
+  assert.match(activationSource, /restoredExecutionMode === 'bot' \? 'workflow' : 'chat'/);
 });
 
 test('mode switching restores the selected conversation latest task runtime', () => {

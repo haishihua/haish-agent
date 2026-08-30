@@ -10,23 +10,20 @@ function deferred() {
 
 function createRuntimeRestoreHarness(responsePromise) {
   const updates = [];
-  const liveSnapshots = [];
   const conversationIdRef = { current: 'workflow-conversation' };
   const handlers = createDraftConversationHandlers({
     API_BASE: 'http://runtime',
     authFetch: () => responsePromise,
-    buildAgentLiveSnapshot: () => ({ restored: true }),
     conversationIdRef,
-    normalizeWorldEvents: (events) => events || [],
-    setAgentLive: (value) => liveSnapshots.push(value),
+    normalizeRuntimeEvents: (events) => events || [],
     taskDetailToRuntimeTask: (task) => task,
     taskRuntimeEventCacheRef: { current: new Map() },
-    updateWorldTaskState: (updater, targetConversationId) => {
+    updateTaskRuntimeState: (updater, targetConversationId) => {
       updates.push({ updater, targetConversationId });
     },
     userIdRef: { current: 'owner' },
   });
-  return { conversationIdRef, handlers, liveSnapshots, updates };
+  return { conversationIdRef, handlers, updates };
 }
 
 test('stale task restore cannot update the newly active conversation', async () => {
@@ -49,7 +46,6 @@ test('stale task restore cannot update the newly active conversation', async () 
   await restore;
 
   assert.deepEqual(harness.updates, []);
-  assert.deepEqual(harness.liveSnapshots, []);
 });
 
 test('task restore writes only to the declared owning conversation', async () => {
@@ -69,7 +65,6 @@ test('task restore writes only to the declared owning conversation', async () =>
 
   assert.equal(harness.updates.length, 1);
   assert.equal(harness.updates[0].targetConversationId, 'workflow-conversation');
-  assert.deepEqual(harness.liveSnapshots, [{ restored: true }]);
 });
 
 test('task restore rejects a task owned by another conversation', async () => {
@@ -90,5 +85,4 @@ test('task restore rejects a task owned by another conversation', async () => {
     /does not belong to conversation workflow-conversation/,
   );
   assert.deepEqual(harness.updates, []);
-  assert.deepEqual(harness.liveSnapshots, []);
 });

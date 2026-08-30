@@ -6,12 +6,11 @@ export function createConversationActivationHandlers(ctx) {
     activeRuntimeTargetConvId,
     activeTaskIdRef,
     authFetch,
-    buildWorldTaskRecord,
+    buildTaskRuntimeRecord,
     chatImageFallbacksByTaskIdFromMessages,
     clearDraftConversationState,
     conversationIdRef,
     draftConversationRef,
-    dropPendingSceneItems,
     estimateContextUsageFromConversationDetail,
     findConversationById,
     findProjectByConversationId,
@@ -27,10 +26,8 @@ export function createConversationActivationHandlers(ctx) {
     mutateRuntime,
     normalizeWorkspaceOrdering,
     pendingCreatedDetailRef,
-    resetSceneActors,
     restoreConversationTaskRuntimes,
     saveStoredContextUsage,
-    setAgentLive,
     setComposerAttachment,
     setContextUsage,
     setConversationAttachments,
@@ -45,13 +42,13 @@ export function createConversationActivationHandlers(ctx) {
     taskImageAttachmentsRef,
     taskSummaryToRuntimeTask,
     timestampValue,
-    updateWorldTaskState,
+    updateTaskRuntimeState,
     userCancelledTaskIdsRef,
     userIdRef,
     viewModeRef,
     workspaceState,
     workspaceStateWithConversationDetail,
-    worldTaskStateRef,
+    taskRuntimeStateRef,
   } = ctx;
 
   function applyConversationSnapshot(detail) {
@@ -75,13 +72,11 @@ export function createConversationActivationHandlers(ctx) {
   // runtimes, leaving is now a pure-display operation: the leaving runtime is
   // preserved (its stream keeps running in the background), we only reset the
   // ambient UI bits that don't belong to any conversation (upload chrome,
-  // scene actors). The displayed React state will be re-synced when the new
+  // runtime state). The displayed React state will be re-synced when the new
   // conversation activates via `syncDisplayedRuntime`.
   function detachActiveRunFromCurrentConversation() {
     setUploadState({ active: false, fileName: '' });
     setComposerAttachment(null);
-    dropPendingSceneItems();
-    resetSceneActors();
   }
 
   function runtimeTaskFromConversationTask(task) {
@@ -116,7 +111,6 @@ export function createConversationActivationHandlers(ctx) {
       label: project?.workspaceLabel || project?.name || null,
     });
     setConversationAttachments([]);
-    setAgentLive({});
 
     const existingRuntime = getRuntime(nextConversationId);
     if (existingRuntime) {
@@ -134,7 +128,7 @@ export function createConversationActivationHandlers(ctx) {
     const taskOrder = taskEntries.map(([taskId]) => taskId);
     const activeTask = summaryTasks.find(isTaskActuallyActive) || null;
     mutateRuntime(nextConversationId, (rt) => {
-      rt.worldTaskState = {
+      rt.taskRuntimeState = {
         activeTaskId: activeTask?.taskId || activeTask?.id || null,
         pendingTask: null,
         taskOrder,
@@ -166,7 +160,7 @@ export function createConversationActivationHandlers(ctx) {
     ) {
       clearDraftConversationState({ clearComposer: false });
     }
-    // 切走前先把当前 conversation 的实时 worldTaskState flush 回
+    // 切走前先把当前 conversation 的实时 taskRuntimeState flush 回
     // workspaceState[当前 conversation].tasks。否则切到别的会话后，旧会话
     // sidebar 节点会回退到上一次 activate 时拉到的 detail.tasks 快照，刚跑
     // 完的任务消失，要再切回去触发一次 fetch 才会重新出现。
@@ -182,7 +176,7 @@ export function createConversationActivationHandlers(ctx) {
       const previousId = previousIdForFlush;
       if (!previousId || previousId === detail.conversation_id) return state;
       const previousRuntime = getRuntime(previousId);
-      const snapshot = previousRuntime ? previousRuntime.worldTaskState : worldTaskStateRef.current;
+      const snapshot = previousRuntime ? previousRuntime.taskRuntimeState : taskRuntimeStateRef.current;
       const currentTasks = (snapshot?.taskOrder || [])
         .map((taskId) => snapshot?.tasksById?.[taskId])
         .filter(Boolean);
@@ -223,7 +217,7 @@ export function createConversationActivationHandlers(ctx) {
     const latestTask = restoredTasks.find((task) => task.task_id === latestTaskId);
     const restoredExecutionMode = latestTask?.execution_mode || detail.execution_mode;
     if (restoreLatest && restoredExecutionMode) {
-      const restoredMode = restoredExecutionMode === 'bot' ? 'world' : 'chat';
+      const restoredMode = restoredExecutionMode === 'bot' ? 'workflow' : 'chat';
       viewModeRef.current = restoredMode;
       setViewMode(restoredMode);
     }
@@ -236,13 +230,12 @@ export function createConversationActivationHandlers(ctx) {
     setContextUsage(nextContextUsage);
     saveStoredContextUsage(nextContextUsage);
     applyConversationSnapshot(detail);
-    resetSceneActors();
     setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
 
     // If the conversation we're switching INTO already has a runtime with a
     // live stream, don't blow away its in-flight state — just bring the
     // display up to date with whatever the runtime currently holds. Otherwise
-    // (no runtime or a fully-quiescent one) we rebuild the world state from
+    // (no runtime or a fully-quiescent one) we rebuild task state from
     // the freshly-fetched detail and seed/refresh the runtime accordingly.
     const incomingRuntime = getRuntime(restoredConversationId);
     const incomingHasInflight = Boolean(
@@ -254,7 +247,7 @@ export function createConversationActivationHandlers(ctx) {
     if (incomingHasInflight) {
       syncDisplayedRuntime(incomingRuntime);
     } else {
-      const nextWorldTaskState = {
+      const nextTaskRuntimeState = {
         activeTaskId: null,
         pendingTask: null,
         taskOrder: sortTaskIdsForRestore(restoredTasks, latestTaskId),
@@ -273,7 +266,7 @@ export function createConversationActivationHandlers(ctx) {
         ),
       };
       mutateRuntime(restoredConversationId, (rt) => {
-        rt.worldTaskState = nextWorldTaskState;
+        rt.taskRuntimeState = nextTaskRuntimeState;
         rt.busy = false;
         rt.activeRunId = null;
         rt.activeTaskId = null;
@@ -295,10 +288,7 @@ export function createConversationActivationHandlers(ctx) {
       } catch (error) {
         if (!isCurrentActivation()) return;
         console.error('latest task restore failed', error);
-        setAgentLive({});
       }
-    } else {
-      if (isCurrentActivation()) setAgentLive({});
     }
   }
 
@@ -321,37 +311,37 @@ export function createConversationActivationHandlers(ctx) {
     }
     const ownerRuntime = ownerConvId ? getRuntime(ownerConvId) : null;
     // After Stop, the current run is aborted until the next executeQuest resets it.
-    // Do not re-materialize tasks from late NDJSON / run_cancelled events.
+    // Do not re-materialize tasks from late NDJSON events after a run is terminal.
     if (ownerRuntime?.abortRequested) {
       if (event.task_id) userCancelledTaskIdsRef.current.add(event.task_id);
       return null;
     }
     const seedActiveTaskId = ownerRuntime
-      ? ownerRuntime.activeTaskId || ownerRuntime.worldTaskState.activeTaskId
-      : activeTaskIdRef.current || worldTaskStateRef.current.activeTaskId;
+      ? ownerRuntime.activeTaskId || ownerRuntime.taskRuntimeState.activeTaskId
+      : activeTaskIdRef.current || taskRuntimeStateRef.current.activeTaskId;
     const taskId = event.task_id || seedActiveTaskId;
     if (!taskId) return null;
-    // User-cancelled turns must never be re-created by late SSE / run_cancelled.
+    // User-cancelled turns must never be re-created by late stream events.
     // Also block when the local pending draft id was cancelled before the server
     // task id arrived, and promote the server id into the cancel set.
     if (userCancelledTaskIdsRef.current.has(taskId)) {
       return null;
     }
-    const pendingId = ownerRuntime?.worldTaskState?.pendingTask?.id
-      || ownerRuntime?.worldTaskState?.pendingTask?.taskId
+    const pendingId = ownerRuntime?.taskRuntimeState?.pendingTask?.id
+      || ownerRuntime?.taskRuntimeState?.pendingTask?.taskId
       || null;
     if (pendingId && userCancelledTaskIdsRef.current.has(pendingId)) {
       if (event.task_id) userCancelledTaskIdsRef.current.add(event.task_id);
       return null;
     }
 
-    updateWorldTaskState((state) => {
+    updateTaskRuntimeState((state) => {
       const existingTask = state.tasksById[taskId];
       if (existingTask) {
         return state.activeTaskId === taskId ? state : { ...state, activeTaskId: taskId };
       }
       const pendingTask = state.pendingTask;
-      const baseTask = buildWorldTaskRecord(event, pendingTask);
+      const baseTask = buildTaskRuntimeRecord(event, pendingTask);
       const updatedAt = timestampValue(event.created_at) || timestampValue(event.timestamp) || Date.now();
       return {
         ...state,
@@ -365,7 +355,6 @@ export function createConversationActivationHandlers(ctx) {
             taskId: taskId,
             conversationId: event.conversation_id || baseTask.conversationId,
             loopIndex: Math.max(baseTask.loopIndex || 0, event.loop_index || 0),
-            activeRole: event.actor || baseTask.activeRole,
             updatedAt,
           },
         },
@@ -386,7 +375,7 @@ export function createConversationActivationHandlers(ctx) {
 
   function updateTaskById(taskId, updater, targetConvId = null, options = {}) {
     if (!taskId) return;
-    updateWorldTaskState((state) => {
+    updateTaskRuntimeState((state) => {
       const task = state.tasksById[taskId];
       if (!task) return state;
       const expectedConvId = activeRuntimeTargetConvId(targetConvId);
@@ -426,8 +415,8 @@ export function createConversationActivationHandlers(ctx) {
     if (!taskId) return null;
     const convId = activeRuntimeTargetConvId(targetConvId);
     const runtime = convId ? getRuntime(convId) : null;
-    return runtime?.worldTaskState?.tasksById?.[taskId]
-      || worldTaskStateRef.current.tasksById[taskId]
+    return runtime?.taskRuntimeState?.tasksById?.[taskId]
+      || taskRuntimeStateRef.current.tasksById[taskId]
       || null;
   }
 

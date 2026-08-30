@@ -4,7 +4,7 @@ import React from 'react';
 import {
   PortalTooltip,
 } from './PortalTooltip.jsx';
-export function TopBar({ viewMode = 'world', onToggleViewMode, calibrationActive = false, calibrationDisabled = false, onToggleCalibration }) {
+export function TopBar({ viewMode = 'workflow', onToggleViewMode, settingsActive = false, settingsDisabled = false, onToggleSettings }) {
   const chatMode = viewMode === 'chat';
   return (
     <div className="app-topbar">
@@ -29,14 +29,14 @@ export function TopBar({ viewMode = 'world', onToggleViewMode, calibrationActive
             <span className={`ico ${chatMode ? 'ico-robot' : 'ico-bubble-chat'}`} aria-hidden="true" />
           </button>
         </PortalTooltip>
-        <PortalTooltip text={calibrationActive ? 'Exit calibration' : 'Settings'} position="below">
+        <PortalTooltip text={settingsActive ? 'Close settings' : 'Settings'} position="below">
           <button
             type="button"
-            className={`topbar-icon ${calibrationActive ? 'active' : ''}`}
-            aria-label={calibrationActive ? 'Exit calibration' : 'Settings'}
-            aria-pressed={calibrationActive}
-            onClick={onToggleCalibration}
-            disabled={calibrationDisabled}
+            className={`topbar-icon ${settingsActive ? 'active' : ''}`}
+            aria-label={settingsActive ? 'Close settings' : 'Settings'}
+            aria-pressed={settingsActive}
+            onClick={onToggleSettings}
+            disabled={settingsDisabled}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="3"/>

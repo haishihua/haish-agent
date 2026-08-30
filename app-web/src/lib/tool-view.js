@@ -266,11 +266,8 @@ export function toolStreamTextForEvent(event, item) {
   const text = compactToolValue(event?.summary || event?.message || event?.outputSummary || event?.inputSummary, TOOL_BLOCK_LIMIT);
   const normalizedText = text.trim().toLowerCase();
   if (type === 'sub_agent_answer_delta') return '';
-  if (type === 'llm_tool_call_requested') return '';
-  if (type === 'tool_manager_received') return '';
-  if (type === 'tool_dispatched') return '';
-  if (type === 'tool_executor_started') return '';
-  if (type === 'sub_agent_tool_executor_completed' && (text.length > 180 || text.trim().startsWith('{') || text.includes('\n'))) return '';
+  if (type === 'tool_call_started') return '';
+  if (type === 'sub_agent_tool_call_completed' && (text.length > 180 || text.trim().startsWith('{') || text.includes('\n'))) return '';
   if (normalizedText === 'queued') return '';
   if (normalizedText === 'dispatched') return '';
   if (normalizedText === `${normalizeToolName(item.toolName)} started`) return '';
@@ -370,7 +367,7 @@ export function buildSubAgentTimelineItems(view) {
       if (value) textBuffer += value;
       return;
     }
-    if (type === 'sub_agent_tool_call_requested') {
+    if (type === 'sub_agent_tool_call_started') {
       flushText(false);
       const key = subAgentToolEventKey(event) || `pending-${index}`;
       const item = {
@@ -390,7 +387,7 @@ export function buildSubAgentTimelineItems(view) {
       if (subAgentToolEventKey(event)) toolItemsByKey.set(key, item);
       return;
     }
-    if (type === 'sub_agent_tool_executor_completed') {
+    if (type === 'sub_agent_tool_call_completed') {
       flushText(false);
       const key = subAgentToolEventKey(event);
       let item = key ? toolItemsByKey.get(key) : null;

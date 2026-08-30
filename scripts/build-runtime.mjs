@@ -60,7 +60,6 @@ function copyRuntimeFile(name) {
       const base = path.basename(src);
       if (base === '.git' || base === '.venv' || base === '__pycache__') return false;
       if (base === '.pytest_cache' || base === '.mypy_cache' || base === '.ruff_cache') return false;
-      if (base === '.agent-world-web.log') return false;
       if (base.endsWith('.pyc') || base.endsWith('.pyo')) return false;
       return true;
     },

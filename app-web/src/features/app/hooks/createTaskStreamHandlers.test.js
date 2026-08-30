@@ -43,13 +43,10 @@ test('mergeQueuedStreamDelta preserves repeated and overlapping tool output', ()
   assert.equal(overlapping.delta, 'abcbcd');
 });
 
-test('delivery receipts do not mark chat tasks done before run_finished', () => {
-  const finalAnswerCase = eventCaseSource('llm_final_answer', 'agent_gateway_reported');
-  const gatewayReportedCase = eventCaseSource('agent_gateway_reported', 'run_cancelled');
-
+test('final_answer does not mark chat tasks done before run_finished', () => {
+  const finalAnswerCase = eventCaseSource('final_answer', 'run_finished');
   assert.doesNotMatch(finalAnswerCase, /status:\s*'done'/);
-  assert.doesNotMatch(gatewayReportedCase, /status:\s*'done'/);
-  assert.match(handlerSource, /status:\s*terminalStatus/);
+  assert.match(handlerSource, /status:\s*resolvedStatus/);
 });
 
 test('mergeQueuedStreamDelta merges answer deltas but keeps progress events separate', () => {

@@ -92,5 +92,5 @@ test('missing restored tasks are removed and stream errors retain backend detail
   assert.match(draftHandlersSource, /error\.status = response\.status/);
   assert.match(appShellSource, /if \(error\?\.status === 404\) \{[\s\S]*?removeMissingTask/);
   assert.match(appShellSource, /function removeMissingTask\([\s\S]*?taskRuntimeEventCacheRef\.current\.delete\(taskId\)/);
-  assert.match(streamHandlersSource, /payload\?\.detail[\s\S]*?world stream failed/);
+  assert.match(streamHandlersSource, /payload\?\.detail[\s\S]*?task stream failed/);
 });

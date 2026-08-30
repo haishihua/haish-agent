@@ -90,7 +90,7 @@ export type HaishDesktopApi = {
 
 declare global {
   interface Window {
-    AGENT_WORLD_API_BASE?: string;
+    HAISH_API_BASE?: string;
     haish: HaishDesktopApi;
   }
 }

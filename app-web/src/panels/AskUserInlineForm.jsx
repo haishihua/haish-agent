@@ -4,7 +4,7 @@ import { subscribeApprovalEvents } from '../approval-overlay.jsx';
 import { selectPendingUserInput } from '../lib/pending-user-input.js';
 
 function resolveApiBase() {
-  const explicit = String(window.AGENT_WORLD_API_BASE || '').trim();
+  const explicit = String(window.HAISH_API_BASE || '').trim();
   return explicit ? explicit.replace(/\/$/, '') : '';
 }
 

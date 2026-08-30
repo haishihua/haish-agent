@@ -1,9 +1,9 @@
 // @haish-esm
 import { API_BASE } from './base.js';
 
-export const CONVERSATION_STORAGE_KEY = 'agent_world_conversation_id';
-export const WORKSPACE_STORAGE_KEY = 'agent_world_workspaces_v2';
-export const CONTEXT_USAGE_STORAGE_KEY = 'agent_world_context_usage_v1';
+export const CONVERSATION_STORAGE_KEY = 'haish_conversation_id';
+export const WORKSPACE_STORAGE_KEY = 'haish_workspaces_v2';
+export const CONTEXT_USAGE_STORAGE_KEY = 'haish_context_usage_v1';
 export const AUTH_SESSION_STORAGE_KEY = 'haish_auth_session_v1';
 export const RUN_CONFIG_STORAGE_PREFIX = 'haish_run_config_v1';
 export const RESTORED_CONTEXT_BASE_TOKENS = 4200;

@@ -7,24 +7,24 @@ export function createConversationRuntime(ctx) {
     answerBufferRef,
     cancelledRunIdsRef,
     conversationIdRef,
-    createEmptyWorldTaskState,
+    createEmptyTaskRuntimeState,
     fetchAbortRef,
     normalizeWorkspaceOrdering,
     notifyTaskComplete,
     runtimesRef,
     setBusy,
     setWorkspaceState,
-    setWorldTaskState,
+    setTaskRuntimeState,
     setToast,
     streamTargetConvIdRef,
     taskImageAttachmentsRef,
     toastTimerRef,
-    worldTaskStateRef,
+    taskRuntimeStateRef,
   } = ctx;
 
   function createEmptyRuntime() {
     return {
-      worldTaskState: createEmptyWorldTaskState(),
+      taskRuntimeState: createEmptyTaskRuntimeState(),
       busy: false,
       activeRunId: null,
       activeTaskId: null,
@@ -90,9 +90,9 @@ export function createConversationRuntime(ctx) {
     fetchAbortRef.current = rt.fetchController;
     answerBufferRef.current = rt.answerBuffer;
     cancelledRunIdsRef.current = rt.cancelledRunIds;
-    worldTaskStateRef.current = rt.worldTaskState;
-    cacheTaskImageAttachments(rt.worldTaskState);
-    setWorldTaskState(rt.worldTaskState);
+    taskRuntimeStateRef.current = rt.taskRuntimeState;
+    cacheTaskImageAttachments(rt.taskRuntimeState);
+    setTaskRuntimeState(rt.taskRuntimeState);
     setBusy(rt.busy);
   }
 
@@ -106,14 +106,14 @@ export function createConversationRuntime(ctx) {
       const rt = getRuntime(cid, { create: true });
       const taskJustCompleted = value === false && rt.busy === true;
       const completedTaskId = rt.activeTaskId
-        || rt.worldTaskState?.activeTaskId
-        || rt.worldTaskState?.pendingTask?.taskId
-        || rt.worldTaskState?.pendingTask?.id
+        || rt.taskRuntimeState?.activeTaskId
+        || rt.taskRuntimeState?.pendingTask?.taskId
+        || rt.taskRuntimeState?.pendingTask?.id
         || null;
       const completedTask = completedTaskId
-        ? (rt.worldTaskState?.tasksById?.[completedTaskId]
-          || ((rt.worldTaskState?.pendingTask?.taskId || rt.worldTaskState?.pendingTask?.id) === completedTaskId
-            ? rt.worldTaskState.pendingTask
+        ? (rt.taskRuntimeState?.tasksById?.[completedTaskId]
+          || ((rt.taskRuntimeState?.pendingTask?.taskId || rt.taskRuntimeState?.pendingTask?.id) === completedTaskId
+            ? rt.taskRuntimeState.pendingTask
             : null))
         : null;
       mutateRuntime(cid, (current) => { current.busy = value; });
@@ -134,7 +134,7 @@ export function createConversationRuntime(ctx) {
     if (!convId) return;
     const rt = runtimesRef.current.get(convId);
     if (!rt) return;
-    const snapshot = rt.worldTaskState;
+    const snapshot = rt.taskRuntimeState;
     const taskOrder = Array.isArray(snapshot?.taskOrder) ? snapshot.taskOrder : [];
     const tasksById = snapshot?.tasksById || {};
     // Always mirror runtime tasks, including an empty list after a full
@@ -202,23 +202,23 @@ export function createConversationRuntime(ctx) {
   // conversation that owns the in-flight stream, even if the user has since
   // switched to a different conversation. When omitted, writes use the stream
   // context (if set) or fall back to the currently-shown conversation.
-  function updateWorldTaskState(updater, targetConvId = null) {
+  function updateTaskRuntimeState(updater, targetConvId = null) {
     const convId = activeRuntimeTargetConvId(targetConvId);
     if (!convId) {
       // No active conversation context — fall back to legacy single-state path
       // so we don't drop the write (rare, mostly during early bootstrap).
-      setWorldTaskState((state) => {
+      setTaskRuntimeState((state) => {
         const next = updater(state);
-        worldTaskStateRef.current = next;
+        taskRuntimeStateRef.current = next;
         cacheTaskImageAttachments(next);
         return next;
       });
       return;
     }
     mutateRuntime(convId, (rt) => {
-      const next = updater(rt.worldTaskState);
-      if (next === rt.worldTaskState) return false;
-      rt.worldTaskState = next;
+      const next = updater(rt.taskRuntimeState);
+      if (next === rt.taskRuntimeState) return false;
+      rt.taskRuntimeState = next;
       return true;
     });
   }
@@ -260,7 +260,7 @@ export function createConversationRuntime(ctx) {
     setRuntimeFetchController,
     setRuntimeAnswerBuffer,
     readRuntimeAnswerBuffer,
-    updateWorldTaskState,
+    updateTaskRuntimeState,
     showToast,
   };
 }

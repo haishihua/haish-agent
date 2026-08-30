@@ -19,7 +19,7 @@ export const APPROVAL_MODE_OPTIONS = [
 
 export function resolveApprovalApiBase() {
   if (typeof window !== 'undefined') {
-    const explicit = String(window.AGENT_WORLD_API_BASE || '').trim();
+    const explicit = String(window.HAISH_API_BASE || '').trim();
     if (explicit) return explicit.replace(/\/$/, '');
   }
   return '';

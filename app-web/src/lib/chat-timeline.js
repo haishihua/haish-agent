@@ -3,38 +3,30 @@ import { eventDeltaText, stripInjectedSkillInstruction } from './chat-text.js';
 export { eventDeltaText } from './chat-text.js';
 import { normalizeToolName } from './tool-names.js';
 import { normalizeTaskStatus } from './task-runtime.js';
-import { skillDisplayName } from './world-events.js';
+import { skillDisplayName } from './runtime-events.js';
 
 export function getChatProgressLine(event) {
   const toolName = event.tool_name || event.toolName || 'tool';
   const message = String(event.message || '').trim();
   switch (event.type) {
-    case 'user_message_received':
-      return 'Task received.';
-    case 'agent_gateway_received':
-      return 'Preparing the agent route.';
+    case 'run_started':
+      return '';
     case 'provider_selected':
       return `Model selected: ${event.provider || event.provider_key || 'auto'}.`;
     case 'context_compaction_started':
       return 'Auto-Compacting context';
     case 'context_compaction_completed':
       return 'Auto-Compacting context';
+    case 'context_compaction_failed':
+      return 'Context compaction failed.';
     case 'llm_thinking_started':
       return 'Assistant is reasoning.';
     case 'llm_thinking_completed':
       return 'Reasoning step complete.';
-    case 'llm_tool_call_requested':
-      return `Tool requested: ${toolName}.`;
-    case 'tool_manager_received':
-      return 'Tool Manager received the request.';
-    case 'tool_dispatched':
-      return `Dispatching ${toolName}.`;
-    case 'tool_executor_started':
+    case 'tool_call_started':
       return `Running ${toolName}.`;
-    case 'tool_executor_completed':
+    case 'tool_call_completed':
       return `${toolName} completed.`;
-    case 'tool_result_returned':
-      return event.output_summary || event.message || `${toolName} result returned.`;
     case 'sub_agent_started':
       return message || `${event.role || 'Sub-agent'} started.`;
     case 'sub_agent_finished':
@@ -42,9 +34,9 @@ export function getChatProgressLine(event) {
     case 'sub_agent_progress_delta':
     case 'sub_agent_answer_delta':
       return message || event.delta || event.text || event.contentDelta || event.outputSummary || '';
-    case 'sub_agent_tool_call_requested':
+    case 'sub_agent_tool_call_started':
       return message || `${event.role || 'Sub-agent'} requested ${toolName}.`;
-    case 'sub_agent_tool_executor_completed':
+    case 'sub_agent_tool_call_completed':
       return event.outputSummary || message || `${toolName} completed.`;
     default:
       return '';
@@ -95,8 +87,7 @@ export function isSkillTraceItem(item) {
 export function isMcpTraceItem(item) {
   const group = String(item?.toolGroup || item?.tool_group || '').toLowerCase();
   const kind = String(item?.kind || '').toLowerCase();
-  const role = String(item?.executorRole || item?.executor_role || '').toLowerCase();
-  return group === 'external' || kind === 'mcp' || role.includes('external tool');
+  return group === 'external' || kind === 'mcp';
 }
 
 export function getToolTraceStatus(state, fallbackStatus = 'running') {
@@ -106,7 +97,7 @@ export function getToolTraceStatus(state, fallbackStatus = 'running') {
   if (normalized === 'failed' || normalized === 'error') return 'failed';
   // In-flight states: when the surrounding task has already finished, the
   // call's "still running" marker cannot be true anymore — it just means the
-  // matching tool_executor_completed / tool_result_returned event was never
+  // matching tool_call_completed event was never
   // recorded (or this timeline was rebuilt before those events were merged).
   // Defer to the terminal task status instead of rendering a permanent
   // yellow indicator. This is the safety net that catches the "switch away
@@ -370,18 +361,10 @@ export function toolProgressSummary(event) {
   const toolName = chatTraceToolName(event.toolName);
   const message = String(event.message || '').trim();
   switch (event.type) {
-    case 'llm_tool_call_requested':
+    case 'tool_call_started':
       return event.inputSummary || message || `${toolName} requested.`;
-    case 'tool_manager_received':
-      return message || 'Tool Manager accepted the request.';
-    case 'tool_dispatched':
-      return message || `Dispatched to ${event.executorRole || event.target || 'executor'}.`;
-    case 'tool_executor_started':
-      return message || `${toolName} started.`;
-    case 'tool_executor_completed':
+    case 'tool_call_completed':
       return event.outputSummary || message || `${toolName} completed.`;
-    case 'tool_result_returned':
-      return event.outputSummary || message || `${toolName} returned results.`;
     case 'tool_executor_failed':
     case 'tool_executor_error':
       return message || `${toolName} failed.`;
@@ -392,9 +375,9 @@ export function toolProgressSummary(event) {
     case 'sub_agent_progress_delta':
     case 'sub_agent_answer_delta':
       return message || event.delta || event.text || event.contentDelta || event.outputSummary || '';
-    case 'sub_agent_tool_call_requested':
+    case 'sub_agent_tool_call_started':
       return message || `${event.role || 'Sub-agent'} requested ${toolName}.`;
-    case 'sub_agent_tool_executor_completed':
+    case 'sub_agent_tool_call_completed':
       return event.outputSummary || message || `${toolName} completed.`;
     default:
       return message || event.inputSummary || event.outputSummary || '';
@@ -424,10 +407,11 @@ export function buildChatTimeline(task, taskStatus) {
   let thinkingSegmentIndex = 0;
   let currentSkillItem = null;
   let currentCompactionItem = null;
+  let latestTodos = null;
   const seenToolIds = new Set();
   // Track per-callId tool item so completion / failure events can update the
   // existing entry in place. Without this the entry is created at
-  // llm_tool_call_requested time with status="running" and is NEVER updated,
+  // tool_call_started time with status="running" and is NEVER updated,
   // which is what caused the "all tool calls yellow" regression after a
   // tab-switch round-trip rebuilds the timeline from the event log alone.
   const toolItemsByCallId = new Map();
@@ -465,13 +449,6 @@ export function buildChatTimeline(task, taskStatus) {
     });
     toolItem.progressEvents = progressEvents;
   };
-  const appendToolProgressByEvent = (event, state = '') => {
-    const callId = event?.callId || '';
-    if (!callId) return;
-    const toolItem = toolItemsByCallId.get(callId);
-    if (!toolItem) return;
-    appendToolProgress(toolItem, event, state);
-  };
   const appendSubAgentProgressByEvent = (event, state = '') => {
     const parentCallId = event?.parentCallId || event?.parent_call_id || '';
     if (!parentCallId) return;
@@ -499,8 +476,8 @@ export function buildChatTimeline(task, taskStatus) {
     if (type === 'sub_agent_answer_delta') return 'stream';
     if (type === 'sub_agent_started') return 'running';
     if (type === 'sub_agent_finished') return 'completed';
-    if (type === 'sub_agent_tool_call_requested') return 'requested';
-    if (type === 'sub_agent_tool_executor_completed') return 'completed';
+    if (type === 'sub_agent_tool_call_started') return 'requested';
+    if (type === 'sub_agent_tool_call_completed') return 'completed';
     return 'progress';
   };
   const finalizeToolItem = (callId, terminalState, event = null) => {
@@ -692,8 +669,8 @@ export function buildChatTimeline(task, taskStatus) {
     if (
       type === 'sub_agent_progress_delta'
       || type === 'sub_agent_answer_delta'
-      || type === 'sub_agent_tool_call_requested'
-      || type === 'sub_agent_tool_executor_completed'
+      || type === 'sub_agent_tool_call_started'
+      || type === 'sub_agent_tool_call_completed'
       || type === 'sub_agent_started'
       || type === 'sub_agent_finished'
     ) {
@@ -703,11 +680,16 @@ export function buildChatTimeline(task, taskStatus) {
       );
       continue;
     }
-    if (type === 'llm_tool_call_requested') {
+    if (type === 'todo_updated') {
+      latestTodos = sanitizeTodoItems(event.todoItems);
+      continue;
+    }
+    if (type === 'tool_call_started') {
       flushThinking(false);
       if (textBufSource === 'unknown' || textBufSource === 'answer') textBufSource = 'commentary';
       if (textBuf.trim()) flushText();
       const callId = event.callId || '';
+      if (normalizeToolName(event.toolName) === 'todo_write') continue;
       if (callId && seenToolIds.has(callId)) {
         const existing = toolItemsByCallId.get(callId);
         if (existing) {
@@ -728,8 +710,6 @@ export function buildChatTimeline(task, taskStatus) {
         kind: event.kind,
         skillName: event.skillName,
         skillPath: event.skillPath,
-        executorRole: event.executorRole,
-        executorActorId: event.executorActorId,
         inputSummary: event.inputSummary,
         outputSummary: '',
         toolInput: event.toolInput || null,
@@ -753,7 +733,7 @@ export function buildChatTimeline(task, taskStatus) {
         toolResponse: call.toolResponse || null,
         toolOutput: call.toolOutput || '',
         message: call.message || '',
-        executor: call.executorRole || call.executorActorId || call.toolGroup || '',
+        executor: call.toolGroup || '',
         status: getToolTraceStatus(call.state, finalStatus),
         children: [],
         progressEvents: [],
@@ -773,17 +753,6 @@ export function buildChatTimeline(task, taskStatus) {
       }
       continue;
     }
-    if (type === 'tool_manager_received' || type === 'tool_dispatched' || type === 'tool_executor_started') {
-      appendToolProgressByEvent(
-        event,
-        type === 'tool_executor_started'
-          ? 'running'
-          : type === 'tool_dispatched'
-            ? 'dispatched'
-            : 'received',
-      );
-      continue;
-    }
     if (type === 'tool_output_delta') {
       // 实时命令输出：把 bash 等工具执行过程中的输出增量追加到对应工具卡片，
       // 让 shell 卡片像终端一样边执行边滚动，而不是等命令跑完才一次性显示。
@@ -800,7 +769,7 @@ export function buildChatTimeline(task, taskStatus) {
       }
       continue;
     }
-    if (type === 'tool_executor_completed' || type === 'tool_result_returned') {
+    if (type === 'tool_call_completed') {
       // Tool finished cleanly: flip the existing tool item to done. We do not
       // touch text / thinking buffers because these completion events
       // intentionally come after the tool's matching request event.
@@ -811,7 +780,7 @@ export function buildChatTimeline(task, taskStatus) {
       finalizeToolItem(event.callId || '', 'failed');
       continue;
     }
-    // 元事件（user_message_received / agent_gateway_received / provider_selected /
+    // 元事件（run_started / provider_selected /
     // context_usage_updated / tool_budget_applied / llm_thinking_started/completed）
     // 不在聊天时间线里渲染——只保留 LLM 文本、reasoning 流和工具调用。
   }
@@ -835,6 +804,7 @@ export function buildChatTimeline(task, taskStatus) {
   // (e.g. event still in-flight). Append them in their natural order.
   for (const call of toolCalls) {
     if (!call?.callId || seenToolIds.has(call.callId)) continue;
+    if (normalizeToolName(call.toolName) === 'todo_write') continue;
     const category = categorizeToolCall(call);
     const label = timelineToolLabel(call, category);
     const toolItem = {
@@ -849,7 +819,7 @@ export function buildChatTimeline(task, taskStatus) {
       toolResponse: call.toolResponse || null,
       toolOutput: call.toolOutput || '',
       message: call.message || '',
-      executor: call.executorRole || call.executorActorId || call.toolGroup || '',
+      executor: call.toolGroup || '',
       status: getToolTraceStatus(call.state, finalStatus),
       children: [],
       progressEvents: [],
@@ -897,40 +867,19 @@ export function buildChatTimeline(task, taskStatus) {
   // No "Preparing…" / "Queued…" placeholder——空时间线就让外面的 streaming 活动指示器
   // 单独承担"任务进行中"的视觉反馈，避免连续显示两条无内容信息。
 
-  // todo_write 不进时间线渲染——它是"持续更新的计划面板"，挂在活动指示器下方，
-  // 由 latestTodos 单独承载。这里把所有 todo_write 抽出来取最后一次写入作为
-  // 当前快照，其它工具不受影响。
-  const displayItems = [];
-  let latestTodos = null;
-  for (const it of items) {
-    if (it && it.kind === 'tool' && normalizeToolName(it.toolName) === 'todo_write') {
-      const todos = extractTodosFromToolItem(it);
-      if (todos) latestTodos = todos;
-      continue;
-    }
-    displayItems.push(it);
-  }
-
   // 折叠"两段文本之间"的连续工具调用为单行聚合 chip。聊天阅读时关心解决思路
   // (text + thinking)，不关心 read_file / chrome_devtools_* 反复的细节；想看
   // 单条工具调用时点开 chip 还能看到原来的 ChatTimelineToolNode 列表。
-  const timeline = { items: groupConsecutiveTools(displayItems), latestTodos };
+  const timeline = { items: groupConsecutiveTools(items), latestTodos };
   if (task && typeof task === 'object') {
     CHAT_TIMELINE_CACHE.set(task, { status: finalStatus, timeline });
   }
   return timeline;
 }
 
-export function extractTodosFromToolItem(item) {
-  const response = item && item.toolResponse && typeof item.toolResponse === 'object'
-    ? item.toolResponse
-    : {};
-  const artifacts = response.artifacts && typeof response.artifacts === 'object'
-    ? response.artifacts
-    : {};
-  const rawTodos = Array.isArray(artifacts.todos) ? artifacts.todos : null;
-  if (!rawTodos) return null;
-  const sanitized = rawTodos
+export function sanitizeTodoItems(items) {
+  if (!Array.isArray(items)) return null;
+  const sanitized = items
     .map((entry) => {
       const obj = entry && typeof entry === 'object' ? entry : {};
       const content = String(obj.content || '').trim();
@@ -958,8 +907,6 @@ export function pendingTaskToQuest(pendingTask) {
     updatedAt: pendingTask.updatedAt || pendingTask.createdAt,
     completedAt: pendingTask.completedAt || null,
     stage: pendingTask.stage,
-    assignedTo: pendingTask.assignedTo,
-    assignedToLabel: pendingTask.assignedToLabel,
     requestedProvider: pendingTask.requestedProvider,
     answerText: pendingTask.answerText || '',
     chatStreamText: pendingTask.chatStreamText || '',

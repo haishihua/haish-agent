@@ -6,7 +6,7 @@ const scope = {
   active: true,
   conversationId: 'conversation-1',
   taskId: 'task-1',
-  toolCallId: 'world-call-id',
+  toolCallId: 'tool-call-id',
   toolInput: {
     context: 'Choose one',
     questions: [{ id: 'choice', question: 'Which option?' }],
@@ -38,7 +38,7 @@ test('ask_user uses the workflow task as its stable scope when the technical con
     request_id: 'request-1',
     conversation_id: 'backend-conversation',
     task_id: 'task-1',
-    tool_call_id: 'world-call-id',
+    tool_call_id: 'tool-call-id',
     questions: [{ id: 'choice', question: 'Which option?' }],
   };
 

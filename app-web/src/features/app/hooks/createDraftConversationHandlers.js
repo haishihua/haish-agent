@@ -10,7 +10,6 @@ export function createDraftConversationHandlers(ctx) {
     DEFAULT_SESSION_NAME,
     applyConversationSnapshot,
     authFetch,
-    buildAgentLiveSnapshot,
     buildApiHeaders,
     chatFinalizedTaskIdsRef,
     conversationActivationSeqRef,
@@ -20,7 +19,7 @@ export function createDraftConversationHandlers(ctx) {
     createConversationInProject,
     createDefaultProject,
     createEmptyContextUsage,
-    createEmptyWorldTaskState,
+    createEmptyTaskRuntimeState,
     detachActiveRunFromCurrentConversation,
     draftConversationRef,
     flushRuntimeTasksToWorkspace,
@@ -30,11 +29,10 @@ export function createDraftConversationHandlers(ctx) {
     isTaskActuallyActive,
     mutateRuntime,
     normalizeWorkspaceOrdering,
-    normalizeWorldEvents,
+    normalizeRuntimeEvents,
     pendingCreatedDetailRef,
     rekeyChatDraft,
     runtimesRef,
-    setAgentLive,
     setComposerAttachment,
     setContextUsage,
     setConversationAttachments,
@@ -49,7 +47,7 @@ export function createDraftConversationHandlers(ctx) {
     taskRuntimeEventCacheRef,
     taskUpdatedTimestamp,
     titleFromTaskText,
-    updateWorldTaskState,
+    updateTaskRuntimeState,
     userCancelledTaskIdsRef,
     userIdRef,
     viewModeRef,
@@ -139,7 +137,6 @@ export function createDraftConversationHandlers(ctx) {
     // Drafts are local-only; do not persist a fake id into storage.
     setStoredConversationId(null);
     setConversationAttachments([]);
-    setAgentLive({});
     setLocalWorkspace({
       path: project.workspacePath || window.haish?.homePath || null,
       label: project.workspaceLabel || project.name || null,
@@ -152,7 +149,7 @@ export function createDraftConversationHandlers(ctx) {
     setConversationReady(true);
 
     mutateRuntime(draftId, (rt) => {
-      rt.worldTaskState = createEmptyWorldTaskState();
+      rt.taskRuntimeState = createEmptyTaskRuntimeState();
       rt.busy = false;
       rt.activeRunId = null;
       rt.activeTaskId = null;
@@ -281,7 +278,7 @@ export function createDraftConversationHandlers(ctx) {
       throw error;
     }
     const task = await response.json();
-    const incomingEvents = normalizeWorldEvents(task.events);
+    const incomingEvents = normalizeRuntimeEvents(task.events);
     const appendToCache = Boolean(task.events_delta && cached);
     const events = compactStreamEvents(
       appendToCache ? [...cached.events, ...incomingEvents] : incomingEvents,
@@ -297,27 +294,23 @@ export function createDraftConversationHandlers(ctx) {
   async function restoreTaskRuntime(taskId, {
     targetConversationId,
     isCurrentActivation,
-    updateLiveSnapshot = false,
   }) {
     if (!targetConversationId) throw new Error('task restore requires a target conversation');
     if (typeof isCurrentActivation !== 'function') throw new Error('task restore requires an activation guard');
     if (!isCurrentActivation()) return;
     const detail = await fetchTaskRuntimeDetail(taskId);
     if (!detail || !isCurrentActivation()) return;
-    const { normalizedTask, events } = detail;
+    const { normalizedTask } = detail;
     if (normalizedTask.conversation_id !== targetConversationId) {
       throw new Error(`task ${taskId} does not belong to conversation ${targetConversationId}`);
     }
-    updateWorldTaskState((state) => ({
+    updateTaskRuntimeState((state) => ({
       ...state,
       tasksById: {
         ...state.tasksById,
         [taskId]: taskDetailToRuntimeTask(normalizedTask, state.tasksById[taskId] || null, userIdRef.current),
       },
     }), targetConversationId);
-    if (updateLiveSnapshot && conversationIdRef.current === targetConversationId) {
-      setAgentLive(buildAgentLiveSnapshot(normalizedTask, events));
-    }
     return normalizedTask;
   }
 
@@ -325,7 +318,6 @@ export function createDraftConversationHandlers(ctx) {
     if (!targetConversationId) throw new Error('latest task restore requires a target conversation');
     if (typeof isCurrentActivation !== 'function') throw new Error('latest task restore requires an activation guard');
     if (!taskId) {
-      if (isCurrentActivation() && conversationIdRef.current === targetConversationId) setAgentLive({});
       return;
     }
     return restoreTaskRuntime(taskId, {
@@ -351,8 +343,6 @@ export function createDraftConversationHandlers(ctx) {
           console.warn(`task detail restore skipped: ${latestTaskId}`, error);
         }
       }
-    } else if (isCurrentActivation() && conversationIdRef.current === targetConversationId) {
-      setAgentLive({});
     }
     const detailTaskIds = uniqueTaskIds.filter((taskId) => taskId !== latestTaskId);
     for (const taskId of detailTaskIds) {
@@ -395,7 +385,7 @@ export function createDraftConversationHandlers(ctx) {
     if (queuedEvent && taskId) {
       const queuedMessage = String(displayMessage || queuedPayload.message || message || '').trim();
       const queuedInputId = queuedPayload.input_id || payload?.input_id || null;
-      updateWorldTaskState((state) => {
+      updateTaskRuntimeState((state) => {
         const task = state?.tasksById?.[taskId];
         if (!task) return state;
         const eventLog = Array.isArray(task.eventLog) ? task.eventLog : [];
@@ -443,7 +433,7 @@ export function createDraftConversationHandlers(ctx) {
   async function stopConversationRuntimeBeforeDelete(nextConversationId, conversationSnapshot = null) {
     if (!nextConversationId) return;
     const targetRuntime = getRuntime(nextConversationId);
-    const taskState = targetRuntime?.worldTaskState || null;
+    const taskState = targetRuntime?.taskRuntimeState || null;
     const taskId = targetRuntime?.activeTaskId
       || taskState?.activeTaskId
       || activeTaskIdFromConversationSnapshot(conversationSnapshot);
@@ -456,8 +446,8 @@ export function createDraftConversationHandlers(ctx) {
     targetRuntime?.fetchController?.abort?.();
     if (targetRuntime) {
       mutateRuntime(nextConversationId, (rt) => {
-        rt.worldTaskState = {
-          ...rt.worldTaskState,
+        rt.taskRuntimeState = {
+          ...rt.taskRuntimeState,
           activeTaskId: null,
           pendingTask: null,
         };

@@ -43,5 +43,5 @@ const api: HaishDesktopApi = {
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
 };
 
-contextBridge.exposeInMainWorld('AGENT_WORLD_API_BASE', '');
+contextBridge.exposeInMainWorld('HAISH_API_BASE', '');
 contextBridge.exposeInMainWorld('haish', api);

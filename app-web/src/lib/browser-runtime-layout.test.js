@@ -28,7 +28,7 @@ test('selection tolerates backend call-id remapping via scope fallback', () => {
   assert.ok(overlaySource.includes('export function selectBrowserRuntimeRequest('));
   // Primary anchor: exact tool_call_id match.
   assert.ok(overlaySource.includes('request.tool_call_id && request.tool_call_id === callId'));
-  // Remapped (world-id) streams: attach only to an ACTIVE browser_use node
+  // Remapped call-id streams: attach only to an ACTIVE browser_use node
   // when exactly one request is pending in the conversation/task scope.
   assert.ok(overlaySource.includes("String(toolName || '').toLowerCase() !== 'browser_use'"));
   assert.ok(overlaySource.includes('request.conversation_id === conversationId'));

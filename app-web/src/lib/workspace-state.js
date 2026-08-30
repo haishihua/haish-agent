@@ -12,10 +12,8 @@ import {
   buildUserScopedStorageKey,
 } from '../api/auth.js';
 import { API_BASE } from '../api/base.js';
-import {
-  CONVERSATION_BOOTSTRAP_MAX_ATTEMPTS,
-  CONVERSATION_BOOTSTRAP_RETRY_DELAY_MS,
-} from './world-runtime.js';
+const CONVERSATION_BOOTSTRAP_MAX_ATTEMPTS = 8;
+const CONVERSATION_BOOTSTRAP_RETRY_DELAY_MS = 2000;
 
 export { stripChatImageAugmentation } from './chat-text.js';
 

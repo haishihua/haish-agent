@@ -10,7 +10,7 @@ import { copyTextToClipboard, formatMessageClock } from './panels/path-utils.jsx
 const { useState, useEffect, useCallback } = React;
 
 function resolveApiBase() {
-  const explicit = String(window.AGENT_WORLD_API_BASE || '').trim();
+  const explicit = String(window.HAISH_API_BASE || '').trim();
   if (explicit) return explicit.replace(/\/$/, '');
   return '';
 }
@@ -561,8 +561,8 @@ export function useBrowserRuntimeRequests(active = true) {
 }
 
 // Pick the browser-runtime request that belongs to a given browser_use tool
-// node, if any. The backend task stream remaps call ids into opaque "world"
-// ids (world_call_id in the runtime), so the request's raw tool_call_id only
+// node, if any. The backend task stream remaps call ids into opaque "workflow"
+// ids (task call ids in the runtime), so the request's raw tool_call_id only
 // matches the timeline call id when no remapping happened. Matching order:
 //  1. exact tool_call_id === callId (primary anchor, non-remapped streams)
 //  2. scope fallback: the node is an ACTIVE browser_use call (pending/running

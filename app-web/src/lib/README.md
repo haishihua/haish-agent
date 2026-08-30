@@ -24,7 +24,7 @@ app-web/src/
   main.jsx                 # Vite entry
   app.jsx                  # AuthGate + ErrorBoundary mount
   approval-overlay.jsx     # Approval side-effect mount
-  Effects.jsx / lib/world-layout.js
+  Effects.jsx               # Shared markdown and lightweight overlays
   panels.jsx               # Barrel re-exports
   panels/                  # UI building blocks (PascalCase components)
   features/
@@ -53,4 +53,4 @@ See `features/settings/` after Phase A split: `settings-payload.js`, `settings-u
 
 ### app shell factories
 
-`features/app/hooks/createComposerHandlers.js`, `createSettingsHandlers.js`, `createConversationHandlers.js`, `createWorldCalibrationHandlers.js`, `createScenePlaybackHelpers.js` — behavior-preserving factories extracted from `AppShell.jsx` (not React hooks yet).
+`features/app/hooks/createComposerHandlers.js`, `createSettingsHandlers.js`, `createConversationHandlers.js`, `createTaskStreamHandlers.js` — behavior-preserving factories extracted from `AppShell.jsx` (not React hooks yet).
