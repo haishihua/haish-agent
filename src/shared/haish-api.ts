@@ -66,6 +66,10 @@ export type HaishDesktopApi = {
   apiBase: string;
   homePath: string;
   getRuntimeStatus: () => Promise<LocalRuntimeState>;
+  /** Start macOS's native Dock attention animation when Haish is not active. */
+  notifyTaskComplete: () => Promise<boolean>;
+  /** Display the absolute number of completed-but-unviewed tasks in the Dock. */
+  setTaskCompletionBadgeCount: (count: number) => Promise<number>;
   getWindowState: () => Promise<WindowVisualState>;
   onWindowStateChange: (callback: (state: WindowVisualState) => void) => () => void;
   getAppUpdateState: () => Promise<AppUpdateState>;

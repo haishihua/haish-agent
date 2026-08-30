@@ -1136,6 +1136,21 @@
     padding-right: 40px;
 }
 
+.conversation-task-terminal-notice {
+    flex: 0 0 auto;
+    margin-left: auto;
+    pointer-events: none;
+}
+
+.conversation-task-terminal-notice.status-cancelled {
+    background: var(--gold);
+    box-shadow: 0 0 6px rgba(239, 191, 100, 0.28);
+}
+
+.conversation-task-card.has-terminal-notice .conversation-task-copy {
+    padding-right: 8px;
+}
+
 .conversation-task-card:hover .conversation-actions,
 .conversation-task-card:not(:focus):focus-within .conversation-actions {
     opacity: 1;

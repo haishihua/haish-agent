@@ -156,6 +156,17 @@ import {
 } from '../../lib/chat-timeline.js';
 import { clonePointMap, clamp01, roundCoord } from '../../lib/calibration-utils.js';
 import {
+  addTaskCompletionNotice,
+  clearConversationCompletionNotices,
+  clearTaskCompletionNotice,
+  conversationNoticesFromTasks,
+  loadTaskCompletionNotices,
+  saveTaskCompletionNotices,
+  taskCompletionNoticeKey,
+  taskNoticesByTaskId,
+  terminalTaskNoticeStatus,
+} from '../../lib/task-completion-notices.js';
+import {
   normalizeWorldEvent, normalizeWorldEvents, worldEventToRuntimeLog, resolveProviderMeta,
   getWorldEventTag, executorActorForToolGroup, sceneKeyForWorldEvent,
   skillLoadingBubble, skillReadyBubble, summarizeText, toDisplayText,
@@ -181,6 +192,7 @@ import { createWorldRouteHelpers } from './hooks/createWorldRouteHelpers.js';
 import { usePerConversationDraft } from './hooks/usePerConversationDraft.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
+const TASK_COMPLETION_NOTICES_STORAGE_KEY = 'haish.task-completion-notices.v1';
 
 export function AppShell({ authUser = null, onLogout = () => undefined, initialToast = null }) {
   const [worldTaskState, setWorldTaskState] = useState(() => createEmptyWorldTaskState());
@@ -190,6 +202,13 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
   const [viewedWorkflowTask, setViewedWorkflowTask] = useState(null);
   const [conversationPanelCollapsed, setConversationPanelCollapsed] = useState(false);
+  const [taskCompletionNotices, setTaskCompletionNotices] = useState(() => loadTaskCompletionNotices(
+    typeof window === 'undefined' ? null : window.localStorage,
+    TASK_COMPLETION_NOTICES_STORAGE_KEY,
+  ));
+  const [windowFocused, setWindowFocused] = useState(() => (
+    typeof document === 'undefined' ? true : document.hasFocus()
+  ));
   const viewModeRef = useRef('chat');
   const viewModeTogglePromiseRef = useRef(null);
   const modeLocationRef = useRef({ chat: null, world: null });
@@ -260,6 +279,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const userCancelledTaskIdsRef = useRef(new Set());
   const taskImageAttachmentsRef = useRef(new Map());
   const taskRuntimeEventCacheRef = useRef(new Map());
+  const completionReportedTaskIdsRef = useRef(new Set());
   const pendingPresentationTaskIdsRef = useRef(new Set());
   const previewObjectUrlCacheRef = useRef(new Map());
   const previewMountedRef = useRef(true);
@@ -535,6 +555,47 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   useEffect(() => { conversationIdRef.current = conversationId; }, [conversationId]);
   useEffect(() => { userIdRef.current = authUser?.id || ''; }, [authUser?.id]);
   useEffect(() => { saveWorkspaceState(workspaceState); }, [workspaceState]);
+
+  useEffect(() => {
+    const onFocus = () => setWindowFocused(true);
+    const onBlur = () => setWindowFocused(false);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
+
+  useEffect(() => {
+    saveTaskCompletionNotices(
+      window.localStorage,
+      TASK_COMPLETION_NOTICES_STORAGE_KEY,
+      taskCompletionNotices,
+    );
+    window.haish?.setTaskCompletionBadgeCount?.(Object.keys(taskCompletionNotices).length)
+      .catch(() => undefined);
+  }, [taskCompletionNotices]);
+
+  function notifyTaskComplete(targetConversationId, taskId, taskOrStatus) {
+    const status = terminalTaskNoticeStatus(taskOrStatus);
+    const key = taskCompletionNoticeKey(targetConversationId, taskId);
+    if (!key || !status || completionReportedTaskIdsRef.current.has(key)) return;
+    completionReportedTaskIdsRef.current.add(key);
+    const viewedNow = document.hasFocus() && conversationIdRef.current === targetConversationId;
+    if (viewedNow) return;
+    setTaskCompletionNotices((current) => addTaskCompletionNotice(current, {
+      conversationId: targetConversationId,
+      taskId,
+      status,
+    }));
+    window.haish?.notifyTaskComplete?.().catch(() => undefined);
+  }
+
+  function markConversationTaskCompletionsViewed(targetConversationId) {
+    setTaskCompletionNotices((current) => clearConversationCompletionNotices(current, targetConversationId));
+  }
+
   useEffect(() => () => {
     previewMountedRef.current = false;
     for (const entry of previewObjectUrlCacheRef.current.values()) {
@@ -803,6 +864,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     createEmptyWorldTaskState,
     fetchAbortRef,
     normalizeWorkspaceOrdering,
+    notifyTaskComplete,
     runtimesRef,
     setBusy,
     setToast,
@@ -1608,13 +1670,18 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       restoreLatestTaskRuntime(activeTaskIdForPolling, {
         targetConversationId,
         isCurrentActivation: isCurrentPoll,
-      }).catch((error) => {
-        if (error?.status === 404) {
-          removeMissingTask(targetConversationId, activeTaskIdForPolling);
-          return;
-        }
-        console.warn('task poll failed', error);
-      });
+      })
+        .then((task) => {
+          if (!terminalTaskNoticeStatus(task)) return;
+          notifyTaskComplete(targetConversationId, activeTaskIdForPolling, task);
+        })
+        .catch((error) => {
+          if (error?.status === 404) {
+            removeMissingTask(targetConversationId, activeTaskIdForPolling);
+            return;
+          }
+          console.warn('task poll failed', error);
+        });
     };
     // Fire once immediately so the user sees fresh state on switch-back
     // without waiting for the first 2s interval.
@@ -1642,6 +1709,11 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               const nextTask = taskDetailToRuntimeTask(detail.normalizedTask, previousTask, userIdRef.current);
               return workspaceStateWithConversationRuntimeTask(state, targetConversationId, nextTask);
             });
+            // Every poll target was active when this effect was created. Once
+            // the server snapshot becomes terminal, request attention exactly once.
+            if (terminalTaskNoticeStatus(detail.normalizedTask)) {
+              notifyTaskComplete(targetConversationId, taskId, detail.normalizedTask);
+            }
           })
           .catch((error) => {
             if (error?.status === 404) {
@@ -1687,6 +1759,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   async function handleSelectWorkflowTask(projectId, targetConversationId, task) {
     const taskId = task?.taskId || task?.task_id || task?.id;
     if (!targetConversationId || !taskId) return;
+    setTaskCompletionNotices((current) => clearTaskCompletionNotice(current, targetConversationId, taskId));
     setViewedWorkflowTask({ conversationId: targetConversationId, taskId });
     await handleSelectConversation(projectId, targetConversationId);
     try {
@@ -1730,6 +1803,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     chatFinalizedTaskIdsRef.current.delete(taskId);
     userCancelledTaskIdsRef.current.delete(taskId);
     pendingPresentationTaskIdsRef.current.delete(taskId);
+    setTaskCompletionNotices((current) => clearTaskCompletionNotice(current, targetConversationId, taskId));
   }
   useEffect(() => {
     const activeTaskId = worldTaskState.activeTaskId || activeTaskIdRef.current;
@@ -2016,6 +2090,11 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
             <ConversationsPanel
               workspaceState={visiblePanelWorkspaceState}
               now={now}
+              terminalNotices={conversationNoticesFromTasks(taskCompletionNotices)}
+              taskTerminalNotices={taskNoticesByTaskId(taskCompletionNotices)}
+              windowFocused={windowFocused}
+              acknowledgeActiveConversation={viewMode === 'chat'}
+              onViewConversationCompletions={markConversationTaskCompletionsViewed}
               collapsed={conversationPanelCollapsed}
               onToggleCollapsed={() => setConversationPanelCollapsed((collapsed) => !collapsed)}
               authUser={authUser}
@@ -2024,7 +2103,21 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               onAddProject={() => { handleAddProject().catch((error) => { console.error('project add failed', error); showToast('error', String(error?.message || error)); }); }}
               onSelectProject={(projectId) => { handleSelectProject(projectId).catch((error) => { console.error('project select failed', error); showToast('error', String(error?.message || error)); }); }}
               onToggleProject={handleToggleProject}
-              onRemoveProject={(projectId) => { handleRemoveProject(projectId).catch((error) => { console.error('project remove failed', error); showToast('error', String(error?.message || error)); }); }}
+              onRemoveProject={(projectId) => {
+                const project = workspaceState.projects.find((item) => item.id === projectId);
+                const executionMode = viewMode === 'chat' ? 'chat' : 'bot';
+                const conversationIds = (project?.conversations || [])
+                  .filter((item) => item.executionMode === executionMode)
+                  .map((item) => item.id);
+                handleRemoveProject(projectId)
+                  .then(() => {
+                    setTaskCompletionNotices((current) => conversationIds.reduce(
+                      (next, targetConversationId) => clearConversationCompletionNotices(next, targetConversationId),
+                      current,
+                    ));
+                  })
+                  .catch((error) => { console.error('project remove failed', error); showToast('error', String(error?.message || error)); });
+              }}
               onAddConversation={(projectId) => { handleAddConversation(projectId).catch((error) => { console.error('conversation add failed', error); showToast('error', String(error?.message || error)); }); }}
               onSelectConversation={(projectId, nextConversationId) => { handleSelectConversation(projectId, nextConversationId).catch((error) => { console.error('conversation select failed', error); showToast('error', String(error?.message || error)); }); }}
               onSelectTask={(projectId, targetConversationId, task) => { handleSelectWorkflowTask(projectId, targetConversationId, task).catch((error) => { console.error('task select failed', error); showToast('error', String(error?.message || error)); }); }}
@@ -2033,7 +2126,11 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               activeTaskId={currentWorkflowTask?.taskId || currentWorkflowTask?.id || null}
               onToggleConversationTasks={handleToggleConversationTasks}
               onToggleProjectConversations={handleToggleProjectConversations}
-              onDeleteConversation={(projectId, nextConversationId) => { handleDeleteConversation(projectId, nextConversationId).catch((error) => { console.error('conversation delete failed', error); showToast('error', String(error?.message || error)); }); }}
+              onDeleteConversation={(projectId, nextConversationId) => {
+                handleDeleteConversation(projectId, nextConversationId)
+                  .then(() => markConversationTaskCompletionsViewed(nextConversationId))
+                  .catch((error) => { console.error('conversation delete failed', error); showToast('error', String(error?.message || error)); });
+              }}
               onDeleteTask={(projectId, targetConversationId, task) => { handleDeleteWorkflowTask(projectId, targetConversationId, task).catch((error) => { console.error('task delete failed', error); showToast('error', String(error?.message || error)); }); }}
               onRenameConversation={(projectId, nextConversationId, title) => { handleRenameConversation(projectId, nextConversationId, title).catch((error) => { console.error('conversation rename failed', error); showToast('error', String(error?.message || error)); }); }}
               onPinConversation={handlePinConversation}

@@ -48,6 +48,7 @@ export function ProjectNode({
   workspaceState,
   now,
   terminalNotices,
+  taskTerminalNotices,
   onSelectProject,
   onToggleProject,
   onRemoveProject,
@@ -212,6 +213,7 @@ export function ProjectNode({
                 key={taskId}
                 task={task}
                 active={isActiveProject && taskId === activeTaskId}
+                terminalNotice={taskTerminalNotices?.[taskId] || ''}
                 onSelect={() => onSelectTask?.(project.id, conversationId, task)}
                 showStatusIcon={false}
                 actions={(

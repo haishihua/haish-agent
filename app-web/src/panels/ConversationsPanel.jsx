@@ -3,10 +3,6 @@
 import React from 'react';
 import { PortalTooltip } from './PortalTooltip.jsx';
 import { usePanelWidth } from './TaskRecords.jsx';
-import {
-  conversationLatestTerminalStatus,
-  collectConversationRunningStates,
-} from './conversation-status.js';
 import { ConversationDialog } from './ConversationTaskCards.jsx';
 import { ProjectNode, ProjectDropEnd } from './ProjectNode.jsx';
 import { UserSessionFooter } from './UserSessionFooter.jsx';
@@ -14,6 +10,11 @@ import { UserSessionFooter } from './UserSessionFooter.jsx';
 export function ConversationsPanel({
   workspaceState,
   now,
+  terminalNotices = {},
+  taskTerminalNotices = {},
+  windowFocused = true,
+  acknowledgeActiveConversation = true,
+  onViewConversationCompletions,
   extensionStyle,
   collapsed = false,
   onToggleCollapsed,
@@ -46,61 +47,20 @@ export function ConversationsPanel({
 }) {
   const [panelRef, panelWidth] = usePanelWidth();
   const [dialog, setDialog] = React.useState(null);
-  const [terminalNotices, setTerminalNotices] = React.useState({});
-  const previousRunningRef = React.useRef(new Map());
   const activeProjectId = workspaceState?.activeProjectId;
   const activeConversationId = workspaceState?.activeConversationId;
 
+  // A background completion may belong to the already-selected conversation.
+  // It becomes viewed only when the window returns to the foreground.
   React.useEffect(() => {
-    const nextRunning = collectConversationRunningStates(workspaceState);
-    setTerminalNotices((current) => {
-      let changed = false;
-      const next = { ...current };
-      (workspaceState?.projects || []).forEach((project) => {
-        (project?.conversations || []).forEach((conversation) => {
-          if (!conversation?.id) return;
-          const wasRunning = previousRunningRef.current.get(conversation.id) === true;
-          const isRunning = nextRunning.get(conversation.id) === true;
-          if (!wasRunning || isRunning) return;
-          // 任务刚结束：只有用户此刻正在查看该会话时才视为“已看到”，
-          // 不点亮绿点；用户一旦切走，任务在后台完成时绿点照常点亮。
-          const viewingNow = project.id === activeProjectId
-            && conversation.id === activeConversationId;
-          if (viewingNow) return;
-          const status = conversationLatestTerminalStatus(conversation);
-          if (!status || next[conversation.id] === status) return;
-          next[conversation.id] = status;
-          changed = true;
-        });
-      });
-      return changed ? next : current;
-    });
-    previousRunningRef.current = nextRunning;
-  }, [workspaceState, activeProjectId, activeConversationId]);
-
-  // The terminal notice is one-shot: the moment the user opens the
-  // conversation (or is already viewing it when the task finishes), the
-  // completion indicator should disappear immediately.
-  React.useEffect(() => {
-    if (!activeConversationId) return;
-    setTerminalNotices((current) => {
-      if (!current[activeConversationId]) return current;
-      const next = { ...current };
-      delete next[activeConversationId];
-      return next;
-    });
-  }, [activeConversationId, activeProjectId]);
+    if (!acknowledgeActiveConversation || !windowFocused || !activeConversationId || !terminalNotices[activeConversationId]) return;
+    onViewConversationCompletions?.(activeConversationId);
+  }, [acknowledgeActiveConversation, activeConversationId, activeProjectId, onViewConversationCompletions, terminalNotices, windowFocused]);
 
   const selectConversationAndClearNotice = React.useCallback((projectId, conversationId) => {
-    if (conversationId) {
-      setTerminalNotices((current) => {
-        if (!current[conversationId]) return current;
-        const next = { ...current };
-        delete next[conversationId];
-        return next;
-      });
-    }
-    onSelectConversation(projectId, conversationId);  }, [onSelectConversation]);
+    if (acknowledgeActiveConversation && conversationId) onViewConversationCompletions?.(conversationId);
+    onSelectConversation(projectId, conversationId);
+  }, [acknowledgeActiveConversation, onSelectConversation, onViewConversationCompletions]);
 
   const dragSourceIdRef = React.useRef(null);
   const dragProjectSourceRef = React.useRef(null);
@@ -288,6 +248,7 @@ export function ConversationsPanel({
             workspaceState={workspaceState}
             now={now}
             terminalNotices={terminalNotices}
+            taskTerminalNotices={taskTerminalNotices}
             taskPreviewLimit={taskPreviewLimit}
             conversationPreviewLimit={conversationPreviewLimit}
             onSelectProject={onSelectProject}

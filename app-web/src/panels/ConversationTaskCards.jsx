@@ -9,6 +9,7 @@ import { workflowTaskDisplayStatus } from './conversation-status.js';
 export function TaskRecordCompact({
   task,
   active = false,
+  terminalNotice = '',
   onSelect,
   onOpenReport,
   onRetry,
@@ -24,7 +25,7 @@ export function TaskRecordCompact({
   const canRetry = status === 'failed' || status === 'cancelled';
   return (
     <div
-      className={`conversation-task-card ${pill.className}${active ? ' active' : ''}${onSelect ? ' selectable' : ''}${actions ? ' has-actions' : ''}`}
+      className={`conversation-task-card ${pill.className}${active ? ' active' : ''}${terminalNotice ? ' has-terminal-notice' : ''}${onSelect ? ' selectable' : ''}${actions ? ' has-actions' : ''}`}
       role={onSelect ? 'button' : undefined}
       tabIndex={onSelect ? 0 : undefined}
       onClick={() => onSelect?.(task)}
@@ -51,6 +52,9 @@ export function TaskRecordCompact({
             </button>
           </PortalTooltip>
         ))}
+        {terminalNotice ? (
+          <span className={`conversation-task-terminal-notice chat-timeline-status status-${terminalNotice}`} aria-hidden="true" />
+        ) : null}
         {!showStatusIcon && ['running', 'queued', 'approval', 'waiting_input'].includes(status)
           ? <TaskStatusIcon statusClass={pill.className} />
           : null}

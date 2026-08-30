@@ -144,6 +144,38 @@ function applyDockIcon(): void {
   app.dock.setIcon(appIconPngPath());
 }
 
+let dockAttentionRequestId: number | null = null;
+
+function stopDockAttention(): void {
+  if (process.platform !== 'darwin' || !app.dock || dockAttentionRequestId === null) return;
+  app.dock.cancelBounce(dockAttentionRequestId);
+  dockAttentionRequestId = null;
+}
+
+function requestDockAttention(window: BrowserWindow | null): boolean {
+  if (process.platform !== 'darwin' || !app.dock) return false;
+  // A critical request keeps using macOS's native Dock bounce until the app is
+  // activated. Never start it while the user is already looking at Haish.
+  if (app.isActive() || window?.isFocused()) {
+    stopDockAttention();
+    return false;
+  }
+  // macOS may heavily reduce an old critical request after about a minute.
+  // A newly completed task must therefore replace the old request instead of
+  // being ignored merely because we still hold its request id.
+  stopDockAttention();
+  dockAttentionRequestId = app.dock.bounce('critical');
+  return true;
+}
+
+function setDockTaskBadge(count: number): number {
+  const normalizedCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.setBadge(normalizedCount > 0 ? String(normalizedCount) : '');
+  }
+  return normalizedCount;
+}
+
 function createWindow(): void {
   const window = new BrowserWindow({
     width: 1280,
@@ -179,6 +211,7 @@ function createWindow(): void {
   window.on('maximize', () => publishWindowVisualState(window));
   window.on('unmaximize', () => publishWindowVisualState(window));
   window.on('restore', () => publishWindowVisualState(window));
+  window.on('focus', stopDockAttention);
   window.webContents.once('did-finish-load', () => publishWindowVisualState(window));
 
   window.loadURL('haish://app/index.html').catch((error) => console.error('Failed to load Haish UI:', error));
@@ -266,6 +299,10 @@ ipcMain.handle('skill:pick-directory', async (): Promise<SkillDirectoryPickResul
 });
 
 ipcMain.handle('runtime:status', async () => getLocalRuntimeState());
+ipcMain.handle('dock:notify-task-complete', (event): boolean => {
+  return requestDockAttention(BrowserWindow.fromWebContents(event.sender));
+});
+ipcMain.handle('dock:set-task-badge', (_event, count: number): number => setDockTaskBadge(count));
 ipcMain.handle('window:state', (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   return window ? getWindowVisualState(window) : { fullScreen: false, maximized: false };
@@ -334,6 +371,7 @@ app.whenReady().then(() => {
   registerWebProtocol();
   createWindow();
   app.on('activate', () => {
+    stopDockAttention();
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }

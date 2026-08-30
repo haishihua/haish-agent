@@ -166,7 +166,7 @@ export function ConversationNode({
         onDragEnd={handleDragEnd}
       >
         <ConversationMarqueeTitle name={conversation.name || ''} />
-        {terminalStatus && !active ? (
+        {terminalStatus ? (
           <span className={`conversation-terminal-notice chat-timeline-status status-${terminalStatus}`} aria-hidden="true" />
         ) : null}
         <span className="conversation-actions">

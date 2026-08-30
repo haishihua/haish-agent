@@ -16,6 +16,8 @@ const api: HaishDesktopApi = {
   apiBase: '',
   homePath: process.env.HOME || '',
   getRuntimeStatus: () => ipcRenderer.invoke('runtime:status') as Promise<LocalRuntimeState>,
+  notifyTaskComplete: () => ipcRenderer.invoke('dock:notify-task-complete') as Promise<boolean>,
+  setTaskCompletionBadgeCount: (count: number) => ipcRenderer.invoke('dock:set-task-badge', count) as Promise<number>,
   getWindowState: () => ipcRenderer.invoke('window:state') as Promise<WindowVisualState>,
   onWindowStateChange: (callback: (state: WindowVisualState) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: WindowVisualState) => callback(state);

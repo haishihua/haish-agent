@@ -1,11 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { eventDeltaText } from '../../../lib/chat-text.js';
 import {
   mergeQueuedStreamDelta,
   workflowNodeFinishedState,
   workflowNodeStartedState,
 } from './createTaskStreamHandlers.js';
+
+const handlerSource = fs.readFileSync(new URL('./createTaskStreamHandlers.js', import.meta.url), 'utf8');
+
+function eventCaseSource(type, nextType) {
+  const start = handlerSource.indexOf(`case '${type}'`);
+  const end = handlerSource.indexOf(`case '${nextType}'`, start + 1);
+  return handlerSource.slice(start, end);
+}
 
 function deltaEvent(type, delta, extra = {}) {
   return {
@@ -32,6 +41,15 @@ test('mergeQueuedStreamDelta preserves repeated and overlapping tool output', ()
     eventDeltaText,
   );
   assert.equal(overlapping.delta, 'abcbcd');
+});
+
+test('delivery receipts do not mark chat tasks done before run_finished', () => {
+  const finalAnswerCase = eventCaseSource('llm_final_answer', 'agent_gateway_reported');
+  const gatewayReportedCase = eventCaseSource('agent_gateway_reported', 'run_cancelled');
+
+  assert.doesNotMatch(finalAnswerCase, /status:\s*'done'/);
+  assert.doesNotMatch(gatewayReportedCase, /status:\s*'done'/);
+  assert.match(handlerSource, /status:\s*terminalStatus/);
 });
 
 test('mergeQueuedStreamDelta merges answer deltas but keeps progress events separate', () => {

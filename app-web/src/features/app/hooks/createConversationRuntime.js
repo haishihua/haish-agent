@@ -10,6 +10,7 @@ export function createConversationRuntime(ctx) {
     createEmptyWorldTaskState,
     fetchAbortRef,
     normalizeWorkspaceOrdering,
+    notifyTaskComplete,
     runtimesRef,
     setBusy,
     setWorkspaceState,
@@ -102,7 +103,21 @@ export function createConversationRuntime(ctx) {
   function setRuntimeBusy(value, explicit = null) {
     const cid = activeRuntimeTargetConvId(explicit);
     if (cid) {
-      mutateRuntime(cid, (rt) => { rt.busy = value; });
+      const rt = getRuntime(cid, { create: true });
+      const taskJustCompleted = value === false && rt.busy === true;
+      const completedTaskId = rt.activeTaskId
+        || rt.worldTaskState?.activeTaskId
+        || rt.worldTaskState?.pendingTask?.taskId
+        || rt.worldTaskState?.pendingTask?.id
+        || null;
+      const completedTask = completedTaskId
+        ? (rt.worldTaskState?.tasksById?.[completedTaskId]
+          || ((rt.worldTaskState?.pendingTask?.taskId || rt.worldTaskState?.pendingTask?.id) === completedTaskId
+            ? rt.worldTaskState.pendingTask
+            : null))
+        : null;
+      mutateRuntime(cid, (current) => { current.busy = value; });
+      if (taskJustCompleted && completedTaskId) notifyTaskComplete(cid, completedTaskId, completedTask);
       // Task just finished (or was cancelled/errored) — mirror the runtime's
       // task state back into workspaceState so the sidebar entry for THIS
       // conversation reflects the new "done" status, even when the user is

@@ -318,6 +318,7 @@ export function createDraftConversationHandlers(ctx) {
     if (updateLiveSnapshot && conversationIdRef.current === targetConversationId) {
       setAgentLive(buildAgentLiveSnapshot(normalizedTask, events));
     }
+    return normalizedTask;
   }
 
   async function restoreLatestTaskRuntime(taskId, { targetConversationId, isCurrentActivation }) {
@@ -327,7 +328,7 @@ export function createDraftConversationHandlers(ctx) {
       if (isCurrentActivation() && conversationIdRef.current === targetConversationId) setAgentLive({});
       return;
     }
-    await restoreTaskRuntime(taskId, {
+    return restoreTaskRuntime(taskId, {
       targetConversationId,
       isCurrentActivation,
       updateLiveSnapshot: true,

@@ -625,20 +625,11 @@ export function createTaskStreamHandlers(ctx) {
           chatFinalizedTaskIdsRef.current.add(taskId);
           updateTaskById(taskId, (run) => ({
             ...run,
-            status: 'done',
-            stage: 'done',
-            completedAt: run.completedAt || Date.now(),
+            stage: isTerminalTaskStatus(run.status) ? run.stage : 'check',
             loopIndex,
             answerText: readRuntimeAnswerBuffer(),
-            presentationPending: false,
-            serverFinished: true,
-            sceneCatchup: false,
             providerState: run.providerState ? { ...run.providerState, state: 'completed' } : run.providerState,
           }));
-          updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
-          setRuntimeBusy(false);
-          setRuntimeActiveTaskId(null);
-          completeTaskAgents(taskId, 'done');
           break;
         }
         updateTaskById(taskId, (run) => ({
@@ -653,23 +644,11 @@ export function createTaskStreamHandlers(ctx) {
       case 'agent_gateway_reported':
         if (isChatOriginTask(taskId, ownerConvId)) {
           chatFinalizedTaskIdsRef.current.add(taskId);
-          pendingPresentationTaskIdsRef.current.delete(taskId);
           updateTaskById(taskId, (run) => ({
             ...run,
-            status: 'done',
-            stage: 'done',
-            completedAt: run.completedAt || Date.now(),
+            stage: isTerminalTaskStatus(run.status) ? run.stage : 'check',
             answerText: run.answerText || event.content || readRuntimeAnswerBuffer(),
-            presentationPending: false,
-            serverFinished: true,
-            sceneCatchup: false,
           }));
-          updateWorldTaskState((state) => ({ ...state, activeTaskId: null }));
-          setRuntimeBusy(false);
-          setRuntimeActiveTaskId(null);
-          setRuntimeFetchController(null);
-          dropPendingSceneItems(taskId);
-          completeTaskAgents(taskId, 'done');
           break;
         }
         pendingPresentationTaskIdsRef.current.add(taskId);
