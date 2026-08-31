@@ -18,7 +18,9 @@ Electron and adds native local-folder authorization for desktop projects.
 | --- | --- |
 | `app-web/` | Product UI (React + ESM, built by Vite) |
 | `app-web/src/main.jsx` | UI entry |
-| `app-web/src/lib/` | Pure helpers (settings/workflow/runtime constants) |
+| `app-web/src/features/` | Domain-owned UI, state, models, hooks, and APIs |
+| `app-web/src/shared/` | Feature-neutral API, library, and UI primitives |
+| `app-web/tests/` | Contract, feature, and integration tests |
 | `app-web/dist/` | Build output loaded by Electron (`haish://app/...`) |
 | `src/main`, `src/preload`, `src/shared` | Electron main + preload + shared IPC types (TypeScript) |
 
@@ -27,7 +29,7 @@ Build config: `vite.app-web.config.ts`.
 **Architecture & coding standards (required reading for UI work):**  
 [`docs/frontend-architecture-and-conventions.md`](./docs/frontend-architecture-and-conventions.md)
 
-Source tree cheat sheet: `app-web/src/lib/README.md`.
+Run the complete frontend gate with `npm run check:web`.
 
 ## Run Locally
 
@@ -154,8 +156,6 @@ The script builds dmg/zip, then creates/updates GitHub Release `v<version>` with
 
 ## Next Milestones
 
-- Further split `app.jsx` / `panels.jsx` / `styles.css` by feature
-- Add unit tests for `app-web/src/lib/*`
 - Route all project file tools through the local runtime
 - Add write-file and command execution with explicit confirmation prompts
 - Account sync, device registration, and auto-update

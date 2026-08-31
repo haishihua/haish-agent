@@ -567,10 +567,9 @@ options: {
 | 区域 | 动作 |
 | --- | --- |
 | `app-web/assets/world/**` | 新地图与企鹅素材入库 |
-| `app-web/src/World.jsx`（或拆分后的 world 模块） | 新点位 / 新渲染 |
-| `app-web/src/Sprites.jsx` | 立绘渲染适配（可新增 PenguinSprite） |
-| `app-web/src/lib/world-runtime.js` | 新 cast / 点位 / 常量 |
-| `app-web/src/lib/world-events.js` | workflow 事件 → 场景意图 |
+| `app-web/src/features/world/components/` | 新地图、企鹅和点位渲染 |
+| `app-web/src/features/world/model/world-runtime.js` | 新 cast / 点位 / 常量 |
+| `app-web/src/features/world/model/world-events.js` | workflow 事件 → 场景意图 |
 | `app-web/src/features/app/AppShell.jsx` | 替换场景编排，删除旧 NPC 演出耦合 |
 | 右栏 timeline 相关 panel | 保留并接到新 cast 高亮 |
 | Settings workflow editor | **不动业务**，仅确保 catalog 字段继续可用 |
@@ -578,17 +577,17 @@ options: {
 ### 8.2 建议新增模块（避免继续堆 AppShell）
 
 ```text
-app-web/src/lib/bot-scene/
-  cast.js            # workflow → PenguinActor[]
-  spots.js           # 点位表
-  state-machine.js   # actor phase 转移
-  event-mapper.js    # SSE → scene commands
-  pathing.js         # leisure ↔ table 路径
-
-app-web/src/panels/world/
-  MapViewport.jsx    # 已有可迁
-  PenguinActor.jsx
-  RoundtableLayer.jsx
+app-web/src/features/world/
+  model/
+    cast.js            # workflow → PenguinActor[]
+    spots.js           # 点位表
+    state-machine.js   # actor phase 转移
+    event-mapper.js    # SSE → scene commands
+    pathing.js         # leisure ↔ table 路径
+  components/
+    MapViewport.jsx
+    PenguinActor.jsx
+    RoundtableLayer.jsx
 ```
 
 > 规范要求避免 `AppShell` 继续膨胀；场景状态机应可单测/可抽离。

@@ -117,6 +117,14 @@ export default defineConfig({
         entryFileNames: 'assets/js/[name]-[hash].js',
         chunkFileNames: 'assets/js/[name]-[hash].js',
         assetFileNames: 'assets/build/[name]-[hash][extname]',
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('/@lexical/') || id.includes('/lexical/')) return 'editor';
+          if (id.includes('/@xyflow/')) return 'workflow';
+          if (id.includes('/lucide-react/')) return 'icons';
+          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) return 'react';
+          return 'vendor';
+        },
       },
     },
   },

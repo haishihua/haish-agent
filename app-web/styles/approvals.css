@@ -1,0 +1,632 @@
+/* Approval, browser-runtime, and workflow-review cards. */
+/* 卡片所在的「插槽」：优先嵌在 .chat-timeline 内，紧跟 Shell 工具调用 */
+.haish-approval-slot {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Workflow node details are conversation content, so their prose should use
+   the same bundled reading font as chat instead of the tool-card monospace. */
+.workflow-detail-body .haish-approval-slot {
+  font-family: var(--conversation-font, 'PingFang SC', 'Microsoft YaHei', sans-serif);
+}
+
+/* 嵌入 browser_use 工具节点内部时，与工具头保持一点间距 */
+.chat-timeline-tool > .haish-approval-slot {
+  margin-top: 10px;
+  padding: 0 2px 0 4px;
+}
+/* 嵌入模式：去掉卡片自身的头部和左侧缩进线，内容直接作为工具卡片的一部分 */
+.chat-timeline-tool > .haish-approval-slot.is-embedded {
+  margin-top: 0;
+  padding: 0;
+}
+.haish-approval-card.is-embedded {
+  animation: none;
+}
+.haish-approval-card.is-embedded .haish-approval-body {
+  margin-left: 18px;
+  padding: 4px 10px 8px;
+  border-left: 1px solid rgba(138, 166, 209, 0.22);
+}
+.haish-approval-card.is-embedded .haish-approval-intent {
+  color: rgba(236, 241, 252, 0.92);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.haish-approval-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: min(100%, 1040px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+  animation: haishApprovalSlideIn 220ms ease-out;
+  color: #dce3f4;
+}
+@keyframes haishApprovalSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 头部按审批设计稿呈现：金色描边胶囊，而不是普通工具调用头 */
+.haish-approval-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  padding: 4px 8px;
+  background: rgba(19, 28, 44, 0.72);
+  border: 1px solid rgba(239, 191, 100, 0.58);
+  border-radius: 6px;
+  color: var(--gold);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.025);
+}
+.haish-approval-header:hover {
+  border-color: rgba(239, 191, 100, 0.72);
+  background: rgba(25, 36, 56, 0.78);
+}
+
+.haish-approval-status {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 8px rgba(239,191,100,0.28);
+}
+.haish-approval-status.is-busy {
+  flex: 0 0 12px;
+  width: 12px;
+  min-width: 12px;
+  max-width: 12px;
+  height: 12px;
+  min-height: 12px;
+  max-height: 12px;
+  box-sizing: border-box;
+  display: inline-block;
+  border: 2px solid rgba(239, 191, 100, 0.28);
+  border-top-color: var(--gold);
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  animation: haishApprovalSpin 760ms linear infinite;
+}
+@keyframes haishApprovalSpin {
+  to { transform: rotate(360deg); }
+}
+
+.haish-approval-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  background-color: transparent;
+  background-image: url("../assets/ui/icons/warning.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  image-rendering: auto;
+}
+.haish-approval-title {
+  min-width: 0;
+  flex: 0 0 auto;
+  color: rgba(236,241,252,0.95);
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.haish-approval-collapsed-preview {
+  min-width: 48px;
+  flex: 1 1 auto;
+  font-weight: 400;
+  color: rgba(174,185,211,0.78);
+  font-size: 11px;
+  font-family: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.haish-approval-tool-badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+  background: rgba(239, 191, 100, 0.14);
+  border: 0;
+  padding: 2px 7px;
+  border-radius: 5px;
+  letter-spacing: 0;
+}
+
+.haish-approval-chevron {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  color: var(--gold);
+  opacity: 0.95;
+  shape-rendering: geometricPrecision;
+}
+
+.haish-approval-body {
+  margin-left: 36px;
+  padding: 12px 0 2px 18px;
+  border-left: 1px solid rgba(138,166,209,0.32);
+  font-size: 13px;
+  line-height: 1.6;
+  font-family: inherit;
+  color: rgba(200,209,228,0.78);
+}
+
+.haish-approval-intent {
+  color: rgba(174,185,211,0.78);
+  margin-bottom: 12px;
+  padding-bottom: 0;
+  border-bottom: 0;
+  white-space: pre-wrap;
+}
+
+.haish-workflow-approval-card .haish-approval-header {
+  border-color: rgba(244, 114, 182, 0.52);
+}
+.haish-workflow-approval-card .haish-approval-status {
+  background: #f472b6;
+  box-shadow: 0 0 8px rgba(244, 114, 182, 0.3);
+}
+.haish-workflow-approval-card .haish-approval-chevron {
+  color: #f9a8d4;
+}
+.haish-workflow-feedback-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 7px;
+  color: rgba(236, 241, 252, 0.92);
+  font-size: 11px;
+  font-weight: 600;
+}
+.haish-workflow-feedback-label span {
+  color: rgba(174, 185, 211, 0.68);
+  font-weight: 400;
+}
+.haish-workflow-previous-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 9px 10px;
+  border-left: 2px solid rgba(244, 114, 182, 0.6);
+  background: rgba(244, 114, 182, 0.07);
+  color: rgba(214, 223, 241, 0.86);
+}
+.haish-workflow-previous-feedback strong {
+  color: #f9a8d4;
+  font-size: 11px;
+}
+.haish-workflow-previous-feedback span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.haish-workflow-feedback {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 68px;
+  resize: vertical;
+  padding: 9px 10px;
+  border: 1px solid rgba(138, 166, 209, 0.24);
+  border-radius: 6px;
+  outline: none;
+  background: rgba(10, 14, 24, 0.62);
+  color: rgba(236, 241, 252, 0.94);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.haish-workflow-feedback:focus-visible {
+  border-color: rgba(244, 114, 182, 0.72);
+  box-shadow: 0 0 0 2px rgba(244, 114, 182, 0.09);
+}
+.haish-workflow-feedback::placeholder {
+  color: rgba(142, 154, 184, 0.62);
+}
+.haish-workflow-feedback:disabled {
+  opacity: 0.68;
+  cursor: wait;
+}
+.haish-workflow-resolution {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 12px 13px;
+  border: 1px solid rgba(74, 222, 128, 0.16);
+  border-radius: 9px;
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.06), rgba(16, 24, 38, 0.42));
+}
+.haish-workflow-resolution strong {
+  padding: 2px 7px;
+  border: 1px solid rgba(74, 222, 128, 0.28);
+  border-radius: 999px;
+  background: rgba(74, 222, 128, 0.08);
+  color: var(--green-2);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.haish-workflow-resolution.is-rejected,
+.haish-workflow-resolution.is-cancelled {
+  border-color: rgba(255, 154, 170, 0.18);
+  background: linear-gradient(135deg, rgba(255, 106, 130, 0.07), rgba(16, 24, 38, 0.42));
+}
+.haish-workflow-resolution.is-rejected strong,
+.haish-workflow-resolution.is-cancelled strong {
+  border-color: rgba(255, 154, 170, 0.3);
+  background: rgba(255, 106, 130, 0.08);
+  color: #ff9aaa;
+}
+.haish-workflow-resolution p {
+  width: 100%;
+  margin: 0;
+  color: rgba(225, 232, 246, 0.88);
+  font-family: var(--content-font, 'PingFang SC'), 'Microsoft YaHei', sans-serif;
+  font-size: 12px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.haish-approval-cmd-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: rgba(142,154,184,0.82);
+  margin-bottom: 8px;
+  font-family: inherit;
+}
+.haish-approval-cmd-pre {
+  margin: 0;
+  padding: 10px 12px;
+  background: rgba(10,14,24,0.72);
+  border: 1px solid rgba(138,166,209,0.18);
+  border-radius: 7px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(222,229,245,0.9);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.haish-approval-meta {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: inherit;
+}
+.haish-approval-meta-row {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.haish-approval-meta-key {
+  color: rgba(142,154,184,0.82);
+  white-space: nowrap;
+}
+.haish-approval-meta-val {
+  color: rgba(222,229,245,0.9);
+  font-family: inherit;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.haish-approval-risk-val {
+  font-family: inherit;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.haish-user-input-card .haish-approval-body {
+  box-sizing: border-box;
+  width: calc(100% - 36px);
+  max-width: calc(100% - 36px);
+  min-width: 0;
+  padding-top: 8px;
+  overflow: hidden;
+}
+
+.workflow-detail-body .haish-user-input-card .haish-approval-intent,
+.workflow-detail-body .haish-user-input-card .haish-user-input-question legend,
+.workflow-detail-body .haish-user-input-card .haish-user-input-option-copy,
+.workflow-detail-body .haish-user-input-card .haish-user-input-textarea {
+  font-family: var(--conversation-font, 'PingFang SC', 'Microsoft YaHei', sans-serif);
+}
+
+.haish-user-input-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.haish-user-input-question {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.haish-user-input-question legend {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: 9px;
+  padding: 0;
+  color: rgba(236,241,252,0.95);
+  font-size: 13px;
+  font-weight: 600;
+}
+.haish-user-input-header {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(239, 191, 100, 0.12);
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 700;
+}
+.haish-user-input-prompt {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.55;
+}
+.haish-user-input-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-bottom: 8px;
+}
+.haish-user-input-option {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(138,166,209,0.22);
+  border-radius: 6px;
+  background: rgba(10,14,24,0.48);
+  cursor: pointer;
+}
+.haish-user-input-option:hover,
+.haish-user-input-option.is-selected {
+  border-color: rgba(239, 191, 100, 0.64);
+  background: rgba(239, 191, 100, 0.08);
+}
+.haish-user-input-native-control {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.haish-user-input-check {
+  position: relative;
+  box-sizing: border-box;
+  display: block;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border: 1px solid rgba(174,185,211,0.78);
+  border-radius: 2px;
+  background: rgba(10,14,24,0.72);
+}
+.haish-user-input-native-control:focus-visible + .haish-user-input-check {
+  outline: 2px solid rgba(239, 191, 100, 0.45);
+  outline-offset: 2px;
+}
+.haish-user-input-native-control:checked + .haish-user-input-check {
+  border-color: #efbf64;
+  background: #efbf64;
+}
+.haish-user-input-native-control:checked + .haish-user-input-check::after {
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 3px;
+  height: 7px;
+  border: solid #111827;
+  border-width: 0 2px 2px 0;
+  content: '';
+  transform: rotate(45deg);
+}
+.haish-user-input-option-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.haish-user-input-option strong {
+  color: rgba(236,241,252,0.92);
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.haish-user-input-option small {
+  color: rgba(174,185,211,0.72);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.haish-user-input-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 54px;
+  resize: vertical;
+  padding: 9px 10px;
+  border: 1px solid rgba(138,166,209,0.24);
+  border-radius: 6px;
+  outline: none;
+  background: rgba(10,14,24,0.62);
+  color: rgba(236,241,252,0.94);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.haish-user-input-textarea:focus {
+  border-color: rgba(239, 191, 100, 0.72);
+  box-shadow: 0 0 0 2px rgba(239, 191, 100, 0.08);
+}
+.haish-user-input-textarea::placeholder {
+  color: rgba(142,154,184,0.62);
+}
+
+.haish-approval-killswitch {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: rgba(224, 71, 106, 0.08);
+  border: 1px solid rgba(224, 71, 106, 0.32);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #fb7185;
+  line-height: 1.5;
+  font-family: inherit;
+}
+
+.haish-approval-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 8px 11px;
+  border: 1px solid rgba(239, 191, 100, 0.28);
+  border-radius: 6px;
+  background: rgba(239, 191, 100, 0.08);
+  color: rgba(236, 241, 252, 0.92);
+  font-size: 12px;
+  line-height: 1.45;
+  font-family: inherit;
+}
+.haish-approval-spinner {
+  flex: 0 0 14px;
+  width: 14px;
+  min-width: 14px;
+  max-width: 14px;
+  height: 14px;
+  min-height: 14px;
+  max-height: 14px;
+  box-sizing: border-box;
+  display: inline-block;
+  border: 2px solid rgba(239, 191, 100, 0.28);
+  border-top-color: var(--gold);
+  border-radius: 999px;
+  animation: haishApprovalSpin 760ms linear infinite;
+}
+
+.haish-approval-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+.haish-approval-btn {
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid rgba(239, 191, 100, 0.48);
+  background: rgba(26, 30, 44, 0.82);
+  color: #daddef;
+  transition: all 120ms ease;
+}
+.haish-approval-btn:hover:not(:disabled) {
+  background: rgba(35, 40, 56, 0.95);
+}
+.haish-approval-btn:disabled {
+  opacity: 0.72;
+  cursor: wait;
+  filter: saturate(0.75);
+}
+.haish-approval-btn-deny {
+  border-color: rgba(224, 71, 106, 0.72);
+  color: #fb7185;
+}
+.haish-approval-btn-deny:hover:not(:disabled) {
+  background: rgba(224, 71, 106, 0.10);
+}
+.haish-approval-btn-once {
+  border-color: rgba(239, 191, 100, 0.82);
+  background: var(--gold);
+  color: #0b101a;
+  font-weight: 600;
+}
+.haish-approval-btn-once:hover:not(:disabled) {
+  background: #ffd36f;
+}
+.haish-approval-btn-always {
+  border-color: rgba(239, 191, 100, 0.62);
+  background: rgba(239, 191, 100, 0.14);
+  color: var(--gold);
+  font-weight: 600;
+}
+.haish-approval-btn-always:hover:not(:disabled) {
+  background: rgba(239, 191, 100, 0.22);
+}
+
+.haish-approval-queue {
+  font-size: 12px;
+  color: #8e9ab8;
+  padding: 2px 4px;
+  font-family: inherit;
+}
+.haish-approval-error {
+  font-size: 12px;
+  color: #fb7185;
+  padding: 8px 12px;
+  background: rgba(224, 71, 106, 0.08);
+  border: 1px solid rgba(224, 71, 106, 0.32);
+  border-radius: 4px;
+  font-family: inherit;
+}

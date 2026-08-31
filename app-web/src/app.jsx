@@ -1,10 +1,6 @@
-// @haish-esm
 import ReactDOM from 'react-dom/client';
-import { AuthGate } from './features/auth/AuthGate.jsx';
-import { ErrorBoundary } from './lib/ErrorBoundary.jsx';
-import { authFetch } from './api/auth.js';
-
-window.authFetch = authFetch;
+import { AuthGate } from './features/auth/components/AuthGate.jsx';
+import { ErrorBoundary } from './shared/ui/ErrorBoundary.jsx';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <ErrorBoundary title="HAISH UI ERROR">

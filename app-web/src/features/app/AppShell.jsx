@@ -1,16 +1,16 @@
-// @haish-esm
 import React from 'react';
-import { HollowPurple } from '../../Effects.jsx';
-import { stripInjectedSkillInstruction } from '../../lib/chat-text.js';
+import { ResultDialog } from '../../shared/ui/ResultDialog.jsx';
 import {
-  TopBar,
-  ConversationsPanel,
-  ChatPanel,
-  TaskDelegation,
-  TabPlaceholder,
-  BottomNav,
-  } from '../../panels.jsx';
-import { SettingsPage } from '../settings/SettingsPage.jsx';
+  eventDeltaText,
+  stripChatImageAugmentation,
+  stripInjectedSkillInstruction,
+} from '../chat/model/chat-text.js';
+import { TopBar } from './components/TopBar.jsx';
+import { ConversationsPanel } from '../conversations/components/ConversationsPanel.jsx';
+import { ChatPanel } from '../chat/components/ChatPanel.jsx';
+import { TaskDelegation } from '../tasks/components/TaskDelegation.jsx';
+import { BottomNav, TabPlaceholder } from './components/Shell.jsx';
+import { SettingsPage } from '../settings/components/SettingsPage.jsx';
 import {
   applyToolsSettingsPayloadToRecords,
   applyMemorySettingsPayloadToRecords,
@@ -20,8 +20,8 @@ import {
   buildKnowledgeSettingsPayload,
   getSelectedLlmConfig,
   llmProviderRequestPayload,
-} from '../settings/settings-payload.js';
-import { API_BASE } from '../../api/base.js';
+} from '../settings/model/settings-payload.js';
+import { API_BASE } from '../../shared/api/base.js';
 import {
   authFetch,
   buildRunConfigStorageKey,
@@ -29,35 +29,41 @@ import {
   DEFAULT_SESSION_NAME,
   buildApiHeaders,
   parseResponseMessage,
-  } from '../../api/auth.js';
+  } from '../../shared/api/auth.js';
 import {
   APP_DEFAULT_AGENT_OPTIONS,
   DEFAULT_AGENT_SETTINGS,
-  DEFAULT_WORKFLOW_SETTINGS,
-  LLM_SETTINGS_STORAGE_KEY,
-  SETTINGS_RECORDS_STORAGE_KEY,
   normalizeAgentSettings,
   agentCatalogFromProfiles,
   agentCatalogFromSettings,
+  createDefaultCustomAgentPayload,
+  withAlwaysAllowedAgentTools,
+} from '../agents/model/agent-settings.js';
+import {
+  DEFAULT_WORKFLOW_SETTINGS,
+  DIRECT_AGENT_WORKFLOW_ID,
+} from '../workflow/model/workflow-defaults.js';
+import {
+  LLM_SETTINGS_STORAGE_KEY,
   loadLlmSettingsDraft,
+  applyLlmSettingsPayloadToDraft,
+  runtimeLlmProviderOptions,
+} from '../settings/model/llm-settings.js';
+import {
+  SETTINGS_RECORDS_STORAGE_KEY,
   loadSettingsRecordsDraft,
   loadSettingsConnectionStatus,
   persistSettingsConnectionStatus,
-  applyLlmSettingsPayloadToDraft,
-  runtimeLlmProviderOptions,
   settingsConnectionSignatureFor,
   sanitizeSettingsConnectionStatus,
-  createDefaultCustomAgentPayload,
-  DIRECT_AGENT_WORKFLOW_ID,
   WEB_SEARCH_PROVIDER_OPTIONS,
-  withAlwaysAllowedAgentTools,
-  } from '../../lib/agent-catalog.js';
+} from '../settings/model/settings-records.js';
 import {
   normalizeWorkflowSettings,
   createDefaultCustomWorkflowPayload,
   payloadForCustomWorkflow,
   workflowById,
-} from '../../lib/workflow-catalog.js';
+} from '../workflow/model/workflow-catalog.js';
 import {
   createEmptyContextUsage,
   configureContextTotalTokens,
@@ -66,7 +72,7 @@ import {
   estimateContextUsageFromConversationDetail,
   mergeContextUsage,
   normalizeContextUsage,
-  } from '../../lib/context-usage.js';
+  } from '../chat/model/context-usage.js';
 import {
   generateHexId,
   getStoredConversationId,
@@ -78,20 +84,19 @@ import {
   legacyWorkspaceMigrationCompleted,
   markLegacyWorkspaceMigrationCompleted,
   normalizeWorkspaceOrdering,
-  workspaceStateWithConversationDetail,
+  workspaceStateWithConversationDetail as mergeConversationDetailIntoWorkspace,
   workspaceStateWithTouchedConversation,
   workspaceStateWithConversationRuntimeTask,
   findConversationById,
   findProjectByConversationId,
-  buildWorkspaceStateFromConversationDetails,
-  conversationDetailToWorkspaceConversation,
+  buildWorkspaceStateFromConversationDetails as buildWorkspaceFromConversationDetails,
+  conversationDetailToWorkspaceConversation as mapConversationDetailToWorkspace,
   titleFromTaskText,
   isDefaultConversationName,
   normalizeChatImageRefs,
   mergeChatImageRefs,
   createEmptyWorkspaceState,
   createDefaultProject,
-  stripChatImageAugmentation,
   chatImageFallbacksByTaskIdFromMessages,
   timestampValue,
   taskUpdatedTimestamp,
@@ -100,8 +105,8 @@ import {
   projectIdForWorkspacePath,
   removeProjectModeFromWorkspace,
   getWorkspaceConversationIds,
-  createConversationWithRetry,
-} from '../../lib/workspace-state.js';
+} from '../conversations/model/workspace-state.js';
+import { createConversationWithRetry } from '../conversations/api/conversations.js';
 import {
   createEmptyTaskRuntimeState,
   createPendingTaskDraft,
@@ -116,16 +121,15 @@ import {
   taskHasAssistantStreamContent,
   taskFirstStreamTimestamp,
   upsertToolCall,
-  } from '../../lib/task-runtime.js';
+  } from '../tasks/model/task-runtime.js';
 import {
   buildChatTimeline,
   getChatProgressLine,
   appendChatProgressText,
   appendAnswerDelta,
-  eventDeltaText,
   pendingTaskToQuest,
   getToolResponseTraceStatus,
-} from '../../lib/chat-timeline.js';
+} from '../chat/model/chat-timeline.js';
 import {
   addTaskCompletionNotice,
   clearConversationCompletionNotices,
@@ -136,25 +140,35 @@ import {
   taskCompletionNoticeKey,
   taskNoticesByTaskId,
   terminalTaskNoticeStatus,
-} from '../../lib/task-completion-notices.js';
+} from '../tasks/model/task-completion-notices.js';
 import {
   normalizeRuntimeEvent, normalizeRuntimeEvents, resolveProviderMeta,
   toDisplayText, STREAM_EVENT_BATCH_MS, STREAM_IMMEDIATE_EVENT_TYPES,
   CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
-} from '../../lib/runtime-events.js';
-import { WorkflowRuntimePage } from '../workflow/WorkflowRuntimePage.jsx';
+} from '../tasks/model/runtime-events.js';
+import { WorkflowRuntimePage } from '../workflow/components/WorkflowRuntimePage.jsx';
 
-import { createConversationHandlers } from './hooks/createConversationHandlers.js';
-import { createComposerHandlers } from './hooks/createComposerHandlers.js';
-import { createSettingsHandlers } from './hooks/createSettingsHandlers.js';
-import { createConversationRuntime } from './hooks/createConversationRuntime.js';
-import { createTaskStreamHandlers } from './hooks/createTaskStreamHandlers.js';
-import { createDeployHandlers } from './hooks/createDeployHandlers.js';
-import { createConversationActivationHandlers } from './hooks/createConversationActivationHandlers.js';
-import { createDraftConversationHandlers } from './hooks/createDraftConversationHandlers.js';
-import { usePerConversationDraft } from './hooks/usePerConversationDraft.js';
+import { createConversationHandlers } from '../conversations/hooks/createConversationHandlers.js';
+import { createComposerHandlers } from '../chat/hooks/createComposerHandlers.js';
+import { createSettingsHandlers } from '../settings/hooks/createSettingsHandlers.js';
+import { createConversationRuntime } from '../conversations/hooks/createConversationRuntime.js';
+import { createTaskStreamHandlers } from '../tasks/hooks/createTaskStreamHandlers.js';
+import { createDeployHandlers } from '../tasks/hooks/createDeployHandlers.js';
+import { createConversationActivationHandlers } from '../conversations/hooks/createConversationActivationHandlers.js';
+import { createDraftConversationHandlers } from '../conversations/hooks/createDraftConversationHandlers.js';
+import { usePerConversationDraft } from '../chat/hooks/usePerConversationDraft.js';
 
-const { useState, useEffect, useRef, useMemo } = React;
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+const conversationDetailToWorkspaceConversation = (detail, previousConversation = null) => (
+  mapConversationDetailToWorkspace(detail, previousConversation, taskSummaryToRuntimeTask)
+);
+const buildWorkspaceStateFromConversationDetails = (details, previousState) => (
+  buildWorkspaceFromConversationDetails(details, previousState, taskSummaryToRuntimeTask)
+);
+const workspaceStateWithConversationDetail = (state, detail, activate = true) => (
+  mergeConversationDetailIntoWorkspace(state, detail, activate, taskSummaryToRuntimeTask)
+);
 const TASK_COMPLETION_NOTICES_STORAGE_KEY = 'haish.task-completion-notices.v1';
 
 export function AppShell({ authUser = null, onLogout = () => undefined, initialToast = null }) {
@@ -232,7 +246,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const runtimeApiRef = useRef({});
   const activationApiRef = useRef({});
   const deployApiRef = useRef({});
+  const draftApiRef = useRef({});
+  const settingsApiRef = useRef({});
   const taskRuntimeStateRef = useRef(taskRuntimeState);
+  const initialWorkspaceStateRef = useRef(workspaceState);
   const userIdRef = useRef(authUser?.id || '');
   const toastTimerRef = useRef(null);
   const initialToastIdRef = useRef(null);
@@ -318,9 +335,9 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     let retryTimer = null;
     const load = async (attempt = 0) => {
       try {
-        const payload = await fetchWorkflowSettingsPayload();
+        const payload = await settingsApiRef.current.fetchWorkflowSettingsPayload();
         if (cancelled) return;
-        applyWorkflowSettingsPayload(payload);
+        settingsApiRef.current.applyWorkflowSettingsPayload(payload);
         setWorkflowLoading(false);
       } catch (error) {
         if (cancelled) return;
@@ -362,8 +379,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     let retryTimer = null;
     const load = async (attempt = 0) => {
       try {
-        const payload = await fetchAgentSettingsPayload();
-        if (!cancelled) applyAgentSettingsPayload(payload);
+        const payload = await settingsApiRef.current.fetchAgentSettingsPayload();
+        if (!cancelled) settingsApiRef.current.applyAgentSettingsPayload(payload);
       } catch (error) {
         if (cancelled) return;
         if (attempt < 4) {
@@ -371,7 +388,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           return;
         }
         console.warn('failed to fetch agent settings', error);
-        showToast('error', String(error?.message || error));
+        runtimeApiRef.current.showToast?.('error', String(error?.message || error));
       }
     };
     load();
@@ -387,8 +404,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     let retryTimer = null;
     const load = async (attempt = 0) => {
       try {
-        const payload = await fetchWorkflowSettingsPayload();
-        if (!cancelled) applyWorkflowSettingsPayload(payload);
+        const payload = await settingsApiRef.current.fetchWorkflowSettingsPayload();
+        if (!cancelled) settingsApiRef.current.applyWorkflowSettingsPayload(payload);
       } catch (error) {
         if (cancelled) return;
         if (attempt < 4) {
@@ -396,7 +413,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           return;
         }
         console.warn('failed to fetch workflow settings', error);
-        showToast('error', String(error?.message || error));
+        runtimeApiRef.current.showToast?.('error', String(error?.message || error));
       }
     };
     load();
@@ -533,8 +550,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     previewObjectUrlCacheRef.current.clear();
   }, []);
 
-  function applyHydratedImagePreview(authPreviewUrl, previewUrl) {
-    updateTaskRuntimeState((state) => {
+  const applyHydratedImagePreview = useCallback((authPreviewUrl, previewUrl) => {
+    runtimeApiRef.current.updateTaskRuntimeState?.((state) => {
       let changed = false;
       const hydrateTask = (task) => {
         if (!task || !Array.isArray(task.imageAttachments)) return task;
@@ -551,7 +568,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       const pendingTask = hydrateTask(state.pendingTask);
       return changed ? { ...state, tasksById, pendingTask } : state;
     });
-  }
+  }, []);
 
   useEffect(() => {
     const refs = [];
@@ -591,7 +608,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           console.warn('image preview fetch failed', error);
         });
     });
-  }, [taskRuntimeState]);
+  }, [applyHydratedImagePreview, taskRuntimeState]);
 
   const {
     invalidateConversationActivation,
@@ -661,6 +678,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     workspaceStateWithConversationDetail,
   });
 
+  draftApiRef.current = {
+    materializeDraftConversationForSend,
+  };
+
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -678,15 +699,16 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   useEffect(() => {
     if (!initialToast || initialToastIdRef.current === initialToast.id) return;
     initialToastIdRef.current = initialToast.id;
-    showToast(initialToast.kind, initialToast.message);
+    runtimeApiRef.current.showToast?.(initialToast.kind, initialToast.message);
   }, [initialToast]);
 
   useEffect(() => {
     let cancelled = false;
+    const initialWorkspaceState = initialWorkspaceStateRef.current;
     const bootstrapActivationSeq = conversationActivationSeqRef.current;
     (async () => {
       try {
-        const storedConversationIds = getWorkspaceConversationIds(workspaceState);
+        const storedConversationIds = getWorkspaceConversationIds(initialWorkspaceState);
         let details = [];
         let serverListLoaded = false;
         try {
@@ -701,7 +723,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         if (!serverListLoaded && storedConversationIds.length > 0) {
           const restoredDetails = await Promise.all(
             storedConversationIds.map((nextConversationId) => (
-              fetchConversationDetail(nextConversationId).catch((error) => {
+              activationApiRef.current.fetchConversationDetail(nextConversationId).catch((error) => {
                 console.warn('conversation restore skipped:', error);
                 return null;
               })
@@ -710,20 +732,20 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           details = restoredDetails.filter(Boolean);
         }
         if (details.length === 0) {
-          if (!isConversationActivationCurrent(bootstrapActivationSeq)) return;
+          if (!activationApiRef.current.isConversationActivationCurrent?.(bootstrapActivationSeq)) return;
           const created = await createConversationWithRetry(
             { title: DEFAULT_SESSION_NAME, execution_mode: 'chat' },
-            () => isConversationActivationCurrent(bootstrapActivationSeq),
+            () => activationApiRef.current.isConversationActivationCurrent?.(bootstrapActivationSeq),
           );
           if (!created) return;
           details = [created];
         }
-        if (cancelled || !isConversationActivationCurrent(bootstrapActivationSeq)) return;
+        if (cancelled || !activationApiRef.current.isConversationActivationCurrent?.(bootstrapActivationSeq)) return;
         const storedConversationId = getStoredConversationId();
         let previousWorkspaceState = storedConversationIds.length > 0
           ? {
-            ...workspaceState,
-            activeConversationId: storedConversationId || workspaceState.activeConversationId,
+            ...initialWorkspaceState,
+            activeConversationId: storedConversationId || initialWorkspaceState.activeConversationId,
           }
           : createEmptyWorkspaceState();
         if (serverListLoaded && !legacyWorkspaceMigrationCompleted()) {
@@ -742,8 +764,8 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         if (activeSummary) {
           const activeDetail = Array.isArray(activeSummary.messages)
             ? activeSummary
-            : await fetchConversationDetail(activeSummary.conversation_id);
-          await activateConversationDetail(activeDetail);
+            : await activationApiRef.current.fetchConversationDetail(activeSummary.conversation_id);
+          await activationApiRef.current.activateConversationDetail(activeDetail);
         }
         setConversationReady(true);
       } catch (error) {
@@ -753,8 +775,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     })();
     return () => {
       cancelled = true;
-      fetchAbortRef.current?.abort?.();
-      conversationDetailAbortRef.current?.abort?.();
+      activationApiRef.current.abortPendingRequests?.();
     };
   }, []);
 
@@ -808,6 +829,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     mutateRuntime,
     flushRuntimeTasksToWorkspace,
     updateTaskRuntimeState,
+    setRuntimeActiveTaskId,
+    setRuntimeBusy,
+    setRuntimeFetchController,
+    showToast,
   };
 
 
@@ -880,6 +905,11 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     ensureTaskForEvent,
     updateTaskById,
     getTaskById,
+    isConversationActivationCurrent,
+    abortPendingRequests: () => {
+      fetchAbortRef.current?.abort?.();
+      conversationDetailAbortRef.current?.abort?.();
+    },
   };
 
 
@@ -952,6 +982,12 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     workflowById,
     workflowSettingsDraft,
   });
+  settingsApiRef.current = {
+    applyAgentSettingsPayload,
+    applyWorkflowSettingsPayload,
+    fetchAgentSettingsPayload,
+    fetchWorkflowSettingsPayload,
+  };
   const {
     uploadAttachment,
     uploadChatImage,
@@ -1274,35 +1310,35 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     || Boolean(conversationId && getRuntime(conversationId)?.fetchController);
   useEffect(() => {
     if (!queuedDeploy) return;
-    if (!canStartDeployForConversation(queuedDeploy.targetConversationId)) return;
+    if (!deployApiRef.current.canStartDeployForConversation?.(queuedDeploy.targetConversationId)) return;
     if (currentConversationRunning || uploadState.active || settingsMode) return;
     const request = queuedDeploy;
     // Draft first-send path: materialize server conversation before streaming.
     if (draftConversationRef.current) {
       setQueuedDeploy(null);
-      materializeDraftConversationForSend(request)
+      draftApiRef.current.materializeDraftConversationForSend(request)
         .then((materialized) => {
           const realConversationId = materialized?.id || null;
           if (!realConversationId) return;
           request.targetConversationId = realConversationId;
           request.runtimeConversationId = realConversationId;
-          if (!canStartDeployForConversation(realConversationId)) {
+          if (!deployApiRef.current.canStartDeployForConversation?.(realConversationId)) {
             setQueuedDeploy(request);
             return;
           }
-          startDeploy(request, realConversationId, materialized?.detail || null);
+          deployApiRef.current.startDeploy?.(request, realConversationId, materialized?.detail || null);
         })
         .catch((error) => {
           console.error('draft conversation create failed', error);
-          failPendingDeploy(request, error);
-          showToast('error', String(error?.message || error));
+          deployApiRef.current.failPendingDeploy?.(request, error);
+          runtimeApiRef.current.showToast?.('error', String(error?.message || error));
         });
       return;
     }
     const deployConvId = request.targetConversationId || conversationIdRef.current || conversationId;
     if (!deployConvId || String(deployConvId).startsWith('draft-')) return;
     setQueuedDeploy(null);
-    startDeploy(request, deployConvId);
+    deployApiRef.current.startDeploy?.(request, deployConvId);
   }, [
     queuedDeploy,
     conversationReady,
@@ -1520,10 +1556,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     if (!busy && !currentConversationActive) return;
     // This sanity reset only ever applies to the conversation currently shown
     // — `taskRuntimeState` is the mirror of the displayed runtime.
-    setRuntimeBusy(false);
-    setRuntimeActiveTaskId(null);
-    setRuntimeFetchController(null);
-    updateTaskRuntimeState((state) => (
+    runtimeApiRef.current.setRuntimeBusy?.(false);
+    runtimeApiRef.current.setRuntimeActiveTaskId?.(null);
+    runtimeApiRef.current.setRuntimeFetchController?.(null);
+    runtimeApiRef.current.updateTaskRuntimeState?.((state) => (
       state.activeTaskId === activeTaskId
         ? { ...state, activeTaskId: null }
         : state
@@ -1536,9 +1572,9 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     if (taskRuntimeState.pendingTask && isTaskActuallyActive(taskRuntimeState.pendingTask)) return;
     // Stale local runtime guard: if no task is actually active in the current
     // conversation, a leftover `busy` flag should not keep the composer locked.
-    setRuntimeBusy(false);
-    setRuntimeFetchController(null);
-    setRuntimeActiveTaskId(null);
+    runtimeApiRef.current.setRuntimeBusy?.(false);
+    runtimeApiRef.current.setRuntimeFetchController?.(null);
+    runtimeApiRef.current.setRuntimeActiveTaskId?.(null);
   }, [busy, currentConversationActive, taskRuntimeState.activeTaskId, taskRuntimeState.pendingTask]);
   const activeTaskText = useMemo(() => {
     const activeTaskId = taskRuntimeState.activeTaskId || activeTaskIdRef.current;
@@ -1927,9 +1963,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         </div>
       )}
 
-      <HollowPurple open={!!hollow} title={hollow?.title} result={hollow?.result} onClose={()=>setHollow(null)} />
+      <ResultDialog open={!!hollow} title={hollow?.title} result={hollow?.result} onClose={() => setHollow(null)} />
     </div>
   );
 }
-
-// Bridge for approval-dialog (legacy global lookup).

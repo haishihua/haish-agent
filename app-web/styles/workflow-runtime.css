@@ -440,9 +440,7 @@
     scrollbar-color: rgba(128, 151, 190, 0.3) transparent;
 }
 
-/* The approval/ask-user renderer injects its base tool-card styles at runtime.
-   Keep this scoped override here as well so Vite HMR updates an open node
-   detail immediately without requiring the app process to restart. */
+/* Workflow-specific approval card typography. */
 .workflow-detail-body .haish-approval-slot {
     font-family: var(--conversation-font) !important;
 }

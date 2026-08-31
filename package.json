@@ -22,7 +22,10 @@
     "release:mac": "node scripts/release-mac.mjs",
     "release:mac:unsigned": "node scripts/release-mac.mjs --unsigned",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
-    "lint": "eslint \"app-web/src/**/*.{js,jsx}\"",
+    "test": "node scripts/run-app-web-tests.mjs",
+    "check:architecture": "node scripts/check-app-web-architecture.mjs",
+    "check:web": "npm run check:architecture && npm test && npm run lint && npm run build:web",
+    "lint": "eslint --max-warnings=0 \"app-web/src/**/*.{js,jsx}\" \"app-web/tests/**/*.{js,mjs}\"",
     "format": "prettier --write \"app-web/src/**/*.{js,jsx,css}\" \"src/**/*.{ts,tsx,css}\" \"*.md\"",
     "format:check": "prettier --check \"app-web/src/**/*.{js,jsx,css}\" \"src/**/*.{ts,tsx,css}\""
   },

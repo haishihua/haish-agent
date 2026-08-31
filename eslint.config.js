@@ -70,4 +70,22 @@ export default [
       'no-case-declarations': 'warn',
     },
   },
+  {
+    files: ['app-web/tests/**/*.{js,mjs}'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+        ...globals.es2022,
+      },
+    },
+    rules: {
+      'no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+      }],
+    },
+  },
 ];

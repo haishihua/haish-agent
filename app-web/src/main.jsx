@@ -1,5 +1,5 @@
 // Haish app-web entry — production-bundled by Vite.
-// Load order: styles → main app (AuthGate + window.authFetch).
+// Load order: styles → main app.
 // Command approvals, browser-runtime confirmation, and ask_user are rendered
 // declaratively inside the main React tree.
 
