@@ -191,7 +191,7 @@ export function classifyToolForGroup(item) {
       || (name.includes('search') && !name.includes('web'))) {
     return { bucket: 'searched', verbPast: 'searched', verbPresent: 'searching', subject: '', unitSingular: 'time', unitPlural: 'times' };
   }
-  if (name === 'terminal' || name === 'bash' || name.includes('background_process')) {
+  if (name === 'exec_command' || name === 'write_stdin') {
     return { bucket: 'executed', verbPast: 'executed', verbPresent: 'executing', subject: '', unitSingular: 'command', unitPlural: 'commands' };
   }
   if (name === 'vision_analyze' || name === 'visual_inspect' || name === 'image_describe'
@@ -752,7 +752,7 @@ export function buildChatTimeline(task, taskStatus) {
       continue;
     }
     if (type === 'tool_output_delta') {
-      // 实时命令输出：把 bash 等工具执行过程中的输出增量追加到对应工具卡片，
+      // 实时命令输出：把 exec_command 的输出增量追加到对应工具卡片，
       // 让 shell 卡片像终端一样边执行边滚动，而不是等命令跑完才一次性显示。
       const callId = event.callId || event.toolCallId || event.tool_call_id || '';
       if (callId) {

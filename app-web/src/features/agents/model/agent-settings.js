@@ -6,7 +6,7 @@ export const APP_DEFAULT_AGENT_OPTIONS = [
 export const DEFAULT_AGENT_TOOL_GROUPS = [
   { id: 'workspace_read', label: 'File read', description: 'Read files, list directories, search text, and glob workspace paths.', tools: ['read_file', 'list_dir', 'search_text', 'glob_files'] },
   { id: 'file_edits', label: 'File edits', description: 'Create, edit, copy, delete, checkpoint, and roll back workspace files.', tools: ['write_file', 'edit_file', 'delete_file', 'copy_file', 'create_dir', 'delete_dir', 'list_checkpoints', 'rollback_workspace'] },
-  { id: 'terminal', label: 'Terminal', description: 'Run terminal commands and manage background processes.', tools: ['terminal', 'bash', 'start_background_process', 'read_background_process_output', 'stop_background_process', 'list_background_processes'] },
+  { id: 'terminal', label: 'Terminal', description: 'Run and interact with shell commands.', tools: ['exec_command', 'write_stdin'] },
   { id: 'browser', label: 'Browser', description: 'Run model-written browser automation in a controlled browser-use session.', tools: ['browser_use'] },
   { id: 'user_input', label: 'Ask user', description: 'Pause the agent to ask the user structured or open questions, then continue with the answers.', tools: ['ask_user'] },
   { id: 'web', label: 'Web', description: 'Search the web and fetch pages.', tools: ['web_search', 'web_fetch'] },

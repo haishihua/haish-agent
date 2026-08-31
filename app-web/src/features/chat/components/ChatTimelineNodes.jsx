@@ -21,7 +21,7 @@ export function resolveToolIconClass(toolName, defaultClass) {
   if (name === 'browser_use' || name === 'browser') {
     return 'ico-browser';
   }
-  if (name === 'terminal' || name === 'bash') {
+  if (name === 'exec_command' || name === 'write_stdin') {
     return 'ico-terminal';
   }
   if (name === 'copy_file') {
@@ -50,9 +50,6 @@ export function resolveToolIconClass(toolName, defaultClass) {
   }
   if (name.includes('checkpoint') || name.includes('rollback')) {
     return 'ico-checkpoint';
-  }
-  if (name.includes('background_process')) {
-    return 'ico-background-process';
   }
   if (name.startsWith('note_')) {
     return 'ico-note';

@@ -14,13 +14,8 @@ export const TOOL_CHANGE_NAMES = new Set([
   'create_dir',
 ]);
 export const TOOL_SHELL_NAMES = new Set([
-  'terminal',
-  'bash',
-  'start_background_process',
-  'background_process_status',
-  'read_background_process_output',
-  'stop_background_process',
-  'list_background_processes',
+  'exec_command',
+  'write_stdin',
 ]);
 export const TOOL_PROCESS_NAMES = new Set([
   'dispatch_sub_agent',
@@ -502,12 +497,8 @@ export function toolActionLabel(item) {
   if (name === 'search_text') return 'Search text';
   if (name === 'glob_files') return 'Glob files';
   if (name === 'list_dir') return 'List dir';
-  if (name === 'terminal' || name === 'bash') return 'Shell';
-  if (name === 'start_background_process') return 'Start background process';
-  if (name === 'read_background_process_output') return 'Read background output';
-  if (name === 'stop_background_process') return 'Stop background process';
-  if (name === 'background_process_status') return 'Background process status';
-  if (name === 'list_background_processes') return 'List background processes';
+  if (name === 'exec_command') return 'Shell';
+  if (name === 'write_stdin') return 'Shell input';
   return item.label || item.toolName || 'Tool';
 }
 

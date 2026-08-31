@@ -45,6 +45,7 @@ const RISK_TEXT = {
   dd_to_device: 'Write to raw device',
   write_system_root: 'Write to system path',
   write_outside_workspace: 'Write outside workspace',
+  command_outside_workspace: 'Run command outside workspace',
   sensitive_path_write: 'Write to sensitive file',
   mcp_server_activation: 'Activate MCP server',
   strict_mode_default: 'Strict mode requires approval by default',
