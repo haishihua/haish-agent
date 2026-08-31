@@ -41,6 +41,8 @@ export function createDefaultProject() {
     removable: false,
     createdAt: null,
     updatedAt: null,
+    pinned: false,
+    sortOrder: 0,
     chatConversationsExpanded: false,
     workflowTasksExpanded: false,
     hiddenModes: [],
@@ -89,6 +91,7 @@ function parseStoredWorkspaceState(raw) {
         chatConversationsExpanded: Boolean(project.chatConversationsExpanded),
         workflowTasksExpanded: Boolean(project.workflowTasksExpanded),
         pinned: Boolean(project.pinned),
+        sortOrder: typeof project.sortOrder === 'number' ? project.sortOrder : 0,
         hiddenModes: Array.isArray(project.hiddenModes)
           ? project.hiddenModes.filter((mode) => mode === 'chat' || mode === 'bot')
           : [],
@@ -173,11 +176,19 @@ export function saveWorkspaceState(state) {
 
 export function compactWorkspaceStateForStorage(state) {
   return {
-    ...state,
+    activeProjectId: state?.activeProjectId || DEFAULT_PROJECT_ID,
+    activeConversationId: state?.activeConversationId || null,
     projects: (state?.projects || []).map((project) => ({
-      ...project,
+      id: project.id,
+      userExpanded: project.userExpanded,
+      chatConversationsExpanded: Boolean(project.chatConversationsExpanded),
+      workflowTasksExpanded: Boolean(project.workflowTasksExpanded),
+      hiddenModes: project.hiddenModes || [],
       conversations: (project.conversations || []).map((conversation) => ({
-        ...conversation,
+        id: conversation.id,
+        userExpanded: conversation.userExpanded,
+        tasksExpanded: Boolean(conversation.tasksExpanded),
+        executionMode: conversation.executionMode,
         tasks: (conversation.tasks || [])
           .filter((task) => task?.executionMode === conversation.executionMode)
           .map((task) => ({
@@ -481,15 +492,11 @@ export function isTaskActuallyActive(task) {
 export function normalizeWorkspaceOrdering(state) {
   const activeProjectId = state?.activeProjectId || DEFAULT_PROJECT_ID;
   const activeConversationId = state?.activeConversationId || getStoredConversationId();
-  // Sidebar ordering policy (matches the UX brief):
-  //   - Conversations: any conversation with a running/queued task floats
-  //     to the top of its project. Once multiple conversations are in that
-  //     running group, keep relative order stable. Idle conversations also
-  //     keep their existing order; updatedAt and active highlighting do NOT
-  //     participate in ordering, so clicking around does not reshuffle the
-  //     list.
-  //   - Projects: createdAt desc. Active project and later activity never
-  //     participate in project ordering.
+  // Backend order is authoritative. The frontend only groups pinned rows
+  // ahead of unpinned rows while preserving the relative order returned by
+  // the backend. Running state and recent activity never participate in the
+  // persisted/display ordering, so temporary runtime state cannot leak into
+  // a later drag reorder request.
   const projects = (Array.isArray(state?.projects) ? state.projects : [])
     .map((project) => withDefaultExpansion(project))
     .map((project) => ({
@@ -499,11 +506,7 @@ export function normalizeWorkspaceOrdering(state) {
         const bPinned = Boolean(b.pinned);
         if (aPinned && !bPinned) return -1;
         if (bPinned && !aPinned) return 1;
-        const aActive = conversationHasActiveTask(a);
-        const bActive = conversationHasActiveTask(b);
-        if (aActive && !bActive) return -1;
-        if (bActive && !aActive) return 1;
-        return 0;
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
       }),
     }))
     .sort((a, b) => {
@@ -511,9 +514,7 @@ export function normalizeWorkspaceOrdering(state) {
         const bPinned = Boolean(b.pinned);
         if (aPinned && !bPinned) return -1;
         if (bPinned && !aPinned) return 1;
-        // Stable: preserve existing relative order within each pinned group.
-        // Manual drag reorders are honored; createdAt never overrides user intent.
-        return 0;
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
       });
   return {
     ...(state || {}),
@@ -552,15 +553,74 @@ export function conversationDetailToWorkspaceConversation(
       ? previousConversation.userExpanded
       : undefined,
     tasksExpanded: Boolean(previousConversation?.tasksExpanded),
-    // 后端会话记录始终返回 pinned 布尔值，以其为准；仅在后端缺省该字段时
-    // 才回退到本地旧值（防止旧后端无此字段时误丢置顶）。
-    // 此前逻辑“后端 false 时保留本地 true”会让取消置顶在刷新后被本地旧值
-    // 覆盖回去，导致无法取消置顶。
+    projectId: detail.project_id || previousConversation?.projectId || null,
+    // The backend is authoritative; local values only support old servers.
     pinned: typeof detail.pinned === 'boolean'
       ? detail.pinned
       : Boolean(previousConversation?.pinned),
-    sortOrder: typeof detail.sort_order === 'number' ? detail.sort_order : (previousConversation?.sortOrder ?? 0),
+    sortOrder: typeof detail.sort_order === 'number'
+      ? detail.sort_order
+      : (previousConversation?.sortOrder ?? 0),
   };
+}
+
+export function buildWorkspaceStateFromProjects(
+  projectDetails,
+  previousState,
+  mapTask = (task) => task,
+) {
+  const previous = previousState || createEmptyWorkspaceState();
+  const previousProjects = new Map(previous.projects.map((project) => [project.id, project]));
+  const previousConversations = new Map(
+    previous.projects.flatMap((project) => project.conversations.map((conversation) => [conversation.id, conversation]))
+  );
+  const projects = (Array.isArray(projectDetails) ? projectDetails : []).map((detail) => {
+    const projectId = detail?.project_id;
+    if (!projectId) return null;
+    const previousProject = previousProjects.get(projectId);
+    const isDefault = Boolean(detail.is_default) || projectId === DEFAULT_PROJECT_ID;
+    return {
+      id: projectId,
+      type: isDefault ? 'system' : 'custom',
+      name: detail.name || (isDefault ? DEFAULT_PROJECT_NAME : projectNameFromPath(detail.workspace_path)),
+      workspacePath: detail.workspace_path || null,
+      workspaceLabel: detail.workspace_path ? (detail.name || projectNameFromPath(detail.workspace_path)) : null,
+      removable: !isDefault,
+      createdAt: detail.created_at || null,
+      updatedAt: detail.updated_at || null,
+      userExpanded: typeof previousProject?.userExpanded === 'boolean' ? previousProject.userExpanded : undefined,
+      chatConversationsExpanded: Boolean(previousProject?.chatConversationsExpanded),
+      workflowTasksExpanded: Boolean(previousProject?.workflowTasksExpanded),
+      hiddenModes: previousProject?.hiddenModes || [],
+      pinned: Boolean(detail.pinned),
+      sortOrder: typeof detail.sort_order === 'number' ? detail.sort_order : 0,
+      conversations: (detail.conversations || []).map((conversation) => (
+        conversationDetailToWorkspaceConversation(
+          conversation,
+          previousConversations.get(conversation.conversation_id),
+          mapTask,
+        )
+      )),
+    };
+  }).filter(Boolean);
+  if (!projects.some((project) => project.id === DEFAULT_PROJECT_ID)) {
+    projects.push(createDefaultProject());
+  }
+  const activeConversationExists = projects.some((project) => (
+    project.conversations.some((conversation) => conversation.id === previous.activeConversationId)
+  ));
+  const fallbackProject = projects.find((project) => project.conversations.length > 0) || projects[0];
+  const activeConversationId = activeConversationExists
+    ? previous.activeConversationId
+    : fallbackProject?.conversations[0]?.id || null;
+  const activeProject = projects.find((project) => (
+    project.conversations.some((conversation) => conversation.id === activeConversationId)
+  )) || fallbackProject;
+  return normalizeWorkspaceOrdering({
+    projects,
+    activeProjectId: activeProject?.id || DEFAULT_PROJECT_ID,
+    activeConversationId,
+  });
 }
 
 export function buildWorkspaceStateFromConversationDetails(
@@ -588,7 +648,8 @@ export function buildWorkspaceStateFromConversationDetails(
     updatedAt: previousProjects.get(DEFAULT_PROJECT_ID)?.updatedAt || null,
     chatConversationsExpanded: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.chatConversationsExpanded),
     workflowTasksExpanded: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.workflowTasksExpanded),
-    pinned: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.pinned),
+    pinned: false,
+    sortOrder: 0,
     hiddenModes: previousProjects.get(DEFAULT_PROJECT_ID)?.hiddenModes || [],
     userExpanded: typeof previousProjects.get(DEFAULT_PROJECT_ID)?.userExpanded === 'boolean'
       ? previousProjects.get(DEFAULT_PROJECT_ID).userExpanded
@@ -599,7 +660,7 @@ export function buildWorkspaceStateFromConversationDetails(
   for (const detail of details) {
     if (!detail?.conversation_id) continue;
     const workspacePath = String(detail.workspace_path || '').trim();
-    const projectId = projectIdForWorkspacePath(workspacePath);
+    const projectId = detail.project_id || projectIdForWorkspacePath(workspacePath);
     if (!projectsById.has(projectId)) {
       const previousProject = previousProjects.get(projectId);
       const label = detail.workspace_label || projectNameFromPath(workspacePath);
@@ -617,7 +678,8 @@ export function buildWorkspaceStateFromConversationDetails(
           : undefined,
         chatConversationsExpanded: Boolean(previousProject?.chatConversationsExpanded),
         workflowTasksExpanded: Boolean(previousProject?.workflowTasksExpanded),
-        pinned: Boolean(previousProject?.pinned),
+        pinned: false,
+        sortOrder: projectsById.size,
         hiddenModes: previousProject?.hiddenModes || [],
         conversations: [],
       });
@@ -679,7 +741,7 @@ export function workspaceStateWithConversationDetail(
   mapTask = (task) => task,
 ) {
   const workspacePath = String(detail?.workspace_path || '').trim();
-  const projectId = projectIdForWorkspacePath(workspacePath);
+  const projectId = detail?.project_id || projectIdForWorkspacePath(workspacePath);
   const projectLabel = detail?.workspace_label || projectNameFromPath(workspacePath);
   let projectFound = false;
   let conversationFound = false;
@@ -705,11 +767,11 @@ export function workspaceStateWithConversationDetail(
       conversations: conversationFound
         ? conversations
         : [
-            ...conversations,
             (() => {
               const fresh = conversationDetailToWorkspaceConversation(detail, null, mapTask);
               return activate ? { ...fresh, userExpanded: false } : fresh;
             })(),
+            ...conversations,
           ],
     };
   });

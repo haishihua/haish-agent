@@ -11,6 +11,11 @@ export function createConversationHandlers(ctx) {
     authFetch,
     buildApiHeaders,
     buildDeployRequest,
+    buildWorkspaceStateFromProjects,
+    conversationReorderChainsRef,
+    conversationReorderVersionsRef,
+    projectReorderChainRef,
+    projectReorderVersionRef,
     settingsMode,
     canStartDeployForConversation,
     clearDraftConversationState,
@@ -27,7 +32,6 @@ export function createConversationHandlers(ctx) {
     modeLocationRef,
     normalizeWorkspaceOrdering,
     openDraftConversation,
-    projectIdForWorkspacePath,
     removeProjectModeFromWorkspace,
     setActiveTab,
     setSettingsMode,
@@ -42,6 +46,22 @@ export function createConversationHandlers(ctx) {
     workspaceState,
     workspaceStateWithConversationDetail,
   } = ctx;
+
+  async function restoreProjectsFromBackend(error, fallbackState) {
+    showToast('error', error?.message || 'project update failed');
+    try {
+      const response = await authFetch(`${API_BASE}/api/projects`, {
+        method: 'GET',
+      });
+      if (!response.ok) throw new Error(`project reload failed: ${response.status}`);
+      const payload = await response.json();
+      const projects = Array.isArray(payload?.projects) ? payload.projects : [];
+      setWorkspaceState((state) => buildWorkspaceStateFromProjects(projects, state));
+    } catch (reloadError) {
+      if (fallbackState) setWorkspaceState(fallbackState);
+      console.warn('project reload failed:', reloadError);
+    }
+  }
 
   async function handleSelectConversation(projectId, nextConversationId) {
     // Leaving an unsent draft discards it without creating a list entry.
@@ -175,16 +195,36 @@ export function createConversationHandlers(ctx) {
       } : project),
     }));
 
-    // Fire-and-forget sync to backend so pin survives server restart
     authFetch(`${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}`, {
       method: 'PATCH',
       headers: buildApiHeaders(),
       body: JSON.stringify({ pinned: newPinned }),
-    }).catch(() => {});
+    }).then((response) => {
+      if (!response.ok) throw new Error(`conversation pin failed: ${response.status}`);
+    }).catch((error) => {
+      setWorkspaceState((state) => normalizeWorkspaceOrdering({
+        ...state,
+        projects: state.projects.map((project) => project.id === projectId ? {
+          ...project,
+          conversations: project.conversations.map((conversation) => (
+            conversation.id === conversationId
+              ? { ...conversation, pinned: !newPinned }
+              : conversation
+          )),
+        } : project),
+      }));
+      showToast('error', error.message || 'conversation pin failed');
+    });
   }
 
   function handleReorderConversations(projectId, sourceId, targetId, position) {
     setWorkspaceState((state) => {
+      const previousState = state;
+      const sourcePinned = Boolean(
+        state.projects
+          .find((project) => project.id === projectId)
+          ?.conversations.find((conversation) => conversation.id === sourceId)?.pinned,
+      );
       const nextState = normalizeWorkspaceOrdering({
         ...state,
         projects: state.projects.map((project) => {
@@ -195,26 +235,69 @@ export function createConversationHandlers(ctx) {
           const [moved] = conversations.splice(sourceIdx, 1);
           let insertIdx;
           if (targetId === null) {
-            insertIdx = conversations.length;
+            const sameGroupIndexes = conversations.flatMap((conversation, index) => (
+              Boolean(conversation.pinned) === sourcePinned ? [index] : []
+            ));
+            insertIdx = sameGroupIndexes.length
+              ? sameGroupIndexes[sameGroupIndexes.length - 1] + 1
+              : (sourcePinned ? 0 : conversations.length);
           } else {
+            const target = conversations.find((conversation) => conversation.id === targetId);
+            if (!target || Boolean(target.pinned) !== sourcePinned) {
+              conversations.splice(sourceIdx, 0, moved);
+              return project;
+            }
             const adjustedTargetIdx = conversations.findIndex((c) => c.id === targetId);
             if (adjustedTargetIdx === -1) { conversations.splice(sourceIdx, 0, moved); return project; }
             insertIdx = position === 'after' ? adjustedTargetIdx + 1 : adjustedTargetIdx;
           }
           conversations.splice(insertIdx, 0, moved);
-          return { ...project, conversations };
+          let groupIndex = 0;
+          return {
+            ...project,
+            conversations: conversations.map((conversation) => (
+              Boolean(conversation.pinned) === sourcePinned
+                ? { ...conversation, sortOrder: groupIndex++ }
+                : conversation
+            )),
+          };
         }),
       });
 
-      // Fire-and-forget sync to backend so manual order survives server restart
+      // Serialize requests per project so rapid drags reach the backend in user order.
       const project = nextState.projects.find((p) => p.id === projectId);
       if (project) {
-        const conversationIds = project.conversations.map((c) => c.id);
-        authFetch(`${API_BASE}/api/conversations/reorder`, {
-          method: 'PATCH',
-          headers: buildApiHeaders(),
-          body: JSON.stringify({ conversation_ids: conversationIds }),
-        }).catch(() => {});
+        const conversationIds = project.conversations
+          .filter((conversation) => Boolean(conversation.pinned) === sourcePinned)
+          .map((conversation) => conversation.id);
+        const requestVersion = (conversationReorderVersionsRef.current.get(projectId) || 0) + 1;
+        conversationReorderVersionsRef.current.set(projectId, requestVersion);
+        const previousChain = conversationReorderChainsRef.current.get(projectId) || Promise.resolve();
+        const request = previousChain
+          .catch(() => undefined)
+          .then(async () => {
+            const response = await authFetch(
+              `${API_BASE}/api/projects/${encodeURIComponent(projectId)}/conversations/reorder`,
+              {
+                method: 'PATCH',
+                headers: buildApiHeaders(),
+                body: JSON.stringify({
+                  conversation_ids: conversationIds,
+                  pinned: sourcePinned,
+                }),
+              },
+            );
+            if (!response.ok) throw new Error(`conversation reorder failed: ${response.status}`);
+          });
+        conversationReorderChainsRef.current.set(projectId, request);
+        request.catch((error) => {
+          if (conversationReorderVersionsRef.current.get(projectId) !== requestVersion) return;
+          restoreProjectsFromBackend(error, previousState);
+        }).finally(() => {
+          if (conversationReorderChainsRef.current.get(projectId) === request) {
+            conversationReorderChainsRef.current.delete(projectId);
+          }
+        });
       }
 
       return nextState;
@@ -235,51 +318,92 @@ export function createConversationHandlers(ctx) {
       )),
     }));
 
-    // Sync all conversations in this project to backend as well
-    if (currentProject) {
-      for (const conversation of (currentProject.conversations || [])) {
-        authFetch(`${API_BASE}/api/conversations/${encodeURIComponent(conversation.id)}`, {
-          method: 'PATCH',
-          headers: buildApiHeaders(),
-          body: JSON.stringify({ pinned: newPinned }),
-        }).catch(() => {});
-      }
-    }
+    authFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
+      method: 'PATCH',
+      headers: buildApiHeaders(),
+      body: JSON.stringify({ pinned: newPinned }),
+    }).then((response) => {
+      if (!response.ok) throw new Error(`project pin failed: ${response.status}`);
+    }).catch((error) => {
+      setWorkspaceState((state) => normalizeWorkspaceOrdering({
+        ...state,
+        projects: state.projects.map((project) => (
+          project.id === projectId ? { ...project, pinned: !newPinned } : project
+        )),
+      }));
+      showToast('error', error.message || 'project pin failed');
+    });
   }
 
   function handleReorderProjects(sourceId, targetId, position) {
-    setWorkspaceState((state) => normalizeWorkspaceOrdering({
-      ...state,
-      projects: (() => {
-        const projects = [...state.projects];
-        const sourceIdx = projects.findIndex((p) => p.id === sourceId);
-        if (sourceIdx === -1) return state.projects;
-        const [moved] = projects.splice(sourceIdx, 1);
-        let insertIdx;
-        if (targetId === null) {
-          insertIdx = projects.length;
-        } else {
-          const adjustedTargetIdx = projects.findIndex((p) => p.id === targetId);
-          if (adjustedTargetIdx === -1) { projects.splice(sourceIdx, 0, moved); return state.projects; }
-          insertIdx = position === 'after' ? adjustedTargetIdx + 1 : adjustedTargetIdx;
-        }
-        projects.splice(insertIdx, 0, moved);
-        return projects;
-      })(),
-    }));
+    setWorkspaceState((state) => {
+      const previousState = state;
+      const sourceProject = state.projects.find((project) => project.id === sourceId);
+      const targetProject = targetId
+        ? state.projects.find((project) => project.id === targetId)
+        : null;
+      const sourcePinned = Boolean(sourceProject?.pinned);
+      if (!sourceProject || (targetProject && Boolean(targetProject.pinned) !== sourcePinned)) {
+        return state;
+      }
+      const nextState = normalizeWorkspaceOrdering({
+        ...state,
+        projects: (() => {
+          const projects = [...state.projects];
+          const sourceIdx = projects.findIndex((p) => p.id === sourceId);
+          if (sourceIdx === -1) return state.projects;
+          const [moved] = projects.splice(sourceIdx, 1);
+          let insertIdx;
+          if (targetId === null) {
+            const sameGroupIndexes = projects.flatMap((project, index) => (
+              Boolean(project.pinned) === sourcePinned ? [index] : []
+            ));
+            insertIdx = sameGroupIndexes.length
+              ? sameGroupIndexes[sameGroupIndexes.length - 1] + 1
+              : (sourcePinned ? 0 : projects.length);
+          } else {
+            const adjustedTargetIdx = projects.findIndex((p) => p.id === targetId);
+            if (adjustedTargetIdx === -1) { projects.splice(sourceIdx, 0, moved); return state.projects; }
+            insertIdx = position === 'after' ? adjustedTargetIdx + 1 : adjustedTargetIdx;
+          }
+          projects.splice(insertIdx, 0, moved);
+          return projects.map((project, index) => ({
+            ...project,
+            sortOrder: index,
+          }));
+        })(),
+      });
+      const requestVersion = projectReorderVersionRef.current + 1;
+      projectReorderVersionRef.current = requestVersion;
+      projectReorderChainRef.current = projectReorderChainRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          const response = await authFetch(`${API_BASE}/api/projects/reorder`, {
+            method: 'PATCH',
+            headers: buildApiHeaders(),
+            body: JSON.stringify({ project_ids: nextState.projects.map((project) => project.id) }),
+          });
+          if (!response.ok) throw new Error(`project reorder failed: ${response.status}`);
+        });
+      projectReorderChainRef.current.catch((error) => {
+        if (projectReorderVersionRef.current !== requestVersion) return;
+        restoreProjectsFromBackend(error, previousState);
+      });
+      return nextState;
+    });
   }
 
   async function createConversationInProject(project, title, executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot') {
     const createResponse = await authFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: buildApiHeaders(),
-      body: JSON.stringify({ title, execution_mode: executionMode }),
+      body: JSON.stringify({ title, execution_mode: executionMode, project_id: project?.id || DEFAULT_PROJECT_ID }),
     });
     if (!createResponse.ok) {
       throw new Error(`conversation create failed: ${createResponse.status}`);
     }
     let detail = await createResponse.json();
-    if (project?.workspacePath) {
+    if (project?.workspacePath && !detail.workspace_path) {
       const updateResponse = await authFetch(`${API_BASE}/api/conversations/${detail.conversation_id}`, {
         method: 'PATCH',
         headers: buildApiHeaders(),
@@ -307,12 +431,49 @@ export function createConversationHandlers(ctx) {
         showToast('info', 'workspace selection cancelled');
         return;
       }
+      const projectResponse = await authFetch(`${API_BASE}/api/projects`, {
+        method: 'POST',
+        headers: buildApiHeaders(),
+        body: JSON.stringify({
+          name: pickResult.project.name,
+          workspace_path: pickResult.project.rootPath,
+        }),
+      });
+      if (!projectResponse.ok) {
+        throw new Error(`project create failed: ${projectResponse.status}`);
+      }
+      const project = await projectResponse.json();
+      setWorkspaceState((state) => normalizeWorkspaceOrdering({
+        ...state,
+        projects: state.projects.some((item) => item.id === project.project_id)
+          ? state.projects
+          : [{
+              id: project.project_id,
+              type: 'custom',
+              name: project.name,
+              workspacePath: project.workspace_path,
+              workspaceLabel: project.name,
+              removable: true,
+              createdAt: project.created_at || null,
+              updatedAt: project.updated_at || null,
+              pinned: Boolean(project.pinned),
+              sortOrder: typeof project.sort_order === 'number' ? project.sort_order : 0,
+              chatConversationsExpanded: false,
+              workflowTasksExpanded: false,
+              hiddenModes: [],
+              conversations: [],
+            },
+            ...state.projects.map((item) => ({
+              ...item,
+              sortOrder: (item.sortOrder ?? 0) + 1,
+            }))],
+      }));
       const detail = await createConversationInProject({
-        id: projectIdForWorkspacePath(pickResult.project.rootPath),
+        id: project.project_id,
         type: 'custom',
-        name: pickResult.project.name,
-        workspacePath: pickResult.project.rootPath,
-        workspaceLabel: pickResult.project.name,
+        name: project.name,
+        workspacePath: project.workspace_path,
+        workspaceLabel: project.name,
       }, DEFAULT_SESSION_NAME);
       if (!isConversationActivationCurrent(requestSeq)) return;
       await activateConversationDetail(detail, { restoreLatest: false });
@@ -429,7 +590,19 @@ export function createConversationHandlers(ctx) {
         throw new Error(`conversation delete failed: ${response.status}`);
       }
     }));
-    const nextState = removeProjectModeFromWorkspace(workspaceState, projectId, executionMode);
+    let nextState = removeProjectModeFromWorkspace(workspaceState, projectId, executionMode);
+    if (!nextState.projects.some((item) => item.id === projectId)) {
+      const projectResponse = await authFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
+        method: 'DELETE',
+      });
+      if (!projectResponse.ok && projectResponse.status !== 404) {
+        throw new Error(`project delete failed: ${projectResponse.status}`);
+      }
+      nextState = {
+        ...nextState,
+        projects: nextState.projects.filter((item) => item.id !== projectId),
+      };
+    }
     setWorkspaceState(nextState);
     const defaultProject = nextState.projects.find((item) => item.id === DEFAULT_PROJECT_ID) || createDefaultProject();
     const fallbackConversation = defaultProject.conversations.find((item) => item.executionMode === executionMode);

@@ -494,17 +494,17 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
     conversationId,
     taskId,
   });
-  const hasBody =
-    Boolean(view.body) ||
-    Boolean(view.command) ||
-    Boolean(view.stdout) ||
-    Boolean(view.stderr) ||
-    Boolean(view.requestJson) ||
-    Boolean(view.responseJson) ||
-    (Array.isArray(view.streamLines) && view.streamLines.length > 0) ||
-    Boolean(view.finalText) ||
-    fallbackLines.length > 0 ||
-    hasChildren;
+  const hasBody = view.mode === 'terminal'
+    ? Boolean(view.command || view.stdout || view.stderr || view.running || hasChildren)
+    : (
+      Boolean(view.body) ||
+      Boolean(view.requestJson) ||
+      Boolean(view.responseJson) ||
+      (Array.isArray(view.streamLines) && view.streamLines.length > 0) ||
+      Boolean(view.finalText) ||
+      fallbackLines.length > 0 ||
+      hasChildren
+    );
   return (
     <div
       className={`chat-timeline-tool category-${category} status-${status} mode-${view.mode}`}
@@ -664,6 +664,20 @@ export function ChatTimelineThinkingNode({ item }) {
   );
 }
 
+export function ChatTimelineUserInputNode({ item }) {
+  const text = String(item.text || '').trim();
+  if (!text) return null;
+  // 纠偏/打断指令与正常用户消息完全一致：右侧对齐的蓝色渐变气泡，
+  // 不加任何特殊标签（You / Queued instruction）或虚线边框。
+  return (
+    <div className="chat-timeline-user-input">
+      <div className="chat-timeline-user-input-bubble">
+        <p className="chat-timeline-user-input-text">{text}</p>
+      </div>
+    </div>
+  );
+}
+
 export function ChatAgentTimeline({
   items = [],
   streaming = false,
@@ -713,6 +727,9 @@ export function ChatAgentTimeline({
         }
         if (item.kind === 'thinking') {
           return <ChatTimelineThinkingNode key={item.id} item={item} />;
+        }
+        if (item.kind === 'user_input') {
+          return <ChatTimelineUserInputNode key={item.id} item={item} />;
         }
         if (item.kind === 'meta') {
           return <ChatTimelineMetaNode key={item.id} item={item} />;

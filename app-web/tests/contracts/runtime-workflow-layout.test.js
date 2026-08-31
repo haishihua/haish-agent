@@ -126,7 +126,6 @@ test('assistant messages keep the original penguin icon', () => {
 
 test('live traces stay visible while their tool cards remain collapsed', () => {
   assert.match(chatMessageSource, /const traceForcedOpen = message\.streaming \|\| message\.traceOpen/);
-  assert.match(appShellSource, /traceOpen: !isLast && streaming/);
   assert.match(chatMessageSource, /const showTimelineExpanded = hasTraceDisclosure && \(traceForcedOpen \|\| traceExpanded\)/);
   assert.match(chatMessageSource, /const showTimelineToggle = hasTraceDisclosure && !traceForcedOpen/);
   assert.match(chatMessageSource, /showTimelineToggle \? \(\s*<ChatTimelineCollapsed/);
@@ -134,6 +133,14 @@ test('live traces stay visible while their tool cards remain collapsed', () => {
   assert.match(chatMessageSource, /setTraceExpanded\(false\).*message\.conversationId, message\.id/s);
   assert.match(chatMessageSource, /traceForcedOpen && firstTokenMs \? <ChatTimelineElapsedPill/);
   assert.doesNotMatch(chatTimelineSource, /expandedByDefault/);
+  // Mid-run steering inputs (user_input timeline items) no longer split the
+  // trace into standalone user bubbles / per-segment agent rows — the whole
+  // exchange stays inside one assistant bubble, with the correction rendered
+  // inline by the timeline.
+  assert.doesNotMatch(appShellSource, /traceOpen: !isLast && streaming/);
+  assert.match(appShellSource, /traceTimeline: timelineItems,/);
+  assert.match(chatTimelineSource, /item\.kind === 'user_input'/);
+  assert.match(chatTimelineSource, /ChatTimelineUserInputNode/);
 });
 
 test('runtime details use executed node data and real workflow transitions', () => {

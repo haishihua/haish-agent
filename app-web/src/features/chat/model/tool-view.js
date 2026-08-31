@@ -498,7 +498,7 @@ export function toolActionLabel(item) {
   if (name === 'glob_files') return 'Glob files';
   if (name === 'list_dir') return 'List dir';
   if (name === 'exec_command') return 'Shell';
-  if (name === 'write_stdin') return 'Shell input';
+  if (name === 'write_stdin') return 'Process';
   return item.label || item.toolName || 'Tool';
 }
 
@@ -638,18 +638,37 @@ export function buildToolView(item) {
     const input = toolPlainObject(item.toolInput);
     const command = subject.command || input.command || input.cmd || '';
     const cwd = subject.cwd || input.working_dir || '';
-    const output = extractTerminalOutput(item, response, artifacts, data);
+    const output = firstToolDisplayValue(
+      item.terminalOutput,
+      extractTerminalOutput(item, response, artifacts, data),
+    );
     const stderr = firstToolDisplayValue(artifacts.stderr, data.stderr);
     const fallback = firstToolDisplayValue(error.message, response.summary, item.outputSummary);
     const exitCode = firstToolDisplayValue(error.exit_code, data.exit_code, diagnostics.exit_code);
+    const failed = isToolFailure(item);
+    const operation = String(response.operation || '');
+    let label;
+    if (name === 'exec_command') {
+      label = command ? `Shell ${command}` : 'Shell';
+    } else if (operation === 'interrupt' || input.chars === '\u0003') {
+      label = 'Interrupted process';
+    } else if (operation === 'interact' || input.chars) {
+      label = 'Sent input';
+    } else if (exitCode !== undefined && exitCode !== null && exitCode !== '') {
+      label = `Process finished · exit ${exitCode}`;
+    } else {
+      label = 'Checked process';
+    }
     return {
       mode: 'terminal',
-      label: command ? `${toolActionLabel(item)} ${command}` : toolActionLabel(item),
+      label,
       command,
       cwd,
       requestJson: toolJsonText(item.toolInput),
       responseJson: outputJsonText(response),
-      stdout: output || command ? (output ? tailToolOutput(output) : compactToolValue(fallback, 1200)) : '',
+      stdout: output
+        ? tailToolOutput(output)
+        : (failed ? compactToolValue(fallback, 1200) : ''),
       stderr: stderr ? tailToolOutput(stderr) : '',
       exitCode,
       running: item.status === 'running' || item.status === 'pending',

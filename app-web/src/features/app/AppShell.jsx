@@ -78,10 +78,7 @@ import {
   getStoredConversationId,
   setStoredConversationId,
   loadStoredWorkspaceState,
-  loadLegacyWorkspaceState,
   saveWorkspaceState,
-  filterWorkspaceStateByConversationIds,
-  legacyWorkspaceMigrationCompleted,
   markLegacyWorkspaceMigrationCompleted,
   normalizeWorkspaceOrdering,
   workspaceStateWithConversationDetail as mergeConversationDetailIntoWorkspace,
@@ -90,6 +87,7 @@ import {
   findConversationById,
   findProjectByConversationId,
   buildWorkspaceStateFromConversationDetails as buildWorkspaceFromConversationDetails,
+  buildWorkspaceStateFromProjects as buildWorkspaceFromProjects,
   conversationDetailToWorkspaceConversation as mapConversationDetailToWorkspace,
   titleFromTaskText,
   isDefaultConversationName,
@@ -166,6 +164,9 @@ const conversationDetailToWorkspaceConversation = (detail, previousConversation 
 const buildWorkspaceStateFromConversationDetails = (details, previousState) => (
   buildWorkspaceFromConversationDetails(details, previousState, taskSummaryToRuntimeTask)
 );
+const buildWorkspaceStateFromProjects = (projects, previousState) => (
+  buildWorkspaceFromProjects(projects, previousState, taskSummaryToRuntimeTask)
+);
 const workspaceStateWithConversationDetail = (state, detail, activate = true) => (
   mergeConversationDetailIntoWorkspace(state, detail, activate, taskSummaryToRuntimeTask)
 );
@@ -174,6 +175,9 @@ const TASK_COMPLETION_NOTICES_STORAGE_KEY = 'haish.task-completion-notices.v1';
 export function AppShell({ authUser = null, onLogout = () => undefined, initialToast = null }) {
   const [taskRuntimeState, setTaskRuntimeState] = useState(() => createEmptyTaskRuntimeState());
   const [workspaceState, setWorkspaceState] = useState(() => loadStoredWorkspaceState());
+  // 打开应用后先做一次性加载（服务端项目/会话同步）。加载完成前侧边栏只展示
+  // Haish logo 图标（闪烁动画），不渲染本地缓存里可能过期的项目/会话。
+  const [workspaceLoading, setWorkspaceLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [viewMode, setViewMode] = useState('chat');
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
@@ -188,6 +192,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   ));
   const viewModeRef = useRef('chat');
   const viewModeTogglePromiseRef = useRef(null);
+  const conversationReorderChainsRef = useRef(new Map());
+  const conversationReorderVersionsRef = useRef(new Map());
+  const projectReorderChainRef = useRef(Promise.resolve());
+  const projectReorderVersionRef = useRef(0);
   const modeLocationRef = useRef({ chat: null, workflow: null });
   const [busy, setBusy] = useState(false);
   const [hollow, setHollow] = useState(null);
@@ -710,15 +718,17 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       try {
         const storedConversationIds = getWorkspaceConversationIds(initialWorkspaceState);
         let details = [];
+        let serverProjects = null;
         let serverListLoaded = false;
         try {
-          const listResponse = await authFetch(`${API_BASE}/api/conversations`, { method: 'GET' }, { json: false });
-          if (!listResponse.ok) throw new Error(`conversation list failed: ${listResponse.status}`);
+          const listResponse = await authFetch(`${API_BASE}/api/projects`, { method: 'GET' }, { json: false });
+          if (!listResponse.ok) throw new Error(`project list failed: ${listResponse.status}`);
           const listed = await listResponse.json();
-          details = Array.isArray(listed) ? listed : [];
+          serverProjects = Array.isArray(listed?.projects) ? listed.projects : [];
+          details = serverProjects.flatMap((project) => project.conversations || []);
           serverListLoaded = true;
         } catch (error) {
-          console.warn('conversation list restore failed; falling back to local cache:', error);
+          console.warn('project list restore failed; falling back to local cache:', error);
         }
         if (!serverListLoaded && storedConversationIds.length > 0) {
           const restoredDetails = await Promise.all(
@@ -739,6 +749,13 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           );
           if (!created) return;
           details = [created];
+          if (serverProjects) {
+            serverProjects = serverProjects.map((project) => (
+              project.project_id === (created.project_id || DEFAULT_PROJECT_ID)
+                ? { ...project, conversations: [created, ...(project.conversations || [])] }
+                : project
+            ));
+          }
         }
         if (cancelled || !activationApiRef.current.isConversationActivationCurrent?.(bootstrapActivationSeq)) return;
         const storedConversationId = getStoredConversationId();
@@ -748,15 +765,9 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
             activeConversationId: storedConversationId || initialWorkspaceState.activeConversationId,
           }
           : createEmptyWorkspaceState();
-        if (serverListLoaded && !legacyWorkspaceMigrationCompleted()) {
-          const serverConversationIds = details.map((detail) => detail.conversation_id).filter(Boolean);
-          const migratedLegacyState = filterWorkspaceStateByConversationIds(
-            loadLegacyWorkspaceState(),
-            serverConversationIds,
-          );
-          if (migratedLegacyState) previousWorkspaceState = migratedLegacyState;
-        }
-        const nextWorkspaceState = buildWorkspaceStateFromConversationDetails(details, previousWorkspaceState);
+        const nextWorkspaceState = serverProjects
+          ? buildWorkspaceStateFromProjects(serverProjects, previousWorkspaceState)
+          : buildWorkspaceStateFromConversationDetails(details, previousWorkspaceState);
         saveWorkspaceState(nextWorkspaceState);
         if (serverListLoaded) markLegacyWorkspaceMigrationCompleted();
         setWorkspaceState(nextWorkspaceState);
@@ -771,6 +782,10 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       } catch (error) {
         if (cancelled) return;
         setConversationError(String(error?.message || error));
+      } finally {
+        // 无论成功、回退本地缓存还是出错，一次性加载结束后都要放行侧边栏；
+        // 组件卸载（cancelled）时不再 setState。
+        if (!cancelled) setWorkspaceLoading(false);
       }
     })();
     return () => {
@@ -1101,6 +1116,11 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     applyConversationSnapshot,
     authFetch,
     buildApiHeaders,
+    buildWorkspaceStateFromProjects,
+    conversationReorderChainsRef,
+    conversationReorderVersionsRef,
+    projectReorderChainRef,
+    projectReorderVersionRef,
     // Late-bound: createDeployHandlers runs after this factory (selection pending deps).
     buildDeployRequest: (...args) => deployApiRef.current.buildDeployRequest?.(...args),
     settingsMode,
@@ -1651,78 +1671,26 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         const bubbleText = streaming
           ? ''
           : (status === 'cancelled' ? '' : (error || answer));
-        // Mid-run steering inputs ("user_input" timeline items) render as
-        // independent user bubbles — exactly like normal asks — instead of
-        // being embedded inside the assistant trace. Split the trace at each
-        // runtime input so the message list reads:
-        //   user ask → assistant work → user steer → assistant work → …
-        // Each segment keeps its own time window (start → steering time / end),
-        // so every segment shows its elapsed time instead of the generic
-        // "Trace" fallback.
-        const timelineToMs = (value) => {
-          if (!value) return null;
-          const ms = typeof value === 'number' ? value : Date.parse(String(value));
-          return Number.isFinite(ms) && ms > 0 ? ms : null;
-        };
-        const traceSegments = [];
-        let currentSegment = { timeline: [], userInput: null, startAt: null, endAt: null };
-        let lastBoundaryMs = null;
-        for (const item of timelineItems) {
-          if (item.kind === 'user_input') {
-            const boundaryMs = timelineToMs(item.timestamp);
-            currentSegment.endAt = boundaryMs || lastBoundaryMs || null;
-            traceSegments.push(currentSegment);
-            currentSegment = {
-              timeline: [],
-              userInput: item,
-              startAt: boundaryMs || null,
-              endAt: null,
-            };
-            lastBoundaryMs = boundaryMs || lastBoundaryMs || null;
-          } else {
-            currentSegment.timeline.push(item);
-          }
-        }
-        currentSegment.endAt = timelineToMs(task.completedAt);
-        traceSegments.push(currentSegment);
-        traceSegments.forEach((segment, segmentIndex) => {
-          const isLast = segmentIndex === traceSegments.length - 1;
-          if (segment.userInput) {
-            taskRows.push({
-              id: `${taskId}-runtime-input-${segment.userInput.id || segmentIndex}`,
-              role: 'user',
-              text: String(segment.userInput.text || ''),
-              status: '',
-              createdAt: timelineToMs(segment.userInput.timestamp) || task.createdAt,
-              completedAt: task.completedAt,
-              images: [],
-            });
-          }
-          if (segment.timeline.length > 0 || isLast) {
-            taskRows.push({
-              id: `${taskId}-agent-${segmentIndex}`,
-              taskId,
-              conversationId,
-              role: 'agent',
-              text: isLast ? bubbleText : '',
-              progressLines: isLast ? progressLines : [],
-              traceTimeline: segment.timeline,
-              traceLatestTodos: isLast ? (timeline?.latestTodos || null) : null,
-              status,
-              streaming: isLast && streaming,
-              // A steering input closes the preceding assistant segment. Keep
-              // that segment open while the same task continues so the user
-              // can see the answer they are correcting.
-              traceOpen: !isLast && streaming,
-              // Earlier segments freeze at the steering boundary while the run
-              // is active so their previous tool calls stay visible with their
-              // own time pill; the final segment keeps the task-level clock,
-              // identical to a normal task run.
-              createdAt: isLast ? task.createdAt : (segment.startAt || task.createdAt),
-              completedAt: isLast ? task.completedAt : (segment.endAt || task.completedAt),
-              firstTokenAt: taskFirstStreamTimestamp(task),
-            });
-          }
+        // Mid-run steering inputs ("user_input" timeline items) stay inside the
+        // assistant trace — they do NOT become standalone user bubbles. The
+        // correction embeds inline in the interrupted assistant box and the
+        // assistant's follow-up reply to it continues below, so the whole
+        // exchange reads as one continuous dialogue bubble instead of three
+        // blocks. All items keep their original chronological order.
+        taskRows.push({
+          id: `${taskId}-agent`,
+          taskId,
+          conversationId,
+          role: 'agent',
+          text: bubbleText,
+          progressLines,
+          traceTimeline: timelineItems,
+          traceLatestTodos: timeline?.latestTodos || null,
+          status,
+          streaming,
+          createdAt: task.createdAt,
+          completedAt: task.completedAt,
+          firstTokenAt: taskFirstStreamTimestamp(task),
         });
       }
       rowCache.set(task, taskRows);
@@ -1783,6 +1751,23 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     || settingsMode
     || !!conversationError
     || (viewMode !== 'chat' && currentConversationRunning);
+
+  // 一次性加载（项目/会话同步）完成前：整屏只显示居中的 Haish logo
+  // （呼吸光晕 + 光环脉冲动效），不渲染顶栏/侧边栏等任何其他 UI（参考设计稿）。
+  if (workspaceLoading) {
+    return (
+      <div className="app-shell app-shell-loading">
+        <div className="app-splash">
+          <img
+            className="app-splash-logo"
+            src="assets/ui/penguin_logo_user.png"
+            alt=""
+            draggable={false}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">

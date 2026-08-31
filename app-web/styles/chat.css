@@ -922,6 +922,33 @@
     overflow-wrap: anywhere;
 }
 
+/* 运行时用户纠偏/打断指令（user_input 时间轴条目）：内嵌在被打断的 assistant
+   时间轴中，样式与正常用户消息气泡（.chat-message-row.user .chat-bubble）完全一致：
+   右侧对齐 + 蓝色渐变 + 同一圆角/内边距/阴影，不加任何特殊标签或虚线边框。 */
+.chat-timeline-user-input {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.chat-timeline-user-input-bubble {
+    max-width: min(680px, 86%);
+    padding: 12px 14px 13px;
+    border-radius: 12px;
+    border: 1px solid rgba(92, 154, 255, 0.46);
+    background: linear-gradient(180deg, rgba(77, 141, 246, 0.32), rgba(40, 75, 134, 0.24));
+    color: #dce3f4;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+    font-family: var(--conversation-font);
+}
+
+.chat-timeline-user-input-text {
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 .chat-timeline {
     /* One tool-card type system for both Agent chat and Workflow detail.
      * Keep the font token on the shared timeline root so tool groups, normal

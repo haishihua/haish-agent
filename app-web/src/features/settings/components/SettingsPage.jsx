@@ -498,7 +498,7 @@ export function SettingsPage({
               <div className="settings-side-section" key={section.id}>
                 <button
                   type="button"
-                  className={`${isActive ? 'active' : ''}${sectionSubtabs.length ? '' : ' settings-side-leaf'}`.trim()}
+                  className={`${isActive ? 'active' : ''}`.trim()}
                   aria-expanded={sectionSubtabs.length ? isExpanded : undefined}
                   onClick={() => {
                     if (sectionSubtabs.length) {

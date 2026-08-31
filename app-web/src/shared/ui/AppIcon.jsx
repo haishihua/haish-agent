@@ -39,6 +39,7 @@ import {
   ToggleRight,
   Trash2,
   UserRoundCheck,
+  Workflow,
   Wrench,
   X,
 } from 'lucide-react';
@@ -48,6 +49,7 @@ const ICONS = {
   back: ArrowLeft,
   ban: Ban,
   'book-open': BookOpen,
+  bot: Bot,
   box: Box,
   'circle-check': CheckCircle2,
   'circle-x': CircleX,
@@ -82,6 +84,7 @@ const ICONS = {
   'toggle-right': ToggleRight,
   validate: ShieldCheck,
   wrench: Wrench,
+  workflow: Workflow,
   'workflow-agent': Bot,
   'workflow-approval': UserRoundCheck,
   'workflow-condition': GitFork,

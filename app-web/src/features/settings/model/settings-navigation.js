@@ -10,8 +10,14 @@ export const SETTINGS_SECTIONS = [
       { id: 'knowledge', label: 'Knowledge', icon: 'book-open' },
     ],
   },
-  { id: 'agent', label: 'Agent' },
-  { id: 'workflow', label: 'Agentic Workflow' },
+  {
+    id: 'automation',
+    label: 'Automation',
+    children: [
+      { id: 'agent', label: 'Agent', icon: 'bot' },
+      { id: 'workflow', label: 'Agentic Workflow', icon: 'workflow' },
+    ],
+  },
 ];
 
 // 平铺查找（含分组 children），供 label / copy 等元数据查询使用。

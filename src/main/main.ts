@@ -183,6 +183,8 @@ function createWindow(): void {
     minWidth: 1280,
     minHeight: 760,
     title: 'Haish',
+    // 每次打开都在屏幕中央创建窗口，避免落在屏幕角落/被其他窗口遮挡。
+    center: true,
     // 透明窗口 + vibrancy 只用于 OS 圆角边缘；首屏在 web 内容 paint 前若仍用
     // 全透明底，硬刷新会露出浅色系统材质（用户看到的「灰白异常页」）。
     // 用与 html/body 一致的深色底，paint 前也保持暗色，避免空白闪屏。

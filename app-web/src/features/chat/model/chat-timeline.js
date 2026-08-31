@@ -413,6 +413,68 @@ export function buildChatTimeline(task, taskStatus) {
   // which is what caused the "all tool calls yellow" regression after a
   // tab-switch round-trip rebuilds the timeline from the event log alone.
   const toolItemsByCallId = new Map();
+  // exec_command owns the visible terminal card. write_stdin is a protocol
+  // interaction with that process, so fold it back into the originating card
+  // instead of rendering a second timeline item.
+  const terminalItemsBySessionId = new Map();
+  const plainObject = (value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value !== 'string') return {};
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const terminalSessionId = (value) => {
+    const response = plainObject(value);
+    const data = plainObject(response.data);
+    return String(data.session_id || data.sessionId || '').trim();
+  };
+  const terminalOutputChunk = (source) => {
+    const response = plainObject(source?.toolResponse || source?.tool_response);
+    const artifacts = plainObject(response.artifacts);
+    const data = plainObject(response.data);
+    const output = artifacts.output
+      ?? artifacts.content
+      ?? artifacts.text
+      ?? artifacts.stdout
+      ?? data.output
+      ?? data.stdout;
+    if (output !== undefined && output !== null) return String(output);
+    const raw = source?.toolOutput || source?.tool_output || '';
+    const rawText = String(raw || '');
+    if (rawText.trimStart().startsWith('TOOL_RESPONSE')) return '';
+    const rawPayload = plainObject(rawText);
+    if (rawPayload.tool_name || rawPayload.toolName) return '';
+    return rawText;
+  };
+  const mergeTerminalResult = (toolItem, source, terminalState = '') => {
+    if (!toolItem || !source) return;
+    const response = source.toolResponse || source.tool_response || null;
+    const chunk = terminalOutputChunk(source);
+    if (chunk) {
+      toolItem.terminalOutput = appendAnswerDelta(toolItem.terminalOutput || '', chunk);
+    }
+    if (response) toolItem.toolResponse = response;
+    toolItem.outputSummary = source.outputSummary || source.output_summary || toolItem.outputSummary || '';
+
+    const nextSessionId = terminalSessionId(response);
+    if (nextSessionId) {
+      toolItem.terminalSessionId = nextSessionId;
+      terminalItemsBySessionId.set(nextSessionId, toolItem);
+      toolItem.status = getToolTraceStatus('running', finalStatus);
+      return;
+    }
+
+    if (toolItem.terminalSessionId && terminalState !== 'requested') {
+      terminalItemsBySessionId.delete(toolItem.terminalSessionId);
+      toolItem.terminalSessionId = '';
+    }
+    const responseState = getToolResponseTraceStatus(response, terminalState);
+    toolItem.status = getToolTraceStatus(responseState || terminalState, finalStatus);
+  };
   const runtimeInputItemsById = new Map();
   const canNestToolChildren = (toolItem) => {
     if (!toolItem) return false;
@@ -482,15 +544,23 @@ export function buildChatTimeline(task, taskStatus) {
     if (!callId) return;
     const toolItem = toolItemsByCallId.get(callId);
     if (!toolItem) return;
-    const responseState = getToolResponseTraceStatus(event?.toolResponse, terminalState);
-    toolItem.status = getToolTraceStatus(responseState || terminalState, finalStatus);
+    if (event && (normalizeToolName(toolItem.toolName) === 'exec_command'
+      || normalizeToolName(toolItem.toolName) === 'write_stdin')) {
+      mergeTerminalResult(toolItem, event, terminalState);
+    } else {
+      const responseState = getToolResponseTraceStatus(event?.toolResponse, terminalState);
+      toolItem.status = getToolTraceStatus(responseState || terminalState, finalStatus);
+    }
     if (toolItem === currentSkillItem && !canNestToolChildren(toolItem)) {
       currentSkillItem = null;
     }
     if (!event) return;
     toolItem.outputSummary = event.outputSummary || toolItem.outputSummary || '';
     toolItem.toolResponse = event.toolResponse || toolItem.toolResponse || null;
-    toolItem.toolOutput = event.toolOutput || toolItem.toolOutput || '';
+    if (normalizeToolName(toolItem.toolName) !== 'exec_command'
+      && normalizeToolName(toolItem.toolName) !== 'write_stdin') {
+      toolItem.toolOutput = event.toolOutput || toolItem.toolOutput || '';
+    }
     appendToolProgress(toolItem, event, terminalState);
   };
 
@@ -687,7 +757,20 @@ export function buildChatTimeline(task, taskStatus) {
       if (textBufSource === 'unknown' || textBufSource === 'answer') textBufSource = 'commentary';
       if (textBuf.trim()) flushText();
       const callId = event.callId || '';
-      if (normalizeToolName(event.toolName) === 'todo_write') continue;
+      const eventToolName = normalizeToolName(event.toolName);
+      if (eventToolName === 'todo_write') continue;
+      if (eventToolName === 'write_stdin') {
+        const input = plainObject(event.toolInput || event.tool_input);
+        const parent = terminalItemsBySessionId.get(String(input.session_id || input.sessionId || '').trim());
+        if (parent) {
+          parent.status = getToolTraceStatus('running', finalStatus);
+          if (callId) {
+            seenToolIds.add(callId);
+            toolItemsByCallId.set(callId, parent);
+          }
+        }
+        continue;
+      }
       if (callId && seenToolIds.has(callId)) {
         const existing = toolItemsByCallId.get(callId);
         if (existing) {
@@ -736,6 +819,9 @@ export function buildChatTimeline(task, taskStatus) {
         children: [],
         progressEvents: [],
       };
+      if (eventToolName === 'exec_command' || eventToolName === 'write_stdin') {
+        mergeTerminalResult(toolItem, call, call.state || 'requested');
+      }
       appendToolProgress(toolItem, event, 'requested');
       if (callId) {
         seenToolIds.add(callId);
@@ -760,7 +846,12 @@ export function buildChatTimeline(task, taskStatus) {
         if (toolItem) {
           const delta = String(event.delta || event.text || event.contentDelta || event.content || '');
           if (delta) {
-            toolItem.toolOutput = `${toolItem.toolOutput || ''}${delta}`;
+            if (normalizeToolName(toolItem.toolName) === 'exec_command'
+              || normalizeToolName(toolItem.toolName) === 'write_stdin') {
+              toolItem.terminalOutput = appendAnswerDelta(toolItem.terminalOutput || '', delta);
+            } else {
+              toolItem.toolOutput = `${toolItem.toolOutput || ''}${delta}`;
+            }
             toolItem.status = getToolTraceStatus('running', finalStatus);
           }
         }
@@ -802,7 +893,18 @@ export function buildChatTimeline(task, taskStatus) {
   // (e.g. event still in-flight). Append them in their natural order.
   for (const call of toolCalls) {
     if (!call?.callId || seenToolIds.has(call.callId)) continue;
-    if (normalizeToolName(call.toolName) === 'todo_write') continue;
+    const callToolName = normalizeToolName(call.toolName);
+    if (callToolName === 'todo_write') continue;
+    if (callToolName === 'write_stdin') {
+      const input = plainObject(call.toolInput);
+      const parent = terminalItemsBySessionId.get(String(input.session_id || input.sessionId || '').trim());
+      if (parent) {
+        toolItemsByCallId.set(call.callId, parent);
+        mergeTerminalResult(parent, call, call.state || 'completed');
+      }
+      seenToolIds.add(call.callId);
+      continue;
+    }
     const category = categorizeToolCall(call);
     const label = timelineToolLabel(call, category);
     const toolItem = {
@@ -822,6 +924,9 @@ export function buildChatTimeline(task, taskStatus) {
       children: [],
       progressEvents: [],
     };
+    if (callToolName === 'exec_command' || callToolName === 'write_stdin') {
+      mergeTerminalResult(toolItem, call, call.state || 'requested');
+    }
     seenToolIds.add(call.callId);
     if (category === 'skill') {
       items.push(toolItem);
