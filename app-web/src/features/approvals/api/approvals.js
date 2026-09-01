@@ -1,9 +1,9 @@
-import { authFetch } from '../../../shared/api/auth.js';
+import { apiFetch } from '../../../shared/api/client.js';
 import { API_BASE } from '../../../shared/api/base.js';
 
 export async function fetchInitialApprovalState() {
   try {
-    const response = await authFetch(`${API_BASE}/api/approvals/state`, { cache: 'no-store' });
+    const response = await apiFetch(`${API_BASE}/api/approvals/state`, { cache: 'no-store' });
     if (!response.ok) return [];
     const data = await response.json();
     return [
@@ -26,7 +26,7 @@ export async function fetchInitialApprovalState() {
 }
 
 export async function postApprovalDecision(requestId, decision) {
-  const response = await authFetch(`${API_BASE}/api/approvals/${encodeURIComponent(requestId)}/resolve`, {
+  const response = await apiFetch(`${API_BASE}/api/approvals/${encodeURIComponent(requestId)}/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ decision }),
@@ -38,7 +38,7 @@ export async function postApprovalDecision(requestId, decision) {
 }
 
 export async function postWorkflowApprovalDecision(requestId, decision, feedback = '') {
-  const response = await authFetch(`${API_BASE}/api/workflow-approvals/${encodeURIComponent(requestId)}/resolve`, {
+  const response = await apiFetch(`${API_BASE}/api/workflow-approvals/${encodeURIComponent(requestId)}/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ decision, feedback }),
@@ -68,7 +68,7 @@ export async function postBrowserRuntimeDecision(request, decision) {
     options.headers = { 'Content-Type': 'application/json' };
     options.body = JSON.stringify({ timeout_seconds: 900 });
   }
-  const response = await authFetch(url, options);
+  const response = await apiFetch(url, options);
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
     throw new Error(

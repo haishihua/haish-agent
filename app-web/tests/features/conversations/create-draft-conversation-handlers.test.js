@@ -13,7 +13,7 @@ function createRuntimeRestoreHarness(responsePromise) {
   const conversationIdRef = { current: 'workflow-conversation' };
   const handlers = createDraftConversationHandlers({
     API_BASE: 'http://runtime',
-    authFetch: () => responsePromise,
+    apiFetch: () => responsePromise,
     conversationIdRef,
     normalizeRuntimeEvents: (events) => events || [],
     taskDetailToRuntimeTask: (task) => task,
@@ -21,7 +21,6 @@ function createRuntimeRestoreHarness(responsePromise) {
     updateTaskRuntimeState: (updater, targetConversationId) => {
       updates.push({ updater, targetConversationId });
     },
-    userIdRef: { current: 'owner' },
   });
   return { conversationIdRef, handlers, updates };
 }

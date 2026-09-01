@@ -1,7 +1,7 @@
 import {
   CONTEXT_USAGE_STORAGE_KEY,
   RESTORED_CONTEXT_BASE_TOKENS,
-} from '../../../shared/api/auth.js';
+} from '../../../shared/api/client.js';
 
 let runtimeContextTotalTokens = 0;
 

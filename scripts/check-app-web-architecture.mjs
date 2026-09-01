@@ -43,8 +43,8 @@ for (const file of files) {
   if (source.includes("document.createElement('style')") || source.includes('document.createElement("style")')) {
     errors.push(`${localPath}: runtime style injection is forbidden; use app-web/styles`);
   }
-  if (source.includes('window.authFetch')) {
-    errors.push(`${localPath}: import authFetch directly from shared/api/auth.js`);
+  if (source.includes('window.apiFetch')) {
+    errors.push(`${localPath}: import apiFetch directly from shared/api/client.js`);
   }
   if (segments.includes('model') && /(?:from\s+['"]react['"]|import\s+React)/.test(source)) {
     errors.push(`${localPath}: model modules must stay React-free`);

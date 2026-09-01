@@ -32,9 +32,9 @@ test('project and project conversation reorder use scoped backend routes', () =>
 });
 
 test('workspace bootstrap loads backend project hierarchy', () => {
-  assert.match(appShellSource, /authFetch\(`\$\{API_BASE\}\/api\/projects`/);
+  assert.match(appShellSource, /apiFetch\(`\$\{API_BASE\}\/api\/projects`/);
   assert.match(appShellSource, /buildWorkspaceStateFromProjects\(serverProjects/);
-  assert.doesNotMatch(appShellSource, /authFetch\(`\$\{API_BASE\}\/api\/conversations`, \{ method: 'GET'/);
+  assert.doesNotMatch(appShellSource, /apiFetch\(`\$\{API_BASE\}\/api\/conversations`, \{ method: 'GET'/);
 });
 
 test('local storage keeps UI state but omits backend ordering fields', () => {

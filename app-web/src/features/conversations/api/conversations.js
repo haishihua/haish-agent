@@ -1,4 +1,4 @@
-import { authFetch, buildApiHeaders } from '../../../shared/api/auth.js';
+import { apiFetch, buildApiHeaders } from '../../../shared/api/client.js';
 import { API_BASE } from '../../../shared/api/base.js';
 
 const MAX_BOOTSTRAP_ATTEMPTS = 8;
@@ -10,7 +10,7 @@ export async function createConversationWithRetry(payload, isCurrentActivation) 
   let lastStatus = null;
   for (let attempt = 1; attempt <= MAX_BOOTSTRAP_ATTEMPTS; attempt += 1) {
     if (!isCurrentActivation()) return null;
-    const response = await authFetch(`${API_BASE}/api/conversations`, {
+    const response = await apiFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: buildApiHeaders(),
       body: JSON.stringify(payload),

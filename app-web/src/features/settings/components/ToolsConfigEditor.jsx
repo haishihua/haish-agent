@@ -2,7 +2,7 @@ import React from 'react';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { API_BASE } from '../../../shared/api/base.js';
-import { authFetch, parseResponseMessage } from '../../../shared/api/auth.js';
+import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import {
   DEFAULT_MCP_CONFIG_JSON,
   MCP_CONFIG_TEMPLATE_JSON,
@@ -94,7 +94,7 @@ export function ToolsConfigEditor({
         return false;
       }
       try {
-        const response = await authFetch(`${API_BASE}/api/settings/tools/mcp/validate`, {
+        const response = await apiFetch(`${API_BASE}/api/settings/tools/mcp/validate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ config: parsedDraft.value }),

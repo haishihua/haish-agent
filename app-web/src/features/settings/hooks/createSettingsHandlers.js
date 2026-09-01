@@ -15,7 +15,7 @@ export function createSettingsHandlers(ctx) {
     applyLlmSettingsPayloadToDraft,
     applyMemorySettingsPayloadToRecords,
     applyToolsSettingsPayloadToRecords,
-    authFetch,
+    apiFetch,
     buildKnowledgeSettingsPayload,
     buildMemorySettingsPayload,
     buildToolsSettingsPayload,
@@ -60,7 +60,7 @@ export function createSettingsHandlers(ctx) {
     try {
       window.localStorage?.setItem(LLM_SETTINGS_STORAGE_KEY, JSON.stringify(llmSettingsDraft));
       window.localStorage?.setItem(SETTINGS_RECORDS_STORAGE_KEY, JSON.stringify(settingsRecordsDraft));
-      const llmResponse = await authFetch(`${API_BASE}/api/settings/llm`, {
+      const llmResponse = await apiFetch(`${API_BASE}/api/settings/llm`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(llmSettingsDraft),
@@ -72,7 +72,7 @@ export function createSettingsHandlers(ctx) {
       const llmPayload = await llmResponse.json();
       setLlmSettingsDraft((prev) => applyLlmSettingsPayloadToDraft(prev, llmPayload));
       const toolsPayload = buildToolsSettingsPayload(settingsRecordsDraft);
-      const response = await authFetch(`${API_BASE}/api/settings/tools`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/tools`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(toolsPayload),
@@ -83,7 +83,7 @@ export function createSettingsHandlers(ctx) {
       }
       const payload = await response.json();
       setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
-      const memoryResponse = await authFetch(`${API_BASE}/api/settings/memory`, {
+      const memoryResponse = await apiFetch(`${API_BASE}/api/settings/memory`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildMemorySettingsPayload(settingsRecordsDraft)),
@@ -98,7 +98,7 @@ export function createSettingsHandlers(ctx) {
         syncSettingsConnectionStatus(next);
         return next;
       });
-      const knowledgeResponse = await authFetch(`${API_BASE}/api/settings/knowledge`, {
+      const knowledgeResponse = await apiFetch(`${API_BASE}/api/settings/knowledge`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildKnowledgeSettingsPayload(settingsRecordsDraft)),
@@ -123,7 +123,7 @@ export function createSettingsHandlers(ctx) {
     try {
       window.localStorage?.setItem(SETTINGS_RECORDS_STORAGE_KEY, JSON.stringify(nextRecords));
       const toolsPayload = buildToolsSettingsPayload(nextRecords);
-      const response = await authFetch(`${API_BASE}/api/settings/tools`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/tools`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(toolsPayload),
@@ -149,7 +149,7 @@ export function createSettingsHandlers(ctx) {
       if (!['chat', 'vision', 'embedding'].includes(scope) || !target) {
         throw new Error('invalid llm provider delete scope');
       }
-      const response = await authFetch(
+      const response = await apiFetch(
         `${API_BASE}/api/settings/llm/providers/${encodeURIComponent(scope)}/${encodeURIComponent(target)}`,
         { method: 'DELETE' },
         { json: false },
@@ -176,7 +176,7 @@ export function createSettingsHandlers(ctx) {
   }
 
   async function fetchAgentSettingsPayload() {
-    const response = await authFetch(`${API_BASE}/api/settings/agents`, { method: 'GET' }, { json: false });
+    const response = await apiFetch(`${API_BASE}/api/settings/agents`, { method: 'GET' }, { json: false });
     if (!response.ok) {
       const message = await parseResponseMessage(response, `agent settings fetch failed: ${response.status}`);
       throw new Error(message);
@@ -213,7 +213,7 @@ export function createSettingsHandlers(ctx) {
 
   async function handleTogglePresetAgent(agentId, enabled) {
     try {
-      const response = await authFetch(`${API_BASE}/api/settings/agents/presets/${encodeURIComponent(agentId)}`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/agents/presets/${encodeURIComponent(agentId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
@@ -249,7 +249,7 @@ export function createSettingsHandlers(ctx) {
       const endpoint = isDraft
         ? `${API_BASE}/api/settings/agents/custom`
         : `${API_BASE}/api/settings/agents/custom/${encodeURIComponent(agentId)}`;
-      const response = await authFetch(endpoint, {
+      const response = await apiFetch(endpoint, {
         method: isDraft ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -280,7 +280,7 @@ export function createSettingsHandlers(ctx) {
         });
         return true;
       }
-      const response = await authFetch(`${API_BASE}/api/settings/agents/custom/${encodeURIComponent(agentId)}`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/agents/custom/${encodeURIComponent(agentId)}`, {
         method: 'DELETE',
       }, { json: false });
       if (!response.ok) {
@@ -303,7 +303,7 @@ export function createSettingsHandlers(ctx) {
   }
 
   async function fetchWorkflowSettingsPayload() {
-    const response = await authFetch(`${API_BASE}/api/settings/workflows`, { method: 'GET' }, { json: false });
+    const response = await apiFetch(`${API_BASE}/api/settings/workflows`, { method: 'GET' }, { json: false });
     if (!response.ok) {
       const message = await parseResponseMessage(response, `workflow settings fetch failed: ${response.status}`);
       throw new Error(message);
@@ -313,7 +313,7 @@ export function createSettingsHandlers(ctx) {
 
   async function handleTogglePresetWorkflow(workflowId, enabled) {
     try {
-      const response = await authFetch(`${API_BASE}/api/settings/workflows/presets/${encodeURIComponent(workflowId)}`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/workflows/presets/${encodeURIComponent(workflowId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
@@ -353,7 +353,7 @@ export function createSettingsHandlers(ctx) {
       const endpoint = isDraft
         ? `${API_BASE}/api/settings/workflows/custom`
         : `${API_BASE}/api/settings/workflows/custom/${encodeURIComponent(workflowId)}`;
-      const response = await authFetch(endpoint, {
+      const response = await apiFetch(endpoint, {
         method: isDraft ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -384,7 +384,7 @@ export function createSettingsHandlers(ctx) {
         });
         return true;
       }
-      const response = await authFetch(`${API_BASE}/api/settings/workflows/custom/${encodeURIComponent(workflowId)}`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/workflows/custom/${encodeURIComponent(workflowId)}`, {
         method: 'DELETE',
       }, { json: false });
       if (!response.ok) {
@@ -405,7 +405,7 @@ export function createSettingsHandlers(ctx) {
     if (!config?.provider) return;
     const providerType = selectedId === 'embedding' ? 'embedding' : selectedId === 'vision' ? 'vision' : 'chat';
     try {
-      const response = await authFetch(`${API_BASE}/api/llm/test`, {
+      const response = await apiFetch(`${API_BASE}/api/llm/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(llmProviderRequestPayload(config, {
@@ -428,7 +428,7 @@ export function createSettingsHandlers(ctx) {
     const providerLabel = WEB_SEARCH_PROVIDER_OPTIONS.find((item) => item.id === provider)?.label || provider;
     try {
       const trimmed = String(apiKey || '').trim();
-      const response = await authFetch(`${API_BASE}/api/settings/tools/web-search/test`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/tools/web-search/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -479,7 +479,7 @@ export function createSettingsHandlers(ctx) {
       },
     }));
     try {
-      const response = await authFetch(`${API_BASE}/api/settings/${section}/test`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/${section}/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -533,7 +533,7 @@ export function createSettingsHandlers(ctx) {
       }
       if (!sourcePath) return;
       setSkillActionBusy('install');
-      const response = await authFetch(`${API_BASE}/api/settings/tools/skills/install`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/tools/skills/install`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: sourcePath }),
@@ -556,7 +556,7 @@ export function createSettingsHandlers(ctx) {
     if (!name) return;
     try {
       setSkillActionBusy(name);
-      const response = await authFetch(`${API_BASE}/api/settings/tools/skills/${encodeURIComponent(name)}`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/tools/skills/${encodeURIComponent(name)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
@@ -579,7 +579,7 @@ export function createSettingsHandlers(ctx) {
     if (!name) return;
     try {
       setSkillActionBusy(name);
-      const response = await authFetch(`${API_BASE}/api/settings/tools/skills/${encodeURIComponent(name)}`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/tools/skills/${encodeURIComponent(name)}`, {
         method: 'DELETE',
       }, { json: false });
       if (!response.ok) {

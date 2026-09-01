@@ -3,7 +3,7 @@ export function createConversationActivationHandlers(ctx) {
     API_BASE,
     activeRuntimeTargetConvId,
     activeTaskIdRef,
-    authFetch,
+    apiFetch,
     buildTaskRuntimeRecord,
     chatImageFallbacksByTaskIdFromMessages,
     clearDraftConversationState,
@@ -42,7 +42,6 @@ export function createConversationActivationHandlers(ctx) {
     timestampValue,
     updateTaskRuntimeState,
     userCancelledTaskIdsRef,
-    userIdRef,
     viewModeRef,
     workspaceState,
     workspaceStateWithConversationDetail,
@@ -80,7 +79,7 @@ export function createConversationActivationHandlers(ctx) {
   function runtimeTaskFromConversationTask(task) {
     if (!task) return null;
     if (task.taskId) return { ...task };
-    if (task.task_id) return taskSummaryToRuntimeTask(task, [], userIdRef.current);
+    if (task.task_id) return taskSummaryToRuntimeTask(task, []);
     return null;
   }
 
@@ -210,7 +209,7 @@ export function createConversationActivationHandlers(ctx) {
     }
     conversationIdRef.current = restoredConversationId;
     const restoredTasks = Array.isArray(detail.tasks) ? detail.tasks : [];
-    const messageImageFallbacks = chatImageFallbacksByTaskIdFromMessages(detail.messages, restoredConversationId, userIdRef.current);
+    const messageImageFallbacks = chatImageFallbacksByTaskIdFromMessages(detail.messages, restoredConversationId);
     const latestTaskId = detail.last_task_id || (restoredTasks.length ? restoredTasks[restoredTasks.length - 1].task_id : null);
     const latestTask = restoredTasks.find((task) => task.task_id === latestTaskId);
     const restoredExecutionMode = latestTask?.execution_mode || detail.execution_mode;
@@ -258,7 +257,6 @@ export function createConversationActivationHandlers(ctx) {
                 taskImageAttachmentsRef.current.get(task.task_id) || [],
                 messageImageFallbacks.get(task.task_id) || [],
               ),
-              userIdRef.current,
             ),
           ])
         ),
@@ -291,7 +289,7 @@ export function createConversationActivationHandlers(ctx) {
   }
 
   async function fetchConversationDetail(nextConversationId, { signal } = {}) {
-    const detailResponse = await authFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
+    const detailResponse = await apiFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
       method: 'GET',
       signal,
     }, { json: false });

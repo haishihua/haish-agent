@@ -8,8 +8,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appWebRoot = path.resolve(__dirname, 'app-web');
 const outDir = path.resolve(appWebRoot, 'dist');
 const runtimeAssetPaths = [
-  'auth/login-hero.png',
-  'ui/avatar_default.png',
   'ui/empty-state/penguin-hug-card.png',
   'ui/empty-state/penguin-relax-card.png',
   'ui/empty-state/penguin-sleepy-card.png',

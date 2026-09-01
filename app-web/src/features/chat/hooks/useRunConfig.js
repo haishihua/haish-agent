@@ -1,6 +1,6 @@
 import React from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
-import { authFetch } from '../../../shared/api/auth.js';
+import { apiFetch } from '../../../shared/api/client.js';
 import { DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS } from '../model/run-catalog.js';
 
 const PROVIDER_MODELS_STORAGE_KEY = 'haish_provider_models_v1';
@@ -136,7 +136,7 @@ export function useProviderModels(providerOption) {
     const controller = new AbortController();
     const cached = readProviderModelsCache(requestKey);
     setState({ providerId, ...(cached || fallback), loading: true });
-    authFetch(`${API_BASE}/api/llm/models`, {
+    apiFetch(`${API_BASE}/api/llm/models`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: requestKey,

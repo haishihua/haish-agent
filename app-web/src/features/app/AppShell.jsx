@@ -23,13 +23,13 @@ import {
 } from '../settings/model/settings-payload.js';
 import { API_BASE } from '../../shared/api/base.js';
 import {
-  authFetch,
+  apiFetch,
   buildRunConfigStorageKey,
   DEFAULT_PROJECT_ID,
   DEFAULT_SESSION_NAME,
   buildApiHeaders,
   parseResponseMessage,
-  } from '../../shared/api/auth.js';
+  } from '../../shared/api/client.js';
 import {
   APP_DEFAULT_AGENT_OPTIONS,
   DEFAULT_AGENT_SETTINGS,
@@ -79,7 +79,6 @@ import {
   setStoredConversationId,
   loadStoredWorkspaceState,
   saveWorkspaceState,
-  markLegacyWorkspaceMigrationCompleted,
   normalizeWorkspaceOrdering,
   workspaceStateWithConversationDetail as mergeConversationDetailIntoWorkspace,
   workspaceStateWithTouchedConversation,
@@ -156,7 +155,7 @@ import { createConversationActivationHandlers } from '../conversations/hooks/cre
 import { createDraftConversationHandlers } from '../conversations/hooks/createDraftConversationHandlers.js';
 import { usePerConversationDraft } from '../chat/hooks/usePerConversationDraft.js';
 
-const { useState, useEffect, useRef, useMemo, useCallback } = React;
+const { useState, useEffect, useRef, useMemo } = React;
 
 const conversationDetailToWorkspaceConversation = (detail, previousConversation = null) => (
   mapConversationDetailToWorkspace(detail, previousConversation, taskSummaryToRuntimeTask)
@@ -172,7 +171,7 @@ const workspaceStateWithConversationDetail = (state, detail, activate = true) =>
 );
 const TASK_COMPLETION_NOTICES_STORAGE_KEY = 'haish.task-completion-notices.v1';
 
-export function AppShell({ authUser = null, onLogout = () => undefined, initialToast = null }) {
+export function AppShell() {
   const [taskRuntimeState, setTaskRuntimeState] = useState(() => createEmptyTaskRuntimeState());
   const [workspaceState, setWorkspaceState] = useState(() => loadStoredWorkspaceState());
   // 打开应用后先做一次性加载（服务端项目/会话同步）。加载完成前侧边栏只展示
@@ -249,8 +248,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const taskImageAttachmentsRef = useRef(new Map());
   const taskRuntimeEventCacheRef = useRef(new Map());
   const completionReportedTaskIdsRef = useRef(new Set());
-  const previewObjectUrlCacheRef = useRef(new Map());
-  const previewMountedRef = useRef(true);
   const runtimeApiRef = useRef({});
   const activationApiRef = useRef({});
   const deployApiRef = useRef({});
@@ -258,9 +255,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const settingsApiRef = useRef({});
   const taskRuntimeStateRef = useRef(taskRuntimeState);
   const initialWorkspaceStateRef = useRef(workspaceState);
-  const userIdRef = useRef(authUser?.id || '');
   const toastTimerRef = useRef(null);
-  const initialToastIdRef = useRef(null);
   const conversationActivationSeqRef = useRef(0);
   // Local draft opened by "new conversation" before the user sends a message.
   // It is intentionally NOT inserted into the sidebar list until first send.
@@ -311,7 +306,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
       ? `?workspace_path=${encodeURIComponent(localWorkspace.path)}`
       : '';
     setAgentLoading(true);
-    authFetch(`${API_BASE}/api/agents${workspaceQuery}`, { method: 'GET' }, { json: false })
+    apiFetch(`${API_BASE}/api/agents${workspaceQuery}`, { method: 'GET' }, { json: false })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
@@ -371,7 +366,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   useEffect(() => {
     if (!settingsMode || settingsSection !== 'tools') return undefined;
     let cancelled = false;
-    authFetch(`${API_BASE}/api/settings/tools`, { method: 'GET' }, { json: false })
+    apiFetch(`${API_BASE}/api/settings/tools`, { method: 'GET' }, { json: false })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (cancelled || !payload) return;
@@ -434,7 +429,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   useEffect(() => {
     if (!settingsMode || settingsSection !== 'llm') return undefined;
     let cancelled = false;
-    authFetch(`${API_BASE}/api/settings/llm`, { method: 'GET' }, { json: false })
+    apiFetch(`${API_BASE}/api/settings/llm`, { method: 'GET' }, { json: false })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (cancelled || !payload) return;
@@ -447,7 +442,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   useEffect(() => {
     if (!settingsMode || !['memory', 'knowledge'].includes(settingsSection)) return undefined;
     let cancelled = false;
-    authFetch(`${API_BASE}/api/settings/${settingsSection}`, { method: 'GET' }, { json: false })
+    apiFetch(`${API_BASE}/api/settings/${settingsSection}`, { method: 'GET' }, { json: false })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (cancelled || !payload) return;
@@ -488,7 +483,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   const llmProviderOptions = useMemo(() => runtimeLlmProviderOptions(llmSettingsDraft), [llmSettingsDraft]);
   const agentOptions = agentCatalog?.options || APP_DEFAULT_AGENT_OPTIONS;
   const defaultAgentId = agentCatalog?.defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
-  const runConfigStorageKey = buildRunConfigStorageKey(authUser, 'chat', conversationId);
+  const runConfigStorageKey = buildRunConfigStorageKey('chat', conversationId);
   const workflowOptions = useMemo(() => {
     const normalized = normalizeWorkflowSettings(workflowSettingsDraft);
     return [...normalized.presets, ...normalized.custom]
@@ -507,7 +502,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   useEffect(() => { taskRuntimeStateRef.current = taskRuntimeState; }, [taskRuntimeState]);
   useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
   useEffect(() => { conversationIdRef.current = conversationId; }, [conversationId]);
-  useEffect(() => { userIdRef.current = authUser?.id || ''; }, [authUser?.id]);
   useEffect(() => { saveWorkspaceState(workspaceState); }, [workspaceState]);
 
   useEffect(() => {
@@ -550,74 +544,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     setTaskCompletionNotices((current) => clearConversationCompletionNotices(current, targetConversationId));
   }
 
-  useEffect(() => () => {
-    previewMountedRef.current = false;
-    for (const entry of previewObjectUrlCacheRef.current.values()) {
-      if (entry?.url) URL.revokeObjectURL(entry.url);
-    }
-    previewObjectUrlCacheRef.current.clear();
-  }, []);
-
-  const applyHydratedImagePreview = useCallback((authPreviewUrl, previewUrl) => {
-    runtimeApiRef.current.updateTaskRuntimeState?.((state) => {
-      let changed = false;
-      const hydrateTask = (task) => {
-        if (!task || !Array.isArray(task.imageAttachments)) return task;
-        const imageAttachments = task.imageAttachments.map((ref) => {
-          if (ref?.authPreviewUrl !== authPreviewUrl || ref.previewUrl) return ref;
-          changed = true;
-          return { ...ref, previewUrl };
-        });
-        return imageAttachments === task.imageAttachments ? task : { ...task, imageAttachments };
-      };
-      const tasksById = Object.fromEntries(
-        Object.entries(state.tasksById || {}).map(([taskId, task]) => [taskId, hydrateTask(task)]),
-      );
-      const pendingTask = hydrateTask(state.pendingTask);
-      return changed ? { ...state, tasksById, pendingTask } : state;
-    });
-  }, []);
-
-  useEffect(() => {
-    const refs = [];
-    const collect = (task) => {
-      if (!task || !Array.isArray(task.imageAttachments)) return;
-      task.imageAttachments.forEach((ref) => {
-        if (ref?.authPreviewUrl && !ref.previewUrl) refs.push(ref.authPreviewUrl);
-      });
-    };
-    Object.values(taskRuntimeState.tasksById || {}).forEach(collect);
-    collect(taskRuntimeState.pendingTask);
-
-    refs.forEach((authPreviewUrl) => {
-      const cached = previewObjectUrlCacheRef.current.get(authPreviewUrl);
-      if (cached?.status === 'ready' && cached.url) {
-        applyHydratedImagePreview(authPreviewUrl, cached.url);
-        return;
-      }
-      if (cached?.status === 'loading') return;
-      previewObjectUrlCacheRef.current.set(authPreviewUrl, { status: 'loading', url: '' });
-      authFetch(authPreviewUrl, { method: 'GET' }, { json: false })
-        .then((response) => {
-          if (!response.ok) throw new Error(`image preview failed: ${response.status}`);
-          return response.blob();
-        })
-        .then((blob) => {
-          const objectUrl = URL.createObjectURL(blob);
-          previewObjectUrlCacheRef.current.set(authPreviewUrl, { status: 'ready', url: objectUrl });
-          if (!previewMountedRef.current) {
-            URL.revokeObjectURL(objectUrl);
-            return;
-          }
-          applyHydratedImagePreview(authPreviewUrl, objectUrl);
-        })
-        .catch((error) => {
-          previewObjectUrlCacheRef.current.delete(authPreviewUrl);
-          console.warn('image preview fetch failed', error);
-        });
-    });
-  }, [applyHydratedImagePreview, taskRuntimeState]);
-
   const {
     invalidateConversationActivation,
     isConversationActivationCurrent,
@@ -640,7 +566,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     DEFAULT_SESSION_NAME,
     // Late-bound: activation / runtime factories below.
     applyConversationSnapshot: (...args) => activationApiRef.current.applyConversationSnapshot?.(...args),
-    authFetch,
+    apiFetch,
     buildApiHeaders,
     chatFinalizedTaskIdsRef,
     conversationActivationSeqRef,
@@ -680,7 +606,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     titleFromTaskText,
     updateTaskRuntimeState: (...args) => runtimeApiRef.current.updateTaskRuntimeState?.(...args),
     userCancelledTaskIdsRef,
-    userIdRef,
     viewModeRef,
     workspaceState,
     workspaceStateWithConversationDetail,
@@ -705,12 +630,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
   }, []);
 
   useEffect(() => {
-    if (!initialToast || initialToastIdRef.current === initialToast.id) return;
-    initialToastIdRef.current = initialToast.id;
-    runtimeApiRef.current.showToast?.(initialToast.kind, initialToast.message);
-  }, [initialToast]);
-
-  useEffect(() => {
     let cancelled = false;
     const initialWorkspaceState = initialWorkspaceStateRef.current;
     const bootstrapActivationSeq = conversationActivationSeqRef.current;
@@ -721,7 +640,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
         let serverProjects = null;
         let serverListLoaded = false;
         try {
-          const listResponse = await authFetch(`${API_BASE}/api/projects`, { method: 'GET' }, { json: false });
+          const listResponse = await apiFetch(`${API_BASE}/api/projects`, { method: 'GET' }, { json: false });
           if (!listResponse.ok) throw new Error(`project list failed: ${listResponse.status}`);
           const listed = await listResponse.json();
           serverProjects = Array.isArray(listed?.projects) ? listed.projects : [];
@@ -769,7 +688,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
           ? buildWorkspaceStateFromProjects(serverProjects, previousWorkspaceState)
           : buildWorkspaceStateFromConversationDetails(details, previousWorkspaceState);
         saveWorkspaceState(nextWorkspaceState);
-        if (serverListLoaded) markLegacyWorkspaceMigrationCompleted();
         setWorkspaceState(nextWorkspaceState);
         const activeSummary = details.find((detail) => detail.conversation_id === nextWorkspaceState.activeConversationId) || details[0];
         if (activeSummary) {
@@ -865,7 +783,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     API_BASE,
     activeRuntimeTargetConvId,
     activeTaskIdRef,
-    authFetch,
+    apiFetch,
     buildTaskRuntimeRecord,
     chatImageFallbacksByTaskIdFromMessages,
     clearDraftConversationState,
@@ -904,7 +822,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     timestampValue,
     updateTaskRuntimeState,
     userCancelledTaskIdsRef,
-    userIdRef,
     viewModeRef,
     workspaceState,
     workspaceStateWithConversationDetail,
@@ -965,7 +882,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     applyLlmSettingsPayloadToDraft,
     applyMemorySettingsPayloadToRecords,
     applyToolsSettingsPayloadToRecords,
-    authFetch,
+    apiFetch,
     buildKnowledgeSettingsPayload,
     buildMemorySettingsPayload,
     buildToolsSettingsPayload,
@@ -1012,7 +929,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     API_BASE,
     abortRef,
     applyConversationSnapshot,
-    authFetch,
+    apiFetch,
     conversationId,
     conversationIdRef,
     draftConversationRef,
@@ -1042,7 +959,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     applyConversationSnapshot,
     batchRuntimeMutations,
     applyTerminalTaskState,
-    authFetch,
+    apiFetch,
     buildApiHeaders,
     chatFinalizedTaskIdsRef,
     conversationId,
@@ -1084,7 +1001,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     uploadAttachment,
     upsertToolCall,
     userCancelledTaskIdsRef,
-    userIdRef,
   });
 
 
@@ -1114,7 +1030,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     activateConversationDetail,
     activateConversationShell,
     applyConversationSnapshot,
-    authFetch,
+    apiFetch,
     buildApiHeaders,
     buildWorkspaceStateFromProjects,
     conversationReorderChainsRef,
@@ -1471,7 +1387,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
             setWorkspaceState((state) => {
               const conversation = findConversationById(state, targetConversationId);
               const previousTask = (conversation?.tasks || []).find((task) => (task.taskId || task.id) === taskId) || null;
-              const nextTask = taskDetailToRuntimeTask(detail.normalizedTask, previousTask, userIdRef.current);
+              const nextTask = taskDetailToRuntimeTask(detail.normalizedTask, previousTask);
               return workspaceStateWithConversationRuntimeTask(state, targetConversationId, nextTask);
             });
             // Every poll target was active when this effect was created. Once
@@ -1545,7 +1461,7 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
     if (viewedWorkflowTask?.conversationId === targetConversationId && viewedWorkflowTask.taskId === taskId) {
       setViewedWorkflowTask(null);
     }
-    const response = await authFetch(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}`, {
+    const response = await apiFetch(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}`, {
       method: 'DELETE',
     });
     if (!response.ok && response.status !== 404) {
@@ -1826,8 +1742,6 @@ export function AppShell({ authUser = null, onLogout = () => undefined, initialT
               onViewConversationCompletions={markConversationTaskCompletionsViewed}
               collapsed={conversationPanelCollapsed}
               onToggleCollapsed={() => setConversationPanelCollapsed((collapsed) => !collapsed)}
-              authUser={authUser}
-              onLogout={onLogout}
               onToast={showToast}
               onAddProject={() => { handleAddProject().catch((error) => { console.error('project add failed', error); showToast('error', String(error?.message || error)); }); }}
               onSelectProject={(projectId) => { handleSelectProject(projectId).catch((error) => { console.error('project select failed', error); showToast('error', String(error?.message || error)); }); }}

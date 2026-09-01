@@ -218,6 +218,8 @@ function main() {
     'haish_agent_core',
     '--collect-submodules',
     'tiktoken_ext',
+    '--collect-submodules',
+    'keyring.backends',
     '--collect-data',
     'haish_agent_core',
     '--collect-data',

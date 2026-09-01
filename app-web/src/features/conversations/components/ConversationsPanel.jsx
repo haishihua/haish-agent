@@ -4,7 +4,7 @@ import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { usePanelWidth } from '../../tasks/components/TaskRecords.jsx';
 import { ConversationDialog } from './ConversationTaskCards.jsx';
 import { ProjectNode, ProjectDropEnd } from './ProjectNode.jsx';
-import { UserSessionFooter } from './UserSessionFooter.jsx';
+import { AppUpdateFooter } from './AppUpdateFooter.jsx';
 
 export function ConversationsPanel({
   workspaceState,
@@ -40,8 +40,6 @@ export function ConversationsPanel({
   onRetryTask,
   taskPreviewLimit = 5,
   conversationPreviewLimit = 3,
-  authUser,
-  onLogout,
   onToast,
 }) {
   const [panelRef, panelWidth] = usePanelWidth();
@@ -280,7 +278,7 @@ export function ConversationsPanel({
         ))}
         <ProjectDropEnd onDropProject={dropProject} />
       </div>
-      {!collapsed && authUser ? <UserSessionFooter authUser={authUser} onLogout={onLogout} onToast={onToast} /> : null}
+      {!collapsed ? <AppUpdateFooter onToast={onToast} /> : null}
       <ConversationDialog dialog={dialog} onCancel={() => setDialog(null)} />
     </div>
   );

@@ -253,9 +253,8 @@ function isHaishBackendCommand(command: string): boolean {
   return command.includes('haish_agent_core.app.web') || command.includes('haish-runtime');
 }
 
-// 兜底清理：pid 文件丢失/损坏或升级前启动的旧后端仍可能残留，
-// 与新建后端共享同一个 auth.db 会让登录互相打架。这里按 workdir 精确匹配查杀，
-// 只在本进程即将启动新后端（没有可复用的健康实例）时调用。
+// 兜底清理：pid 文件丢失、损坏或升级前启动的旧后端仍可能残留。
+// 这里按 workdir 精确匹配查杀，只在本进程即将启动新后端时调用。
 function reapStaleBackends(workdir: string): void {
   if (process.platform !== 'darwin' && process.platform !== 'linux') return;
   let output: string;
@@ -334,7 +333,7 @@ export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRunti
     fs.mkdirSync(workdir, { recursive: true });
     state = { status: 'starting', baseUrl };
 
-    // 兜底清理同 workdir 的残留后端，避免双后端共享 auth.db。
+    // 兜底清理同 workdir 的残留后端，避免并行 runtime 争用本地状态。
     reapStaleBackends(workdir);
 
     child = spawn(

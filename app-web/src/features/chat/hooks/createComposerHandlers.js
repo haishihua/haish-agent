@@ -3,7 +3,7 @@ export function createComposerHandlers(ctx) {
     API_BASE,
     abortRef,
     applyConversationSnapshot,
-    authFetch,
+    apiFetch,
     conversationId,
     conversationIdRef,
     draftConversationRef,
@@ -26,7 +26,7 @@ export function createComposerHandlers(ctx) {
     if (capability.agentId) formData.append('agent_id', capability.agentId);
     if (capability.workflowId) formData.append('workflow_id', capability.workflowId);
     formData.append('file', file);
-    const response = await authFetch(`${API_BASE}/api/documents/upload`, {
+    const response = await apiFetch(`${API_BASE}/api/documents/upload`, {
       method: 'POST',
       body: formData,
       signal,
@@ -53,7 +53,7 @@ export function createComposerHandlers(ctx) {
     const formData = new FormData();
     formData.append('conversation_id', resolvedConversationId);
     formData.append('file', file);
-    const response = await authFetch(`${API_BASE}/api/messages/images`, {
+    const response = await apiFetch(`${API_BASE}/api/messages/images`, {
       method: 'POST',
       body: formData,
       signal,

@@ -62,7 +62,7 @@ export function createTaskStreamHandlers(ctx) {
     applyConversationSnapshot,
     applyTerminalTaskState,
     batchRuntimeMutations,
-    authFetch,
+    apiFetch,
     buildApiHeaders,
     chatFinalizedTaskIdsRef,
     conversationId,
@@ -103,7 +103,6 @@ export function createTaskStreamHandlers(ctx) {
     uploadAttachment,
     upsertToolCall,
     userCancelledTaskIdsRef,
-    userIdRef,
   } = ctx;
 
   const isChatOriginTask = (taskId, targetConvId = null) => (
@@ -675,7 +674,6 @@ export function createTaskStreamHandlers(ctx) {
           const persistedImages = normalizeChatImageRefs(
             persistedTask?.image_attachments || persistedTask?.imageAttachments || [],
             persistedTask?.conversation_id || event.conversation_id || run.conversationId,
-            userIdRef.current,
           );
           const resolvedStatus = normalizeTaskStatus(
             persistedTask?.status
@@ -899,7 +897,7 @@ export function createTaskStreamHandlers(ctx) {
     });
     let response;
     try {
-      response = await authFetch(streamUrl, {
+      response = await apiFetch(streamUrl, {
         method: 'POST',
         headers: buildApiHeaders(),
         body: requestBody,

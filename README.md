@@ -8,6 +8,7 @@ Electron and adds native local-folder authorization for desktop projects.
 - Electron desktop app named `Haish`
 - Full Haish web UI from `app-web` (**Vite production bundle** → `app-web/dist`)
 - Local agent runtime launched and proxied by the Electron main process
+- Stable local owner identity stored by the Python runtime through the system credential store
 - Native macOS folder picker through the Electron main process
 - Authorized local project registry stored in Electron `userData`
 - Sandboxed local file listing and small text-file preview IPC for future agent tools
@@ -158,4 +159,4 @@ The script builds dmg/zip, then creates/updates GitHub Release `v<version>` with
 
 - Route all project file tools through the local runtime
 - Add write-file and command execution with explicit confirmation prompts
-- Account sync, device registration, and auto-update
+- Cross-platform desktop packaging beyond macOS

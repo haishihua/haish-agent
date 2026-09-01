@@ -59,7 +59,7 @@ if (devMode) {
 }
 
 // 单实例锁：第二次启动直接退出。两个实例会各自拉起一个后端，
-// 共享同一个 auth.db、各签各的 JWT 密钥，导致登录时好时坏。
+// 共享同一个 runtime 数据目录会造成状态竞争和请求路由不稳定。
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();

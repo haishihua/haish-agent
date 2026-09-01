@@ -1,6 +1,5 @@
 /* Haish global styles entry — split by section (Phase D). */
 @import "./styles/base.css";
-@import "./styles/auth.css";
 @import "./styles/app-shell.css";
 @import "./styles/topbar.css";
 @import "./styles/chat.css";

@@ -7,7 +7,7 @@ export function createDraftConversationHandlers(ctx) {
     DEFAULT_PROJECT_ID,
     DEFAULT_SESSION_NAME,
     applyConversationSnapshot,
-    authFetch,
+    apiFetch,
     buildApiHeaders,
     chatFinalizedTaskIdsRef,
     conversationActivationSeqRef,
@@ -47,7 +47,6 @@ export function createDraftConversationHandlers(ctx) {
     titleFromTaskText,
     updateTaskRuntimeState,
     userCancelledTaskIdsRef,
-    userIdRef,
     viewModeRef,
     workspaceState,
     workspaceStateWithConversationDetail,
@@ -82,7 +81,7 @@ export function createDraftConversationHandlers(ctx) {
     const pendingServerId = pendingDetail?.conversation_id
       || (draft?.serverCreated ? draft.id : null);
     if (pendingServerId && !String(pendingServerId).startsWith('draft-')) {
-      authFetch(`${API_BASE}/api/conversations/${encodeURIComponent(pendingServerId)}`, {
+      apiFetch(`${API_BASE}/api/conversations/${encodeURIComponent(pendingServerId)}`, {
         method: 'DELETE',
       }).catch(() => {});
       runtimesRef.current.delete(pendingServerId);
@@ -265,7 +264,7 @@ export function createDraftConversationHandlers(ctx) {
     const cursorQuery = cached?.lastEventId
       ? `&after_event_id=${encodeURIComponent(cached.lastEventId)}`
       : '';
-    const response = await authFetch(`${API_BASE}/api/tasks/${taskId}?event_view=runtime${cursorQuery}`, {
+    const response = await apiFetch(`${API_BASE}/api/tasks/${taskId}?event_view=runtime${cursorQuery}`, {
       method: 'GET',
     }, { json: false });
     if (!response.ok) {
@@ -306,7 +305,7 @@ export function createDraftConversationHandlers(ctx) {
       ...state,
       tasksById: {
         ...state.tasksById,
-        [taskId]: taskDetailToRuntimeTask(normalizedTask, state.tasksById[taskId] || null, userIdRef.current),
+        [taskId]: taskDetailToRuntimeTask(normalizedTask, state.tasksById[taskId] || null),
       },
     }), targetConversationId);
     return normalizedTask;
@@ -356,13 +355,13 @@ export function createDraftConversationHandlers(ctx) {
   }
 
   async function cancelActiveTask(taskId) {
-    return authFetch(`${API_BASE}/api/tasks/${taskId}/cancel`, {
+    return apiFetch(`${API_BASE}/api/tasks/${taskId}/cancel`, {
       method: 'POST',
     });
   }
 
   async function queueTaskInput(taskId, message, displayMessage = message) {
-    const response = await authFetch(`${API_BASE}/api/tasks/${taskId}/inputs`, {
+    const response = await apiFetch(`${API_BASE}/api/tasks/${taskId}/inputs`, {
       method: 'POST',
       headers: buildApiHeaders(),
       body: JSON.stringify({ message }),
@@ -416,7 +415,7 @@ export function createDraftConversationHandlers(ctx) {
 
   async function cancelActiveConversationTask(nextConversationId) {
     if (!nextConversationId) return null;
-    return authFetch(`${API_BASE}/api/conversations/${nextConversationId}/tasks/cancel`, {
+    return apiFetch(`${API_BASE}/api/conversations/${nextConversationId}/tasks/cancel`, {
       method: 'POST',
     });
   }
@@ -470,7 +469,7 @@ export function createDraftConversationHandlers(ctx) {
   async function updateConversationTitle(conversationId, title) {
     const trimmed = String(title || '').trim();
     if (!conversationId || !trimmed) return null;
-    const response = await authFetch(`${API_BASE}/api/conversations/${conversationId}`, {
+    const response = await apiFetch(`${API_BASE}/api/conversations/${conversationId}`, {
       method: 'PATCH',
       headers: buildApiHeaders(),
       body: JSON.stringify({ title: trimmed }),

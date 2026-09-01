@@ -7,8 +7,7 @@ import {
   DEFAULT_PROJECT_NAME,
   DEFAULT_SESSION_NAME,
   DEFAULT_CONVERSATION_NAMES,
-  buildUserScopedStorageKey,
-} from '../../../shared/api/auth.js';
+} from '../../../shared/api/client.js';
 
 export function generateHexId() {
   if (window.crypto?.randomUUID) {
@@ -18,17 +17,15 @@ export function generateHexId() {
 }
 
 export function getStoredConversationId() {
-  const key = buildUserScopedStorageKey(CONVERSATION_STORAGE_KEY);
-  return String(window.localStorage.getItem(key) || '').trim() || null;
+  return String(window.localStorage.getItem(CONVERSATION_STORAGE_KEY) || '').trim() || null;
 }
 
 export function setStoredConversationId(conversationId) {
-  const key = buildUserScopedStorageKey(CONVERSATION_STORAGE_KEY);
   if (!conversationId) {
-    window.localStorage.removeItem(key);
+    window.localStorage.removeItem(CONVERSATION_STORAGE_KEY);
     return;
   }
-  window.localStorage.setItem(key, conversationId);
+  window.localStorage.setItem(CONVERSATION_STORAGE_KEY, conversationId);
 }
 
 export function createDefaultProject() {
@@ -128,12 +125,7 @@ function parseStoredWorkspaceState(raw) {
 }
 
 export function loadStoredWorkspaceState() {
-  const key = buildUserScopedStorageKey(WORKSPACE_STORAGE_KEY);
-  return parseStoredWorkspaceState(window.localStorage.getItem(key)) || createEmptyWorkspaceState();
-}
-
-export function loadLegacyWorkspaceState() {
-  return parseStoredWorkspaceState(window.localStorage.getItem(WORKSPACE_STORAGE_KEY));
+  return parseStoredWorkspaceState(window.localStorage.getItem(WORKSPACE_STORAGE_KEY)) || createEmptyWorkspaceState();
 }
 
 export function filterWorkspaceStateByConversationIds(state, conversationIds) {
@@ -153,20 +145,10 @@ export function filterWorkspaceStateByConversationIds(state, conversationIds) {
   });
 }
 
-export function legacyWorkspaceMigrationCompleted() {
-  const key = buildUserScopedStorageKey(`${WORKSPACE_STORAGE_KEY}:legacy-migrated-v1`);
-  return window.localStorage.getItem(key) === '1';
-}
-
-export function markLegacyWorkspaceMigrationCompleted() {
-  const key = buildUserScopedStorageKey(`${WORKSPACE_STORAGE_KEY}:legacy-migrated-v1`);
-  window.localStorage.setItem(key, '1');
-}
-
 export function saveWorkspaceState(state) {
   try {
     window.localStorage.setItem(
-      buildUserScopedStorageKey(WORKSPACE_STORAGE_KEY),
+      WORKSPACE_STORAGE_KEY,
       JSON.stringify(compactWorkspaceStateForStorage(state)),
     );
   } catch (error) {
@@ -263,38 +245,25 @@ export function titleFromTaskText(text, maxLength = 48) {
 }
 
 
-export function chatImagePreviewUrl(ref, conversationId, ownerId = '') {
+export function chatImagePreviewUrl(ref, conversationId) {
   const existing = String(ref?.previewUrl || '').trim();
   if (existing) return existing;
   const path = String(ref?.path || '').trim();
   if (!path || !conversationId) return '';
   if (/^(blob:|data:|https?:|file:)/i.test(path)) return path;
   const params = new URLSearchParams({ image_path: path });
-  if (ownerId) params.set('owner_id', ownerId);
   return `${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}/messages/images/preview?${params.toString()}`;
 }
 
-export function isProtectedChatImagePreviewUrl(value) {
-  const url = String(value || '');
-  return url.includes('/api/conversations/') && url.includes('/messages/images/preview');
-}
-
-export function normalizeChatImageRefs(refs, conversationId, ownerId = '') {
+export function normalizeChatImageRefs(refs, conversationId) {
   return (Array.isArray(refs) ? refs : [])
     .filter((ref) => ref && (ref.path || ref.previewUrl))
-    .map((ref, index) => {
-      const previewUrl = chatImagePreviewUrl(ref, conversationId, ownerId);
-      const explicitAuthPreviewUrl = String(ref.authPreviewUrl || '').trim();
-      const protectedPreviewUrl = isProtectedChatImagePreviewUrl(previewUrl);
-      const authPreviewUrl = explicitAuthPreviewUrl || (protectedPreviewUrl ? previewUrl : '');
-      return {
-        image_id: ref.image_id || ref.imageId || `image-${index}`,
-        path: ref.path || '',
-        mime: ref.mime || null,
-        previewUrl: protectedPreviewUrl ? '' : previewUrl,
-        authPreviewUrl,
-      };
-    });
+    .map((ref, index) => ({
+      image_id: ref.image_id || ref.imageId || `image-${index}`,
+      path: ref.path || '',
+      mime: ref.mime || null,
+      previewUrl: chatImagePreviewUrl(ref, conversationId),
+    }));
 }
 
 export function mergeChatImageRefValue(existing = {}, incoming = {}) {
@@ -305,7 +274,6 @@ export function mergeChatImageRefValue(existing = {}, incoming = {}) {
     path: incoming.path || existing.path || '',
     mime: incoming.mime || existing.mime || null,
     previewUrl: incoming.previewUrl || existing.previewUrl || '',
-    authPreviewUrl: incoming.authPreviewUrl || existing.authPreviewUrl || '',
   };
 }
 
@@ -330,7 +298,7 @@ export function mergeChatImageRefs(...groups) {
   return order.map((key) => mergedByKey.get(key)).filter(Boolean);
 }
 
-export function chatImageFallbacksByTaskIdFromMessages(messages, conversationId, ownerId = '') {
+export function chatImageFallbacksByTaskIdFromMessages(messages, conversationId) {
   const map = new Map();
   for (const message of Array.isArray(messages) ? messages : []) {
     if (!message || message.role !== 'user' || !message.task_id) continue;
@@ -339,7 +307,7 @@ export function chatImageFallbacksByTaskIdFromMessages(messages, conversationId,
     const existing = map.get(message.task_id) || [];
     map.set(
       message.task_id,
-      normalizeChatImageRefs(mergeChatImageRefs(existing, parsed.imageRefs), conversationId, ownerId),
+      normalizeChatImageRefs(mergeChatImageRefs(existing, parsed.imageRefs), conversationId),
     );
   }
   return map;

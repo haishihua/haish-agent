@@ -1,7 +1,7 @@
 import React from 'react';
 import { subscribeApprovalEvents } from '../../approvals/model/approval-store.js';
 import { selectPendingUserInput } from '../model/pending-user-input.js';
-import { authFetch } from '../../../shared/api/auth.js';
+import { apiFetch } from '../../../shared/api/client.js';
 import { API_BASE } from '../../../shared/api/base.js';
 const INITIAL_STATE_RETRY_MS = 2000;
 
@@ -67,7 +67,7 @@ const inputStore = (() => {
     if (initialPromise) return initialPromise;
     const controller = new AbortController();
     initialController = controller;
-    initialPromise = authFetch(`${API_BASE}/api/approvals/state`, {
+    initialPromise = apiFetch(`${API_BASE}/api/approvals/state`, {
       cache: 'no-store',
       signal: controller.signal,
     })
@@ -124,7 +124,7 @@ const inputStore = (() => {
 })();
 
 async function submitAnswers(requestId, answers) {
-  const response = await authFetch(`${API_BASE}/api/user-inputs/${encodeURIComponent(requestId)}/resolve`, {
+  const response = await apiFetch(`${API_BASE}/api/user-inputs/${encodeURIComponent(requestId)}/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ answers }),

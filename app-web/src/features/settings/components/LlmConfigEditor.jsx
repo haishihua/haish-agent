@@ -5,7 +5,7 @@ import {
   LoaderCircle,
 } from 'lucide-react';
 import { API_BASE } from '../../../shared/api/base.js';
-import { authFetch } from '../../../shared/api/auth.js';
+import { apiFetch } from '../../../shared/api/client.js';
 import {
   getLlmProvider,
   LLM_OAUTH_UI_PROVIDERS,
@@ -90,7 +90,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
     setOauthStartPending(true);
     setOauthStartError('');
     try {
-      const response = await authFetch(`${API_BASE}/api/llm/oauth/start`, {
+      const response = await apiFetch(`${API_BASE}/api/llm/oauth/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: config.provider }),
@@ -141,7 +141,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
     let timer = 0;
     const poll = async () => {
       try {
-        const response = await authFetch(`${API_BASE}/api/llm/oauth/status/${encodeURIComponent(oauthFlowId)}`, {
+        const response = await apiFetch(`${API_BASE}/api/llm/oauth/status/${encodeURIComponent(oauthFlowId)}`, {
           method: 'GET',
         }, { json: false });
         if (!response.ok) {
@@ -199,7 +199,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
     const timer = window.setTimeout(() => {
       setModelCatalogError('');
       const payload = llmProviderRequestPayload(currentConfig, { includeSecret: true, includeOAuth: true, refresh: true });
-      authFetch(`${API_BASE}/api/llm/models`, {
+      apiFetch(`${API_BASE}/api/llm/models`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

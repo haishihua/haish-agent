@@ -16,36 +16,15 @@ globalThis.window = {
   dispatchEvent: () => true,
 };
 
-const auth = await import('../../src/shared/api/auth.js');
 const workspace = await import('../../src/features/conversations/model/workspace-state.js');
 
-function signIn(id) {
-  auth.saveAuthSession({
-    access_token: `access-${id}`,
-    refresh_token: `refresh-${id}`,
-    user: { id },
-  });
-}
-
-test('workspace and active conversation caches are isolated by user', () => {
-  signIn('user-a');
-  const first = workspace.createEmptyWorkspaceState();
-  first.projects[0].conversations = [{ id: 'conversation-a', name: 'A', tasks: [] }];
-  first.activeConversationId = 'conversation-a';
-  workspace.saveWorkspaceState(first);
+test('workspace and active conversation caches use one local data space', () => {
+  const state = workspace.createEmptyWorkspaceState();
+  state.projects[0].conversations = [{ id: 'conversation-a', name: 'A', tasks: [] }];
+  state.activeConversationId = 'conversation-a';
+  workspace.saveWorkspaceState(state);
   workspace.setStoredConversationId('conversation-a');
 
-  signIn('user-b');
-  assert.deepEqual(workspace.loadStoredWorkspaceState(), workspace.createEmptyWorkspaceState());
-  assert.equal(workspace.getStoredConversationId(), null);
-
-  const second = workspace.createEmptyWorkspaceState();
-  second.projects[0].conversations = [{ id: 'conversation-b', name: 'B', tasks: [] }];
-  second.activeConversationId = 'conversation-b';
-  workspace.saveWorkspaceState(second);
-  workspace.setStoredConversationId('conversation-b');
-
-  signIn('user-a');
   assert.equal(workspace.loadStoredWorkspaceState().activeConversationId, 'conversation-a');
   assert.equal(workspace.getStoredConversationId(), 'conversation-a');
 });
@@ -155,12 +134,12 @@ test('stored workspace payload excludes backend-owned pin and ordering fields', 
   assert.equal('sortOrder' in compact.projects[0].conversations[0], false);
 });
 
-test('legacy workspace preferences are filtered to the signed-in users conversations', () => {
+test('cached workspace preferences are filtered to conversations present on the backend', () => {
   const legacy = workspace.createEmptyWorkspaceState();
   legacy.projects = [
     {
       ...workspace.createDefaultProject(),
-      conversations: [{ id: 'other-user-conversation', name: 'Other', tasks: [] }],
+      conversations: [{ id: 'missing-conversation', name: 'Missing', tasks: [] }],
     },
     {
       id: 'workspace:mine',

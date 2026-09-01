@@ -8,7 +8,7 @@ export function createConversationHandlers(ctx) {
     activateConversationDetail,
     activateConversationShell,
     applyConversationSnapshot,
-    authFetch,
+    apiFetch,
     buildApiHeaders,
     buildDeployRequest,
     buildWorkspaceStateFromProjects,
@@ -50,7 +50,7 @@ export function createConversationHandlers(ctx) {
   async function restoreProjectsFromBackend(error, fallbackState) {
     showToast('error', error?.message || 'project update failed');
     try {
-      const response = await authFetch(`${API_BASE}/api/projects`, {
+      const response = await apiFetch(`${API_BASE}/api/projects`, {
         method: 'GET',
       });
       if (!response.ok) throw new Error(`project reload failed: ${response.status}`);
@@ -195,7 +195,7 @@ export function createConversationHandlers(ctx) {
       } : project),
     }));
 
-    authFetch(`${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}`, {
+    apiFetch(`${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}`, {
       method: 'PATCH',
       headers: buildApiHeaders(),
       body: JSON.stringify({ pinned: newPinned }),
@@ -276,7 +276,7 @@ export function createConversationHandlers(ctx) {
         const request = previousChain
           .catch(() => undefined)
           .then(async () => {
-            const response = await authFetch(
+            const response = await apiFetch(
               `${API_BASE}/api/projects/${encodeURIComponent(projectId)}/conversations/reorder`,
               {
                 method: 'PATCH',
@@ -318,7 +318,7 @@ export function createConversationHandlers(ctx) {
       )),
     }));
 
-    authFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
+    apiFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
       method: 'PATCH',
       headers: buildApiHeaders(),
       body: JSON.stringify({ pinned: newPinned }),
@@ -378,7 +378,7 @@ export function createConversationHandlers(ctx) {
       projectReorderChainRef.current = projectReorderChainRef.current
         .catch(() => undefined)
         .then(async () => {
-          const response = await authFetch(`${API_BASE}/api/projects/reorder`, {
+          const response = await apiFetch(`${API_BASE}/api/projects/reorder`, {
             method: 'PATCH',
             headers: buildApiHeaders(),
             body: JSON.stringify({ project_ids: nextState.projects.map((project) => project.id) }),
@@ -394,7 +394,7 @@ export function createConversationHandlers(ctx) {
   }
 
   async function createConversationInProject(project, title, executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot') {
-    const createResponse = await authFetch(`${API_BASE}/api/conversations`, {
+    const createResponse = await apiFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: buildApiHeaders(),
       body: JSON.stringify({ title, execution_mode: executionMode, project_id: project?.id || DEFAULT_PROJECT_ID }),
@@ -404,7 +404,7 @@ export function createConversationHandlers(ctx) {
     }
     let detail = await createResponse.json();
     if (project?.workspacePath && !detail.workspace_path) {
-      const updateResponse = await authFetch(`${API_BASE}/api/conversations/${detail.conversation_id}`, {
+      const updateResponse = await apiFetch(`${API_BASE}/api/conversations/${detail.conversation_id}`, {
         method: 'PATCH',
         headers: buildApiHeaders(),
         body: JSON.stringify({ workspace_path: project.workspacePath }),
@@ -431,7 +431,7 @@ export function createConversationHandlers(ctx) {
         showToast('info', 'workspace selection cancelled');
         return;
       }
-      const projectResponse = await authFetch(`${API_BASE}/api/projects`, {
+      const projectResponse = await apiFetch(`${API_BASE}/api/projects`, {
         method: 'POST',
         headers: buildApiHeaders(),
         body: JSON.stringify({
@@ -480,7 +480,7 @@ export function createConversationHandlers(ctx) {
       showToast('success', `local workspace set: ${pickResult.project.name}`);
       return;
     }
-    const createResponse = await authFetch(`${API_BASE}/api/conversations`, {
+    const createResponse = await apiFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: buildApiHeaders(),
       body: JSON.stringify({
@@ -492,11 +492,11 @@ export function createConversationHandlers(ctx) {
       throw new Error(`project conversation create failed: ${createResponse.status}`);
     }
     const created = await createResponse.json();
-    const pickResponse = await authFetch(`${API_BASE}/api/conversations/${created.conversation_id}/workspace/pick`, {
+    const pickResponse = await apiFetch(`${API_BASE}/api/conversations/${created.conversation_id}/workspace/pick`, {
       method: 'POST',
     });
     if (pickResponse.status === 409) {
-      await authFetch(`${API_BASE}/api/conversations/${created.conversation_id}`, {
+      await apiFetch(`${API_BASE}/api/conversations/${created.conversation_id}`, {
         method: 'DELETE',
       });
       showToast('info', 'workspace selection cancelled');
@@ -507,7 +507,7 @@ export function createConversationHandlers(ctx) {
     }
     const detail = await pickResponse.json();
     if (!detail.workspace_path) {
-      await authFetch(`${API_BASE}/api/conversations/${created.conversation_id}`, {
+      await apiFetch(`${API_BASE}/api/conversations/${created.conversation_id}`, {
         method: 'DELETE',
       });
       showToast('info', 'workspace selection cancelled');
@@ -522,7 +522,7 @@ export function createConversationHandlers(ctx) {
     if (!project) return;
     const conversationToDelete = project.conversations.find((conversation) => conversation.id === nextConversationId) || null;
     await stopConversationRuntimeBeforeDelete(nextConversationId, conversationToDelete);
-    const response = await authFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
+    const response = await apiFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
       method: 'DELETE',
     });
     if (!response.ok && response.status !== 404) {
@@ -559,7 +559,7 @@ export function createConversationHandlers(ctx) {
   async function handleRenameConversation(projectId, nextConversationId, title) {
     const trimmed = String(title || '').trim();
     if (!trimmed) return;
-    const response = await authFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
+    const response = await apiFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
       method: 'PATCH',
       headers: buildApiHeaders(),
       body: JSON.stringify({ title: trimmed }),
@@ -583,7 +583,7 @@ export function createConversationHandlers(ctx) {
     );
     await Promise.all(conversationsToRemove.map((item) => stopConversationRuntimeBeforeDelete(item.id, item)));
     await Promise.all(conversationsToRemove.map(async (item) => {
-      const response = await authFetch(`${API_BASE}/api/conversations/${item.id}`, {
+      const response = await apiFetch(`${API_BASE}/api/conversations/${item.id}`, {
         method: 'DELETE',
       });
       if (!response.ok && response.status !== 404) {
@@ -592,7 +592,7 @@ export function createConversationHandlers(ctx) {
     }));
     let nextState = removeProjectModeFromWorkspace(workspaceState, projectId, executionMode);
     if (!nextState.projects.some((item) => item.id === projectId)) {
-      const projectResponse = await authFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
+      const projectResponse = await apiFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
         method: 'DELETE',
       });
       if (!projectResponse.ok && projectResponse.status !== 404) {

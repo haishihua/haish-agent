@@ -15,7 +15,7 @@
 - `shared` 只收无业务归属的 API、纯工具和 UI 原语；
 - 测试全部迁到 `app-web/tests`；
 - 删除旧路径、barrel 和兼容 re-export；
-- 删除 `window.authFetch` 与运行时样式注入；
+- 删除全局请求函数与运行时样式注入；
 - 拆开纯 model、React hooks、API 和组件；
 - 用自动脚本把边界变成合并门禁。
 
@@ -85,7 +85,7 @@ shared             → shared
 - model 依赖 React/components/hooks；
 - `shared` 反向依赖 feature；
 - 静态 import 环；
-- 运行时 style 注入和 `window.authFetch`；
+- 运行时 style 注入和全局请求函数；
 - 超过 2000 行的源文件。
 
 统一验收入口：

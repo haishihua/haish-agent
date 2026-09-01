@@ -265,7 +265,7 @@ export function buildTaskRuntimeRecord(event, pendingTask) {
   };
 }
 
-export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = [], ownerId = '') {
+export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = []) {
   const taskAttachments = Array.isArray(task.attachments)
     ? task.attachments.map((attachment) => ({ ...attachment, uploaded: true }))
     : [];
@@ -274,7 +274,6 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = [], ow
   const imageAttachments = normalizeChatImageRefs(
     mergeChatImageRefs(task.image_attachments || task.imageAttachments || [], fallbackImageAttachments, titleParts.imageRefs, descriptionParts.imageRefs),
     task.conversation_id,
-    ownerId,
   );
   const title = titleParts.text || 'Task';
   return {
@@ -324,9 +323,9 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = [], ow
   };
 }
 
-export function taskDetailToRuntimeTask(task, previousTask = null, ownerId = '') {
+export function taskDetailToRuntimeTask(task, previousTask = null) {
   const events = normalizeRuntimeEvents(task.events);
-  const summaryTask = taskSummaryToRuntimeTask(task, previousTask?.imageAttachments || [], ownerId);
+  const summaryTask = taskSummaryToRuntimeTask(task, previousTask?.imageAttachments || []);
   const nextTask = {
     ...(previousTask || summaryTask),
     ...summaryTask,

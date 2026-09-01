@@ -34,19 +34,18 @@ haish-agent-core（Python runtime）
 app-web/
   src/
     main.jsx                 # 样式和 React 入口
-    app.jsx                  # ErrorBoundary + AuthGate 挂载
+    app.jsx                  # ErrorBoundary + AppShell 挂载
     features/
       agents/model/          # Agent 配置领域模型
       app/                   # 应用组合根、顶栏和主布局
       approvals/             # 审批 API、状态和 UI
-      auth/                  # 登录门闸与登录页
       chat/                  # 对话时间线、输入框、流式消息模型
       conversations/         # 项目/会话树、持久化和激活流程
       settings/              # 设置页面、编辑器和设置模型
       tasks/                 # 任务部署、任务流和委派 UI
       workflow/              # 工作流模型、画布和运行详情
     shared/
-      api/                   # API base、认证请求、通用 header
+      api/                   # API base、普通请求与通用 header
       lib/                   # 无业务归属的纯工具
       ui/                    # 无业务归属的展示组件
   tests/
@@ -73,7 +72,7 @@ main.jsx → app.jsx → features/* → shared/*
 1. `shared` 不得 import `features`。
 2. `model` 不得 import React、组件或 hooks。
 3. 组件可以组合其他 feature 的公开组件，但不能从对方页面壳或内部编辑器“借”实现。可复用原语应下沉到 `shared/ui`；明确属于一个领域的组件留在该领域。
-4. 网络调用放在领域 `api/` 或 `shared/api/`；鉴权请求直接 import `authFetch`。
+4. 网络调用放在领域 `api/` 或 `shared/api/`；普通请求直接 import `apiFetch`。
 5. 禁止静态 import 环、注册回调式破环、late-bound 全局和隐式初始化副作用。
 6. 禁止为了旧路径保留 re-export、barrel、兼容文件或双份实现。迁移时一次修改全部调用方并删除旧文件。
 
@@ -86,7 +85,7 @@ main.jsx → app.jsx → features/* → shared/*
 | `conversations` | 项目/会话树、激活、草稿、持久化 | 任务摘要转换由调用方显式传入，不反向注册 |
 | `tasks` | 任务 runtime、stream、部署和委派 | 不把 UI 状态写入通用 shared |
 | `workflow` | 工作流 schema、布局、节点 UI、运行详情 | 运行页和设置编辑器共用 workflow 自己的画布组件 |
-| `approvals` | 审批/问答 API、状态和卡片 | 静态 CSS；不使用 `window.authFetch` |
+| `approvals` | 审批/问答 API、状态和卡片 | 静态 CSS；不使用全局请求函数 |
 | `settings` | 设置页与各类配置编辑器 | `SettingsPage` 不是导出中转站 |
 | `agents` | Agent 配置与纯模型 | 不依赖 settings UI |
 
@@ -113,9 +112,9 @@ main.jsx → app.jsx → features/* → shared/*
 
 ### API
 
-- `shared/api/auth.js` 统一 token、header 和 `authFetch`。
+- `shared/api/client.js` 统一普通请求、header 和响应错误解析。
 - 领域 API 只处理请求/响应，不修改 React 状态。
-- 禁止 `window.authFetch`、`fetch || authFetch` 之类双路径。
+- 禁止 `window.apiFetch`、`fetch || apiFetch` 之类双路径。
 
 ## 6. 状态与并发
 
@@ -162,7 +161,7 @@ app-web/tests/**        # 所有 test/spec
 - 禁止测试混入 `src`；
 - 禁止 `index.js(x)` barrel；
 - 单文件不超过 2000 行；
-- 禁止运行时样式注入和 `window.authFetch`；
+- 禁止运行时样式注入和全局请求函数；
 - model React-free、不得依赖 components/hooks；
 - 相对 import 必须可解析；
 - `shared → features` 禁止；
