@@ -1,7 +1,6 @@
 export function createComposerHandlers(ctx) {
   const {
     API_BASE,
-    abortRef,
     applyConversationSnapshot,
     apiFetch,
     conversationId,
@@ -127,7 +126,7 @@ export function createComposerHandlers(ctx) {
         setComposerAttachment(null);
       }
       const targetRuntime = getRuntime(targetConversationId);
-      const uploadAborted = targetRuntime ? targetRuntime.abortRequested : abortRef.current;
+      const uploadAborted = targetRuntime?.abortRequested === true;
       if (conversationIdRef.current === targetConversationId && !(uploadAborted || error?.name === 'AbortError')) {
         showToast('error', `upload failed: ${String(file.name || '').toLowerCase()}`);
       }

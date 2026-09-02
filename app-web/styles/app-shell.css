@@ -44,6 +44,7 @@
     content: '';
     position: absolute;
     inset: 0;
+    z-index: 0;
     border-radius: 16px;
     border: 1px solid rgba(239, 191, 100, 0.55);
     opacity: 0;
@@ -51,28 +52,44 @@
     animation: app-splash-ping 2.4s cubic-bezier(0.22, 0.45, 0.35, 1) infinite;
 }
 
-.app-shell-loading .app-splash-logo {
-    position: relative;
-    z-index: 1;
-    width: 64px;
-    height: 64px;
-    border-radius: 16px;
+/* 呼吸光晕由独立图层承载，避免在 img 上动画阴影导致 logo 被合成层柔化。 */
+.app-shell-loading .app-splash::after {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    z-index: 0;
+    border-radius: 12px;
+    pointer-events: none;
     animation: app-splash-glow 2.4s ease-in-out infinite;
 }
 
-/* 呼吸光晕：金色光晕随动画缓慢变大变小，像灯光在呼吸 */
+.app-shell-loading .app-splash-logo {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    object-fit: contain;
+    image-rendering: auto;
+    filter: none;
+    box-shadow: none;
+    transform: none;
+}
+
+/* 呼吸光晕：只改变 logo 后方独立图层的阴影，图片本身始终静止且清晰。 */
 @keyframes app-splash-glow {
     0%, 100% {
         box-shadow:
-            0 12px 30px rgba(0, 0, 0, 0.4),
             0 0 16px rgba(239, 191, 100, 0.12),
             0 0 40px rgba(239, 191, 100, 0.08);
+        opacity: 0.72;
     }
     50% {
         box-shadow:
-            0 12px 30px rgba(0, 0, 0, 0.4),
             0 0 36px rgba(239, 191, 100, 0.36),
             0 0 80px rgba(239, 191, 100, 0.22);
+        opacity: 1;
     }
 }
 

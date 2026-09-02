@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "npm run build:web && tsc -p tsconfig.electron.json && concurrently -k -n web,electron -c cyan,magenta \"npm:dev:web\" \"electron .\"",
     "dev:web": "HAISH_DEV_WEB_WATCH=1 vite build --config vite.app-web.config.ts --watch",
-    "dev:electron": "tsc -p tsconfig.electron.json && electron .",
+    "dev:electron": "npm run build:web && tsc -p tsconfig.electron.json && electron .",
     "build:web": "vite build --config vite.app-web.config.ts",
     "build": "npm run build:web && tsc --noEmit && tsc -p tsconfig.electron.json",
     "build:runtime": "node scripts/build-runtime.mjs",

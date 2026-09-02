@@ -21,6 +21,7 @@ export function TaskDelegation({
   onSelectFile,
   onClearFile,
   onSelectionChange,
+  onRunConfigChange,
   attachment,
   uploading,
   running,
@@ -77,6 +78,15 @@ export function TaskDelegation({
   const modelLoading = providerModels.loading;
   const providerRequest = currentProvider?.requestProvider || currentProvider?.provider || providerId || '';
   const providerConfigured = Boolean(currentProvider && providerRequest);
+
+  React.useEffect(() => {
+    const modelConfigured = !modelLoading && activeModelOptions.some((item) => item.id === modelId);
+    onRunConfigChange?.(
+      providerConfigured && modelConfigured
+        ? { provider: providerRequest, modelId, reasoningEffort }
+        : null,
+    );
+  }, [activeModelOptions, modelId, modelLoading, onRunConfigChange, providerConfigured, providerRequest, reasoningEffort]);
 
   React.useEffect(() => {
     if (modelLoading) return;

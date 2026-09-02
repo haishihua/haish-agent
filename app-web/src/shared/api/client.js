@@ -3,7 +3,6 @@ export const WORKSPACE_STORAGE_KEY = 'haish_workspaces_v2';
 export const CONTEXT_USAGE_STORAGE_KEY = 'haish_context_usage_v1';
 export const RUN_CONFIG_STORAGE_PREFIX = 'haish_run_config_v1';
 export const RESTORED_CONTEXT_BASE_TOKENS = 4200;
-export const DEFAULT_PROJECT_ID = 'default-project';
 export const DEFAULT_PROJECT_NAME = 'Default project';
 export const DEFAULT_SESSION_NAME = 'Default Session';
 export const DEFAULT_CONVERSATION_NAMES = new Set([
@@ -22,11 +21,18 @@ export function stableHash(value) {
   return (hash >>> 0).toString(36);
 }
 
-export function buildRunConfigStorageKey(providerKey, conversationId = '') {
+export function buildOwnerScopedStorageKey(baseKey, ownerId) {
+  const base = String(baseKey || '').trim();
+  const owner = String(ownerId || '').trim();
+  return base && owner ? `${base}:${stableHash(owner)}` : '';
+}
+
+export function buildRunConfigStorageKey(ownerId, providerKey, conversationId = '') {
+  const ownerKey = buildOwnerScopedStorageKey(RUN_CONFIG_STORAGE_PREFIX, ownerId);
   const provider = String(providerKey || 'unknown').trim() || 'unknown';
   const conversation = String(conversationId || '').trim();
-  if (provider === 'unknown' || !conversation) return '';
-  return `${RUN_CONFIG_STORAGE_PREFIX}:${stableHash(provider)}:${stableHash(conversation)}`;
+  if (!ownerKey || provider === 'unknown' || !conversation) return '';
+  return `${ownerKey}:${stableHash(provider)}:${stableHash(conversation)}`;
 }
 
 export function buildApiHeaders(extraHeaders = {}) {

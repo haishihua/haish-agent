@@ -33,9 +33,10 @@ const BUNDLED_RUNTIME_EXECUTABLE = path.join('bin', 'haish-runtime', 'haish-runt
 // from 60s to give headroom under load / large saved state, so we don't
 // kill a backend that's just slow to reach ready.
 const START_TIMEOUT_MS = 120_000;
-// Python 后端及其 MCP 子进程（含 Chromium）退出窗口。SIGTERM 后等
-// 这么久还没退就 SIGKILL，防止 Electron quit 后残留 Chrome 占内存。
-const SHUTDOWN_GRACE_MS = 5_000;
+// Desktop quit is user-facing latency. Give the runtime only a brief flush
+// window, then terminate the complete process tree.
+const SHUTDOWN_GRACE_MS = 250;
+const SHUTDOWN_FORCE_REAP_MS = 250;
 
 // Dev-mode lookup order for the Python backend repo (haish-agent-core):
 //   1. HAISH_LOCAL_RUNTIME_CWD env var (explicit override)
@@ -52,7 +53,7 @@ const DEV_RUNTIME_REPO_CANDIDATES = [
 let child: ChildProcessWithoutNullStreams | null = null;
 let state: LocalRuntimeState = { status: 'idle', baseUrl: '' };
 let startPromise: Promise<LocalRuntimeState> | null = null;
-// 本进程 spawn 的后端 workdir，用于退出时清理 pid 文件（复用的进程不清理）。
+// 当前 App 接管的后端 workdir，用于退出时终止进程并清理 pid 文件。
 let currentWorkdir: string | null = null;
 
 const RUNTIME_PID_FILE = 'runtime.pid';
@@ -249,6 +250,53 @@ function processAlive(pid: number): boolean {
   }
 }
 
+function runtimeProcessTree(rootPid: number): number[] {
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return [rootPid];
+  let output: string;
+  try {
+    output = execFileSync('ps', ['-axo', 'pid=,ppid='], { encoding: 'utf8' });
+  } catch {
+    return [rootPid];
+  }
+  const childrenByParent = new Map<number, number[]>();
+  for (const line of output.split('\n')) {
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s*$/);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    const parentPid = Number(match[2]);
+    childrenByParent.set(parentPid, [...(childrenByParent.get(parentPid) || []), pid]);
+  }
+  const visited = new Set<number>();
+  const childFirst: number[] = [];
+  const visit = (pid: number) => {
+    if (visited.has(pid)) return;
+    visited.add(pid);
+    for (const childPid of childrenByParent.get(pid) || []) visit(childPid);
+    childFirst.push(pid);
+  };
+  visit(rootPid);
+  return childFirst;
+}
+
+function signalProcesses(pids: number[], signal: NodeJS.Signals): void {
+  for (const pid of pids) {
+    if (!processAlive(pid)) continue;
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // The process exited between the liveness check and the signal.
+    }
+  }
+}
+
+async function waitForProcessTreeExit(pids: number[], timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (pids.some(processAlive) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return pids.every((pid) => !processAlive(pid));
+}
+
 function isHaishBackendCommand(command: string): boolean {
   return command.includes('haish_agent_core.app.web') || command.includes('haish-runtime');
 }
@@ -279,7 +327,7 @@ function reapStaleBackends(workdir: string): void {
 }
 
 // 复用健康的旧后端：pid 文件指向的进程还活着且 /api/health 正常，
-// 就直接接管（密钥不变、会话不丢、不会出现双后端）。
+// 就接管它的运行和退出生命周期（密钥不变、会话不丢、不会出现双后端）。
 async function tryReuseExistingRuntime(paths: RuntimePaths): Promise<LocalRuntimeState | null> {
   const workdir = runtimeWorkdir(paths.userDataPath);
   const record = readPidRecord(workdir);
@@ -311,6 +359,7 @@ async function tryReuseExistingRuntime(paths: RuntimePaths): Promise<LocalRuntim
     removePidRecord(workdir);
     return null;
   }
+  currentWorkdir = workdir;
   state = { status: 'ready', baseUrl, pid: record.pid };
   return state;
 }
@@ -435,50 +484,23 @@ export function getLocalRuntimeState(): LocalRuntimeState {
 }
 
 export async function stopLocalRuntime(): Promise<void> {
+  const runtimePid = child?.pid ?? state.pid;
+  const workdir = currentWorkdir;
   state = { ...state, status: 'stopped' };
-  const current = child;
   child = null;
   startPromise = null;
-  if (!current || current.exitCode !== null || current.signalCode !== null) {
-    return;
+  if (runtimePid && processAlive(runtimePid)) {
+    const trackedPids = runtimeProcessTree(runtimePid);
+    signalProcesses(trackedPids, 'SIGTERM');
+    if (!await waitForProcessTreeExit(trackedPids, SHUTDOWN_GRACE_MS)) {
+      const forceTargets = [...new Set([...trackedPids, ...runtimeProcessTree(runtimePid)])];
+      signalProcesses(forceTargets, 'SIGKILL');
+      await waitForProcessTreeExit(forceTargets, SHUTDOWN_FORCE_REAP_MS);
+    }
   }
 
-  await new Promise<void>((resolve) => {
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(killTimer);
-      clearTimeout(reapTimer);
-      resolve();
-    };
-
-    current.once('exit', finish);
-
-    try {
-      current.kill('SIGTERM');
-    } catch {
-      finish();
-      return;
-    }
-
-    // SIGTERM 没在窗口内生效就升级到 SIGKILL，再给 500ms 让 OS 回收。
-    const killTimer = setTimeout(() => {
-      if (settled) return;
-      if (current.exitCode === null && current.signalCode === null) {
-        try {
-          current.kill('SIGKILL');
-        } catch {
-          // 已经死了
-        }
-      }
-    }, SHUTDOWN_GRACE_MS);
-
-    const reapTimer = setTimeout(finish, SHUTDOWN_GRACE_MS + 500);
-  });
-
-  if (currentWorkdir) {
-    removePidRecord(currentWorkdir);
+  if (workdir) {
+    removePidRecord(workdir);
   }
   currentWorkdir = null;
 }

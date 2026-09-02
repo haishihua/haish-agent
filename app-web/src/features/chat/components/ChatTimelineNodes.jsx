@@ -1,4 +1,5 @@
 import React from 'react';
+import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { AskUserInlineForm } from './AskUserInlineForm.jsx';
 import { selectActiveAskUserItemId } from '../model/pending-user-input.js';
@@ -152,6 +153,15 @@ export function ChatTimelineToolBody({ view }) {
       <>
         {hasTerminalContent ? (
           <div className="chat-terminal-frame">
+            <div className="chat-terminal-bar">
+              <span className="chat-terminal-dots" aria-hidden="true"><span /><span /><span /></span>
+              <span className="chat-terminal-cwd">{view.cwd || 'Terminal'}</span>
+              {view.running || (view.exitCode !== undefined && view.exitCode !== '') ? (
+                <span className={`chat-terminal-state ${view.running ? 'running' : ''}`}>
+                  {view.running ? 'running' : `exit ${view.exitCode}`}
+                </span>
+              ) : <span />}
+            </div>
             {view.command ? (
               <div className="chat-terminal-command">
                 <span className="chat-terminal-prompt" aria-hidden="true">
@@ -507,13 +517,13 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
     );
   return (
     <div
-      className={`chat-timeline-tool category-${category} status-${status} mode-${view.mode}`}
+      className={`chat-timeline-chip chat-timeline-tool category-${category} status-${status} mode-${view.mode}`}
       data-tool-call-id={item.callId || ''}
       data-tool-name={String(item.toolName || '').toLowerCase()}
     >
       <button
         type="button"
-        className="chat-timeline-tool-head"
+        className="chat-timeline-chip-head chat-timeline-tool-head"
         onClick={() => hasBody && setOpen((value) => !value)}
         aria-expanded={open}
         disabled={!hasBody}
@@ -562,7 +572,7 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
 }
 
 // Collapsed view of a run of consecutive tool calls. Looks like a regular
-// tool chip (same .chat-timeline-tool-head border / pill) but the label is a
+// tool chip (same shared chip primitive) but the label is a
 // verb-counted summary like "read 3 files · executed 2 commands · used
 // chrome devtools 11 tools". Click expands to the original per-tool chips.
 export function ChatTimelineToolGroup({
@@ -578,10 +588,10 @@ export function ChatTimelineToolGroup({
   const summary = item.summary || `used ${tools.length} tools`;
 
   return (
-    <div className={`chat-timeline-tool category-tool status-${status} is-group`}>
+    <div className={`chat-timeline-chip chat-timeline-tool category-tool status-${status} is-group`}>
       <button
         type="button"
-        className="chat-timeline-tool-head"
+        className="chat-timeline-chip-head chat-timeline-tool-head"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
       >
@@ -611,19 +621,26 @@ export function ChatTimelineToolGroup({
 export function ChatTimelineMetaNode({ item }) {
   const [open, setOpen] = React.useState(false);
   const isContextCompaction = String(item.summary || '').toLowerCase() === 'auto-compacting context';
+  const isRetry = item.metaType === 'llm_retry';
   const summaryText = String(item.summaryText || '').trim();
   const details = Array.isArray(item.details) ? item.details : [];
   const expandable = isContextCompaction && Boolean(summaryText);
   return (
-    <div className={`chat-timeline-meta status-${item.status || 'done'} ${isContextCompaction ? 'is-compaction' : ''}`}>
+    <div
+      className={`chat-timeline-chip chat-timeline-meta status-${item.status || 'done'} ${isContextCompaction ? 'is-compaction' : ''} ${isRetry ? 'is-retry' : ''}`}
+      role={isRetry ? 'status' : undefined}
+      aria-live={isRetry ? 'polite' : undefined}
+      aria-atomic={isRetry ? 'true' : undefined}
+    >
       <button
         type="button"
-        className="chat-timeline-meta-head"
+        className="chat-timeline-chip-head chat-timeline-meta-head"
         onClick={() => expandable && setOpen((value) => !value)}
         aria-expanded={expandable ? open : false}
         disabled={!expandable}
       >
         <span className={`chat-timeline-status status-${item.status || 'done'}`} aria-hidden="true" />
+        {isRetry ? <AppIcon name="retry" size={13} className="chat-timeline-retry-icon" /> : null}
         {isContextCompaction ? <span className="chat-timeline-compaction-icon" aria-hidden="true" /> : null}
         <span className="chat-timeline-meta-label">{item.summary || 'Thinking…'}</span>
         {expandable ? <ChatTimelineChevron open={open} /> : null}
@@ -687,6 +704,7 @@ export function ChatAgentTimeline({
 }) {
   const safeItems = Array.isArray(items) ? items : [];
   const todos = Array.isArray(latestTodos) && latestTodos.length > 0 ? latestTodos : null;
+  const retrying = safeItems.some((item) => item.metaType === 'llm_retry' && item.status === 'running');
   const activeAskUserItemId = selectActiveAskUserItemId(safeItems, streaming);
   // Empty timeline + done + no todos = nothing to show.
   // Empty timeline + streaming = activity indicator carries the "alive" hint.
@@ -736,7 +754,7 @@ export function ChatAgentTimeline({
         }
         return null;
       })}
-      {streaming ? (
+      {streaming && !retrying ? (
         <div className="chat-timeline-activity" aria-label="Agent activity">
           <span className="chat-timeline-spark animated-gradient-text" aria-hidden="true">
             *

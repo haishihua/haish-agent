@@ -1,12 +1,7 @@
 export function createConversationRuntime(ctx) {
   const {
-    activeRunIdRef,
-    activeTaskIdRef,
-    answerBufferRef,
-    cancelledRunIdsRef,
     conversationIdRef,
     createEmptyTaskRuntimeState,
-    fetchAbortRef,
     normalizeWorkspaceOrdering,
     notifyTaskComplete,
     runtimesRef,
@@ -17,7 +12,6 @@ export function createConversationRuntime(ctx) {
     streamTargetConvIdRef,
     taskImageAttachmentsRef,
     toastTimerRef,
-    taskRuntimeStateRef,
   } = ctx;
 
   function createEmptyRuntime() {
@@ -45,11 +39,10 @@ export function createConversationRuntime(ctx) {
     return rt || null;
   }
 
-  // Mutate a conversation's runtime in place. If `convId` is the conversation
-  // currently shown in the UI, also mirror the relevant fields to the displayed
-  // React state + legacy refs so existing render paths keep working.
+  // Mutate the runtime that owns this conversation. React state is only a
+  // projection of the currently displayed runtime; runtimesRef is authoritative.
   function mutateRuntime(convId, mutator) {
-    if (!convId) return null;
+    if (!convId) throw new Error('conversation runtime mutation requires a conversation id');
     const rt = getRuntime(convId, { create: true });
     const changed = mutator(rt);
     if (changed === false) return rt;
@@ -64,7 +57,8 @@ export function createConversationRuntime(ctx) {
   }
 
   function batchRuntimeMutations(convId, callback) {
-    if (!convId || typeof callback !== 'function') return callback?.();
+    if (!convId) throw new Error('conversation runtime batch requires a conversation id');
+    if (typeof callback !== 'function') throw new TypeError('conversation runtime batch requires a callback');
     const rt = getRuntime(convId, { create: true });
     rt.syncBatchDepth = (rt.syncBatchDepth || 0) + 1;
     try {
@@ -78,17 +72,11 @@ export function createConversationRuntime(ctx) {
     }
   }
 
-  // Snapshot a runtime's task state into the displayed React state + refs.
+  // Snapshot a runtime's task state into the displayed React state.
   // Called on conversation switch and after every mutation that targeted the
   // currently-shown conversation.
   function syncDisplayedRuntime(rt) {
     if (!rt) return;
-    activeRunIdRef.current = rt.activeRunId;
-    activeTaskIdRef.current = rt.activeTaskId;
-    fetchAbortRef.current = rt.fetchController;
-    answerBufferRef.current = rt.answerBuffer;
-    cancelledRunIdsRef.current = rt.cancelledRunIds;
-    taskRuntimeStateRef.current = rt.taskRuntimeState;
     cacheTaskImageAttachments(rt.taskRuntimeState);
     setTaskRuntimeState(rt.taskRuntimeState);
     setBusy(rt.busy);
@@ -100,32 +88,25 @@ export function createConversationRuntime(ctx) {
 
   function setRuntimeBusy(value, explicit = null) {
     const cid = activeRuntimeTargetConvId(explicit);
-    if (cid) {
-      const rt = getRuntime(cid, { create: true });
-      const taskJustCompleted = value === false && rt.busy === true;
-      const completedTaskId = rt.activeTaskId
-        || rt.taskRuntimeState?.activeTaskId
-        || rt.taskRuntimeState?.pendingTask?.taskId
-        || rt.taskRuntimeState?.pendingTask?.id
-        || null;
-      const completedTask = completedTaskId
-        ? (rt.taskRuntimeState?.tasksById?.[completedTaskId]
-          || ((rt.taskRuntimeState?.pendingTask?.taskId || rt.taskRuntimeState?.pendingTask?.id) === completedTaskId
-            ? rt.taskRuntimeState.pendingTask
-            : null))
-        : null;
-      mutateRuntime(cid, (current) => { current.busy = value; });
-      if (taskJustCompleted && completedTaskId) notifyTaskComplete(cid, completedTaskId, completedTask);
-      // Task just finished (or was cancelled/errored) — mirror the runtime's
-      // task state back into workspaceState so the sidebar entry for THIS
-      // conversation reflects the new "done" status, even when the user is
-      // currently viewing a different conversation. Otherwise the spinner
-      // next to the backgrounded conversation never goes away until the user
-      // navigates into it and triggers a re-fetch.
-      if (value === false) flushRuntimeTasksToWorkspace(cid);
-    } else {
-      setBusy(value);
-    }
+    if (!cid) throw new Error('conversation runtime busy state requires a conversation id');
+    const rt = getRuntime(cid, { create: true });
+    const taskJustCompleted = value === false && rt.busy === true;
+    const completedTaskId = rt.activeTaskId
+      || rt.taskRuntimeState?.activeTaskId
+      || rt.taskRuntimeState?.pendingTask?.taskId
+      || rt.taskRuntimeState?.pendingTask?.id
+      || null;
+    const completedTask = completedTaskId
+      ? (rt.taskRuntimeState?.tasksById?.[completedTaskId]
+        || ((rt.taskRuntimeState?.pendingTask?.taskId || rt.taskRuntimeState?.pendingTask?.id) === completedTaskId
+          ? rt.taskRuntimeState.pendingTask
+          : null))
+      : null;
+    mutateRuntime(cid, (current) => { current.busy = value; });
+    if (taskJustCompleted && completedTaskId) notifyTaskComplete(cid, completedTaskId, completedTask);
+    // Remote/background executions update the sidebar through runtime events
+    // and polling snapshots, not through a global UI clock.
+    if (value === false) flushRuntimeTasksToWorkspace(cid);
   }
 
   function flushRuntimeTasksToWorkspace(convId) {
@@ -169,31 +150,28 @@ export function createConversationRuntime(ctx) {
   }
   function setRuntimeActiveTaskId(value, explicit = null) {
     const cid = activeRuntimeTargetConvId(explicit);
-    if (cid) mutateRuntime(cid, (rt) => { rt.activeTaskId = value; });
-    else activeTaskIdRef.current = value;
+    if (!cid) throw new Error('active task update requires a conversation id');
+    mutateRuntime(cid, (rt) => { rt.activeTaskId = value; });
   }
   function setRuntimeActiveRunId(value, explicit = null) {
     const cid = activeRuntimeTargetConvId(explicit);
-    if (cid) mutateRuntime(cid, (rt) => { rt.activeRunId = value; });
-    else activeRunIdRef.current = value;
+    if (!cid) throw new Error('active run update requires a conversation id');
+    mutateRuntime(cid, (rt) => { rt.activeRunId = value; });
   }
   function setRuntimeFetchController(value, explicit = null) {
     const cid = activeRuntimeTargetConvId(explicit);
-    if (cid) mutateRuntime(cid, (rt) => { rt.fetchController = value; });
-    else fetchAbortRef.current = value;
+    if (!cid) throw new Error('runtime request update requires a conversation id');
+    mutateRuntime(cid, (rt) => { rt.fetchController = value; });
   }
   function setRuntimeAnswerBuffer(value, explicit = null) {
     const cid = activeRuntimeTargetConvId(explicit);
-    if (cid) mutateRuntime(cid, (rt) => { rt.answerBuffer = value; });
-    else answerBufferRef.current = value;
+    if (!cid) throw new Error('answer buffer update requires a conversation id');
+    mutateRuntime(cid, (rt) => { rt.answerBuffer = value; });
   }
   function readRuntimeAnswerBuffer(explicit = null) {
     const cid = activeRuntimeTargetConvId(explicit);
-    if (cid) {
-      const rt = getRuntime(cid);
-      if (rt) return rt.answerBuffer;
-    }
-    return answerBufferRef.current;
+    if (!cid) throw new Error('answer buffer read requires a conversation id');
+    return getRuntime(cid, { create: true }).answerBuffer;
   }
 
   // `targetConvId` (optional) lets SSE handlers route their write to the
@@ -202,17 +180,7 @@ export function createConversationRuntime(ctx) {
   // context (if set) or fall back to the currently-shown conversation.
   function updateTaskRuntimeState(updater, targetConvId = null) {
     const convId = activeRuntimeTargetConvId(targetConvId);
-    if (!convId) {
-      // No active conversation context — fall back to legacy single-state path
-      // so we don't drop the write (rare, mostly during early bootstrap).
-      setTaskRuntimeState((state) => {
-        const next = updater(state);
-        taskRuntimeStateRef.current = next;
-        cacheTaskImageAttachments(next);
-        return next;
-      });
-      return;
-    }
+    if (!convId) throw new Error('task runtime update requires a conversation id');
     mutateRuntime(convId, (rt) => {
       const next = updater(rt.taskRuntimeState);
       if (next === rt.taskRuntimeState) return false;

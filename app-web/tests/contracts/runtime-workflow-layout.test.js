@@ -288,12 +288,16 @@ test('a new loop attempt never reuses tool calls from the previous attempt', () 
 });
 
 test('current approval waiting state wins over an older rejected decision', () => {
+  const cancelledTaskCheck = runtimeSource.indexOf("normalizedTaskStatus === 'cancelled'");
   const waitingCheck = runtimeSource.indexOf("runStatus === 'waiting_approval'");
   const decisionCheck = runtimeSource.indexOf('if (approvalDecision) return approvalDecision;');
+  assert.ok(cancelledTaskCheck >= 0 && cancelledTaskCheck < waitingCheck);
   assert.ok(waitingCheck >= 0 && waitingCheck < decisionCheck);
   assert.match(runtimeSource, /className="workflow-detail-history"/);
+  assert.match(runtimeSource, /className="workflow-detail-attempt-label workflow-detail-history-summary"/);
   assert.match(runtimeSource, /previous Attempts \(\{historicalAttempts\.length\}\)/);
   assert.match(runtimeSource, /<ChatTimelineChevron open=\{historyOpen\} \/>/);
+  assert.doesNotMatch(runtimeStyles, /workflow-detail-history-summary > \.chat-timeline-chevron/);
 });
 
 test('a selected outgoing edge completes its source node when the finish receipt is missing', () => {
@@ -360,7 +364,11 @@ test('terminal workflow tasks can rerun an executed business node', () => {
   assert.match(runtimeSource, /onRetry\?\.\(node\.id\)/);
   assert.match(taskStreamSource, /workflow\/nodes\/\$\{encodeURIComponent\(streamRequest\.rerunNodeId\)\}\/rerun\/stream/);
   assert.match(taskStreamSource, /const runId = rerunningNode \? generateHexId\(\)/);
-  assert.match(appShellSource, /setViewedWorkflowTask\(null\);\s*executeWorkflowNodeRerun\(currentWorkflowTask, nodeId\)/);
+  assert.match(appShellSource, /setViewedWorkflowTask\(null\);\s*executeWorkflowNodeRerun\(currentWorkflowTask, nodeId, botRunConfigRef\.current\)/);
+  assert.match(appShellSource, /onRunConfigChange=\{handleBotRunConfigChange\}/);
+  assert.match(taskStreamSource, /provider: streamRequest\.runConfig\.provider/);
+  assert.match(taskStreamSource, /model_id: streamRequest\.runConfig\.modelId/);
+  assert.match(taskStreamSource, /reasoning_effort: streamRequest\.runConfig\.reasoningEffort/);
   assert.match(taskStreamSource, /sourceTaskId/);
   assert.doesNotMatch(taskStreamSource, /allowTerminalReset: true/);
   assert.match(taskStreamSource, /case 'workflow_resumed'/);

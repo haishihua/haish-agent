@@ -602,7 +602,7 @@ export function createTaskStreamHandlers(ctx) {
         }));
         break;
       }
-      case 'llm_attempt_failed': {
+      case 'llm_retry': {
         updateTaskById(taskId, (run) => ({
           ...run,
           status: isTerminalTaskStatus(run.status) ? run.status : 'running',
@@ -873,7 +873,11 @@ export function createTaskStreamHandlers(ctx) {
     const streamUrl = rerunningNode
       ? `${API_BASE}/api/tasks/${sourceTaskId}/workflow/nodes/${encodeURIComponent(streamRequest.rerunNodeId)}/rerun/stream`
       : `${API_BASE}/api/conversations/${runConversationId}/tasks/stream`;
-    const requestBody = rerunningNode ? undefined : JSON.stringify({
+    const requestBody = rerunningNode ? JSON.stringify({
+      provider: streamRequest.runConfig.provider,
+      model_id: streamRequest.runConfig.modelId,
+      reasoning_effort: streamRequest.runConfig.reasoningEffort,
+    }) : JSON.stringify({
       message: pendingTask.requestText || pendingTask.title,
       attachments: pendingTask.attachment ? [{
         name: pendingTask.attachment.name,
@@ -986,11 +990,16 @@ export function createTaskStreamHandlers(ctx) {
 
   return {
     executeQuest,
-    executeWorkflowNodeRerun: (task, nodeId) => executeQuest(
-      { ...task, id: task?.taskId || task?.id },
-      task?.conversationId || task?.conversation_id,
-      { rerunNodeId: nodeId },
-    ),
+    executeWorkflowNodeRerun: (task, nodeId, runConfig) => {
+      if (!runConfig?.provider || !runConfig?.modelId || !runConfig?.reasoningEffort) {
+        return Promise.reject(new Error('Select a provider, model, and reasoning effort before rerunning.'));
+      }
+      return executeQuest(
+        { ...task, id: task?.taskId || task?.id },
+        task?.conversationId || task?.conversation_id,
+        { rerunNodeId: nodeId, runConfig },
+      );
+    },
   };
 }
 

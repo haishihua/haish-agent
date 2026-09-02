@@ -66,6 +66,25 @@ export function appendAnswerDelta(current, delta) {
   return existing + nextDelta;
 }
 
+export function llmRetrySummary(event) {
+  const state = String(event?.retryState || '');
+  const reason = String(event?.reason || 'transient_error');
+  const attempt = Math.max(Number(event?.attempt || 1), 1);
+  const maxAttempts = Math.max(Number(event?.maxAttempts || 1), 1);
+  const copy = {
+    connection_error: ['Connection interrupted', 'Connection restored', 'Connection failed'],
+    tls_error: ['Connection interrupted', 'Connection restored', 'Connection failed'],
+    timeout: ['Model response timed out', 'Model response resumed', 'Model response failed'],
+    rate_limited: ['Too many requests', 'Request accepted', 'Request limit persisted'],
+    service_unavailable: ['Model service unavailable', 'Model service restored', 'Model service unavailable'],
+    incomplete_stream: ['Model response interrupted', 'Model response resumed', 'Model response failed'],
+    transient_error: ['Model request interrupted', 'Model request restored', 'Model request failed'],
+  }[reason] || ['Model request interrupted', 'Model request restored', 'Model request failed'];
+  if (state === 'recovered') return `${copy[1]} on attempt ${attempt}/${maxAttempts}`;
+  if (state === 'exhausted') return `${copy[2]} after ${attempt} attempts`;
+  return `${copy[0]} · retrying ${attempt}/${maxAttempts}`;
+}
+
 
 export function chatTraceToolName(value) {
   return String(value || 'tool').replace(/[_-]+/g, ' ').trim() || 'tool';
@@ -406,6 +425,7 @@ export function buildChatTimeline(task, taskStatus) {
   let currentSkillItem = null;
   let currentCompactionItem = null;
   let latestTodos = null;
+  const retryItemsByOperationId = new Map();
   const seenToolIds = new Set();
   // Track per-callId tool item so completion / failure events can update the
   // existing entry in place. Without this the entry is created at
@@ -700,18 +720,36 @@ export function buildChatTimeline(task, taskStatus) {
       textBufSource = event.messagePhase || event.message_phase || 'answer';
       continue;
     }
-    if (type === 'llm_attempt_failed') {
+    if (type === 'llm_retry') {
       flushThinking(false);
-      const blockId = event.textBlockId || event.text_block_id || '';
-      if (textBuf.trim() && blockId && textBufBlockId && blockId !== textBufBlockId) {
-        flushText();
+      if (textBuf.trim()) flushText();
+      const operationId = String(event.operationId || '');
+      if (!operationId) continue;
+      const retryState = String(event.retryState || 'retrying');
+      const next = {
+        summary: llmRetrySummary(event),
+        status: retryState === 'recovered' ? 'done' : retryState === 'exhausted' ? 'failed' : 'running',
+        retryState,
+        reason: event.reason,
+        attempt: event.attempt,
+        maxAttempts: event.maxAttempts,
+      };
+      const existing = retryItemsByOperationId.get(operationId);
+      if (existing) {
+        Object.assign(existing, next);
+      } else {
+        const item = {
+          kind: 'meta',
+          metaType: 'llm_retry',
+          id: `llm-retry-${operationId}`,
+          operationId,
+          details: [],
+          ...next,
+        };
+        retryItemsByOperationId.set(operationId, item);
+        items.push(item);
       }
-      textBufBlockId = blockId || textBufBlockId;
-      const errorMessage = String(
-        event.errorMessage || event.error_message || event.message || 'Model stream failed.'
-      ).trim();
-      textBuf = `${textBuf.replace(/\s+$/, '')}\n\nError: ${errorMessage}\n\n`;
-      textBufSource = event.messagePhase || event.message_phase || textBufSource || 'answer';
+      currentSkillItem = null;
       continue;
     }
     if (type === 'llm_text_phase_resolved') {

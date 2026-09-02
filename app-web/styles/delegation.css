@@ -689,17 +689,6 @@
     transform: translateY(-1px);
 }
 
-/* ============ Icon-only button collapses ============ */
-.side-panel-head .filter-pill.icon-only {
-    width: 30px;
-    height: 30px;
-    padding: 0;
-    gap: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
 .task-delegation .td-btn.icon-only {
     width: 30px;
     padding: 0;

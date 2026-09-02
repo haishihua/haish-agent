@@ -54,7 +54,6 @@ export function ChatPanel({
   workspacePath,
   homePath,
   activeTaskText,
-  now,
   providerOptions = [],
   agentOptions,
   defaultAgentId,
@@ -65,6 +64,7 @@ export function ChatPanel({
   selectionStorageKey = '',
   draft: draftProp,
   onDraftChange: onDraftChangeProp,
+  onRetryTask,
 }) {
   const resolvedProviderOptions = Array.isArray(providerOptions) && providerOptions.length > 0
     ? providerOptions
@@ -447,7 +447,14 @@ export function ChatPanel({
               <div className="chat-empty-copy">Drop a task, a question, or a loose idea. I'll take it from there.</div>
             </div>
           ) : messages.map((message) => (
-            <ChatMessageRow key={message.id} message={message} now={now} onPreviewImage={openImagePreview} />
+            <ChatMessageRow
+              key={message.id}
+              message={message}
+              onPreviewImage={openImagePreview}
+              onRetry={message.role === 'agent' && message.status === 'failed' && message.taskId
+                ? () => onRetryTask?.(message.taskId)
+                : null}
+            />
           ))}
           <ApprovalInline />
         </div>

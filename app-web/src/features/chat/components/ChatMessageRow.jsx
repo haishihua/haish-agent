@@ -1,4 +1,5 @@
 import React from 'react';
+import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { stripInjectedSkillInstruction } from '../model/chat-text.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
@@ -36,7 +37,7 @@ function FinalAnswerMarkdown({ source, streaming }) {
   );
 }
 
-function ChatMessageRowComponent({ message, now, onPreviewImage, onRetry }) {
+function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
   const timeline = Array.isArray(message.traceTimeline) ? message.traceTimeline : [];
   const hasTimeline = timeline.length > 0;
   const isAgent = message.role === 'agent';
@@ -52,7 +53,13 @@ function ChatMessageRowComponent({ message, now, onPreviewImage, onRetry }) {
   const visibleText = isUser ? stripInjectedSkillInstruction(message.text) : message.text;
   const [copied, setCopied] = React.useState(false);
   const copyTimerRef = React.useRef(null);
-  const nowMs = now instanceof Date ? now.getTime() : Number(now) || Date.now();
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!message.streaming) return undefined;
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [message.streaming]);
   // 计时从"模型返回首字"那一刻起算：firstTokenAt 存在（SSE 已建连且模型开始输出）
   // 才显示 elapsed pill；任务结束后仍按发送时间算总时长。
   const firstTokenMs = Number(message.firstTokenAt) || 0;
@@ -170,10 +177,7 @@ function ChatMessageRowComponent({ message, now, onPreviewImage, onRetry }) {
                 onClick={onRetry}
                 aria-label="ReRun this node"
               >
-                <svg className="chat-bubble-rerun-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-                  <path d="M3 3v5h5" />
-                </svg>
+                <AppIcon name="retry" size={15} />
               </button>
             </PortalTooltip>
           ) : null}
@@ -189,7 +193,6 @@ export const ChatMessageRow = React.memo(
     previous.message === next.message
     && previous.onPreviewImage === next.onPreviewImage
     && previous.onRetry === next.onRetry
-    && (!next.message?.streaming || previous.now === next.now)
   ),
 );
 

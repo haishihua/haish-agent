@@ -3,10 +3,10 @@ import { API_BASE } from '../../../shared/api/base.js';
 import {
   WORKSPACE_STORAGE_KEY,
   CONVERSATION_STORAGE_KEY,
-  DEFAULT_PROJECT_ID,
   DEFAULT_PROJECT_NAME,
   DEFAULT_SESSION_NAME,
   DEFAULT_CONVERSATION_NAMES,
+  buildOwnerScopedStorageKey,
 } from '../../../shared/api/client.js';
 
 export function generateHexId() {
@@ -16,22 +16,30 @@ export function generateHexId() {
   return `${Date.now().toString(16)}${Math.random().toString(16).slice(2, 18)}`;
 }
 
-export function getStoredConversationId() {
-  return String(window.localStorage.getItem(CONVERSATION_STORAGE_KEY) || '').trim() || null;
+export function getStoredConversationId(ownerId) {
+  const key = buildOwnerScopedStorageKey(CONVERSATION_STORAGE_KEY, ownerId);
+  return key ? String(window.localStorage.getItem(key) || '').trim() || null : null;
 }
 
-export function setStoredConversationId(conversationId) {
+export function setStoredConversationId(ownerId, conversationId) {
+  const key = buildOwnerScopedStorageKey(CONVERSATION_STORAGE_KEY, ownerId);
+  if (!key) return;
   if (!conversationId) {
-    window.localStorage.removeItem(CONVERSATION_STORAGE_KEY);
+    window.localStorage.removeItem(key);
     return;
   }
-  window.localStorage.setItem(CONVERSATION_STORAGE_KEY, conversationId);
+  window.localStorage.setItem(key, conversationId);
 }
 
-export function createDefaultProject() {
+export function defaultProjectIdForMode(executionMode = 'chat') {
+  return `default-project-${executionMode === 'bot' ? 'bot' : 'chat'}`;
+}
+
+export function createDefaultProject(executionMode = 'chat') {
   return {
-    id: DEFAULT_PROJECT_ID,
+    id: defaultProjectIdForMode(executionMode),
     type: 'system',
+    executionMode: executionMode === 'bot' ? 'bot' : 'chat',
     name: DEFAULT_PROJECT_NAME,
     workspacePath: null,
     workspaceLabel: null,
@@ -49,8 +57,8 @@ export function createDefaultProject() {
 
 export function createEmptyWorkspaceState() {
   return {
-    projects: [createDefaultProject()],
-    activeProjectId: DEFAULT_PROJECT_ID,
+    projects: [createDefaultProject('chat'), createDefaultProject('bot')],
+    activeProjectId: defaultProjectIdForMode('chat'),
     activeConversationId: null,
   };
 }
@@ -60,19 +68,15 @@ function parseStoredWorkspaceState(raw) {
   try {
     const parsed = JSON.parse(raw);
     if (!parsed || !Array.isArray(parsed.projects)) return null;
-    const defaultProject = createDefaultProject();
-    const projectsById = new Map(parsed.projects.map((project) => [project.id, project]));
-    // Preserve the saved project order (manual drag). Only inject Default when
-    // missing — never force it back to the top after the user moved it.
-    const orderedProjects = parsed.projects.filter((project) => project?.id);
-    if (!projectsById.has(DEFAULT_PROJECT_ID)) {
-      orderedProjects.unshift(defaultProject);
-    }
+    const orderedProjects = parsed.projects.filter(
+      (project) => project?.id && ['chat', 'bot'].includes(project.executionMode),
+    );
     const projects = orderedProjects.map((project) => {
-      const isDefault = project.id === DEFAULT_PROJECT_ID;
+      const isDefault = project.type === 'system';
       return {
         ...project,
         type: isDefault ? 'system' : 'custom',
+        executionMode: project.executionMode,
         name: isDefault ? DEFAULT_PROJECT_NAME : (project.name || project.workspaceLabel || 'Custom project'),
         workspacePath: isDefault ? null : (project.workspacePath || null),
         workspaceLabel: isDefault ? null : (project.workspaceLabel || project.name || null),
@@ -115,8 +119,8 @@ function parseStoredWorkspaceState(raw) {
     });
     return normalizeWorkspaceOrdering({
       projects,
-      activeProjectId: parsed.activeProjectId || DEFAULT_PROJECT_ID,
-      activeConversationId: parsed.activeConversationId || getStoredConversationId(),
+      activeProjectId: parsed.activeProjectId || defaultProjectIdForMode('chat'),
+      activeConversationId: parsed.activeConversationId || null,
     });
   } catch (error) {
     console.warn('Failed to load workspace state:', error);
@@ -124,31 +128,17 @@ function parseStoredWorkspaceState(raw) {
   }
 }
 
-export function loadStoredWorkspaceState() {
-  return parseStoredWorkspaceState(window.localStorage.getItem(WORKSPACE_STORAGE_KEY)) || createEmptyWorkspaceState();
+export function loadStoredWorkspaceState(ownerId) {
+  const key = buildOwnerScopedStorageKey(WORKSPACE_STORAGE_KEY, ownerId);
+  return parseStoredWorkspaceState(key ? window.localStorage.getItem(key) : null) || createEmptyWorkspaceState();
 }
 
-export function filterWorkspaceStateByConversationIds(state, conversationIds) {
-  if (!state) return null;
-  const allowed = new Set(conversationIds);
-  const projects = state.projects
-    .map((project) => ({
-      ...project,
-      conversations: project.conversations.filter((conversation) => allowed.has(conversation.id)),
-    }))
-    .filter((project) => project.id === DEFAULT_PROJECT_ID || project.conversations.length > 0);
-  if (!projects.some((project) => project.conversations.length > 0)) return null;
-  return normalizeWorkspaceOrdering({
-    ...state,
-    projects,
-    activeConversationId: allowed.has(state.activeConversationId) ? state.activeConversationId : null,
-  });
-}
-
-export function saveWorkspaceState(state) {
+export function saveWorkspaceState(ownerId, state) {
+  const key = buildOwnerScopedStorageKey(WORKSPACE_STORAGE_KEY, ownerId);
+  if (!key) return;
   try {
     window.localStorage.setItem(
-      WORKSPACE_STORAGE_KEY,
+      key,
       JSON.stringify(compactWorkspaceStateForStorage(state)),
     );
   } catch (error) {
@@ -158,10 +148,11 @@ export function saveWorkspaceState(state) {
 
 export function compactWorkspaceStateForStorage(state) {
   return {
-    activeProjectId: state?.activeProjectId || DEFAULT_PROJECT_ID,
+    activeProjectId: state?.activeProjectId || defaultProjectIdForMode('chat'),
     activeConversationId: state?.activeConversationId || null,
     projects: (state?.projects || []).map((project) => ({
       id: project.id,
+      executionMode: project.executionMode,
       userExpanded: project.userExpanded,
       chatConversationsExpanded: Boolean(project.chatConversationsExpanded),
       workflowTasksExpanded: Boolean(project.workflowTasksExpanded),
@@ -195,33 +186,6 @@ export function getWorkspaceConversationIds(state) {
     .flatMap((project) => project.conversations || [])
     .map((conversation) => conversation.id)
     .filter(Boolean);
-}
-
-export function removeProjectModeFromWorkspace(state, projectId, executionMode) {
-  const mode = executionMode === 'bot' ? 'bot' : 'chat';
-  const projects = (state?.projects || []).flatMap((project) => {
-    if (project.id !== projectId) return [project];
-    const conversations = (project.conversations || []).filter(
-      (conversation) => conversation.executionMode !== mode,
-    );
-    if (conversations.length === 0) return [];
-    return [{
-      ...project,
-      hiddenModes: [...new Set([...(project.hiddenModes || []), mode])],
-      conversations,
-    }];
-  });
-  return normalizeWorkspaceOrdering({
-    ...state,
-    projects,
-    activeProjectId: DEFAULT_PROJECT_ID,
-    activeConversationId: null,
-  });
-}
-
-export function projectIdForWorkspacePath(workspacePath) {
-  const raw = String(workspacePath || '').trim();
-  return raw ? `workspace:${encodeURIComponent(raw)}` : DEFAULT_PROJECT_ID;
 }
 
 export function projectNameFromPath(workspacePath, fallback = 'Custom project') {
@@ -410,7 +374,8 @@ export function withDefaultExpansion(project) {
   // The sidebar expansion is purely user-driven now: `userExpanded` is the
   // single source of truth. Activation handlers below set it to true on the
   // newly-selected project / conversation; the chevron toggle flips it; an
-  // item the user has never touched stays collapsed. This stops the
+  // untouched chat projects stay collapsed; workflow projects reveal their
+  // compact task preview. This stops the
   // previously-active project from auto-collapsing the moment the user
   // navigates to another conversation — the regression the user reported as
   // "click a project and the other projects/conversations get folded up".
@@ -431,7 +396,9 @@ export function withDefaultExpansion(project) {
     conversations,
     createdAt: inferProjectCreatedAt({ ...project, conversations }),
     updatedAt: projectUpdatedTimestamp({ ...project, conversations }) || project.updatedAt || null,
-    expanded: project.userExpanded === true,
+    expanded: project.executionMode === 'bot'
+      ? project.userExpanded !== false
+      : project.userExpanded === true,
     chatConversationsExpanded: Boolean(project.chatConversationsExpanded),
     workflowTasksExpanded: Boolean(project.workflowTasksExpanded),
   };
@@ -458,13 +425,17 @@ export function isTaskActuallyActive(task) {
 }
 
 export function normalizeWorkspaceOrdering(state) {
-  const activeProjectId = state?.activeProjectId || DEFAULT_PROJECT_ID;
-  const activeConversationId = state?.activeConversationId || getStoredConversationId();
-  // Backend order is authoritative. The frontend only groups pinned rows
-  // ahead of unpinned rows while preserving the relative order returned by
-  // the backend. Running state and recent activity never participate in the
-  // persisted/display ordering, so temporary runtime state cannot leak into
-  // a later drag reorder request.
+  const activeProjectId = state?.activeProjectId || defaultProjectIdForMode('chat');
+  const activeConversationId = state?.activeConversationId || null;
+  // Sidebar ordering policy:
+  //   - Conversations: pinned first, then any conversation with a running/
+  //     queued task floats to the top of its project so active work is always
+  //     visible. Within each pinned / running / idle group keep the backend
+  //     sortOrder (manual drag) as the stable relative order; updatedAt and
+  //     active highlighting do NOT participate in ordering, so clicking
+  //     around does not reshuffle the list.
+  //   - Projects: pinned first, then backend sortOrder (manual drag). Running
+  //     state never participates in project ordering.
   const projects = (Array.isArray(state?.projects) ? state.projects : [])
     .map((project) => withDefaultExpansion(project))
     .map((project) => ({
@@ -474,6 +445,10 @@ export function normalizeWorkspaceOrdering(state) {
         const bPinned = Boolean(b.pinned);
         if (aPinned && !bPinned) return -1;
         if (bPinned && !aPinned) return 1;
+        const aActive = conversationHasActiveTask(a);
+        const bActive = conversationHasActiveTask(b);
+        if (aActive && !bActive) return -1;
+        if (bActive && !aActive) return 1;
         return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
       }),
     }))
@@ -522,13 +497,8 @@ export function conversationDetailToWorkspaceConversation(
       : undefined,
     tasksExpanded: Boolean(previousConversation?.tasksExpanded),
     projectId: detail.project_id || previousConversation?.projectId || null,
-    // The backend is authoritative; local values only support old servers.
-    pinned: typeof detail.pinned === 'boolean'
-      ? detail.pinned
-      : Boolean(previousConversation?.pinned),
-    sortOrder: typeof detail.sort_order === 'number'
-      ? detail.sort_order
-      : (previousConversation?.sortOrder ?? 0),
+    pinned: Boolean(detail.pinned),
+    sortOrder: typeof detail.sort_order === 'number' ? detail.sort_order : 0,
   };
 }
 
@@ -546,10 +516,35 @@ export function buildWorkspaceStateFromProjects(
     const projectId = detail?.project_id;
     if (!projectId) return null;
     const previousProject = previousProjects.get(projectId);
-    const isDefault = Boolean(detail.is_default) || projectId === DEFAULT_PROJECT_ID;
+    const executionMode = detail.execution_mode;
+    if (!['chat', 'bot'].includes(executionMode)) return null;
+    const botTasksByConversationId = executionMode === 'bot'
+      ? (Array.isArray(detail.tasks) ? detail.tasks : []).reduce((groups, task) => {
+        const conversationId = task?.conversation_id;
+        if (!conversationId) throw new Error('Bot task summary is missing conversation_id.');
+        const tasks = groups.get(conversationId) || [];
+        tasks.push(task);
+        groups.set(conversationId, tasks);
+        return groups;
+      }, new Map())
+      : null;
+    if (botTasksByConversationId) {
+      const conversationIds = new Set(
+        (Array.isArray(detail.conversations) ? detail.conversations : [])
+          .map((conversation) => conversation?.conversation_id)
+          .filter(Boolean),
+      );
+      for (const conversationId of botTasksByConversationId.keys()) {
+        if (!conversationIds.has(conversationId)) {
+          throw new Error('Bot task summary references a conversation outside its project.');
+        }
+      }
+    }
+    const isDefault = Boolean(detail.is_default);
     return {
       id: projectId,
       type: isDefault ? 'system' : 'custom',
+      executionMode,
       name: detail.name || (isDefault ? DEFAULT_PROJECT_NAME : projectNameFromPath(detail.workspace_path)),
       workspacePath: detail.workspace_path || null,
       workspaceLabel: detail.workspace_path ? (detail.name || projectNameFromPath(detail.workspace_path)) : null,
@@ -562,18 +557,24 @@ export function buildWorkspaceStateFromProjects(
       hiddenModes: previousProject?.hiddenModes || [],
       pinned: Boolean(detail.pinned),
       sortOrder: typeof detail.sort_order === 'number' ? detail.sort_order : 0,
-      conversations: (detail.conversations || []).map((conversation) => (
-        conversationDetailToWorkspaceConversation(
-          conversation,
+      conversations: (detail.conversations || []).map((conversation) => {
+        if (conversation.execution_mode !== executionMode) {
+          throw new Error('Project and conversation execution_mode mismatch.');
+        }
+        const directoryConversation = executionMode === 'bot'
+          ? {
+              ...conversation,
+              tasks: botTasksByConversationId.get(conversation.conversation_id) || [],
+            }
+          : conversation;
+        return conversationDetailToWorkspaceConversation(
+          directoryConversation,
           previousConversations.get(conversation.conversation_id),
           mapTask,
-        )
-      )),
+        );
+      }),
     };
   }).filter(Boolean);
-  if (!projects.some((project) => project.id === DEFAULT_PROJECT_ID)) {
-    projects.push(createDefaultProject());
-  }
   const activeConversationExists = projects.some((project) => (
     project.conversations.some((conversation) => conversation.id === previous.activeConversationId)
   ));
@@ -586,119 +587,46 @@ export function buildWorkspaceStateFromProjects(
   )) || fallbackProject;
   return normalizeWorkspaceOrdering({
     projects,
-    activeProjectId: activeProject?.id || DEFAULT_PROJECT_ID,
+    activeProjectId: activeProject?.id || defaultProjectIdForMode('chat'),
     activeConversationId,
   });
 }
 
-export function buildWorkspaceStateFromConversationDetails(
-  details,
+export function replaceWorkspaceModeFromProjects(
+  executionMode,
+  projectDetails,
   previousState,
   mapTask = (task) => task,
+  activeDraft = null,
 ) {
+  if (executionMode !== 'chat' && executionMode !== 'bot') {
+    throw new Error('Workspace execution mode must be chat or bot.');
+  }
+  const details = Array.isArray(projectDetails) ? projectDetails : [];
+  if (details.some((project) => project?.execution_mode !== executionMode)) {
+    throw new Error('Project response execution_mode does not match the requested mode.');
+  }
   const previous = previousState || createEmptyWorkspaceState();
-  const previousProjects = new Map(previous.projects.map((project) => [project.id, project]));
-  const previousConversations = new Map(
-    previous.projects.flatMap((project) => project.conversations.map((conversation) => [conversation.id, conversation]))
+  const refreshedMode = buildWorkspaceStateFromProjects(details, previous, mapTask);
+  const preservedProjects = previous.projects.filter(
+    (project) => project.executionMode !== executionMode,
   );
-  const projectsById = new Map();
-  // Seed Default project metadata, but do NOT force it to the front of the
-  // rebuilt list — previous.projects order is the user's drag order.
-  projectsById.set(DEFAULT_PROJECT_ID, {
-    ...(previousProjects.get(DEFAULT_PROJECT_ID) || createDefaultProject()),
-    id: DEFAULT_PROJECT_ID,
-    type: 'system',
-    name: DEFAULT_PROJECT_NAME,
-    workspacePath: null,
-    workspaceLabel: null,
-    removable: false,
-    createdAt: previousProjects.get(DEFAULT_PROJECT_ID)?.createdAt || null,
-    updatedAt: previousProjects.get(DEFAULT_PROJECT_ID)?.updatedAt || null,
-    chatConversationsExpanded: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.chatConversationsExpanded),
-    workflowTasksExpanded: Boolean(previousProjects.get(DEFAULT_PROJECT_ID)?.workflowTasksExpanded),
-    pinned: false,
-    sortOrder: 0,
-    hiddenModes: previousProjects.get(DEFAULT_PROJECT_ID)?.hiddenModes || [],
-    userExpanded: typeof previousProjects.get(DEFAULT_PROJECT_ID)?.userExpanded === 'boolean'
-      ? previousProjects.get(DEFAULT_PROJECT_ID).userExpanded
-      : undefined,
-    conversations: [],
-  });
-
-  for (const detail of details) {
-    if (!detail?.conversation_id) continue;
-    const workspacePath = String(detail.workspace_path || '').trim();
-    const projectId = detail.project_id || projectIdForWorkspacePath(workspacePath);
-    if (!projectsById.has(projectId)) {
-      const previousProject = previousProjects.get(projectId);
-      const label = detail.workspace_label || projectNameFromPath(workspacePath);
-      projectsById.set(projectId, {
-        id: projectId,
-        type: 'custom',
-        name: previousProject?.name || label,
-        workspacePath,
-        workspaceLabel: label,
-        removable: true,
-        createdAt: previousProject?.createdAt || null,
-        updatedAt: previousProject?.updatedAt || null,
-        userExpanded: typeof previousProject?.userExpanded === 'boolean'
-          ? previousProject.userExpanded
-          : undefined,
-        chatConversationsExpanded: Boolean(previousProject?.chatConversationsExpanded),
-        workflowTasksExpanded: Boolean(previousProject?.workflowTasksExpanded),
-        pinned: false,
-        sortOrder: projectsById.size,
-        hiddenModes: previousProject?.hiddenModes || [],
-        conversations: [],
-      });
-    }
-    const project = projectsById.get(projectId);
-    project.conversations.push(
-      conversationDetailToWorkspaceConversation(
-        detail,
-        previousConversations.get(detail.conversation_id),
-        mapTask,
-      )
-    );
-  }
-
-  // Rebuild in previous manual order first, then append any newly discovered
-  // projects. Map insertion order alone would always put Default project first.
-  const orderedProjects = [];
-  const seen = new Set();
-  for (const previousProject of previous.projects) {
-    const project = projectsById.get(previousProject.id);
-    if (!project || seen.has(project.id)) continue;
-    if (project.id !== DEFAULT_PROJECT_ID && project.conversations.length === 0) continue;
-    orderedProjects.push(project);
-    seen.add(project.id);
-  }
-  for (const project of projectsById.values()) {
-    if (seen.has(project.id)) continue;
-    if (project.id !== DEFAULT_PROJECT_ID && project.conversations.length === 0) continue;
-    orderedProjects.push(project);
-    seen.add(project.id);
-  }
-  // Ensure Default project always exists somewhere in the list.
-  if (!seen.has(DEFAULT_PROJECT_ID)) {
-    orderedProjects.push(projectsById.get(DEFAULT_PROJECT_ID) || createDefaultProject());
-  }
-  const projects = orderedProjects;
-  const activeConversationExists = projects.some((project) => (
-    project.conversations.some((conversation) => conversation.id === previous.activeConversationId)
-  ));
-  const fallbackProject = projects.find((project) => project.conversations.length > 0) || projects[0] || createDefaultProject();
-  const activeConversationId = activeConversationExists
-    ? previous.activeConversationId
-    : fallbackProject.conversations[0]?.id || null;
-  const activeProject = projects.find((project) => (
-    project.conversations.some((conversation) => conversation.id === activeConversationId)
-  )) || fallbackProject;
-
+  const activeProject = previous.projects.find(
+    (project) => project.id === previous.activeProjectId,
+  );
+  const draftProject = activeDraft?.executionMode === executionMode
+    ? refreshedMode.projects.find((project) => project.id === activeDraft.projectId)
+    : null;
+  const preserveActiveSelection = Boolean(
+    activeProject && activeProject.executionMode !== executionMode,
+  );
   return normalizeWorkspaceOrdering({
-    projects,
-    activeProjectId: activeProject.id,
-    activeConversationId,
+    projects: [...preservedProjects, ...refreshedMode.projects],
+    activeProjectId: draftProject?.id
+      || (preserveActiveSelection ? previous.activeProjectId : refreshedMode.activeProjectId),
+    activeConversationId: draftProject
+      ? null
+      : (preserveActiveSelection ? previous.activeConversationId : refreshedMode.activeConversationId),
   });
 }
 
@@ -709,7 +637,8 @@ export function workspaceStateWithConversationDetail(
   mapTask = (task) => task,
 ) {
   const workspacePath = String(detail?.workspace_path || '').trim();
-  const projectId = detail?.project_id || projectIdForWorkspacePath(workspacePath);
+  const projectId = detail?.project_id;
+  if (!projectId) throw new Error('Conversation project_id is required.');
   const projectLabel = detail?.workspace_label || projectNameFromPath(workspacePath);
   let projectFound = false;
   let conversationFound = false;
@@ -724,8 +653,8 @@ export function workspaceStateWithConversationDetail(
     });
     return {
       ...project,
-      workspacePath: projectId === DEFAULT_PROJECT_ID ? null : workspacePath,
-      workspaceLabel: projectId === DEFAULT_PROJECT_ID ? null : projectLabel,
+      workspacePath: project.type === 'system' ? null : workspacePath,
+      workspaceLabel: project.type === 'system' ? null : projectLabel,
       userExpanded: activate ? true : project.userExpanded,
       hiddenModes: activate
         ? (project.hiddenModes || []).filter(
@@ -746,11 +675,12 @@ export function workspaceStateWithConversationDetail(
   if (!projectFound) {
     projects.push({
       id: projectId,
-      type: projectId === DEFAULT_PROJECT_ID ? 'system' : 'custom',
-      name: projectId === DEFAULT_PROJECT_ID ? DEFAULT_PROJECT_NAME : projectLabel,
-      workspacePath: projectId === DEFAULT_PROJECT_ID ? null : workspacePath,
-      workspaceLabel: projectId === DEFAULT_PROJECT_ID ? null : projectLabel,
-      removable: projectId !== DEFAULT_PROJECT_ID,
+      type: 'custom',
+      executionMode: detail.execution_mode,
+      name: projectLabel,
+      workspacePath,
+      workspaceLabel: projectLabel,
+      removable: true,
       createdAt: detail.created_at || new Date().toISOString(),
       updatedAt: detail.updated_at || detail.last_message_at || new Date().toISOString(),
       userExpanded: activate ? true : undefined,
@@ -841,6 +771,22 @@ export function workspaceStateWithConversationRuntimeTask(state, conversationId,
     };
   });
   return updated ? normalizeWorkspaceOrdering({ ...state, projects }) : state;
+}
+
+export function mergeConversationTasks(directoryTasks, runtimeTasks) {
+  const runtimeById = new Map(
+    (Array.isArray(runtimeTasks) ? runtimeTasks : [])
+      .map((task) => [task?.taskId || task?.task_id || task?.id, task])
+      .filter(([taskId]) => Boolean(taskId)),
+  );
+  const merged = (Array.isArray(directoryTasks) ? directoryTasks : []).map((task) => {
+    const taskId = task?.taskId || task?.task_id || task?.id;
+    const runtimeTask = runtimeById.get(taskId);
+    if (!runtimeTask) return task;
+    runtimeById.delete(taskId);
+    return { ...task, ...runtimeTask };
+  });
+  return [...merged, ...runtimeById.values()];
 }
 
 export function findProjectByConversationId(state, conversationId) {

@@ -1,14 +1,27 @@
 // Conversations side panel shell (leaf components live in sibling modules).
 import React from 'react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
-import { usePanelWidth } from '../../tasks/components/TaskRecords.jsx';
 import { ConversationDialog } from './ConversationTaskCards.jsx';
 import { ProjectNode, ProjectDropEnd } from './ProjectNode.jsx';
 import { AppUpdateFooter } from './AppUpdateFooter.jsx';
 
+function usePanelWidth() {
+  const ref = React.useRef(null);
+  const [width, setWidth] = React.useState(0);
+  React.useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return undefined;
+    const update = () => setWidth(element.offsetWidth || 0);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width];
+}
+
 export function ConversationsPanel({
   workspaceState,
-  now,
   terminalNotices = {},
   taskTerminalNotices = {},
   windowFocused = true,
@@ -59,8 +72,6 @@ export function ConversationsPanel({
     onSelectConversation(projectId, conversationId);
   }, [acknowledgeActiveConversation, onSelectConversation, onViewConversationCompletions]);
 
-  const dragSourceIdRef = React.useRef(null);
-  const dragProjectSourceRef = React.useRef(null);
   const scrollBodyRef = React.useRef(null);
 
   // Auto-scroll the project/conversation list while dragging near the
@@ -113,14 +124,6 @@ export function ConversationsPanel({
     };
   }, []);
 
-  function dragStartConversation(projectId, conversationId) {
-    dragSourceIdRef.current = conversationId;
-  }
-
-  function dragOverConversation(_projectId, _conversationId) {
-    // no-op for now; the drop target highlights via ConversationNode local state
-  }
-
   function dropConversation(projectId, sourceId, targetId, position) {
     if (!sourceId) return;
     if (targetId === null) {
@@ -130,18 +133,6 @@ export function ConversationsPanel({
     }
   }
 
-  function dragEndConversation() {
-    dragSourceIdRef.current = null;
-  }
-
-  function dragStartProject(projectId) {
-    dragProjectSourceRef.current = projectId;
-  }
-
-  function dragOverProject(_projectId) {
-    // no-op for now; the drop target highlights via ProjectNode local state
-  }
-
   function dropProject(sourceId, targetId, position) {
     if (!sourceId) return;
     if (targetId === null) {
@@ -149,10 +140,6 @@ export function ConversationsPanel({
     } else if (sourceId !== targetId) {
       onReorderProjects?.(sourceId, targetId, position || 'before');
     }
-  }
-
-  function dragEndProject() {
-    dragProjectSourceRef.current = null;
   }
 
   function requestRenameConversation(project, conversation) {
@@ -191,7 +178,7 @@ export function ConversationsPanel({
     setDialog({
       kind: 'delete-project',
       title: 'Remove project',
-      message: `Remove "${project.name || 'this project'}" from the current mode? Other modes and local files will not be affected.`,
+      message: `Remove "${project.name || 'this project'}" and all conversations in it? The other mode and local files will not be affected.`,
       confirmLabel: 'Remove',
       danger: true,
       onConfirm: () => onRemoveProject(project.id),
@@ -243,7 +230,6 @@ export function ConversationsPanel({
             key={project.id}
             project={project}
             workspaceState={workspaceState}
-            now={now}
             terminalNotices={terminalNotices}
             taskTerminalNotices={taskTerminalNotices}
             taskPreviewLimit={taskPreviewLimit}
@@ -264,14 +250,8 @@ export function ConversationsPanel({
             onRequestRenameConversation={requestRenameConversation}
             onPinConversation={onPinConversation}
             onPinProject={onPinProject}
-            onDragStartConversation={dragStartConversation}
-            onDragOverConversation={dragOverConversation}
             onDropConversation={dropConversation}
-            onDragEndConversation={dragEndConversation}
-            onDragStartProject={dragStartProject}
-            onDragOverProject={dragOverProject}
             onDropProject={dropProject}
-            onDragEndProject={dragEndProject}
             onOpenTaskReport={onOpenTaskReport}
             onRetryTask={onRetryTask}
           />

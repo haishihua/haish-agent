@@ -3,7 +3,6 @@ import { finalWorkflowResultText } from '../../tasks/model/runtime-events.js';
 export function createConversationHandlers(ctx) {
   const {
     API_BASE,
-    DEFAULT_PROJECT_ID,
     DEFAULT_SESSION_NAME,
     activateConversationDetail,
     activateConversationShell,
@@ -11,7 +10,6 @@ export function createConversationHandlers(ctx) {
     apiFetch,
     buildApiHeaders,
     buildDeployRequest,
-    buildWorkspaceStateFromProjects,
     conversationReorderChainsRef,
     conversationReorderVersionsRef,
     projectReorderChainRef,
@@ -32,7 +30,7 @@ export function createConversationHandlers(ctx) {
     modeLocationRef,
     normalizeWorkspaceOrdering,
     openDraftConversation,
-    removeProjectModeFromWorkspace,
+    replaceWorkspaceModeFromProjects,
     setActiveTab,
     setSettingsMode,
     setHollow,
@@ -50,16 +48,50 @@ export function createConversationHandlers(ctx) {
   async function restoreProjectsFromBackend(error, fallbackState) {
     showToast('error', error?.message || 'project update failed');
     try {
-      const response = await apiFetch(`${API_BASE}/api/projects`, {
-        method: 'GET',
-      });
+      const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
+      const response = await apiFetch(
+        `${API_BASE}/api/projects?execution_mode=${executionMode}`,
+        { method: 'GET' },
+      );
       if (!response.ok) throw new Error(`project reload failed: ${response.status}`);
       const payload = await response.json();
       const projects = Array.isArray(payload?.projects) ? payload.projects : [];
-      setWorkspaceState((state) => buildWorkspaceStateFromProjects(projects, state));
+      setWorkspaceState((state) => replaceWorkspaceModeFromProjects(
+        executionMode,
+        projects,
+        state,
+      ));
     } catch (reloadError) {
       if (fallbackState) setWorkspaceState(fallbackState);
       console.warn('project reload failed:', reloadError);
+    }
+  }
+
+  async function loadAndActivateConversation({
+    projectId,
+    conversationId: targetConversationId,
+    activationSeq = invalidateConversationActivation(),
+    switchShell = true,
+    restoreLatest = true,
+  }) {
+    if (!targetConversationId) throw new Error('conversation activation requires a conversation id');
+    if (switchShell) activateConversationShell(projectId, targetConversationId);
+    conversationDetailAbortRef.current?.abort?.();
+    const controller = new AbortController();
+    conversationDetailAbortRef.current = controller;
+    try {
+      const detail = await fetchConversationDetail(targetConversationId, { signal: controller.signal });
+      if (!isConversationActivationCurrent(activationSeq) || controller.signal.aborted) return null;
+      await activateConversationDetail(detail, { activationSeq, restoreLatest });
+      return detail;
+    } catch (error) {
+      if (controller.signal.aborted || error?.name === 'AbortError') return null;
+      if (isConversationActivationCurrent(activationSeq)) throw error;
+      return null;
+    } finally {
+      if (conversationDetailAbortRef.current === controller) {
+        conversationDetailAbortRef.current = null;
+      }
     }
   }
 
@@ -100,22 +132,11 @@ export function createConversationHandlers(ctx) {
     }
     const requestSeq = invalidateConversationActivation();
     setWorkspaceState((state) => normalizeWorkspaceOrdering(stampActivation(state)));
-    activateConversationShell(projectId, nextConversationId);
-    conversationDetailAbortRef.current?.abort?.();
-    const detailController = new AbortController();
-    conversationDetailAbortRef.current = detailController;
-    try {
-      const detail = await fetchConversationDetail(nextConversationId, { signal: detailController.signal });
-      if (!isConversationActivationCurrent(requestSeq) || detailController.signal.aborted) return;
-      await activateConversationDetail(detail, { activationSeq: requestSeq });
-    } catch (error) {
-      if (detailController.signal.aborted || error?.name === 'AbortError') return;
-      if (isConversationActivationCurrent(requestSeq)) throw error;
-    } finally {
-      if (conversationDetailAbortRef.current === detailController) {
-        conversationDetailAbortRef.current = null;
-      }
-    }
+    await loadAndActivateConversation({
+      projectId,
+      conversationId: nextConversationId,
+      activationSeq: requestSeq,
+    });
   }
 
   async function handleSelectProject(projectId) {
@@ -138,20 +159,6 @@ export function createConversationHandlers(ctx) {
       projects: state.projects.map((project) => (
         project.id === projectId ? { ...project, userExpanded: !project.expanded } : project
       )),
-    }));
-  }
-
-  function handleToggleConversation(projectId, nextConversationId) {
-    setWorkspaceState((state) => normalizeWorkspaceOrdering({
-      ...state,
-      projects: state.projects.map((project) => project.id === projectId ? {
-        ...project,
-        conversations: project.conversations.map((conversation) => (
-          conversation.id === nextConversationId
-            ? { ...conversation, userExpanded: !conversation.expanded }
-            : conversation
-        )),
-      } : project),
     }));
   }
 
@@ -343,7 +350,11 @@ export function createConversationHandlers(ctx) {
         ? state.projects.find((project) => project.id === targetId)
         : null;
       const sourcePinned = Boolean(sourceProject?.pinned);
-      if (!sourceProject || (targetProject && Boolean(targetProject.pinned) !== sourcePinned)) {
+      if (
+        !sourceProject
+        || (targetProject && targetProject.executionMode !== sourceProject.executionMode)
+        || (targetProject && Boolean(targetProject.pinned) !== sourcePinned)
+      ) {
         return state;
       }
       const nextState = normalizeWorkspaceOrdering({
@@ -381,7 +392,12 @@ export function createConversationHandlers(ctx) {
           const response = await apiFetch(`${API_BASE}/api/projects/reorder`, {
             method: 'PATCH',
             headers: buildApiHeaders(),
-            body: JSON.stringify({ project_ids: nextState.projects.map((project) => project.id) }),
+            body: JSON.stringify({
+              execution_mode: sourceProject.executionMode,
+              project_ids: nextState.projects
+                .filter((project) => project.executionMode === sourceProject.executionMode)
+                .map((project) => project.id),
+            }),
           });
           if (!response.ok) throw new Error(`project reorder failed: ${response.status}`);
         });
@@ -394,10 +410,13 @@ export function createConversationHandlers(ctx) {
   }
 
   async function createConversationInProject(project, title, executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot') {
+    if (!project?.id || project.executionMode !== executionMode) {
+      throw new Error('Conversation execution mode must match project execution mode.');
+    }
     const createResponse = await apiFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: buildApiHeaders(),
-      body: JSON.stringify({ title, execution_mode: executionMode, project_id: project?.id || DEFAULT_PROJECT_ID }),
+      body: JSON.stringify({ title, execution_mode: executionMode, project_id: project.id }),
     });
     if (!createResponse.ok) {
       throw new Error(`conversation create failed: ${createResponse.status}`);
@@ -431,12 +450,14 @@ export function createConversationHandlers(ctx) {
         showToast('info', 'workspace selection cancelled');
         return;
       }
+      const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
       const projectResponse = await apiFetch(`${API_BASE}/api/projects`, {
         method: 'POST',
         headers: buildApiHeaders(),
         body: JSON.stringify({
           name: pickResult.project.name,
           workspace_path: pickResult.project.rootPath,
+          execution_mode: executionMode,
         }),
       });
       if (!projectResponse.ok) {
@@ -450,6 +471,7 @@ export function createConversationHandlers(ctx) {
           : [{
               id: project.project_id,
               type: 'custom',
+              executionMode: project.execution_mode,
               name: project.name,
               workspacePath: project.workspace_path,
               workspaceLabel: project.name,
@@ -471,6 +493,7 @@ export function createConversationHandlers(ctx) {
       const detail = await createConversationInProject({
         id: project.project_id,
         type: 'custom',
+        executionMode: project.execution_mode,
         name: project.name,
         workspacePath: project.workspace_path,
         workspaceLabel: project.name,
@@ -533,7 +556,7 @@ export function createConversationHandlers(ctx) {
       conversation.id !== nextConversationId && conversation.executionMode === executionMode
     ));
     if (!fallbackConversation) {
-      const detail = await createConversationInProject(project, project.id === DEFAULT_PROJECT_ID ? DEFAULT_SESSION_NAME : 'New Conversation');
+      const detail = await createConversationInProject(project, project.type === 'system' ? DEFAULT_SESSION_NAME : 'New Conversation');
       setWorkspaceState((state) => normalizeWorkspaceOrdering({
         ...state,
         projects: state.projects.map((item) => item.id === projectId ? {
@@ -577,10 +600,8 @@ export function createConversationHandlers(ctx) {
   async function handleRemoveProject(projectId) {
     const project = workspaceState.projects.find((item) => item.id === projectId);
     if (!project?.removable) return;
-    const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
-    const conversationsToRemove = project.conversations.filter(
-      (item) => item.executionMode === executionMode,
-    );
+    const executionMode = project.executionMode;
+    const conversationsToRemove = project.conversations;
     await Promise.all(conversationsToRemove.map((item) => stopConversationRuntimeBeforeDelete(item.id, item)));
     await Promise.all(conversationsToRemove.map(async (item) => {
       const response = await apiFetch(`${API_BASE}/api/conversations/${item.id}`, {
@@ -590,22 +611,23 @@ export function createConversationHandlers(ctx) {
         throw new Error(`conversation delete failed: ${response.status}`);
       }
     }));
-    let nextState = removeProjectModeFromWorkspace(workspaceState, projectId, executionMode);
-    if (!nextState.projects.some((item) => item.id === projectId)) {
-      const projectResponse = await apiFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
-        method: 'DELETE',
-      });
-      if (!projectResponse.ok && projectResponse.status !== 404) {
-        throw new Error(`project delete failed: ${projectResponse.status}`);
-      }
-      nextState = {
-        ...nextState,
-        projects: nextState.projects.filter((item) => item.id !== projectId),
-      };
+    const projectResponse = await apiFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
+      method: 'DELETE',
+    });
+    if (!projectResponse.ok && projectResponse.status !== 404) {
+      throw new Error(`project delete failed: ${projectResponse.status}`);
     }
+    const nextState = normalizeWorkspaceOrdering({
+      ...workspaceState,
+      projects: workspaceState.projects.filter((item) => item.id !== projectId),
+      activeProjectId: null,
+      activeConversationId: null,
+    });
     setWorkspaceState(nextState);
-    const defaultProject = nextState.projects.find((item) => item.id === DEFAULT_PROJECT_ID) || createDefaultProject();
-    const fallbackConversation = defaultProject.conversations.find((item) => item.executionMode === executionMode);
+    const defaultProject = nextState.projects.find((item) => (
+      item.type === 'system' && item.executionMode === executionMode
+    )) || createDefaultProject(executionMode);
+    const fallbackConversation = defaultProject.conversations[0];
     if (fallbackConversation) {
       const detail = await fetchConversationDetail(fallbackConversation.id);
       await activateConversationDetail(detail);
@@ -622,6 +644,20 @@ export function createConversationHandlers(ctx) {
     const currentViewMode = viewModeRef.current === 'chat' ? 'chat' : 'workflow';
     const nextViewMode = currentViewMode === 'chat' ? 'workflow' : 'chat';
     const nextExecutionMode = nextViewMode === 'chat' ? 'chat' : 'bot';
+    const projectResponse = await apiFetch(
+      `${API_BASE}/api/projects?execution_mode=${nextExecutionMode}`,
+      { method: 'GET' },
+    );
+    if (!projectResponse.ok) {
+      throw new Error(`project list failed: ${projectResponse.status}`);
+    }
+    const projectPayload = await projectResponse.json();
+    const targetWorkspaceState = replaceWorkspaceModeFromProjects(
+      nextExecutionMode,
+      Array.isArray(projectPayload?.projects) ? projectPayload.projects : [],
+      workspaceState,
+    );
+    setWorkspaceState(targetWorkspaceState);
     setActiveTab('dashboard');
     // Settings overlays the main workspace; leaving via bot/chat must exit it
     // so the corresponding chat/workflow page is shown instead of staying under settings.
@@ -644,15 +680,24 @@ export function createConversationHandlers(ctx) {
     }
     const rememberedLocation = modeLocationRef.current[nextViewMode];
     const rememberedConversation = rememberedLocation?.conversationId
-      ? findConversationById(workspaceState, rememberedLocation.conversationId)
+      ? findConversationById(targetWorkspaceState, rememberedLocation.conversationId)
       : null;
     const rememberedProject = rememberedConversation?.executionMode === nextExecutionMode
-      ? findProjectByConversationId(workspaceState, rememberedConversation.id)
+      ? findProjectByConversationId(targetWorkspaceState, rememberedConversation.id)
       : null;
+    const outgoingProjectForMode = findProjectByConversationId(
+      workspaceState,
+      conversationIdRef.current,
+    );
+    const matchingPathProject = targetWorkspaceState.projects.find((project) => (
+      project.executionMode === nextExecutionMode
+      && project.workspacePath === outgoingProjectForMode?.workspacePath
+    ));
     const currentProject = rememberedProject
-      || findProjectByConversationId(workspaceState, conversationIdRef.current)
-      || workspaceState.projects.find((project) => project.id === workspaceState.activeProjectId)
-      || workspaceState.projects[0];
+      || matchingPathProject
+      || targetWorkspaceState.projects.find((project) => (
+        project.type === 'system' && project.executionMode === nextExecutionMode
+      ));
     const matchingConversation = rememberedProject
       ? rememberedConversation
       : currentProject?.conversations.find(
@@ -662,7 +707,7 @@ export function createConversationHandlers(ctx) {
       ? null
       : await createConversationInProject(
           currentProject,
-          currentProject?.id === DEFAULT_PROJECT_ID ? DEFAULT_SESSION_NAME : 'New Conversation',
+          currentProject?.type === 'system' ? DEFAULT_SESSION_NAME : 'New Conversation',
           nextExecutionMode,
         );
     if (!isConversationActivationCurrent(requestSeq)) return;
@@ -680,22 +725,14 @@ export function createConversationHandlers(ctx) {
       await activateConversationDetail(createdDetail, { activationSeq: requestSeq });
       return;
     }
-    const detailController = new AbortController();
-    conversationDetailAbortRef.current = detailController;
-    try {
-      const detail = await fetchConversationDetail(targetConversationId, { signal: detailController.signal });
-      if (!isConversationActivationCurrent(requestSeq) || detailController.signal.aborted) return;
-      // Restore the selected mode's latest task as well, so switching back to
-      // Workflow immediately shows the current run instead of its idle template.
-      await activateConversationDetail(detail, { activationSeq: requestSeq });
-    } catch (error) {
-      if (detailController.signal.aborted || error?.name === 'AbortError') return;
-      if (isConversationActivationCurrent(requestSeq)) throw error;
-    } finally {
-      if (conversationDetailAbortRef.current === detailController) {
-        conversationDetailAbortRef.current = null;
-      }
-    }
+    // Restore the selected mode's latest task as well, so switching back to
+    // Workflow immediately shows the current run instead of its idle template.
+    await loadAndActivateConversation({
+      projectId: currentProject?.id,
+      conversationId: targetConversationId,
+      activationSeq: requestSeq,
+      switchShell: false,
+    });
   }
 
   function handleToggleViewMode() {
@@ -730,8 +767,11 @@ export function createConversationHandlers(ctx) {
     const targetConversationId = task?.conversationId || task?.conversation_id;
     if (!targetConversationId) return;
     if (targetConversationId !== conversationIdRef.current) {
-      const detail = await fetchConversationDetail(targetConversationId);
-      await activateConversationDetail(detail, { restoreLatest: false });
+      await loadAndActivateConversation({
+        projectId: findProjectByConversationId(workspaceState, targetConversationId)?.id,
+        conversationId: targetConversationId,
+        restoreLatest: false,
+      });
     }
     const restoredMode = task?.executionMode === 'bot' ? 'workflow' : 'chat';
     viewModeRef.current = restoredMode;
@@ -757,7 +797,6 @@ export function createConversationHandlers(ctx) {
     handleSelectConversation,
     handleSelectProject,
     handleToggleProject,
-    handleToggleConversation,
     handleToggleConversationTasks,
     handleToggleProjectConversations,
     handlePinConversation,

@@ -2,7 +2,6 @@ export function createConversationActivationHandlers(ctx) {
   const {
     API_BASE,
     activeRuntimeTargetConvId,
-    activeTaskIdRef,
     apiFetch,
     buildTaskRuntimeRecord,
     chatImageFallbacksByTaskIdFromMessages,
@@ -22,9 +21,8 @@ export function createConversationActivationHandlers(ctx) {
     mergeChatImageRefs,
     mergeContextUsage,
     mutateRuntime,
-    normalizeWorkspaceOrdering,
     pendingCreatedDetailRef,
-    restoreConversationTaskRuntimes,
+    restoreLatestTaskRuntime,
     saveStoredContextUsage,
     setComposerAttachment,
     setContextUsage,
@@ -45,7 +43,6 @@ export function createConversationActivationHandlers(ctx) {
     viewModeRef,
     workspaceState,
     workspaceStateWithConversationDetail,
-    taskRuntimeStateRef,
   } = ctx;
 
   function applyConversationSnapshot(detail) {
@@ -157,51 +154,10 @@ export function createConversationActivationHandlers(ctx) {
     ) {
       clearDraftConversationState({ clearComposer: false });
     }
-    // 切走前先把当前 conversation 的实时 taskRuntimeState flush 回
-    // workspaceState[当前 conversation].tasks。否则切到别的会话后，旧会话
-    // sidebar 节点会回退到上一次 activate 时拉到的 detail.tasks 快照，刚跑
-    // 完的任务消失，要再切回去触发一次 fetch 才会重新出现。
-    //
-    // 必须用 conversationIdRef.current 而不是 state.activeConversationId：
-    // handleSelectConversation 在 await fetchConversationDetail 之前就已经
-    // setWorkspaceState 把 activeConversationId 改成了新会话，等这里 reducer
-    // 跑到时 state.activeConversationId 已经等于 detail.conversation_id，会
-    // 误触发 early return，flush 永远不发生。conversationIdRef.current 直到
-    // 本函数下面第 ~3651 行才会被更新，所以这里读到的还是真正"切走前"的 id。
     const previousIdForFlush = conversationIdRef.current;
-    setWorkspaceState((state) => {
-      const previousId = previousIdForFlush;
-      if (!previousId || previousId === detail.conversation_id) return state;
-      const previousRuntime = getRuntime(previousId);
-      const snapshot = previousRuntime ? previousRuntime.taskRuntimeState : taskRuntimeStateRef.current;
-      const currentTasks = (snapshot?.taskOrder || [])
-        .map((taskId) => snapshot?.tasksById?.[taskId])
-        .filter(Boolean);
-      const pendingTask = snapshot?.pendingTask || null;
-      if (pendingTask) {
-        const pendingKey = pendingTask.taskId || pendingTask.id || null;
-        const alreadyPresent = pendingKey
-          ? currentTasks.some((task) => (task?.taskId || task?.id) === pendingKey)
-          : false;
-        if (!alreadyPresent) currentTasks.push(pendingTask);
-      }
-      if (currentTasks.length === 0) return state;
-      const now = Date.now();
-      return normalizeWorkspaceOrdering({
-        ...state,
-        projects: state.projects.map((project) => ({
-          ...project,
-          updatedAt: project.conversations.some((conversation) => conversation.id === previousId)
-            ? now
-            : project.updatedAt,
-          conversations: project.conversations.map((conversation) =>
-            conversation.id === previousId
-              ? { ...conversation, tasks: currentTasks, updatedAt: now }
-              : conversation,
-          ),
-        })),
-      });
-    });
+    if (previousIdForFlush && previousIdForFlush !== detail.conversation_id) {
+      flushRuntimeTasksToWorkspace(previousIdForFlush);
+    }
     if (!isCurrentActivation()) return;
     const restoredConversationId = detail.conversation_id;
     if (conversationIdRef.current && conversationIdRef.current !== restoredConversationId) {
@@ -274,13 +230,12 @@ export function createConversationActivationHandlers(ctx) {
       });
     }
 
-    if (restoreLatest && restoredTasks.length > 0) {
+    if (restoreLatest && latestTaskId) {
       try {
-        await restoreConversationTaskRuntimes(
-          restoredTasks.map((task) => task.task_id),
-          latestTaskId,
-          { targetConversationId: restoredConversationId, isCurrentActivation },
-        );
+        await restoreLatestTaskRuntime(latestTaskId, {
+          targetConversationId: restoredConversationId,
+          isCurrentActivation,
+        });
       } catch (error) {
         if (!isCurrentActivation()) return;
         console.error('latest task restore failed', error);
@@ -301,20 +256,20 @@ export function createConversationActivationHandlers(ctx) {
 
   function ensureTaskForEvent(event, targetConvId = null) {
     const eventConversationId = event.conversation_id || null;
-    const ownerConvId = targetConvId || conversationIdRef.current;
+    const ownerConvId = activeRuntimeTargetConvId(targetConvId);
+    if (!ownerConvId) throw new Error('runtime event requires a conversation owner');
     if (eventConversationId && ownerConvId && eventConversationId !== ownerConvId) {
       return null;
     }
-    const ownerRuntime = ownerConvId ? getRuntime(ownerConvId) : null;
+    const ownerRuntime = getRuntime(ownerConvId);
+    if (!ownerRuntime) throw new Error(`conversation runtime is missing: ${ownerConvId}`);
     // After Stop, the current run is aborted until the next executeQuest resets it.
     // Do not re-materialize tasks from late NDJSON events after a run is terminal.
     if (ownerRuntime?.abortRequested) {
       if (event.task_id) userCancelledTaskIdsRef.current.add(event.task_id);
       return null;
     }
-    const seedActiveTaskId = ownerRuntime
-      ? ownerRuntime.activeTaskId || ownerRuntime.taskRuntimeState.activeTaskId
-      : activeTaskIdRef.current || taskRuntimeStateRef.current.activeTaskId;
+    const seedActiveTaskId = ownerRuntime.activeTaskId || ownerRuntime.taskRuntimeState.activeTaskId;
     const taskId = event.task_id || seedActiveTaskId;
     if (!taskId) return null;
     // User-cancelled turns must never be re-created by late stream events.
@@ -357,15 +312,11 @@ export function createConversationActivationHandlers(ctx) {
       };
     }, ownerConvId);
 
-    if (ownerConvId) {
-      mutateRuntime(ownerConvId, (rt) => {
-        if (rt.activeTaskId === taskId) return false;
-        rt.activeTaskId = taskId;
-        return true;
-      });
-    } else {
-      activeTaskIdRef.current = taskId;
-    }
+    mutateRuntime(ownerConvId, (rt) => {
+      if (rt.activeTaskId === taskId) return false;
+      rt.activeTaskId = taskId;
+      return true;
+    });
     return taskId;
   }
 
@@ -410,10 +361,8 @@ export function createConversationActivationHandlers(ctx) {
   function getTaskById(taskId, targetConvId = null) {
     if (!taskId) return null;
     const convId = activeRuntimeTargetConvId(targetConvId);
-    const runtime = convId ? getRuntime(convId) : null;
-    return runtime?.taskRuntimeState?.tasksById?.[taskId]
-      || taskRuntimeStateRef.current.tasksById[taskId]
-      || null;
+    if (!convId) throw new Error('task lookup requires a conversation owner');
+    return getRuntime(convId)?.taskRuntimeState?.tasksById?.[taskId] || null;
   }
 
   return {

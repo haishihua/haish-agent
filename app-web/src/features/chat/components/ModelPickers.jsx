@@ -1,12 +1,6 @@
 import React from 'react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
-import { DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS, PROVIDER_MODEL_CATALOG } from '../model/run-catalog.js';
-
-export function resolveModelCatalog(provider) {
-  const normalized = String(provider || '').trim().toLowerCase();
-  if (normalized && PROVIDER_MODEL_CATALOG[normalized]) return PROVIDER_MODEL_CATALOG[normalized];
-  return PROVIDER_MODEL_CATALOG.oauth;
-}
+import { DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS } from '../model/run-catalog.js';
 
 export const APPROVAL_MODE_OPTIONS = [
   { id: 'strict', label: 'Request Approval', icon: 'ask-for-help.png',   desc: 'Ask before every write or network op' },

@@ -6,8 +6,8 @@ const handlersSource = fs.readFileSync(
   new URL('../../src/features/conversations/hooks/createConversationHandlers.js', import.meta.url),
   'utf8',
 );
-const appShellSource = fs.readFileSync(
-  new URL('../../src/features/app/AppShell.jsx', import.meta.url),
+const activationHandlersSource = fs.readFileSync(
+  new URL('../../src/features/conversations/hooks/createConversationActivationHandlers.js', import.meta.url),
   'utf8',
 );
 const workspaceStateSource = fs.readFileSync(
@@ -31,10 +31,14 @@ test('project and project conversation reorder use scoped backend routes', () =>
   assert.doesNotMatch(handlersSource, /\/api\/conversations\/reorder/);
 });
 
-test('workspace bootstrap loads backend project hierarchy', () => {
-  assert.match(appShellSource, /apiFetch\(`\$\{API_BASE\}\/api\/projects`/);
-  assert.match(appShellSource, /buildWorkspaceStateFromProjects\(serverProjects/);
-  assert.doesNotMatch(appShellSource, /apiFetch\(`\$\{API_BASE\}\/api\/conversations`, \{ method: 'GET'/);
+test('conversation activation restores only the latest task runtime', () => {
+  assert.match(activationHandlersSource, /restoreLatestTaskRuntime\(latestTaskId/);
+  assert.doesNotMatch(activationHandlersSource, /restoreConversationTaskRuntimes/);
+});
+
+test('mode switch reloads projects for the target execution mode', () => {
+  assert.match(handlersSource, /api\/projects\?execution_mode=\$\{nextExecutionMode\}/);
+  assert.match(handlersSource, /replaceWorkspaceModeFromProjects\(\s*nextExecutionMode/);
 });
 
 test('local storage keeps UI state but omits backend ordering fields', () => {

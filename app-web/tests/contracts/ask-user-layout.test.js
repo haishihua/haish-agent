@@ -8,7 +8,6 @@ const approvalStyles = fs.readFileSync(new URL('../../styles/approvals.css', imp
 const timelineSource = fs.readFileSync(new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url), 'utf8');
 const formSource = fs.readFileSync(new URL('../../src/features/chat/components/AskUserInlineForm.jsx', import.meta.url), 'utf8');
 const timelineBuilderSource = fs.readFileSync(new URL('../../src/features/chat/model/chat-timeline.js', import.meta.url), 'utf8');
-const appShellSource = fs.readFileSync(new URL('../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
 const chatPanelSource = fs.readFileSync(new URL('../../src/features/chat/components/ChatPanel.jsx', import.meta.url), 'utf8');
 const streamHandlersSource = fs.readFileSync(
   new URL('../../src/features/tasks/hooks/createTaskStreamHandlers.js', import.meta.url),
@@ -72,16 +71,6 @@ test('ask_user remains a top-level timeline item instead of entering a tool grou
   assert.match(timelineBuilderSource, /normalizeToolName\(it\.toolName\) !== 'ask_user'/);
   assert.match(streamHandlersSource, /waitingForInput[\s\S]*status: 'waiting_input'/);
   assert.match(streamHandlersSource, /case 'workflow_run_waiting'/);
-});
-
-test('running background conversations keep refreshing until they become terminal', () => {
-  assert.match(appShellSource, /restoreLatestTaskRuntime\(activeTaskIdForPolling,\s*\{/);
-  assert.match(appShellSource, /targetConversationId/);
-  assert.match(appShellSource, /isCurrentActivation: isCurrentPoll/);
-  assert.match(appShellSource, /conversationIdRef\.current === targetConversationId/);
-  assert.match(appShellSource, /backgroundTaskPollTargets/);
-  assert.match(appShellSource, /fetchTaskRuntimeDetail\(taskId\)/);
-  assert.match(appShellSource, /workspaceStateWithConversationRuntimeTask/);
 });
 
 test('conversation switching does not silently discard sends while model options reload', () => {

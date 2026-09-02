@@ -1,12 +1,15 @@
+export function resolveDeployTargetConversationId({
+  draftConversation,
+  selectedConversationId,
+  currentConversationId,
+}) {
+  return draftConversation?.id || selectedConversationId || currentConversationId || null;
+}
+
 export function createDeployHandlers(ctx) {
   const {
     APP_DEFAULT_AGENT_OPTIONS,
-    abortRef,
-    activeRunIdRef,
-    activeTaskIdRef,
-    answerBufferRef,
     applyTerminalTaskState,
-    busy,
     cancelActiveConversationTask,
     cancelActiveTask,
     queueTaskInput,
@@ -17,13 +20,11 @@ export function createDeployHandlers(ctx) {
     conversationIdRef,
     conversationReady,
     conversationSelectionPending,
-    createEmptyTaskRuntimeState,
     createPendingTaskDraft,
     defaultAgentId,
     defaultWorkflowId,
     draftConversationRef,
     executeQuest,
-    fetchAbortRef,
     findConversationById,
     flushRuntimeTasksToWorkspace,
     getRuntime,
@@ -37,7 +38,6 @@ export function createDeployHandlers(ctx) {
     queuedDeploy,
     readRuntimeAnswerBuffer,
     selectedConversationId,
-    setBusy,
     setComposerAttachment,
     setQueuedDeploy,
     setRuntimeActiveRunId,
@@ -59,7 +59,6 @@ export function createDeployHandlers(ctx) {
     workspaceState,
     workspaceStateWithConversationDetail,
     workspaceStateWithTouchedConversation,
-    taskRuntimeStateRef,
   } = ctx;
 
   function removeConversationTaskFromWorkspace(convId, taskKey) {
@@ -96,8 +95,11 @@ export function createDeployHandlers(ctx) {
     // conversations continue running. All ref/state reads scope to its runtime.
     const targetConvId = conversationIdRef.current;
     const targetRuntime = targetConvId ? getRuntime(targetConvId) : null;
-    const currentTaskState = targetRuntime ? targetRuntime.taskRuntimeState : taskRuntimeStateRef.current;
-    let taskId = (targetRuntime ? targetRuntime.activeTaskId : activeTaskIdRef.current)
+    if (!targetConvId || !targetRuntime) {
+      return hadQueuedDeploy ? String(queuedRequest?.text || '') : '';
+    }
+    const currentTaskState = targetRuntime.taskRuntimeState;
+    let taskId = targetRuntime.activeTaskId
       || currentTaskState.activeTaskId
       || null;
     if (!taskId) {
@@ -107,9 +109,9 @@ export function createDeployHandlers(ctx) {
       const fallback = candidates[0];
       if (fallback?.taskId) taskId = fallback.taskId;
     }
-    const runId = targetRuntime ? targetRuntime.activeRunId : activeRunIdRef.current;
-    const controllerToAbort = targetRuntime ? targetRuntime.fetchController : fetchAbortRef.current;
-    const runtimeBusy = targetRuntime ? targetRuntime.busy : busy;
+    const runId = targetRuntime.activeRunId;
+    const controllerToAbort = targetRuntime.fetchController;
+    const runtimeBusy = targetRuntime.busy;
     const pendingTask = currentTaskState.pendingTask || null;
     const activeTask = taskId ? (currentTaskState.tasksById?.[taskId] || null) : null;
     const restoreText = String(
@@ -120,21 +122,15 @@ export function createDeployHandlers(ctx) {
     ).trim();
     // Only agent-visible content (thinking/answer/tool/trace) counts as started.
     // Lifecycle receipts before visualization must still roll the turn back.
-    const answerBuffer = String(
-      (targetConvId ? readRuntimeAnswerBuffer(targetConvId) : answerBufferRef.current) || ''
-    ).trim();
+    const answerBuffer = String(readRuntimeAnswerBuffer(targetConvId) || '').trim();
     const hasAssistantOutput = taskHasAssistantStreamContent(activeTask || pendingTask)
       || Boolean(answerBuffer);
     const hasActiveRun = runtimeBusy || taskId || pendingTask || controllerToAbort || hadQueuedDeploy;
     if (!hasActiveRun) return '';
     // Mark abort BEFORE any async cancel / abort side effects so in-flight
     // NDJSON flushes and late applyRuntimeEvent calls cannot recreate the turn.
-    if (targetRuntime) {
-      targetRuntime.abortRequested = true;
-      if (runId) targetRuntime.cancelledRunIds.add(runId);
-    } else {
-      abortRef.current = true;
-    }
+    targetRuntime.abortRequested = true;
+    if (runId) targetRuntime.cancelledRunIds.add(runId);
     // Block any in-flight / late SSE from re-materializing this turn.
     if (taskId) {
       userCancelledTaskIdsRef.current.add(taskId);
@@ -162,12 +158,7 @@ export function createDeployHandlers(ctx) {
         .then(async (response) => {
           if (!response.ok) throw new Error(`cancel failed (${response.status})`);
           const result = await response.json().catch(() => ({}));
-          // A restored UI can briefly hold a stale task id. Fall back to the
-          // conversation's active control only when that exact task was not cancelled.
-          if (!result.cancelled && targetConvId) {
-            const fallback = await cancelActiveConversationTask(targetConvId);
-            if (!fallback.ok) throw new Error(`conversation cancel failed (${fallback.status})`);
-          }
+          if (!result.cancelled) throw new Error('task cancel was not acknowledged');
         })
         .catch((error) => {
           console.error('cancel failed', error);
@@ -215,26 +206,18 @@ export function createDeployHandlers(ctx) {
     } else {
       // Queued deploy only — nothing rendered yet; just restore composer text.
     }
-    if (targetConvId) {
-      mutateRuntime(targetConvId, (rt) => {
-        // Keep abortRequested=true until the next executeQuest starts a fresh run.
-        rt.abortRequested = true;
-        if (runId) rt.cancelledRunIds.add(runId);
-        rt.activeTaskId = null;
-        rt.activeRunId = null;
-        rt.fetchController = null;
-        rt.answerBuffer = '';
-        rt.busy = false;
-      });
-      // Keep sidebar task list in sync after a hard rollback/cancel.
-      flushRuntimeTasksToWorkspace(targetConvId);
-    } else {
-      activeTaskIdRef.current = null;
-      activeRunIdRef.current = null;
-      fetchAbortRef.current = null;
-      answerBufferRef.current = '';
-      setBusy(false);
-    }
+    mutateRuntime(targetConvId, (rt) => {
+      // Keep abortRequested=true until the next executeQuest starts a fresh run.
+      rt.abortRequested = true;
+      if (runId) rt.cancelledRunIds.add(runId);
+      rt.activeTaskId = null;
+      rt.activeRunId = null;
+      rt.fetchController = null;
+      rt.answerBuffer = '';
+      rt.busy = false;
+    });
+    // Keep sidebar task list in sync after a hard rollback/cancel.
+    flushRuntimeTasksToWorkspace(targetConvId);
     return hasAssistantOutput ? '' : restoreText;
   }
 
@@ -261,7 +244,11 @@ export function createDeployHandlers(ctx) {
       agentId: viewModeRef.current === 'chat' ? selectionId : null,
       workflowId: viewModeRef.current === 'chat' ? null : selectionId,
       providerRequest: providerRequest || '',
-      targetConversationId: selectedConversationId || conversationIdRef.current || conversationId || null,
+      targetConversationId: resolveDeployTargetConversationId({
+        draftConversation: draftConversationRef.current,
+        selectedConversationId,
+        currentConversationId: conversationIdRef.current || conversationId,
+      }),
     };
   }
 
@@ -296,6 +283,7 @@ export function createDeployHandlers(ctx) {
   function stagePendingDeploy(request, targetConversationId) {
     if (!targetConversationId) return null;
     const pendingTask = preparePendingTask(request);
+    pendingTask.conversationId = targetConversationId;
     request.runtimeConversationId = targetConversationId;
     updateTaskRuntimeState((state) => ({ ...state, pendingTask }), targetConversationId);
     return pendingTask;
@@ -342,10 +330,10 @@ export function createDeployHandlers(ctx) {
     const nextConversationTitle = titleFromTaskText(request.displayText || text);
     const currentConversation = findConversationById(workspaceState, deployConvId)
       || (seedDetail ? conversationDetailToWorkspaceConversation(seedDetail) : null);
-    const deployTaskState = getRuntime(deployConvId)?.taskRuntimeState
-      || taskRuntimeStateRef.current
-      || createEmptyTaskRuntimeState();
-    const activeTaskIdBeforeDeploy = getRuntime(deployConvId)?.activeTaskId
+    const runtime = getRuntime(deployConvId);
+    if (!runtime) throw new Error(`conversation runtime is missing: ${deployConvId}`);
+    const deployTaskState = runtime.taskRuntimeState;
+    const activeTaskIdBeforeDeploy = runtime.activeTaskId
       || deployTaskState.activeTaskId
       || null;
     const shouldUpdateConversationTitle = Boolean(
@@ -394,16 +382,15 @@ export function createDeployHandlers(ctx) {
       // The failure belongs to the conversation that owns this pendingTask,
       // not whichever conversation is currently shown.
       const deployRuntime = getRuntime(deployConvId);
-      if (deployRuntime && deployRuntime.activeRunId !== pendingTask.id) {
+      if (!deployRuntime || deployRuntime.activeRunId !== pendingTask.id) {
         return;
       }
-      const deployAborted = deployRuntime ? deployRuntime.abortRequested : abortRef.current;
-      if (deployAborted || error?.name === 'AbortError') {
+      if (deployRuntime.abortRequested || error?.name === 'AbortError') {
         return;
       }
       console.error(error);
       const errorMessage = String(error?.message || error);
-      const currentActiveTaskId = deployRuntime ? deployRuntime.activeTaskId : activeTaskIdRef.current;
+      const currentActiveTaskId = deployRuntime.activeTaskId;
       const ownedTaskId = currentActiveTaskId && currentActiveTaskId !== activeTaskIdBeforeDeploy
         ? currentActiveTaskId
         : null;
@@ -438,8 +425,12 @@ export function createDeployHandlers(ctx) {
     const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText);
     const activeId = conversationIdRef.current || conversationId;
     const activeRuntime = activeId ? getRuntime(activeId) : null;
-    const activeState = activeRuntime?.taskRuntimeState || taskRuntimeStateRef.current;
-    let runningTaskId = activeRuntime?.activeTaskId || activeState.activeTaskId || null;
+    if (!activeId || !activeRuntime) {
+      showToast('error', 'Conversation runtime is unavailable.');
+      return false;
+    }
+    const activeState = activeRuntime.taskRuntimeState;
+    let runningTaskId = activeRuntime.activeTaskId || activeState.activeTaskId || null;
     if (!runningTaskId) {
       const candidates = Object.values(activeState.tasksById || {})
         .filter((task) => isTaskActuallyActive(task))
@@ -449,7 +440,6 @@ export function createDeployHandlers(ctx) {
     const runtimeRunning = Boolean(
       activeRuntime?.busy
       || activeRuntime?.fetchController
-      || (activeId === conversationIdRef.current && busy)
       || runningTaskId
     );
     if (runtimeRunning && viewModeRef.current === 'chat') {

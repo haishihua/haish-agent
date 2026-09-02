@@ -8,12 +8,12 @@ const PROVIDER_MODELS_STORAGE_KEY = 'haish_provider_models_v1';
 function preferredStorageKeyFromSelectionKey(storageKey) {
   const key = String(storageKey || '').trim();
   if (!key) return '';
-  // Conversation keys: haish_run_config_v1:<user>:<mode>:<conversation>[.bot]
-  // Preferred keys:    haish_preferred_run_config_v1:<user>:<mode>[.bot]
+  // Conversation keys: haish_run_config_v1:<owner>:<mode>:<conversation>[.bot]
+  // Preferred keys:    haish_preferred_run_config_v1:<owner>:<mode>[.bot]
   const match = key.match(/^(haish_run_config_v1):([^:]+):([^:]+):([^:.]+)(\.bot)?$/);
   if (!match) return '';
-  const [, , userHash, modeHash, , botSuffix = ''] = match;
-  return `haish_preferred_run_config_v1:${userHash}:${modeHash}${botSuffix}`;
+  const [, , ownerHash, modeHash, , botSuffix = ''] = match;
+  return `haish_preferred_run_config_v1:${ownerHash}:${modeHash}${botSuffix}`;
 }
 
 export function safeReadRunConfigSelection(storageKey) {
@@ -56,13 +56,7 @@ export function optionHasId(options, id) {
 
 export function firstRunProvider(providerOptions) {
   if (!Array.isArray(providerOptions) || providerOptions.length === 0) return null;
-  // Prefer xAI for brand-new conversation selections when available.
-  const xai = providerOptions.find((item) => {
-    const provider = String(item?.provider || '').trim().toLowerCase();
-    const id = String(item?.id || '').trim().toLowerCase();
-    return provider === 'xai' || provider === 'grok' || id === 'xai' || id.includes(':xai') || id.startsWith('xai');
-  });
-  return xai || providerOptions[0];
+  return providerOptions[0];
 }
 
 export function providerModelsRequest(providerOption) {
@@ -216,7 +210,7 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
     defaultAgentId,
   ));
   const storageKeyRef = React.useRef(selectionStorageKey || '');
-  // Prefer writing the user-level preferred agent only on intentional picker changes,
+  // Prefer writing the owner-level selection only on intentional picker changes,
   // not when switching conversations reloads a different conversation-local selection.
   const preferWriteRef = React.useRef(false);
 

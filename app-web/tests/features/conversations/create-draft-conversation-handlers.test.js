@@ -18,6 +18,7 @@ function createRuntimeRestoreHarness(responsePromise) {
     normalizeRuntimeEvents: (events) => events || [],
     taskDetailToRuntimeTask: (task) => task,
     taskRuntimeEventCacheRef: { current: new Map() },
+    taskRuntimeFetchesRef: { current: new Map() },
     updateTaskRuntimeState: (updater, targetConversationId) => {
       updates.push({ updater, targetConversationId });
     },
@@ -84,4 +85,80 @@ test('task restore rejects a task owned by another conversation', async () => {
     /does not belong to conversation workflow-conversation/,
   );
   assert.deepEqual(harness.updates, []);
+});
+
+test('draft materialization rejects a server conversation from another project', async () => {
+  const handlers = createDraftConversationHandlers({
+    conversationId: 'draft-1',
+    conversationIdRef: { current: 'draft-1' },
+    draftConversationRef: {
+      current: {
+        id: 'draft-1',
+        projectId: 'project-zhanruitao',
+        name: 'New Conversation',
+      },
+    },
+    pendingCreatedDetailRef: {
+      current: {
+        conversation_id: 'server-conversation',
+        project_id: 'default-project-chat',
+        title: 'Existing title',
+      },
+    },
+    isDefaultConversationName: () => false,
+    titleFromTaskText: () => 'New task',
+  });
+
+  await assert.rejects(
+    handlers.materializeDraftConversationForSend({ text: 'New task' }),
+    /draft conversation project mismatch/,
+  );
+});
+
+test('concurrent task polls share one request and restore a missing task into task order', async () => {
+  const response = deferred();
+  let requestCount = 0;
+  let runtimeState = {
+    activeTaskId: null,
+    pendingTask: null,
+    taskOrder: [],
+    tasksById: {},
+  };
+  const handlers = createDraftConversationHandlers({
+    API_BASE: 'http://runtime',
+    apiFetch: () => {
+      requestCount += 1;
+      return response.promise;
+    },
+    conversationIdRef: { current: 'conversation-1' },
+    isTaskActuallyActive: (task) => task.status === 'running',
+    normalizeRuntimeEvents: (events) => events || [],
+    taskDetailToRuntimeTask: (task) => ({ taskId: task.task_id, status: task.status }),
+    taskRuntimeEventCacheRef: { current: new Map() },
+    taskRuntimeFetchesRef: { current: new Map() },
+    updateTaskRuntimeState: (updater) => { runtimeState = updater(runtimeState); },
+  });
+
+  const first = handlers.restoreLatestTaskRuntime('task-1', {
+    targetConversationId: 'conversation-1',
+    isCurrentActivation: () => true,
+  });
+  const second = handlers.restoreLatestTaskRuntime('task-1', {
+    targetConversationId: 'conversation-1',
+    isCurrentActivation: () => true,
+  });
+  response.resolve({
+    ok: true,
+    json: async () => ({
+      task_id: 'task-1',
+      conversation_id: 'conversation-1',
+      status: 'running',
+      events: [],
+    }),
+  });
+  await Promise.all([first, second]);
+
+  assert.equal(requestCount, 1);
+  assert.deepEqual(runtimeState.taskOrder, ['task-1']);
+  assert.equal(runtimeState.activeTaskId, 'task-1');
 });

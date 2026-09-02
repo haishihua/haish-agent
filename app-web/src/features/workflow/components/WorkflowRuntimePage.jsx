@@ -81,6 +81,9 @@ function nodeStatus(
   const normalizedTaskStatus = normalizeTaskStatus(taskStatus);
   const activeFromEvents = activeEventNodeIds.has(String(node.id));
   const eventOutcome = eventNodeOutcomes.get(String(node.id));
+  if (normalizedTaskStatus === 'cancelled' && run?.current_node_id === node.id) {
+    return 'cancelled';
+  }
   if (run?.current_node_id === node.id && normalizeTaskStatus(run?.status || '') === 'waiting_input') {
     return 'waiting_input';
   }
@@ -101,10 +104,7 @@ function nodeStatus(
   if (approvalDecision) return approvalDecision;
   if (eventOutcome && eventOutcome !== 'running') return eventOutcome;
   if (normalized === 'cancelled') return 'cancelled';
-  if (
-    (runStatus === 'cancelled' || normalizedTaskStatus === 'cancelled')
-    && run?.current_node_id === node.id
-  ) {
+  if (runStatus === 'cancelled' && run?.current_node_id === node.id) {
     return 'cancelled';
   }
   if (normalized === 'waiting_input') return 'waiting_input';
@@ -227,7 +227,7 @@ function timestampMs(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function NodeConversation({ node, task, attempt, result, status, running, now, showApproval, onRetry }) {
+function NodeConversation({ node, task, attempt, result, status, running, showApproval, onRetry }) {
   const scopedTask = React.useMemo(() => attemptTask(task, attempt, result), [attempt, result, task]);
   const timelineStatus = running ? 'running' : normalizeTaskStatus(result?.status || status);
   const timeline = React.useMemo(
@@ -301,13 +301,13 @@ function NodeConversation({ node, task, attempt, result, status, running, now, s
 
   return (
     <>
-      {inputText ? <ChatMessageRow message={inputMessage} now={now} /> : null}
-      {showAssistant ? <ChatMessageRow message={assistantMessage} now={now} onRetry={onRetry} /> : null}
+      {inputText ? <ChatMessageRow message={inputMessage} /> : null}
+      {showAssistant ? <ChatMessageRow message={assistantMessage} onRetry={onRetry} /> : null}
     </>
   );
 }
 
-function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, onRetry, now }) {
+function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, onRetry }) {
   const detailBodyRef = React.useRef(null);
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const attempts = React.useMemo(() => nodeAttempts(task, node.id), [node.id, task]);
@@ -343,7 +343,6 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
           result={workflowResultForAttempt(attempt, latestResult, isLatestAttempt, attemptNumber)}
           status={status}
           running={isLatestAttempt && (status === 'running' || status === 'waiting_input' || status === 'approval')}
-          now={now}
           showApproval={isLatestAttempt}
           onRetry={isLatestAttempt && canRetry ? retryLatest : null}
         />
@@ -402,8 +401,8 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
               open={historyOpen}
               onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
             >
-              <summary className="chat-timeline-tool-head">
-                <span className="chat-timeline-tool-name">previous Attempts ({historicalAttempts.length})</span>
+              <summary className="workflow-detail-attempt-label workflow-detail-history-summary">
+                <span>previous Attempts ({historicalAttempts.length})</span>
                 <ChatTimelineChevron open={historyOpen} />
               </summary>
               {historicalAttempts.map((attempt, index) => renderAttempt(attempt, index, false))}
@@ -422,7 +421,7 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
   );
 }
 
-function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], now }) {
+function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }) {
   const [selectedNodeId, setSelectedNodeId] = React.useState('');
   const previousSelectionRef = React.useRef({ nodeId: '', status: 'pending' });
   const followApprovalBranchRef = React.useRef('');
@@ -696,7 +695,6 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
           onResize={resizeDetail}
           onResizeBy={resizeDetailBy}
           onRetry={task ? onRetry : null}
-          now={now}
         />
       ) : null}
     </div>

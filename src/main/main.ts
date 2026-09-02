@@ -34,8 +34,7 @@ const webRoot = () => {
       return distRoot;
     }
   }
-  // Legacy fallback for older checkouts that still ship unbundled app-web sources.
-  return path.join(projectRoot(), 'app-web');
+  throw new Error('app-web/dist/index.html is missing; run npm run build:web');
 };
 const appIconPngPath = () => path.join(app.getAppPath(), 'build', 'icon.png');
 const devMode = process.env.HAISH_DEV_MODE === '1' || !app.isPackaged;
@@ -399,6 +398,9 @@ app.on('before-quit', (event) => {
   }
   runtimeStopInFlight = true;
   event.preventDefault();
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.destroy();
+  }
   stopLocalRuntime()
     .catch((error) => console.error('Failed to stop local Haish runtime cleanly:', error))
     .finally(() => app.quit());

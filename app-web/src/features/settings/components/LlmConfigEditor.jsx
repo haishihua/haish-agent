@@ -5,7 +5,7 @@ import {
   LoaderCircle,
 } from 'lucide-react';
 import { API_BASE } from '../../../shared/api/base.js';
-import { apiFetch } from '../../../shared/api/client.js';
+import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import {
   getLlmProvider,
   LLM_OAUTH_UI_PROVIDERS,
@@ -96,14 +96,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
         body: JSON.stringify({ provider: config.provider }),
       }, { json: false });
       if (!response.ok) {
-        let detail = `OAuth start failed (${response.status})`;
-        try {
-          const body = await response.json();
-          detail = String(body?.detail || body?.message || detail);
-        } catch {
-          // keep fallback message
-        }
-        throw new Error(detail);
+        throw new Error(await parseResponseMessage(response, `OAuth start failed (${response.status})`));
       }
       const payload = await response.json();
       if (!payload?.auth_url) {
@@ -145,14 +138,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
           method: 'GET',
         }, { json: false });
         if (!response.ok) {
-          let detail = `OAuth status failed (${response.status})`;
-          try {
-            const body = await response.json();
-            detail = String(body?.detail || body?.message || detail);
-          } catch {
-            // keep fallback
-          }
-          throw new Error(detail);
+          throw new Error(await parseResponseMessage(response, `OAuth status failed (${response.status})`));
         }
         const payload = await response.json();
         if (cancelled) return;
@@ -206,14 +192,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       }, { json: false })
         .then(async (response) => {
           if (response.ok) return response.json();
-          let detail = `Model catalog request failed (${response.status})`;
-          try {
-            const body = await response.json();
-            detail = String(body?.detail || body?.message || detail);
-          } catch {
-            // keep fallback
-          }
-          throw new Error(detail);
+          throw new Error(await parseResponseMessage(response, `Model catalog request failed (${response.status})`));
         })
         .then((catalog) => {
           if (cancelled || !catalog) return;

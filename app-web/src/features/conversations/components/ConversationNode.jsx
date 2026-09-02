@@ -80,7 +80,6 @@ export function ConversationNode({
   active,
   nodeRef,
   terminalStatus = '',
-  now,
   taskPreviewLimit = 5,
   onSelectConversation,
   onToggleConversationTasks,
@@ -88,10 +87,7 @@ export function ConversationNode({
   onRequestDeleteConversation,
   onRequestRenameConversation,
   onPinConversation,
-  onDragStartConversation,
-  onDragOverConversation,
   onDropConversation,
-  onDragEndConversation,
   onOpenTaskReport,
   onRetryTask,
 }) {
@@ -108,7 +104,6 @@ export function ConversationNode({
   function handleDragStart(event) {
     event.dataTransfer.setData('text/plain', conversation.id);
     event.dataTransfer.effectAllowed = 'move';
-    onDragStartConversation?.(project.id, conversation.id);
   }
 
   function handleDragOver(event) {
@@ -118,7 +113,6 @@ export function ConversationNode({
     const rect = event.currentTarget.getBoundingClientRect();
     const isAfter = (event.clientY - rect.top) > rect.height / 2;
     setDropPosition(isAfter ? 'after' : 'before');
-    onDragOverConversation?.(project.id, conversation.id);
   }
 
   function handleDragLeave(event) {
@@ -139,7 +133,6 @@ export function ConversationNode({
 
   function handleDragEnd() {
     setDropPosition(null);
-    onDragEndConversation?.();
   }
 
   return (
@@ -193,7 +186,7 @@ export function ConversationNode({
 
       {showTaskList && (
         <div className="conversation-task-list">
-          {visibleTasks.map((task) => <TaskRecordCompact key={task.taskId || task.id} task={task} now={now} onOpenReport={onOpenTaskReport} onRetry={onRetryTask} />)}
+          {visibleTasks.map((task) => <TaskRecordCompact key={task.taskId || task.id} task={task} onOpenReport={onOpenTaskReport} onRetry={onRetryTask} />)}
           {hiddenCount > 0 && (
             <button
               type="button"

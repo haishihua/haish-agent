@@ -14,6 +14,14 @@ const chatTimelineSource = fs.readFileSync(
   new URL('../../../src/features/chat/model/chat-timeline.js', import.meta.url),
   'utf8',
 );
+const terminalComponentSource = fs.readFileSync(
+  new URL('../../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url),
+  'utf8',
+);
+const chatStyleSource = fs.readFileSync(
+  new URL('../../../styles/chat.css', import.meta.url),
+  'utf8',
+);
 
 test('terminal capability exposes only the current two-tool protocol', () => {
   assert.match(
@@ -39,8 +47,18 @@ test('exec_command renders as a terminal card', () => {
   assert.equal(view.mode, 'terminal');
   assert.equal(view.label, 'Shell pytest -q');
   assert.equal(view.command, 'pytest -q');
+  assert.equal(view.cwd, '');
   assert.equal(view.stdout, '3 passed\n');
   assert.equal(view.exitCode, 0);
+});
+
+test('terminal card reuses the macOS frame with context and process state', () => {
+  assert.match(terminalComponentSource, /chat-terminal-bar/);
+  assert.match(terminalComponentSource, /chat-terminal-dots/);
+  assert.match(terminalComponentSource, /view\.cwd \|\| 'Terminal'/);
+  assert.match(terminalComponentSource, /`exit \$\{view\.exitCode\}`/);
+  assert.match(chatStyleSource, /\.chat-terminal-bar/);
+  assert.match(chatStyleSource, /\.chat-terminal-state\.running/);
 });
 
 test('write_stdin view keeps interaction details available outside the chat projection', () => {

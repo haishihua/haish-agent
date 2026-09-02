@@ -461,6 +461,7 @@
     box-sizing: border-box;
     list-style: none;
     font-variant-numeric: tabular-nums;
+    cursor: pointer;
 }
 
 .workflow-detail-history > summary::-webkit-details-marker {
@@ -469,6 +470,20 @@
 
 .workflow-detail-history[open] > summary {
     margin-bottom: 8px;
+}
+
+.workflow-detail-history-summary {
+    color: rgba(239, 191, 100, 0.72);
+}
+
+.workflow-detail-history-summary:hover {
+    color: rgba(239, 191, 100, 0.94);
+}
+
+.workflow-detail-history-summary:focus-visible {
+    outline: 1px solid rgba(239, 191, 100, 0.72);
+    outline-offset: 3px;
+    border-radius: 2px;
 }
 
 .workflow-detail-attempt {

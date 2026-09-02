@@ -48,7 +48,7 @@ export function isTerminalTaskStatus(status) {
 const ASSISTANT_VISIBLE_STREAM_EVENT_TYPES = new Set([
   'llm_thinking_delta',
   'llm_answer_delta',
-  'llm_attempt_failed',
+  'llm_retry',
   'final_answer',
   'tool_call_started',
   'agent_progress_delta',

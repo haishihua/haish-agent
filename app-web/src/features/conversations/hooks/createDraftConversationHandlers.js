@@ -4,7 +4,6 @@ import { compactStreamEvents } from '../../chat/model/stream-events.js';
 export function createDraftConversationHandlers(ctx) {
   const {
     API_BASE,
-    DEFAULT_PROJECT_ID,
     DEFAULT_SESSION_NAME,
     applyConversationSnapshot,
     apiFetch,
@@ -43,6 +42,7 @@ export function createDraftConversationHandlers(ctx) {
     setWorkspaceState,
     taskDetailToRuntimeTask,
     taskRuntimeEventCacheRef,
+    taskRuntimeFetchesRef,
     taskUpdatedTimestamp,
     titleFromTaskText,
     updateTaskRuntimeState,
@@ -125,7 +125,7 @@ export function createDraftConversationHandlers(ctx) {
       workspacePath: project.workspacePath || null,
       workspaceLabel: project.workspaceLabel || project.name || null,
       executionMode,
-      name: project.id === DEFAULT_PROJECT_ID ? DEFAULT_SESSION_NAME : 'New Conversation',
+      name: project.type === 'system' ? DEFAULT_SESSION_NAME : 'New Conversation',
       createdAt: now,
     };
 
@@ -242,6 +242,9 @@ export function createDraftConversationHandlers(ctx) {
     if (!detail?.conversation_id) {
       throw new Error('conversation create failed');
     }
+    if (detail.project_id !== draft.projectId) {
+      throw new Error('draft conversation project mismatch');
+    }
 
     const realId = detail.conversation_id;
     const previousDraftId = draft.id;
@@ -260,32 +263,44 @@ export function createDraftConversationHandlers(ctx) {
 
   async function fetchTaskRuntimeDetail(taskId) {
     if (!taskId) return null;
-    const cached = taskRuntimeEventCacheRef.current.get(taskId) || null;
-    const cursorQuery = cached?.lastEventId
-      ? `&after_event_id=${encodeURIComponent(cached.lastEventId)}`
-      : '';
-    const response = await apiFetch(`${API_BASE}/api/tasks/${taskId}?event_view=runtime${cursorQuery}`, {
-      method: 'GET',
-    }, { json: false });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      const error = new Error(payload?.detail || `task restore failed: ${response.status}`);
-      error.status = response.status;
-      error.taskId = taskId;
-      throw error;
+    const existing = taskRuntimeFetchesRef.current.get(taskId);
+    if (existing) return existing;
+    const request = (async () => {
+      const cached = taskRuntimeEventCacheRef.current.get(taskId) || null;
+      const cursorQuery = cached?.lastEventId
+        ? `&after_event_id=${encodeURIComponent(cached.lastEventId)}`
+        : '';
+      const response = await apiFetch(`${API_BASE}/api/tasks/${taskId}?event_view=runtime${cursorQuery}`, {
+        method: 'GET',
+      }, { json: false });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        const error = new Error(payload?.detail || `task restore failed: ${response.status}`);
+        error.status = response.status;
+        error.taskId = taskId;
+        throw error;
+      }
+      const task = await response.json();
+      const incomingEvents = normalizeRuntimeEvents(task.events);
+      const appendToCache = Boolean(task.events_delta && cached);
+      const events = compactStreamEvents(
+        appendToCache ? [...cached.events, ...incomingEvents] : incomingEvents,
+        eventDeltaText,
+      );
+      const lastEventId = incomingEvents[incomingEvents.length - 1]?.event_id
+        || cached?.lastEventId
+        || null;
+      taskRuntimeEventCacheRef.current.set(taskId, { lastEventId, events });
+      return { normalizedTask: { ...task, events, events_delta: false }, events };
+    })();
+    taskRuntimeFetchesRef.current.set(taskId, request);
+    try {
+      return await request;
+    } finally {
+      if (taskRuntimeFetchesRef.current.get(taskId) === request) {
+        taskRuntimeFetchesRef.current.delete(taskId);
+      }
     }
-    const task = await response.json();
-    const incomingEvents = normalizeRuntimeEvents(task.events);
-    const appendToCache = Boolean(task.events_delta && cached);
-    const events = compactStreamEvents(
-      appendToCache ? [...cached.events, ...incomingEvents] : incomingEvents,
-      eventDeltaText,
-    );
-    const lastEventId = incomingEvents[incomingEvents.length - 1]?.event_id
-      || cached?.lastEventId
-      || null;
-    taskRuntimeEventCacheRef.current.set(taskId, { lastEventId, events });
-    return { normalizedTask: { ...task, events, events_delta: false }, events };
   }
 
   async function restoreTaskRuntime(taskId, {
@@ -301,13 +316,19 @@ export function createDraftConversationHandlers(ctx) {
     if (normalizedTask.conversation_id !== targetConversationId) {
       throw new Error(`task ${taskId} does not belong to conversation ${targetConversationId}`);
     }
-    updateTaskRuntimeState((state) => ({
-      ...state,
-      tasksById: {
-        ...state.tasksById,
-        [taskId]: taskDetailToRuntimeTask(normalizedTask, state.tasksById[taskId] || null),
-      },
-    }), targetConversationId);
+    updateTaskRuntimeState((state) => {
+      const nextTask = taskDetailToRuntimeTask(normalizedTask, state.tasksById[taskId] || null);
+      const taskOrder = state.taskOrder.includes(taskId) ? state.taskOrder : [...state.taskOrder, taskId];
+      return {
+        ...state,
+        activeTaskId: isTaskActuallyActive(nextTask) ? taskId : state.activeTaskId,
+        taskOrder,
+        tasksById: {
+          ...state.tasksById,
+          [taskId]: nextTask,
+        },
+      };
+    }, targetConversationId);
     return normalizedTask;
   }
 
@@ -320,38 +341,7 @@ export function createDraftConversationHandlers(ctx) {
     return restoreTaskRuntime(taskId, {
       targetConversationId,
       isCurrentActivation,
-      updateLiveSnapshot: true,
     });
-  }
-
-  async function restoreConversationTaskRuntimes(
-    taskIds,
-    latestTaskId,
-    { targetConversationId, isCurrentActivation },
-  ) {
-    if (!targetConversationId) throw new Error('conversation task restore requires a target conversation');
-    if (typeof isCurrentActivation !== 'function') throw new Error('conversation task restore requires an activation guard');
-    const uniqueTaskIds = [...new Set((Array.isArray(taskIds) ? taskIds : []).filter(Boolean))];
-    if (latestTaskId && uniqueTaskIds.includes(latestTaskId)) {
-      try {
-        await restoreLatestTaskRuntime(latestTaskId, { targetConversationId, isCurrentActivation });
-      } catch (error) {
-        if (isCurrentActivation()) {
-          console.warn(`task detail restore skipped: ${latestTaskId}`, error);
-        }
-      }
-    }
-    const detailTaskIds = uniqueTaskIds.filter((taskId) => taskId !== latestTaskId);
-    for (const taskId of detailTaskIds) {
-      if (!isCurrentActivation()) return;
-      try {
-        await restoreTaskRuntime(taskId, { targetConversationId, isCurrentActivation });
-      } catch (error) {
-        if (isCurrentActivation()) {
-          console.warn(`task detail restore skipped: ${taskId}`, error);
-        }
-      }
-    }
   }
 
   async function cancelActiveTask(taskId) {
@@ -490,7 +480,6 @@ export function createDraftConversationHandlers(ctx) {
     materializeDraftConversationForSend,
     fetchTaskRuntimeDetail,
     restoreLatestTaskRuntime,
-    restoreConversationTaskRuntimes,
     cancelActiveTask,
     queueTaskInput,
     cancelActiveConversationTask,

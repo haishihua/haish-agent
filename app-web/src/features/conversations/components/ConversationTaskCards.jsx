@@ -1,7 +1,8 @@
 import React from 'react';
+import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { PortalTooltip, closeAllPortalTooltips } from '../../../shared/ui/PortalTooltip.jsx';
 import { normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
-import { getTaskPillMeta } from '../../tasks/components/TaskRecords.jsx';
+import { getTaskPillMeta } from '../../tasks/model/task-pill.js';
 import { TaskStatusIcon } from './ConversationIcons.jsx';
 import { workflowTaskDisplayStatus } from '../model/conversation-status.js';
 
@@ -65,7 +66,7 @@ export function TaskRecordCompact({
               aria-label="Run task again"
               onClick={(event) => { event.stopPropagation(); onRetry?.(task); }}
             >
-              <span aria-hidden="true">↻</span>
+              <AppIcon name="retry" size={15} />
             </button>
           </PortalTooltip>
         )}

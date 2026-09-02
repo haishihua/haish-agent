@@ -24,8 +24,8 @@ import {
 import { API_BASE } from '../../shared/api/base.js';
 import {
   apiFetch,
+  buildOwnerScopedStorageKey,
   buildRunConfigStorageKey,
-  DEFAULT_PROJECT_ID,
   DEFAULT_SESSION_NAME,
   buildApiHeaders,
   parseResponseMessage,
@@ -75,18 +75,15 @@ import {
   } from '../chat/model/context-usage.js';
 import {
   generateHexId,
-  getStoredConversationId,
   setStoredConversationId,
-  loadStoredWorkspaceState,
   saveWorkspaceState,
   normalizeWorkspaceOrdering,
   workspaceStateWithConversationDetail as mergeConversationDetailIntoWorkspace,
   workspaceStateWithTouchedConversation,
-  workspaceStateWithConversationRuntimeTask,
   findConversationById,
   findProjectByConversationId,
-  buildWorkspaceStateFromConversationDetails as buildWorkspaceFromConversationDetails,
   buildWorkspaceStateFromProjects as buildWorkspaceFromProjects,
+  replaceWorkspaceModeFromProjects as replaceWorkspaceModeFromProjectDetails,
   conversationDetailToWorkspaceConversation as mapConversationDetailToWorkspace,
   titleFromTaskText,
   isDefaultConversationName,
@@ -98,12 +95,9 @@ import {
   timestampValue,
   taskUpdatedTimestamp,
   conversationHasActiveTask,
+  mergeConversationTasks,
   isTaskActuallyActive,
-  projectIdForWorkspacePath,
-  removeProjectModeFromWorkspace,
-  getWorkspaceConversationIds,
 } from '../conversations/model/workspace-state.js';
-import { createConversationWithRetry } from '../conversations/api/conversations.js';
 import {
   createEmptyTaskRuntimeState,
   createPendingTaskDraft,
@@ -154,17 +148,26 @@ import { createDeployHandlers } from '../tasks/hooks/createDeployHandlers.js';
 import { createConversationActivationHandlers } from '../conversations/hooks/createConversationActivationHandlers.js';
 import { createDraftConversationHandlers } from '../conversations/hooks/createDraftConversationHandlers.js';
 import { usePerConversationDraft } from '../chat/hooks/usePerConversationDraft.js';
+import { useConversationBootstrap } from '../conversations/hooks/useConversationBootstrap.js';
+import { useConversationListPolling } from '../conversations/hooks/useConversationListPolling.js';
+import { useTaskRuntimePolling } from '../tasks/hooks/useTaskRuntimePolling.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
 const conversationDetailToWorkspaceConversation = (detail, previousConversation = null) => (
   mapConversationDetailToWorkspace(detail, previousConversation, taskSummaryToRuntimeTask)
 );
-const buildWorkspaceStateFromConversationDetails = (details, previousState) => (
-  buildWorkspaceFromConversationDetails(details, previousState, taskSummaryToRuntimeTask)
-);
 const buildWorkspaceStateFromProjects = (projects, previousState) => (
   buildWorkspaceFromProjects(projects, previousState, taskSummaryToRuntimeTask)
+);
+const replaceWorkspaceModeFromProjects = (executionMode, projects, previousState, activeDraft = null) => (
+  replaceWorkspaceModeFromProjectDetails(
+    executionMode,
+    projects,
+    previousState,
+    taskSummaryToRuntimeTask,
+    activeDraft,
+  )
 );
 const workspaceStateWithConversationDetail = (state, detail, activate = true) => (
   mergeConversationDetailIntoWorkspace(state, detail, activate, taskSummaryToRuntimeTask)
@@ -173,7 +176,7 @@ const TASK_COMPLETION_NOTICES_STORAGE_KEY = 'haish.task-completion-notices.v1';
 
 export function AppShell() {
   const [taskRuntimeState, setTaskRuntimeState] = useState(() => createEmptyTaskRuntimeState());
-  const [workspaceState, setWorkspaceState] = useState(() => loadStoredWorkspaceState());
+  const [workspaceState, setWorkspaceState] = useState(() => createEmptyWorkspaceState());
   // 打开应用后先做一次性加载（服务端项目/会话同步）。加载完成前侧边栏只展示
   // Haish logo 图标（闪烁动画），不渲染本地缓存里可能过期的项目/会话。
   const [workspaceLoading, setWorkspaceLoading] = useState(true);
@@ -182,14 +185,13 @@ export function AppShell() {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
   const [viewedWorkflowTask, setViewedWorkflowTask] = useState(null);
   const [conversationPanelCollapsed, setConversationPanelCollapsed] = useState(false);
-  const [taskCompletionNotices, setTaskCompletionNotices] = useState(() => loadTaskCompletionNotices(
-    typeof window === 'undefined' ? null : window.localStorage,
-    TASK_COMPLETION_NOTICES_STORAGE_KEY,
-  ));
+  const [taskCompletionNotices, setTaskCompletionNotices] = useState({});
+  const [taskCompletionNoticesOwner, setTaskCompletionNoticesOwner] = useState('');
   const [windowFocused, setWindowFocused] = useState(() => (
     typeof document === 'undefined' ? true : document.hasFocus()
   ));
   const viewModeRef = useRef('chat');
+  const botRunConfigRef = useRef(null);
   const viewModeTogglePromiseRef = useRef(null);
   const conversationReorderChainsRef = useRef(new Map());
   const conversationReorderVersionsRef = useRef(new Map());
@@ -198,8 +200,8 @@ export function AppShell() {
   const modeLocationRef = useRef({ chat: null, workflow: null });
   const [busy, setBusy] = useState(false);
   const [hollow, setHollow] = useState(null);
-  const [now, setNow] = useState(() => new Date());
   const [conversationId, setConversationId] = useState(null);
+  const [ownerId, setOwnerId] = useState('');
   const [conversationReady, setConversationReady] = useState(false);
   const [conversationError, setConversationError] = useState('');
   const [, setConversationAttachments] = useState([]);
@@ -218,7 +220,6 @@ export function AppShell() {
   const [agentSettingsDraft, setAgentSettingsDraft] = useState(() => normalizeAgentSettings(DEFAULT_AGENT_SETTINGS));
   const [workflowSettingsDraft, setWorkflowSettingsDraft] = useState(() => normalizeWorkflowSettings(DEFAULT_WORKFLOW_SETTINGS));
 
-  const abortRef = useRef(false);
   const copyTimerRef = useRef(null);
   const [settingsMode, setSettingsMode] = useState(false);
   const [settingsSection, setSettingsSection] = useState('llm');
@@ -235,26 +236,22 @@ export function AppShell() {
     workflow: '',
   }));
   const [skillActionBusy, setSkillActionBusy] = useState('');
-  const activeTaskIdRef = useRef(null);
-  const activeRunIdRef = useRef(null);
   const conversationIdRef = useRef(null);
-  const cancelledRunIdsRef = useRef(new Set());
-  const fetchAbortRef = useRef(null);
+  const ownerIdRef = useRef('');
   const conversationDetailAbortRef = useRef(null);
-  const answerBufferRef = useRef('');
   const chatMessageRowsCacheRef = useRef(new WeakMap());
   const chatFinalizedTaskIdsRef = useRef(new Set());
   const userCancelledTaskIdsRef = useRef(new Set());
   const taskImageAttachmentsRef = useRef(new Map());
   const taskRuntimeEventCacheRef = useRef(new Map());
+  const taskRuntimeFetchesRef = useRef(new Map());
   const completionReportedTaskIdsRef = useRef(new Set());
   const runtimeApiRef = useRef({});
   const activationApiRef = useRef({});
   const deployApiRef = useRef({});
   const draftApiRef = useRef({});
+  const directorySelectionApiRef = useRef({});
   const settingsApiRef = useRef({});
-  const taskRuntimeStateRef = useRef(taskRuntimeState);
-  const initialWorkspaceStateRef = useRef(workspaceState);
   const toastTimerRef = useRef(null);
   const conversationActivationSeqRef = useRef(0);
   // Local draft opened by "new conversation" before the user sends a message.
@@ -270,12 +267,8 @@ export function AppShell() {
   // Server conversation created for a draft (e.g. image/file upload) but not yet
   // revealed in the sidebar because the user still has not sent a message.
   const pendingCreatedDetailRef = useRef(null);
-  // Per-conversation runtime store. Each entry tracks the live state for a
-  // single conversation's task run so multiple conversations can stream in
-  // parallel without stepping on each other. The displayed React state
-  // (`taskRuntimeState`, `busy`) and the legacy single-instance refs
-  // (`activeRunIdRef` etc.) are mirrors of whichever runtime corresponds to
-  // the currently-shown conversation. See `getRuntime` / `syncDisplayedRuntime`.
+  // Per-conversation runtime store. This is the single source of truth for
+  // live task state; React state only projects the currently displayed entry.
   const runtimesRef = useRef(new Map());
   // While an SSE flush is happening this holds the conversation id that owns
   // the in-flight stream. Setters consult it before falling back to
@@ -483,7 +476,11 @@ export function AppShell() {
   const llmProviderOptions = useMemo(() => runtimeLlmProviderOptions(llmSettingsDraft), [llmSettingsDraft]);
   const agentOptions = agentCatalog?.options || APP_DEFAULT_AGENT_OPTIONS;
   const defaultAgentId = agentCatalog?.defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
-  const runConfigStorageKey = buildRunConfigStorageKey('chat', conversationId);
+  const runConfigStorageKey = buildRunConfigStorageKey(ownerId, 'chat', conversationId);
+  const botRunConfigStorageKey = runConfigStorageKey ? `${runConfigStorageKey}.bot` : '';
+  const handleBotRunConfigChange = React.useCallback((config) => {
+    botRunConfigRef.current = config;
+  }, []);
   const workflowOptions = useMemo(() => {
     const normalized = normalizeWorkflowSettings(workflowSettingsDraft);
     return [...normalized.presets, ...normalized.custom]
@@ -499,10 +496,15 @@ export function AppShell() {
     || workflowOptions[0]?.id
     || DIRECT_AGENT_WORKFLOW_ID;
 
-  useEffect(() => { taskRuntimeStateRef.current = taskRuntimeState; }, [taskRuntimeState]);
   useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
   useEffect(() => { conversationIdRef.current = conversationId; }, [conversationId]);
-  useEffect(() => { saveWorkspaceState(workspaceState); }, [workspaceState]);
+  useEffect(() => {
+    if (ownerId) saveWorkspaceState(ownerId, workspaceState);
+  }, [ownerId, workspaceState]);
+
+  function persistStoredConversationId(nextConversationId) {
+    setStoredConversationId(ownerIdRef.current, nextConversationId);
+  }
 
   useEffect(() => {
     const onFocus = () => setWindowFocused(true);
@@ -516,14 +518,29 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
+    if (!ownerId) return;
+    completionReportedTaskIdsRef.current.clear();
+    const notices = loadTaskCompletionNotices(
+      window.localStorage,
+      buildOwnerScopedStorageKey(TASK_COMPLETION_NOTICES_STORAGE_KEY, ownerId),
+    );
+    setTaskCompletionNotices(notices);
+    setTaskCompletionNoticesOwner(ownerId);
+    window.haish?.setTaskCompletionBadgeCount?.(Object.keys(notices).length)
+      .catch(() => undefined);
+  }, [ownerId]);
+
+  useEffect(() => {
+    const storageKey = buildOwnerScopedStorageKey(TASK_COMPLETION_NOTICES_STORAGE_KEY, ownerId);
+    if (!storageKey || taskCompletionNoticesOwner !== ownerId) return;
     saveTaskCompletionNotices(
       window.localStorage,
-      TASK_COMPLETION_NOTICES_STORAGE_KEY,
+      storageKey,
       taskCompletionNotices,
     );
     window.haish?.setTaskCompletionBadgeCount?.(Object.keys(taskCompletionNotices).length)
       .catch(() => undefined);
-  }, [taskCompletionNotices]);
+  }, [ownerId, taskCompletionNotices, taskCompletionNoticesOwner]);
 
   function notifyTaskComplete(targetConversationId, taskId, taskOrStatus) {
     const status = terminalTaskNoticeStatus(taskOrStatus);
@@ -554,7 +571,6 @@ export function AppShell() {
     materializeDraftConversationForSend,
     fetchTaskRuntimeDetail,
     restoreLatestTaskRuntime,
-    restoreConversationTaskRuntimes,
     cancelActiveTask,
     queueTaskInput,
     cancelActiveConversationTask,
@@ -562,7 +578,6 @@ export function AppShell() {
     updateConversationTitle,
   } = createDraftConversationHandlers({
     API_BASE,
-    DEFAULT_PROJECT_ID,
     DEFAULT_SESSION_NAME,
     // Late-bound: activation / runtime factories below.
     applyConversationSnapshot: (...args) => activationApiRef.current.applyConversationSnapshot?.(...args),
@@ -597,11 +612,12 @@ export function AppShell() {
     setConversationId,
     setConversationReady,
     setLocalWorkspace,
-    setStoredConversationId,
+    setStoredConversationId: persistStoredConversationId,
     setUploadState,
     setWorkspaceState,
     taskDetailToRuntimeTask,
     taskRuntimeEventCacheRef,
+    taskRuntimeFetchesRef,
     taskUpdatedTimestamp,
     titleFromTaskText,
     updateTaskRuntimeState: (...args) => runtimeApiRef.current.updateTaskRuntimeState?.(...args),
@@ -616,100 +632,12 @@ export function AppShell() {
   };
 
 
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
   useEffect(() => () => {
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
   }, []);
 
   useEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const initialWorkspaceState = initialWorkspaceStateRef.current;
-    const bootstrapActivationSeq = conversationActivationSeqRef.current;
-    (async () => {
-      try {
-        const storedConversationIds = getWorkspaceConversationIds(initialWorkspaceState);
-        let details = [];
-        let serverProjects = null;
-        let serverListLoaded = false;
-        try {
-          const listResponse = await apiFetch(`${API_BASE}/api/projects`, { method: 'GET' }, { json: false });
-          if (!listResponse.ok) throw new Error(`project list failed: ${listResponse.status}`);
-          const listed = await listResponse.json();
-          serverProjects = Array.isArray(listed?.projects) ? listed.projects : [];
-          details = serverProjects.flatMap((project) => project.conversations || []);
-          serverListLoaded = true;
-        } catch (error) {
-          console.warn('project list restore failed; falling back to local cache:', error);
-        }
-        if (!serverListLoaded && storedConversationIds.length > 0) {
-          const restoredDetails = await Promise.all(
-            storedConversationIds.map((nextConversationId) => (
-              activationApiRef.current.fetchConversationDetail(nextConversationId).catch((error) => {
-                console.warn('conversation restore skipped:', error);
-                return null;
-              })
-            ))
-          );
-          details = restoredDetails.filter(Boolean);
-        }
-        if (details.length === 0) {
-          if (!activationApiRef.current.isConversationActivationCurrent?.(bootstrapActivationSeq)) return;
-          const created = await createConversationWithRetry(
-            { title: DEFAULT_SESSION_NAME, execution_mode: 'chat' },
-            () => activationApiRef.current.isConversationActivationCurrent?.(bootstrapActivationSeq),
-          );
-          if (!created) return;
-          details = [created];
-          if (serverProjects) {
-            serverProjects = serverProjects.map((project) => (
-              project.project_id === (created.project_id || DEFAULT_PROJECT_ID)
-                ? { ...project, conversations: [created, ...(project.conversations || [])] }
-                : project
-            ));
-          }
-        }
-        if (cancelled || !activationApiRef.current.isConversationActivationCurrent?.(bootstrapActivationSeq)) return;
-        const storedConversationId = getStoredConversationId();
-        let previousWorkspaceState = storedConversationIds.length > 0
-          ? {
-            ...initialWorkspaceState,
-            activeConversationId: storedConversationId || initialWorkspaceState.activeConversationId,
-          }
-          : createEmptyWorkspaceState();
-        const nextWorkspaceState = serverProjects
-          ? buildWorkspaceStateFromProjects(serverProjects, previousWorkspaceState)
-          : buildWorkspaceStateFromConversationDetails(details, previousWorkspaceState);
-        saveWorkspaceState(nextWorkspaceState);
-        setWorkspaceState(nextWorkspaceState);
-        const activeSummary = details.find((detail) => detail.conversation_id === nextWorkspaceState.activeConversationId) || details[0];
-        if (activeSummary) {
-          const activeDetail = Array.isArray(activeSummary.messages)
-            ? activeSummary
-            : await activationApiRef.current.fetchConversationDetail(activeSummary.conversation_id);
-          await activationApiRef.current.activateConversationDetail(activeDetail);
-        }
-        setConversationReady(true);
-      } catch (error) {
-        if (cancelled) return;
-        setConversationError(String(error?.message || error));
-      } finally {
-        // 无论成功、回退本地缓存还是出错，一次性加载结束后都要放行侧边栏；
-        // 组件卸载（cancelled）时不再 setState。
-        if (!cancelled) setWorkspaceLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      activationApiRef.current.abortPendingRequests?.();
-    };
   }, []);
 
   useEffect(() => {
@@ -737,13 +665,8 @@ export function AppShell() {
     updateTaskRuntimeState,
     showToast,
   } = createConversationRuntime({
-    activeRunIdRef,
-    activeTaskIdRef,
-    answerBufferRef,
-    cancelledRunIdsRef,
     conversationIdRef,
     createEmptyTaskRuntimeState,
-    fetchAbortRef,
     normalizeWorkspaceOrdering,
     notifyTaskComplete,
     runtimesRef,
@@ -754,7 +677,6 @@ export function AppShell() {
     streamTargetConvIdRef,
     taskImageAttachmentsRef,
     toastTimerRef,
-    taskRuntimeStateRef,
   });
 
   runtimeApiRef.current = {
@@ -782,7 +704,6 @@ export function AppShell() {
   } = createConversationActivationHandlers({
     API_BASE,
     activeRuntimeTargetConvId,
-    activeTaskIdRef,
     apiFetch,
     buildTaskRuntimeRecord,
     chatImageFallbacksByTaskIdFromMessages,
@@ -802,16 +723,15 @@ export function AppShell() {
     mergeChatImageRefs,
     mergeContextUsage,
     mutateRuntime,
-    normalizeWorkspaceOrdering,
     pendingCreatedDetailRef,
-    restoreConversationTaskRuntimes,
+    restoreLatestTaskRuntime,
     saveStoredContextUsage,
     setComposerAttachment,
     setContextUsage,
     setConversationAttachments,
     setConversationId,
     setLocalWorkspace,
-    setStoredConversationId,
+    setStoredConversationId: persistStoredConversationId,
     setUploadState,
     setViewMode,
     setWorkspaceState,
@@ -825,7 +745,6 @@ export function AppShell() {
     viewModeRef,
     workspaceState,
     workspaceStateWithConversationDetail,
-    taskRuntimeStateRef,
   });
 
   activationApiRef.current = {
@@ -838,13 +757,23 @@ export function AppShell() {
     updateTaskById,
     getTaskById,
     isConversationActivationCurrent,
+    currentActivationSeq: () => conversationActivationSeqRef.current,
     abortPendingRequests: () => {
-      fetchAbortRef.current?.abort?.();
+      runtimesRef.current.forEach((runtime) => runtime.fetchController?.abort?.());
       conversationDetailAbortRef.current?.abort?.();
     },
   };
 
-
+  useConversationBootstrap({
+    activationApiRef,
+    buildWorkspaceStateFromProjects,
+    ownerIdRef,
+    setConversationError,
+    setConversationReady,
+    setOwnerId,
+    setWorkspaceLoading,
+    setWorkspaceState,
+  });
 
   const {
     handleToggleSettings,
@@ -927,7 +856,6 @@ export function AppShell() {
     handleAttachmentClear,
   } = createComposerHandlers({
     API_BASE,
-    abortRef,
     applyConversationSnapshot,
     apiFetch,
     conversationId,
@@ -1025,14 +953,13 @@ export function AppShell() {
     handleRetryTask,
   } = createConversationHandlers({
     API_BASE,
-    DEFAULT_PROJECT_ID,
     DEFAULT_SESSION_NAME,
     activateConversationDetail,
     activateConversationShell,
     applyConversationSnapshot,
     apiFetch,
     buildApiHeaders,
-    buildWorkspaceStateFromProjects,
+    replaceWorkspaceModeFromProjects,
     conversationReorderChainsRef,
     conversationReorderVersionsRef,
     projectReorderChainRef,
@@ -1055,8 +982,6 @@ export function AppShell() {
     modeLocationRef,
     normalizeWorkspaceOrdering,
     openDraftConversation,
-    projectIdForWorkspacePath,
-    removeProjectModeFromWorkspace,
     setActiveTab,
     setSettingsMode,
     setHollow,
@@ -1069,6 +994,26 @@ export function AppShell() {
     viewModeTogglePromiseRef,
     workspaceState,
     workspaceStateWithConversationDetail,
+  });
+  directorySelectionApiRef.current.handleActiveConversationRemoved = async ({
+    projectId,
+    conversationId: fallbackConversationId,
+  }) => {
+    if (fallbackConversationId) {
+      await handleSelectConversation(projectId, fallbackConversationId);
+    } else if (projectId) {
+      openDraftConversation(projectId);
+    }
+  };
+  useConversationListPolling({
+    activeConversationExecutionMode: findConversationById(workspaceState, conversationId)?.executionMode || null,
+    conversationIdRef,
+    directorySelectionApiRef,
+    draftConversationRef,
+    enabled: conversationReady && !settingsMode,
+    executionMode: viewMode === 'chat' ? 'chat' : 'bot',
+    replaceWorkspaceModeFromProjects,
+    setWorkspaceState,
   });
   const quests = useMemo(() => {
     const confirmedTasks = taskRuntimeState.taskOrder
@@ -1096,10 +1041,6 @@ export function AppShell() {
     handleDeploy,
   } = createDeployHandlers({
     APP_DEFAULT_AGENT_OPTIONS,
-    abortRef,
-    activeRunIdRef,
-    activeTaskIdRef,
-    answerBufferRef,
     applyTerminalTaskState,
     busy,
     cancelActiveConversationTask,
@@ -1118,7 +1059,6 @@ export function AppShell() {
     defaultWorkflowId,
     draftConversationRef,
     executeQuest,
-    fetchAbortRef,
     findConversationById,
     flushRuntimeTasksToWorkspace,
     getRuntime,
@@ -1132,7 +1072,6 @@ export function AppShell() {
     queuedDeploy,
     readRuntimeAnswerBuffer,
     selectedConversationId,
-    setBusy,
     setComposerAttachment,
     setQueuedDeploy,
     setRuntimeActiveRunId,
@@ -1154,7 +1093,6 @@ export function AppShell() {
     workspaceState,
     workspaceStateWithConversationDetail,
     workspaceStateWithTouchedConversation,
-    taskRuntimeStateRef,
   });
   deployApiRef.current = {
     buildDeployRequest,
@@ -1203,7 +1141,7 @@ export function AppShell() {
         item.id === conversationId
           ? {
               ...item,
-              tasks: quests,
+              tasks: mergeConversationTasks(item.tasks, quests),
               // expanded is recomputed downstream by withDefaultExpansion from
               // (userExpanded ?? isActive). We only need to merge tasks here.
               updatedAt: quests.reduce((latest, task) => Math.max(latest, taskUpdatedTimestamp(task)), item.updatedAt || 0),
@@ -1219,7 +1157,7 @@ export function AppShell() {
       ? conversationId
       : null,
     projects: panelWorkspaceState.projects
-      .filter((project) => !project.hiddenModes?.includes(visibleConversationMode))
+      .filter((project) => project.executionMode === visibleConversationMode)
       .map((project) => ({
         ...project,
         conversations: project.conversations.filter(
@@ -1285,134 +1223,18 @@ export function AppShell() {
     settingsMode,
     conversationId,
   ]);
-  // If there's a running/queued task in the currently-viewed conversation,
-  // expose its taskId so the polling effect below can refresh it. We pick
-  // the *latest* running task by updatedAt — in practice there's only ever
-  // one, but be defensive in case the backend ever pipelines.
-  const activeTaskIdForPolling = useMemo(() => {
-    if (!currentConversationActive) return null;
-    for (const project of panelWorkspaceState.projects) {
-      const conversation = project.conversations.find((item) => item.id === conversationId);
-      if (!conversation) continue;
-      const tasks = Array.isArray(conversation.tasks) ? conversation.tasks : [];
-      const candidates = tasks
-        .filter((task) => isTaskActuallyActive(task))
-        .sort((a, b) => taskUpdatedTimestamp(b) - taskUpdatedTimestamp(a));
-      const top = candidates[0];
-      return top?.taskId || top?.id || null;
-    }
-    return null;
-  }, [currentConversationActive, panelWorkspaceState, conversationId]);
-  const backgroundTaskPollTargets = useMemo(() => {
-    const targets = [];
-    const seen = new Set();
-    for (const project of panelWorkspaceState.projects || []) {
-      for (const conversation of project.conversations || []) {
-        if (!conversation?.id || conversation.id === conversationId) continue;
-        const tasks = Array.isArray(conversation.tasks) ? conversation.tasks : [];
-        for (const task of tasks) {
-          if (!isTaskActuallyActive(task)) continue;
-          const taskId = task.taskId || task.id;
-          if (!taskId) continue;
-          const key = `${conversation.id}:${taskId}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          targets.push({
-            conversationId: conversation.id,
-            taskId,
-          });
-        }
-      }
-    }
-    return targets.sort((a, b) => `${a.conversationId}:${a.taskId}`.localeCompare(`${b.conversationId}:${b.taskId}`));
-  }, [panelWorkspaceState, conversationId]);
-  const backgroundTaskPollKey = useMemo(
-    () => backgroundTaskPollTargets.map((target) => `${target.conversationId}:${target.taskId}`).join('|'),
-    [backgroundTaskPollTargets],
-  );
-  // Polling loop: when the active conversation has a running task that THIS
-  // client did not start, GET /api/tasks/{id} every 2s so the chat timeline
-  // and task progress catch up. Bails as soon as the task transitions to a
-  // terminal state — currentConversationActive flips false, the effect
-  // re-runs with `activeTaskIdForPolling === null`, and we stop polling.
-  // We deliberately skip this loop when activeRunIdRef.current is set, because
-  // that means the per-message stream is already feeding live events from
-  // this client; polling on top would double-process the same events.
-  useEffect(() => {
-    if (!activeTaskIdForPolling) return undefined;
-    if (activeRunIdRef.current) return undefined;
-    let cancelled = false;
-    const targetConversationId = conversationId;
-    const isCurrentPoll = () => (
-      !cancelled && conversationIdRef.current === targetConversationId
-    );
-    const tick = () => {
-      if (cancelled) return;
-      restoreLatestTaskRuntime(activeTaskIdForPolling, {
-        targetConversationId,
-        isCurrentActivation: isCurrentPoll,
-      })
-        .then((task) => {
-          if (!terminalTaskNoticeStatus(task)) return;
-          notifyTaskComplete(targetConversationId, activeTaskIdForPolling, task);
-        })
-        .catch((error) => {
-          if (error?.status === 404) {
-            removeMissingTask(targetConversationId, activeTaskIdForPolling);
-            return;
-          }
-          console.warn('task poll failed', error);
-        });
-    };
-    // Fire once immediately so the user sees fresh state on switch-back
-    // without waiting for the first 2s interval.
-    tick();
-    const timer = setInterval(tick, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTaskIdForPolling, conversationId]);
-  useEffect(() => {
-    if (!backgroundTaskPollKey) return undefined;
-    let cancelled = false;
-    const targets = backgroundTaskPollTargets;
-    const tick = () => {
-      if (cancelled) return;
-      targets.forEach(({ conversationId: targetConversationId, taskId }) => {
-        fetchTaskRuntimeDetail(taskId)
-          .then((detail) => {
-            if (cancelled || !detail) return;
-            setWorkspaceState((state) => {
-              const conversation = findConversationById(state, targetConversationId);
-              const previousTask = (conversation?.tasks || []).find((task) => (task.taskId || task.id) === taskId) || null;
-              const nextTask = taskDetailToRuntimeTask(detail.normalizedTask, previousTask);
-              return workspaceStateWithConversationRuntimeTask(state, targetConversationId, nextTask);
-            });
-            // Every poll target was active when this effect was created. Once
-            // the server snapshot becomes terminal, request attention exactly once.
-            if (terminalTaskNoticeStatus(detail.normalizedTask)) {
-              notifyTaskComplete(targetConversationId, taskId, detail.normalizedTask);
-            }
-          })
-          .catch((error) => {
-            if (error?.status === 404) {
-              removeMissingTask(targetConversationId, taskId);
-              return;
-            }
-            if (!cancelled) console.warn('background task poll failed', error);
-          });
-      });
-    };
-    tick();
-    const timer = setInterval(tick, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backgroundTaskPollKey]);
+  useTaskRuntimePolling({
+    conversationId,
+    conversationIdRef,
+    currentConversationActive,
+    fetchTaskRuntimeDetail,
+    getRuntime,
+    notifyTaskComplete,
+    panelWorkspaceState,
+    removeMissingTask,
+    restoreLatestTaskRuntime,
+    setWorkspaceState,
+  });
   const runtimeCurrentTask = useMemo(() => {
     if (taskRuntimeState.activeTaskId && taskRuntimeState.tasksById[taskRuntimeState.activeTaskId]) {
       return taskRuntimeState.tasksById[taskRuntimeState.activeTaskId];
@@ -1486,7 +1308,7 @@ export function AppShell() {
     setTaskCompletionNotices((current) => clearTaskCompletionNotice(current, targetConversationId, taskId));
   }
   useEffect(() => {
-    const activeTaskId = taskRuntimeState.activeTaskId || activeTaskIdRef.current;
+    const activeTaskId = taskRuntimeState.activeTaskId;
     if (!activeTaskId || !runtimeCurrentTask) return;
     if (isTaskActuallyActive(runtimeCurrentTask)) return;
     if (!busy && !currentConversationActive) return;
@@ -1503,7 +1325,7 @@ export function AppShell() {
   }, [busy, currentConversationActive, runtimeCurrentTask, taskRuntimeState.activeTaskId]);
   useEffect(() => {
     if (!busy || currentConversationActive) return;
-    const activeTaskId = taskRuntimeState.activeTaskId || activeTaskIdRef.current;
+    const activeTaskId = taskRuntimeState.activeTaskId;
     if (activeTaskId) return;
     if (taskRuntimeState.pendingTask && isTaskActuallyActive(taskRuntimeState.pendingTask)) return;
     // Stale local runtime guard: if no task is actually active in the current
@@ -1513,7 +1335,7 @@ export function AppShell() {
     runtimeApiRef.current.setRuntimeActiveTaskId?.(null);
   }, [busy, currentConversationActive, taskRuntimeState.activeTaskId, taskRuntimeState.pendingTask]);
   const activeTaskText = useMemo(() => {
-    const activeTaskId = taskRuntimeState.activeTaskId || activeTaskIdRef.current;
+    const activeTaskId = taskRuntimeState.activeTaskId;
     if (activeTaskId && taskRuntimeState.tasksById[activeTaskId]?.title) {
       return taskRuntimeState.tasksById[activeTaskId].title;
     }
@@ -1688,7 +1510,6 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <TopBar
-        now={now}
         viewMode={viewMode}
         onToggleViewMode={() => { handleToggleViewMode().catch((error) => showToast('error', String(error?.message || error))); }}
         settingsActive={settingsMode}
@@ -1734,7 +1555,6 @@ export function AppShell() {
           <>
             <ConversationsPanel
               workspaceState={visiblePanelWorkspaceState}
-              now={now}
               terminalNotices={conversationNoticesFromTasks(taskCompletionNotices)}
               taskTerminalNotices={taskNoticesByTaskId(taskCompletionNotices)}
               windowFocused={windowFocused}
@@ -1782,7 +1602,7 @@ export function AppShell() {
               onReorderProjects={handleReorderProjects}
               onOpenTaskReport={handleOpenTaskReport}
               onRetryTask={handleRetryTask}
-              taskPreviewLimit={viewMode === 'chat' ? 3 : 5}
+              taskPreviewLimit={3}
             />
             {viewMode === 'chat' ? (
               <div className="app-chat-stage">
@@ -1805,7 +1625,6 @@ export function AppShell() {
                     workspacePath={localWorkspace.path}
                     homePath={window.haish?.homePath || ''}
                     activeTaskText={activeTaskText}
-                    now={now}
                     providerOptions={llmProviderOptions}
                     agentOptions={agentOptions}
                     defaultAgentId={defaultAgentId}
@@ -1815,7 +1634,15 @@ export function AppShell() {
                     lockedAgentId={lockedAgentId}
                     selectionStorageKey={runConfigStorageKey}
                     draft={chatDraft}
-                    onDraftChange={setChatDraft}
+	                    onDraftChange={setChatDraft}
+                    onRetryTask={(taskId) => {
+                      const pendingTask = taskRuntimeState.pendingTask;
+                      const pendingTaskId = pendingTask?.taskId || pendingTask?.id;
+                      handleRetryTask(
+                        getTaskById(taskId, conversationId)
+                        || (pendingTaskId === taskId ? pendingTask : null),
+                      ).catch((error) => showToast('error', String(error?.message || error)));
+                    }}
 		                  />
 	                </div>
 	              </div>
@@ -1825,16 +1652,15 @@ export function AppShell() {
                     workflow={selectedWorkflow}
                     task={currentWorkflowTask}
                     agentOptions={agentOptions}
-                    now={now}
                     onRetry={(nodeId) => {
                       if (!currentWorkflowTask) return;
                       setViewedWorkflowTask(null);
-                      executeWorkflowNodeRerun(currentWorkflowTask, nodeId).catch((error) => {
+                      executeWorkflowNodeRerun(currentWorkflowTask, nodeId, botRunConfigRef.current).catch((error) => {
                         console.error('workflow node rerun failed', error);
                         showToast('error', String(error?.message || error));
                       });
                     }}
-                    composer={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} attachment={composerAttachment} uploading={uploadState.active} running={currentConversationRunning} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={`${runConfigStorageKey}.bot`} draft={chatDraft} onDraftChange={setChatDraft} />}
+                    composer={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} onRunConfigChange={handleBotRunConfigChange} attachment={composerAttachment} uploading={uploadState.active} running={currentConversationRunning} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={botRunConfigStorageKey} draft={chatDraft} onDraftChange={setChatDraft} />}
                   />
 	              </div>
             )}
