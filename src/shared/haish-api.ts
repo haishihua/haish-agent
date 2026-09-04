@@ -5,13 +5,9 @@ export type LocalProject = {
   createdAt: string;
 };
 
-export type DirectoryPickResult =
-  | { canceled: true }
-  | { canceled: false; project: LocalProject };
+export type DirectoryPickResult = { canceled: true } | { canceled: false; project: LocalProject };
 
-export type SkillDirectoryPickResult =
-  | { canceled: true }
-  | { canceled: false; path: string; name: string };
+export type SkillDirectoryPickResult = { canceled: true } | { canceled: false; path: string; name: string };
 
 export type FileEntry = {
   name: string;
@@ -36,20 +32,27 @@ export type LocalRuntimeState = {
   message?: string;
 };
 
+export type RemotePairingState = {
+  code: string;
+  endpoint: string;
+  pairing_uri: string;
+  expires_in: number;
+};
+
+export type RemoteDevice = {
+  device_id: string;
+  name: string;
+  created_at: number;
+  last_seen_at: number;
+};
+
 export type WindowVisualState = {
   fullScreen: boolean;
   maximized: boolean;
 };
 
 export type AppUpdateStatus =
-  | 'idle'
-  | 'checking'
-  | 'available'
-  | 'not-available'
-  | 'downloading'
-  | 'downloaded'
-  | 'error'
-  | 'unsupported';
+  'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'unsupported';
 
 export type AppUpdateState = {
   status: AppUpdateStatus;
@@ -66,6 +69,9 @@ export type HaishDesktopApi = {
   apiBase: string;
   homePath: string;
   getRuntimeStatus: () => Promise<LocalRuntimeState>;
+  startRemotePairing: () => Promise<RemotePairingState>;
+  listRemoteDevices: () => Promise<RemoteDevice[]>;
+  revokeRemoteDevice: (deviceId: string) => Promise<boolean>;
   /** Start macOS's native Dock attention animation when Haish is not active. */
   notifyTaskComplete: () => Promise<boolean>;
   /** Display the absolute number of completed-but-unviewed tasks in the Dock. */

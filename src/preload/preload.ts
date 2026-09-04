@@ -7,6 +7,8 @@ import type {
   LocalProject,
   LocalRuntimeState,
   ReadFileResult,
+  RemoteDevice,
+  RemotePairingState,
   SkillDirectoryPickResult,
   WindowVisualState,
 } from '../shared/haish-api.js';
@@ -16,6 +18,10 @@ const api: HaishDesktopApi = {
   apiBase: '',
   homePath: process.env.HOME || '',
   getRuntimeStatus: () => ipcRenderer.invoke('runtime:status') as Promise<LocalRuntimeState>,
+  startRemotePairing: () => ipcRenderer.invoke('remote-control:start-pairing') as Promise<RemotePairingState>,
+  listRemoteDevices: () => ipcRenderer.invoke('remote-control:list-devices') as Promise<RemoteDevice[]>,
+  revokeRemoteDevice: (deviceId: string) =>
+    ipcRenderer.invoke('remote-control:revoke-device', deviceId) as Promise<boolean>,
   notifyTaskComplete: () => ipcRenderer.invoke('dock:notify-task-complete') as Promise<boolean>,
   setTaskCompletionBadgeCount: (count: number) => ipcRenderer.invoke('dock:set-task-badge', count) as Promise<number>,
   getWindowState: () => ipcRenderer.invoke('window:state') as Promise<WindowVisualState>,
@@ -37,8 +43,10 @@ const api: HaishDesktopApi = {
   pickProjectDirectory: () => ipcRenderer.invoke('project:pick-directory') as Promise<DirectoryPickResult>,
   pickSkillDirectory: () => ipcRenderer.invoke('skill:pick-directory') as Promise<SkillDirectoryPickResult>,
   listProjects: () => ipcRenderer.invoke('project:list') as Promise<LocalProject[]>,
-  listDirectory: (projectId: string, relativePath = '') => ipcRenderer.invoke('fs:list-directory', projectId, relativePath) as Promise<FileEntry[]>,
-  readFile: (projectId: string, relativePath: string) => ipcRenderer.invoke('fs:read-file', projectId, relativePath) as Promise<ReadFileResult>,
+  listDirectory: (projectId: string, relativePath = '') =>
+    ipcRenderer.invoke('fs:list-directory', projectId, relativePath) as Promise<FileEntry[]>,
+  readFile: (projectId: string, relativePath: string) =>
+    ipcRenderer.invoke('fs:read-file', projectId, relativePath) as Promise<ReadFileResult>,
   copyImage: (dataUrl: string) => ipcRenderer.invoke('clipboard:write-image', dataUrl) as Promise<boolean>,
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
 };

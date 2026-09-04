@@ -1,11 +1,12 @@
 /* Haish global styles entry — split by section (Phase D). */
-@import "./styles/base.css";
-@import "./styles/app-shell.css";
-@import "./styles/topbar.css";
-@import "./styles/chat.css";
-@import "./styles/approvals.css";
-@import "./styles/workflow-runtime.css";
-@import "./styles/panels.css";
-@import "./styles/delegation.css";
-@import "./styles/nav.css";
-@import "./styles/modals.css";
+@import './styles/base.css';
+@import './styles/app-shell.css';
+@import './styles/topbar.css';
+@import './styles/remote-control.css';
+@import './styles/chat.css';
+@import './styles/approvals.css';
+@import './styles/workflow-runtime.css';
+@import './styles/panels.css';
+@import './styles/delegation.css';
+@import './styles/nav.css';
+@import './styles/modals.css';

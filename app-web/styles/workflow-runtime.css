@@ -1,4 +1,6 @@
 .app-workflow-stage {
+    --task-panel-edge-x: 18px;
+    --task-panel-padding-x: 14px;
     grid-column: 2 / -1;
     min-width: 0;
     min-height: 0;
@@ -30,8 +32,6 @@
 }
 
 .workflow-run-canvas {
-    --task-panel-edge-x: 18px;
-    --task-panel-padding-x: 14px;
     position: relative;
     min-width: 0;
     min-height: 0;

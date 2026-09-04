@@ -3,7 +3,15 @@ import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { DirectoryPickResult, FileEntry, LocalProject, ReadFileResult, SkillDirectoryPickResult } from '../shared/haish-api.js';
+import type {
+  DirectoryPickResult,
+  FileEntry,
+  LocalProject,
+  ReadFileResult,
+  RemoteDevice,
+  RemotePairingState,
+  SkillDirectoryPickResult,
+} from '../shared/haish-api.js';
 import {
   applyLatestAppUpdate,
   checkForAppUpdates,
@@ -22,13 +30,11 @@ const projectRoot = () => path.resolve(__dirname, '../..');
 const projectsFile = () => path.join(app.getPath('userData'), 'projects.json');
 const CLIPBOARD_IMAGE_MAX_DATA_URL_LENGTH = 14 * 1024 * 1024;
 const CLIPBOARD_IMAGE_MAX_PIXELS = 16 * 1024 * 1024;
+const REMOTE_ADAPTER_ORIGIN = 'http://127.0.0.1:8766';
 // Vite builds the product UI into app-web/dist. Prefer dist so the renderer always
 // loads the production bundle (no Babel-in-browser, production React).
 const webRoot = () => {
-  const distCandidates = [
-    path.join(projectRoot(), 'app-web', 'dist'),
-    path.join(app.getAppPath(), 'app-web', 'dist'),
-  ];
+  const distCandidates = [path.join(projectRoot(), 'app-web', 'dist'), path.join(app.getAppPath(), 'app-web', 'dist')];
   for (const distRoot of distCandidates) {
     if (existsSync(path.join(distRoot, 'index.html'))) {
       return distRoot;
@@ -78,9 +84,9 @@ protocol.registerSchemesAsPrivileged([
       standard: true,
       secure: true,
       supportFetchAPI: true,
-      corsEnabled: true
-    }
-  }
+      corsEnabled: true,
+    },
+  },
 ]);
 
 async function proxyApiRequest(request: Request, url: URL): Promise<Response> {
@@ -100,9 +106,8 @@ async function proxyApiRequest(request: Request, url: URL): Promise<Response> {
   headers.delete('host');
   headers.delete('origin');
   headers.delete('referer');
-  const body = request.method === 'GET' || request.method === 'HEAD'
-    ? undefined
-    : Buffer.from(await request.arrayBuffer());
+  const body =
+    request.method === 'GET' || request.method === 'HEAD' ? undefined : Buffer.from(await request.arrayBuffer());
   return net.fetch(targetUrl, {
     method: request.method,
     headers,
@@ -110,7 +115,7 @@ async function proxyApiRequest(request: Request, url: URL): Promise<Response> {
     // 透传渲染进程的取消信号：Cmd+R / 页面销毁时渲染进程的 fetch 会被
     // Chromium 中止，这里让后端转发请求也一并取消，避免“孤儿请求”在
     // 服务端完成刷新令牌轮换后结果丢失（新页面再用旧 token 刷新必 401）。
-    signal: request.signal
+    signal: request.signal,
   });
 }
 
@@ -125,6 +130,26 @@ function registerWebProtocol(): void {
     const filePath = path.join(webRoot(), relativePath);
     return net.fetch(pathToFileURL(filePath).toString());
   });
+}
+
+async function remoteAdapterJson<T>(pathname: string, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await net.fetch(`${REMOTE_ADAPTER_ORIGIN}${pathname}`, init);
+  } catch {
+    throw new Error('Remote Control is unavailable. Start the Haish Remote service and try again.');
+  }
+  if (!response.ok) {
+    let message = `Remote Control request failed (${response.status}).`;
+    try {
+      const payload = (await response.json()) as { detail?: string };
+      if (payload.detail) message = payload.detail;
+    } catch {
+      // Keep the status fallback for non-JSON errors.
+    }
+    throw new Error(message);
+  }
+  return response.json() as Promise<T>;
 }
 
 function getWindowVisualState(window: BrowserWindow) {
@@ -199,8 +224,8 @@ function createWindow(): void {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
-    }
+      sandbox: false,
+    },
   });
 
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -258,7 +283,7 @@ async function resolveInsideProject(projectId: string, relativePath = ''): Promi
 ipcMain.handle('project:pick-directory', async (): Promise<DirectoryPickResult> => {
   const result = await dialog.showOpenDialog({
     title: 'Add Project to Haish',
-    properties: ['openDirectory', 'createDirectory']
+    properties: ['openDirectory', 'createDirectory'],
   });
   if (result.canceled || !result.filePaths[0]) {
     return { canceled: true };
@@ -275,7 +300,7 @@ ipcMain.handle('project:pick-directory', async (): Promise<DirectoryPickResult> 
     id: crypto.randomUUID(),
     name: projectNameFromPath(rootPath),
     rootPath,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
   };
   await writeProjects([...projects, project]);
   return { canceled: false, project };
@@ -286,7 +311,7 @@ ipcMain.handle('project:list', async (): Promise<LocalProject[]> => readProjects
 ipcMain.handle('skill:pick-directory', async (): Promise<SkillDirectoryPickResult> => {
   const result = await dialog.showOpenDialog({
     title: 'Install Skill Directory',
-    properties: ['openDirectory']
+    properties: ['openDirectory'],
   });
   if (result.canceled || !result.filePaths[0]) {
     return { canceled: true };
@@ -300,6 +325,18 @@ ipcMain.handle('skill:pick-directory', async (): Promise<SkillDirectoryPickResul
 });
 
 ipcMain.handle('runtime:status', async () => getLocalRuntimeState());
+ipcMain.handle('remote-control:start-pairing', async (): Promise<RemotePairingState> => {
+  return remoteAdapterJson('/remote/pairing/start', { method: 'POST' });
+});
+ipcMain.handle('remote-control:list-devices', async (): Promise<RemoteDevice[]> => {
+  const payload = await remoteAdapterJson<{ devices: RemoteDevice[] }>('/remote/devices');
+  return payload.devices;
+});
+ipcMain.handle('remote-control:revoke-device', async (_event, deviceId: string): Promise<boolean> => {
+  if (!/^[a-f0-9]{32}$/.test(deviceId)) throw new Error('Invalid remote device ID.');
+  await remoteAdapterJson(`/remote/devices/${deviceId}`, { method: 'DELETE' });
+  return true;
+});
 ipcMain.handle('dock:notify-task-complete', (event): boolean => {
   return requestDockAttention(BrowserWindow.fromWebContents(event.sender));
 });
@@ -315,10 +352,11 @@ ipcMain.handle('app-update:install', () => installAppUpdate());
 ipcMain.handle('app-update:apply', () => applyLatestAppUpdate());
 ipcMain.handle('clipboard:write-image', (_event, dataUrl: string): boolean => {
   if (
-    typeof dataUrl !== 'string'
-    || dataUrl.length > CLIPBOARD_IMAGE_MAX_DATA_URL_LENGTH
-    || !dataUrl.startsWith('data:image/')
-  ) return false;
+    typeof dataUrl !== 'string' ||
+    dataUrl.length > CLIPBOARD_IMAGE_MAX_DATA_URL_LENGTH ||
+    !dataUrl.startsWith('data:image/')
+  )
+    return false;
   const image = nativeImage.createFromDataURL(dataUrl);
   if (image.isEmpty()) return false;
   const { width, height } = image.getSize();
@@ -330,18 +368,20 @@ ipcMain.handle('clipboard:write-image', (_event, dataUrl: string): boolean => {
 ipcMain.handle('fs:list-directory', async (_event, projectId: string, relativePath = ''): Promise<FileEntry[]> => {
   const target = await resolveInsideProject(projectId, relativePath);
   const entries = await fs.readdir(target, { withFileTypes: true });
-  const rows = await Promise.all(entries.map(async (entry) => {
-    const entryRelativePath = path.posix.join(relativePath.split(path.sep).join('/'), entry.name);
-    const absolutePath = path.join(target, entry.name);
-    const stats = await fs.stat(absolutePath);
-    return {
-      name: entry.name,
-      relativePath: entryRelativePath,
-      kind: entry.isDirectory() ? 'directory' : 'file',
-      size: entry.isFile() ? stats.size : undefined,
-      modifiedAt: stats.mtime.toISOString()
-    } satisfies FileEntry;
-  }));
+  const rows = await Promise.all(
+    entries.map(async (entry) => {
+      const entryRelativePath = path.posix.join(relativePath.split(path.sep).join('/'), entry.name);
+      const absolutePath = path.join(target, entry.name);
+      const stats = await fs.stat(absolutePath);
+      return {
+        name: entry.name,
+        relativePath: entryRelativePath,
+        kind: entry.isDirectory() ? 'directory' : 'file',
+        size: entry.isFile() ? stats.size : undefined,
+        modifiedAt: stats.mtime.toISOString(),
+      } satisfies FileEntry;
+    }),
+  );
   return rows.sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
 });
 
@@ -357,27 +397,30 @@ ipcMain.handle('fs:read-file', async (_event, projectId: string, relativePath: s
   return {
     relativePath,
     content: await fs.readFile(target, 'utf8'),
-    encoding: 'utf8'
+    encoding: 'utf8',
   };
 });
 
-app.whenReady().then(() => {
-  if (!gotTheLock) return;
-  app.setName('Haish');
-  applyDockIcon();
-  setupAppUpdater();
-  ensureLocalRuntime(runtimePaths()).catch((error) => {
-    console.error('Failed to start local Haish runtime:', error);
-  });
-  registerWebProtocol();
-  createWindow();
-  app.on('activate', () => {
-    stopDockAttention();
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
-}).catch((error) => console.error('Failed to start Haish:', error));
+app
+  .whenReady()
+  .then(() => {
+    if (!gotTheLock) return;
+    app.setName('Haish');
+    applyDockIcon();
+    setupAppUpdater();
+    ensureLocalRuntime(runtimePaths()).catch((error) => {
+      console.error('Failed to start local Haish runtime:', error);
+    });
+    registerWebProtocol();
+    createWindow();
+    app.on('activate', () => {
+      stopDockAttention();
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  })
+  .catch((error) => console.error('Failed to start Haish:', error));
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
