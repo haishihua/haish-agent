@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { CheckCircle2, Clock3, LockKeyhole, MoreVertical, RefreshCw, Smartphone, Unplug, X } from 'lucide-react';
 import QRCode from 'qrcode';
 
 function formatLastSeen(timestamp) {
@@ -10,41 +11,6 @@ function formatLastSeen(timestamp) {
   return `${Math.floor(seconds / 86_400)} days ago`;
 }
 
-function PhoneIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="7" y="2" width="10" height="20" rx="2" />
-      <path d="M11 18h2" />
-    </svg>
-  );
-}
-
-function RefreshIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M20 7v5h-5" />
-      <path d="M4 17v-5h5" />
-      <path d="M6.1 9a7 7 0 0 1 11.5-2.6L20 9M4 15l2.4 2.6A7 7 0 0 0 17.9 15" />
-    </svg>
-  );
-}
-
 export function RemoteControlDialog({ onClose }) {
   const [pairing, setPairing] = useState(null);
   const [qrImage, setQrImage] = useState('');
@@ -53,10 +19,24 @@ export function RemoteControlDialog({ onClose }) {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+  const [deviceNotice, setDeviceNotice] = useState(null);
+  const [deviceToRevoke, setDeviceToRevoke] = useState(null);
+  const [revoking, setRevoking] = useState(false);
+  const knownDeviceIdsRef = useRef(null);
 
   const refreshDevices = useCallback(async () => {
     const nextDevices = await window.haish?.listRemoteDevices?.();
-    if (nextDevices) setDevices(nextDevices);
+    if (!nextDevices) return;
+    const nextIds = new Set(nextDevices.map((device) => device.device_id));
+    const knownIds = knownDeviceIdsRef.current;
+    const newlyPaired = knownIds
+      ? nextDevices.find((device) => !knownIds.has(device.device_id))
+      : null;
+    knownDeviceIdsRef.current = nextIds;
+    setDevices(nextDevices);
+    if (newlyPaired) {
+      setDeviceNotice({ kind: 'success', text: `${newlyPaired.name || 'Phone'} paired successfully` });
+    }
   }, []);
 
   const startPairing = useCallback(async () => {
@@ -99,19 +79,31 @@ export function RemoteControlDialog({ onClose }) {
 
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Escape') return;
+      if (deviceToRevoke) setDeviceToRevoke(null);
+      else onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [deviceToRevoke, onClose]);
+
+  useEffect(() => {
+    if (!deviceNotice) return undefined;
+    const timer = window.setTimeout(() => setDeviceNotice(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [deviceNotice]);
 
   async function revokeDevice(device) {
-    if (!window.confirm(`Revoke remote access for ${device.name}?`)) return;
+    setRevoking(true);
     try {
       await window.haish.revokeRemoteDevice(device.device_id);
       await refreshDevices();
+      setDeviceNotice({ kind: 'success', text: `${device.name} access removed` });
+      setDeviceToRevoke(null);
     } catch (nextError) {
-      setError(String(nextError?.message || nextError));
+      setDeviceNotice({ kind: 'error', text: String(nextError?.message || nextError) });
+    } finally {
+      setRevoking(false);
     }
   }
 
@@ -127,26 +119,22 @@ export function RemoteControlDialog({ onClose }) {
         <header className="remote-control-header">
           <div className="remote-control-heading">
             <span className="remote-control-heading-icon" aria-hidden="true">
-              <PhoneIcon />
+              <Smartphone />
             </span>
             <div>
               <h2 id="remote-control-title">Remote Control</h2>
-              <p>Pair once, then control this Mac from your phone anywhere.</p>
+              <p>Control this Mac from your phone.</p>
             </div>
           </div>
           <button type="button" className="remote-control-close" aria-label="Close Remote Control" onClick={onClose}>
-            ×
+            <X aria-hidden="true" />
           </button>
         </header>
 
         <div className="remote-control-content">
           <section className="remote-pairing-panel" aria-label="Phone pairing">
             <div className="remote-section-heading">
-              <span className="remote-step">1</span>
-              <div>
-                <h3>Scan with Haish mobile</h3>
-                <p>Open Haish on your iPhone and scan this code.</p>
-              </div>
+              <h3>Scan with Haish mobile</h3>
             </div>
             <div className={`remote-qr-frame ${secondsLeft === 0 && pairing ? 'expired' : ''}`}>
               {qrImage ? <img src={qrImage} alt="Haish phone pairing QR code" /> : null}
@@ -167,61 +155,92 @@ export function RemoteControlDialog({ onClose }) {
               ) : null}
             </div>
             <div className="remote-pairing-meta" aria-live="polite">
-              <span className="remote-pairing-code">
-                {pairing ? `Code ${pairing.code.slice(0, 4)} ${pairing.code.slice(4)}` : 'Waiting for service'}
-              </span>
               <span className="remote-pairing-expiry">
+                <Clock3 aria-hidden="true" />
                 {secondsLeft > 0
                   ? `Expires in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`
-                  : 'Expired'}
+                  : pairing
+                    ? 'Expired'
+                    : 'Waiting for service'}
               </span>
             </div>
             <button type="button" className="remote-refresh-button" onClick={startPairing} disabled={busy}>
-              <RefreshIcon /> Refresh QR code
+              <RefreshCw aria-hidden="true" /> Refresh QR
             </button>
           </section>
 
           <section className="remote-devices-panel" aria-labelledby="remote-devices-title">
             <div className="remote-devices-heading">
-              <div>
-                <h3 id="remote-devices-title">Paired devices</h3>
-                <p>Phones allowed to control this Mac.</p>
-              </div>
-              <span className="remote-device-count">{devices.length} connected</span>
+              <h3 id="remote-devices-title">Paired devices</h3>
             </div>
+            {deviceNotice ? (
+              <div className={`remote-device-notice ${deviceNotice.kind}`} role="status">
+                <CheckCircle2 aria-hidden="true" />
+                <span>{deviceNotice.text}</span>
+              </div>
+            ) : null}
             <div className="remote-device-list">
               {devices.length ? (
                 devices.map((device) => (
                   <article className="remote-device-row" key={device.device_id}>
                     <span className="remote-device-icon">
-                      <PhoneIcon />
+                      <Smartphone aria-hidden="true" />
                     </span>
                     <div>
                       <strong>{device.name}</strong>
                       <span>Last seen {formatLastSeen(device.last_seen_at)}</span>
                     </div>
-                    <button type="button" onClick={() => revokeDevice(device)}>
-                      Revoke
+                    <span className="remote-device-online" aria-label="Paired device" />
+                    <button
+                      type="button"
+                      onClick={() => setDeviceToRevoke(device)}
+                      aria-label={`Revoke access for ${device.name}`}
+                      title="Revoke access"
+                    >
+                      <MoreVertical aria-hidden="true" />
                     </button>
                   </article>
                 ))
               ) : (
                 <div className="remote-device-empty">
-                  <PhoneIcon />
+                  <Smartphone aria-hidden="true" />
                   <strong>No paired phones yet</strong>
                   <span>Your phone appears here after scanning the QR code.</span>
                 </div>
               )}
             </div>
-            <div className="remote-security-note">
-              <span aria-hidden="true">✓</span>
-              <p>
-                <strong>Private by default</strong>
-                Only devices listed above can access this Haish Runtime.
-              </p>
-            </div>
           </section>
         </div>
+        <footer className="remote-security-note">
+          <LockKeyhole aria-hidden="true" />
+          <span>Only paired devices can access this Mac.</span>
+        </footer>
+        {deviceToRevoke ? (
+          <div className="remote-confirm-backdrop" role="presentation" onMouseDown={() => setDeviceToRevoke(null)}>
+            <div
+              className="remote-confirm-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="remote-revoke-title"
+              aria-describedby="remote-revoke-message"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <span className="remote-confirm-icon" aria-hidden="true"><Unplug /></span>
+              <h3 id="remote-revoke-title">Remove remote access?</h3>
+              <p id="remote-revoke-message">
+                {deviceToRevoke.name} will need to scan the QR code again to reconnect.
+              </p>
+              <div className="remote-confirm-actions">
+                <button type="button" onClick={() => setDeviceToRevoke(null)} disabled={revoking} autoFocus>
+                  Cancel
+                </button>
+                <button type="button" className="danger" onClick={() => revokeDevice(deviceToRevoke)} disabled={revoking}>
+                  {revoking ? 'Removing…' : 'Remove access'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>,
     document.body,

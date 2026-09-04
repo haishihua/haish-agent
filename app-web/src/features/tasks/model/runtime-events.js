@@ -174,6 +174,7 @@ export function runtimeEventToLog(event) {
     text: event.text ?? '',
     inputId: event.input_id || event.inputId || null,
     inputs: Array.isArray(event.inputs) ? event.inputs : [],
+    imageAttachments: Array.isArray(event.image_attachments) ? event.image_attachments : [],
     status: event.status || null,
     model: event.model || null,
     reason: event.reason || '',

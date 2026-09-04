@@ -1,4 +1,5 @@
 import React from 'react';
+import { ThinkingOrb } from 'thinking-orbs';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { AskUserInlineForm } from './AskUserInlineForm.jsx';
@@ -6,6 +7,7 @@ import { selectActiveAskUserItemId } from '../model/pending-user-input.js';
 import { CATEGORY_ICON_CLASS, CATEGORY_LABEL } from '../model/run-catalog.js';
 import { BrowserRuntimeCard, selectBrowserRuntimeRequest, useBrowserRuntimeRequests } from '../../approvals/components/ApprovalOverlay.jsx';
 import { buildSubAgentTimelineItems, buildToolView } from '../model/tool-view.js';
+import { resolveAgentActivity } from '../model/chat-timeline.js';
 
 export function resolveToolIconClass(toolName, defaultClass) {
   const name = String(toolName || '').toLowerCase();
@@ -215,56 +217,58 @@ export function ChatTimelineToolBody({ view }) {
   return null;
 }
 
-export const CHAT_TODO_COLLAPSED_COMPLETED_LIMIT = 2;
-
 export function ChatTodoPanel({ todos = [], streaming = false }) {
   const safeTodos = Array.isArray(todos) ? todos : [];
-  const [showAllCompleted, setShowAllCompleted] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(true);
   if (!safeTodos.length) return null;
 
-  // 渲染顺序：in_progress 最前 → pending 居中 → completed 最后。
-  // 不动原数组，按 status 分组聚合即可。
-  const inProgress = safeTodos.filter((t) => t.status === 'in_progress');
-  const pending = safeTodos.filter((t) => t.status === 'pending');
-  const completed = safeTodos.filter((t) => t.status === 'completed');
-
-  const visibleCompleted = showAllCompleted ? completed : completed.slice(-CHAT_TODO_COLLAPSED_COMPLETED_LIMIT);
-  const hiddenCount = completed.length - visibleCompleted.length;
+  const completedCount = safeTodos.filter((todo) => todo.status === 'completed').length;
+  const allCompleted = completedCount === safeTodos.length;
+  const hasActiveTodo = safeTodos.some((todo) => todo.status === 'in_progress');
+  const headerStatus = allCompleted ? 'completed' : hasActiveTodo ? 'in_progress' : 'pending';
 
   return (
-    <div className={`chat-todo-panel ${streaming ? 'streaming' : 'done'}`} role="list">
-      {inProgress.map((todo, index) => (
-        <ChatTodoRow key={`ip-${index}`} todo={todo} streaming={streaming} />
-      ))}
-      {pending.map((todo, index) => (
-        <ChatTodoRow key={`pe-${index}`} todo={todo} streaming={streaming} />
-      ))}
-      {visibleCompleted.map((todo, index) => (
-        <ChatTodoRow key={`co-${index}`} todo={todo} streaming={streaming} />
-      ))}
-      {hiddenCount > 0 ? (
-        <button type="button" className="chat-todo-expand" onClick={() => setShowAllCompleted(true)}>
-          … +{hiddenCount} completed
-        </button>
-      ) : null}
-    </div>
+    <section className={`chat-todo-panel ${streaming ? 'streaming' : 'done'}`} aria-label="To-dos">
+      <button
+        type="button"
+        className="chat-todo-head"
+        aria-expanded={expanded}
+        aria-label={`${expanded ? 'Collapse' : 'Expand'} to-dos`}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <span className="chat-todo-head-icon">
+          <ChatTodoStatusIcon status={headerStatus} />
+        </span>
+        <span className="chat-todo-title">To-dos</span>
+        <span className="chat-todo-count" aria-label={`${completedCount} of ${safeTodos.length} completed`}>
+          {completedCount}/{safeTodos.length}
+        </span>
+        <span className={`chat-todo-chevron ${expanded ? 'is-open' : ''}`} aria-hidden="true" />
+      </button>
+      <div className={`chat-todo-collapsible ${expanded ? 'is-open' : ''}`}>
+        <div className="chat-todo-collapsible-inner">
+          <div className="chat-todo-list" role="list">
+            {safeTodos.map((todo, index) => (
+              <ChatTodoRow key={todo.id || `${todo.content}-${index}`} todo={todo} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
-export function ChatTodoRow({ todo, streaming = false }) {
+export function ChatTodoRow({ todo }) {
   const status = todo.status || 'pending';
-  // 已完成、或本轮非 streaming 状态的 in_progress 项不要再继续转 spinner。
-  // 只有"任务还在 running 时的 in_progress 项"才显示真正的旋转动画。
-  const showLiveSpinner = status === 'in_progress' && streaming;
   return (
     <div className={`chat-todo-item status-${status}`} role="listitem">
-      <ChatTodoStatusIcon status={status} live={showLiveSpinner} />
+      <ChatTodoStatusIcon status={status} />
       <span className="chat-todo-content">{todo.content}</span>
     </div>
   );
 }
 
-export function ChatTodoStatusIcon({ status, live = false }) {
+export function ChatTodoStatusIcon({ status }) {
   if (status === 'completed') {
     return (
       <span className="chat-todo-icon completed" aria-label="completed">
@@ -277,7 +281,7 @@ export function ChatTodoStatusIcon({ status, live = false }) {
   if (status === 'in_progress') {
     return (
       <span className="chat-todo-icon in-progress" aria-label="in progress">
-        <span className={`chat-todo-spinner ${live ? 'live' : ''}`} />
+        <span className="chat-todo-current-mark" />
       </span>
     );
   }
@@ -681,15 +685,35 @@ export function ChatTimelineThinkingNode({ item }) {
   );
 }
 
-export function ChatTimelineUserInputNode({ item }) {
+export function ChatTimelineUserInputNode({ item, onPreviewImage }) {
   const text = String(item.text || '').trim();
-  if (!text) return null;
+  const images = Array.isArray(item.images) ? item.images : [];
+  if (!text && images.length === 0) return null;
   // 纠偏/打断指令与正常用户消息完全一致：右侧对齐的蓝色渐变气泡，
   // 不加任何特殊标签（You / Queued instruction）或虚线边框。
   return (
     <div className="chat-timeline-user-input">
       <div className="chat-timeline-user-input-bubble">
-        <p className="chat-timeline-user-input-text">{text}</p>
+        {images.length > 0 ? (
+          <div className="chat-message-images chat-timeline-user-input-images" aria-label="Attached images">
+            {images.map((image, index) => (
+              <div key={image.image_id || image.path || index} className="chat-message-image">
+                <button
+                  type="button"
+                  className="chat-message-image-button"
+                  onClick={() => onPreviewImage?.({
+                    src: image.previewUrl || image.path,
+                    title: image.name || image.path || 'Attached image',
+                  })}
+                  aria-label="Preview attached image"
+                >
+                  {image.previewUrl ? <img src={image.previewUrl} alt="" draggable={false} /> : null}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {text ? <p className="chat-timeline-user-input-text">{text}</p> : null}
       </div>
     </div>
   );
@@ -701,11 +725,13 @@ export function ChatAgentTimeline({
   latestTodos = null,
   conversationId = '',
   taskId = '',
+  onPreviewImage,
 }) {
   const safeItems = Array.isArray(items) ? items : [];
   const todos = Array.isArray(latestTodos) && latestTodos.length > 0 ? latestTodos : null;
   const retrying = safeItems.some((item) => item.metaType === 'llm_retry' && item.status === 'running');
   const activeAskUserItemId = selectActiveAskUserItemId(safeItems, streaming);
+  const activity = resolveAgentActivity(safeItems, streaming);
   // Empty timeline + done + no todos = nothing to show.
   // Empty timeline + streaming = activity indicator carries the "alive" hint.
   // Has todos = always show the panel even if there are no other items.
@@ -747,19 +773,23 @@ export function ChatAgentTimeline({
           return <ChatTimelineThinkingNode key={item.id} item={item} />;
         }
         if (item.kind === 'user_input') {
-          return <ChatTimelineUserInputNode key={item.id} item={item} />;
+          return <ChatTimelineUserInputNode key={item.id} item={item} onPreviewImage={onPreviewImage} />;
         }
         if (item.kind === 'meta') {
           return <ChatTimelineMetaNode key={item.id} item={item} />;
         }
         return null;
       })}
-      {streaming && !retrying ? (
-        <div className="chat-timeline-activity" aria-label="Agent activity">
-          <span className="chat-timeline-spark animated-gradient-text" aria-hidden="true">
-            *
-          </span>
-          <span className="chat-timeline-verb animated-gradient-text" aria-hidden="true" />
+      {activity && !retrying ? (
+        <div className={`chat-timeline-activity state-${activity.state}`} role="status" aria-live="polite">
+          <ThinkingOrb
+            state={activity.state}
+            size={64}
+            theme="dark"
+            style={{ width: 40, height: 40 }}
+            aria-hidden="true"
+          />
+          <span className="chat-timeline-activity-label">{activity.label}</span>
         </div>
       ) : null}
       {todos ? <ChatTodoPanel todos={todos} streaming={streaming} /> : null}

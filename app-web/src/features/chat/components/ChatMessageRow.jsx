@@ -13,6 +13,7 @@ import {
   ChatTimelineCollapsed,
   ChatTimelineElapsedPill,
 } from './ChatTimelineNodes.jsx';
+import { AssistantBorderBeam } from '../../../shared/ui/MotionEffects.jsx';
 
 const IMAGE_COPY_MAX_BYTES = 10 * 1024 * 1024;
 const IMAGE_COPY_MAX_PIXELS = 16 * 1024 * 1024;
@@ -117,43 +118,46 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
           ))}
         </div>
       )}
-      <div className={`chat-bubble ${message.status || ''}`}>
-        {!isUser ? (
-          <div className="chat-bubble-meta">
-            <span className="chat-bubble-meta-main">
-              <span className="chat-bubble-avatar ico-assistant-avatar" aria-hidden="true" />
-              <span>Assistant</span>
-            </span>
-          </div>
-        ) : null}
-        {showTimelineToggle ? (
-          <ChatTimelineCollapsed
-            onExpand={() => setTraceExpanded((value) => !value)}
-            label={elapsed || '0s'}
-            expanded={traceExpanded}
-          />
-        ) : null}
-        {/* 首字未到（排队/建连/模型首字等待期）不显示计时器 */}
-        {traceForcedOpen && firstTokenMs ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
-        {showTimelineExpanded ? (
-          <ChatAgentTimeline
-            items={timeline}
-            streaming={message.streaming}
-            latestTodos={message.traceLatestTodos || null}
-            conversationId={message.conversationId || ''}
-            taskId={message.taskId || ''}
-          />
-        ) : null}
-        {isAgent ? (
-          <FinalAnswerMarkdown source={message.text} streaming={message.streaming} />
-        ) : visibleText ? (
-          <div className="chat-bubble-text">
-            {(isUser || message.markdown) && Markdown
-              ? <Markdown source={String(visibleText)} />
-              : <span className="chat-stream-text">{visibleText}</span>}
-          </div>
-        ) : null}
-      </div>
+      <AssistantBorderBeam enabled={isAgent} active={message.streaming}>
+        <div className={`chat-bubble ${message.status || ''}`}>
+          {!isUser ? (
+            <div className="chat-bubble-meta">
+              <span className="chat-bubble-meta-main">
+                <span className="chat-bubble-avatar ico-assistant-avatar" aria-hidden="true" />
+                <span>Assistant</span>
+              </span>
+            </div>
+          ) : null}
+          {showTimelineToggle ? (
+            <ChatTimelineCollapsed
+              onExpand={() => setTraceExpanded((value) => !value)}
+              label={elapsed || '0s'}
+              expanded={traceExpanded}
+            />
+          ) : null}
+          {/* 首字未到（排队/建连/模型首字等待期）不显示计时器 */}
+          {traceForcedOpen && firstTokenMs ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
+          {showTimelineExpanded ? (
+            <ChatAgentTimeline
+              items={timeline}
+              streaming={message.streaming}
+              latestTodos={message.traceLatestTodos || null}
+              conversationId={message.conversationId || ''}
+              taskId={message.taskId || ''}
+              onPreviewImage={onPreviewImage}
+            />
+          ) : null}
+          {isAgent ? (
+            <FinalAnswerMarkdown source={message.text} streaming={message.streaming} />
+          ) : visibleText ? (
+            <div className="chat-bubble-text">
+              {(isUser || message.markdown) && Markdown
+                ? <Markdown source={String(visibleText)} />
+                : <span className="chat-stream-text">{visibleText}</span>}
+            </div>
+          ) : null}
+        </div>
+      </AssistantBorderBeam>
       {(messageClock || copyText || onRetry) ? (
         <div className="chat-message-actions">
           {messageClock ? <span className="chat-bubble-clock">{messageClock}</span> : null}

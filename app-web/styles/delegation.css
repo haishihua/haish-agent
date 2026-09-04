@@ -390,7 +390,7 @@
 .task-delegation .model-picker-empty,
 .task-delegation .model-picker-menu,
 .task-delegation .model-picker-flyout {
-    font-family: var(--content-font);
+    font-family: var(--conversation-font);
     letter-spacing: 0;
     text-rendering: geometricPrecision;
     -webkit-font-smoothing: antialiased;
@@ -433,9 +433,9 @@
 .chat-composer .model-picker-submenu,
 .task-delegation .model-picker-submenu {
     position: relative;
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px solid rgba(72, 83, 109, 0.55);
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
 }
 
 .chat-composer .model-picker-submenu-entry,
@@ -495,6 +495,12 @@
     min-width: 240px;
 }
 
+.chat-composer .model-picker-flyout-agent,
+.task-delegation .model-picker-flyout-agent {
+    width: 230px;
+    min-width: 230px;
+}
+
 .chat-composer .model-picker-flyout-model,
 .task-delegation .model-picker-flyout-model {
     width: 280px;
@@ -519,7 +525,7 @@
     min-height: 36px !important;
     height: 36px !important;
     padding: 0 12px !important;
-    font-family: var(--content-font) !important;
+    font-family: var(--conversation-font) !important;
     font-size: 13px !important;
     line-height: 1.2 !important;
 }
@@ -603,23 +609,21 @@
 }
 
 .task-delegation .context-usage-btn:hover {
-    color: var(--gold);
+    color: #fff;
 }
 
 .task-delegation .context-usage-btn.compressed {
-    filter: drop-shadow(0 0 6px rgba(239, 191, 100, 0.22));
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.18));
 }
 
 .task-delegation .context-usage-icon {
     --context-used: 0%;
-    width: 20px;
-    height: 20px;
+    position: relative;
+    width: 24px;
+    height: 24px;
     display: inline-block;
-    background: conic-gradient(var(--gold, #efbf64) 0 var(--context-used), #ffffff var(--context-used) 100%);
-    -webkit-mask: url("../assets/ui/icons/color-palette.png") center / contain no-repeat;
-    mask: url("../assets/ui/icons/color-palette.png") center / contain no-repeat;
-    image-rendering: auto;
-    filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 7px rgba(255, 255, 255, 0.18));
+    border-radius: 50%;
+    color: rgba(255, 255, 255, 0.48);
 }
 
 .task-delegation .deploy-btn {
@@ -706,4 +710,257 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+/* Compact run configuration: thinking first, advanced agent/model selection second. */
+.chat-composer .model-picker-trigger,
+.task-delegation .model-picker-trigger {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: #4a8cff;
+    box-shadow: none;
+}
+
+.chat-composer .model-picker-trigger:hover,
+.chat-composer .model-picker.is-open .model-picker-trigger,
+.task-delegation .model-picker-trigger:hover,
+.task-delegation .model-picker.is-open .model-picker-trigger {
+    border-color: transparent;
+    background: rgba(74, 140, 255, 0.1);
+    color: #4a8cff;
+}
+
+.chat-composer .model-picker-trigger:focus-visible,
+.task-delegation .model-picker-trigger:focus-visible {
+    border-color: transparent;
+    box-shadow: 0 0 0 2px rgba(74, 140, 255, 0.5);
+}
+
+.chat-composer .model-picker-gauge,
+.task-delegation .model-picker-gauge {
+    width: 28px;
+    height: 28px;
+    overflow: visible;
+}
+
+.chat-composer .model-picker-gauge-arc,
+.task-delegation .model-picker-gauge-arc {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+}
+
+.chat-composer .model-picker-gauge-needle,
+.task-delegation .model-picker-gauge-needle {
+    fill: currentColor;
+    transform: rotate(var(--gauge-rotation));
+    transform-box: view-box;
+    transform-origin: 12px 14px;
+    transition: transform 180ms ease-out;
+}
+
+.chat-composer .model-picker-gauge-pointer,
+.task-delegation .model-picker-gauge-pointer {
+    stroke: currentColor;
+    stroke-width: 0.35;
+    stroke-linejoin: round;
+}
+
+.chat-composer .model-picker-quick,
+.task-delegation .model-picker-quick {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 6px);
+    z-index: 30;
+    width: 248px;
+    padding: 8px 10px 10px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: linear-gradient(180deg, #1a2030, #11151f);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.52);
+}
+
+.chat-composer .model-picker-quick-summary,
+.task-delegation .model-picker-quick-summary {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 0 6px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ink);
+    font-family: var(--conversation-font);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.chat-composer .model-picker-quick-summary:hover,
+.task-delegation .model-picker-quick-summary:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.chat-composer .model-picker-quick-summary:focus-visible,
+.task-delegation .model-picker-quick-summary:focus-visible {
+    outline: 2px solid rgba(74, 140, 255, 0.6);
+    outline-offset: -2px;
+}
+
+.chat-composer .model-picker-quick-summary > span:first-child,
+.task-delegation .model-picker-quick-summary > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-composer .model-picker-quick-summary strong,
+.task-delegation .model-picker-quick-summary strong {
+    flex: 0 0 auto;
+    color: #4a8cff;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.chat-composer .model-picker-quick.thinking-xhigh .model-picker-quick-summary strong,
+.task-delegation .model-picker-quick.thinking-xhigh .model-picker-quick-summary strong {
+    color: transparent;
+    background: linear-gradient(90deg, #4a8cff, #b66bf3);
+    background-clip: text;
+    -webkit-background-clip: text;
+}
+
+.chat-composer .model-picker-reasoning,
+.task-delegation .model-picker-reasoning {
+    position: relative;
+    height: 34px;
+}
+
+.chat-composer .model-picker-reasoning input,
+.task-delegation .model-picker-reasoning input {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 34px;
+    margin: 0;
+    padding: 5px;
+    border: 0;
+    border-radius: 999px;
+    outline: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    cursor: grab;
+}
+
+.chat-composer .model-picker-reasoning input:active,
+.task-delegation .model-picker-reasoning input:active {
+    cursor: grabbing;
+}
+
+.chat-composer .model-picker-reasoning input:disabled,
+.task-delegation .model-picker-reasoning input:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+.chat-composer .model-picker-reasoning input::-webkit-slider-runnable-track,
+.task-delegation .model-picker-reasoning input::-webkit-slider-runnable-track {
+    height: 24px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #4a8cff 0 var(--reasoning-progress), rgba(38, 48, 74, 0.92) var(--reasoning-progress) 100%);
+}
+
+.chat-composer .model-picker-reasoning input::-webkit-slider-thumb,
+.task-delegation .model-picker-reasoning input::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+    margin-top: 0;
+    border: 3px solid #4a8cff;
+    border-radius: 50%;
+    appearance: none;
+    -webkit-appearance: none;
+    background: #eef3ff;
+    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.34);
+}
+
+.chat-composer .model-picker-reasoning.thinking-xhigh input::-webkit-slider-runnable-track,
+.task-delegation .model-picker-reasoning.thinking-xhigh input::-webkit-slider-runnable-track {
+    background:
+        radial-gradient(circle at 7% 43%, rgba(255, 255, 255, 0.92) 0 1px, transparent 1.7px),
+        radial-gradient(circle at 15% 28%, rgba(217, 232, 255, 0.68) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 28% 62%, rgba(255, 255, 255, 0.82) 0 1px, transparent 1.6px),
+        radial-gradient(circle at 41% 32%, rgba(219, 235, 255, 0.74) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 54% 68%, rgba(255, 255, 255, 0.86) 0 1px, transparent 1.7px),
+        radial-gradient(circle at 68% 35%, rgba(213, 232, 255, 0.78) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 81% 58%, rgba(255, 255, 255, 0.66) 0 1px, transparent 1.6px),
+        linear-gradient(90deg, #3478ff 0, #ae63ed var(--reasoning-progress), rgba(38, 48, 74, 0.92) var(--reasoning-progress) 100%);
+}
+
+.chat-composer .model-picker-reasoning.thinking-xhigh input::-webkit-slider-thumb,
+.task-delegation .model-picker-reasoning.thinking-xhigh input::-webkit-slider-thumb {
+    border-color: #b878ec;
+    box-shadow: 0 2px 9px rgba(38, 17, 67, 0.46), 0 0 13px rgba(164, 91, 230, 0.36);
+}
+
+.chat-composer .model-picker-reasoning input:focus-visible,
+.task-delegation .model-picker-reasoning input:focus-visible {
+    outline: 2px solid rgba(74, 140, 255, 0.65);
+    outline-offset: 1px;
+}
+
+.chat-composer .model-picker-reasoning-marks,
+.task-delegation .model-picker-reasoning-marks {
+    position: absolute;
+    z-index: 2;
+    inset: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    pointer-events: none;
+}
+
+.chat-composer .model-picker-reasoning-marks i,
+.task-delegation .model-picker-reasoning-marks i {
+    width: 5px;
+    height: 5px;
+    flex: 0 0 5px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.34);
+}
+
+.chat-composer .model-picker-reasoning.thinking-xhigh .model-picker-reasoning-marks i,
+.task-delegation .model-picker-reasoning.thinking-xhigh .model-picker-reasoning-marks i {
+    background: rgba(255, 255, 255, 0.58);
+    box-shadow: 0 0 4px rgba(255, 255, 255, 0.22);
+}
+
+.chat-composer .model-picker-reasoning-marks i.is-active,
+.task-delegation .model-picker-reasoning-marks i.is-active {
+    opacity: 0;
+}
+
+.chat-composer .model-picker-menu,
+.task-delegation .model-picker-menu,
+.chat-composer .model-picker-flyout,
+.task-delegation .model-picker-flyout {
+    border-color: var(--line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-composer .model-picker-gauge-needle,
+    .task-delegation .model-picker-gauge-needle {
+        transition: none;
+    }
 }

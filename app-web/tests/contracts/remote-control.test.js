@@ -24,3 +24,9 @@ test('remote control uses the desktop bridge for QR pairing and device access', 
   assert.match(preloadSource, /remote-control:revoke-device/);
   assert.match(mainSource, /REMOTE_ADAPTER_ORIGIN = 'http:\/\/127\.0\.0\.1:8766'/);
 });
+
+test('remote pairing and revoke actions use in-app feedback', () => {
+  assert.match(dialogSource, /paired successfully/);
+  assert.match(dialogSource, /role="alertdialog"/);
+  assert.doesNotMatch(dialogSource, /window\.confirm/);
+});

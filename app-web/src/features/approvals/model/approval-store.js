@@ -62,9 +62,15 @@ export const approvalStore = (() => {
         if (pending.length !== before) notify();
       }
     };
-    // Keep es open across reconnects; EventSource auto-reconnects on
-    // transient drops. We only close on full teardown (which never happens
-    // in the current Electron lifecycle).
+  }
+
+  function closeStream() {
+    es?.close();
+    es = null;
+  }
+
+  function closeStreamWhenIdle() {
+    if (listeners.size === 0 && eventListeners.size === 0) closeStream();
   }
 
   function ensureInitial() {
@@ -100,6 +106,7 @@ export const approvalStore = (() => {
       } catch (_) {}
       return () => {
         listeners.delete(fn);
+        closeStreamWhenIdle();
       };
     },
     subscribeEvents(fn) {
@@ -107,7 +114,13 @@ export const approvalStore = (() => {
       ensureStream();
       return () => {
         eventListeners.delete(fn);
+        closeStreamWhenIdle();
       };
+    },
+    dispose() {
+      closeStream();
+      listeners.clear();
+      eventListeners.clear();
     },
     remove(requestId) {
       const before = pending.length;
@@ -130,6 +143,10 @@ export const approvalStore = (() => {
     },
   };
 })();
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => approvalStore.dispose());
+}
 
 export function subscribeApprovalEvents(listener) {
   return approvalStore.subscribeEvents(listener);

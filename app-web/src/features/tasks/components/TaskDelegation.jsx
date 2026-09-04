@@ -1,4 +1,5 @@
 import React from 'react';
+import { ArrowUp, Square } from 'lucide-react';
 import {
   DEFAULT_AGENT_OPTIONS } from '../../chat/model/run-catalog.js';
 
@@ -14,6 +15,7 @@ import {
   usePersistentRunConfig,
   useProviderModels,
 } from '../../chat/hooks/useRunConfig.js';
+import { ComposerBorderBeam, MetalActionEffect } from '../../../shared/ui/MotionEffects.jsx';
 
 export function TaskDelegation({
   onDeploy,
@@ -174,6 +176,7 @@ export function TaskDelegation({
 
   return (
     <div className="task-delegation">
+      <ComposerBorderBeam active={running || submitPending || Boolean(v.trim())} />
       <div className="td-head">
         <div className="td-title">
           <span className="td-glyph ico ico-task-delegation" aria-hidden="true" />
@@ -243,7 +246,11 @@ export function TaskDelegation({
               aria-label={contextTooltip}
               aria-disabled="true"
             >
-              <span className="context-usage-icon" style={contextRingStyle} aria-hidden="true" />
+              <span className="context-usage-icon" style={contextRingStyle} aria-hidden="true">
+                <svg className="context-usage-icon-ring" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeDasharray="2.2 4.4" strokeLinecap="round" />
+                </svg>
+              </span>
             </button>
           </PortalTooltip> : null}
           <ModelPicker
@@ -267,27 +274,31 @@ export function TaskDelegation({
           />
           {submitPending || running ? (
             <PortalTooltip text={submitPending ? 'Cancel pending request' : 'Stop'} position="above">
-              <button
-                type="button"
-                className="chat-send stop"
-                onMouseDown={handleStopPress}
-                onKeyDown={handleStopKey}
-                aria-label={submitPending ? 'Cancel pending request' : 'Stop'}
-              >
-                <span className="ico ico-stop" aria-hidden="true" />
-              </button>
+              <MetalActionEffect>
+                <button
+                  type="button"
+                  className="chat-send stop"
+                  onMouseDown={handleStopPress}
+                  onKeyDown={handleStopKey}
+                  aria-label={submitPending ? 'Cancel pending request' : 'Stop'}
+                >
+                  <Square className="chat-send-icon chat-stop-icon" fill="currentColor" strokeWidth={0} aria-hidden="true" />
+                </button>
+              </MetalActionEffect>
             </PortalTooltip>
           ) : (
             <PortalTooltip text="Send" position="above">
-              <button
-                type="button"
-                className="chat-send"
-                onClick={submit}
-                disabled={disabled || !v.trim() || !providerConfigured}
-                aria-label="Send"
-              >
-                <span className="ico ico-deploy" aria-hidden="true" />
-              </button>
+              <MetalActionEffect>
+                <button
+                  type="button"
+                  className="chat-send"
+                  onClick={submit}
+                  disabled={disabled || !v.trim() || !providerConfigured}
+                  aria-label="Send"
+                >
+                  <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
+                </button>
+              </MetalActionEffect>
             </PortalTooltip>
           )}
         </div>

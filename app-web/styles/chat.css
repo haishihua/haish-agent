@@ -337,8 +337,22 @@
 
 .chat-message-row.agent .chat-bubble {
     max-width: min(960px, 82%);
-    background: linear-gradient(180deg, rgba(28, 37, 54, 0.86), rgba(18, 25, 39, 0.82));
-    border-color: rgba(239, 191, 100, 0.3);
+    background: linear-gradient(180deg, rgb(28, 37, 54), rgb(18, 25, 39));
+    border-color: rgba(138, 166, 209, 0.28);
+}
+
+.assistant-border-beam {
+    display: inline-flex;
+    width: fit-content;
+    min-width: 0;
+    max-width: min(960px, 82%);
+    border-radius: 12px;
+    box-sizing: border-box;
+}
+
+.chat-message-row.agent .assistant-border-beam > .chat-bubble {
+    width: 100%;
+    max-width: none;
 }
 
 .chat-bubble.failed {
@@ -735,8 +749,8 @@
     max-width: 100%;
     padding: 4px 8px;
     background: rgba(20, 28, 48, 0.42);
-    /* Border stays gold regardless of status. Status semantics live on the dot. */
-    border: 1px solid rgba(239, 191, 100, 0.28);
+    /* Keep card chrome neutral; status semantics live on the colored dot. */
+    border: 1px solid rgba(105, 134, 178, 0.34);
     border-radius: 6px;
     color: rgba(220, 227, 244, 0.9);
     font-family: var(--tool-card-font, 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace);
@@ -850,6 +864,20 @@
     font-size: 12px;
 }
 
+/* Hide nested card chrome without disabling wheel, trackpad or keyboard scrolling. */
+.chat-message-row.agent .chat-timeline-chip,
+.chat-message-row.agent .chat-timeline-chip * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.chat-message-row.agent .chat-timeline-chip::-webkit-scrollbar,
+.chat-message-row.agent .chat-timeline-chip *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
 .chat-timeline-thinking {
     display: flex;
     flex-direction: column;
@@ -943,6 +971,11 @@
     font-family: var(--conversation-font);
 }
 
+.chat-timeline-user-input-images {
+    max-width: 100%;
+    margin-bottom: 8px;
+}
+
 .chat-timeline-user-input-text {
     margin: 0;
     font-size: 13.5px;
@@ -977,7 +1010,7 @@
 }
 
 /* 圆点三色语义：pending/running 金色（running 叠加脉动）、done 绿色、failed 红色、
- * cancelled 灰色。边框统一金色，状态语义只承载在圆点上。 */
+ * cancelled 灰色。卡片边框保持中性，状态语义只承载在圆点上。 */
 .chat-timeline-status.status-running {
     background: var(--gold);
     animation: chatPulse 1.15s ease-out infinite;
@@ -1121,7 +1154,7 @@
     color: rgba(191, 204, 230, 0.9);
 }
 
-/* terminal / process mode 不再单独覆盖边框——全局边框已经统一成金色。 */
+/* terminal / process mode 复用全局中性卡片边框。 */
 /* ============ macOS-style terminal frame ============ */
 .chat-terminal-frame {
     width: min(100%, 980px);
@@ -2125,19 +2158,96 @@
 /* ────────────────────────────────────────────────────────────────────
  * Todo panel: 一直挂在活动指示器下方的"当前计划"清单，跟着 todo_write
  * 每次调用刷新。不是 tool item——不会出现在工具调用列表里，状态变化
- * 在同一处原地更新。spinner 仅在 streaming=true 时旋转，避免任务结束
- * 后还在空转。设计参考 Claude Code 风格，icon 与项目内已有 spinner/
- * check 视觉系一致。
+ * 在同一处原地更新。状态图标保持静态，避免把当前项误读成持续加载；
+ * 标题、计数与折叠交互参考 AI CSS Task List，但不额外叠加独立卡片外壳。
  * ──────────────────────────────────────────────────────────────────── */
 .chat-todo-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    margin-top: 4px;
-    padding-left: 12px; /* 与活动指示器 `*` 对齐 */
+    width: min(100%, 480px);
+    margin-top: 6px;
+    padding-left: 8px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
     color: rgba(220, 227, 244, 0.92);
+}
+
+.chat-todo-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 28px;
+    padding: 3px 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.chat-todo-head:focus-visible {
+    outline: 1px solid rgba(105, 134, 178, 0.68);
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+.chat-todo-head-icon {
+    display: inline-flex;
+    flex: 0 0 14px;
+}
+
+.chat-todo-title {
+    color: rgba(236, 241, 252, 0.96);
+    font-weight: 700;
+}
+
+.chat-todo-count {
+    margin-left: 0;
+    color: rgba(174, 185, 211, 0.68);
+    font-variant-numeric: tabular-nums;
+}
+
+.chat-todo-chevron {
+    width: 9px;
+    height: 6px;
+    flex: 0 0 auto;
+    color: rgba(174, 185, 211, 0.62);
+    background: currentColor;
+    clip-path: polygon(0 0, 50% 100%, 100% 0, 82% 0, 50% 66%, 18% 0);
+    transition: transform 180ms ease, color 180ms ease;
+}
+
+.chat-todo-chevron:not(.is-open) {
+    transform: rotate(-90deg);
+}
+
+.chat-todo-head:hover .chat-todo-chevron {
+    color: rgba(220, 227, 244, 0.9);
+}
+
+.chat-todo-collapsible {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows 220ms ease, opacity 160ms ease;
+}
+
+.chat-todo-collapsible.is-open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+}
+
+.chat-todo-collapsible-inner {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.chat-todo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 2px 0 1px;
 }
 
 .chat-todo-item {
@@ -2162,12 +2272,14 @@
 }
 
 .chat-todo-item.status-completed .chat-todo-content {
-    color: rgba(174, 185, 211, 0.55);
+    color: rgba(174, 185, 211, 0.5);
     text-decoration: line-through;
+    text-decoration-color: rgba(174, 185, 211, 0.42);
 }
 
 .chat-todo-item.status-in_progress .chat-todo-content {
-    color: rgba(239, 191, 100, 0.95);
+    color: rgba(248, 250, 252, 0.96);
+    font-weight: 600;
 }
 
 /* icon column ─ 14×14 居中圆，三种状态用不同视觉表达 */
@@ -2183,65 +2295,50 @@
 }
 
 .chat-todo-icon.pending {
-    border: 1.5px solid rgba(174, 185, 211, 0.55);
+    border: 1.5px dashed rgba(241, 246, 255, 0.48);
     background: transparent;
 }
 
 .chat-todo-icon.in-progress {
+    border: 1.5px solid rgba(248, 250, 252, 0.96);
     background: transparent;
 }
 
-.chat-todo-icon.in-progress .chat-todo-spinner {
-    width: 14px;
-    height: 14px;
+.chat-todo-icon.in-progress .chat-todo-current-mark {
+    width: 4px;
+    height: 4px;
     border-radius: 50%;
-    border: 1.5px solid rgba(239, 191, 100, 0.28);
-    border-top-color: rgba(239, 191, 100, 0.95);
-}
-
-/* 只有当前 task 仍在 streaming 时才转——任务结束后保持静止环。 */
-.chat-todo-icon.in-progress .chat-todo-spinner.live {
-    animation: chat-todo-spin 0.9s linear infinite;
+    background: rgba(248, 250, 252, 0.96);
 }
 
 .chat-todo-icon.completed {
-    background: #22c55e;
-    border: 1.5px solid #22c55e;
-    box-shadow: 0 0 6px rgba(34, 197, 94, 0.32);
+    background: transparent;
+    border: 1.5px solid rgba(241, 246, 255, 0.52);
 }
 
 .chat-todo-icon.completed svg {
     width: 10px;
     height: 10px;
-    stroke: #062a14;
+    stroke: rgba(241, 246, 255, 0.72);
     stroke-width: 2.4;
     stroke-linecap: round;
     stroke-linejoin: round;
     fill: none;
 }
 
+.chat-todo-head-icon .chat-todo-icon.completed {
+    background: rgba(248, 250, 252, 0.92);
+    border-color: rgba(248, 250, 252, 0.92);
+}
+
+.chat-todo-head-icon .chat-todo-icon.completed svg {
+    stroke: #101725;
+}
+
 @keyframes chat-todo-spin {
     to {
         transform: rotate(360deg);
     }
-}
-
-.chat-todo-expand {
-    align-self: flex-start;
-    margin-top: 2px;
-    padding: 2px 6px;
-    background: transparent;
-    border: none;
-    color: rgba(174, 185, 211, 0.72);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    cursor: pointer;
-}
-
-.chat-todo-expand:hover {
-    color: rgba(220, 227, 244, 0.95);
-    background: rgba(138, 166, 209, 0.12);
-    border-radius: 4px;
 }
 
 /* Folded "verb-counted" run of consecutive tool calls. The head reuses
@@ -2274,21 +2371,44 @@
 .chat-timeline-activity {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
+    align-self: flex-start;
+    gap: 10px;
     margin-top: 4px;
-    min-height: 20px;
-    color: rgba(239, 191, 100, 0.92);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 14px;
+    min-height: 34px;
+    padding: 2px 0;
+    font-family: var(--conversation-font);
+    font-size: 15px;
     font-weight: 700;
+    line-height: 1;
+}
+
+.chat-timeline-activity-label {
+    color: transparent;
+    background: linear-gradient(
+        105deg,
+        #b9c2d1 0%,
+        #b9c2d1 36%,
+        #eef4ff 44%,
+        #ffffff 50%,
+        #eef4ff 56%,
+        #b9c2d1 64%,
+        #b9c2d1 100%
+    );
+    background-size: 220% 100%;
+    background-position: 115% 50%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation: chat-activity-shimmer 5s ease-in-out infinite;
+}
+
+@keyframes chat-activity-shimmer {
+    0% { background-position: 115% 50%; }
+    76% { background-position: -115% 50%; }
+    100% { background-position: -115% 50%; }
 }
 
 .chat-timeline.streaming {
     min-height: 24px;
-}
-
-.chat-timeline-spark {
-    animation: chatActivityBlink 0.9s steps(2, start) infinite;
 }
 
 .animated-gradient-text {
@@ -2314,11 +2434,6 @@
 
 @keyframes chat-title-gradient {
     to { background-position: -140% 50%; }
-}
-
-.chat-timeline-verb::after {
-    content: 'Synthesis...';
-    animation: chatActivityWords 28s step-end infinite;
 }
 
 .chat-timeline-collapsed {
@@ -2391,6 +2506,22 @@
     border-radius: 10px;
     background: rgba(18, 25, 39, 0.72);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.composer-border-beam {
+    position: absolute !important;
+    inset: -1px;
+    width: calc(100% + 2px);
+    height: calc(100% + 2px);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.composer-border-beam-anchor {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
 }
 
 .chat-skill-menu {
@@ -2647,8 +2778,8 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
     border: 0;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.1);
@@ -3184,95 +3315,120 @@
 }
 
 .chat-composer .context-usage-btn:hover {
-    color: var(--gold);
+    color: #fff;
 }
 
 .chat-composer .context-usage-btn.compressed {
-    filter: drop-shadow(0 0 6px rgba(239, 191, 100, 0.22));
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.18));
 }
 
 .chat-composer .context-usage-icon {
     --context-used: 0%;
-    width: 20px;
-    height: 20px;
+    position: relative;
+    width: 24px;
+    height: 24px;
     display: inline-block;
-    background: conic-gradient(var(--gold, #efbf64) 0 var(--context-used), #ffffff var(--context-used) 100%);
-    -webkit-mask: url("../assets/ui/icons/color-palette.png") center / contain no-repeat;
-    mask: url("../assets/ui/icons/color-palette.png") center / contain no-repeat;
-    image-rendering: auto;
-    filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 7px rgba(255, 255, 255, 0.18));
+    border-radius: 50%;
+    color: rgba(255, 255, 255, 0.48);
+}
+
+.chat-composer .context-usage-icon-ring,
+.task-delegation .context-usage-icon-ring {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.chat-composer .context-usage-icon::after,
+.task-delegation .context-usage-icon::after {
+    content: "";
+    position: absolute;
+    inset: 20%;
+    border-radius: 50%;
+    background: conic-gradient(#fff var(--context-used), transparent 0);
 }
 
 .chat-composer .context-usage-btn.over-limit .context-usage-icon,
 .task-delegation .context-usage-btn.over-limit .context-usage-icon {
+    color: #ef5b5b;
+}
+
+.chat-composer .context-usage-btn.over-limit .context-usage-icon::after,
+.task-delegation .context-usage-btn.over-limit .context-usage-icon::after {
     background: #ef5b5b;
 }
 
+.chat-send-metal {
+    flex: 0 0 auto;
+    border-radius: 50%;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.chat-send-metal:focus-within {
+    outline: 2px solid rgba(74, 140, 255, 0.72);
+    outline-offset: 2px;
+}
+
 .chat-send {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     flex-shrink: 0;
     padding: 0;
-    border: 1px solid rgba(232, 196, 120, 0.42);
-    border-radius: 12px;
-    background:
-        linear-gradient(180deg, rgba(255, 236, 188, 0.22) 0%, rgba(255, 236, 188, 0) 42%),
-        linear-gradient(165deg, #E2BC6A 0%, #C99642 52%, #B98638 100%);
-    color: #F7E7B0;
+    border: 1px solid rgba(72, 83, 109, 0.78);
+    border-radius: 50%;
+    background: linear-gradient(180deg, #1b2231, #121722);
+    color: rgba(239, 243, 252, 0.94);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     box-shadow:
-        inset 0 1px 0 rgba(255, 246, 220, 0.55),
-        inset 0 -1px 0 rgba(90, 58, 16, 0.16),
-        0 1px 2px rgba(0, 0, 0, 0.18),
-        0 0 10px rgba(212, 170, 80, 0.22);
-    transition: filter 0.14s ease, transform 0.12s ease, box-shadow 0.14s ease, opacity 0.14s ease;
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        0 4px 12px rgba(0, 0, 0, 0.28);
+    transition: transform 0.14s ease, border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, opacity 0.14s ease;
 }
 
-.chat-send .ico-deploy,
-.chat-send .ico-stop,
+.chat-send-icon {
+    display: block;
+    width: 22px;
+    height: 22px;
+    animation: chat-send-icon-in 160ms ease-out;
+}
+
+.chat-stop-icon {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}
+
 .chat-send .ico-loading {
     width: 20px;
     height: 20px;
-}
-
-/* 保留原 deploy.png 线稿，仅用浅金 currentColor 上色，不换 icon 形状 */
-.chat-send .ico-deploy {
-    background-color: currentColor;
-}
-
-.chat-send .ico-loading {
     animation: live-loading-spin 1s linear infinite;
 }
 
 .chat-send:hover:not(:disabled):not(.stop) {
-    filter: brightness(1.1);
+    border-color: rgba(74, 140, 255, 0.72);
+    background: linear-gradient(180deg, #202a3e, #151c2a);
+    color: #fff;
     box-shadow:
-        inset 0 1px 0 rgba(255, 246, 220, 0.62),
-        inset 0 -1px 0 rgba(90, 58, 16, 0.14),
-        0 1px 2px rgba(0, 0, 0, 0.16),
-        0 0 12px rgba(220, 180, 90, 0.28);
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 4px 14px rgba(0, 0, 0, 0.3),
+        0 0 0 3px rgba(74, 140, 255, 0.1);
 }
 
 .chat-send:active:not(:disabled) {
-    transform: translateY(1px);
-    filter: brightness(0.98);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 246, 220, 0.28),
-        inset 0 -1px 0 rgba(90, 58, 16, 0.22),
-        0 0.5px 1px rgba(0, 0, 0, 0.14),
-        0 0 6px rgba(212, 170, 80, 0.16);
+    transform: scale(0.95);
 }
 
 .chat-send:focus-visible {
     outline: none;
     box-shadow:
-        inset 0 1px 0 rgba(255, 246, 220, 0.55),
-        inset 0 -1px 0 rgba(90, 58, 16, 0.16),
         0 0 0 2px rgba(18, 22, 32, 0.92),
-        0 0 0 3px rgba(213, 174, 99, 0.55);
+        0 0 0 4px rgba(74, 140, 255, 0.62);
 }
 
 .chat-send:disabled {
@@ -3280,27 +3436,39 @@
     cursor: not-allowed;
     filter: none;
     transform: none;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 246, 220, 0.35),
-        0 1px 2px rgba(0, 0, 0, 0.12);
+    box-shadow: none;
 }
 
 .chat-send.stop {
-    color: #fff8f3;
-    background: linear-gradient(180deg, #d65a5a 0%, #b73a3a 55%, #8b2a2a 100%);
-    border-color: #d05050;
-    filter: none;
+    color: #fff;
+    background: linear-gradient(180deg, #20293a, #151b27);
+    border-color: rgba(102, 119, 154, 0.82);
     box-shadow:
-        inset 0 1px 0 rgba(255, 220, 220, 0.28),
-        inset 0 -1px 0 rgba(70, 20, 20, 0.28),
-        0 1px 2px rgba(0, 0, 0, 0.16);
+        inset 0 1px 0 rgba(255, 255, 255, 0.07),
+        0 4px 12px rgba(0, 0, 0, 0.28);
 }
 
 .chat-send.stop:hover:not(:disabled) {
-    filter: brightness(1.08);
+    border-color: rgba(154, 169, 204, 0.78);
+    background: linear-gradient(180deg, #283247, #192131);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.09),
+        0 4px 14px rgba(0, 0, 0, 0.3),
+        0 0 0 3px rgba(154, 169, 204, 0.08);
+}
+
+@keyframes chat-send-icon-in {
+    from { opacity: 0; transform: scale(0.72); }
+    to { opacity: 1; transform: scale(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .chat-timeline-activity-label {
+        color: rgba(241, 246, 255, 0.9);
+        background: none;
+        animation: none;
+    }
+
     .animated-gradient-text {
         animation: none;
         background-position: 50% 50%;
@@ -3313,13 +3481,23 @@
         animation: none;
     }
 
+    .chat-todo-collapsible,
+    .chat-todo-chevron {
+        transition: none;
+    }
+
     .chat-send {
         transition: none;
+    }
+
+    .chat-send-icon {
+        animation: none;
     }
 
     .chat-send:active:not(:disabled) {
         transform: none;
     }
+
 }
 
 .app-chat-stage .app-bottomnav {

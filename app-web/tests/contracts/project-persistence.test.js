@@ -31,9 +31,11 @@ test('project and project conversation reorder use scoped backend routes', () =>
   assert.doesNotMatch(handlersSource, /\/api\/conversations\/reorder/);
 });
 
-test('conversation activation restores only the latest task runtime', () => {
-  assert.match(activationHandlersSource, /restoreLatestTaskRuntime\(latestTaskId/);
-  assert.doesNotMatch(activationHandlersSource, /restoreConversationTaskRuntimes/);
+test('conversation activation restores the latest task first and then hydrates history', () => {
+  assert.match(activationHandlersSource, /const restoreOrder = \[/);
+  assert.match(activationHandlersSource, /latestTaskId,[\s\S]*restoredTaskIds\.slice\(\)\.reverse\(\)/);
+  assert.match(activationHandlersSource, /for \(const taskId of restoreOrder\)/);
+  assert.match(activationHandlersSource, /restoreLatestTaskRuntime\(taskId/);
 });
 
 test('mode switch reloads projects for the target execution mode', () => {

@@ -13,9 +13,11 @@ globalThis.window = {
 
 const {
   buildWorkspaceStateFromProjects,
+  normalizeWorkspaceOrdering,
   projectWorkflowTasks,
   withDefaultExpansion,
 } = await import('../../src/features/conversations/model/workspace-state.js');
+const { taskSummaryToRuntimeTask } = await import('../../src/features/tasks/model/task-runtime.js');
 const projectNodeSource = fs.readFileSync(new URL('../../src/features/conversations/components/ProjectNode.jsx', import.meta.url), 'utf8');
 const taskCardsSource = fs.readFileSync(new URL('../../src/features/conversations/components/ConversationTaskCards.jsx', import.meta.url), 'utf8');
 const appShellSource = fs.readFileSync(new URL('../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
@@ -42,6 +44,92 @@ test('workflow sidebar flattens conversation storage into newest-first task rows
     ['conversation-pinned', 'task-pinned'],
     ['conversation-b', 'task-b'],
     ['conversation-a', 'task-a'],
+  ]);
+});
+
+test('conversation order is pinned first and keeps latest completed work above idle rows', () => {
+  const initialState = {
+    projects: [{
+      id: 'project',
+      conversations: [
+        { id: 'idle-first', sortOrder: 0, tasks: [] },
+        { id: 'running', sortOrder: 2, tasks: [{ taskId: 'run', status: 'running' }] },
+        { id: 'pinned', pinned: true, sortOrder: 3, tasks: [] },
+        { id: 'idle-last', sortOrder: 1, tasks: [] },
+      ],
+    }],
+  };
+  const runningState = normalizeWorkspaceOrdering(initialState);
+
+  assert.deepEqual(runningState.projects[0].conversations.map(({ id }) => id), [
+    'pinned',
+    'running',
+    'idle-first',
+    'idle-last',
+  ]);
+
+  const completedState = normalizeWorkspaceOrdering({
+    ...runningState,
+    projects: runningState.projects.map((project) => ({
+      ...project,
+      conversations: project.conversations.map((conversation) => (
+        conversation.id === 'running'
+          ? { ...conversation, tasks: [{ taskId: 'run', status: 'done', completedAt: 200 }] }
+          : conversation
+      )),
+    })),
+  });
+
+  assert.deepEqual(completedState.projects[0].conversations.map(({ id }) => id), [
+    'pinned',
+    'running',
+    'idle-first',
+    'idle-last',
+  ]);
+
+  const refreshedState = buildWorkspaceStateFromProjects([{
+    project_id: 'project',
+    execution_mode: 'chat',
+    conversations: [
+      { conversation_id: 'idle-first', project_id: 'project', execution_mode: 'chat', pinned: false, sort_order: 0, tasks: [] },
+      { conversation_id: 'idle-last', project_id: 'project', execution_mode: 'chat', pinned: false, sort_order: 1, tasks: [] },
+      {
+        conversation_id: 'running',
+        project_id: 'project',
+        execution_mode: 'chat',
+        pinned: false,
+        sort_order: 2,
+        tasks: [{
+          task_id: 'run',
+          conversation_id: 'running',
+          title: 'Run',
+          description: 'Run',
+          status: 'done',
+          stage: 'complete',
+          created_at: '2026-09-04T10:00:00Z',
+          updated_at: '2026-09-04T10:05:00Z',
+          completed_at: '2026-09-04T10:05:00Z',
+        }],
+      },
+      { conversation_id: 'pinned', project_id: 'project', execution_mode: 'chat', pinned: true, sort_order: 3, tasks: [] },
+    ],
+  }], completedState, taskSummaryToRuntimeTask);
+  assert.deepEqual(refreshedState.projects[0].conversations.map(({ id }) => id), [
+    'pinned',
+    'running',
+    'idle-first',
+    'idle-last',
+  ]);
+
+  const clickedState = normalizeWorkspaceOrdering({
+    ...refreshedState,
+    activeConversationId: 'idle-last',
+  });
+  assert.deepEqual(clickedState.projects[0].conversations.map(({ id }) => id), [
+    'pinned',
+    'running',
+    'idle-first',
+    'idle-last',
   ]);
 });
 

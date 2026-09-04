@@ -83,10 +83,12 @@ export function ApprovalModePicker({ disabled = false, readOnly = false }) {
   }
 
   const current = APPROVAL_MODE_OPTIONS.find((o) => o.id === mode) || APPROVAL_MODE_OPTIONS[1];
+  const alternateModes = APPROVAL_MODE_OPTIONS.filter((option) => option.id !== current.id);
+  const approvalHint = (option) => `${option.label}\n${option.desc}`;
 
   return (
     <div className={`approval-mode-picker ${open ? 'is-open' : ''} ${loaded ? '' : 'is-loading'} ${readOnly ? 'is-readonly' : ''}`} ref={rootRef}>
-      <PortalTooltip text={open ? '' : `Approval mode · ${current.label}`} position="above">
+      <PortalTooltip text={open ? '' : approvalHint(current)} position="above" multiline>
         <button
           type="button"
           className="approval-mode-trigger"
@@ -94,9 +96,9 @@ export function ApprovalModePicker({ disabled = false, readOnly = false }) {
           disabled={disabled}
           aria-disabled={disabled ? 'true' : undefined}
           aria-readonly={readOnly ? 'true' : undefined}
-          aria-haspopup="listbox"
+          aria-haspopup="menu"
           aria-expanded={open}
-          aria-label="Approval mode"
+          aria-label={approvalHint(current)}
         >
           <span
             className="approval-mode-icon"
@@ -106,24 +108,19 @@ export function ApprovalModePicker({ disabled = false, readOnly = false }) {
             }}
             aria-hidden="true"
           />
-          <span className="approval-mode-label">{current.label}</span>
-          <span className="approval-mode-caret" aria-hidden="true" />
         </button>
       </PortalTooltip>
       {open ? (
-        <div className="approval-mode-menu" role="listbox">
-          <div className="approval-mode-header">approval mode</div>
-          <div className="approval-mode-list">
-            {APPROVAL_MODE_OPTIONS.map((opt) => {
-              const active = opt.id === mode;
-              return (
+        <div className="approval-mode-menu" role="menu" aria-label="Approval mode">
+          {alternateModes.map((opt, index) => (
+            <PortalTooltip key={opt.id} text={approvalHint(opt)} position="above" multiline openDelay={180}>
                 <button
-                  key={opt.id}
                   type="button"
-                  role="option"
-                  aria-selected={active}
-                  className={`approval-mode-option ${active ? 'is-active' : ''} ${readOnly ? 'is-readonly' : ''}`}
+                  role="menuitemradio"
+                  aria-checked="false"
+                  className={`approval-mode-option approval-mode-option-${index + 1} ${readOnly ? 'is-readonly' : ''}`}
                   aria-disabled={readOnly ? 'true' : undefined}
+                  aria-label={approvalHint(opt)}
                   onClick={() => changeMode(opt.id)}
                 >
                   <span
@@ -134,22 +131,9 @@ export function ApprovalModePicker({ disabled = false, readOnly = false }) {
                     }}
                     aria-hidden="true"
                   />
-                  <span className="approval-mode-option-text">
-                    <span className="approval-mode-option-label">{opt.label}</span>
-                    <span className="approval-mode-option-desc">{opt.desc}</span>
-                  </span>
-                  {active ? (
-                    <span className="approval-mode-check" aria-hidden="true">
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
-                           strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3.2,8.6 6.6,12 13,4.8" />
-                      </svg>
-                    </span>
-                  ) : null}
                 </button>
-              );
-            })}
-          </div>
+            </PortalTooltip>
+          ))}
         </div>
       ) : null}
     </div>
@@ -176,11 +160,17 @@ export function ModelPicker({
   agentLockedReason = '',
 }) {
   const [open, setOpen] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const [activeSubmenu, setActiveSubmenu] = React.useState(null);
   const rootRef = React.useRef(null);
   const current = options.find((o) => o.id === value) || options[0];
   const currentProvider = providerOptions.find((o) => o.id === providerValue) || providerOptions[0] || null;
   const currentReasoning = reasoningOptions.find((o) => o.id === reasoningEffort) || reasoningOptions.find((o) => o.id === DEFAULT_REASONING_EFFORT) || reasoningOptions[0];
+  const currentReasoningIndex = Math.max(0, reasoningOptions.findIndex((o) => o.id === currentReasoning?.id));
+  const reasoningRatio = currentReasoningIndex / Math.max(1, reasoningOptions.length - 1);
+  const reasoningProgressOffset = 12 - (24 * reasoningRatio);
+  const reasoningProgress = `calc(${reasoningRatio * 100}% ${reasoningProgressOffset < 0 ? '-' : '+'} ${Math.abs(reasoningProgressOffset)}px)`;
+  const gaugeRotation = `${currentReasoningIndex * 80 - 165}deg`;
   const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : [];
   const currentAgent = resolvedAgentOptions.find((o) => o.id === agentValue)
     || (agentValue ? { id: agentValue, label: agentValue } : null)
@@ -188,7 +178,7 @@ export function ModelPicker({
     || null;
   const modelLabel = current ? current.label : (currentProvider ? (loading ? 'loading' : 'unavailable') : 'No model');
   const providerLabel = currentProvider ? currentProvider.label : 'Configure LLM';
-  const agentLabel = currentAgent ? currentAgent.label : (agentLoading ? 'loading' : 'Agent');
+  const agentLabel = currentAgent ? currentAgent.label : 'Agent';
   const pickerLoading = agentLoading;
   const agentChangeDisabled = disabled || readOnly || pickerLoading || agentLocked;
   const agentLockText = agentLockedReason || 'Cannot change agent for this conversation.';
@@ -198,12 +188,14 @@ export function ModelPicker({
     function handleDocMouseDown(event) {
       if (rootRef.current && !rootRef.current.contains(event.target)) {
         setOpen(false);
+        setMenuOpen(false);
         setActiveSubmenu(null);
       }
     }
     function handleKey(event) {
       if (event.key === 'Escape') {
         setOpen(false);
+        setMenuOpen(false);
         setActiveSubmenu(null);
       }
     }
@@ -222,64 +214,83 @@ export function ModelPicker({
       onClick={() => {
         if (disabled || pickerLoading) return;
         setOpen((o) => {
-          if (o) setActiveSubmenu(null);
+          setMenuOpen(false);
+          setActiveSubmenu(null);
           return !o;
         });
       }}
       disabled={disabled || pickerLoading}
       aria-disabled={disabled ? 'true' : undefined}
       aria-readonly={readOnly ? 'true' : undefined}
-      aria-haspopup="menu"
+      aria-haspopup="dialog"
       aria-expanded={open}
-      aria-label="Select run configuration"
+      aria-label={`Run configuration, thinking ${currentReasoning?.label || 'unknown'}`}
     >
-      <span className="model-picker-value">{agentLabel}</span>
-      <span className={pickerLoading ? 'model-picker-loading' : 'model-picker-caret'} aria-hidden="true" />
+      {pickerLoading ? <span className="model-picker-loading" aria-hidden="true" /> : (
+        <svg className="model-picker-gauge" style={{ '--gauge-rotation': gaugeRotation }} viewBox="0 0 24 24" aria-hidden="true">
+          <path className="model-picker-gauge-arc" d="M3.34 19a10 10 0 1 1 17.32 0" />
+          <g className="model-picker-gauge-needle">
+            <path className="model-picker-gauge-pointer" d="M10.9 13.4 12.6 15.1 18.65 7.35Z" />
+            <circle cx="12" cy="14" r="1.8" />
+          </g>
+        </svg>
+      )}
     </button>
   );
 
   return (
     <div className={`model-picker run-config-picker ${open ? 'is-open' : ''} ${pickerLoading ? 'is-loading' : ''} ${readOnly ? 'is-readonly' : ''}`} ref={rootRef}>
-      {triggerButton}
-      {open ? (
+      <PortalTooltip text={open ? '' : `Thinking · ${currentReasoning?.label || 'unknown'}`} position="above">
+        {triggerButton}
+      </PortalTooltip>
+      {open && !menuOpen ? (
+        <div className={`model-picker-quick thinking-${currentReasoning?.id || 'unknown'}`} role="dialog" aria-label="Thinking level">
+          <button
+            type="button"
+            className="model-picker-quick-summary"
+            onClick={() => { setMenuOpen(true); setActiveSubmenu(null); }}
+            aria-label="Open agent and model settings"
+          >
+            <span>{modelLabel}</span>
+            <strong>{currentReasoning?.label || 'Thinking'}</strong>
+            <span className="model-picker-subcaret" aria-hidden="true" />
+          </button>
+          <div className={`model-picker-reasoning thinking-${currentReasoning?.id || 'unknown'}`} style={{ '--reasoning-progress': reasoningProgress }}>
+            <input
+              type="range"
+              min="0"
+              max={Math.max(0, reasoningOptions.length - 1)}
+              step="1"
+              value={currentReasoningIndex}
+              disabled={disabled || readOnly}
+              aria-label="Thinking level"
+              aria-valuetext={currentReasoning?.label || 'Thinking'}
+              onChange={(event) => onReasoningChange?.(reasoningOptions[Number(event.target.value)]?.id)}
+            />
+            <span className="model-picker-reasoning-marks" aria-hidden="true">
+              {reasoningOptions.map((option, index) => <i className={index === currentReasoningIndex ? 'is-active' : ''} key={option.id} />)}
+            </span>
+          </div>
+        </div>
+      ) : null}
+      {open && menuOpen ? (
         <div className={`model-picker-menu ${activeSubmenu ? 'has-flyout' : ''}`} role="menu">
-          {currentAgent ? (
-            <div className="model-picker-section">
-              <div className="model-picker-list">
-                {resolvedAgentOptions.map((opt) => {
-                  const active = opt.id === currentAgent?.id;
-                  return (
-                    <PortalTooltip key={opt.id} text={agentLocked ? agentLockText : ''} position="above">
-                      <button
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={active}
-                        aria-disabled={agentChangeDisabled ? 'true' : undefined}
-                        className={`model-picker-option ${active ? 'is-active' : ''} ${agentChangeDisabled ? 'is-disabled' : ''}`}
-                        onClick={() => {
-                          if (agentChangeDisabled) return;
-                          onAgentChange?.(opt.id);
-                          setOpen(false);
-                          setActiveSubmenu(null);
-                        }}
-                      >
-                        <span className="model-picker-option-label">{opt.label || opt.id}</span>
-                        {active ? (
-                          <span className="model-picker-check" aria-hidden="true">
-                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
-                                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="3.2,8.6 6.6,12 13,4.8" />
-                            </svg>
-                          </span>
-                        ) : null}
-                      </button>
-                    </PortalTooltip>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
           <div className="model-picker-submenu">
+            {currentAgent ? (
+              <button
+                type="button"
+                role="menuitem"
+                className={`model-picker-option model-picker-submenu-entry ${activeSubmenu === 'agent' ? 'is-active' : ''}`}
+                onMouseEnter={() => setActiveSubmenu('agent')}
+                onFocus={() => setActiveSubmenu('agent')}
+                onClick={() => setActiveSubmenu((currentOpen) => currentOpen === 'agent' ? null : 'agent')}
+                aria-haspopup="listbox"
+                aria-expanded={activeSubmenu === 'agent'}
+              >
+                <span className="model-picker-option-label">{agentLabel}</span>
+                <span className="model-picker-subcaret" aria-hidden="true" />
+              </button>
+            ) : null}
             <button
               type="button"
               role="menuitem"
@@ -306,19 +317,43 @@ export function ModelPicker({
               <span className="model-picker-option-label">{modelLabel}</span>
               <span className="model-picker-subcaret" aria-hidden="true" />
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              className={`model-picker-option model-picker-submenu-entry ${activeSubmenu === 'thinking' ? 'is-active' : ''}`}
-              onMouseEnter={() => setActiveSubmenu('thinking')}
-              onFocus={() => setActiveSubmenu('thinking')}
-              onClick={() => setActiveSubmenu((currentOpen) => currentOpen === 'thinking' ? null : 'thinking')}
-              aria-haspopup="listbox"
-              aria-expanded={activeSubmenu === 'thinking'}
-            >
-              <span className="model-picker-option-label">{currentReasoning ? currentReasoning.label : ''}</span>
-              <span className="model-picker-subcaret" aria-hidden="true" />
-            </button>
+            {activeSubmenu === 'agent' ? (
+              <div className="model-picker-flyout model-picker-flyout-agent" role="listbox" aria-label="agent">
+                <div className="model-picker-header">agent</div>
+                <div className="model-picker-list">
+                  {resolvedAgentOptions.map((opt) => {
+                    const active = opt.id === currentAgent?.id;
+                    return (
+                      <PortalTooltip key={opt.id} text={agentLocked ? agentLockText : ''} position="above">
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={active}
+                          aria-disabled={agentChangeDisabled ? 'true' : undefined}
+                          className={`model-picker-option ${active ? 'is-active' : ''} ${agentChangeDisabled ? 'is-disabled' : ''}`}
+                          onClick={() => {
+                            if (agentChangeDisabled) return;
+                            onAgentChange?.(opt.id);
+                            setOpen(false);
+                            setActiveSubmenu(null);
+                          }}
+                        >
+                          <span className="model-picker-option-label">{opt.label || opt.id}</span>
+                          {active ? (
+                            <span className="model-picker-check" aria-hidden="true">
+                              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                                   strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3.2,8.6 6.6,12 13,4.8" />
+                              </svg>
+                            </span>
+                          ) : null}
+                        </button>
+                      </PortalTooltip>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             {activeSubmenu === 'provider' ? (
               <div className="model-picker-flyout model-picker-flyout-provider" role="listbox" aria-label="provider">
                 <div className="model-picker-header">provider</div>
@@ -369,37 +404,6 @@ export function ModelPicker({
                         className={`model-picker-option model-picker-model-option ${active ? 'is-active' : ''} ${readOnly ? 'is-readonly' : ''}`}
                         aria-disabled={readOnly ? 'true' : undefined}
                         onClick={() => { if (readOnly) return; onChange(opt.id); setOpen(false); setActiveSubmenu(null); }}
-                      >
-                        <span className="model-picker-option-label">{opt.label}</span>
-                        {active ? (
-                          <span className="model-picker-check" aria-hidden="true">
-                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
-                                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="3.2,8.6 6.6,12 13,4.8" />
-                            </svg>
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-            {activeSubmenu === 'thinking' ? (
-              <div className="model-picker-flyout model-picker-flyout-thinking" role="listbox" aria-label="thinking">
-                <div className="model-picker-header">thinking</div>
-                <div className="model-picker-list">
-                  {reasoningOptions.map((opt) => {
-                    const active = opt.id === currentReasoning?.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        role="option"
-                        aria-selected={active}
-                        className={`model-picker-option ${active ? 'is-active' : ''} ${readOnly ? 'is-readonly' : ''}`}
-                        aria-disabled={readOnly ? 'true' : undefined}
-                        onClick={() => { if (readOnly) return; onReasoningChange?.(opt.id); setOpen(false); setActiveSubmenu(null); }}
                       >
                         <span className="model-picker-option-label">{opt.label}</span>
                         {active ? (

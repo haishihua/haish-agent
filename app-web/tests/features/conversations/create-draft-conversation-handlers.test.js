@@ -162,3 +162,39 @@ test('concurrent task polls share one request and restore a missing task into ta
   assert.deepEqual(runtimeState.taskOrder, ['task-1']);
   assert.equal(runtimeState.activeTaskId, 'task-1');
 });
+
+test('terminal task polling releases the active task', async () => {
+  let runtimeState = {
+    activeTaskId: 'task-1',
+    pendingTask: null,
+    taskOrder: ['task-1'],
+    tasksById: { 'task-1': { taskId: 'task-1', status: 'running' } },
+  };
+  const handlers = createDraftConversationHandlers({
+    API_BASE: 'http://runtime',
+    apiFetch: () => Promise.resolve({
+      ok: true,
+      json: async () => ({
+        task_id: 'task-1',
+        conversation_id: 'conversation-1',
+        status: 'done',
+        events: [],
+      }),
+    }),
+    conversationIdRef: { current: 'conversation-1' },
+    isTaskActuallyActive: (task) => task.status === 'running',
+    normalizeRuntimeEvents: (events) => events || [],
+    taskDetailToRuntimeTask: (task) => ({ taskId: task.task_id, status: task.status }),
+    taskRuntimeEventCacheRef: { current: new Map() },
+    taskRuntimeFetchesRef: { current: new Map() },
+    updateTaskRuntimeState: (updater) => { runtimeState = updater(runtimeState); },
+  });
+
+  await handlers.restoreLatestTaskRuntime('task-1', {
+    targetConversationId: 'conversation-1',
+    isCurrentActivation: () => true,
+  });
+
+  assert.equal(runtimeState.activeTaskId, null);
+  assert.equal(runtimeState.tasksById['task-1'].status, 'done');
+});

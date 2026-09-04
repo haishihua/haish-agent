@@ -188,20 +188,25 @@
     gap: 10px;
 }
 
-.ico-conversation-panel-toggle {
-    width: 18px;
-    height: 18px;
-    -webkit-mask-image: url('../assets/ui/icons/conversation-panel-collapse.svg');
-    mask-image: url('../assets/ui/icons/conversation-panel-collapse.svg');
-    transition: transform .18s ease-out;
+.sidebar-toggle-icon {
+    width: 28px;
+    height: 28px;
+    display: block;
 }
 
 .conversation-head-action.conversation-panel-toggle {
-    width: 26px;
+    width: 34px;
 }
 
-.ico-conversation-panel-toggle.is-expand {
-    transform: scaleX(-1);
+.sidebar-toggle-icon-panel {
+    fill: var(--bg);
+    transition: d .35s cubic-bezier(.4, 0, .2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar-toggle-icon-panel {
+        transition: none;
+    }
 }
 
 .conversation-head-action:focus-visible {

@@ -447,15 +447,12 @@ export function createDeployHandlers(ctx) {
         showToast('error', 'The task is still starting. Try again in a moment.');
         return false;
       }
-      if (attachment || (Array.isArray(imageAttachments) && imageAttachments.length > 0)) {
-        showToast('error', 'Runtime instructions currently support text only.');
+      if (attachment) {
+        showToast('error', 'Runtime instructions do not support document attachments.');
         return false;
       }
-      return queueTaskInput(runningTaskId, text, request.displayText)
-        .then(() => {
-          showToast('success', 'Instruction queued.');
-          return true;
-        })
+      return queueTaskInput(runningTaskId, text, request.imageAttachments, request.displayText)
+        .then(() => true)
         .catch((error) => {
           showToast('error', String(error?.message || error));
           return false;

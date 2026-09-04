@@ -117,6 +117,7 @@ export default defineConfig({
         assetFileNames: 'assets/build/[name]-[hash][extname]',
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
+          if (id.includes('/@streamdown/code/') || id.includes('/shiki/') || id.includes('/@shikijs/')) return 'markdown-code';
           if (id.includes('/@lexical/') || id.includes('/lexical/')) return 'editor';
           if (id.includes('/@xyflow/')) return 'workflow';
           if (id.includes('/lucide-react/')) return 'icons';

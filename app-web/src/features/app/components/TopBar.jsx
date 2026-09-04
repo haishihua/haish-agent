@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Smartphone } from 'lucide-react';
 
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { RemoteControlDialog } from '../../remote/components/RemoteControlDialog.jsx';
@@ -27,20 +28,7 @@ export function TopBar({
               aria-pressed={remoteControlOpen}
               onClick={() => setRemoteControlOpen(true)}
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <rect x="3" y="4" width="14" height="11" rx="2" />
-                <path d="M8 20h4M10 15v5" />
-                <rect x="16" y="9" width="5" height="10" rx="1.4" />
-                <path d="M18 16.5h1" />
-              </svg>
+              <Smartphone aria-hidden="true" />
             </button>
           </PortalTooltip>
           <PortalTooltip text={chatMode ? 'Workflow' : 'Agent'} position="below">

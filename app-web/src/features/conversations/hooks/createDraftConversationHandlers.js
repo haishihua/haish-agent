@@ -321,7 +321,9 @@ export function createDraftConversationHandlers(ctx) {
       const taskOrder = state.taskOrder.includes(taskId) ? state.taskOrder : [...state.taskOrder, taskId];
       return {
         ...state,
-        activeTaskId: isTaskActuallyActive(nextTask) ? taskId : state.activeTaskId,
+        activeTaskId: isTaskActuallyActive(nextTask)
+          ? taskId
+          : (state.activeTaskId === taskId ? null : state.activeTaskId),
         taskOrder,
         tasksById: {
           ...state.tasksById,
@@ -350,11 +352,19 @@ export function createDraftConversationHandlers(ctx) {
     });
   }
 
-  async function queueTaskInput(taskId, message, displayMessage = message) {
+  async function queueTaskInput(taskId, message, imageAttachments = [], displayMessage = message) {
+    const images = Array.isArray(imageAttachments) ? imageAttachments : [];
     const response = await apiFetch(`${API_BASE}/api/tasks/${taskId}/inputs`, {
       method: 'POST',
       headers: buildApiHeaders(),
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        message,
+        image_attachments: images.map((image) => ({
+          image_id: image.image_id,
+          path: image.path,
+          mime: image.mime || null,
+        })),
+      }),
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
@@ -372,6 +382,7 @@ export function createDraftConversationHandlers(ctx) {
     if (queuedEvent && taskId) {
       const queuedMessage = String(displayMessage || queuedPayload.message || message || '').trim();
       const queuedInputId = queuedPayload.input_id || payload?.input_id || null;
+      const queuedImages = images.length > 0 ? images : (queuedPayload.image_attachments || []);
       updateTaskRuntimeState((state) => {
         const task = state?.tasksById?.[taskId];
         if (!task) return state;
@@ -390,6 +401,7 @@ export function createDraftConversationHandlers(ctx) {
                   timestamp: queuedEvent.created_at || new Date().toISOString(),
                   inputId: queuedInputId,
                   message: queuedMessage,
+                  imageAttachments: queuedImages,
                   status: 'pending',
                   taskId,
                   conversationId: queuedEvent.conversation_id || null,

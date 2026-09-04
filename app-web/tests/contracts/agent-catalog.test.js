@@ -24,7 +24,11 @@ const appShellSource = fs.readFileSync(
   'utf8',
 );
 const chatPanelSource = fs.readFileSync(new URL('../../src/features/chat/components/ChatPanel.jsx', import.meta.url), 'utf8');
+const taskDelegationSource = fs.readFileSync(new URL('../../src/features/tasks/components/TaskDelegation.jsx', import.meta.url), 'utf8');
+const modelPickersSource = fs.readFileSync(new URL('../../src/features/chat/components/ModelPickers.jsx', import.meta.url), 'utf8');
+const motionEffectsSource = fs.readFileSync(new URL('../../src/shared/ui/MotionEffects.jsx', import.meta.url), 'utf8');
 const chatStyles = fs.readFileSync(new URL('../../styles/chat.css', import.meta.url), 'utf8');
+const delegationStyles = fs.readFileSync(new URL('../../styles/delegation.css', import.meta.url), 'utf8');
 
 test('empty-state cards require hover intent before swapping', () => {
   assert.match(chatPanelSource, /const EMPTY_CARD_HOVER_DELAY_MS = 140/);
@@ -129,6 +133,42 @@ test('selected skill renders as an inline Lexical token inside the composer', ()
     /function selectSkill\(skill, event\)[\s\S]*skillSelectionPendingRef\.current = !prompt\.trim\(\)[\s\S]*setDraft\(prompt\)/,
   );
   assert.match(chatPanelSource, /async function submit\(e\)[\s\S]*if \(skillSelectionPendingRef\.current\) return/);
+});
+
+test('run configuration progressively reveals thinking before agent and model settings', () => {
+  assert.match(modelPickersSource, /className="model-picker-gauge"/);
+  assert.match(modelPickersSource, /model-picker-quick thinking-/);
+  assert.match(modelPickersSource, /type="range"/);
+  assert.match(modelPickersSource, /setMenuOpen\(true\)/);
+  assert.match(modelPickersSource, /activeSubmenu === 'agent'/);
+  assert.doesNotMatch(modelPickersSource, /activeSubmenu === 'thinking'/);
+  assert.match(delegationStyles, /\.model-picker-menu,[\s\S]*border-color: var\(--line\)/);
+  assert.match(delegationStyles, /\.model-picker-reasoning\.thinking-xhigh input::/);
+  assert.match(delegationStyles, /font-family: var\(--conversation-font\)/);
+});
+
+test('approval mode uses a compact icon orbit with copy moved to tooltips', () => {
+  assert.match(modelPickersSource, /const alternateModes = APPROVAL_MODE_OPTIONS\.filter/);
+  assert.match(modelPickersSource, /text=\{approvalHint\(opt\)\}/);
+  assert.match(modelPickersSource, /approval-mode-option-\$\{index \+ 1\}/);
+  assert.doesNotMatch(modelPickersSource, /className="approval-mode-label"/);
+  assert.match(fs.readFileSync(new URL('../../styles/modals.css', import.meta.url), 'utf8'), /@keyframes approval-mode-left-in/);
+});
+
+test('send and stop actions share the chromatic metal circle effect', () => {
+  assert.match(motionEffectsSource, /import \{ MetalFx \} from 'metal-fx'/);
+  assert.match(motionEffectsSource, /variant="circle"[\s\S]*preset="chromatic"[\s\S]*theme="dark"/);
+  assert.match(motionEffectsSource, /strength=\{1\}[\s\S]*paused=\{reduceMotion\(\)\}/);
+  assert.doesNotMatch(motionEffectsSource, /children\.props\.disabled/);
+  assert.match(chatPanelSource, /<MetalActionEffect>[\s\S]*chat-send-icon/);
+});
+
+test('composer border animation only runs during interaction, input, or a task run', () => {
+  assert.match(motionEffectsSource, /addEventListener\('pointerenter', engage\)/);
+  assert.match(motionEffectsSource, /addEventListener\('focusin', engage\)/);
+  assert.match(motionEffectsSource, /active=\{\(Boolean\(active\) \|\| interacting\)/);
+  assert.match(chatPanelSource, /<ComposerBorderBeam active=\{running \|\| submitPending \|\| hasComposerPayload\}/);
+  assert.match(taskDelegationSource, /<ComposerBorderBeam active=\{running \|\| submitPending \|\| Boolean\(v\.trim\(\)\)\}/);
 });
 
 test('workflow catalog exposes the human approval gate and its decision contract', () => {

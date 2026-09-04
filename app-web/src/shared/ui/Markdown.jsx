@@ -1,464 +1,102 @@
 import React from 'react';
+import { cjk } from '@streamdown/cjk';
+import { defaultRehypePlugins, Streamdown } from 'streamdown';
 
-// ─── Lightweight markdown renderer (no external deps) ──────────────────────
-function inlineMarkdown(text) {
-  if (!text) return '';
-  const out = [];
-  // Order matters: code first (greedy quoting), then link `[text](url)`, then bold/italic, then bare URL.
-  // Underscore emphasis is intentionally not parsed because it breaks IDs such as mem_408719a58646.
-  // Code spans may use multi-backtick delimiters so literal fences can be quoted:
-  // ```` ```diff ```` renders as <code>```diff</code> instead of literal backticks.
-  const re = /(`+)((?:[^`]|`(?!\1))+?)\1(?!`)|(\[([^\]]+)\]\(([^)\s]+)\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|((?:https?|file):\/\/[^\s<>"`)]+)/g;
-  let lastIdx = 0;
-  let m;
-  let key = 0;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > lastIdx) out.push(text.slice(lastIdx, m.index));
-    if (m[1]) {
-      let content = m[2];
-      // CommonMark: drop one padding space on each side of a code span when both exist.
-      if (content.length >= 2 && content.startsWith(' ') && content.endsWith(' ') && content.trim() !== '') {
-        content = content.slice(1, -1);
-      }
-      out.push(<code key={`ic-${key++}`} className="md-icode">{content}</code>);
-    } else if (m[3]) {
-      out.push(<a key={`a-${key++}`} className="md-link" href={m[5]} target="_blank" rel="noopener noreferrer">{m[4]}</a>);
-    } else if (m[6]) {
-      out.push(<strong key={`b-${key++}`}>{m[6].slice(2, -2)}</strong>);
-    } else if (m[7]) {
-      out.push(<em key={`i-${key++}`}>{m[7].slice(1, -1)}</em>);
-    } else if (m[8]) {
-      out.push(<a key={`au-${key++}`} className="md-link" href={m[8]} target="_blank" rel="noopener noreferrer">{m[8]}</a>);
-    }
-    lastIdx = m.index + m[0].length;
-  }
-  if (lastIdx < text.length) out.push(text.slice(lastIdx));
-  if (out.length === 0) return text;
-  return out;
-}
+let codePluginPromise;
 
-function leadingColumns(line) {
-  let columns = 0;
-  for (const char of String(line || '')) {
-    if (char === ' ') columns += 1;
-    else if (char === '\t') columns += 4;
-    else break;
-  }
-  return columns;
-}
-
-function stripColumns(line, columns) {
-  let remaining = columns;
-  let index = 0;
-  const text = String(line || '');
-  while (index < text.length && remaining > 0) {
-    if (text[index] === ' ') remaining -= 1;
-    else if (text[index] === '\t') remaining -= 4;
-    else break;
-    index += 1;
-  }
-  return text.slice(index);
-}
-
-// Fenced code open: ```lang / ~~~lang, optional same-line body, optional same-line close.
-// Info string keeps common LLM forms such as c++, objective-c.
-function matchFenceOpen(line) {
-  const text = String(line || '');
-  const markerMatch = text.match(/^([`~]{3,})/);
-  if (!markerMatch) return null;
-  const marker = markerMatch[1];
-  const char = marker[0];
-  if (![...marker].every((c) => c === char)) return null;
-
-  let rest = text.slice(marker.length);
-  // Drop one optional space/tab after the opening fence.
-  if (rest.startsWith(' ') || rest.startsWith('\t')) rest = rest.slice(1);
-
-  // ```` ```diff ```` and friends are inline code spans quoting a literal fence, not
-  // block fences. When the info string itself starts with a backtick/tilde run (and
-  // is not merely a same-line closing fence), treat the whole line as prose so that
-  // inlineMarkdown() renders the quoted fence as a code span instead of opening a
-  // bogus block that swallows the surrounding paragraph.
-  if (/^[`~]/.test(rest) && !/^[`~]+[ \t]*$/.test(rest)) return null;
-
-  // Same-line close: ```python code``` or ```code```
-  const closeIdx = rest.search(new RegExp(`${char}{${marker.length},}[ \t]*$`));
-  let selfClosing = false;
-  if (closeIdx >= 0) {
-    rest = rest.slice(0, closeIdx).replace(/[ \t]+$/, '');
-    selfClosing = true;
-  }
-
-  // Info string is the first non-space token; remainder is same-line body.
-  let lang = '';
-  let firstLine = '';
-  if (rest) {
-    const infoMatch = rest.match(/^([^\s`~]+)(?:[ \t]+(.*))?$/);
-    if (infoMatch) {
-      lang = infoMatch[1];
-      firstLine = infoMatch[2] || '';
-    } else {
-      firstLine = rest;
-    }
-  }
-
-  return {
-    marker,
-    char,
-    length: marker.length,
-    lang,
-    firstLine,
-    selfClosing,
+function markdownElement(tag, baseClassName) {
+  return function MarkdownElement({ node: _node, className, ...props }) {
+    const mergedClassName = [baseClassName, className].filter(Boolean).join(' ');
+    return React.createElement(tag, { ...props, className: mergedClassName });
   };
 }
 
-function matchFenceClose(line, open) {
-  if (!open) return false;
-  return new RegExp(`^${open.char}{${open.length},}[ \t]*$`).test(String(line || ''));
-}
-
-function renderCodeBlock(codeLines, lang, key) {
-  const lines = codeLines.length > 0 ? codeLines : [' '];
+function MarkdownLink({ node: _node, className, ...props }) {
   return (
-    <pre
-      key={key}
-      className="md-pre"
-      data-lang={lang || undefined}
-    >
-      {lines.map((codeLine, idx) => (
-        <div key={idx} className="md-code-line">
-          <span className="md-code-no">{idx + 1}</span>
-          <code className="md-code-text">{codeLine || ' '}</code>
-        </div>
-      ))}
-    </pre>
+    <a
+      {...props}
+      className={['md-link', className].filter(Boolean).join(' ')}
+      target="_blank"
+      rel="noopener noreferrer"
+    />
   );
 }
 
-// Extract fenced blocks embedded after prose on the same line / in a text chunk,
-// e.g. "命中: ```python x = 1```".
-function splitTextAndFences(text) {
-  const src = String(text || '');
-  if (!/[`~]{3,}/.test(src)) return [{ type: 'text', text: src }];
+const MARKDOWN_COMPONENTS = {
+  h1: markdownElement('h1', 'md-h md-h1'),
+  h2: markdownElement('h2', 'md-h md-h2'),
+  h3: markdownElement('h3', 'md-h md-h3'),
+  h4: markdownElement('h4', 'md-h md-h4'),
+  h5: markdownElement('h5', 'md-h md-h5'),
+  h6: markdownElement('h6', 'md-h md-h6'),
+  p: markdownElement('p', 'md-p'),
+  ul: markdownElement('ul', 'md-ul'),
+  ol: markdownElement('ol', 'md-ol'),
+  blockquote: markdownElement('blockquote', 'md-bq'),
+  table: markdownElement('table', 'md-table'),
+  hr: markdownElement('hr', 'md-hr'),
+  inlineCode: markdownElement('code', 'md-icode'),
+  a: MarkdownLink,
+};
+const LINK_SAFETY = { enabled: false };
+const [sanitizePlugin, sanitizeSchema] = defaultRehypePlugins.sanitize;
+const MARKDOWN_REHYPE_PLUGINS = [
+  defaultRehypePlugins.raw,
+  [sanitizePlugin, {
+    ...sanitizeSchema,
+    protocols: {
+      ...sanitizeSchema.protocols,
+      href: [...sanitizeSchema.protocols.href, 'file'],
+    },
+  }],
+];
 
-  const segments = [];
-  const lines = src.replace(/\r\n/g, '\n').split('\n');
-  let textBuf = [];
-  let i = 0;
-
-  const flushText = () => {
-    if (!textBuf.length) return;
-    const chunk = textBuf.join('\n');
-    textBuf = [];
-    if (chunk.length) segments.push({ type: 'text', text: chunk });
-  };
-
-  while (i < lines.length) {
-    const line = lines[i];
-    const openAt = line.search(/[`~]{3,}/);
-    if (openAt < 0) {
-      textBuf.push(line);
-      i += 1;
-      continue;
-    }
-
-    const prefix = line.slice(0, openAt);
-    // Only accept fence after line-start / whitespace / light punctuation so mid-token ``` is ignored.
-    if (prefix && !/[\s:：,，;；]$/.test(prefix)) {
-      textBuf.push(line);
-      i += 1;
-      continue;
-    }
-
-    const fenceOpen = matchFenceOpen(line.slice(openAt));
-    if (!fenceOpen) {
-      textBuf.push(line);
-      i += 1;
-      continue;
-    }
-
-    if (prefix.trim()) textBuf.push(prefix.replace(/[ \t]+$/, ''));
-    flushText();
-
-    const codeLines = [];
-    if (fenceOpen.firstLine) codeLines.push(fenceOpen.firstLine);
-    i += 1;
-    if (!fenceOpen.selfClosing) {
-      while (i < lines.length) {
-        const body = lines[i];
-        if (matchFenceClose(body.trimStart(), fenceOpen)) {
-          i += 1;
-          break;
-        }
-        codeLines.push(body);
-        i += 1;
-      }
-    }
-    segments.push({ type: 'code', lang: fenceOpen.lang, lines: codeLines });
-  }
-  flushText();
-  return segments.length ? segments : [{ type: 'text', text: src }];
+function safeMarkdownUrl(url, key) {
+  const value = String(url || '').trim();
+  if (/^https?:/i.test(value)) return value;
+  if (key === 'href' && /^(?:mailto:|file:|#)/i.test(value)) return value;
+  return null;
 }
 
-function renderTextSegments(text, state) {
-  const segments = splitTextAndFences(text);
-  const nodes = [];
-  for (const seg of segments) {
-    if (seg.type === 'code') {
-      nodes.push(renderCodeBlock(seg.lines, seg.lang, `pre-${state.key++}`));
-      continue;
-    }
-    const joined = String(seg.text || '').replace(/\n+/g, ' ').trim();
-    if (!joined) continue;
-    nodes.push(
-      <React.Fragment key={`txt-${state.key++}`}>
-        {inlineMarkdown(joined)}
-      </React.Fragment>
-    );
-  }
-  return nodes;
+function useCodePlugin(enabled) {
+  const [codePlugin, setCodePlugin] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!enabled || codePlugin) return undefined;
+    let active = true;
+    codePluginPromise ||= import('@streamdown/code').then((module) => module.code);
+    codePluginPromise.then((plugin) => {
+      if (active) setCodePlugin(plugin);
+    });
+    return () => { active = false; };
+  }, [enabled, codePlugin]);
+
+  return React.useMemo(
+    () => (codePlugin ? { cjk, code: codePlugin } : { cjk }),
+    [codePlugin],
+  );
 }
 
-function normalizeMarkdownLines(lines) {
-  const output = [];
-  for (let i = 0; i < lines.length; i += 1) {
-    const markerOnly = lines[i].match(/^([ \t]*)([-*+]|\d+[.)])\s*$/);
-    if (!markerOnly) {
-      output.push(lines[i]);
-      continue;
-    }
+export function Markdown({ source, streaming = false }) {
+  const text = String(source || '');
+  const plugins = useCodePlugin(/(^|\n)[ \t]{0,3}(?:`{3,}|~{3,})/.test(text));
 
-    let nextIndex = i + 1;
-    while (nextIndex < lines.length && lines[nextIndex].trim() === '') nextIndex += 1;
-    const nextLine = lines[nextIndex] || '';
-    const nextIsList = /^[ \t]*(?:[-*+]|\d+[.)])\s+/.test(nextLine);
-    const nextIsBoundary = /^(#{1,6}\s|```|~~~|>|[-*_]{3,}\s*$)/.test(nextLine.trimStart());
-    if (nextIndex < lines.length && nextLine.trim() && !nextIsList && !nextIsBoundary) {
-      output.push(`${markerOnly[1]}${markerOnly[2]} ${nextLine.trimStart()}`);
-      i = nextIndex;
-    } else {
-      output.push(lines[i]);
-    }
-  }
-  return output;
-}
-
-function parseMarkdown(src) {
-  if (!src) return [];
-  const lines = normalizeMarkdownLines(String(src).replace(/\r\n/g, '\n').split('\n'));
-  const state = { key: 0 };
-  const isTableSep = (s) => /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(s);
-  const splitRow = (l) => l.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(s => s.trim());
-  const listMatch = (line) => {
-    const match = String(line || '').match(/^([ \t]*)([-*+]|\d+[.)])\s+(.*)$/);
-    if (!match) return null;
-    const marker = match[2];
-    return {
-      indent: leadingColumns(match[1]),
-      ordered: /^\d/.test(marker),
-      start: Number(marker.replace(/\D/g, '')) || 1,
-      content: match[3],
-    };
-  };
-
-  const isBlockStart = (line, minIndent) => {
-    if (!line || line.trim() === '') return false;
-    const stripped = stripColumns(line, minIndent);
-    return /^(#{1,6}\s|>)/.test(stripped)
-      || Boolean(matchFenceOpen(stripped))
-      || /^[ ]{0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(stripped)
-      || (listMatch(line) && listMatch(line).indent >= minIndent);
-  };
-
-  // Numbered "pseudo list" lines that the strict listMatch() does not catch:
-  // `**5. Title** …`, `5、中文顿号`, `5．全角句点` etc. LLM output often writes
-  // consecutive `**N. …**` lines with NO blank line between them; without this,
-  // the paragraph collector would glue items 5,6,7,… into a single <p> and the
-  // numbers look "mixed together". (?!\d) keeps plain prose like "1.5 倍" intact.
-  const isNumberedLine = (line, minIndent) => {
-    const stripped = stripColumns(line, minIndent);
-    return /^\s*(\*\*)?\d{1,3}(?:\.|、|．|\)|）)(?!\d)/.test(stripped);
-  };
-
-  const parseList = (startIndex, indent, ordered) => {
-    const items = [];
-    let i = startIndex;
-    let start = 1;
-    while (i < lines.length) {
-      let itemIndex = i;
-      while (itemIndex < lines.length && lines[itemIndex].trim() === '') itemIndex += 1;
-      const item = listMatch(lines[itemIndex]);
-      if (!item || item.indent !== indent || item.ordered !== ordered) break;
-      if (items.length === 0) start = item.start;
-      i = itemIndex + 1;
-
-      const children = [];
-      // List item text may embed fenced code (LLM often puts ``` inside the item line).
-      if (item.content.trim()) {
-        children.push(...renderTextSegments(item.content.trim(), state));
-      }
-      const nested = parseBlocks(i, indent + 2, true);
-      children.push(...nested.nodes);
-      i = nested.index;
-      items.push(children);
-    }
-
-    const listKey = `${ordered ? 'ol' : 'ul'}-${state.key++}`;
-    const listClass = ordered ? 'md-ol' : 'md-ul';
-    const listChildren = items.map((children, idx) => <li key={idx}>{children}</li>);
-    return {
-      index: i,
-      node: ordered
-        ? <ol key={listKey} className={listClass} start={start}>{listChildren}</ol>
-        : <ul key={listKey} className={listClass}>{listChildren}</ul>,
-    };
-  };
-
-  const parseBlocks = (startIndex, minIndent = 0, stopOnOutdent = false) => {
-    const nodes = [];
-    let i = startIndex;
-
-    while (i < lines.length) {
-      const line = lines[i];
-      if (line.trim() === '') { i++; continue; }
-      if (stopOnOutdent && leadingColumns(line) < minIndent) break;
-      const stripped = stripColumns(line, minIndent);
-
-      let match = stripped.match(/^(#{1,6})\s+(.+)$/);
-      if (match) {
-        const level = Math.min(match[1].length, 6);
-        nodes.push(React.createElement(`h${level}`, { key: `h-${state.key++}`, className: `md-h md-h${level}` }, inlineMarkdown(match[2])));
-        i++;
-        continue;
-      }
-
-      const fenceOpen = matchFenceOpen(stripped);
-      if (fenceOpen) {
-        const codeLines = [];
-        if (fenceOpen.firstLine) codeLines.push(fenceOpen.firstLine);
-        i += 1;
-        if (!fenceOpen.selfClosing) {
-          // Locate the real closing fence first. When the block never closes, do not
-          // let it swallow later list items (breaks 1.2.3.4 numbering); but when a
-          // closing fence DOES exist, list-marker-looking code lines (e.g. ```diff
-          // bodies like "- foo" or "1. bar") must stay inside the block and must not
-          // truncate it.
-          let closeIndex = -1;
-          for (let j = i; j < lines.length; j += 1) {
-            if (matchFenceClose(stripColumns(lines[j], minIndent), fenceOpen)) {
-              closeIndex = j;
-              break;
-            }
-          }
-          const limit = closeIndex >= 0 ? closeIndex : lines.length;
-          while (i < limit) {
-            if (closeIndex < 0) {
-              // Unclosed fences must not swallow later list items (breaks 1.2.3.4 numbering).
-              const bodyList = listMatch(lines[i]);
-              if (bodyList && bodyList.indent <= minIndent) break;
-            }
-            codeLines.push(stripColumns(lines[i], minIndent));
-            i += 1;
-          }
-          if (closeIndex >= 0) i = closeIndex + 1;
-        }
-        nodes.push(renderCodeBlock(codeLines, fenceOpen.lang, `pre-${state.key++}`));
-        continue;
-      }
-
-      if (/^>/.test(stripped)) {
-        const bqLines = [];
-        while (i < lines.length && /^>/.test(stripColumns(lines[i], minIndent))) {
-          bqLines.push(stripColumns(lines[i], minIndent).replace(/^>\s?/, ''));
-          i++;
-        }
-        nodes.push(<blockquote key={`bq-${state.key++}`} className="md-bq">{inlineMarkdown(bqLines.join(' '))}</blockquote>);
-        continue;
-      }
-
-      const currentList = listMatch(line);
-      if (currentList && currentList.indent >= minIndent) {
-        const parsed = parseList(i, currentList.indent, currentList.ordered);
-        nodes.push(parsed.node);
-        i = parsed.index;
-        continue;
-      }
-
-      if (stripped.includes('|') && i + 1 < lines.length && isTableSep(stripColumns(lines[i + 1], minIndent))) {
-        const headers = splitRow(stripped);
-        i += 2;
-        const rows = [];
-        while (i < lines.length && stripColumns(lines[i], minIndent).includes('|') && lines[i].trim() !== '') {
-          rows.push(splitRow(stripColumns(lines[i], minIndent)));
-          i++;
-        }
-        nodes.push(
-          <table key={`tb-${state.key++}`} className="md-table">
-            <thead>
-              <tr>{headers.map((header, idx) => <th key={idx}>{inlineMarkdown(header)}</th>)}</tr>
-            </thead>
-            <tbody>
-              {rows.map((row, rowIdx) => (
-                <tr key={rowIdx}>
-                  {row.map((cell, cellIdx) => <td key={cellIdx}>{inlineMarkdown(cell)}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        );
-        continue;
-      }
-
-      if (/^[ ]{0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(stripped)) {
-        nodes.push(<hr key={`hr-${state.key++}`} className="md-hr" />);
-        i++;
-        continue;
-      }
-
-      const paraLines = [stripped];
-      i += 1;
-      while (
-        i < lines.length &&
-        lines[i].trim() !== '' &&
-        !(stopOnOutdent && leadingColumns(lines[i]) < minIndent) &&
-        !isBlockStart(lines[i], minIndent) &&
-        !isNumberedLine(lines[i], minIndent) &&
-        !(stripColumns(lines[i], minIndent).includes('|') && i + 1 < lines.length && isTableSep(stripColumns(lines[i + 1], minIndent)))
-      ) {
-        paraLines.push(stripColumns(lines[i], minIndent));
-        i += 1;
-      }
-      const paraText = paraLines.join('\n');
-      const segments = splitTextAndFences(paraText);
-      const hasCode = segments.some((seg) => seg.type === 'code');
-      if (hasCode) {
-        // Mixed prose + fence: emit text paragraphs and code blocks separately.
-        for (const seg of segments) {
-          if (seg.type === 'code') {
-            nodes.push(renderCodeBlock(seg.lines, seg.lang, `pre-${state.key++}`));
-          } else {
-            const joined = String(seg.text || '').replace(/\n+/g, ' ').trim();
-            if (joined) {
-              nodes.push(<p key={`p-${state.key++}`} className="md-p">{inlineMarkdown(joined)}</p>);
-            }
-          }
-        }
-      } else {
-        nodes.push(
-          <p key={`p-${state.key++}`} className="md-p">
-            {inlineMarkdown(paraLines.join(' '))}
-          </p>
-        );
-      }
-    }
-
-    return { nodes, index: i };
-  };
-
-  return parseBlocks(0, 0, false).nodes;
-}
-
-export function Markdown({ source }) {
-  const nodes = React.useMemo(() => parseMarkdown(source), [source]);
-  return <div className="md-root">{nodes}</div>;
+  return (
+    <Streamdown
+      className="md-root"
+      mode={streaming ? 'streaming' : 'static'}
+      isAnimating={streaming}
+      parseIncompleteMarkdown={streaming}
+      components={MARKDOWN_COMPONENTS}
+      rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+      plugins={plugins}
+      controls={false}
+      codeBlockMaxHeight={0}
+      tableMaxHeight={0}
+      linkSafety={LINK_SAFETY}
+      urlTransform={safeMarkdownUrl}
+    >
+      {text}
+    </Streamdown>
+  );
 }

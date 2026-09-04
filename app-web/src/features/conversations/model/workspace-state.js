@@ -430,10 +430,9 @@ export function normalizeWorkspaceOrdering(state) {
   // Sidebar ordering policy:
   //   - Conversations: pinned first, then any conversation with a running/
   //     queued task floats to the top of its project so active work is always
-  //     visible. Within each pinned / running / idle group keep the backend
-  //     sortOrder (manual drag) as the stable relative order; updatedAt and
-  //     active highlighting do NOT participate in ordering, so clicking
-  //     around does not reshuffle the list.
+  //     visible. Completed work remains ordered by its latest task activity,
+  //     which survives the directory poll that rebuilds this array. Clicking
+  //     only changes active highlighting and therefore never reshuffles it.
   //   - Projects: pinned first, then backend sortOrder (manual drag). Running
   //     state never participates in project ordering.
   const projects = (Array.isArray(state?.projects) ? state.projects : [])
@@ -449,7 +448,8 @@ export function normalizeWorkspaceOrdering(state) {
         const bActive = conversationHasActiveTask(b);
         if (aActive && !bActive) return -1;
         if (bActive && !aActive) return 1;
-        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+        return conversationUpdatedTimestamp(b) - conversationUpdatedTimestamp(a)
+          || (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
       }),
     }))
     .sort((a, b) => {
@@ -497,8 +497,8 @@ export function conversationDetailToWorkspaceConversation(
       : undefined,
     tasksExpanded: Boolean(previousConversation?.tasksExpanded),
     projectId: detail.project_id || previousConversation?.projectId || null,
-    pinned: Boolean(detail.pinned),
-    sortOrder: typeof detail.sort_order === 'number' ? detail.sort_order : 0,
+    pinned: detail.pinned,
+    sortOrder: detail.sort_order,
   };
 }
 

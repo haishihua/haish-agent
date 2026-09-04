@@ -1,4 +1,5 @@
 import React from 'react';
+import { ArrowUp, Square } from 'lucide-react';
 import { ApprovalInline } from '../../approvals/components/ApprovalOverlay.jsx';
 import {
   extractAgentSkillInvocation,
@@ -28,6 +29,7 @@ import {
 } from './ChatMessageRow.jsx';
 import { ScrollToBottomButton } from '../../../shared/ui/ScrollToBottomButton.jsx';
 import { LexicalComposerInput } from './LexicalComposerInput.jsx';
+import { ComposerBorderBeam, MetalActionEffect } from '../../../shared/ui/MotionEffects.jsx';
 export const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const CHAT_IMAGE_MAX_COUNT = 4;
 export const CHAT_IMAGE_ACCEPTED_MIME = new Set([
@@ -170,7 +172,7 @@ export function ChatPanel({
   }, [currentAgentSkills, selectedSkillName]);
 
   async function attachImageFile(file) {
-    if (!file || running) return;
+    if (!file) return;
     if (!CHAT_IMAGE_ACCEPTED_MIME.has((file.type || '').toLowerCase())) {
       console.warn('Unsupported image type', file.type);
       return;
@@ -240,10 +242,6 @@ export function ChatPanel({
       }
       return;
     }
-    if (running) {
-      event.preventDefault();
-      return;
-    }
     event.preventDefault();
     imageFiles.forEach((file) => attachImageFile(file));
   }
@@ -253,7 +251,6 @@ export function ChatPanel({
       .filter((file) => (file.type || '').toLowerCase().startsWith('image/'));
     if (!files.length) return;
     event.preventDefault();
-    if (running) return;
     files.forEach((file) => attachImageFile(file));
   }
 
@@ -264,6 +261,16 @@ export function ChatPanel({
   }
 
   const imagesUploading = composerImages.some((img) => img.uploading);
+  const readyImages = composerImages
+    .filter((img) => img.imageId && !img.error)
+    .map((img) => ({
+      image_id: img.imageId,
+      path: img.path,
+      mime: img.mime,
+      previewUrl: img.previewUrl || null,
+    }));
+  const hasComposerPayload = Boolean(draft.trim() || composerImages.length > 0);
+  const canSubmitPayload = Boolean((draft.trim() || readyImages.length > 0) && !imagesUploading);
   const openImagePreview = React.useCallback((image) => {
     const src = image?.src || image?.previewUrl || image?.path || '';
     if (!src) return;
@@ -334,8 +341,8 @@ export function ChatPanel({
     if (Date.now() < suppressSubmitUntilRef.current) return;
     if (skillSelectionPendingRef.current) return;
     const text = draft.trim();
-    if (!text || disabled || submitPending || runtimeInputPending) return;
-    const skillInvocation = selectedSkill ? null : extractAgentSkillInvocation(text, currentAgentSkills);
+    if ((!text && readyImages.length === 0) || imagesUploading || disabled || submitPending || runtimeInputPending) return;
+    const skillInvocation = selectedSkill || !text ? null : extractAgentSkillInvocation(text, currentAgentSkills);
     const submittedText = selectedSkill
       ? withSelectedSkillInstruction(text, selectedSkill)
       : skillInvocation
@@ -344,12 +351,13 @@ export function ChatPanel({
     if (running) {
       setRuntimeInputPending(true);
       try {
-        const accepted = await onSend?.(submittedText, null, sendModelId, reasoningEffort, [], effectiveAgentId, providerRequest, text);
+        const accepted = await onSend?.(submittedText, null, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text);
         if (accepted !== false) {
           setDraft('');
           setSelectedSkillName('');
           selectedSkillNameRef.current = '';
           skillSelectionPendingRef.current = false;
+          setComposerImages([]);
         }
       } finally {
         setRuntimeInputPending(false);
@@ -357,18 +365,8 @@ export function ChatPanel({
       return;
     }
     if (!providerConfigured) return;
-    // Block while any pasted image is still uploading.
-    if (imagesUploading) return;
     if (!sendModelId) return;
     if (!resolvedAgentOptions.some((o) => o.id === effectiveAgentId)) return;
-    const readyImages = composerImages
-      .filter((img) => img.imageId && !img.error)
-      .map((img) => ({
-        image_id: img.imageId,
-        path: img.path,
-        mime: img.mime,
-        previewUrl: img.previewUrl || null,
-      }));
     const accepted = onSend?.(submittedText, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text);
     if (accepted === false) return;
     setDraft('');
@@ -468,6 +466,7 @@ export function ChatPanel({
         onDragOver={handleComposerDragOver}
         onDrop={handleComposerDrop}
       >
+        <ComposerBorderBeam active={running || submitPending || hasComposerPayload} />
         {skillMenuOpen && (
           <div className="chat-skill-menu" role="listbox" aria-label="Available skills">
             {matchingSkills.map((skill, index) => (
@@ -691,7 +690,11 @@ export function ChatPanel({
                 aria-label={contextTooltip}
                 aria-disabled="true"
               >
-                <span className="context-usage-icon" style={contextRingStyle} aria-hidden="true" />
+                <span className="context-usage-icon" style={contextRingStyle} aria-hidden="true">
+                  <svg className="context-usage-icon-ring" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeDasharray="2.2 4.4" strokeLinecap="round" />
+                  </svg>
+                </span>
               </button>
             </PortalTooltip> : null}
             <ModelPicker
@@ -714,24 +717,32 @@ export function ChatPanel({
               agentLockedReason={agentLockedReason}
             />
             {submitPending ? (
-              <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Cancel pending request">
-                <span className="ico ico-stop" aria-hidden="true" />
-              </button>
-            ) : running && draft.trim() ? (
+              <MetalActionEffect>
+                <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Cancel pending request">
+                  <Square className="chat-send-icon chat-stop-icon" fill="currentColor" strokeWidth={0} aria-hidden="true" />
+                </button>
+              </MetalActionEffect>
+            ) : running && hasComposerPayload ? (
               // Running + user typed a mid-run instruction: replace Stop with Send,
               // so Stop and Send never appear side by side. Sending clears the
               // draft and the button flips back to Stop.
-              <button type="submit" className="chat-send" disabled={disabled || runtimeInputPending} aria-label="Add instruction">
-                <span className="ico ico-deploy" aria-hidden="true" />
-              </button>
+              <MetalActionEffect>
+                <button type="submit" className="chat-send" disabled={disabled || runtimeInputPending || !canSubmitPayload} aria-label="Add instruction">
+                  <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
+                </button>
+              </MetalActionEffect>
             ) : running ? (
-              <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Stop">
-                <span className="ico ico-stop" aria-hidden="true" />
-              </button>
+              <MetalActionEffect>
+                <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Stop">
+                  <Square className="chat-send-icon chat-stop-icon" fill="currentColor" strokeWidth={0} aria-hidden="true" />
+                </button>
+              </MetalActionEffect>
             ) : (
-              <button type="submit" className="chat-send" disabled={disabled || !draft.trim() || !providerConfigured || !sendModelId} aria-label="Send">
-                <span className="ico ico-deploy" aria-hidden="true" />
-              </button>
+              <MetalActionEffect>
+                <button type="submit" className="chat-send" disabled={disabled || !canSubmitPayload || !providerConfigured || !sendModelId} aria-label="Send">
+                  <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
+                </button>
+              </MetalActionEffect>
             )}
           </div>
         </div>

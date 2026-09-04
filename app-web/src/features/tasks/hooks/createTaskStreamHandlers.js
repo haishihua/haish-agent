@@ -645,6 +645,9 @@ export function createTaskStreamHandlers(ctx) {
       case 'run_finished': {
         const persistedTask = event.task || null;
         const terminalStatus = normalizeTaskStatus(persistedTask?.status || event.status);
+        mutateRuntime(ownerConvId, (runtime) => {
+          runtime.activeRunId = null;
+        });
         if (terminalStatus === 'cancelled') {
           chatFinalizedTaskIdsRef.current.add(taskId);
           userCancelledTaskIdsRef.current.add(taskId);

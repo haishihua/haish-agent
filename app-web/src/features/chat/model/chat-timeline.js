@@ -2,6 +2,7 @@ import { eventDeltaText, stripInjectedSkillInstruction } from './chat-text.js';
 import { normalizeToolName } from './tool-names.js';
 import { normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
 import { skillDisplayName } from '../../tasks/model/runtime-events.js';
+import { mergeChatImageRefs, normalizeChatImageRefs } from '../../conversations/model/workspace-state.js';
 
 export function getChatProgressLine(event) {
   const toolName = event.tool_name || event.toolName || 'tool';
@@ -313,6 +314,32 @@ export function aggregateGroupStatus(tools) {
   return 'done';
 }
 
+const SEARCH_ACTIVITY_BUCKETS = new Set(['read', 'searched', 'fetched', 'queried', 'visualized']);
+
+export function resolveAgentActivity(items, streaming = false) {
+  if (!streaming) return null;
+  const safeItems = Array.isArray(items) ? items : [];
+  const tools = safeItems.flatMap((item) => (
+    item?.kind === 'tool_group' ? item.tools || [] : item?.kind === 'tool' ? [item] : []
+  ));
+  const activeTools = tools.filter((item) => ['pending', 'running'].includes(String(item?.status || '')));
+
+  if (activeTools.some((item) => normalizeToolName(item.toolName) === 'ask_user')) {
+    return { state: 'listening', label: 'Waiting for you…' };
+  }
+  if (activeTools.some((item) => SEARCH_ACTIVITY_BUCKETS.has(classifyToolForGroup(item).bucket))) {
+    return { state: 'searching', label: 'Searching…' };
+  }
+  if (activeTools.length) return { state: 'working', label: 'Working…' };
+
+  const latest = safeItems.at(-1);
+  if (latest?.kind === 'thinking' && (latest.streaming || latest.status === 'running')) {
+    return { state: 'composing', label: 'Thinking…' };
+  }
+  if (latest?.kind === 'text' || tools.length) return { state: 'solving', label: 'Solving…' };
+  return { state: 'composing', label: 'Thinking…' };
+}
+
 // Walk a built timeline and collapse runs of consecutive tool chips (≥ 2) into
 // a single `tool_group` item. Skills and sub-agents are left untouched —
 // skills carry nested children that need their own affordance, sub-agents
@@ -404,6 +431,7 @@ export function toolProgressSummary(event) {
 const CHAT_TIMELINE_CACHE = new WeakMap();
 
 export function buildChatTimeline(task, taskStatus) {
+  const conversationId = task?.conversationId || task?.conversation_id || '';
   const finalStatus = normalizeTaskStatus(taskStatus || task?.status);
   const cached = task && typeof task === 'object' ? CHAT_TIMELINE_CACHE.get(task) : null;
   if (cached?.status === finalStatus) return cached.timeline;
@@ -629,6 +657,7 @@ export function buildChatTimeline(task, taskStatus) {
         kind: 'user_input',
         id: inputId,
         text: stripInjectedSkillInstruction(event.message),
+        images: normalizeChatImageRefs(event.imageAttachments || event.image_attachments, conversationId),
         status: 'pending',
         timestamp: event.timestamp || null,
       };
@@ -647,12 +676,17 @@ export function buildChatTimeline(task, taskStatus) {
         if (existing) {
           existing.status = 'applied';
           existing.text = existing.text || stripInjectedSkillInstruction(input?.message);
+          existing.images = normalizeChatImageRefs(
+            mergeChatImageRefs(existing.images, input?.image_attachments || input?.imageAttachments),
+            conversationId,
+          );
           continue;
         }
         const item = {
           kind: 'user_input',
           id: inputId,
           text: stripInjectedSkillInstruction(input?.message),
+          images: normalizeChatImageRefs(input?.image_attachments || input?.imageAttachments, conversationId),
           status: 'applied',
           timestamp: event.timestamp || null,
         };

@@ -49,6 +49,12 @@ test('final_answer does not mark chat tasks done before run_finished', () => {
   assert.match(handlerSource, /status:\s*resolvedStatus/);
 });
 
+test('run_finished releases the local run so remote tasks can be polled', () => {
+  const start = handlerSource.indexOf("case 'run_finished'");
+  const runFinishedCase = handlerSource.slice(start, handlerSource.indexOf('\n      default:', start));
+  assert.match(runFinishedCase, /runtime\.activeRunId = null/);
+});
+
 test('mergeQueuedStreamDelta merges answer deltas but keeps progress events separate', () => {
   const answer = mergeQueuedStreamDelta(
     deltaEvent('llm_answer_delta', 'a'),

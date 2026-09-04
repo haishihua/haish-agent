@@ -166,6 +166,7 @@ export function createConversationActivationHandlers(ctx) {
     conversationIdRef.current = restoredConversationId;
     const restoredTasks = Array.isArray(detail.tasks) ? detail.tasks : [];
     const messageImageFallbacks = chatImageFallbacksByTaskIdFromMessages(detail.messages, restoredConversationId);
+    const restoredTaskIds = sortTaskIdsForRestore(restoredTasks);
     const latestTaskId = detail.last_task_id || (restoredTasks.length ? restoredTasks[restoredTasks.length - 1].task_id : null);
     const latestTask = restoredTasks.find((task) => task.task_id === latestTaskId);
     const restoredExecutionMode = latestTask?.execution_mode || detail.execution_mode;
@@ -203,7 +204,7 @@ export function createConversationActivationHandlers(ctx) {
       const nextTaskRuntimeState = {
         activeTaskId: null,
         pendingTask: null,
-        taskOrder: sortTaskIdsForRestore(restoredTasks, latestTaskId),
+        taskOrder: restoredTaskIds,
         tasksById: Object.fromEntries(
           restoredTasks.map((task) => [
             task.task_id,
@@ -231,14 +232,21 @@ export function createConversationActivationHandlers(ctx) {
     }
 
     if (restoreLatest && latestTaskId) {
-      try {
-        await restoreLatestTaskRuntime(latestTaskId, {
-          targetConversationId: restoredConversationId,
-          isCurrentActivation,
-        });
-      } catch (error) {
+      const restoreOrder = [
+        latestTaskId,
+        ...restoredTaskIds.slice().reverse().filter((taskId) => taskId !== latestTaskId),
+      ];
+      for (const taskId of restoreOrder) {
         if (!isCurrentActivation()) return;
-        console.error('latest task restore failed', error);
+        try {
+          await restoreLatestTaskRuntime(taskId, {
+            targetConversationId: restoredConversationId,
+            isCurrentActivation,
+          });
+        } catch (error) {
+          if (!isCurrentActivation()) return;
+          console.error('task runtime restore failed', taskId, error);
+        }
       }
     }
   }
