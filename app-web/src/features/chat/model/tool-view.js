@@ -597,13 +597,19 @@ export function buildToolView(item) {
       const failureTarget = path ? ` ${path}` : '';
       return {
         mode: 'diff',
+        failed: true,
         label: `${toolFailureActionLabel(item)}${failureTarget}`,
         body: failureText || outputJsonText(item.toolResponse) || compactToolValue(item.toolOutput, TOOL_BLOCK_LIMIT),
       };
     }
     return {
       mode: 'diff',
-      label: `${toolActionLabel(item)} ${target}${added || removed ? ` (+${added} -${removed})` : ' (no changes)'}`,
+      path,
+      added,
+      removed,
+      label: ['pending', 'running'].includes(item.status)
+        ? `${name === 'write_file' ? 'Writing' : 'Editing'} ${target}`
+        : `${toolActionLabel(item)} ${target}${added || removed ? ` (+${added} -${removed})` : ' (no changes)'}`,
       body: diff ? compactToolText(diff) : '',
     };
   }
@@ -661,6 +667,7 @@ export function buildToolView(item) {
     }
     return {
       mode: 'terminal',
+      failed,
       label,
       command,
       cwd,

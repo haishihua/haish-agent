@@ -155,3 +155,4 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
     </div>
   );
 }
+import '@xyflow/react/dist/style.css';

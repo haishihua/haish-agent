@@ -50,7 +50,7 @@ test('BrowserRuntimeCard claims its request so ApprovalInline skips the standalo
   // Unclaimed browser-runtime requests still fall back to the standalone row.
   assert.ok(
     overlaySource.includes(
-      '!isBrowserRuntimeRequest(request) || !approvalStore.isBrowserRuntimeClaimed(request.request_id)',
+      '&& !approvalStore.isBrowserRuntimeClaimed(request.request_id)',
     ),
   );
 });
@@ -80,7 +80,7 @@ test('browser runtime card no longer shows a redundant Runtime action row', () =
   // shell command for regular approvals). The Install Browser Runtime button
   // already conveys the action, so the block is gated behind !browserRuntime.
   assert.ok(overlaySource.includes('{!browserRuntime ? ('));
-  assert.ok(overlaySource.includes('<span>Command (runs in terminal)</span>'));
+  assert.ok(overlaySource.includes("request.tool_name === 'exec_command' ? 'Command (runs in terminal)' : 'Requested operation'"));
   assert.ok(overlaySource.includes("request.raw_command || '(empty)'"));
   assert.ok(!overlaySource.includes("'Runtime action'"));
 });

@@ -161,11 +161,18 @@ test('send and stop actions share the chromatic metal circle effect', () => {
   assert.match(motionEffectsSource, /strength=\{1\}[\s\S]*paused=\{reduceMotion\(\)\}/);
   assert.doesNotMatch(motionEffectsSource, /children\.props\.disabled/);
   assert.match(chatPanelSource, /<MetalActionEffect>[\s\S]*chat-send-icon/);
+  assert.match(taskDelegationSource, /<MetalActionEffect>[\s\S]*chat-send-icon/);
+});
+
+test('the shared MetalFx context survives chat and workflow mode switches', () => {
+  assert.match(motionEffectsSource, /export function MetalFxRuntimeKeeper/);
+  assert.match(motionEffectsSource, /className="metal-fx-runtime-keeper"[\s\S]*strength=\{0\}[\s\S]*paused[\s\S]*disableGlow/);
+  assert.match(appShellSource, /<MetalFxRuntimeKeeper \/>/);
 });
 
 test('composer border animation only runs during interaction, input, or a task run', () => {
   assert.match(motionEffectsSource, /addEventListener\('pointerenter', engage\)/);
-  assert.match(motionEffectsSource, /addEventListener\('focusin', engage\)/);
+  assert.doesNotMatch(motionEffectsSource, /addEventListener\('focusin', engage\)/);
   assert.match(motionEffectsSource, /active=\{\(Boolean\(active\) \|\| interacting\)/);
   assert.match(chatPanelSource, /<ComposerBorderBeam active=\{running \|\| submitPending \|\| hasComposerPayload\}/);
   assert.match(taskDelegationSource, /<ComposerBorderBeam active=\{running \|\| submitPending \|\| Boolean\(v\.trim\(\)\)\}/);

@@ -1,4 +1,5 @@
 import React from 'react';
+import { workflowControlEvents } from '../model/workflow-control-events.js';
 import {
   Background,
   Controls,
@@ -422,6 +423,7 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
 }
 
 function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }) {
+  const controlEvents = workflowControlEvents(task?.eventLog);
   const [selectedNodeId, setSelectedNodeId] = React.useState('');
   const previousSelectionRef = React.useRef({ nodeId: '', status: 'pending' });
   const followApprovalBranchRef = React.useRef('');
@@ -435,12 +437,12 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
     ? task?.workflowRun
     : null;
   const activeEventNodeIds = React.useMemo(
-    () => activeNodeIdsFromEvents(task?.eventLog),
-    [task?.eventLog],
+    () => activeNodeIdsFromEvents(controlEvents),
+    [controlEvents],
   );
   const eventNodeOutcomes = React.useMemo(
-    () => workflowNodeOutcomesFromEvents(task?.eventLog),
-    [task?.eventLog],
+    () => workflowNodeOutcomesFromEvents(controlEvents),
+    [controlEvents],
   );
   const traversedLoopNodeIds = React.useMemo(
     () => workflowTraversedLoopNodeIds(workflow, run),
@@ -454,11 +456,11 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
   const layoutKey = `${layout.columns}:${layout.rowCount}:${canvasWidth}`;
   const executedNodeIds = React.useMemo(() => new Set([
     ...Object.keys(run?.nodes || {}),
-    ...(task?.eventLog || [])
+    ...controlEvents
       .filter((event) => event.type === 'workflow_node_started')
       .map((event) => eventNodeId(event))
       .filter(Boolean),
-  ]), [run?.nodes, task?.eventLog]);
+  ]), [run?.nodes, controlEvents]);
   const canOpenNodeDetail = React.useCallback((node) => (
     Boolean(node)
     && DETAIL_NODE_TYPES.has(node.type)
@@ -526,13 +528,13 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
     () => new Map((workflow?.nodes || []).map((node) => [String(node.id), nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)])),
     [activeEventNodeIds, eventNodeOutcomes, run, task?.status, traversedLoopNodeIds, workflow?.nodes],
   );
-  const selectedTransitions = React.useMemo(() => (task?.eventLog || [])
+  const selectedTransitions = React.useMemo(() => controlEvents
     .filter((event) => event.type === 'workflow_edge_selected')
     .map((event) => ({
       from: String(event.fromNodeId || event.from_node_id || ''),
       to: String(event.toNodeId || event.to_node_id || ''),
     }))
-    .filter((event) => event.from && event.to), [task?.eventLog]);
+    .filter((event) => event.from && event.to), [controlEvents]);
   const traversedEdgeKeys = React.useMemo(
     () => new Set(selectedTransitions.map((edge) => `${edge.from}->${edge.to}`)),
     [selectedTransitions],

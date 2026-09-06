@@ -1,0 +1,94 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createConversationHandlers } from '../../../src/features/conversations/hooks/createConversationHandlers.js';
+
+const findConversationById = (state, conversationId) => state.projects
+  .flatMap((project) => project.conversations)
+  .find((conversation) => conversation.id === conversationId) || null;
+const findProjectByConversationId = (state, conversationId) => state.projects
+  .find((project) => project.conversations.some((conversation) => conversation.id === conversationId)) || null;
+const taskUpdatedTimestamp = (task) => task?.updatedAt || 0;
+
+test('rapid mode switches reuse unchanged hydrated runtimes without requests', async () => {
+  const task = (taskId) => ({ taskId, updatedAt: 1, runtimeHydrated: true });
+  const workspaceState = {
+    activeProjectId: 'chat-project',
+    activeConversationId: 'chat-conversation',
+    projects: [
+      {
+        id: 'chat-project',
+        type: 'system',
+        executionMode: 'chat',
+        workspacePath: null,
+        conversations: [{
+          id: 'chat-conversation',
+          executionMode: 'chat',
+          tasks: [task('chat-task')],
+        }],
+      },
+      {
+        id: 'bot-project',
+        type: 'system',
+        executionMode: 'bot',
+        workspacePath: null,
+        conversations: [{
+          id: 'bot-conversation',
+          executionMode: 'bot',
+          tasks: [task('bot-task')],
+        }],
+      },
+    ],
+  };
+  const conversationIdRef = { current: 'chat-conversation' };
+  const viewModeRef = { current: 'chat' };
+  const activationSeqRef = { current: 0 };
+  let requestCount = 0;
+  const runtimes = new Map(['chat', 'bot'].map((mode) => {
+    const taskId = `${mode}-task`;
+    return [`${mode}-conversation`, {
+      shellSeeded: false,
+      busy: false,
+      activeRunId: null,
+      fetchController: null,
+      taskRuntimeState: {
+        taskOrder: [taskId],
+        tasksById: { [taskId]: task(taskId) },
+      },
+    }];
+  }));
+  const handlers = createConversationHandlers({
+    activateConversationShell: (_projectId, conversationId) => {
+      conversationIdRef.current = conversationId;
+    },
+    conversationDetailAbortRef: { current: null },
+    conversationIdRef,
+    fetchConversationDetail: async () => {
+      requestCount += 1;
+      throw new Error('unexpected conversation request');
+    },
+    findConversationById,
+    findProjectByConversationId,
+    getRuntime: (conversationId) => runtimes.get(conversationId),
+    invalidateConversationActivation: () => {
+      activationSeqRef.current += 1;
+      return activationSeqRef.current;
+    },
+    isConversationActivationCurrent: (seq) => activationSeqRef.current === seq,
+    modeLocationRef: { current: { chat: null, workflow: null } },
+    openDraftConversation: () => assert.fail('unexpected draft'),
+    settingsMode: false,
+    setActiveTab: () => {},
+    setViewMode: () => {},
+    showToast: () => {},
+    taskUpdatedTimestamp,
+    viewModeRef,
+    workspaceState,
+  });
+
+  for (let index = 0; index < 12; index += 1) handlers.handleToggleViewMode();
+  await Promise.resolve();
+
+  assert.equal(viewModeRef.current, 'chat');
+  assert.equal(conversationIdRef.current, 'chat-conversation');
+  assert.equal(requestCount, 0);
+});

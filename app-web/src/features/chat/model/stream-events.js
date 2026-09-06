@@ -5,6 +5,11 @@ const MERGEABLE_STREAM_EVENT_TYPES = new Set([
   'sub_agent_answer_delta',
 ]);
 
+const STREAM_UPDATES = new WeakMap();
+export function streamEventUpdate(events) {
+  return STREAM_UPDATES.get(events);
+}
+
 function nestedData(event) {
   return event?.data && typeof event.data === 'object' ? event.data : {};
 }
@@ -77,8 +82,10 @@ export function appendStreamEvent(events, event, getText = defaultDeltaText) {
   const list = Array.isArray(events) ? events : [];
   const lastIndex = list.length - 1;
   const merged = mergeAdjacentStreamEvent(list[lastIndex], event, getText);
-  if (!merged) return [...list, event];
-  return [...list.slice(0, lastIndex), merged];
+  const next = merged ? [...list.slice(0, lastIndex), merged] : [...list, event];
+  // Weak references avoid retaining every previous streaming array.
+  STREAM_UPDATES.set(next, { previous: new WeakRef(list), prefixLength: merged ? lastIndex : list.length });
+  return next;
 }
 
 export function compactStreamEvents(events, getText = defaultDeltaText) {

@@ -1,12 +1,13 @@
 import { API_BASE } from '../../../shared/api/base.js';
-import { fetchInitialApprovalState } from '../api/approvals.js';
 
 export const approvalStore = (() => {
   let pending = [];
   const listeners = new Set();
-  const eventListeners = new Set();
   let es = null;
-  let initialFetchInflight = null;
+  let inputs = [];
+  let mode = null;
+  const inputListeners = new Set();
+  const modeListeners = new Set();
   // Browser-runtime cards embedded in the chat timeline claim their request
   // while mounted, so ApprovalInline does not also render a duplicate
   // standalone row for the same request. Exclusive: only the FIRST mounted
@@ -39,12 +40,26 @@ export const approvalStore = (() => {
       } catch (_) {
         return;
       }
-      for (const listener of eventListeners) {
-        try {
-          listener(payload);
-        } catch (_) {}
-      }
-      if (payload.type === 'approval_requested') {
+      if (payload.type === 'approval_snapshot') {
+        const state = payload.state;
+        pending = [
+          ...state.pending,
+          ...state.pending_workflow_approvals,
+          ...state.pending_browser_runtime_installs,
+        ];
+        inputs = state.pending_user_inputs;
+        mode = state.mode;
+        notify();
+        for (const listener of inputListeners) listener(inputs.slice());
+        for (const listener of modeListeners) listener(mode);
+      } else if (payload.type === 'approval_mode_changed') {
+        mode = payload.mode;
+        for (const listener of modeListeners) listener(mode);
+      } else if (payload.type === 'input_requested' || payload.type === 'input_resolved') {
+        inputs = inputs.filter((item) => item.request_id !== payload.request_id);
+        if (payload.type === 'input_requested') inputs.push(payload);
+        for (const listener of inputListeners) listener(inputs.slice());
+      } else if (payload.type === 'approval_requested') {
         if (pending.some((p) => p.request_id === payload.request_id)) return;
         pending = [...pending, payload];
         notify();
@@ -69,58 +84,42 @@ export const approvalStore = (() => {
     es = null;
   }
 
-  function closeStreamWhenIdle() {
-    if (listeners.size === 0 && eventListeners.size === 0) closeStream();
-  }
-
-  function ensureInitial() {
-    if (initialFetchInflight) return initialFetchInflight;
-    initialFetchInflight = fetchInitialApprovalState()
-      .then((items) => {
-        // Merge in case stream events arrived first; dedupe by request_id.
-        const seen = new Set(pending.map((p) => p.request_id));
-        const next = pending.slice();
-        for (const item of items) {
-          if (!seen.has(item.request_id)) {
-            seen.add(item.request_id);
-            next.push(item);
-          }
-        }
-        pending = next;
-        notify();
-      })
-      .catch((err) => {
-        console.warn('[approval] initial state load failed', err);
-      });
-    return initialFetchInflight;
-  }
-
   return {
+    start: ensureStream,
+    stop: closeStream,
+    subscribeInputs(fn) {
+      inputListeners.add(fn);
+      fn(inputs.slice());
+      return () => inputListeners.delete(fn);
+    },
+    removeInput(requestId) {
+      inputs = inputs.filter((item) => item.request_id !== requestId);
+      for (const listener of inputListeners) listener(inputs.slice());
+    },
+    subscribeMode(fn) {
+      modeListeners.add(fn);
+      fn(mode);
+      return () => modeListeners.delete(fn);
+    },
     subscribe(fn) {
       listeners.add(fn);
-      ensureStream();
-      ensureInitial();
       // Push current snapshot immediately so new subscriber renders.
       try {
         fn(pending.slice());
       } catch (_) {}
       return () => {
         listeners.delete(fn);
-        closeStreamWhenIdle();
-      };
-    },
-    subscribeEvents(fn) {
-      eventListeners.add(fn);
-      ensureStream();
-      return () => {
-        eventListeners.delete(fn);
-        closeStreamWhenIdle();
       };
     },
     dispose() {
       closeStream();
       listeners.clear();
-      eventListeners.clear();
+      inputListeners.clear();
+      modeListeners.clear();
+      pending = [];
+      inputs = [];
+      mode = null;
+      claimedBrowserRuntimeIds.clear();
     },
     remove(requestId) {
       const before = pending.length;
@@ -146,10 +145,6 @@ export const approvalStore = (() => {
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => approvalStore.dispose());
-}
-
-export function subscribeApprovalEvents(listener) {
-  return approvalStore.subscribeEvents(listener);
 }
 
 export function isBrowserRuntimeRequest(request) {

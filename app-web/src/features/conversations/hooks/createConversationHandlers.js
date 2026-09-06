@@ -25,6 +25,7 @@ export function createConversationHandlers(ctx) {
     fetchConversationDetail,
     findConversationById,
     findProjectByConversationId,
+    getRuntime,
     invalidateConversationActivation,
     isConversationActivationCurrent,
     modeLocationRef,
@@ -39,11 +40,29 @@ export function createConversationHandlers(ctx) {
     showToast,
     startDeploy,
     stopConversationRuntimeBeforeDelete,
+    taskUpdatedTimestamp,
     viewModeRef,
-    viewModeTogglePromiseRef,
     workspaceState,
     workspaceStateWithConversationDetail,
   } = ctx;
+
+  function conversationRuntimeIsCurrent(targetConversationId) {
+    const conversation = findConversationById(workspaceState, targetConversationId);
+    const runtime = getRuntime(targetConversationId);
+    if (!conversation || !runtime || runtime.shellSeeded) return false;
+    if (runtime.busy || runtime.activeRunId || runtime.fetchController) return true;
+    const summaries = Array.isArray(conversation.tasks) ? conversation.tasks : [];
+    const state = runtime.taskRuntimeState;
+    if (summaries.length !== state.taskOrder.length) return false;
+    return summaries.every((summary) => {
+      const taskId = summary.taskId || summary.id || summary.task_id;
+      const task = state.tasksById[taskId];
+      return Boolean(
+        task?.runtimeHydrated
+        && taskUpdatedTimestamp(task) === taskUpdatedTimestamp(summary)
+      );
+    });
+  }
 
   async function restoreProjectsFromBackend(error, fallbackState) {
     showToast('error', error?.message || 'project update failed');
@@ -76,13 +95,18 @@ export function createConversationHandlers(ctx) {
   }) {
     if (!targetConversationId) throw new Error('conversation activation requires a conversation id');
     if (switchShell) activateConversationShell(projectId, targetConversationId);
+    if (conversationRuntimeIsCurrent(targetConversationId)) return null;
     conversationDetailAbortRef.current?.abort?.();
     const controller = new AbortController();
     conversationDetailAbortRef.current = controller;
     try {
       const detail = await fetchConversationDetail(targetConversationId, { signal: controller.signal });
       if (!isConversationActivationCurrent(activationSeq) || controller.signal.aborted) return null;
-      await activateConversationDetail(detail, { activationSeq, restoreLatest });
+      await activateConversationDetail(detail, {
+        activationSeq,
+        restoreLatest,
+        signal: controller.signal,
+      });
       return detail;
     } catch (error) {
       if (controller.signal.aborted || error?.name === 'AbortError') return null;
@@ -225,6 +249,7 @@ export function createConversationHandlers(ctx) {
   }
 
   function handleReorderConversations(projectId, sourceId, targetId, position) {
+    const manualOrderAt = Date.now();
     setWorkspaceState((state) => {
       const previousState = state;
       const sourcePinned = Boolean(
@@ -264,7 +289,7 @@ export function createConversationHandlers(ctx) {
             ...project,
             conversations: conversations.map((conversation) => (
               Boolean(conversation.pinned) === sourcePinned
-                ? { ...conversation, sortOrder: groupIndex++ }
+                ? { ...conversation, sortOrder: groupIndex++, manualOrderAt }
                 : conversation
             )),
           };
@@ -637,34 +662,13 @@ export function createConversationHandlers(ctx) {
     }
   }
 
-  async function performToggleViewMode() {
+  function handleToggleViewMode() {
     const requestSeq = invalidateConversationActivation();
     conversationDetailAbortRef.current?.abort?.();
     conversationDetailAbortRef.current = null;
     const currentViewMode = viewModeRef.current === 'chat' ? 'chat' : 'workflow';
     const nextViewMode = currentViewMode === 'chat' ? 'workflow' : 'chat';
     const nextExecutionMode = nextViewMode === 'chat' ? 'chat' : 'bot';
-    const projectResponse = await apiFetch(
-      `${API_BASE}/api/projects?execution_mode=${nextExecutionMode}`,
-      { method: 'GET' },
-    );
-    if (!projectResponse.ok) {
-      throw new Error(`project list failed: ${projectResponse.status}`);
-    }
-    const projectPayload = await projectResponse.json();
-    const targetWorkspaceState = replaceWorkspaceModeFromProjects(
-      nextExecutionMode,
-      Array.isArray(projectPayload?.projects) ? projectPayload.projects : [],
-      workspaceState,
-    );
-    setWorkspaceState(targetWorkspaceState);
-    setActiveTab('dashboard');
-    // Settings overlays the main workspace; leaving via bot/chat must exit it
-    // so the corresponding chat/workflow page is shown instead of staying under settings.
-    if (settingsMode) {
-      setSettingsMode(false);
-    }
-
     const currentConversation = findConversationById(workspaceState, conversationIdRef.current);
     const outgoingProject = findProjectByConversationId(workspaceState, conversationIdRef.current);
     if (currentConversation && outgoingProject) {
@@ -673,75 +677,58 @@ export function createConversationHandlers(ctx) {
         conversationId: currentConversation.id,
       };
     }
-    if (currentConversation?.executionMode === nextExecutionMode) {
-      viewModeRef.current = nextViewMode;
-      setViewMode(nextViewMode);
-      return;
-    }
+
+    viewModeRef.current = nextViewMode;
+    setViewMode(nextViewMode);
+    setActiveTab('dashboard');
+    if (settingsMode) setSettingsMode(false);
+
     const rememberedLocation = modeLocationRef.current[nextViewMode];
     const rememberedConversation = rememberedLocation?.conversationId
-      ? findConversationById(targetWorkspaceState, rememberedLocation.conversationId)
+      ? findConversationById(workspaceState, rememberedLocation.conversationId)
       : null;
     const rememberedProject = rememberedConversation?.executionMode === nextExecutionMode
-      ? findProjectByConversationId(targetWorkspaceState, rememberedConversation.id)
+      ? findProjectByConversationId(workspaceState, rememberedConversation.id)
       : null;
-    const outgoingProjectForMode = findProjectByConversationId(
-      workspaceState,
-      conversationIdRef.current,
-    );
-    const matchingPathProject = targetWorkspaceState.projects.find((project) => (
+    const matchingPathProject = workspaceState.projects.find((project) => (
       project.executionMode === nextExecutionMode
-      && project.workspacePath === outgoingProjectForMode?.workspacePath
+      && project.workspacePath === outgoingProject?.workspacePath
     ));
     const currentProject = rememberedProject
       || matchingPathProject
-      || targetWorkspaceState.projects.find((project) => (
+      || workspaceState.projects.find((project) => (
         project.type === 'system' && project.executionMode === nextExecutionMode
       ));
+    if (!currentProject) {
+      throw new Error(`Missing ${nextExecutionMode} project in workspace state.`);
+    }
     const matchingConversation = rememberedProject
       ? rememberedConversation
-      : currentProject?.conversations.find(
+      : currentProject.conversations.find(
           (conversation) => conversation.executionMode === nextExecutionMode,
         );
-    const createdDetail = matchingConversation
-      ? null
-      : await createConversationInProject(
-          currentProject,
-          currentProject?.type === 'system' ? DEFAULT_SESSION_NAME : 'New Conversation',
-          nextExecutionMode,
-        );
-    if (!isConversationActivationCurrent(requestSeq)) return;
-    const targetConversationId = matchingConversation?.id || createdDetail?.conversation_id;
-    modeLocationRef.current[nextViewMode] = {
-      projectId: currentProject?.id || null,
-      conversationId: targetConversationId || null,
-    };
-    // Swap the displayed runtime before the page mode. Otherwise the new Agent
-    // page briefly renders the still-running Workflow state while detail loads.
-    activateConversationShell(currentProject?.id, targetConversationId);
-    viewModeRef.current = nextViewMode;
-    setViewMode(nextViewMode);
-    if (createdDetail) {
-      await activateConversationDetail(createdDetail, { activationSeq: requestSeq });
+    if (!matchingConversation) {
+      openDraftConversation(currentProject.id);
       return;
     }
-    // Restore the selected mode's latest task as well, so switching back to
-    // Workflow immediately shows the current run instead of its idle template.
-    await loadAndActivateConversation({
-      projectId: currentProject?.id,
+
+    const targetConversationId = matchingConversation.id;
+    modeLocationRef.current[nextViewMode] = {
+      projectId: currentProject.id,
+      conversationId: targetConversationId,
+    };
+    activateConversationShell(currentProject.id, targetConversationId);
+    const activationPromise = loadAndActivateConversation({
+      projectId: currentProject.id,
       conversationId: targetConversationId,
       activationSeq: requestSeq,
       switchShell: false,
     });
-  }
-
-  function handleToggleViewMode() {
-    if (!viewModeTogglePromiseRef.current) {
-      viewModeTogglePromiseRef.current = performToggleViewMode().finally(() => {
-        viewModeTogglePromiseRef.current = null;
-      });
-    }
-    return viewModeTogglePromiseRef.current;
+    void activationPromise.catch((error) => {
+      if (!isConversationActivationCurrent(requestSeq)) return;
+      console.error('mode conversation activation failed', error);
+      showToast('error', String(error?.message || error));
+    });
   }
 
   function handleOpenTaskReport(task) {

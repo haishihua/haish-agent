@@ -1,4 +1,6 @@
+import { ApprovalSurface } from '../../../shared/ui/agent-elements/ApprovalSurface.jsx';
 import React from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { normalizeWorkflowApprovalMarkdown } from '../../workflow/model/workflow-approval-markdown.js';
@@ -74,7 +76,7 @@ function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, e
           : 'Resolving approval...';
 
   return (
-    <div
+    <ApprovalSurface
       className={`haish-approval-card${embedded ? ' is-embedded' : ''}`}
       data-collapsed={collapsed ? '1' : '0'}
       data-busy={isBusy ? '1' : '0'}
@@ -82,14 +84,13 @@ function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, e
       {!embedded ? (
         <button type="button" className="haish-approval-header" onClick={onToggleCollapsed} aria-expanded={!collapsed}>
           <span className={`haish-approval-status ${isBusy ? 'is-busy' : ''}`} aria-hidden="true" />
-          <span className="haish-approval-icon" aria-hidden="true" />
+          <ShieldCheck size={16} aria-hidden="true" />
           <span className="haish-approval-title">{title}</span>
           {collapsed ? (
             <PortalTooltip text={preview} position="above" multiline>
               <span className="haish-approval-collapsed-preview">{preview.slice(0, 80)}</span>
             </PortalTooltip>
           ) : null}
-          <span className="haish-approval-tool-badge">{request.tool_name}</span>
           <svg
             className={`haish-approval-chevron ${collapsed ? '' : 'is-open'}`}
             viewBox="0 0 12 12"
@@ -129,7 +130,7 @@ function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, e
           {!browserRuntime ? (
             <>
               <div className="haish-approval-cmd-label">
-                <span>Command (runs in terminal)</span>
+                <span>{request.tool_name === 'exec_command' ? 'Command (runs in terminal)' : 'Requested operation'}</span>
               </div>
               <pre className="haish-approval-cmd-pre">{request.raw_command || '(empty)'}</pre>
             </>
@@ -224,7 +225,7 @@ function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, e
           </div>
         </div>
       ) : null}
-    </div>
+    </ApprovalSurface>
   );
 }
 
@@ -236,7 +237,7 @@ function WorkflowApprovalCard({ request, busy, onDecide, collapsed, onToggleColl
     request.summaryText || 'Review the submitted workflow result.',
   );
   return (
-    <div className="haish-approval-card haish-workflow-approval-card" data-collapsed={collapsed ? '1' : '0'} data-busy={isBusy ? '1' : '0'}>
+    <ApprovalSurface className="haish-approval-card haish-workflow-approval-card" data-collapsed={collapsed ? '1' : '0'} data-busy={isBusy ? '1' : '0'}>
       <button type="button" className="haish-approval-header" onClick={onToggleCollapsed} aria-expanded={!collapsed}>
         <span className={`haish-approval-status ${isBusy ? 'is-busy' : ''}`} aria-hidden="true" />
         <span className="haish-approval-title">{request.title || 'Approval required'}</span>
@@ -310,7 +311,7 @@ function WorkflowApprovalCard({ request, busy, onDecide, collapsed, onToggleColl
           )}
         </div>
       ) : null}
-    </div>
+    </ApprovalSurface>
   );
 }
 
@@ -364,6 +365,18 @@ export function selectBrowserRuntimeRequest(
 }
 
 export function BrowserRuntimeCard({ request, embedded = false }) {
+  return <ToolApprovalCard request={request} embedded={embedded} />;
+}
+
+export function useToolApprovalRequests() {
+  const [requests, setRequests] = useState([]);
+  useEffect(() => approvalStore.subscribe((next) => {
+    setRequests(next.filter((request) => !isBrowserRuntimeRequest(request) && !isWorkflowApprovalRequest(request)));
+  }), []);
+  return requests;
+}
+
+export function ToolApprovalCard({ request, embedded = false }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [collapsed, setCollapsed] = useState(false);
@@ -387,7 +400,8 @@ export function BrowserRuntimeCard({ request, embedded = false }) {
       setError('');
       setBusy(decision);
       try {
-        await postBrowserRuntimeDecision(request, decision);
+        if (isBrowserRuntimeRequest(request)) await postBrowserRuntimeDecision(request, decision);
+        else await postApprovalDecision(request.request_id, decision);
         // Optimistic removal: store will also drop it once the stream confirms.
         approvalStore.remove(request.request_id);
       } catch (err) {
@@ -484,7 +498,7 @@ export function ApprovalInline() {
   // slot only renders regular approvals and unclaimed browser-runtime requests.
   const renderable = pending.filter(
     (request) => !isWorkflowApprovalRequest(request)
-      && (!isBrowserRuntimeRequest(request) || !approvalStore.isBrowserRuntimeClaimed(request.request_id)),
+      && !approvalStore.isBrowserRuntimeClaimed(request.request_id),
   );
   if (!renderable.length) return null;
 

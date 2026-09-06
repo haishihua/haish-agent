@@ -280,18 +280,7 @@ export function createDraftConversationHandlers(ctx) {
         error.taskId = taskId;
         throw error;
       }
-      const task = await response.json();
-      const incomingEvents = normalizeRuntimeEvents(task.events);
-      const appendToCache = Boolean(task.events_delta && cached);
-      const events = compactStreamEvents(
-        appendToCache ? [...cached.events, ...incomingEvents] : incomingEvents,
-        eventDeltaText,
-      );
-      const lastEventId = incomingEvents[incomingEvents.length - 1]?.event_id
-        || cached?.lastEventId
-        || null;
-      taskRuntimeEventCacheRef.current.set(taskId, { lastEventId, events });
-      return { normalizedTask: { ...task, events, events_delta: false }, events };
+      return normalizeFetchedTaskRuntime(await response.json());
     })();
     taskRuntimeFetchesRef.current.set(taskId, request);
     try {
@@ -301,6 +290,88 @@ export function createDraftConversationHandlers(ctx) {
         taskRuntimeFetchesRef.current.delete(taskId);
       }
     }
+  }
+
+  function normalizeFetchedTaskRuntime(task) {
+    const taskId = task?.task_id;
+    if (!taskId) throw new Error('task runtime response is missing task_id');
+    const cached = taskRuntimeEventCacheRef.current.get(taskId) || null;
+    const incomingEvents = normalizeRuntimeEvents(task.events);
+    const appendToCache = Boolean(task.events_delta && cached);
+    const events = compactStreamEvents(
+      appendToCache ? [...cached.events, ...incomingEvents] : incomingEvents,
+      eventDeltaText,
+    );
+    const lastEventId = incomingEvents[incomingEvents.length - 1]?.event_id
+      || cached?.lastEventId
+      || null;
+    taskRuntimeEventCacheRef.current.set(taskId, { lastEventId, events });
+    return { normalizedTask: { ...task, events, events_delta: false }, events };
+  }
+
+  async function fetchTaskRuntimeBatch(targetConversationId, taskIds, signal) {
+    if (!targetConversationId || !taskIds.length) return [];
+    const response = await apiFetch(
+      `${API_BASE}/api/conversations/${encodeURIComponent(targetConversationId)}/tasks/runtime`,
+      {
+        method: 'POST',
+        headers: buildApiHeaders(),
+        signal,
+        body: JSON.stringify({
+          tasks: taskIds.map((taskId) => ({
+            task_id: taskId,
+            after_event_id: taskRuntimeEventCacheRef.current.get(taskId)?.lastEventId || null,
+          })),
+        }),
+      },
+      { json: false },
+    );
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const error = new Error(payload?.detail || `task batch restore failed: ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    const payload = await response.json();
+    if (!Array.isArray(payload) || payload.length !== taskIds.length) {
+      throw new Error('task batch restore returned an incomplete response');
+    }
+    if (new Set(payload.map((task) => task.task_id)).size !== taskIds.length
+      || payload.some((task) => !taskIds.includes(task.task_id) || task.conversation_id !== targetConversationId)) {
+      throw new Error(`task batch does not belong to conversation ${targetConversationId}`);
+    }
+    const details = payload.map(normalizeFetchedTaskRuntime);
+    for (const { normalizedTask } of details) {
+      if (normalizedTask.conversation_id !== targetConversationId) {
+        throw new Error(`task ${normalizedTask.task_id} does not belong to conversation ${targetConversationId}`);
+      }
+    }
+    return details;
+  }
+
+  async function restoreTaskRuntimes(taskIds, {
+    targetConversationId,
+    isCurrentActivation,
+    signal,
+  }) {
+    if (!targetConversationId) throw new Error('task restore requires a target conversation');
+    if (typeof isCurrentActivation !== 'function') throw new Error('task restore requires an activation guard');
+    if (!Array.isArray(taskIds) || taskIds.length === 0 || !isCurrentActivation()) return [];
+    const details = await fetchTaskRuntimeBatch(targetConversationId, taskIds, signal);
+    if (!isCurrentActivation()) return [];
+    updateTaskRuntimeState((state) => {
+      const tasksById = { ...state.tasksById };
+      let activeTaskId = state.activeTaskId;
+      for (const { normalizedTask } of details) {
+        const taskId = normalizedTask.task_id;
+        const nextTask = taskDetailToRuntimeTask(normalizedTask, tasksById[taskId] || null);
+        tasksById[taskId] = nextTask;
+        if (isTaskActuallyActive(nextTask)) activeTaskId = taskId;
+        else if (activeTaskId === taskId) activeTaskId = null;
+      }
+      return { ...state, activeTaskId, tasksById };
+    }, targetConversationId);
+    return details.map(({ normalizedTask }) => normalizedTask);
   }
 
   async function restoreTaskRuntime(taskId, {
@@ -491,6 +562,8 @@ export function createDraftConversationHandlers(ctx) {
     ensureServerConversationForActiveDraft,
     materializeDraftConversationForSend,
     fetchTaskRuntimeDetail,
+    fetchTaskRuntimeBatch,
+    restoreTaskRuntimes,
     restoreLatestTaskRuntime,
     cancelActiveTask,
     queueTaskInput,

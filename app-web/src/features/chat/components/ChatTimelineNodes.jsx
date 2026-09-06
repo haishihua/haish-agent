@@ -1,4 +1,5 @@
 import React from 'react';
+import { TerminalDetail, DiffDetail } from '../../../shared/ui/agent-elements/ToolDetails.jsx';
 import { ThinkingOrb } from 'thinking-orbs';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
@@ -8,6 +9,10 @@ import { CATEGORY_ICON_CLASS, CATEGORY_LABEL } from '../model/run-catalog.js';
 import { BrowserRuntimeCard, selectBrowserRuntimeRequest, useBrowserRuntimeRequests } from '../../approvals/components/ApprovalOverlay.jsx';
 import { buildSubAgentTimelineItems, buildToolView } from '../model/tool-view.js';
 import { resolveAgentActivity } from '../model/chat-timeline.js';
+import { ToolApprovalCard, useToolApprovalRequests } from '../../approvals/components/ApprovalOverlay.jsx';
+import { placeToolApprovals } from '../../approvals/model/approval-placement.js';
+
+const ToolApprovalsContext = React.createContext(new Map());
 
 export function resolveToolIconClass(toolName, defaultClass) {
   const name = String(toolName || '').toLowerCase();
@@ -131,86 +136,14 @@ export function ChatTimelineChevron({ open }) {
   );
 }
 
-/**
- * 终端输出块：running 时自动滚动到底部，模拟真实终端行为。
- */
-function ChatTerminalOutput({ text, running }) {
-  const ref = React.useRef(null);
-  React.useEffect(() => {
-    const el = ref.current;
-    if (el && running) el.scrollTop = el.scrollHeight;
-  }, [text, running]);
-  if (!text) return null;
-  return (
-    <pre ref={ref} className="chat-terminal-output">
-      {text}
-    </pre>
-  );
-}
-
 export function ChatTimelineToolBody({ view }) {
   if (view.mode === 'terminal') {
-    const hasTerminalContent = Boolean(view.command || view.stdout || view.stderr || view.running);
-    return (
-      <>
-        {hasTerminalContent ? (
-          <div className="chat-terminal-frame">
-            <div className="chat-terminal-bar">
-              <span className="chat-terminal-dots" aria-hidden="true"><span /><span /><span /></span>
-              <span className="chat-terminal-cwd">{view.cwd || 'Terminal'}</span>
-              {view.running || (view.exitCode !== undefined && view.exitCode !== '') ? (
-                <span className={`chat-terminal-state ${view.running ? 'running' : ''}`}>
-                  {view.running ? 'running' : `exit ${view.exitCode}`}
-                </span>
-              ) : <span />}
-            </div>
-            {view.command ? (
-              <div className="chat-terminal-command">
-                <span className="chat-terminal-prompt" aria-hidden="true">
-                  $
-                </span>
-                <span className="chat-terminal-command-text">{view.command}</span>
-              </div>
-            ) : null}
-            {view.stdout ? <ChatTerminalOutput text={view.stdout} running={view.running} /> : null}
-            {view.stderr ? <pre className="chat-terminal-output stderr">{view.stderr}</pre> : null}
-            {view.running && !view.stdout && !view.stderr ? (
-              <div className="chat-terminal-waiting">
-                Waiting for output
-                <span className="chat-terminal-cursor" aria-hidden="true" />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {!hasTerminalContent ? <ChatJsonPair requestJson={view.requestJson} responseJson={view.responseJson} /> : null}
-      </>
-    );
+    return <TerminalDetail view={view} />;
   }
   if (view.mode === 'process') {
     return <ChatProcessConversation view={view} />;
   }
-  if (view.mode === 'diff') {
-    if (!view.body) return null;
-    return (
-      <pre className="chat-timeline-tool-code diff">
-        {view.body.split('\n').map((line, index) => {
-          const kind =
-            line.startsWith('+') && !line.startsWith('+++')
-              ? 'add'
-              : line.startsWith('-') && !line.startsWith('---')
-                ? 'remove'
-                : line.startsWith('@@')
-                  ? 'hunk'
-                  : 'context';
-          return (
-            <span key={index} className={`chat-tool-diff-line ${kind}`}>
-              {line || ' '}
-            </span>
-          );
-        })}
-      </pre>
-    );
-  }
+  if (view.mode === 'diff') return <DiffDetail view={view} />;
   if (view.mode === 'json') {
     return <ChatJsonPair requestJson={view.requestJson} responseJson={view.responseJson || view.body} />;
   }
@@ -481,6 +414,7 @@ export function ChatProcessConversation({ view }) {
 }
 
 export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', askUserActive = false }) {
+  const approvalRequest = React.useContext(ToolApprovalsContext).get(item.id);
   const isAskUser = String(item.toolName || '').toLowerCase() === 'ask_user';
   const status = item.status || 'pending';
   const category = item.category || 'tool';
@@ -508,7 +442,7 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
     conversationId,
     taskId,
   });
-  const hasBody = view.mode === 'terminal'
+  const hasBody = !approvalRequest && (view.mode === 'terminal'
     ? Boolean(view.command || view.stdout || view.stderr || view.running || hasChildren)
     : (
       Boolean(view.body) ||
@@ -518,7 +452,7 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
       Boolean(view.finalText) ||
       fallbackLines.length > 0 ||
       hasChildren
-    );
+    ));
   return (
     <div
       className={`chat-timeline-chip chat-timeline-tool category-${category} status-${status} mode-${view.mode}`}
@@ -534,7 +468,7 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
       >
         <span className={`chat-timeline-status status-${status}`} aria-hidden="true" />
         <span className={`ico ${iconClass}`} aria-label={categoryLabel} role="img" />
-        <span className="chat-timeline-tool-name">{view.label}</span>
+        <span className="chat-timeline-tool-name">{approvalRequest ? `${item.toolName} · Awaiting approval` : view.label}</span>
         {hasBody ? <ChatTimelineChevron open={open} /> : null}
       </button>
       {open && hasBody ? (
@@ -571,6 +505,7 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
         />
       ) : null}
       {browserRuntimeRequest ? <BrowserRuntimeCard request={browserRuntimeRequest} embedded /> : null}
+      {approvalRequest ? <ToolApprovalCard request={approvalRequest} embedded /> : null}
     </div>
   );
 }
@@ -586,9 +521,12 @@ export function ChatTimelineToolGroup({
   askUserActive = false,
 }) {
   const [open, setOpen] = React.useState(false);
+  const approvals = React.useContext(ToolApprovalsContext);
   React.useEffect(() => setOpen(false), [conversationId, taskId, item.id]);
   const status = item.status || 'done';
   const tools = Array.isArray(item.tools) ? item.tools : [];
+  const needsApproval = tools.some((tool) => approvals.has(tool.id));
+  const expanded = open || needsApproval;
   const summary = item.summary || `used ${tools.length} tools`;
 
   return (
@@ -597,15 +535,14 @@ export function ChatTimelineToolGroup({
         type="button"
         className="chat-timeline-chip-head chat-timeline-tool-head"
         onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
+        aria-expanded={expanded}
       >
         <span className={`chat-timeline-status status-${status}`} aria-hidden="true" />
         <span className="ico ico-tool" aria-label="Tools" role="img" />
         <span className="chat-timeline-tool-name">{summary}</span>
-        <span className="chat-timeline-tool-group-count">{tools.length}</span>
-        <ChatTimelineChevron open={open} />
+        <ChatTimelineChevron open={expanded} />
       </button>
-      {open ? (
+      {expanded ? (
         <div className="chat-timeline-tool-group-body">
           {tools.map((tool) => (
             <ChatTimelineToolNode
@@ -727,7 +664,9 @@ export function ChatAgentTimeline({
   taskId = '',
   onPreviewImage,
 }) {
-  const safeItems = Array.isArray(items) ? items : [];
+  const safeItems = React.useMemo(() => Array.isArray(items) ? items : [], [items]);
+  const approvalRequests = useToolApprovalRequests();
+  const toolApprovals = React.useMemo(() => placeToolApprovals(safeItems, approvalRequests, taskId, conversationId), [safeItems, approvalRequests, taskId, conversationId]);
   const todos = Array.isArray(latestTodos) && latestTodos.length > 0 ? latestTodos : null;
   const retrying = safeItems.some((item) => item.metaType === 'llm_retry' && item.status === 'running');
   const activeAskUserItemId = selectActiveAskUserItemId(safeItems, streaming);
@@ -737,6 +676,7 @@ export function ChatAgentTimeline({
   // Has todos = always show the panel even if there are no other items.
   if (!safeItems.length && !streaming && !todos) return null;
   return (
+    <ToolApprovalsContext.Provider value={toolApprovals}>
     <div className={`chat-timeline ${streaming ? 'streaming' : 'done'}`}>
       {safeItems.map((item) => {
         if (item.kind === 'text') {
@@ -794,6 +734,7 @@ export function ChatAgentTimeline({
       ) : null}
       {todos ? <ChatTodoPanel todos={todos} streaming={streaming} /> : null}
     </div>
+    </ToolApprovalsContext.Provider>
   );
 }
 

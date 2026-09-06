@@ -34,11 +34,24 @@ test('startup restores an empty workflow conversation from its own execution mod
   assert.match(activationSource, /restoredExecutionMode === 'bot' \? 'workflow' : 'chat'/);
 });
 
-test('mode switching reuses the in-flight toggle instead of creating duplicate conversations', () => {
-  assert.match(appShellSource, /const viewModeTogglePromiseRef = useRef\(null\);/);
+test('mode switching is immediate and activates from loaded workspace state', () => {
+  assert.doesNotMatch(appShellSource, /viewModeToggle(?:Promise|Queued)Ref/);
+  assert.doesNotMatch(conversationHandlersSource, /viewModeToggle(?:Promise|Queued)Ref/);
+  assert.doesNotMatch(
+    conversationHandlersSource,
+    /api\/projects\?execution_mode=\$\{nextExecutionMode\}/,
+  );
   assert.match(
     conversationHandlersSource,
-    /if \(!viewModeTogglePromiseRef\.current\) \{\s*viewModeTogglePromiseRef\.current = performToggleViewMode\(\)\.finally/,
+    /viewModeRef\.current = nextViewMode;\s*setViewMode\(nextViewMode\);/,
   );
-  assert.match(conversationHandlersSource, /return viewModeTogglePromiseRef\.current;/);
+  assert.match(
+    conversationHandlersSource,
+    /const activationPromise = loadAndActivateConversation\([\s\S]*void activationPromise\.catch/,
+  );
+  assert.match(
+    conversationHandlersSource,
+    /if \(conversationRuntimeIsCurrent\(targetConversationId\)\) return null;/,
+  );
+  assert.match(conversationHandlersSource, /if \(!matchingConversation\) \{\s*openDraftConversation\(currentProject\.id\);/);
 });

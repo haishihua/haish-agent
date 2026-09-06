@@ -1,5 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, net, protocol, shell } from 'electron';
 import { existsSync } from 'node:fs';
+import { proxyResponse } from './proxy-response.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -18,7 +19,6 @@ import {
   downloadAppUpdate,
   getAppUpdateState,
   installAppUpdate,
-  isUpdateInstallInProgress,
   setupAppUpdater,
 } from './app-updater.js';
 import { ensureLocalRuntime, getLocalRuntimeState, stopLocalRuntime } from './local-runtime.js';
@@ -108,15 +108,13 @@ async function proxyApiRequest(request: Request, url: URL): Promise<Response> {
   headers.delete('referer');
   const body =
     request.method === 'GET' || request.method === 'HEAD' ? undefined : Buffer.from(await request.arrayBuffer());
-  return net.fetch(targetUrl, {
+  return proxyResponse((signal) => net.fetch(targetUrl, {
     method: request.method,
     headers,
     body,
-    // 透传渲染进程的取消信号：Cmd+R / 页面销毁时渲染进程的 fetch 会被
-    // Chromium 中止，这里让后端转发请求也一并取消，避免“孤儿请求”在
-    // 服务端完成刷新令牌轮换后结果丢失（新页面再用旧 token 刷新必 401）。
-    signal: request.signal,
-  });
+    // proxyResponse also forwards response-body cancellation from Chromium.
+    signal,
+  }), request.signal);
 }
 
 function registerWebProtocol(): void {
@@ -430,12 +428,6 @@ app.on('window-all-closed', () => {
 
 let runtimeStopInFlight = false;
 app.on('before-quit', (event) => {
-  // During an update install the app must exit immediately so the detached
-  // install script can replace the .app bundle.  Skipping the (slow) runtime
-  // shutdown here lets the process exit right away.
-  if (isUpdateInstallInProgress()) {
-    return;
-  }
   if (runtimeStopInFlight) {
     return;
   }

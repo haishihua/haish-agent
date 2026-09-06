@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appWebRoot = path.resolve(__dirname, 'app-web');
@@ -91,7 +92,7 @@ export default defineConfig({
   root: appWebRoot,
   base: './',
   publicDir: false,
-  plugins: [react(), serveStaticAssetsPlugin(), copyPublicAssetsPlugin()],
+  plugins: [react(), tailwindcss(), serveStaticAssetsPlugin(), copyPublicAssetsPlugin()],
   resolve: {
     alias: {
       '@': path.join(appWebRoot, 'src'),
@@ -117,12 +118,16 @@ export default defineConfig({
         assetFileNames: 'assets/build/[name]-[hash][extname]',
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
-          if (id.includes('/@streamdown/code/') || id.includes('/shiki/') || id.includes('/@shikijs/')) return 'markdown-code';
+          if (id.includes('/@streamdown/code/')) return 'markdown-code';
+          if (id.includes('/@streamdown/mermaid/') || id.includes('/mermaid/')) return undefined;
+          // Preserve dynamic language/theme imports instead of merging all grammars.
+          if (id.includes('/shiki/') || id.includes('/@shikijs/')) return undefined;
           if (id.includes('/@lexical/') || id.includes('/lexical/')) return 'editor';
           if (id.includes('/@xyflow/')) return 'workflow';
           if (id.includes('/lucide-react/')) return 'icons';
           if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) return 'react';
-          return 'vendor';
+          // Let Rollup keep optional Markdown plugin dependencies in lazy chunks.
+          return undefined;
         },
       },
     },

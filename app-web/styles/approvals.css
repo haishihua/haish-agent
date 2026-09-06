@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--conversation-font);
 }
 
 /* Workflow node details are conversation content, so their prose should use
@@ -286,7 +286,7 @@
   width: 100%;
   margin: 0;
   color: rgba(225, 232, 246, 0.88);
-  font-family: var(--content-font, 'PingFang SC'), 'Microsoft YaHei', sans-serif;
+  font-family: var(--conversation-font);
   font-size: 12px;
   line-height: 1.75;
   overflow-wrap: anywhere;

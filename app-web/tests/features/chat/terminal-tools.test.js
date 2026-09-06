@@ -18,8 +18,8 @@ const terminalComponentSource = fs.readFileSync(
   new URL('../../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url),
   'utf8',
 );
-const chatStyleSource = fs.readFileSync(
-  new URL('../../../styles/chat.css', import.meta.url),
+const toolDetailsSource = fs.readFileSync(
+  new URL('../../../src/shared/ui/agent-elements/ToolDetails.jsx', import.meta.url),
   'utf8',
 );
 
@@ -52,13 +52,34 @@ test('exec_command renders as a terminal card', () => {
   assert.equal(view.exitCode, 0);
 });
 
-test('terminal card reuses the macOS frame with context and process state', () => {
-  assert.match(terminalComponentSource, /chat-terminal-bar/);
-  assert.match(terminalComponentSource, /chat-terminal-dots/);
-  assert.match(terminalComponentSource, /view\.cwd \|\| 'Terminal'/);
-  assert.match(terminalComponentSource, /`exit \$\{view\.exitCode\}`/);
-  assert.match(chatStyleSource, /\.chat-terminal-bar/);
-  assert.match(chatStyleSource, /\.chat-terminal-state\.running/);
+test('terminal card uses assistant-ui with context, stderr and real process state', () => {
+  assert.match(terminalComponentSource, /<TerminalDetail view=\{view\}/);
+  assert.match(toolDetailsSource, /<TerminalBlock/);
+  assert.match(toolDetailsSource, /cwd=\{view\.cwd\}/);
+  assert.match(toolDetailsSource, /stderr=\{view\.stderr\}/);
+  assert.match(toolDetailsSource, /exitCode=\{view\.exitCode\}/);
+  assert.match(toolDetailsSource, /failed=\{view\.failed\}/);
+});
+
+test('failed terminal preserves nonzero exit code and stderr', () => {
+  const FAILURE_EXIT_CODE = 7;
+  const view = buildToolView({
+    toolName: 'exec_command', status: 'failed', toolInput: { command: 'false' },
+    toolResponse: { error: { exit_code: FAILURE_EXIT_CODE, message: 'failed' }, artifacts: { stderr: 'permission denied' } },
+  });
+  assert.equal(view.failed, true);
+  assert.equal(view.exitCode, FAILURE_EXIT_CODE);
+  assert.equal(view.stderr, 'permission denied');
+  assert.equal(view.running, false);
+});
+
+test('failed diff retains the error rather than rendering a successful change', () => {
+  const view = buildToolView({
+    toolName: 'edit_file', status: 'failed',
+    toolResponse: { error: { message: 'permission denied' } },
+  });
+  assert.equal(view.failed, true);
+  assert.equal(view.body, 'permission denied');
 });
 
 test('write_stdin view keeps interaction details available outside the chat projection', () => {

@@ -33,9 +33,8 @@ const BUNDLED_RUNTIME_EXECUTABLE = path.join('bin', 'haish-runtime', 'haish-runt
 // from 60s to give headroom under load / large saved state, so we don't
 // kill a backend that's just slow to reach ready.
 const START_TIMEOUT_MS = 120_000;
-// Desktop quit is user-facing latency. Give the runtime only a brief flush
-// window, then terminate the complete process tree.
-const SHUTDOWN_GRACE_MS = 250;
+// Allow the backend to clean conversation-owned groups, including orphaned children.
+const SHUTDOWN_GRACE_MS = 5_000;
 const SHUTDOWN_FORCE_REAP_MS = 250;
 
 // Dev-mode lookup order for the Python backend repo (haish-agent-core):

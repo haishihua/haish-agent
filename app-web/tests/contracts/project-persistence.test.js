@@ -14,6 +14,10 @@ const workspaceStateSource = fs.readFileSync(
   new URL('../../src/features/conversations/model/workspace-state.js', import.meta.url),
   'utf8',
 );
+const conversationPollingSource = fs.readFileSync(
+  new URL('../../src/features/conversations/hooks/useConversationListPolling.js', import.meta.url),
+  'utf8',
+);
 
 test('project pin is isolated from child conversation pins', () => {
   const pinStart = handlersSource.indexOf('function handlePinProject(projectId) {');
@@ -31,16 +35,25 @@ test('project and project conversation reorder use scoped backend routes', () =>
   assert.doesNotMatch(handlersSource, /\/api\/conversations\/reorder/);
 });
 
-test('conversation activation restores the latest task first and then hydrates history', () => {
+test('conversation activation restores changed task runtimes in one batch', () => {
   assert.match(activationHandlersSource, /const restoreOrder = \[/);
-  assert.match(activationHandlersSource, /latestTaskId,[\s\S]*restoredTaskIds\.slice\(\)\.reverse\(\)/);
-  assert.match(activationHandlersSource, /for \(const taskId of restoreOrder\)/);
-  assert.match(activationHandlersSource, /restoreLatestTaskRuntime\(taskId/);
+  assert.match(activationHandlersSource, /latestTaskId,[\s\S]*taskIdsToRestore\.slice\(\)\.reverse\(\)/);
+  assert.match(activationHandlersSource, /await restoreTaskRuntimes\(restoreOrder/);
+  assert.doesNotMatch(activationHandlersSource, /for \(const taskId of restoreOrder\)/);
 });
 
-test('mode switch reloads projects for the target execution mode', () => {
-  assert.match(handlersSource, /api\/projects\?execution_mode=\$\{nextExecutionMode\}/);
-  assert.match(handlersSource, /replaceWorkspaceModeFromProjects\(\s*nextExecutionMode/);
+test('mode switch uses the already-loaded target execution mode', () => {
+  assert.doesNotMatch(handlersSource, /api\/projects\?execution_mode=\$\{nextExecutionMode\}/);
+  assert.match(handlersSource, /workspaceState\.projects\.find\(\(project\) => \(/);
+  assert.match(handlersSource, /project\.type === 'system' && project\.executionMode === nextExecutionMode/);
+});
+
+test('conversation polling refreshes immediately only on initial startup', () => {
+  assert.match(conversationPollingSource, /const initialRefreshDoneRef = React\.useRef\(false\);/);
+  assert.match(
+    conversationPollingSource,
+    /immediate: !initialRefreshDoneRef\.current/,
+  );
 });
 
 test('local storage keeps UI state but omits backend ordering fields', () => {

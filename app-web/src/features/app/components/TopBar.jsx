@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Smartphone } from 'lucide-react';
 
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { RemoteControlDialog } from '../../remote/components/RemoteControlDialog.jsx';
@@ -28,7 +27,7 @@ export function TopBar({
               aria-pressed={remoteControlOpen}
               onClick={() => setRemoteControlOpen(true)}
             >
-              <Smartphone aria-hidden="true" />
+              <span className="ico ico-tv-monitor" aria-hidden="true" />
             </button>
           </PortalTooltip>
           <PortalTooltip text={chatMode ? 'Workflow' : 'Agent'} position="below">

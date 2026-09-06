@@ -36,8 +36,16 @@ test('runtime shutdown owns both spawned and reused backend processes', () => {
   assert.match(runtimeSource, /signalProcesses\(forceTargets, 'SIGKILL'\)/);
 });
 
-test('runtime shutdown is bounded to a sub-second process-tree kill', () => {
-  assert.match(runtimeSource, /const SHUTDOWN_GRACE_MS = 250/);
+test('runtime shutdown allows managed process-group cleanup before escalation', () => {
+  assert.match(runtimeSource, /const SHUTDOWN_GRACE_MS = 5_000/);
   assert.match(runtimeSource, /const SHUTDOWN_FORCE_REAP_MS = 250/);
   assert.match(runtimeSource, /execFileSync\('ps', \['-axo', 'pid=,ppid='\]/);
+});
+
+test('updates use normal shutdown and wait for app exit before replacement', () => {
+  const updaterSource = fs.readFileSync(
+    new URL('../../../src/main/app-updater.ts', import.meta.url), 'utf8',
+  );
+  assert.doesNotMatch(mainSource, /isUpdateInstallInProgress/);
+  assert.match(updaterSource, /while kill -0 \$\{process\.pid\}/);
 });

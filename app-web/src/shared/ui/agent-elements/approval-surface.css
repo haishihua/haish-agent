@@ -1,0 +1,181 @@
+/* Adapted from AICSS ApprovalCard.module.css (MIT); see LICENSE-aicss.txt.
+   Original spacing, rounded card/options and pill actions; Haish color/font mapping. */
+.aicss-approval.haish-approval-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #141928;
+  box-shadow:
+    0 0 0 0.5px rgba(138, 166, 209, 0.22),
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.02);
+  color: #daddef;
+  animation: haishApprovalSlideIn 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.aicss-approval .haish-approval-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  overflow: visible;
+}
+.aicss-approval .haish-approval-title {
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.aicss-approval .haish-user-input-options {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.aicss-approval .haish-user-input-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 5px;
+  border: 0.5px solid rgba(138, 166, 209, 0.22);
+  border-radius: 7px;
+  background: transparent;
+  color: #daddef;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.aicss-approval .haish-user-input-option:hover { background: #10131d; }
+.aicss-approval .haish-user-input-option.is-selected {
+  border-color: transparent;
+  background: #141928;
+  box-shadow:
+    0 0 0 0.5px rgba(138, 166, 209, 0.22),
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.02);
+}
+.aicss-approval .haish-approval-cmd-pre {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px 10px;
+  border-radius: 8px;
+  background: #10131d;
+}
+.aicss-approval .haish-approval-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 0;
+  padding-left: 2px;
+}
+.aicss-approval .haish-approval-btn {
+  position: relative;
+  z-index: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 5px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.aicss-approval .aicss-step-nav {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #878da6;
+}
+.aicss-approval .aicss-step-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 0;
+  transition: color 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.aicss-approval .aicss-step-count {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  color: #878da6;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.1px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.aicss-approval.haish-approval-card { box-sizing: border-box; font-family: var(--conversation-font); border: 0; }
+.aicss-approval .haish-approval-header {
+ width: 100%; height: auto; min-height: 24px; padding: 0; border: 0;
+ border-radius: 0; background: transparent; box-shadow: none; color: #daddef;
+}
+.aicss-approval .haish-approval-header:hover { background: transparent; border: 0; }
+.aicss-approval .haish-approval-status { background: #878da6; box-shadow: none; }
+.aicss-approval .haish-approval-status.is-busy { background: transparent; border-color: #3a4463; border-top-color: #daddef; }
+.aicss-approval .haish-approval-chevron { margin-left: auto; color: #878da6; }
+.aicss-approval .haish-approval-tool-badge { background: #1a2133; color: #878da6; font-weight: 400; }
+.aicss-approval.haish-approval-card .haish-approval-body {
+ margin: 0; padding: 0; border: 0; width: 100%; max-width: 100%; min-width: 0;
+}
+.aicss-approval .haish-approval-cmd-pre { font: 12.5px/1.45 'JetBrains Mono', monospace; border: 0; }
+.aicss-approval .haish-approval-intent { font-size: 12.5px; line-height: 1.5; color: #878da6; }
+.aicss-approval .haish-approval-actions { margin-top: 12px; justify-content: flex-end; }
+.aicss-approval .haish-approval-btn {
+ border: 0; background: #1a2133; color: #daddef; line-height: 1.5;
+ transition: background 150ms ease, transform 150ms ease;
+}
+.aicss-approval .haish-approval-btn:hover:not(:disabled) { background: #283149; }
+.aicss-approval .haish-approval-btn-once { background: #daddef; color: #10131d; }
+.aicss-approval .haish-approval-btn-once:hover:not(:disabled) { background: #f0f2fa; }
+.aicss-approval .haish-approval-btn-deny { color: #fb7185; }
+.aicss-approval .haish-approval-btn:active:not(:disabled) { transform: scale(.98); }
+.aicss-approval .haish-approval-btn:disabled { opacity: .38; cursor: default; }
+.aicss-approval button:focus-visible { outline: 2px solid #69c8f6; outline-offset: 2px; }
+.aicss-approval .haish-user-input-options { display: flex; }
+.aicss-approval .haish-user-input-option { align-items: flex-start; }
+.aicss-approval .haish-user-input-option strong { font-weight: 500; }
+.aicss-approval .haish-user-input-check { margin: 2px; border-radius: 4px; }
+.aicss-approval .haish-user-input-native-control:checked + .haish-user-input-check { background: #daddef; border-color: #daddef; }
+.aicss-approval .haish-user-input-header { background: #1a2133; color: #878da6; }
+.aicss-approval .haish-user-input-textarea,
+.aicss-approval .haish-workflow-feedback { border-radius: 7px; background: #10131d; }
+.aicss-approval .haish-user-input-textarea:focus,
+.aicss-approval .haish-workflow-feedback:focus-visible { border-color: #69c8f6; box-shadow: none; }
+.aicss-approval .haish-approval-progress { border: 0; background: transparent; padding: 5px 0; }
+.aicss-approval .haish-approval-spinner { border-color: #3a4463; border-top-color: #daddef; }
+.aicss-approval .aicss-step-nav { margin-right: auto; }
+.aicss-approval .aicss-step-arrow:disabled { opacity: .28; cursor: default; }
+.aicss-approval .haish-user-input-question[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+ .aicss-approval.haish-approval-card { animation: none; }
+ .aicss-approval button { transition: none; }
+}
+

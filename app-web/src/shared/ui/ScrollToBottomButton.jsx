@@ -12,8 +12,13 @@ export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = f
     if (!element) return undefined;
 
     followLatestRef.current = true;
+    let contentChanged = false;
     const update = () => {
       frameRef.current = null;
+      if (contentChanged && autoFollow && followLatestRef.current) {
+        element.scrollTop = element.scrollHeight;
+      }
+      contentChanged = false;
       const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
       setVisible(distance > SHOW_THRESHOLD);
     };
@@ -28,17 +33,23 @@ export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = f
       scheduleUpdate();
     };
     const handleContentChange = () => {
-      if (autoFollow && followLatestRef.current) {
-        element.scrollTop = element.scrollHeight;
-      }
+      contentChanged = true;
       scheduleUpdate();
     };
 
     element.addEventListener('scroll', handleScroll, { passive: true });
-    const mutationObserver = new MutationObserver(handleContentChange);
-    mutationObserver.observe(element, { childList: true, characterData: true, subtree: true });
     const resizeObserver = new ResizeObserver(handleContentChange);
     resizeObserver.observe(element);
+    // Observe row sizes, not every token mutation inside the message tree.
+    const observeRows = () => {
+      resizeObserver.disconnect();
+      resizeObserver.observe(element);
+      for (const child of element.children) resizeObserver.observe(child);
+      handleContentChange();
+    };
+    const mutationObserver = new MutationObserver(observeRows);
+    mutationObserver.observe(element, { childList: true });
+    observeRows();
     if (autoFollow) element.scrollTop = element.scrollHeight;
     scheduleUpdate();
 
@@ -52,7 +63,8 @@ export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = f
 
   const scrollToLatest = () => {
     followLatestRef.current = true;
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    // Smooth scrolling emits intermediate scroll events that incorrectly disable follow.
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'instant' });
   };
 
   return (

@@ -36,6 +36,7 @@ export function createConversationRuntime(ctx) {
       rt = createEmptyRuntime();
       map.set(convId, rt);
     }
+    if (rt) rt.lastAccessedAt = Date.now();
     return rt || null;
   }
 
@@ -135,12 +136,10 @@ export function createConversationRuntime(ctx) {
       const projects = state.projects.map((project) => {
         if (!project.conversations.some((c) => c.id === convId)) return project;
         touched = true;
-        const now = Date.now();
         return {
           ...project,
-          updatedAt: now,
           conversations: project.conversations.map((c) => (
-            c.id === convId ? { ...c, tasks: currentTasks, updatedAt: now } : c
+            c.id === convId ? { ...c, tasks: currentTasks } : c
           )),
         };
       });

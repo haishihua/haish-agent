@@ -1,0 +1,98 @@
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "streamdown/styles.css";
+
+/* Keep Streamdown's standard UI isolated from the task execution UI. */
+@scope (.haish-markdown, [data-streamdown$="-fullscreen"]) {
+    @import "tailwindcss/utilities.css" layer(utilities) source(none);
+}
+
+@source "../../node_modules/streamdown/dist/*.js";
+@source "../../node_modules/@streamdown/code/dist/*.js";
+@source "../../node_modules/@streamdown/mermaid/dist/*.js";
+@source "../../node_modules/@streamdown/cjk/dist/*.js";
+
+@layer base {
+    .haish-markdown, [data-streamdown$="-fullscreen"] {
+        @import "tailwindcss/preflight.css";
+    }
+}
+
+@custom-variant dark (&:where(.dark, .dark *, [data-streamdown$="-fullscreen"], [data-streamdown$="-fullscreen"] *));
+
+/* Haish typography and palette; component layout remains Streamdown's own. */
+@theme inline {
+    --font-sans: var(--conversation-font);
+    --font-mono: 'JetBrains Mono', monospace;
+    --color-background: #10131d;
+    --color-foreground: #daddef;
+    --color-card: #141928;
+    --color-card-foreground: #daddef;
+    --color-popover: #141928;
+    --color-popover-foreground: #daddef;
+    --color-muted: #1a2133;
+    --color-muted-foreground: #878da6;
+    --color-border: #3a4463;
+    --color-input: #3a4463;
+    --color-primary: #69c8f6;
+    --color-primary-foreground: #10131d;
+    --color-secondary: #1a2133;
+    --color-secondary-foreground: #daddef;
+    --color-accent: #1a2133;
+    --color-accent-foreground: #daddef;
+    --color-sidebar: #141928;
+    --color-ring: #69c8f6;
+}
+
+.haish-markdown, [data-streamdown$="-fullscreen"] {
+    --markdown-content-size: 14px;
+    min-width: 0;
+    max-width: 100%;
+    color: var(--ink);
+    font-family: var(--conversation-font);
+    font-size: var(--markdown-content-size);
+    line-height: 1.55;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    image-rendering: auto;
+    -webkit-font-smoothing: antialiased;
+    color-scheme: dark;
+}
+
+.haish-markdown [data-streamdown="heading-1"] {
+    font-size: 20px;
+}
+
+.haish-markdown [data-streamdown="heading-2"] {
+    font-size: 18px;
+}
+
+.haish-markdown [data-streamdown="heading-3"] {
+    font-size: 16px;
+}
+
+/* One content size across standard Markdown components, including portal views. */
+@scope (.haish-markdown, [data-streamdown$="-fullscreen"]) {
+    p, li, blockquote, table, th, td, pre, code,
+    [data-streamdown="code-block-body"],
+    [data-streamdown="code-block-header"] {
+        font-size: var(--markdown-content-size);
+        line-height: 1.6;
+    }
+}
+
+/* Anchor actions to their own block, not the conversation's scroll viewport. */
+@scope (.haish-markdown) {
+    [data-streamdown="code-block"],
+    [data-streamdown="mermaid-block"] {
+        position: relative;
+    }
+
+    [data-streamdown="code-block"] > div:has(> [data-streamdown="code-block-actions"]),
+    [data-streamdown="mermaid-block"] > div:has(> [data-streamdown="mermaid-block-actions"]) {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        margin-top: 0;
+    }
+}

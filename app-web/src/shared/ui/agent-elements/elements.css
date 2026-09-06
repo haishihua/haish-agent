@@ -1,0 +1,40 @@
+/* Official Elements utilities stay inside these two tool bodies. */
+@reference "tailwindcss/theme.css";
+@theme inline {
+  --color-background: #10131d;
+  --color-foreground: #daddef;
+  --color-popover: #141928;
+  --color-border: #3a4463;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+@custom-variant dark (&:where(.dark, .dark *));
+@scope (.haish-tool-elements) {
+  @import "tailwindcss/utilities.css" source(none);
+}
+@source "./*.tsx";
+@source "./surfaces.ts";
+.haish-tool-elements {
+  --color-background: #10131d;
+  --color-foreground: #daddef;
+  --color-popover: #141928;
+  --color-border: #3a4463;
+  --font-mono: 'JetBrains Mono', monospace;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+}
+.haish-tool-elements [data-slot] { max-width: 100%; }
+.haish-tool-elements *, .haish-tool-elements *::before, .haish-tool-elements *::after {
+  box-sizing: border-box;
+  border-style: solid;
+  border-width: 0;
+}
+.haish-tool-elements [data-slot] { border-width: 1px; }
+.haish-tool-elements pre { margin: 0; font: inherit; }
+.haish-tool-elements svg { flex-shrink: 0; }
+.haish-tool-elements [data-terminal-output] { max-height: 360px; overflow: auto; }
+.haish-tool-elements .animate-in { animation: haish-tool-enter 200ms ease-out both; }
+@keyframes haish-tool-enter { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .haish-tool-elements .animate-in { animation: none; }
+}

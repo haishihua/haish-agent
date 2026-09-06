@@ -212,15 +212,6 @@
     max-height: min(360px, calc(100vh - 24px));
     padding: 0;
     overflow: auto;
-    border: 1px solid rgba(139, 171, 220, 0.26);
-    border-radius: 14px;
-    color: rgba(236, 242, 253, 0.94);
-    background:
-        radial-gradient(circle at 88% 0%, rgba(105, 200, 246, 0.1), transparent 38%),
-        linear-gradient(180deg, rgba(18, 27, 43, 0.99), rgba(8, 14, 24, 0.99));
-    box-shadow: 0 22px 54px rgba(0, 0, 0, 0.52), inset 0 1px rgba(255, 255, 255, 0.035);
-    font-family: 'JetBrains Mono', 'PingFang SC', 'Hiragino Sans GB', ui-monospace, monospace;
-    animation: workflow-config-tooltip-in 140ms ease-out forwards;
 }
 
 .workflow-node-config-tooltip {
@@ -445,12 +436,6 @@
     font-family: var(--conversation-font) !important;
 }
 
-/* Markdown assigns its own fonts, so container inheritance is not enough. */
-.workflow-detail-body .md-root,
-.workflow-detail-body .md-root .md-h,
-.workflow-detail-body .md-root .md-table {
-    font-family: var(--conversation-font) !important;
-}
 
 .workflow-detail-history {
     max-width: 100%;
@@ -515,10 +500,6 @@
     height: 1px;
     flex: 1;
     background: linear-gradient(90deg, rgba(139, 165, 205, 0.2), transparent);
-}
-
-.workflow-detail-attempt.is-latest > .workflow-detail-attempt-label {
-    color: rgba(239, 191, 100, 0.72);
 }
 
 .workflow-detail-scroll-region {

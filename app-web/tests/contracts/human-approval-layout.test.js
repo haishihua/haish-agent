@@ -37,7 +37,7 @@ test('workflow approval card submits to its own endpoint and requires rejection 
   assert.match(overlaySource, /disabled=\{!feedback\.trim\(\)\}/);
   assert.match(overlaySource, /onDecide\('reject', feedback\)/);
   assert.match(overlaySource, /request\.feedback \? <p>\{request\.feedback\}<\/p>/);
-  assert.match(approvalApiSource, /pending_workflow_approvals/);
+  assert.match(approvalStoreSource, /pending_workflow_approvals/);
   assert.match(overlaySource, /<Markdown source=\{summaryText\} \/>/);
   assert.match(runtimeSource, /const reviewedInput = workflowApprovalInput\(inputValue\);/);
   assert.match(overlaySource, />\s*Next\s*<\/button>/);

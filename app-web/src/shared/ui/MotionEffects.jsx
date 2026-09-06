@@ -15,16 +15,12 @@ export function ComposerBorderBeam({ active }) {
     const host = beamRef.current?.parentElement;
     if (!host) return undefined;
     const engage = () => setInteracting(true);
-    const disengage = () => setInteracting(host.matches(':hover') || host.matches(':focus-within'));
+    const disengage = () => setInteracting(host.matches(':hover'));
     host.addEventListener('pointerenter', engage);
     host.addEventListener('pointerleave', disengage);
-    host.addEventListener('focusin', engage);
-    host.addEventListener('focusout', disengage);
     return () => {
       host.removeEventListener('pointerenter', engage);
       host.removeEventListener('pointerleave', disengage);
-      host.removeEventListener('focusin', engage);
-      host.removeEventListener('focusout', disengage);
     };
   }, []);
 
@@ -66,39 +62,20 @@ export const MetalActionEffect = React.forwardRef(function MetalActionEffect({ c
   );
 });
 
-export function AssistantBorderBeam({ active, enabled, children }) {
-  const frameRef = React.useRef(null);
-  const [wide, setWide] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!enabled || !frameRef.current) return undefined;
-    const frame = frameRef.current;
-    const update = () => setWide(frame.getBoundingClientRect().width >= 280);
-    update();
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const observer = new ResizeObserver(update);
-    observer.observe(frame);
-    return () => observer.disconnect();
-  }, [enabled]);
-
-  if (!enabled) return children;
-
+export function MetalFxRuntimeKeeper() {
   return (
-    <BorderBeam
-      ref={frameRef}
-      className="assistant-border-beam"
-      size={wide ? 'pulse-outside' : 'pulse-inner'}
-      colorVariant="colorful"
+    <MetalFx
+      className="metal-fx-runtime-keeper"
+      variant="circle"
+      preset="chromatic"
       theme="dark"
-      duration={2.3}
-      strength={wide ? 0.42 : 0.3}
-      brightness={0.9}
-      saturation={0.82}
-      hueRange={18}
-      borderRadius={12}
-      active={Boolean(active) && !reduceMotion()}
+      strength={0}
+      paused
+      disableGlow
+      aria-hidden="true"
+      style={{ position: 'fixed', left: -100, top: -100, width: 1, height: 1, pointerEvents: 'none' }}
     >
-      {children}
-    </BorderBeam>
+      <span style={{ width: 1, height: 1 }} />
+    </MetalFx>
   );
 }

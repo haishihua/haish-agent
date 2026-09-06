@@ -112,6 +112,7 @@ function parseStoredWorkspaceState(raw) {
               tasksExpanded: Boolean(conversation.tasksExpanded),
               pinned: Boolean(conversation.pinned),
               sortOrder: typeof conversation.sortOrder === 'number' ? conversation.sortOrder : 0,
+              manualOrderAt: timestampValue(conversation.manualOrderAt),
             }];
           })
           : [],
@@ -137,10 +138,8 @@ export function saveWorkspaceState(ownerId, state) {
   const key = buildOwnerScopedStorageKey(WORKSPACE_STORAGE_KEY, ownerId);
   if (!key) return;
   try {
-    window.localStorage.setItem(
-      key,
-      JSON.stringify(compactWorkspaceStateForStorage(state)),
-    );
+    const serialized = JSON.stringify(compactWorkspaceStateForStorage(state));
+    if (window.localStorage.getItem(key) !== serialized) window.localStorage.setItem(key, serialized);
   } catch (error) {
     console.warn('Failed to save workspace state:', error);
   }
@@ -162,6 +161,7 @@ export function compactWorkspaceStateForStorage(state) {
         userExpanded: conversation.userExpanded,
         tasksExpanded: Boolean(conversation.tasksExpanded),
         executionMode: conversation.executionMode,
+        manualOrderAt: timestampValue(conversation.manualOrderAt),
         tasks: (conversation.tasks || [])
           .filter((task) => task?.executionMode === conversation.executionMode)
           .map((task) => ({
@@ -448,7 +448,10 @@ export function normalizeWorkspaceOrdering(state) {
         const bActive = conversationHasActiveTask(b);
         if (aActive && !bActive) return -1;
         if (bActive && !aActive) return 1;
-        return conversationUpdatedTimestamp(b) - conversationUpdatedTimestamp(a)
+        // A drag establishes an order until newer real activity occurs.
+        // Keep this separate from updatedAt: viewing is not an update.
+        return Math.max(conversationUpdatedTimestamp(b), timestampValue(b.manualOrderAt))
+          - Math.max(conversationUpdatedTimestamp(a), timestampValue(a.manualOrderAt))
           || (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
       }),
     }))
@@ -499,6 +502,7 @@ export function conversationDetailToWorkspaceConversation(
     projectId: detail.project_id || previousConversation?.projectId || null,
     pinned: detail.pinned,
     sortOrder: detail.sort_order,
+    manualOrderAt: previousConversation?.manualOrderAt || 0,
   };
 }
 

@@ -1,0 +1,52 @@
+.haish-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, .55);
+}
+.haish-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    translate: -50% -50%;
+    z-index: 1001;
+    width: min(400px, calc(100vw - 32px));
+    max-height: calc(100dvh - 48px);
+    overflow: auto;
+    box-sizing: border-box;
+    padding: 24px;
+    border: 1px solid #303744;
+    border-radius: 14px;
+    background: #141820;
+    color: #daddef;
+    box-shadow: 0 20px 60px #0006;
+    font-family: var(--conversation-font);
+    font-size: 14px;
+    line-height: 1.5;
+}
+.haish-dialog-title { margin: 0; font: inherit; font-size: 18px; font-weight: 600; }
+.haish-dialog-description { margin: 10px 0 0; color: #aeb8cb; overflow-wrap: anywhere; }
+.haish-dialog-input {
+    box-sizing: border-box; width: 100%; height: 40px; margin-top: 16px;
+    padding: 8px 12px; border: 1px solid #3a4355; border-radius: 8px;
+    color: inherit; background: #10131b; font: inherit;
+}
+.haish-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.haish-dialog-actions button {
+    min-height: 36px; padding: 7px 16px; border: 1px solid #3a4355;
+    border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer;
+}
+.haish-dialog-actions button:hover { background: #252b36; }
+.haish-dialog-actions .primary { background: #daddef; color: #141820; border-color: transparent; }
+.haish-dialog-actions .primary:hover { background: #c4c9df; }
+.haish-dialog.is-danger .primary { background: #bb394a; color: white; border-color: transparent; }
+.haish-dialog.is-danger .primary:hover { background: #a83040; }
+.haish-dialog button:disabled { opacity: .5; cursor: not-allowed; }
+.haish-dialog :focus-visible { outline: 1px solid #8795ad; outline-offset: 2px; }
+.haish-dialog .haish-dialog-input:focus {
+    outline: none;
+    border-color: #8795ad;
+    box-shadow: 0 0 0 2px rgba(135, 149, 173, .1);
+}
+.haish-dialog-error { margin: 12px 0 0; color: #ff9caa; overflow-wrap: anywhere; }
+.haish-dialog-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

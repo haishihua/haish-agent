@@ -1,5 +1,6 @@
 // Conversations side panel shell (leaf components live in sibling modules).
 import React from 'react';
+import { ListTodo, MessagesSquare } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ConversationDialog } from './ConversationTaskCards.jsx';
 import { ProjectNode, ProjectDropEnd } from './ProjectNode.jsx';
@@ -226,7 +227,12 @@ export function ConversationsPanel({
     <div className={`side-panel left conversations-panel${collapsed ? ' is-collapsed' : ''}`} ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
       <div className="side-panel-head">
         <div className="conversation-head-primary">
-          {collapsed ? panelToggle : <div className="title">{workflowTaskMode ? 'Task' : 'Conversation'}</div>}
+          {collapsed ? panelToggle : <div className="title conversation-brand">
+            <span className="conversation-brand-icon" aria-hidden="true">
+              {workflowTaskMode ? <ListTodo size={20} strokeWidth={1.75} /> : <MessagesSquare size={20} strokeWidth={1.75} />}
+            </span>
+            <span>{workflowTaskMode ? 'Task' : 'Conversation'}</span>
+          </div>}
         </div>
         {!collapsed ? (
           <div className="conversation-head-actions">

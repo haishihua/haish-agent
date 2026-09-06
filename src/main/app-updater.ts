@@ -17,15 +17,6 @@ let installWatchdogTimer: NodeJS.Timeout | null = null;
 const INSTALL_WATCHDOG_MS = 20_000;
 
 /**
- * True while an update install is in progress (manual replace + relaunch).
- * main.ts checks this in its before-quit handler to skip the slow runtime
- * shutdown so the app can exit immediately and let the install script run.
- */
-export function isUpdateInstallInProgress(): boolean {
-  return installInProgress;
-}
-
-/**
  * Electron reports `app.isPackaged === true` when the runtime binary is renamed
  * (e.g. Electron.app → Haish.app for a custom dock icon). That still lives under
  * `node_modules/electron/dist` and is not a real release install.
@@ -460,7 +451,7 @@ function manualInstallAndRelaunch(): void {
     'exec >"$LOG" 2>&1',
     '',
     '# Wait for the current app process to fully exit',
-    'sleep 2',
+    `while kill -0 ${process.pid} 2>/dev/null; do sleep 0.1; done`,
     '',
     '# Extract the update (ditto preserves permissions & xattrs)',
     'rm -rf "$TMP"',
@@ -502,7 +493,7 @@ function manualInstallAndRelaunch(): void {
     return;
   }
 
-  // App is exiting; keep installInProgress true so before-quit skips runtime stop.
+  // The normal quit path stops the runtime before the installer replaces the app.
   app.quit();
 }
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { AnimateDialog } from '../../../shared/ui/AnimateDialog.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { PortalTooltip, closeAllPortalTooltips } from '../../../shared/ui/PortalTooltip.jsx';
 import { normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
@@ -75,55 +76,89 @@ export function TaskRecordCompact({
   );
 }
 
-export function ConversationDialog({ dialog, onCancel, className = '', backdropClassName = '' }) {
+export function ConversationDialog({ dialog, onCancel }) {
   const [value, setValue] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const pending = React.useRef(false);
+  const inputRef = React.useRef(null);
+  const cancelRef = React.useRef(null);
+  const openerRef = React.useRef(null);
+  const [retained, setRetained] = React.useState(dialog);
   React.useEffect(() => {
+    if (!dialog) return;
+    setRetained(dialog);
     setValue(dialog?.value || '');
+    setError('');
+    setBusy(false);
+    pending.current = false;
+    const frame = requestAnimationFrame(() => {
+      if (dialog.kind === 'rename') inputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(frame);
   }, [dialog]);
   React.useEffect(() => {
     if (dialog) closeAllPortalTooltips();
   }, [dialog]);
-  if (!dialog) return null;
-  const isRename = dialog.kind === 'rename';
+  const current = dialog || retained;
+  if (!current) return null;
+  const isRename = current.kind === 'rename';
   const trimmed = value.trim();
-  const confirmDisabled = isRename && !trimmed;
+  const confirmDisabled = busy || (isRename && !trimmed);
 
-  function confirm() {
-    if (confirmDisabled) return;
-    dialog.onConfirm?.(isRename ? trimmed : undefined);
-    onCancel?.();
+  async function confirm(event) {
+    event.preventDefault();
+    if (confirmDisabled || pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await current.onConfirm?.(isRename ? trimmed : undefined);
+      if (result === false) throw new Error('The operation could not be completed. Please try again.');
+      onCancel?.();
+    } catch (err) {
+      setError(String(err?.message || err));
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
   }
 
   return (
-    <div className={`conversation-dialog-backdrop ${backdropClassName}`.trim()} role="presentation" onMouseDown={onCancel}>
-      <div
-        className={`conversation-dialog ${dialog.danger ? 'danger' : ''} ${className}`.trim()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="conversation-dialog-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="conversation-dialog-title" id="conversation-dialog-title">{dialog.title}</div>
-        {dialog.message ? <div className="conversation-dialog-message">{dialog.message}</div> : null}
+    <AnimateDialog open={Boolean(dialog)} danger={!isRename} title={current.title} description={current.message}
+      busy={busy} onClose={onCancel}
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+        openerRef.current = document.activeElement;
+        if (isRename) { inputRef.current?.focus(); inputRef.current?.select(); }
+        else cancelRef.current?.focus();
+      }}
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        if (openerRef.current?.isConnected) openerRef.current.focus();
+      }}>
+      <form onSubmit={confirm}>
         {isRename ? (
           <input
-            className="conversation-dialog-input"
+            ref={inputRef}
+            className="haish-dialog-input"
+            aria-label="Name"
+            disabled={busy}
             value={value}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') confirm();
-              if (event.key === 'Escape') onCancel?.();
+              if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault();
             }}
-            autoFocus
           />
         ) : null}
-        <div className="conversation-dialog-actions">
-          <button type="button" className="conversation-dialog-btn secondary" onClick={onCancel}>Cancel</button>
-          <button type="button" className="conversation-dialog-btn primary" onClick={confirm} disabled={confirmDisabled}>
-            {dialog.confirmLabel}
+        {error ? <p className="haish-dialog-error" role="alert">{error}</p> : null}
+        <div className="haish-dialog-actions">
+          <button ref={cancelRef} type="button" disabled={busy} onClick={onCancel}>Cancel</button>
+          <button type="submit" className="primary" disabled={confirmDisabled}>
+            {busy ? 'Working…' : current.confirmLabel}
           </button>
         </div>
-      </div>
-    </div>
+      </form>
+    </AnimateDialog>
   );
 }

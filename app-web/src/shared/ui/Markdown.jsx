@@ -1,44 +1,13 @@
 import React from 'react';
 import { cjk } from '@streamdown/cjk';
 import { defaultRehypePlugins, Streamdown } from 'streamdown';
+import '../../../styles/markdown.css';
 
 let codePluginPromise;
+let mermaidPluginPromise;
 
-function markdownElement(tag, baseClassName) {
-  return function MarkdownElement({ node: _node, className, ...props }) {
-    const mergedClassName = [baseClassName, className].filter(Boolean).join(' ');
-    return React.createElement(tag, { ...props, className: mergedClassName });
-  };
-}
 
-function MarkdownLink({ node: _node, className, ...props }) {
-  return (
-    <a
-      {...props}
-      className={['md-link', className].filter(Boolean).join(' ')}
-      target="_blank"
-      rel="noopener noreferrer"
-    />
-  );
-}
-
-const MARKDOWN_COMPONENTS = {
-  h1: markdownElement('h1', 'md-h md-h1'),
-  h2: markdownElement('h2', 'md-h md-h2'),
-  h3: markdownElement('h3', 'md-h md-h3'),
-  h4: markdownElement('h4', 'md-h md-h4'),
-  h5: markdownElement('h5', 'md-h md-h5'),
-  h6: markdownElement('h6', 'md-h md-h6'),
-  p: markdownElement('p', 'md-p'),
-  ul: markdownElement('ul', 'md-ul'),
-  ol: markdownElement('ol', 'md-ol'),
-  blockquote: markdownElement('blockquote', 'md-bq'),
-  table: markdownElement('table', 'md-table'),
-  hr: markdownElement('hr', 'md-hr'),
-  inlineCode: markdownElement('code', 'md-icode'),
-  a: MarkdownLink,
-};
-const LINK_SAFETY = { enabled: false };
+// Keep Electron file links while retaining HTML sanitization and URL filtering.
 const [sanitizePlugin, sanitizeSchema] = defaultRehypePlugins.sanitize;
 const MARKDOWN_REHYPE_PLUGINS = [
   defaultRehypePlugins.raw,
@@ -50,6 +19,7 @@ const MARKDOWN_REHYPE_PLUGINS = [
     },
   }],
 ];
+const LINK_SAFETY = { enabled: false };
 
 function safeMarkdownUrl(url, key) {
   const value = String(url || '').trim();
@@ -58,45 +28,63 @@ function safeMarkdownUrl(url, key) {
   return null;
 }
 
-function useCodePlugin(enabled) {
-  const [codePlugin, setCodePlugin] = React.useState(null);
+export function Markdown({ source, streaming = false }) {
+  const text = String(source || '');
+  const [code, setCode] = React.useState(null);
+  const [mermaid, setMermaid] = React.useState(null);
+  const hasCode = /(`{3,}|~{3,})/.test(text);
+  const hasMermaid = /(?:`{3,}|~{3,})mermaid\b/i.test(text);
 
   React.useEffect(() => {
-    if (!enabled || codePlugin) return undefined;
+    if (!hasCode || code) return undefined;
     let active = true;
     codePluginPromise ||= import('@streamdown/code').then((module) => module.code);
     codePluginPromise.then((plugin) => {
-      if (active) setCodePlugin(plugin);
+      if (active) setCode(plugin);
+    }).catch((error) => {
+      codePluginPromise = undefined;
+      console.error('Markdown code highlighting could not load:', error);
     });
     return () => { active = false; };
-  }, [enabled, codePlugin]);
+  }, [hasCode, code]);
 
-  return React.useMemo(
-    () => (codePlugin ? { cjk, code: codePlugin } : { cjk }),
-    [codePlugin],
-  );
-}
+  React.useEffect(() => {
+    if (!hasMermaid || mermaid) return undefined;
+    let active = true;
+    mermaidPluginPromise ||= import('@streamdown/mermaid').then((module) =>
+      module.createMermaidPlugin({
+        config: {
+          theme: 'dark',
+          securityLevel: 'strict',
+          fontFamily: getComputedStyle(document.documentElement)
+            .getPropertyValue('--conversation-font').trim() || 'sans-serif',
+        },
+      }));
+    mermaidPluginPromise.then((plugin) => {
+      if (active) setMermaid(plugin);
+    }).catch((error) => {
+      mermaidPluginPromise = undefined;
+      console.error('Markdown diagrams could not load:', error);
+    });
+    return () => { active = false; };
+  }, [hasMermaid, mermaid]);
 
-export function Markdown({ source, streaming = false }) {
-  const text = String(source || '');
-  const plugins = useCodePlugin(/(^|\n)[ \t]{0,3}(?:`{3,}|~{3,})/.test(text));
+  const plugins = React.useMemo(() => ({ cjk, code, mermaid }), [code, mermaid]);
 
   return (
-    <Streamdown
-      className="md-root"
-      mode={streaming ? 'streaming' : 'static'}
-      isAnimating={streaming}
-      parseIncompleteMarkdown={streaming}
-      components={MARKDOWN_COMPONENTS}
-      rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
-      plugins={plugins}
-      controls={false}
-      codeBlockMaxHeight={0}
-      tableMaxHeight={0}
-      linkSafety={LINK_SAFETY}
-      urlTransform={safeMarkdownUrl}
-    >
-      {text}
-    </Streamdown>
+    <div className="haish-markdown dark">
+      <Streamdown
+        mode={streaming ? 'streaming' : 'static'}
+        isAnimating={streaming}
+        parseIncompleteMarkdown={streaming}
+        rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+        plugins={plugins}
+        controls
+        linkSafety={LINK_SAFETY}
+        urlTransform={safeMarkdownUrl}
+      >
+        {text}
+      </Streamdown>
+    </div>
   );
 }

@@ -320,6 +320,7 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = []) {
     eventLog: [],
     error: task.error || null,
     serverFinished: task.status === 'done' || task.status === 'failed' || task.status === 'cancelled',
+    runtimeHydrated: false,
   };
 }
 
@@ -332,6 +333,7 @@ export function taskDetailToRuntimeTask(task, previousTask = null) {
     loopIndex: getLoopIndexFromEvents(events),
     eventLog: compactStreamEvents(events.map(runtimeEventToLog)),
     workflowSnapshot: usableWorkflowSnapshot(task.workflow_snapshot, previousTask?.workflowSnapshot || null),
+    runtimeHydrated: true,
   };
   return nextTask;
 }

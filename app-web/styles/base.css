@@ -163,6 +163,11 @@ svg {
     filter: drop-shadow(0 0 5px rgba(239, 191, 100, 0.3));
 }
 
+.ico-tv-monitor {
+    -webkit-mask-image: url("../assets/ui/icons/tv-monitor.png");
+    mask-image: url("../assets/ui/icons/tv-monitor.png");
+}
+
 .ico-local {
     -webkit-mask-image: url("../assets/ui/icons/monitor.png");
     mask-image: url("../assets/ui/icons/monitor.png");
@@ -547,49 +552,50 @@ svg {
     }
 }
 
-/* Portal-rendered tooltip — Apple HIG 风格的深色磨砂胶囊，逃出 overflow:hidden / backdrop-filter 祖先 */
+/* Animate UI shared overlay, using Haish typography and dark colors. */
 .portal-tooltip {
-    position: fixed;
-    display: -webkit-box;
+    display: block;
     width: max-content;
     max-width: min(240px, calc(100vw - 16px));
     background: rgba(28, 28, 32, 0.92);
-    color: #f4f4f6;
+    color: #daddef;
     border: 0;
-    padding: 5px 10px;
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    padding: 0;
+    font-family: var(--conversation-font);
     font-size: 12px;
     font-weight: 500;
     letter-spacing: 0;
     line-height: 1.35;
     white-space: normal;
-    overflow: hidden;
+    overflow: visible;
     overflow-wrap: anywhere;
     text-wrap: pretty;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 4;
     border-radius: 6px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42),
     0 1px 2px rgba(0, 0, 0, 0.32),
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.06);
-    backdrop-filter: blur(18px) saturate(140%);
-    -webkit-backdrop-filter: blur(18px) saturate(140%);
-    pointer-events: none;
+    pointer-events: auto;
     z-index: 9999;
-    opacity: 0;
-    animation: tooltipIn .14s ease-out forwards .35s;
-    transform: translateX(-50%);
+    transform-origin: center;
 }
 
-.portal-tooltip.portal-tooltip-above {
-    transform: translate(-50%, -100%);
+.app-tooltip-content {
+    padding: 6px 12px;
+    overflow-wrap: anywhere;
+}
+
+.app-tooltip-arrow {
+    fill: rgba(28, 28, 32, 0.92);
 }
 
 .portal-tooltip.is-multiline {
     display: block;
     white-space: pre-line;
     text-align: left;
-    padding: 7px 11px;
+    padding: 0;
+}
+
+.portal-tooltip.is-multiline .app-tooltip-content {
     max-height: min(240px, calc(100vh - 16px));
     overflow-x: hidden;
     overflow-y: auto;
@@ -600,11 +606,11 @@ svg {
     scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
 }
 
-.portal-tooltip.is-multiline::-webkit-scrollbar {
+.portal-tooltip.is-multiline .app-tooltip-content::-webkit-scrollbar {
     width: 4px;
 }
 
-.portal-tooltip.is-multiline::-webkit-scrollbar-thumb {
+.portal-tooltip.is-multiline .app-tooltip-content::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.22);
     border-radius: 999px;
 }

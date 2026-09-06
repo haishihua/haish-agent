@@ -22,7 +22,7 @@ export function createConversationActivationHandlers(ctx) {
     mergeContextUsage,
     mutateRuntime,
     pendingCreatedDetailRef,
-    restoreLatestTaskRuntime,
+    restoreTaskRuntimes,
     saveStoredContextUsage,
     setComposerAttachment,
     setContextUsage,
@@ -139,7 +139,10 @@ export function createConversationActivationHandlers(ctx) {
     });
   }
 
-  async function activateConversationDetail(detail, { restoreLatest = true, activationSeq = null } = {}) {
+  async function activateConversationDetail(
+    detail,
+    { restoreLatest = true, activationSeq = null, signal } = {},
+  ) {
     if (!detail?.conversation_id) return;
     // Race model: standalone activates bump the activation seq. Conversation
     // selection passes its existing seq so the immediate shell switch and the
@@ -197,32 +200,44 @@ export function createConversationActivationHandlers(ctx) {
       && !incomingRuntime.shellSeeded
       && (incomingRuntime.busy || incomingRuntime.activeRunId || incomingRuntime.fetchController)
     );
+    let taskIdsToRestore = [];
 
     if (incomingHasInflight) {
       syncDisplayedRuntime(incomingRuntime);
     } else {
+      const previousTasksById = incomingRuntime?.taskRuntimeState?.tasksById || {};
+      const nextTasks = restoredTasks.map((task) => {
+        const summaryTask = taskSummaryToRuntimeTask(
+          task,
+          mergeChatImageRefs(
+            taskImageAttachmentsRef.current.get(task.task_id) || [],
+            messageImageFallbacks.get(task.task_id) || [],
+          ),
+        );
+        const previousTask = previousTasksById[task.task_id];
+        if (
+          previousTask?.runtimeHydrated
+          && previousTask.updatedAt === summaryTask.updatedAt
+        ) {
+          return previousTask;
+        }
+        taskIdsToRestore.push(task.task_id);
+        return summaryTask;
+      });
+      const activeTask = nextTasks.find(isTaskActuallyActive) || null;
       const nextTaskRuntimeState = {
-        activeTaskId: null,
+        activeTaskId: activeTask?.taskId || null,
         pendingTask: null,
         taskOrder: restoredTaskIds,
         tasksById: Object.fromEntries(
-          restoredTasks.map((task) => [
-            task.task_id,
-            taskSummaryToRuntimeTask(
-              task,
-              mergeChatImageRefs(
-                taskImageAttachmentsRef.current.get(task.task_id) || [],
-                messageImageFallbacks.get(task.task_id) || [],
-              ),
-            ),
-          ])
+          nextTasks.map((task) => [task.taskId, task])
         ),
       };
       mutateRuntime(restoredConversationId, (rt) => {
         rt.taskRuntimeState = nextTaskRuntimeState;
-        rt.busy = false;
+        rt.busy = Boolean(activeTask);
         rt.activeRunId = null;
-        rt.activeTaskId = null;
+        rt.activeTaskId = activeTask?.taskId || null;
         rt.fetchController = null;
         rt.answerBuffer = '';
         rt.cancelledRunIds = new Set();
@@ -231,22 +246,20 @@ export function createConversationActivationHandlers(ctx) {
       });
     }
 
-    if (restoreLatest && latestTaskId) {
+    if (restoreLatest && taskIdsToRestore.length > 0) {
       const restoreOrder = [
         latestTaskId,
-        ...restoredTaskIds.slice().reverse().filter((taskId) => taskId !== latestTaskId),
-      ];
-      for (const taskId of restoreOrder) {
-        if (!isCurrentActivation()) return;
-        try {
-          await restoreLatestTaskRuntime(taskId, {
-            targetConversationId: restoredConversationId,
-            isCurrentActivation,
-          });
-        } catch (error) {
-          if (!isCurrentActivation()) return;
-          console.error('task runtime restore failed', taskId, error);
-        }
+        ...taskIdsToRestore.slice().reverse().filter((taskId) => taskId !== latestTaskId),
+      ].filter((taskId) => taskIdsToRestore.includes(taskId));
+      try {
+        await restoreTaskRuntimes(restoreOrder, {
+          targetConversationId: restoredConversationId,
+          isCurrentActivation,
+          signal,
+        });
+      } catch (error) {
+        if (!isCurrentActivation() || signal?.aborted) return;
+        console.error('task runtime batch restore failed', error);
       }
     }
   }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch } from '../../../shared/api/client.js';
+import { startPolling } from '../../../shared/lib/polling.js';
 
 const CONVERSATION_LIST_POLL_INTERVAL_MS = 3000;
 
@@ -14,12 +15,14 @@ export function useConversationListPolling({
   replaceWorkspaceModeFromProjects,
   setWorkspaceState,
 }) {
+  const initialRefreshDoneRef = React.useRef(false);
   React.useEffect(() => {
     if (!enabled) return undefined;
 
     let stopped = false;
     let inFlight = false;
     let controller = null;
+    let previousPayload = '';
 
     const refresh = async () => {
       if (stopped || inFlight) return;
@@ -41,12 +44,14 @@ export function useConversationListPolling({
             (conversation) => conversation.conversation_id === currentConversationId,
           )
         ));
-        setWorkspaceState((state) => replaceWorkspaceModeFromProjects(
+        const signature = JSON.stringify(projects);
+        if (signature !== previousPayload) setWorkspaceState((state) => replaceWorkspaceModeFromProjects(
           executionMode,
           projects,
           state,
           draftConversationRef.current,
         ));
+        previousPayload = signature;
         if (
           currentConversationId
           && activeConversationExecutionMode === executionMode
@@ -65,6 +70,7 @@ export function useConversationListPolling({
       } catch (error) {
         if (!stopped && error?.name !== 'AbortError') {
           console.warn('conversation list refresh failed', error);
+          throw error;
         }
       } finally {
         inFlight = false;
@@ -72,14 +78,15 @@ export function useConversationListPolling({
       }
     };
 
-    refresh();
-    const timer = window.setInterval(refresh, CONVERSATION_LIST_POLL_INTERVAL_MS);
-    window.addEventListener('focus', refresh);
+    const stopPolling = startPolling(refresh, {
+      interval: CONVERSATION_LIST_POLL_INTERVAL_MS,
+      immediate: !initialRefreshDoneRef.current,
+    });
+    initialRefreshDoneRef.current = true;
     return () => {
       stopped = true;
       controller?.abort();
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refresh);
+      stopPolling();
     };
   }, [
     activeConversationExecutionMode,

@@ -86,6 +86,18 @@ Useful scripts:
 
 After a web rebuild while Electron is open, reload the window (Cmd+R) to pick up changes.
 
+### UI dependency packaging
+
+Keep renderer-only libraries in `devDependencies`: Vite bundles them (including
+lazy Markdown plugins) into `app-web/dist`. Electron Builder copies production
+`dependencies` into the desktop app, so putting UI libraries there ships another
+copy of their dependency trees. Only unbundled main/preload runtime packages
+(currently `electron-updater`) belong in `dependencies`. Build with a full
+`npm install` / `npm ci`, not `--omit=dev`.
+
+Prefer individual Radix packages for the primitives actually used. Keep upstream
+licenses beside copied UI components; a license file is not an unused component.
+
 ### Backend lookup order
 
 In dev mode the backend repo is resolved in this order:

@@ -1,128 +1,9 @@
+import { ApprovalSurface } from '../../../shared/ui/agent-elements/ApprovalSurface.jsx';
 import React from 'react';
-import { subscribeApprovalEvents } from '../../approvals/model/approval-store.js';
+import { approvalStore } from '../../approvals/model/approval-store.js';
 import { selectPendingUserInput } from '../model/pending-user-input.js';
 import { apiFetch } from '../../../shared/api/client.js';
 import { API_BASE } from '../../../shared/api/base.js';
-const INITIAL_STATE_RETRY_MS = 2000;
-
-const inputStore = (() => {
-  let pending = [];
-  let unsubscribeEvents = null;
-  let initialPromise = null;
-  let initialController = null;
-  let initialRetryTimer = null;
-  const listeners = new Set();
-
-  function notify() {
-    const snapshot = pending.slice();
-    for (const listener of listeners) listener(snapshot);
-  }
-
-  function add(request) {
-    if (!request?.request_id || pending.some((item) => item.request_id === request.request_id)) return;
-    clearInitialRetry();
-    pending = [...pending, request];
-    notify();
-  }
-
-  function remove(requestId) {
-    const next = pending.filter((item) => item.request_id !== requestId);
-    if (next.length === pending.length) return false;
-    pending = next;
-    notify();
-    return true;
-  }
-
-  function closeStream() {
-    if (!unsubscribeEvents) return;
-    unsubscribeEvents();
-    unsubscribeEvents = null;
-  }
-
-  function clearInitialRetry() {
-    if (!initialRetryTimer) return;
-    clearTimeout(initialRetryTimer);
-    initialRetryTimer = null;
-  }
-
-  function scheduleInitialRetry() {
-    if (initialRetryTimer || listeners.size === 0) return;
-    initialRetryTimer = setTimeout(() => {
-      initialRetryTimer = null;
-      ensureInitialState();
-    }, INITIAL_STATE_RETRY_MS);
-  }
-
-  function resetWhenIdle() {
-    if (listeners.size > 0) return;
-    closeStream();
-    clearInitialRetry();
-    initialController?.abort();
-    initialController = null;
-    initialPromise = null;
-    pending = [];
-  }
-
-  function ensureInitialState() {
-    if (initialPromise) return initialPromise;
-    const controller = new AbortController();
-    initialController = controller;
-    initialPromise = apiFetch(`${API_BASE}/api/approvals/state`, {
-      cache: 'no-store',
-      signal: controller.signal,
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
-      })
-      .then((payload) => {
-        if (controller.signal.aborted || listeners.size === 0) return;
-        for (const item of Array.isArray(payload?.pending_user_inputs) ? payload.pending_user_inputs : []) {
-          add({ ...item, type: 'input_requested' });
-        }
-      })
-      .catch((error) => {
-        if (error?.name !== 'AbortError') {
-          console.warn('[ask_user] failed to load pending input state', error);
-        }
-      })
-      .finally(() => {
-        if (initialController !== controller) return;
-        initialController = null;
-        initialPromise = null;
-        // The tool event and the pending-input registration arrive on separate
-        // transports. Retry the snapshot while the form is mounted so either
-        // ordering still renders the request.
-        if (!controller.signal.aborted && pending.length === 0) scheduleInitialRetry();
-      });
-    return initialPromise;
-  }
-
-  function ensureStream() {
-    if (unsubscribeEvents) return;
-    unsubscribeEvents = subscribeApprovalEvents((payload) => {
-      if (payload.type === 'input_requested') add(payload);
-      if (payload.type === 'input_resolved') remove(payload.request_id);
-    });
-  }
-
-  return {
-    subscribe(listener) {
-      listeners.add(listener);
-      ensureStream();
-      ensureInitialState();
-      listener(pending.slice());
-      return () => {
-        listeners.delete(listener);
-        resetWhenIdle();
-      };
-    },
-    resolve(requestId) {
-      remove(requestId);
-    },
-  };
-})();
-
 async function submitAnswers(requestId, answers) {
   const response = await apiFetch(`${API_BASE}/api/user-inputs/${encodeURIComponent(requestId)}/resolve`, {
     method: 'POST',
@@ -142,7 +23,7 @@ function usePendingInputs(active) {
       setPending([]);
       return undefined;
     }
-    return inputStore.subscribe(setPending);
+    return approvalStore.subscribeInputs(setPending);
   }, [active]);
   return pending;
 }
@@ -163,11 +44,13 @@ export function AskUserInlineForm({
     toolInput,
   }), [active, conversationId, pending, taskId, toolCallId, toolInput]);
   const [drafts, setDrafts] = React.useState({});
+  const [step, setStep] = React.useState(0);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState('');
 
   React.useEffect(() => {
     setDrafts({});
+    setStep(0);
     setSubmitting(false);
     setError('');
   }, [request?.request_id]);
@@ -175,6 +58,7 @@ export function AskUserInlineForm({
   if (!request) return null;
 
   const questions = Array.isArray(request.questions) ? request.questions : [];
+  const activeStep = Math.min(step, Math.max(0, questions.length - 1));
   const toggleSelection = (question, label) => {
     setDrafts((previous) => {
       const current = previous[question.id];
@@ -218,7 +102,7 @@ export function AskUserInlineForm({
     setError('');
     try {
       await submitAnswers(request.request_id, answers);
-      inputStore.resolve(request.request_id);
+      approvalStore.removeInput(request.request_id);
     } catch (submitError) {
       setError(String(submitError?.message || submitError));
       setSubmitting(false);
@@ -226,7 +110,8 @@ export function AskUserInlineForm({
   };
 
   return (
-    <div className="haish-approval-card haish-user-input-card" data-busy={submitting ? '1' : '0'}>
+    <ApprovalSurface className="haish-approval-card haish-user-input-card" data-busy={submitting ? '1' : '0'}>
+      <div className="haish-approval-header"><span className="haish-approval-title">Questions</span></div>
       <div className="haish-approval-body">
         {request.context ? <div className="haish-approval-intent">{request.context}</div> : null}
         {error ? <div className="haish-approval-error">{error}</div> : null}
@@ -236,7 +121,7 @@ export function AskUserInlineForm({
             const draft = drafts[question.id];
             const selected = draft?.kind === 'selection' && Array.isArray(draft.values) ? draft.values : [];
             return (
-              <fieldset className="haish-user-input-question" key={question.id || index} disabled={submitting}>
+                <fieldset className="haish-user-input-question" key={question.id || index} hidden={index !== activeStep} disabled={submitting}>
                 <legend>
                   {question.header ? <span className="haish-user-input-header">{question.header}</span> : null}
                   <span className="haish-user-input-prompt">{question.question}</span>
@@ -270,6 +155,7 @@ export function AskUserInlineForm({
                   value={draft?.kind === 'freeform' ? draft.text : ''}
                   onChange={(event) => setFreeform(question.id, event.target.value)}
                   placeholder={options.length ? 'Or enter a custom answer…' : 'Enter your answer…'}
+                  aria-label={`Custom answer: ${question.question}`}
                   rows={2}
                 />
               </fieldset>
@@ -277,6 +163,13 @@ export function AskUserInlineForm({
           })}
         </div>
         <div className="haish-approval-actions">
+          {questions.length > 1 ? (
+            <div className="aicss-step-nav">
+              <button type="button" className="aicss-step-arrow" aria-label="Previous question" disabled={submitting || activeStep === 0} onClick={() => setStep(activeStep - 1)}>‹</button>
+              <span className="aicss-step-count" role="status">{activeStep + 1} / {questions.length}</span>
+              <button type="button" className="aicss-step-arrow" aria-label="Next question" disabled={submitting || activeStep === questions.length - 1} onClick={() => setStep(activeStep + 1)}>›</button>
+            </div>
+          ) : null}
           {submitting ? (
             <div className="haish-approval-progress" role="status" aria-live="polite">
               <span className="haish-approval-spinner" aria-hidden="true" />
@@ -294,6 +187,6 @@ export function AskUserInlineForm({
           )}
         </div>
       </div>
-    </div>
+    </ApprovalSurface>
   );
 }

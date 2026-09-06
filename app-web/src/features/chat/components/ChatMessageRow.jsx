@@ -1,4 +1,5 @@
 import React from 'react';
+import { UserRound } from 'lucide-react';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { stripInjectedSkillInstruction } from '../model/chat-text.js';
@@ -13,7 +14,6 @@ import {
   ChatTimelineCollapsed,
   ChatTimelineElapsedPill,
 } from './ChatTimelineNodes.jsx';
-import { AssistantBorderBeam } from '../../../shared/ui/MotionEffects.jsx';
 
 const IMAGE_COPY_MAX_BYTES = 10 * 1024 * 1024;
 const IMAGE_COPY_MAX_PIXELS = 16 * 1024 * 1024;
@@ -93,9 +93,7 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
     ? message.images.filter((img) => img && (img.previewUrl || img.path))
     : [];
 
-  return (
-    <div className={`chat-message-row ${message.role}`}>
-      {messageImages.length > 0 && (
+  const imageAttachments = messageImages.length > 0 ? (
         <div className="chat-message-images" aria-label="Attached images">
           {messageImages.map((img, idx) => (
             <div key={img.image_id || `${idx}`} className="chat-message-image">
@@ -117,17 +115,17 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
             </div>
           ))}
         </div>
-      )}
-      <AssistantBorderBeam enabled={isAgent} active={message.streaming}>
-        <div className={`chat-bubble ${message.status || ''}`}>
+      ) : null;
+
+  return (
+    <div className={`chat-message-row ${message.role}${message.streaming ? ' is-streaming' : ''}`}>
+        <div className={`chat-bubble message-shell ${isAgent ? 'agent-response' : ''} ${message.status || ''}`}>
           {!isUser ? (
             <div className="chat-bubble-meta">
               <span className="chat-bubble-meta-main">
-                <span className="chat-bubble-avatar ico-assistant-avatar" aria-hidden="true" />
+                <span className="chat-speaker-avatar" aria-hidden="true"><span className="ico-assistant-avatar" /></span>
                 <span>Assistant</span>
               </span>
-            </div>
-          ) : null}
           {showTimelineToggle ? (
             <ChatTimelineCollapsed
               onExpand={() => setTraceExpanded((value) => !value)}
@@ -137,6 +135,16 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
           ) : null}
           {/* 首字未到（排队/建连/模型首字等待期）不显示计时器 */}
           {traceForcedOpen && firstTokenMs ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
+            </div>
+          ) : <div className="chat-bubble-meta user-speaker-meta">
+            {imageAttachments}
+            <span className="chat-bubble-meta-main">
+              <span>You</span>
+              <span className="chat-speaker-avatar" aria-hidden="true"><UserRound size={18} strokeWidth={1.75} /></span>
+            </span>
+          </div>}
+          <div className="message-speech-body">
+          {!isUser ? imageAttachments : null}
           {showTimelineExpanded ? (
             <ChatAgentTimeline
               items={timeline}
@@ -156,8 +164,8 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
                 : <span className="chat-stream-text">{visibleText}</span>}
             </div>
           ) : null}
+          </div>
         </div>
-      </AssistantBorderBeam>
       {(messageClock || copyText || onRetry) ? (
         <div className="chat-message-actions">
           {messageClock ? <span className="chat-bubble-clock">{messageClock}</span> : null}

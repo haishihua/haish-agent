@@ -1,4 +1,5 @@
 import { eventDeltaText, stripInjectedSkillInstruction } from './chat-text.js';
+import { streamEventUpdate } from './stream-events.js';
 import { normalizeToolName } from './tool-names.js';
 import { normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
 import { skillDisplayName } from '../../tasks/model/runtime-events.js';
@@ -72,6 +73,11 @@ export function llmRetrySummary(event) {
   const reason = String(event?.reason || 'transient_error');
   const attempt = Math.max(Number(event?.attempt || 1), 1);
   const maxAttempts = Math.max(Number(event?.maxAttempts || 1), 1);
+  if (reason === 'output_truncated') {
+    if (state === 'recovered') return 'Response continuation completed';
+    if (state === 'exhausted') return 'Response incomplete · partial output preserved';
+    return 'Output limit reached · continuing response';
+  }
   const copy = {
     connection_error: ['Connection interrupted', 'Connection restored', 'Connection failed'],
     tls_error: ['Connection interrupted', 'Connection restored', 'Connection failed'],
@@ -429,12 +435,56 @@ export function toolProgressSummary(event) {
 }
 
 const CHAT_TIMELINE_CACHE = new WeakMap();
+const EVENT_TIMELINE_CACHE = new WeakMap();
+
+function incrementalTextTimeline(task, status) {
+  const events = task?.eventLog;
+  const update = streamEventUpdate(events);
+  const previousEvents = update?.previous.deref();
+  const cached = previousEvents && EVENT_TIMELINE_CACHE.get(previousEvents);
+  if (!cached || cached.status !== status || !['running', 'queued'].includes(status)
+    || cached.toolCalls !== task.toolCalls || cached.conversationId !== (task.conversationId || task.conversation_id || '')
+    || events.length !== previousEvents.length || update.prefixLength !== events.length - 1) return null;
+  const event = events.at(-1);
+  const oldEvent = previousEvents.at(-1);
+  if (!['llm_answer_delta', 'llm_thinking_delta'].includes(event?.type) || oldEvent.type !== event.type) return null;
+  const tail = cached.timeline.items.at(-1);
+  const kind = event.type === 'llm_answer_delta' ? 'text' : 'thinking';
+  if (tail?.kind !== kind || !tail.streaming) return null;
+  const oldText = eventDeltaText(oldEvent);
+  const nextText = eventDeltaText(event);
+  let text;
+  if (kind === 'thinking') {
+    if (!oldText || !tail.text.endsWith(oldText)) return null;
+    text = tail.text.slice(0, -oldText.length) + nextText;
+  } else if (tail.text === oldText.trim()) {
+    text = nextText.trim();
+  } else {
+    const suffix = oldText.trimEnd();
+    if (!suffix || !tail.text.endsWith(suffix)) return null;
+    text = (tail.text.slice(0, -suffix.length) + nextText).trim();
+  }
+  return { ...cached.timeline, items: [...cached.timeline.items.slice(0, -1), { ...tail, text }] };
+}
+
+function cacheTimeline(task, status, timeline) {
+  if (task && typeof task === 'object') {
+    CHAT_TIMELINE_CACHE.set(task, { status, timeline });
+    if (Array.isArray(task.eventLog)) EVENT_TIMELINE_CACHE.set(task.eventLog, {
+      status, timeline, toolCalls: task.toolCalls,
+      conversationId: task.conversationId || task.conversation_id || '',
+    });
+  }
+  return timeline;
+}
 
 export function buildChatTimeline(task, taskStatus) {
   const conversationId = task?.conversationId || task?.conversation_id || '';
   const finalStatus = normalizeTaskStatus(taskStatus || task?.status);
   const cached = task && typeof task === 'object' ? CHAT_TIMELINE_CACHE.get(task) : null;
   if (cached?.status === finalStatus) return cached.timeline;
+  const incremental = incrementalTextTimeline(task, finalStatus);
+  if (incremental) return cacheTimeline(task, finalStatus, incremental);
 
   const events = Array.isArray(task?.eventLog) ? task.eventLog : [];
   const toolCalls = Array.isArray(task?.toolCalls) ? task.toolCalls : [];
@@ -1046,10 +1096,7 @@ export function buildChatTimeline(task, taskStatus) {
   // (text + thinking)，不关心 read_file / chrome_devtools_* 反复的细节；想看
   // 单条工具调用时点开 chip 还能看到原来的 ChatTimelineToolNode 列表。
   const timeline = { items: groupConsecutiveTools(items), latestTodos };
-  if (task && typeof task === 'object') {
-    CHAT_TIMELINE_CACHE.set(task, { status: finalStatus, timeline });
-  }
-  return timeline;
+  return cacheTimeline(task, finalStatus, timeline);
 }
 
 export function sanitizeTodoItems(items) {

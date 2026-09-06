@@ -87,6 +87,50 @@ test('task restore rejects a task owned by another conversation', async () => {
   assert.deepEqual(harness.updates, []);
 });
 
+test('conversation restore fetches all task runtimes in one request', async () => {
+  let request = null;
+  let runtimeState = {
+    activeTaskId: null,
+    pendingTask: null,
+    taskOrder: ['task-1', 'task-2'],
+    tasksById: {},
+  };
+  const handlers = createDraftConversationHandlers({
+    API_BASE: 'http://runtime',
+    apiFetch: async (url, options) => {
+      request = { url, options };
+      return {
+        ok: true,
+        json: async () => [
+          { task_id: 'task-2', conversation_id: 'conversation-1', status: 'done', events: [] },
+          { task_id: 'task-1', conversation_id: 'conversation-1', status: 'done', events: [] },
+        ],
+      };
+    },
+    buildApiHeaders: () => ({ 'content-type': 'application/json' }),
+    isTaskActuallyActive: () => false,
+    normalizeRuntimeEvents: (events) => events || [],
+    taskDetailToRuntimeTask: (task) => ({ taskId: task.task_id, status: task.status }),
+    taskRuntimeEventCacheRef: { current: new Map() },
+    taskRuntimeFetchesRef: { current: new Map() },
+    updateTaskRuntimeState: (updater) => { runtimeState = updater(runtimeState); },
+  });
+
+  await handlers.restoreTaskRuntimes(['task-2', 'task-1'], {
+    targetConversationId: 'conversation-1',
+    isCurrentActivation: () => true,
+  });
+
+  assert.equal(request.url, 'http://runtime/api/conversations/conversation-1/tasks/runtime');
+  assert.deepEqual(JSON.parse(request.options.body), {
+    tasks: [
+      { task_id: 'task-2', after_event_id: null },
+      { task_id: 'task-1', after_event_id: null },
+    ],
+  });
+  assert.deepEqual(Object.keys(runtimeState.tasksById).sort(), ['task-1', 'task-2']);
+});
+
 test('draft materialization rejects a server conversation from another project', async () => {
   const handlers = createDraftConversationHandlers({
     conversationId: 'draft-1',

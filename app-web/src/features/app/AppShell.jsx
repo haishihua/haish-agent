@@ -1,5 +1,9 @@
 import React from 'react';
+import { BoundedCache } from '../../shared/lib/bounded-cache.js';
+import { evictInactiveRuntimes, releaseWorkspaceRuntimeDetails } from '../conversations/model/runtime-cache.js';
+import { approvalStore } from '../approvals/model/approval-store.js';
 import { ResultDialog } from '../../shared/ui/ResultDialog.jsx';
+import { MetalFxRuntimeKeeper } from '../../shared/ui/MotionEffects.jsx';
 import {
   eventDeltaText,
   stripChatImageAugmentation,
@@ -10,7 +14,6 @@ import { ConversationsPanel } from '../conversations/components/ConversationsPan
 import { ChatPanel } from '../chat/components/ChatPanel.jsx';
 import { TaskDelegation } from '../tasks/components/TaskDelegation.jsx';
 import { BottomNav, TabPlaceholder } from './components/Shell.jsx';
-import { SettingsPage } from '../settings/components/SettingsPage.jsx';
 import {
   applyToolsSettingsPayloadToRecords,
   applyMemorySettingsPayloadToRecords,
@@ -137,7 +140,11 @@ import {
   toDisplayText, STREAM_EVENT_BATCH_MS, STREAM_IMMEDIATE_EVENT_TYPES,
   CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
 } from '../tasks/model/runtime-events.js';
-import { WorkflowRuntimePage } from '../workflow/components/WorkflowRuntimePage.jsx';
+const SettingsPage = React.lazy(() => import('../settings/components/SettingsPage.jsx').then((module) => ({ default: module.SettingsPage })));
+const LazyWorkflowRuntimePage = React.lazy(() => import('../workflow/components/WorkflowRuntimePage.jsx').then((module) => ({ default: module.WorkflowRuntimePage })));
+function WorkflowRuntimePage(props) {
+  return <React.Suspense fallback={<div role="status">Loading workflow…</div>}><LazyWorkflowRuntimePage {...props} /></React.Suspense>;
+}
 
 import { createConversationHandlers } from '../conversations/hooks/createConversationHandlers.js';
 import { createComposerHandlers } from '../chat/hooks/createComposerHandlers.js';
@@ -175,6 +182,10 @@ const workspaceStateWithConversationDetail = (state, detail, activate = true) =>
 const TASK_COMPLETION_NOTICES_STORAGE_KEY = 'haish.task-completion-notices.v1';
 
 export function AppShell() {
+  React.useEffect(() => {
+    approvalStore.start();
+    return () => approvalStore.stop();
+  }, []);
   const [taskRuntimeState, setTaskRuntimeState] = useState(() => createEmptyTaskRuntimeState());
   const [workspaceState, setWorkspaceState] = useState(() => createEmptyWorkspaceState());
   // 打开应用后先做一次性加载（服务端项目/会话同步）。加载完成前侧边栏只展示
@@ -192,7 +203,6 @@ export function AppShell() {
   ));
   const viewModeRef = useRef('chat');
   const botRunConfigRef = useRef(null);
-  const viewModeTogglePromiseRef = useRef(null);
   const conversationReorderChainsRef = useRef(new Map());
   const conversationReorderVersionsRef = useRef(new Map());
   const projectReorderChainRef = useRef(Promise.resolve());
@@ -242,8 +252,8 @@ export function AppShell() {
   const chatMessageRowsCacheRef = useRef(new WeakMap());
   const chatFinalizedTaskIdsRef = useRef(new Set());
   const userCancelledTaskIdsRef = useRef(new Set());
-  const taskImageAttachmentsRef = useRef(new Map());
-  const taskRuntimeEventCacheRef = useRef(new Map());
+  const taskImageAttachmentsRef = useRef(new BoundedCache(64));
+  const taskRuntimeEventCacheRef = useRef(new BoundedCache(32));
   const taskRuntimeFetchesRef = useRef(new Map());
   const completionReportedTaskIdsRef = useRef(new Set());
   const runtimeApiRef = useRef({});
@@ -270,6 +280,15 @@ export function AppShell() {
   // Per-conversation runtime store. This is the single source of truth for
   // live task state; React state only projects the currently displayed entry.
   const runtimesRef = useRef(new Map());
+  useEffect(() => {
+    const prune = () => {
+      const evicted = evictInactiveRuntimes(runtimesRef.current, conversationId);
+      if (evicted.size) setWorkspaceState((state) => releaseWorkspaceRuntimeDetails(state, evicted));
+    };
+    prune();
+    const timer = window.setInterval(prune, 10000);
+    return () => window.clearInterval(timer);
+  }, [conversationId]);
   // While an SSE flush is happening this holds the conversation id that owns
   // the in-flight stream. Setters consult it before falling back to
   // `conversationIdRef.current`, so events from a now-backgrounded conversation
@@ -499,7 +518,14 @@ export function AppShell() {
   useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
   useEffect(() => { conversationIdRef.current = conversationId; }, [conversationId]);
   useEffect(() => {
-    if (ownerId) saveWorkspaceState(ownerId, workspaceState);
+    if (!ownerId) return undefined;
+    const save = () => saveWorkspaceState(ownerId, workspaceState);
+    const timer = window.setTimeout(save, 500);
+    window.addEventListener('pagehide', save);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('pagehide', save);
+    };
   }, [ownerId, workspaceState]);
 
   function persistStoredConversationId(nextConversationId) {
@@ -570,6 +596,8 @@ export function AppShell() {
     ensureServerConversationForActiveDraft,
     materializeDraftConversationForSend,
     fetchTaskRuntimeDetail,
+    fetchTaskRuntimeBatch,
+    restoreTaskRuntimes,
     restoreLatestTaskRuntime,
     cancelActiveTask,
     queueTaskInput,
@@ -724,7 +752,7 @@ export function AppShell() {
     mergeContextUsage,
     mutateRuntime,
     pendingCreatedDetailRef,
-    restoreLatestTaskRuntime,
+    restoreTaskRuntimes,
     saveStoredContextUsage,
     setComposerAttachment,
     setContextUsage,
@@ -977,6 +1005,7 @@ export function AppShell() {
     fetchConversationDetail,
     findConversationById,
     findProjectByConversationId,
+    getRuntime,
     invalidateConversationActivation,
     isConversationActivationCurrent,
     modeLocationRef,
@@ -990,8 +1019,8 @@ export function AppShell() {
     showToast,
     startDeploy: (...args) => deployApiRef.current.startDeploy?.(...args),
     stopConversationRuntimeBeforeDelete,
+    taskUpdatedTimestamp,
     viewModeRef,
-    viewModeTogglePromiseRef,
     workspaceState,
     workspaceStateWithConversationDetail,
   });
@@ -1228,6 +1257,7 @@ export function AppShell() {
     conversationIdRef,
     currentConversationActive,
     fetchTaskRuntimeDetail,
+    fetchTaskRuntimeBatch,
     getRuntime,
     notifyTaskComplete,
     panelWorkspaceState,
@@ -1509,14 +1539,22 @@ export function AppShell() {
 
   return (
     <div className="app-shell">
+      <MetalFxRuntimeKeeper />
       <TopBar
         viewMode={viewMode}
-        onToggleViewMode={() => { handleToggleViewMode().catch((error) => showToast('error', String(error?.message || error))); }}
+        onToggleViewMode={() => {
+          try {
+            handleToggleViewMode();
+          } catch (error) {
+            showToast('error', String(error?.message || error));
+          }
+        }}
         settingsActive={settingsMode}
         onToggleSettings={handleToggleSettings}
       />
       <div className={`app-body ${settingsMode ? 'settings-mode' : viewMode === 'chat' ? 'chat-mode' : 'workflow-mode'} ${!settingsMode && conversationPanelCollapsed ? 'conversations-collapsed' : ''}`}>
         {settingsMode ? (
+          <React.Suspense fallback={<div role="status">Loading settings…</div>}>
           <SettingsPage
             activeSection={settingsSection}
             onSectionChange={setSettingsSection}
@@ -1551,6 +1589,7 @@ export function AppShell() {
             onUninstallSkill={handleUninstallSkill}
             skillActionBusy={skillActionBusy}
           />
+          </React.Suspense>
         ) : activeTab === 'dashboard' ? (
           <>
             <ConversationsPanel
@@ -1572,14 +1611,13 @@ export function AppShell() {
                 const conversationIds = (project?.conversations || [])
                   .filter((item) => item.executionMode === executionMode)
                   .map((item) => item.id);
-                handleRemoveProject(projectId)
+                return handleRemoveProject(projectId)
                   .then(() => {
                     setTaskCompletionNotices((current) => conversationIds.reduce(
                       (next, targetConversationId) => clearConversationCompletionNotices(next, targetConversationId),
                       current,
                     ));
-                  })
-                  .catch((error) => { console.error('project remove failed', error); showToast('error', String(error?.message || error)); });
+                  });
               }}
               onAddConversation={(projectId) => { handleAddConversation(projectId).catch((error) => { console.error('conversation add failed', error); showToast('error', String(error?.message || error)); }); }}
               onSelectConversation={(projectId, nextConversationId) => { handleSelectConversation(projectId, nextConversationId).catch((error) => { console.error('conversation select failed', error); showToast('error', String(error?.message || error)); }); }}
@@ -1590,12 +1628,11 @@ export function AppShell() {
               onToggleConversationTasks={handleToggleConversationTasks}
               onToggleProjectConversations={handleToggleProjectConversations}
               onDeleteConversation={(projectId, nextConversationId) => {
-                handleDeleteConversation(projectId, nextConversationId)
-                  .then(() => markConversationTaskCompletionsViewed(nextConversationId))
-                  .catch((error) => { console.error('conversation delete failed', error); showToast('error', String(error?.message || error)); });
+                return handleDeleteConversation(projectId, nextConversationId)
+                  .then(() => markConversationTaskCompletionsViewed(nextConversationId));
               }}
-              onDeleteTask={(projectId, targetConversationId, task) => { handleDeleteWorkflowTask(projectId, targetConversationId, task).catch((error) => { console.error('task delete failed', error); showToast('error', String(error?.message || error)); }); }}
-              onRenameConversation={(projectId, nextConversationId, title) => { handleRenameConversation(projectId, nextConversationId, title).catch((error) => { console.error('conversation rename failed', error); showToast('error', String(error?.message || error)); }); }}
+              onDeleteTask={handleDeleteWorkflowTask}
+              onRenameConversation={handleRenameConversation}
               onPinConversation={handlePinConversation}
               onPinProject={handlePinProject}
               onReorderConversations={handleReorderConversations}

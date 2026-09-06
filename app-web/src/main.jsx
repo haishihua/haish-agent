@@ -5,6 +5,5 @@
 
 import 'lxgw-wenkai-screen-webfont/lxgwwenkaiscreen.css';
 import '../styles.css';
-import '@xyflow/react/dist/style.css';
 
 import './app.jsx';

@@ -1,4 +1,5 @@
 import React from 'react';
+import { approvalStore } from '../../approvals/model/approval-store.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS } from '../model/run-catalog.js';
 
@@ -24,24 +25,10 @@ export function ApprovalModePicker({ disabled = false, readOnly = false }) {
   const rootRef = React.useRef(null);
   const API = React.useMemo(() => resolveApprovalApiBase(), []);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const resp = await fetch(`${API}/api/approvals/state`, { cache: 'no-store' });
-        if (!resp.ok) throw new Error('state fetch failed');
-        const data = await resp.json();
-        if (!cancelled && data && typeof data.mode === 'string') {
-          setMode(data.mode);
-        }
-      } catch (_) {
-        // backend may not be ready; fall back to smart
-      } finally {
-        if (!cancelled) setLoaded(true);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [API]);
+  React.useEffect(() => approvalStore.subscribeMode((value) => {
+    setLoaded(value !== null);
+    if (value !== null) setMode(value);
+  }), []);
 
   React.useEffect(() => {
     if (!open) return undefined;
@@ -62,7 +49,7 @@ export function ApprovalModePicker({ disabled = false, readOnly = false }) {
   }, [open]);
 
   async function changeMode(next) {
-    if (readOnly || disabled || next === mode || busy) { setOpen(false); return; }
+    if (!loaded || readOnly || disabled || next === mode || busy) { setOpen(false); return; }
     const prev = mode;
     setMode(next);
     setOpen(false);
@@ -93,7 +80,7 @@ export function ApprovalModePicker({ disabled = false, readOnly = false }) {
           type="button"
           className="approval-mode-trigger"
           onClick={() => { if (!disabled) setOpen((o) => !o); }}
-          disabled={disabled}
+          disabled={disabled || !loaded}
           aria-disabled={disabled ? 'true' : undefined}
           aria-readonly={readOnly ? 'true' : undefined}
           aria-haspopup="menu"

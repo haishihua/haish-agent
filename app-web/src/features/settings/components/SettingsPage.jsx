@@ -311,13 +311,13 @@ export function SettingsPage({
     const sectionItems = section === activeSection ? displayItems : configItemsForSection(section, llmDraft, records, activeSubtab, agentSettings, workflowSettings);
     if (section === 'agent') {
       const deleted = await onDeleteCustomAgent?.(id);
-      if (deleted === false) return;
+      if (deleted === false) return false;
     } else if (section === 'workflow') {
       const deleted = await onDeleteCustomWorkflow?.(id);
-      if (deleted === false) return;
+      if (deleted === false) return false;
     } else if (section === 'llm') {
       const deleted = await onDeleteLlmProvider?.(activeSubtab, id);
-      if (deleted === false) return;
+      if (deleted === false) return false;
     } else {
       onRecordsChange((prev) => ({
         ...prev,
@@ -346,7 +346,7 @@ export function SettingsPage({
       message: `"${label}" will be permanently removed. This cannot be undone.`,
       confirmLabel: 'Delete',
       danger: true,
-      onConfirm: () => { performDelete(section, id); },
+      onConfirm: () => performDelete(section, id),
     });
   };
   const saveAndClose = async () => {
@@ -811,8 +811,6 @@ export function SettingsPage({
       <ConversationDialog
         dialog={deleteConfirm}
         onCancel={() => setDeleteConfirm(null)}
-        className="settings-confirm-dialog"
-        backdropClassName="settings-confirm-backdrop"
       />
     </div>
   );
