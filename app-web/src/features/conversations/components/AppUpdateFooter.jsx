@@ -1,5 +1,7 @@
 import React from 'react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
+import { JobProgress } from '../../../shared/ui/agent-elements/JobProgress.jsx';
+import { updateJobProgress } from '../model/update-progress.js';
 
 function getDesktopUpdateApi() {
   return typeof window !== 'undefined' ? window.haish : null;
@@ -51,7 +53,7 @@ function updateTooltipText(state) {
     case 'checking':
       return 'Checking for updates';
     case 'downloading':
-      return 'Downloading and installing update';
+      return 'Downloading update';
     default:
       return state.message || 'Check for updates';
   }
@@ -164,6 +166,11 @@ export function AppUpdateFooter({ onToast }) {
     updateState?.status === 'checking' ||
     updateState?.status === 'downloading' ||
     updateState?.status === 'downloaded';
+
+  const jobProgress = updateJobProgress(updateState);
+  if (jobProgress) {
+    return <div className="app-update-footer"><JobProgress {...jobProgress} /></div>;
+  }
 
   return (
     <div className="app-update-footer">

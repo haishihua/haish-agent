@@ -7,6 +7,7 @@ import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ModelPicker,
   ApprovalModePicker } from '../../chat/components/ModelPickers.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
+import { firstPastedDocument } from '../../chat/model/document-paste.js';
 import {
   handlePathPaste,
 } from '../../chat/model/path-input.js';
@@ -59,7 +60,6 @@ export function TaskDelegation({
     defaultAgentId: resolvedDefaultAgentId,
   });
   const taRef = React.useRef(null);
-  const fileRef = React.useRef(null);
   const suppressSubmitUntilRef = React.useRef(0);
   const usedTokens = Math.max(0, Math.round(Number(contextUsage?.usedTokens) || 0));
   const totalTokens = Math.max(0, Math.round(Number(contextUsage?.totalTokens) || 0));
@@ -156,12 +156,16 @@ export function TaskDelegation({
     onDeploy(v.trim(), attachment, modelId, reasoningEffort, [], effectiveAgentId, providerRequest);
     setV('');
     onClearFile?.();
-    if (fileRef.current) fileRef.current.value = '';
   }
 
-  function pickFile() {
-    if (!canUploadDocuments || disabled || submitPending) return;
-    fileRef.current?.click();
+  function handlePaste(event) {
+    const document = canUploadDocuments && firstPastedDocument(event.clipboardData);
+    if (document) {
+      event.preventDefault();
+      if (!disabled && !submitPending && !running && !uploading) onSelectFile?.(document, effectiveAgentId);
+      return;
+    }
+    handlePathPaste(event, v, setV, workspacePath, homePath, 5000);
   }
 
   React.useEffect(() => {
@@ -171,7 +175,6 @@ export function TaskDelegation({
   function clearFile(e) {
     e.stopPropagation();
     onClearFile?.();
-    if (fileRef.current) fileRef.current.value = '';
   }
 
   return (
@@ -194,7 +197,7 @@ export function TaskDelegation({
           rows={1}
           value={v}
           onChange={e => setV(e.target.value)}
-          onPaste={e => handlePathPaste(e, v, setV, workspacePath, homePath, 5000)}
+          onPaste={handlePaste}
           onKeyDown={e => {
             if (e.key === 'Escape' && running && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -211,31 +214,6 @@ export function TaskDelegation({
       </div>
       <div className="td-actions">
         <div className="td-tools">
-          {canUploadDocuments ? (
-            <>
-              <PortalTooltip text="Attach File" position="above">
-                <button
-                  type="button"
-                  className="td-btn td-btn-attach icon-only"
-                  onClick={pickFile}
-                  disabled={disabled || submitPending}
-                  aria-label="Attach File"
-                >
-                  <span className="ico ico-attach" aria-hidden="true" />
-                </button>
-              </PortalTooltip>
-              <input
-                ref={fileRef}
-                type="file"
-                className="td-file-input"
-                onChange={e => {
-                  const nextFile = e.target.files?.[0] || null;
-                  if (!nextFile) return;
-                  onSelectFile?.(nextFile, effectiveAgentId);
-                }}
-              />
-            </>
-          ) : null}
           <ApprovalModePicker readOnly={runConfigReadOnly} disabled={runConfigDisabled} />
         </div>
         <div className="td-submit-cluster">

@@ -52,6 +52,7 @@ export function createDeployHandlers(ctx) {
     updateConversationTitle,
     updateTaskById,
     updateTaskRuntimeState,
+    uploadChatImage,
     userCancelledTaskIdsRef,
     viewMode,
     viewModeRef,
@@ -224,9 +225,10 @@ export function createDeployHandlers(ctx) {
   function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, selectionId, providerRequest, displayText = text) {
     const sanitizedImageAttachments = Array.isArray(imageAttachments)
       ? imageAttachments
-          .filter((ref) => ref && ref.image_id && ref.path)
+          .filter((ref) => ref && (ref.file || (ref.image_id && ref.path)))
           .map((ref) => ({
             image_id: ref.image_id,
+            file: ref.file,
             path: ref.path,
             mime: ref.mime || null,
             previewUrl: ref.previewUrl || null,
@@ -378,7 +380,41 @@ export function createDeployHandlers(ctx) {
       ...state,
       pendingTask,
     }), deployConvId);
-    executeQuest(pendingTask, deployConvId).catch((error) => {
+    const launch = async () => {
+      if (request.imageAttachments.some((image) => image.file)) {
+        const controller = new AbortController();
+        setRuntimeBusy(true, deployConvId);
+        setRuntimeFetchController(controller, deployConvId);
+        try {
+          const uploaded = [];
+          for (const image of request.imageAttachments) {
+            if (controller.signal.aborted) return;
+            const result = image.file ? await uploadChatImage(image.file, controller.signal, deployConvId) : image;
+            if (!result?.image_id || !result?.path) throw new Error('Image upload response is incomplete.');
+            uploaded.push({ image_id: result.image_id, path: result.path, mime: result.mime, previewUrl: image.previewUrl });
+          }
+          if (controller.signal.aborted) return;
+          request.imageAttachments = uploaded;
+          pendingTask.imageAttachments = uploaded;
+          updateTaskRuntimeState((state) => ({ ...state, pendingTask: { ...pendingTask } }), deployConvId);
+        } catch (error) {
+          if (!controller.signal.aborted) {
+            request.runtimeConversationId = deployConvId;
+            failPendingDeploy(request, error);
+            showToast('error', String(error?.message || error));
+          }
+          return;
+        } finally {
+          const runtime = getRuntime(deployConvId);
+          if (runtime?.fetchController === controller) {
+            setRuntimeFetchController(null, deployConvId);
+            setRuntimeBusy(false, deployConvId);
+          }
+        }
+      }
+      return executeQuest(pendingTask, deployConvId);
+    };
+    launch().catch((error) => {
       // The failure belongs to the conversation that owns this pendingTask,
       // not whichever conversation is currently shown.
       const deployRuntime = getRuntime(deployConvId);
@@ -461,7 +497,16 @@ export function createDeployHandlers(ctx) {
         showToast('error', 'Runtime instructions do not support document attachments.');
         return false;
       }
-      return queueTaskInput(runningTaskId, text, request.imageAttachments, request.displayText)
+      return Promise.all(request.imageAttachments.map(async (image) => {
+        if (!image.file) return image;
+        const uploaded = await uploadChatImage(image.file, undefined, activeId);
+        if (!uploaded?.image_id || !uploaded?.path) throw new Error('Image upload response is incomplete.');
+        return { image_id: uploaded.image_id, path: uploaded.path, mime: uploaded.mime, previewUrl: image.previewUrl };
+      }))
+        .then((images) => {
+          request.imageAttachments = images;
+          return queueTaskInput(runningTaskId, text, request.imageAttachments, request.displayText);
+        })
         .then(() => true)
         .catch((error) => {
           showToast('error', String(error?.message || error));

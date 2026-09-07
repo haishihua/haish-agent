@@ -196,6 +196,7 @@ export function AppShell() {
   const [viewMode, setViewMode] = useState('chat');
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
   const [viewedWorkflowTask, setViewedWorkflowTask] = useState(null);
+  const composerImageDraftsRef = useRef(new Map());
   const [conversationPanelCollapsed, setConversationPanelCollapsed] = useState(false);
   const [taskCompletionNotices, setTaskCompletionNotices] = useState({});
   const [taskCompletionNoticesOwner, setTaskCompletionNoticesOwner] = useState('');
@@ -1079,6 +1080,7 @@ export function AppShell() {
     startDeploy,
     handleDeploy,
   } = createDeployHandlers({
+    uploadChatImage,
     APP_DEFAULT_AGENT_OPTIONS,
     applyTerminalTaskState,
     busy,
@@ -1666,7 +1668,7 @@ export function AppShell() {
                     onStop={handleStop}
                     onSelectFile={(file, selectedAgentId) => { handleAttachmentSelect(file, selectedAgentId, 'chat').catch((error) => console.error('attachment upload failed', error)); }}
                     onClearFile={handleAttachmentClear}
-                    onUploadImage={uploadChatImage}
+                    imageDrafts={composerImageDraftsRef.current}
                     attachment={composerAttachment}
                     uploading={uploadState.active}
                     contextUsage={contextUsage}

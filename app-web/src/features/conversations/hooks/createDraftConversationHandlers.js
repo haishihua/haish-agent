@@ -120,7 +120,7 @@ export function createDraftConversationHandlers(ctx) {
     const now = Date.now();
     draftConversationRef.current = {
       id: draftId,
-      composerScopeId: draftId,
+      composerScopeId: `draft-project:${project.id}`,
       projectId: project.id,
       workspacePath: project.workspacePath || null,
       workspaceLabel: project.workspaceLabel || project.name || null,

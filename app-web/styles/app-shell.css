@@ -114,6 +114,30 @@
     width: 100%;
 }
 
+.haish-job-progress { display: flex; flex-direction: column; gap: 10px; padding: 12px 10px; border: 1px solid #3a3a3a; border-radius: 14px; background: #292929; color: #f5f5f5; font: 13px/1.4 var(--conversation-font); }
+.haish-job-progress-header { display: flex; align-items: center; gap: 7px; }
+.haish-job-progress-header > svg { flex-shrink: 0; color: #f5f5f5; }
+.haish-job-progress-title { flex: 1; min-width: 0; }
+.haish-job-progress-value { flex-shrink: 0; color: #d4d4d4; font-variant-numeric: tabular-nums; }
+.haish-job-progress-track { display: block; height: 4px; overflow: hidden; border-radius: 999px; background: #484848; }
+.haish-job-progress-track > span { display: block; height: 100%; border-radius: inherit; background: #f5f5f5; transition: width 300ms ease-out; }
+.haish-job-progress-track.is-indeterminate > span { width: 35%; animation: haish-update-progress 1.4s ease-in-out infinite; }
+.haish-job-progress-stages { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: #a3a3a3; }
+.haish-job-progress-stages .is-current { color: #f5f5f5; font-weight: 600; }
+.haish-job-progress-stages .is-complete { color: #c4c4c4; }
+.haish-job-progress.is-finished .haish-job-progress-track > span { background: #6bd69b; }
+.haish-job-progress.is-finished .haish-job-progress-header,
+.haish-job-progress.is-finished .haish-job-progress-header > svg,
+.haish-job-progress.is-finished .haish-job-progress-value,
+.haish-job-progress.is-finished .haish-job-progress-stages .is-complete { color: #6bd69b; }
+.haish-job-progress-spinner { animation: haish-update-spin 1s linear infinite; }
+@keyframes haish-update-spin { to { transform: rotate(360deg); } }
+@keyframes haish-update-progress { from { transform: translateX(-100%); } to { transform: translateX(386%); } }
+@media (prefers-reduced-motion: reduce) {
+  .haish-job-progress-spinner, .haish-job-progress-track.is-indeterminate > span { animation: none; }
+  .haish-job-progress-track > span { transition: none; }
+}
+
 .app-update-button {
     display: flex;
     align-items: center;

@@ -9,6 +9,7 @@ import {
 } from '../../agents/model/agent-settings.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
+import { firstPastedDocument } from '../model/document-paste.js';
 import {
   clipboardFilesToPathText,
   clipboardUriListToPathText,
@@ -50,7 +51,7 @@ export function ChatPanel({
   onStop,
   onSelectFile,
   onClearFile,
-  onUploadImage,
+  imageDrafts,
   attachment,
   uploading,
   contextUsage,
@@ -119,11 +120,21 @@ export function ChatPanel({
     agentOptions: resolvedAgentOptions,
     defaultAgentId: resolvedDefaultAgentId,
   });
-  const [composerImages, setComposerImages] = React.useState([]);
+  const [, refreshImages] = React.useReducer((value) => value + 1, 0);
+  const localImageDrafts = React.useRef(new Map());
+  const imageStore = imageDrafts || localImageDrafts.current;
+  const currentComposerScopeRef = React.useRef(composerScopeId);
+  currentComposerScopeRef.current = composerScopeId;
+  const composerImages = imageStore.get(composerScopeId) || [];
+  const setComposerImages = (update) => {
+    const previous = imageStore.get(composerScopeId) || [];
+    const next = typeof update === 'function' ? update(previous) : update;
+    if (next.length) imageStore.set(composerScopeId, next);
+    else imageStore.delete(composerScopeId);
+    refreshImages();
+  };
   const [previewImage, setPreviewImage] = React.useState(null);
   const closeImagePreview = React.useCallback(() => setPreviewImage(null), []);
-  const composerImagesRef = React.useRef([]);
-  React.useEffect(() => { composerImagesRef.current = composerImages; }, [composerImages]);
   const effectiveAgentId = agentLocked && lockedAgentId ? lockedAgentId : agentId;
   const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
   const currentAgentSkills = currentSelection?.skills || EMPTY_AGENT_SKILLS;
@@ -156,14 +167,6 @@ export function ChatPanel({
   // The logical composer scope remains stable while a local draft receives its
   // server id, and changes only when the user actually switches conversations.
   React.useEffect(() => {
-    return () => {
-      composerImagesRef.current.forEach((img) => {
-        if (img.previewUrl) URL.revokeObjectURL(img.previewUrl);
-      });
-    };
-  }, [composerScopeId]);
-  React.useEffect(() => {
-    setComposerImages([]);
     setSelectedSkillName('');
     selectedSkillNameRef.current = '';
     skillSelectionPendingRef.current = false;
@@ -178,7 +181,7 @@ export function ChatPanel({
     }
   }, [currentAgentSkills, selectedSkillName]);
 
-  async function attachImageFile(file) {
+  function attachImageFile(file) {
     if (!file) return;
     if (!CHAT_IMAGE_ACCEPTED_MIME.has((file.type || '').toLowerCase())) {
       console.warn('Unsupported image type', file.type);
@@ -195,31 +198,14 @@ export function ChatPanel({
       setComposerImages((prev) => [...prev, draft]);
       return;
     }
-    if (composerImagesRef.current.length >= CHAT_IMAGE_MAX_COUNT) {
+    if ((imageStore.get(composerScopeId)?.length || 0) >= CHAT_IMAGE_MAX_COUNT) {
       console.warn(`Image limit reached (${CHAT_IMAGE_MAX_COUNT})`);
       return;
     }
 
     const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const previewUrl = URL.createObjectURL(file);
-    setComposerImages((prev) => [...prev, { id, file, previewUrl, uploading: true }]);
-
-    try {
-      const result = await onUploadImage?.(file);
-      if (!result || !result.image_id) {
-        throw new Error('Upload response missing image_id');
-      }
-      setComposerImages((prev) => prev.map((img) =>
-        img.id === id
-          ? { ...img, uploading: false, imageId: result.image_id, path: result.path, mime: result.mime, sizeBytes: result.size_bytes }
-          : img,
-      ));
-    } catch (error) {
-      console.error('Chat image upload failed', error);
-      setComposerImages((prev) => prev.map((img) =>
-        img.id === id ? { ...img, uploading: false, error: String(error?.message || error) } : img,
-      ));
-    }
+    setComposerImages((prev) => [...prev, { id, file, previewUrl, uploading: false }]);
   }
 
   function removeComposerImage(id) {
@@ -240,6 +226,12 @@ export function ChatPanel({
     if (imageFiles.length === 0) {
       const clipboard = event.clipboardData;
       if (!clipboard) return;
+      const document = canUploadDocuments && firstPastedDocument(clipboard);
+      if (document) {
+        event.preventDefault();
+        if (!disabled && !submitPending && !running && !uploading) onSelectFile?.(document, effectiveAgentId);
+        return;
+      }
       const normalizedText = clipboardUriListToPathText(clipboard.getData('text/uri-list'), workspacePath, homePath)
         || clipboardFilesToPathText(clipboard.files, workspacePath, homePath)
         || normalizePastedPathText(clipboard.getData('text/plain'), workspacePath, homePath);
@@ -269,9 +261,10 @@ export function ChatPanel({
 
   const imagesUploading = composerImages.some((img) => img.uploading);
   const readyImages = composerImages
-    .filter((img) => img.imageId && !img.error)
+    .filter((img) => (img.file || img.imageId) && !img.error)
     .map((img) => ({
       image_id: img.imageId,
+      file: img.file,
       path: img.path,
       mime: img.mime,
       previewUrl: img.previewUrl || null,
@@ -289,7 +282,6 @@ export function ChatPanel({
 
   const listRef = React.useRef(null);
   const inputRef = React.useRef(null);
-  const fileRef = React.useRef(null);
   const suppressSubmitUntilRef = React.useRef(0);
   const historyCursorRef = React.useRef(-1);
   const historySavedDraftRef = React.useRef('');
@@ -360,6 +352,7 @@ export function ChatPanel({
       try {
         const accepted = await onSend?.(submittedText, null, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text);
         if (accepted !== false) {
+          if (currentComposerScopeRef.current !== composerScopeId) { setComposerImages([]); return; }
           setSendScrollKey((value) => value + 1);
           setDraft('');
           setSelectedSkillName('');
@@ -377,28 +370,20 @@ export function ChatPanel({
     if (!resolvedAgentOptions.some((o) => o.id === effectiveAgentId)) return;
     const accepted = await onSend?.(submittedText, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text);
     if (accepted === false) return;
+    if (currentComposerScopeRef.current !== composerScopeId) { setComposerImages([]); return; }
     setSendScrollKey((value) => value + 1);
     setDraft('');
     setSelectedSkillName('');
     selectedSkillNameRef.current = '';
     skillSelectionPendingRef.current = false;
     onClearFile?.();
-    // Ownership of the blob URLs transfers to the rendered chat message; the
-    // unmount cleanup at the conversationId boundary will revoke them. Do NOT
-    // revoke here, or the just-sent thumbnail goes blank.
+    // Keep blob URLs alive for the sent message's thumbnails across switches.
     setComposerImages([]);
-    if (fileRef.current) fileRef.current.value = '';
-  }
-
-  function pickFile() {
-    if (!canUploadDocuments || disabled || submitPending) return;
-    fileRef.current?.click();
   }
 
   function clearFile(e) {
     e.stopPropagation();
     onClearFile?.();
-    if (fileRef.current) fileRef.current.value = '';
   }
 
   function selectSkill(skill, event) {
@@ -550,6 +535,7 @@ export function ChatPanel({
         )}
         <div className="chat-composer-input-row">
           <LexicalComposerInput
+            key={composerScopeId}
             ref={inputRef}
             value={draft}
             selectedSkill={selectedSkill}
@@ -667,31 +653,6 @@ export function ChatPanel({
         </div>
         <div className="chat-composer-actions">
           <div className="chat-composer-tools">
-            {canUploadDocuments ? (
-              <>
-                <PortalTooltip text="Attach File" position="above">
-                  <button
-                    type="button"
-                    className="chat-tool-btn chat-tool-attach icon-only"
-                    onClick={pickFile}
-                    disabled={disabled || submitPending || running}
-                    aria-label="Attach File"
-                  >
-                    <span className="ico ico-attach" aria-hidden="true" />
-                  </button>
-                </PortalTooltip>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  className="td-file-input"
-                  onChange={e => {
-                    const nextFile = e.target.files?.[0] || null;
-                    if (!nextFile) return;
-                    onSelectFile?.(nextFile);
-                  }}
-                />
-              </>
-            ) : null}
             <ApprovalModePicker readOnly={runConfigReadOnly} disabled={runConfigDisabled} />
           </div>
           <div className="chat-composer-submit">

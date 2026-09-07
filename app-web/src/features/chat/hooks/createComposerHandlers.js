@@ -37,15 +37,7 @@ export function createComposerHandlers(ctx) {
   }
 
   async function uploadChatImage(file, signal, targetConversationId = conversationIdRef.current || conversationId) {
-    let resolvedConversationId = targetConversationId;
-    if (file && draftConversationRef.current && (
-      !resolvedConversationId
-      || isDraftConversationId(resolvedConversationId)
-      || String(resolvedConversationId).startsWith('draft-')
-    )) {
-      const detail = await ensureServerConversationForActiveDraft();
-      resolvedConversationId = detail?.conversation_id || conversationIdRef.current || resolvedConversationId;
-    }
+    const resolvedConversationId = targetConversationId;
     if (!file || !resolvedConversationId || String(resolvedConversationId).startsWith('draft-')) {
       throw new Error('No active conversation.');
     }

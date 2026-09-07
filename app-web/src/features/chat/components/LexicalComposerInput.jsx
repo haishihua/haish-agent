@@ -6,6 +6,7 @@ import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin';
+import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import {
   $applyNodeReplacement,
   $createLineBreakNode,
@@ -221,6 +222,7 @@ export const LexicalComposerInput = React.forwardRef(function LexicalComposerInp
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
+      <HistoryPlugin />
       <div
         className="chat-composer-editor-shell"
         onMouseDown={(event) => {
