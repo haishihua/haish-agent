@@ -408,7 +408,7 @@ export function createDeployHandlers(ctx) {
         updateTaskRuntimeState((state) => ({
           ...state,
           pendingTask: (state.pendingTask?.taskId || state.pendingTask?.id) === pendingTaskId
-            ? null
+            ? { ...state.pendingTask, status: 'failed', error: errorMessage, completedAt: Date.now() }
             : state.pendingTask,
         }), deployConvId);
         if (pendingTaskId) removeConversationTaskFromWorkspace(deployConvId, pendingTaskId);
@@ -427,6 +427,16 @@ export function createDeployHandlers(ctx) {
     const activeRuntime = activeId ? getRuntime(activeId) : null;
     if (!activeId || !activeRuntime) {
       showToast('error', 'Conversation runtime is unavailable.');
+      return false;
+    }
+    // Do not acknowledge a send against a half-loaded or previously-selected
+    // runtime. Returning false keeps the composer text and attachments intact.
+    if (!draftConversationRef.current && (
+      request.targetConversationId !== activeId
+      || activeRuntime.shellSeeded
+      || !canStartDeployForConversation(request.targetConversationId)
+    )) {
+      showToast('error', 'Conversation is still loading. Your message has not been sent; please try again shortly.');
       return false;
     }
     const activeState = activeRuntime.taskRuntimeState;
@@ -487,10 +497,6 @@ export function createDeployHandlers(ctx) {
       return true;
     }
     const deployConvId = activeId;
-    if (!canStartDeployForConversation(request.targetConversationId)) {
-      setQueuedDeploy(request);
-      return true;
-    }
     startDeploy(request, deployConvId);
     return true;
   }

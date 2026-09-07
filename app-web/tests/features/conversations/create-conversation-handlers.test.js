@@ -9,6 +9,23 @@ const findProjectByConversationId = (state, conversationId) => state.projects
   .find((project) => project.conversations.some((conversation) => conversation.id === conversationId)) || null;
 const taskUpdatedTimestamp = (task) => task?.updatedAt || 0;
 
+test('selecting a conversation reveals it even beyond the collapsed preview', async () => {
+  let state = {
+    projects: [{ id: 'project', chatConversationsExpanded: false, conversations: Array.from({ length: 8 }, (_, i) => ({ id: `c${i}` })) }],
+  };
+  const handlers = createConversationHandlers({
+    draftConversationRef: { current: null },
+    conversationIdRef: { current: 'c7' },
+    setWorkspaceState: (update) => { state = update(state); },
+    normalizeWorkspaceOrdering: (next) => next,
+  });
+  await handlers.handleSelectConversation('project', 'c7');
+  assert.equal(state.activeConversationId, 'c7');
+  assert.equal(state.activeProjectId, 'project');
+  assert.equal(state.projects[0].userExpanded, true);
+  assert.equal(state.projects[0].chatConversationsExpanded, true);
+});
+
 test('rapid mode switches reuse unchanged hydrated runtimes without requests', async () => {
   const task = (taskId) => ({ taskId, updatedAt: 1, runtimeHydrated: true });
   const workspaceState = {

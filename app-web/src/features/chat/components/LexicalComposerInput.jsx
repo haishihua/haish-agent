@@ -1,4 +1,5 @@
 import React from 'react';
+import { BookOpen } from 'lucide-react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
@@ -67,7 +68,7 @@ class SkillTokenNode extends DecoratorNode {
         aria-label={`Remove ${this.__skillName} skill`}
         title="Click to remove skill"
       >
-        <span className="ico ico-skill chat-skill-icon" aria-hidden="true" />
+        <BookOpen className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" />
         <span>{this.__skillName}</span>
       </span>
     );

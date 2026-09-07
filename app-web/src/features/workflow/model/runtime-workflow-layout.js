@@ -1,9 +1,9 @@
 const NODE_WIDTH = 214;
-const COLUMN_GAP = 76;
+const COLUMN_GAP = 24;
 const CANVAS_PADDING_X = 48;
 const CANVAS_TOP = 96;
-const ROW_GAP = 230;
-const BRANCH_OFFSET_Y = 118;
+const ROW_GAP = 192;
+const BRANCH_OFFSET_Y = 96;
 
 const BRANCH_PRIORITY = {
   true: 1,
@@ -190,11 +190,15 @@ export function layoutRuntimeWorkflow(nodes = [], edges = [], viewportWidth = 12
   }
 
   const width = Number.isFinite(Number(viewportWidth)) ? Number(viewportWidth) : 1200;
+  // Reserve enough room for content-sized nodes; long titles are capped by CSS.
+  const columnWidth = Math.max(NODE_WIDTH, ...list.map((node) => Math.min(320,
+    80 + Array.from(String(node.label || '')).reduce((sum, char) => sum + (char.codePointAt(0) > 255 ? 14 : 9), 0),
+  )));
   const columns = Math.max(2, Math.min(
     Math.max(primaryIds.length, 2),
-    Math.floor((Math.max(width, 480) - (CANVAS_PADDING_X * 2) + COLUMN_GAP) / (NODE_WIDTH + COLUMN_GAP)),
+    Math.floor((Math.max(width, 480) - (CANVAS_PADDING_X * 2) + COLUMN_GAP) / (columnWidth + COLUMN_GAP)),
   ));
-  const xForColumn = (column) => CANVAS_PADDING_X + (column * (NODE_WIDTH + COLUMN_GAP));
+  const xForColumn = (column) => CANVAS_PADDING_X + (column * (columnWidth + COLUMN_GAP));
   const positions = new Map();
   const meta = new Map();
 
@@ -214,14 +218,18 @@ export function layoutRuntimeWorkflow(nodes = [], edges = [], viewportWidth = 12
   secondaryNodes.forEach((node, index) => {
     const id = String(node.id);
     const parentEdge = (incoming.get(id) || []).find((edge) => primarySet.has(edge.source));
-    const targetEdge = (outgoing.get(id) || []).find((edge) => primarySet.has(edge.target));
+    const targetEdge = (outgoing.get(id) || []).find((edge) => primarySet.has(edge.target) && edge.branch !== 'exhausted');
     const anchorId = parentEdge?.source || targetEdge?.target || primaryIds[Math.min(index, Math.max(primaryIds.length - 1, 0))];
     const anchor = meta.get(anchorId) || { order: index, row: 0, column: index % columns, direction: 'right' };
     if (!occupiedByRow.has(anchor.row)) occupiedByRow.set(anchor.row, new Set());
     const occupied = occupiedByRow.get(anchor.row);
     const column = closestFreeColumn(occupied, anchor.column, columns);
     occupied.add(column);
-    positions.set(id, { x: xForColumn(column), y: CANVAS_TOP + (anchor.row * ROW_GAP) + BRANCH_OFFSET_Y });
+    const retryTarget = targetEdge ? meta.get(targetEdge.target) : null;
+    const branchX = node.type === 'loop' && column === anchor.column && retryTarget?.row === anchor.row
+      ? (xForColumn(column) + xForColumn(retryTarget.column)) / 2
+      : xForColumn(column);
+    positions.set(id, { x: branchX, y: CANVAS_TOP + (anchor.row * ROW_GAP) + BRANCH_OFFSET_Y });
     meta.set(id, {
       kind: 'secondary',
       order: anchor.order + 0.5,
@@ -232,10 +240,20 @@ export function layoutRuntimeWorkflow(nodes = [], edges = [], viewportWidth = 12
     });
   });
 
+  const rowCount = Math.max(1, Math.ceil(primaryIds.length / columns));
+  const rowOffsets = [CANVAS_TOP];
+  for (let row = 1; row < rowCount; row += 1) {
+    rowOffsets[row] = rowOffsets[row - 1] + (occupiedByRow.has(row - 1) ? ROW_GAP : 112);
+  }
+  for (const [id, position] of positions) {
+    const nodeMeta = meta.get(id);
+    position.y = rowOffsets[nodeMeta.row] + (nodeMeta.kind === 'secondary' ? BRANCH_OFFSET_Y : 0);
+  }
+
   return {
     positions,
     meta,
     columns,
-    rowCount: Math.max(1, Math.ceil(primaryIds.length / columns)),
+    rowCount,
   };
 }

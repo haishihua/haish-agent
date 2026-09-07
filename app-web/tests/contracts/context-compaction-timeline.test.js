@@ -57,12 +57,15 @@ test('todo panel consumes todo_updated instead of tool response artifacts', () =
   assert.deepEqual(timeline.items, []);
 });
 
-test('todo current state stays static and uses the neutral marker', () => {
+test('todo uses a static current arrow and a real completion-ratio header', () => {
   const component = fs.readFileSync(new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url), 'utf8');
   const stylesheet = fs.readFileSync(new URL('../../styles/chat.css', import.meta.url), 'utf8');
   const currentIconRule = stylesheet.match(/\.chat-todo-icon\.in-progress \{[^}]*\}/)?.[0] || '';
 
-  assert.match(component, /className="chat-todo-current-mark"/);
+  assert.match(component, /className="chat-todo-current-arrow"/);
+  assert.match(component, /completedCount \/ safeTodos.length \* 100/);
+  assert.match(component, /completedCount > 0 \|\| hasActiveTodo/);
+  assert.match(stylesheet, /conic-gradient\(currentColor var\(--todo-progress\), transparent 0\)/);
   assert.doesNotMatch(component, /chat-todo-spinner/);
   assert.doesNotMatch(currentIconRule, /animation:/);
 });

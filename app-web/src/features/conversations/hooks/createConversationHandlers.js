@@ -137,7 +137,7 @@ export function createConversationHandlers(ctx) {
       activeConversationId: nextConversationId,
       projects: state.projects.map((project) => {
         if (project.id !== projectId) return project;
-        const projectWithExpanded = { ...project, userExpanded: true };
+        const projectWithExpanded = { ...project, userExpanded: true, chatConversationsExpanded: true };
         if (!nextConversationId) return projectWithExpanded;
         return {
           ...projectWithExpanded,

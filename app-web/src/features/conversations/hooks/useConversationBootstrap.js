@@ -2,6 +2,7 @@ import React from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, DEFAULT_SESSION_NAME } from '../../../shared/api/client.js';
 import { createConversationWithRetry } from '../api/conversations.js';
+import { readLastLocation, resolveStoredWorkflowTask } from '../model/last-location.js';
 import {
   createEmptyWorkspaceState,
   getStoredConversationId,
@@ -19,6 +20,7 @@ export function useConversationBootstrap({
   setOwnerId,
   setWorkspaceLoading,
   setWorkspaceState,
+  setViewedWorkflowTask,
 }) {
   React.useEffect(() => {
     let cancelled = false;
@@ -72,7 +74,22 @@ export function useConversationBootstrap({
               activeConversationId: getStoredConversationId(ownerId) || storedWorkspaceState.activeConversationId,
             }
           : createEmptyWorkspaceState();
-        const nextState = buildWorkspaceStateFromProjects(projects, previousState);
+        let nextState = buildWorkspaceStateFromProjects(projects, previousState);
+        const location = readLastLocation(window.localStorage, ownerId);
+        const rememberedTask = resolveStoredWorkflowTask(nextState, location);
+        if (rememberedTask) {
+          setViewedWorkflowTask({ projectId: rememberedTask.projectId, taskId: rememberedTask.taskId });
+          if (location.mode === 'workflow') {
+            nextState = {
+              ...nextState,
+              activeProjectId: rememberedTask.projectId,
+              activeConversationId: rememberedTask.conversationId,
+              projects: nextState.projects.map((project) => project.id === rememberedTask.projectId
+                ? { ...project, userExpanded: true, expanded: true, workflowTasksExpanded: true }
+                : project),
+            };
+          }
+        }
         saveWorkspaceState(ownerId, nextState);
         setWorkspaceState(nextState);
         const conversations = projects.flatMap((project) => project.conversations || []);

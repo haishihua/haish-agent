@@ -3,6 +3,7 @@ import { TerminalDetail, DiffDetail } from '../../../shared/ui/agent-elements/To
 import { ThinkingOrb } from 'thinking-orbs';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
+import { IncrementalText } from '../../../shared/ui/IncrementalText.jsx';
 import { AskUserInlineForm } from './AskUserInlineForm.jsx';
 import { selectActiveAskUserItemId } from '../model/pending-user-input.js';
 import { CATEGORY_ICON_CLASS, CATEGORY_LABEL } from '../model/run-catalog.js';
@@ -158,7 +159,7 @@ export function ChatTodoPanel({ todos = [], streaming = false }) {
   const completedCount = safeTodos.filter((todo) => todo.status === 'completed').length;
   const allCompleted = completedCount === safeTodos.length;
   const hasActiveTodo = safeTodos.some((todo) => todo.status === 'in_progress');
-  const headerStatus = allCompleted ? 'completed' : hasActiveTodo ? 'in_progress' : 'pending';
+  const headerStatus = allCompleted ? 'completed' : (completedCount > 0 || hasActiveTodo) ? 'in_progress' : 'pending';
 
   return (
     <section className={`chat-todo-panel ${streaming ? 'streaming' : 'done'}`} aria-label="To-dos">
@@ -170,7 +171,13 @@ export function ChatTodoPanel({ todos = [], streaming = false }) {
         onClick={() => setExpanded((value) => !value)}
       >
         <span className="chat-todo-head-icon">
-          <ChatTodoStatusIcon status={headerStatus} />
+          {headerStatus === 'in_progress' ? (
+            <span className="chat-todo-progress" style={{ '--todo-progress': `${completedCount / safeTodos.length * 100}%` }} aria-label={`${completedCount} of ${safeTodos.length} completed`}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+              </svg>
+            </span>
+          ) : <ChatTodoStatusIcon status={headerStatus} />}
         </span>
         <span className="chat-todo-title">To-dos</span>
         <span className="chat-todo-count" aria-label={`${completedCount} of ${safeTodos.length} completed`}>
@@ -214,7 +221,9 @@ export function ChatTodoStatusIcon({ status }) {
   if (status === 'in_progress') {
     return (
       <span className="chat-todo-icon in-progress" aria-label="in progress">
-        <span className="chat-todo-current-mark" />
+        <svg className="chat-todo-current-arrow" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 8h8M8.5 4.5 12 8l-3.5 3.5" />
+        </svg>
       </span>
     );
   }
@@ -682,7 +691,7 @@ export function ChatAgentTimeline({
         if (item.kind === 'text') {
           return (
             <div key={item.id} className={`chat-timeline-text ${item.streaming ? 'streaming' : ''}`}>
-              <span className="chat-timeline-text-body">{item.text}</span>
+              <IncrementalText text={item.text} streaming={item.streaming} />
               {item.streaming ? <span className="chat-timeline-text-cursor" aria-hidden="true" /> : null}
             </div>
           );
@@ -723,7 +732,7 @@ export function ChatAgentTimeline({
       {activity && !retrying ? (
         <div className={`chat-timeline-activity state-${activity.state}`} role="status" aria-live="polite">
           <ThinkingOrb
-            state={activity.state}
+            state={activity.state === 'composing' ? 'working' : activity.state === 'working' ? 'composing' : activity.state}
             size={64}
             theme="dark"
             style={{ width: 40, height: 40 }}

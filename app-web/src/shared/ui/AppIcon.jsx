@@ -35,6 +35,7 @@ import {
   Server,
   ShieldCheck,
   Sparkles,
+  Square,
   TestTube2,
   ToggleLeft,
   ToggleRight,
@@ -92,6 +93,7 @@ const ICONS = {
   'workflow-condition': GitFork,
   'workflow-llm': MessageSquare,
   'workflow-loop': Repeat2,
+  'workflow-output': Square,
   'workflow-tool': Wrench,
 };
 

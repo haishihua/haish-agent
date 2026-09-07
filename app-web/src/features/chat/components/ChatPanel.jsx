@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowUp, Square } from 'lucide-react';
+import { ConversationSearch } from './ConversationSearch.jsx';
+import { ArrowUp, BookOpen, CornerDownLeft, Square } from 'lucide-react';
 import { ApprovalInline } from '../../approvals/components/ApprovalOverlay.jsx';
 import {
   extractAgentSkillInvocation,
@@ -75,6 +76,8 @@ export function ChatPanel({
   const resolvedDefaultAgentId = defaultAgentId || resolvedAgentOptions[0]?.id || DEFAULT_AGENT_OPTIONS[0].id;
   const [localDraft, setLocalDraft] = React.useState('');
   const [runtimeInputPending, setRuntimeInputPending] = React.useState(false);
+  const [searchActive, setSearchActive] = React.useState(false);
+  const [sendScrollKey, setSendScrollKey] = React.useState(0);
   const [selectedSkillName, setSelectedSkillName] = React.useState('');
   const [skillMenuIndex, setSkillMenuIndex] = React.useState(0);
   const [skillMenuDismissed, setSkillMenuDismissed] = React.useState(false);
@@ -127,6 +130,10 @@ export function ChatPanel({
   const selectedSkill = currentAgentSkills.find((skill) => skill.name === selectedSkillName) || null;
   const matchingSkills = matchingAgentSkills(draft, currentAgentSkills);
   const skillMenuOpen = Boolean(matchingSkills?.length && !selectedSkill && !skillMenuDismissed);
+  const skillMenuRef = React.useRef(null);
+  React.useEffect(() => {
+    skillMenuRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [skillMenuIndex, skillMenuOpen]);
   const canUploadDocuments = currentSelection?.canUploadDocuments === true;
   const currentProvider = resolvedProviderOptions.find((item) => item.id === providerId) || resolvedProviderOptions[0];
   const providerModels = useProviderModels(currentProvider);
@@ -353,6 +360,7 @@ export function ChatPanel({
       try {
         const accepted = await onSend?.(submittedText, null, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text);
         if (accepted !== false) {
+          setSendScrollKey((value) => value + 1);
           setDraft('');
           setSelectedSkillName('');
           selectedSkillNameRef.current = '';
@@ -367,8 +375,9 @@ export function ChatPanel({
     if (!providerConfigured) return;
     if (!sendModelId) return;
     if (!resolvedAgentOptions.some((o) => o.id === effectiveAgentId)) return;
-    const accepted = onSend?.(submittedText, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text);
+    const accepted = await onSend?.(submittedText, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text);
     if (accepted === false) return;
+    setSendScrollKey((value) => value + 1);
     setDraft('');
     setSelectedSkillName('');
     selectedSkillNameRef.current = '';
@@ -412,7 +421,8 @@ export function ChatPanel({
   return (
     <section className="chat-workspace" aria-label="Chat">
       <div className="chat-message-region">
-        <div ref={listRef} className="chat-message-list">
+        <ConversationSearch key={conversationId || 'draft'} scrollRef={listRef} onSearchChange={setSearchActive} />
+        <div ref={listRef} className={`chat-message-list${searchActive ? ' is-searching' : ''}`}>
           {messages.length === 0 ? (
             <div className="chat-empty">
               <div
@@ -447,7 +457,7 @@ export function ChatPanel({
           ) : messages.map((message) => (
             <ChatMessageRow
               key={message.id}
-              message={message}
+              message={searchActive ? { ...message, traceOpen: true } : message}
               onPreviewImage={openImagePreview}
               onRetry={message.role === 'agent' && message.status === 'failed' && message.taskId
                 ? () => onRetryTask?.(message.taskId)
@@ -457,7 +467,7 @@ export function ChatPanel({
           <ApprovalInline />
         </div>
         {messages.length > 0 ? (
-          <ScrollToBottomButton scrollRef={listRef} autoFollow resetKey={conversationId || ''} />
+          <ScrollToBottomButton scrollRef={listRef} autoFollow={!searchActive} resetKey={`${conversationId || ''}:${sendScrollKey}`} />
         ) : null}
       </div>
       <form
@@ -468,24 +478,26 @@ export function ChatPanel({
       >
         <ComposerBorderBeam active={running || submitPending || hasComposerPayload} />
         {skillMenuOpen && (
-          <div className="chat-skill-menu" role="listbox" aria-label="Available skills">
+          <div ref={skillMenuRef} className="chat-skill-menu" role="listbox" aria-label="Available skills">
             {matchingSkills.map((skill, index) => (
               <button
                 key={skill.name}
                 type="button"
                 role="option"
                 aria-selected={index === skillMenuIndex}
+                title={`/${skill.name}${skill.description ? ` — ${skill.description}` : ''}`}
                 className={`chat-skill-menu-item${index === skillMenuIndex ? ' is-active' : ''}`}
                 onMouseDown={(event) => {
                   selectSkill(skill, event);
                 }}
                 onMouseEnter={() => setSkillMenuIndex(index)}
               >
-                <span className="ico ico-skill chat-skill-icon" aria-hidden="true" />
-                <span className="chat-skill-menu-name">{skill.name}</span>
+                <BookOpen className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" />
+                <span className="chat-skill-menu-name">/{skill.name}</span>
                 {skill.description ? (
                   <span className="chat-skill-menu-description">{skill.description}</span>
                 ) : null}
+                <span className="chat-skill-menu-enter" aria-hidden="true"><CornerDownLeft size={12} /></span>
               </button>
             ))}
           </div>

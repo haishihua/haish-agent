@@ -42,8 +42,9 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
   const timeline = Array.isArray(message.traceTimeline) ? message.traceTimeline : [];
   const hasTimeline = timeline.length > 0;
   const isAgent = message.role === 'agent';
-  const [traceExpanded, setTraceExpanded] = React.useState(false);
-  React.useEffect(() => setTraceExpanded(false), [message.conversationId, message.id]);
+  const [traceExpansionOverride, setTraceExpanded] = React.useState(null);
+  React.useEffect(() => setTraceExpanded(null), [message.conversationId, message.id]);
+  const traceExpanded = traceExpansionOverride ?? message.status === 'cancelled';
   const hasTraceDisclosure = isAgent && (hasTimeline || message.streaming);
   // The live trace is the task's progress view, so keep it visible by default.
   // Individual tool cards inside ChatAgentTimeline manage their own collapsed state.
@@ -118,7 +119,7 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
       ) : null;
 
   return (
-    <div className={`chat-message-row ${message.role}${message.streaming ? ' is-streaming' : ''}`}>
+    <div data-message-id={message.id} className={`chat-message-row ${message.role}${message.streaming ? ' is-streaming' : ''}`}>
         <div className={`chat-bubble message-shell ${isAgent ? 'agent-response' : ''} ${message.status || ''}`}>
           {!isUser ? (
             <div className="chat-bubble-meta">
@@ -128,7 +129,7 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
               </span>
           {showTimelineToggle ? (
             <ChatTimelineCollapsed
-              onExpand={() => setTraceExpanded((value) => !value)}
+              onExpand={() => setTraceExpanded(!traceExpanded)}
               label={elapsed || '0s'}
               expanded={traceExpanded}
             />

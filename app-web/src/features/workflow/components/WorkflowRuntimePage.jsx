@@ -332,9 +332,9 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
     const attemptNumber = attempt?.result?.attempt || index + 1;
     return (
       <section className={`workflow-detail-attempt${isLatestAttempt ? ' is-latest' : ''}`} key={attempt?.id || `${node.id}-${index}`}>
-        {visibleAttempts.length > 1 ? (
+        {!isLatestAttempt ? (
           <div className="workflow-detail-attempt-label">
-            {isLatestAttempt ? 'latest Attempt' : 'attempt'} #{attemptNumber}
+            Attempt #{attemptNumber}
           </div>
         ) : null}
         <NodeConversation
@@ -403,8 +403,10 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
               onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
             >
               <summary className="workflow-detail-attempt-label workflow-detail-history-summary">
-                <span>previous Attempts ({historicalAttempts.length})</span>
-                <ChatTimelineChevron open={historyOpen} />
+                <span className="workflow-detail-history-trigger">
+                  <span>Previous attempts ({historicalAttempts.length})</span>
+                  <ChatTimelineChevron open={historyOpen} />
+                </span>
               </summary>
               {historicalAttempts.map((attempt, index) => renderAttempt(attempt, index, false))}
             </details>
@@ -503,7 +505,9 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
           ? Position.Top
           : (direction === 'right' ? Position.Left : Position.Right),
         feedbackTarget: feedbackTargetIds.has(id),
-        branchSourcePositions: secondary && node.type === 'loop' ? { retry: Position.Top } : undefined,
+        branchSourcePositions: secondary && node.type === 'loop'
+          ? { retry: direction === 'right' ? Position.Left : Position.Right }
+          : undefined,
       },
       draggable: true,
       connectable: false,
@@ -513,16 +517,18 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
   const isNodeDraggingRef = React.useRef(false);
   const draggedNodePositionsRef = React.useRef(new Map());
   const previousWorkflowKeyRef = React.useRef(workflowKey);
+  const previousLayoutKeyRef = React.useRef(layoutKey);
   React.useEffect(() => {
-    const resetPositions = previousWorkflowKeyRef.current !== workflowKey;
+    const resetPositions = previousWorkflowKeyRef.current !== workflowKey || previousLayoutKeyRef.current !== layoutKey;
     if (resetPositions) draggedNodePositionsRef.current.clear();
     previousWorkflowKeyRef.current = workflowKey;
+    previousLayoutKeyRef.current = layoutKey;
     if (isNodeDraggingRef.current) return;
     setNodes(layoutNodes.map((node) => {
       const draggedPosition = draggedNodePositionsRef.current.get(node.id);
       return draggedPosition ? { ...node, position: draggedPosition } : node;
     }));
-  }, [layoutNodes, setNodes, workflowKey]);
+  }, [layoutKey, layoutNodes, setNodes, workflowKey]);
   const nodeById = React.useMemo(() => new Map((workflow?.nodes || []).map((node) => [String(node.id), node])), [workflow?.nodes]);
   const statusById = React.useMemo(
     () => new Map((workflow?.nodes || []).map((node) => [String(node.id), nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)])),
@@ -567,16 +573,20 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
       source,
       target,
       ...appearance,
+      hidden: nodeById.get(source)?.type === 'loop' && nodeById.get(target)?.type === 'output',
+      markerEnd: undefined,
+      style: { ...appearance.style, stroke: 'rgba(169, 187, 211, 0.32)', strokeWidth: 1.4 },
+      label: undefined,
       targetHandle: feedback ? 'runtime-feedback' : undefined,
-      type: curved ? 'smoothstep' : appearance.type,
+      type: 'smoothstep',
       pathOptions: curved
-        ? { borderRadius: 18, offset: reworkEdge ? 0 : 28 }
+        ? { borderRadius: 28, offset: reworkEdge ? 0 : 28 }
         : appearance.pathOptions,
       zIndex: 0,
       animated: active,
       className: active ? 'is-flowing' : (traversed ? 'is-traversed' : ''),
     };
-  }), [latestTransition, layout, statusById, traversedEdgeKeys, workflow?.edges]);
+  }), [latestTransition, layout, nodeById, statusById, traversedEdgeKeys, workflow?.edges]);
   const selectedNodeCandidate = selectedNodeId ? nodeById.get(selectedNodeId) || null : null;
   const selectedNode = canOpenNodeDetail(selectedNodeCandidate) ? selectedNodeCandidate : null;
   const selectedStatus = selectedNode

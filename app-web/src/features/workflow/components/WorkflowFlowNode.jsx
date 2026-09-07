@@ -11,19 +11,12 @@ const WORKFLOW_NODE_META = {
   condition: { icon: 'workflow-condition' },
   human_approval: { icon: 'workflow-approval' },
   loop: { icon: 'workflow-loop' },
-  output: { icon: 'circle-check' },
+  output: { icon: 'workflow-output' },
 };
 
-const WORKFLOW_RUNTIME_STATUS_ICON = {
-  pending: 'clock',
-  running: 'loader',
-  waiting_input: 'message',
-  approval: 'pause-circle',
-  approved: 'circle-check',
-  rejected: 'circle-x',
-  done: 'circle-check',
-  failed: 'circle-x',
-  cancelled: 'ban',
+const NODE_TYPE_LABEL = {
+  agent: 'Agent', llm: 'Model', tool: 'Tool', condition: 'Condition',
+  human_approval: 'Approval', loop: 'Loop',
 };
 
 export const WORKFLOW_BRANCHES = {
@@ -110,6 +103,8 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
   return (
     <div
       className={`workflow-flow-node ${nodeType} ${selected ? 'active' : ''}${data?.dropPreview ? ' is-drop-preview' : ''}${runtimeStatus ? ` is-runtime status-${runtimeStatus}` : ''}${runtimeDetailAvailable ? ' has-runtime-detail' : ''}`}
+      title={`${node.label || nodeType}${runtimeStatus ? ` · ${data.runtimeStatusLabel || runtimeStatus}` : ''}`}
+      aria-label={`${node.label || nodeType}${runtimeStatus ? ` · ${data.runtimeStatusLabel || runtimeStatus}` : ''}`}
     >
       {nodeType !== 'start' ? <Handle type="target" position={resolvedTargetPosition} /> : null}
       {data?.feedbackTarget ? (
@@ -122,20 +117,12 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
         />
       ) : null}
       <span className="workflow-flow-node-icon" aria-hidden="true">
-        <AppIcon name={iconName} size={16} />
+        <AppIcon name={iconName} size={20} />
       </span>
       <span className="workflow-flow-node-copy">
         <strong>{node.label}</strong>
+        {NODE_TYPE_LABEL[nodeType] ? <small>{NODE_TYPE_LABEL[nodeType]}</small> : null}
       </span>
-      {runtimeStatus ? (
-        <span
-          className={`workflow-run-node-status status-${runtimeStatus}`}
-          aria-label={`Status: ${data.runtimeStatusLabel || runtimeStatus}`}
-          title={data.runtimeStatusLabel || runtimeStatus}
-        >
-          <AppIcon name={WORKFLOW_RUNTIME_STATUS_ICON[runtimeStatus] || 'clock'} size={16} />
-        </span>
-      ) : null}
       {WORKFLOW_BRANCHES[nodeType]
         ? WORKFLOW_BRANCHES[nodeType].map((branch, index) => (
           <Handle

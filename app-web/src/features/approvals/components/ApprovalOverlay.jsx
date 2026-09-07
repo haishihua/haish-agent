@@ -601,10 +601,10 @@ export function WorkflowApprovalInline({
   if (!displayRequest) return null;
   return (
     <div className="chat-message-row agent workflow-detail-approval" aria-live="polite">
-      <div className="chat-bubble">
+      <div className="chat-bubble message-shell agent-response">
         <div className="chat-bubble-meta">
           <span className="chat-bubble-meta-main">
-            <span className="chat-bubble-avatar ico-assistant-avatar" aria-hidden="true" />
+            <span className="chat-speaker-avatar" aria-hidden="true"><span className="ico-assistant-avatar" /></span>
             <span>Assistant</span>
           </span>
         </div>

@@ -48,7 +48,7 @@ test('retry status is accessible and replaces generic activity while running', (
   assert.match(source, /aria-live=\{isRetry \? 'polite' : undefined\}/);
   assert.match(source, /<AppIcon name="retry" size=\{13\} className="chat-timeline-retry-icon" \/>/);
   assert.match(source, /activity && !retrying/);
-  assert.match(source, /<ThinkingOrb\s+state=\{activity\.state\}/);
+  assert.match(source, /<ThinkingOrb\s+state=\{activity\.state === 'composing' \? 'working' : activity\.state === 'working' \? 'composing' : activity\.state\}/);
 });
 
 test('retry cards and actions use the shared vector icon', () => {

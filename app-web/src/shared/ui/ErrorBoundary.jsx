@@ -20,6 +20,7 @@ export class ErrorBoundary extends React.Component {
   render() {
     const { error } = this.state;
     if (!error) return this.props.children;
+    const needsReload = /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk [\w-]+ failed/i.test(String(error?.message || error));
     return (
       <div
         style={{
@@ -58,11 +59,15 @@ export class ErrorBoundary extends React.Component {
               cursor: 'pointer',
             }}
             onClick={() => {
+              if (needsReload) {
+                window.location.reload();
+                return;
+              }
               this.setState({ error: null });
               this.props.onReset?.();
             }}
           >
-            Try again
+            {needsReload ? 'Reload app' : 'Try again'}
           </button>
         </div>
       </div>

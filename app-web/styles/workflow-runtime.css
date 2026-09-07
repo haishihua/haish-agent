@@ -22,7 +22,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     transition: grid-template-columns 200ms ease-out;
-    font-family: 'JetBrains Mono', 'PingFang SC', 'Hiragino Sans GB', ui-monospace, monospace;
+    font-family: var(--conversation-font);
 }
 
 .workflow-run-layout.has-detail {
@@ -59,7 +59,7 @@
 .workflow-run-title strong {
     color: rgba(246, 225, 181, 0.96);
     font-size: 17px;
-    font-weight: 760;
+    font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -94,116 +94,132 @@
 
 .workflow-run-canvas .workflow-flow-node.is-runtime {
     cursor: grab;
+    height: 72px;
+    --node-accent: #98a5ba;
+    --node-type-accent: #68aeff;
+    border-color: rgba(176, 206, 255, 0.2);
 }
+
+.workflow-run-canvas .workflow-flow-node.start { --node-type-accent: #55d6a0; }
+.workflow-run-canvas .workflow-flow-node.human_approval { --node-type-accent: #b494ff; }
+.workflow-run-canvas .workflow-flow-node.loop { --node-type-accent: #56cbd4; }
+.workflow-run-canvas .workflow-flow-node.tool { --node-type-accent: #65d4ba; }
+.workflow-run-canvas .workflow-flow-node.condition,
+.workflow-run-canvas .workflow-flow-node.llm { --node-type-accent: #9299ff; }
+.workflow-run-canvas .workflow-flow-node.output { --node-type-accent: #bf90f5; }
+
+.workflow-run-canvas .workflow-flow-node.status-running { --node-accent: #76b9fa; }
+.workflow-run-canvas .workflow-flow-node.status-done,
+.workflow-run-canvas .workflow-flow-node.status-approved { --node-accent: var(--node-type-accent); }
+.workflow-run-canvas .workflow-flow-node.status-approval,
+.workflow-run-canvas .workflow-flow-node.status-waiting_input { --node-accent: #b494ff; }
+.workflow-run-canvas .workflow-flow-node.status-cancelled { --node-accent: #efc75e; }
+.workflow-run-canvas .workflow-flow-node.status-failed,
+.workflow-run-canvas .workflow-flow-node.status-rejected { --node-accent: #ee7a91; }
+
+.workflow-run-canvas .workflow-flow-node.is-runtime strong { color: #edf0f8; }
+
+.workflow-run-canvas .workflow-flow-node.is-runtime .workflow-flow-node-icon {
+    border: 0;
+    border-radius: 10px;
+    background: rgba(164, 178, 203, 0.08);
+    color: #a6b3c8;
+    transition: color 180ms ease, background 180ms ease;
+}
+
+.workflow-run-canvas .workflow-flow-node.is-runtime:not(.status-pending):not(.status-cancelled) .workflow-flow-node-icon {
+    background: color-mix(in srgb, var(--node-accent) 22%, transparent);
+    color: var(--node-accent);
+}
+
+.workflow-run-canvas .workflow-flow-node.is-runtime.status-cancelled .workflow-flow-node-icon {
+    background: color-mix(in srgb, var(--node-accent) 18%, transparent);
+    color: var(--node-accent);
+}
+
+.workflow-run-canvas .workflow-flow-node.is-runtime:hover {
+    transform: none;
+}
+
+.workflow-run-canvas .workflow-flow-node.is-runtime.active {
+    outline: 1px solid #aebdd3;
+    outline-offset: 3px;
+}
+
+.workflow-run-canvas .workflow-flow-node.is-runtime .react-flow__handle {
+    width: 6px;
+    height: 6px;
+    min-width: 0;
+    min-height: 0;
+    border: 0;
+    box-shadow: none;
+    opacity: 0;
+    transition: opacity 160ms ease;
+}
+
+.workflow-run-canvas .workflow-flow-node.is-runtime:hover .react-flow__handle,
+.workflow-run-canvas .workflow-flow-node.is-runtime.active .react-flow__handle { opacity: 1; }
+
+.workflow-run-canvas .workflow-flow-node .react-flow__handle-left { left: -4px; }
+.workflow-run-canvas .workflow-flow-node .react-flow__handle-right { right: -4px; }
 
 .workflow-run-canvas .workflow-flow-node.is-runtime.has-runtime-detail {
     cursor: pointer;
 }
 
 .workflow-run-canvas .workflow-flow-node.is-runtime .workflow-flow-node-copy {
-    padding-right: 34px;
+    padding-right: 0;
 }
 
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-running {
-    border-color: rgba(105, 200, 246, 0.64);
+    border-color: var(--node-accent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--node-accent) 12%, #182234), #101824);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--node-accent) 16%, transparent);
 }
 
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-approval,
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-waiting_input {
-    border-color: rgba(239, 191, 100, 0.66);
+    border-color: var(--node-accent);
 }
 
-.workflow-run-canvas .workflow-flow-node.is-runtime.status-running::after,
-.workflow-run-canvas .workflow-flow-node.is-runtime.status-approval::after,
-.workflow-run-canvas .workflow-flow-node.is-runtime.status-waiting_input::after {
+.workflow-run-canvas .workflow-flow-node.is-runtime.status-running::after {
     content: "";
     position: absolute;
     inset: -6px;
     z-index: -1;
-    border: 2px solid rgba(105, 200, 246, 0.72);
-    border-radius: 20px;
+    border: 1px solid var(--node-accent);
+    border-radius: 21px;
     pointer-events: none;
-    animation: workflow-node-live 1.25s ease-out infinite;
+    animation: workflow-node-live 1.8s ease-out infinite;
 }
 
-.workflow-run-canvas .workflow-flow-node.is-runtime.status-approval::after,
-.workflow-run-canvas .workflow-flow-node.is-runtime.status-waiting_input::after {
-    border-color: rgba(239, 191, 100, 0.72);
+.workflow-run-canvas .react-flow__edge .react-flow__edge-path {
+    stroke-linecap: round;
 }
 
 .workflow-run-canvas .react-flow__edge.is-flowing .react-flow__edge-path {
     stroke: rgba(105, 200, 246, 0.9);
-    stroke-width: 2.2;
-    stroke-dasharray: 8 7;
-    filter: drop-shadow(0 0 4px rgba(105, 200, 246, 0.62));
-    animation: workflow-edge-flow 650ms linear infinite;
-}
-
-.workflow-run-canvas .react-flow__edge.is-flowing marker path {
-    fill: rgba(105, 200, 246, 0.92);
+    stroke-width: 1.8;
+    stroke-dasharray: 18 3;
+    filter: drop-shadow(0 0 2px rgba(105, 200, 246, 0.35));
+    animation: workflow-edge-flow 900ms linear infinite;
 }
 
 .workflow-run-canvas .react-flow__edge.is-traversed .react-flow__edge-path {
-    stroke: rgba(120, 218, 139, 0.5);
-}
-
-.workflow-run-canvas .react-flow__edge.is-traversed marker path {
-    fill: rgba(120, 218, 139, 0.62);
+    stroke: rgba(129, 166, 159, 0.48);
 }
 
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-done,
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-approved {
-    border-color: rgba(120, 218, 139, 0.48);
+    border-color: color-mix(in srgb, var(--node-accent) 60%, #293648);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--node-accent) 9%, #182234), #101824);
 }
 
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-failed,
-.workflow-run-canvas .workflow-flow-node.is-runtime.status-rejected {
-    border-color: rgba(238, 122, 145, 0.7);
-}
-
-.workflow-run-node-status {
-    position: absolute;
-    top: 50%;
-    right: 8px;
-    z-index: 2;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    box-sizing: border-box;
-    color: rgba(175, 191, 216, 0.76);
-    transform: translateY(-50%);
-}
-
-.workflow-run-node-status svg {
-    width: 16px;
-    height: 16px;
-    stroke-width: 2;
-}
-
-.workflow-run-node-status.status-running {
-    color: #79bcff;
-}
-
-.workflow-run-node-status.status-running svg {
-    animation: workflow-status-spin 800ms linear infinite;
-}
-
-.workflow-run-node-status.status-approval,
-.workflow-run-node-status.status-waiting_input {
-    color: #efbf64;
-}
-
-.workflow-run-node-status.status-done,
-.workflow-run-node-status.status-approved {
-    color: #5bd79b;
-}
-
-.workflow-run-node-status.status-failed,
-.workflow-run-node-status.status-rejected,
-.workflow-run-node-status.status-cancelled {
-    color: #ff8093;
+.workflow-run-canvas .workflow-flow-node.is-runtime.status-rejected,
+.workflow-run-canvas .workflow-flow-node.is-runtime.status-cancelled {
+    border-color: var(--node-accent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--node-accent) 10%, #182234), #101824);
 }
 
 .portal-tooltip.workflow-node-config-portal {
@@ -439,7 +455,7 @@
 
 .workflow-detail-history {
     max-width: 100%;
-    margin-bottom: 18px;
+    margin-bottom: 8px;
 }
 
 .workflow-detail-history > summary {
@@ -458,15 +474,16 @@
 }
 
 .workflow-detail-history-summary {
-    color: rgba(239, 191, 100, 0.72);
+    justify-content: space-between;
+    margin-bottom: 0;
 }
 
 .workflow-detail-history-summary:hover {
-    color: rgba(239, 191, 100, 0.94);
+    color: #dce3f4;
 }
 
 .workflow-detail-history-summary:focus-visible {
-    outline: 1px solid rgba(239, 191, 100, 0.72);
+    outline: 1px solid rgba(148, 172, 209, 0.66);
     outline-offset: 3px;
     border-radius: 2px;
 }
@@ -495,11 +512,10 @@
     letter-spacing: 0.02em;
 }
 
-.workflow-detail-attempt-label::after {
-    content: '';
-    height: 1px;
-    flex: 1;
-    background: linear-gradient(90deg, rgba(139, 165, 205, 0.2), transparent);
+.workflow-detail-history-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .workflow-detail-scroll-region {
@@ -582,7 +598,7 @@
     gap: 8px;
     padding-bottom: 150px;
     color: rgba(176, 192, 219, 0.66);
-    font-family: 'JetBrains Mono', 'PingFang SC', 'Hiragino Sans GB', ui-monospace, monospace;
+    font-family: var(--conversation-font);
 }
 
 .workflow-run-empty strong {
@@ -592,10 +608,6 @@
 
 .workflow-run-empty > span {
     font-size: 12px;
-}
-
-@keyframes workflow-status-spin {
-    to { transform: rotate(360deg); }
 }
 
 @keyframes workflow-title-gradient {
@@ -608,7 +620,7 @@
 }
 
 @keyframes workflow-edge-flow {
-    to { stroke-dashoffset: -30; }
+    to { stroke-dashoffset: -21; }
 }
 
 @keyframes workflow-detail-enter {
@@ -657,7 +669,6 @@
         transition: none;
     }
 
-    .workflow-run-node-status.status-running svg,
     .workflow-run-canvas .react-flow__edge.animated path,
     .workflow-run-canvas .react-flow__edge.is-flowing .react-flow__edge-path,
     .workflow-run-canvas .workflow-flow-node.is-runtime.status-running::after,

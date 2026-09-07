@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Conversation search regression</title>
+<link rel="stylesheet" href="../../styles/chat.css">
+<style>
+  body { background: #101827; color: #dfe6f1; font: 18px sans-serif; padding: 32px; --conversation-font: sans-serif; }
+  #messages { height: 240px; overflow: auto; margin-top: 20px; }
+  .message-speech-body { border: 1px solid #334155; border-radius: 16px; padding: 16px; }
+  .spacer { height: 350px; }
+</style>
+<h2 id="result">Running checks…</h2>
+<button class="haish-search-match-preview" id="candidate">Jump to second <mark>211</mark> match</button>
+<div id="messages">
+  <div class="message-speech-body chat-bubble-text">需求 id=<strong>21</strong>1，第一次命中。
+    <div class="spacer"></div>
+    第二次 211，正文中的关键词。<button>211 hidden control</button><span aria-hidden="true">211 hidden</span>
+    Literal a.b and axb. DRAFT draft.
+    <div class="spacer"></div>
+  </div>
+  <div class="chat-timeline-text-body">过程中的 211</div>
+</div>
+<script type="module">
+  import { collectConversationMatches, scrollToConversationMatch } from '../../src/features/chat/model/conversation-search.js';
+  const container = document.querySelector('#messages');
+  const assert = (value, label) => { if (!value) throw new Error(label); };
+  try {
+    const hits = collectConversationMatches(container, '211');
+    assert(hits.length === 3, 'Repeated matches, timeline, hidden control filtering');
+    assert(hits.every(hit => hit.range.toString() === '211'), 'Range matches across inline markup');
+    assert(collectConversationMatches(container, 'a.b').length === 1, 'Literal regex escaping');
+    assert(collectConversationMatches(container, 'draft').length === 2, 'Case insensitive');
+    assert(collectConversationMatches(container, ' ').length === 0, 'Empty query');
+    CSS.highlights.set('conversation-matches', new Highlight(...hits.map(hit => hit.range)));
+    document.querySelector('#candidate').onclick = () => scrollToConversationMatch(container, hits[1].range);
+    document.querySelector('#candidate').click();
+    assert(container.scrollTop > 0, 'Candidate scrolls within the same message');
+    const hitRect = hits[1].range.getBoundingClientRect();
+    const viewport = container.getBoundingClientRect();
+    assert(hitRect.top >= viewport.top && hitRect.bottom <= viewport.bottom, 'Exact keyword visible');
+    document.querySelector('#result').textContent = 'PASS — keyword ranges and candidate navigation';
+  } catch (error) {
+    document.querySelector('#result').textContent = `FAIL — ${error.message}`;
+    throw error;
+  }
+</script>

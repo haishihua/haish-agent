@@ -2757,7 +2757,11 @@
 }
 
 .workflow-flow-node {
-    width: 214px;
+    font-family: var(--conversation-font);
+    width: max-content;
+    min-width: 128px;
+    max-width: 320px;
+    box-sizing: border-box;
     min-height: 62px;
     position: relative;
     display: grid;
@@ -2785,6 +2789,17 @@
         0 0 0 1px rgba(239, 191, 100, 0.12),
         inset 0 1px 0 rgba(255, 255, 255, 0.05);
     transform: translateY(-1px);
+}
+
+.workflow-flow-node .workflow-flow-node-copy {
+    gap: 3px;
+}
+
+.workflow-flow-node-copy small {
+    font-size: 11px;
+    line-height: 1.2;
+    color: #929fb5;
+    font-weight: 400;
 }
 
 .workflow-canvas .workflow-drop-preview-node {
@@ -2821,7 +2836,7 @@
     overflow: hidden;
     color: rgba(246, 248, 255, 0.96);
     font-size: 14px;
-    font-weight: 750;
+    font-weight: 500;
     line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2829,6 +2844,13 @@
 
 .workflow-flow-node.start {
     border-color: rgba(120, 218, 139, 0.28);
+}
+
+.workflow-flow-node.output .workflow-flow-node-icon svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+    stroke-width: 0;
 }
 
 .workflow-flow-node.start .workflow-flow-node-icon {

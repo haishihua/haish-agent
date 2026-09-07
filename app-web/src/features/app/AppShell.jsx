@@ -156,6 +156,7 @@ import { createConversationActivationHandlers } from '../conversations/hooks/cre
 import { createDraftConversationHandlers } from '../conversations/hooks/createDraftConversationHandlers.js';
 import { usePerConversationDraft } from '../chat/hooks/usePerConversationDraft.js';
 import { useConversationBootstrap } from '../conversations/hooks/useConversationBootstrap.js';
+import { saveLastLocation } from '../conversations/model/last-location.js';
 import { useConversationListPolling } from '../conversations/hooks/useConversationListPolling.js';
 import { useTaskRuntimePolling } from '../tasks/hooks/useTaskRuntimePolling.js';
 
@@ -801,7 +802,16 @@ export function AppShell() {
     setOwnerId,
     setWorkspaceLoading,
     setWorkspaceState,
+    setViewedWorkflowTask,
   });
+
+  useEffect(() => {
+    if (workspaceLoading || !ownerId) return undefined;
+    const save = () => saveLastLocation(window.localStorage, ownerId, viewMode, viewedWorkflowTask);
+    save();
+    window.addEventListener('pagehide', save);
+    return () => window.removeEventListener('pagehide', save);
+  }, [workspaceLoading, ownerId, viewMode, viewedWorkflowTask]);
 
   const {
     handleToggleSettings,
@@ -1276,12 +1286,12 @@ export function AppShell() {
     return latestTaskId ? taskRuntimeState.tasksById[latestTaskId] || null : null;
   }, [taskRuntimeState]);
   const currentTask = useMemo(() => {
-    if (viewMode !== 'chat' && viewedWorkflowTask?.conversationId === conversationId) {
+    if (viewMode !== 'chat' && viewedWorkflowTask?.projectId === workspaceState.activeProjectId) {
       const viewedTask = taskRuntimeState.tasksById[viewedWorkflowTask.taskId];
       if (viewedTask) return viewedTask;
     }
     return runtimeCurrentTask;
-  }, [conversationId, runtimeCurrentTask, viewedWorkflowTask, viewMode, taskRuntimeState.tasksById]);
+  }, [workspaceState.activeProjectId, runtimeCurrentTask, viewedWorkflowTask, viewMode, taskRuntimeState.tasksById]);
   const selectedWorkflow = useMemo(() => {
     const selected = workflowById(workflowSettingsDraft, selectedWorkflowId || defaultWorkflowId);
     return currentTask?.executionMode === 'bot' && currentTask.workflowSnapshot
@@ -1293,7 +1303,8 @@ export function AppShell() {
     const taskId = task?.taskId || task?.task_id || task?.id;
     if (!targetConversationId || !taskId) return;
     setTaskCompletionNotices((current) => clearTaskCompletionNotice(current, targetConversationId, taskId));
-    setViewedWorkflowTask({ conversationId: targetConversationId, taskId });
+    setViewedWorkflowTask({ projectId, taskId });
+    saveLastLocation(window.localStorage, ownerIdRef.current, 'workflow', { projectId, taskId });
     await handleSelectConversation(projectId, targetConversationId);
     try {
       await restoreLatestTaskRuntime(taskId, {
@@ -1310,7 +1321,7 @@ export function AppShell() {
   async function handleDeleteWorkflowTask(_projectId, targetConversationId, task) {
     const taskId = task?.taskId || task?.task_id || task?.id;
     if (!targetConversationId || !taskId) return;
-    if (viewedWorkflowTask?.conversationId === targetConversationId && viewedWorkflowTask.taskId === taskId) {
+    if (viewedWorkflowTask?.projectId === _projectId && viewedWorkflowTask.taskId === taskId) {
       setViewedWorkflowTask(null);
     }
     const response = await apiFetch(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}`, {

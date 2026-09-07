@@ -79,19 +79,20 @@ test('runtime workflow layout wraps the primary route and keeps rejection work b
 
   assert.equal(layout.columns, 4);
   assert.deepEqual(layout.positions.get('start'), { x: 48, y: 96 });
-  assert.deepEqual(layout.positions.get('three'), { x: 918, y: 96 });
-  assert.deepEqual(layout.positions.get('four'), { x: 918, y: 326 });
-  assert.deepEqual(layout.positions.get('seven'), { x: 48, y: 326 });
-  assert.deepEqual(layout.positions.get('rework'), { x: 628, y: 214 });
+  assert.deepEqual(layout.positions.get('three'), { x: 762, y: 96 });
+  assert.deepEqual(layout.positions.get('four'), { x: 762, y: 288 });
+  assert.deepEqual(layout.positions.get('seven'), { x: 48, y: 288 });
+  assert.deepEqual(layout.positions.get('rework'), { x: 405, y: 192 });
+  assert.equal(layout.positions.get('output').y, 400);
   assert.equal(layout.meta.get('four').direction, 'left');
   assert.equal(layout.meta.get('rework').kind, 'secondary');
 });
 
 test('runtime feedback edges keep routed ports and align every rework edge on one baseline', () => {
   assert.match(runtimeSource, /targetHandle: feedback \? 'runtime-feedback'/);
-  assert.match(runtimeSource, /type: curved \? 'smoothstep'/);
+  assert.match(runtimeSource, /type: 'smoothstep'/);
   assert.match(runtimeSource, /const reworkEdge = sourceLayout\?\.kind !== targetLayout\?\.kind/);
-  assert.match(runtimeSource, /borderRadius: 18, offset: reworkEdge \? 0 : 28/);
+  assert.match(runtimeSource, /borderRadius: 28, offset: reworkEdge \? 0 : 28/);
   assert.doesNotMatch(runtimeSource, /type: curved \? 'default'/);
 });
 
@@ -130,7 +131,8 @@ test('live traces stay visible while their tool cards remain collapsed', () => {
   assert.match(chatMessageSource, /const showTimelineToggle = hasTraceDisclosure && !traceForcedOpen/);
   assert.match(chatMessageSource, /showTimelineToggle \? \(\s*<ChatTimelineCollapsed/);
   assert.match(chatMessageSource, /expanded=\{traceExpanded\}/);
-  assert.match(chatMessageSource, /setTraceExpanded\(false\).*message\.conversationId, message\.id/s);
+  assert.match(chatMessageSource, /setTraceExpanded\(null\).*message\.conversationId, message\.id/s);
+  assert.match(chatMessageSource, /traceExpansionOverride \?\? message\.status === 'cancelled'/);
   assert.match(chatMessageSource, /traceForcedOpen && firstTokenMs \? <ChatTimelineElapsedPill/);
   assert.doesNotMatch(chatTimelineSource, /expandedByDefault/);
   // Mid-run steering inputs (user_input timeline items) no longer split the
@@ -174,7 +176,9 @@ test('runtime details use executed node data and real workflow transitions', () 
   assert.deepEqual(started.nodeInput, { message: 'real resolved input' });
   assert.match(runtimeSource, /inputEvent\?\.nodeInput/);
   assert.match(runtimeSource, /status === 'waiting_input'/);
-  assert.match(flowNodeSource, /WORKFLOW_RUNTIME_STATUS_ICON/);
+  assert.doesNotMatch(flowNodeSource, /WORKFLOW_RUNTIME_STATUS_ICON|workflow-run-node-status/);
+  assert.match(flowNodeSource, /data.runtimeStatusLabel \|\| runtimeStatus/);
+  assert.match(flowNodeSource, /NODE_TYPE_LABEL\[nodeType\]/);
   assert.match(chatMessageSource, /label=\{elapsed \|\| '0s'\}/);
   assert.doesNotMatch(chatMessageSource, /label=\{elapsed \|\| 'Trace'\}/);
 });
@@ -295,7 +299,7 @@ test('current approval waiting state wins over an older rejected decision', () =
   assert.ok(waitingCheck >= 0 && waitingCheck < decisionCheck);
   assert.match(runtimeSource, /className="workflow-detail-history"/);
   assert.match(runtimeSource, /className="workflow-detail-attempt-label workflow-detail-history-summary"/);
-  assert.match(runtimeSource, /previous Attempts \(\{historicalAttempts\.length\}\)/);
+  assert.match(runtimeSource, /Previous attempts \(\{historicalAttempts\.length\}\)/);
   assert.match(runtimeSource, /<ChatTimelineChevron open=\{historyOpen\} \/>/);
   assert.doesNotMatch(runtimeStyles, /workflow-detail-history-summary > \.chat-timeline-chevron/);
 });

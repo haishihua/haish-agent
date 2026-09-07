@@ -57,6 +57,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
     [onDraftChange, selectedId],
   );
   const configRef = useRef(config);
+  const oauthStartInFlightRef = useRef(false);
   configRef.current = config;
   const configuredModel = config.model;
   const configuredModelOptions = config.model_options;
@@ -84,9 +85,10 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
     });
   };
   const startOAuthLogin = async () => {
-    if (disabled || readOnly || !showOAuthFields) {
+    if (disabled || readOnly || !showOAuthFields || oauthStartInFlightRef.current) {
       return;
     }
+    oauthStartInFlightRef.current = true;
     setOauthStartPending(true);
     setOauthStartError('');
     try {
@@ -114,10 +116,13 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
         oauth_verifier: '',
         oauth_state: '',
       });
-      window.open(payload.auth_url, '_blank', 'noopener,noreferrer');
+      if ((payload.status || 'pending') === 'pending') {
+        window.open(payload.auth_url, '_blank', 'noopener,noreferrer');
+      }
     } catch (error) {
       setOauthStartError(String(error?.message || error));
     } finally {
+      oauthStartInFlightRef.current = false;
       setOauthStartPending(false);
     }
   };
