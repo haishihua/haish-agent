@@ -76,7 +76,7 @@ export function ConversationsPanel({
   onReorderProjects,
   onOpenTaskReport,
   onRetryTask,
-  taskPreviewLimit = 5,
+  taskPreviewLimit = 3,
   conversationPreviewLimit = 3,
   onToast,
 }) {

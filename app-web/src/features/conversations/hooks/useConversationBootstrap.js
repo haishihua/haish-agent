@@ -85,7 +85,7 @@ export function useConversationBootstrap({
               activeProjectId: rememberedTask.projectId,
               activeConversationId: rememberedTask.conversationId,
               projects: nextState.projects.map((project) => project.id === rememberedTask.projectId
-                ? { ...project, userExpanded: true, expanded: true, workflowTasksExpanded: true }
+                ? { ...project, userExpanded: true, expanded: true, workflowTasksExpanded: false }
                 : project),
             };
           }

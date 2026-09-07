@@ -67,7 +67,7 @@ export function ProjectNode({
   onDropProject,
   onOpenTaskReport,
   onRetryTask,
-  taskPreviewLimit = 5,
+  taskPreviewLimit = 3,
   conversationPreviewLimit = 3,
 }) {
   const isActiveProject = workspaceState.activeProjectId === project.id;
@@ -83,7 +83,7 @@ export function ProjectNode({
     ? allConversations
     : allConversations.slice(0, conversationLimit);
   const hiddenConversationCount = Math.max(0, allConversations.length - conversationLimit);
-  const taskLimit = Math.max(1, Number(taskPreviewLimit) || 5);
+  const taskLimit = Math.max(1, Number(taskPreviewLimit) || 3);
   const visibleWorkflowTasks = listExpanded
     ? allWorkflowTasks
     : allWorkflowTasks.slice(0, taskLimit);
