@@ -159,6 +159,7 @@ export function ModelPicker({
     || resolvedAgentOptions[0]
     || null;
   const modelLabel = current ? current.label : (currentProvider ? (loading ? 'loading' : 'unavailable') : 'No model');
+  const runConfigLabel = `${value || 'No model'} · ${reasoningEffort || currentReasoning?.id || 'unknown'}`;
   const providerLabel = currentProvider ? currentProvider.label : 'Configure LLM';
   const agentLabel = currentAgent ? currentAgent.label : 'Agent';
   const pickerLoading = agentLoading;
@@ -206,7 +207,7 @@ export function ModelPicker({
       aria-readonly={readOnly ? 'true' : undefined}
       aria-haspopup="dialog"
       aria-expanded={open}
-      aria-label={`Run configuration, thinking ${currentReasoning?.label || 'unknown'}`}
+      aria-label={`Run configuration, ${runConfigLabel}`}
     >
       {pickerLoading ? <span className="model-picker-loading" aria-hidden="true" /> : (
         <svg className="model-picker-gauge" style={{ '--gauge-rotation': gaugeRotation }} viewBox="0 0 24 24" aria-hidden="true">
@@ -235,7 +236,7 @@ export function ModelPicker({
         }, 180);
       }}
     >
-      <PortalTooltip text={open ? '' : `Thinking · ${currentReasoning?.label || 'unknown'}`} position="above">
+      <PortalTooltip text={open ? '' : runConfigLabel} position="above">
         {triggerButton}
       </PortalTooltip>
       {open && !menuOpen ? (
