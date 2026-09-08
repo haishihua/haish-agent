@@ -16,7 +16,7 @@ function preferredStorageKeyFromSelectionKey(storageKey) {
   return `haish_preferred_run_config_v1:${ownerHash}:${modeHash}${botSuffix}`;
 }
 
-export function safeReadRunConfigSelection(storageKey) {
+function safeReadRunConfigSelection(storageKey) {
   if (!storageKey || typeof window === 'undefined' || !window.localStorage) return null;
   try {
     const raw = window.localStorage.getItem(storageKey);
@@ -50,7 +50,7 @@ export function safeWriteRunConfigSelection(storageKey, selection) {
   }
 }
 
-export function optionHasId(options, id) {
+function optionHasId(options, id) {
   return Array.isArray(options) && options.some((item) => item?.id === id);
 }
 
@@ -59,7 +59,7 @@ export function firstRunProvider(providerOptions) {
   return providerOptions[0];
 }
 
-export function providerModelsRequest(providerOption) {
+function providerModelsRequest(providerOption) {
   if (!providerOption?.provider) return null;
   return {
     provider: providerOption.provider,
@@ -71,7 +71,7 @@ export function providerModelsRequest(providerOption) {
   };
 }
 
-export function normalizeProviderModels(payload) {
+function normalizeProviderModels(payload) {
   const seen = new Set();
   const options = [];
   (Array.isArray(payload?.models) ? payload.models : []).forEach((item) => {

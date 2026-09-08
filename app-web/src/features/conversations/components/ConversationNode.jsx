@@ -3,6 +3,7 @@ import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ConversationAction } from './ConversationIcons.jsx';
 import { TaskRecordCompact } from './ConversationTaskCards.jsx';
 import { conversationHasRunningTask } from '../model/conversation-status.js';
+import { nextExtraVisible } from '../model/list-preview.js';
 
 /**
  * 会话标题：不用悬停 tooltip 展示完整标题；
@@ -80,9 +81,8 @@ export function ConversationNode({
   active,
   nodeRef,
   terminalStatus = '',
-  taskPreviewLimit = 5,
+  taskPreviewLimit = 3,
   onSelectConversation,
-  onToggleConversationTasks,
   showTaskRecords = true,
   onRequestDeleteConversation,
   onRequestRenameConversation,
@@ -92,9 +92,10 @@ export function ConversationNode({
   onRetryTask,
 }) {
   const tasks = conversation.tasks || [];
-  const visibleLimit = Math.max(1, Number(taskPreviewLimit) || 5);
-  const visibleTasks = conversation.tasksExpanded ? tasks.slice().reverse() : tasks.slice(-visibleLimit).reverse();
-  const hiddenCount = Math.max(0, tasks.length - visibleLimit);
+  const [extraVisible, setExtraVisible] = React.useState(0);
+  const visibleLimit = Math.max(1, Number(taskPreviewLimit) || 3);
+  const visibleTasks = tasks.slice(-(visibleLimit + extraVisible)).reverse();
+  const hiddenCount = Math.max(0, tasks.length - visibleTasks.length);
   const showTaskList = showTaskRecords && conversation.expanded && tasks.length > 0;
   const runningTask = conversationHasRunningTask(conversation);
   const isPinned = Boolean(conversation.pinned);
@@ -187,13 +188,13 @@ export function ConversationNode({
       {showTaskList && (
         <div className="conversation-task-list">
           {visibleTasks.map((task) => <TaskRecordCompact key={task.taskId || task.id} task={task} onOpenReport={onOpenTaskReport} onRetry={onRetryTask} />)}
-          {hiddenCount > 0 && (
+          {(hiddenCount > 0 || extraVisible > 0) && (
             <button
               type="button"
               className="conversation-show-more"
-              onClick={() => onToggleConversationTasks(project.id, conversation.id)}
+              onClick={() => setExtraVisible((previous) => nextExtraVisible(previous, hiddenCount))}
             >
-              {conversation.tasksExpanded ? 'Show less' : `Show ${hiddenCount} more`}
+              {hiddenCount > 0 ? 'Show more' : 'Show less'}
             </button>
           )}
         </div>

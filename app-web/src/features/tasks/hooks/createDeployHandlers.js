@@ -329,6 +329,7 @@ export function createDeployHandlers(ctx) {
     if (!deployConvId) return;
     const text = request.text;
     const pendingTask = preparePendingTask(request);
+    pendingTask.conversationId = deployConvId;
     const nextConversationTitle = titleFromTaskText(request.displayText || text);
     const currentConversation = findConversationById(workspaceState, deployConvId)
       || (seedDetail ? conversationDetailToWorkspaceConversation(seedDetail) : null);

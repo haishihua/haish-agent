@@ -31,7 +31,7 @@ export function setStoredConversationId(ownerId, conversationId) {
   window.localStorage.setItem(key, conversationId);
 }
 
-export function defaultProjectIdForMode(executionMode = 'chat') {
+function defaultProjectIdForMode(executionMode = 'chat') {
   return `default-project-${executionMode === 'bot' ? 'bot' : 'chat'}`;
 }
 
@@ -209,7 +209,7 @@ export function titleFromTaskText(text, maxLength = 48) {
 }
 
 
-export function chatImagePreviewUrl(ref, conversationId) {
+function chatImagePreviewUrl(ref, conversationId) {
   const existing = String(ref?.previewUrl || '').trim();
   if (existing) return existing;
   const path = String(ref?.path || '').trim();
@@ -230,7 +230,7 @@ export function normalizeChatImageRefs(refs, conversationId) {
     }));
 }
 
-export function mergeChatImageRefValue(existing = {}, incoming = {}) {
+function mergeChatImageRefValue(existing = {}, incoming = {}) {
   return {
     ...existing,
     ...incoming,
@@ -322,7 +322,7 @@ export function taskCreatedTimestamp(task) {
   );
 }
 
-export function conversationUpdatedTimestamp(conversation) {
+function conversationUpdatedTimestamp(conversation) {
   if (!conversation) return 0;
   const taskUpdatedAt = Array.isArray(conversation.tasks)
     ? conversation.tasks.reduce((latest, task) => Math.max(latest, taskUpdatedTimestamp(task)), 0)
@@ -336,7 +336,7 @@ export function conversationUpdatedTimestamp(conversation) {
   );
 }
 
-export function projectUpdatedTimestamp(project) {
+function projectUpdatedTimestamp(project) {
   if (!project) return 0;
   const conversationUpdatedAt = Array.isArray(project.conversations)
     ? project.conversations.reduce((latest, conversation) => Math.max(latest, conversationUpdatedTimestamp(conversation)), 0)
@@ -350,7 +350,7 @@ export function projectUpdatedTimestamp(project) {
   );
 }
 
-export function inferProjectCreatedAt(project) {
+function inferProjectCreatedAt(project) {
   const directCreatedAt = project?.createdAt || project?.created_at;
   if (timestampValue(directCreatedAt)) return directCreatedAt;
   const conversations = Array.isArray(project?.conversations) ? project.conversations : [];

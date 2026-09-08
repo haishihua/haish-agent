@@ -5,7 +5,7 @@ import {
   taskUpdatedTimestamp,
   workspaceStateWithConversationRuntimeTask,
 } from '../../conversations/model/workspace-state.js';
-import { taskSummaryToRuntimeTask } from '../model/task-runtime.js';
+import { isPendingTaskId, taskSummaryToRuntimeTask } from '../model/task-runtime.js';
 import { terminalTaskNoticeStatus } from '../model/task-completion-notices.js';
 import { startPolling } from '../../../shared/lib/polling.js';
 
@@ -60,7 +60,8 @@ export function useTaskRuntimePolling({
     .join('|');
 
   React.useEffect(() => {
-    if (!activeTaskId || getRuntime(conversationId)?.activeRunId) return undefined;
+    if (!activeTaskId || getRuntime(conversationId)?.activeRunId
+      || isPendingTaskId(getRuntime(conversationId), activeTaskId)) return undefined;
     let cancelled = false;
     const isCurrent = () => !cancelled && conversationIdRef.current === conversationId;
     const refresh = () => {
@@ -93,6 +94,7 @@ export function useTaskRuntimePolling({
     const refresh = async () => {
       const groups = new Map();
       for (const target of backgroundTargets) {
+        if (isPendingTaskId(getRuntime(target.conversationId), target.taskId)) continue;
         if (getRuntime(target.conversationId)?.activeRunId) continue;
         const ids = groups.get(target.conversationId) || [];
         ids.push(target.taskId);

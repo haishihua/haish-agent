@@ -22,7 +22,7 @@ import {
   workflowListItems,
 } from '../../workflow/model/workflow-catalog.js';
 
-export function getLlmConfigItems(draft, activeSubtab = 'chat') {
+function getLlmConfigItems(draft, activeSubtab = 'chat') {
   const titleForConfig = (config) => {
     if (!config?.provider) return 'Provider';
     return runtimeProviderLabel(config);
@@ -142,7 +142,7 @@ export function createLlmProfile() {
   };
 }
 
-export function toolsRecordSummary(record) {
+function toolsRecordSummary(record) {
   if (record?.id === 'tools-mcp') {
     const parsed = parseJsonSafe(record.mcp_json || DEFAULT_MCP_CONFIG_JSON);
     if (!parsed.ok) return 'Invalid JSON';
@@ -180,7 +180,7 @@ export function parseJsonSafe(text) {
   }
 }
 
-export function escapeHtml(text) {
+function escapeHtml(text) {
   return String(text ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -421,5 +421,4 @@ export function llmEditorModelChoices(config) {
     discovered.length ? discovered : modelChoicesFor(config?.provider),
   );
 }
-
 

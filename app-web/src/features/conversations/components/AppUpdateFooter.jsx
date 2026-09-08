@@ -1,4 +1,5 @@
 import React from 'react';
+import { CircleFadingArrowUp, LoaderCircle } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { JobProgress } from '../../../shared/ui/agent-elements/JobProgress.jsx';
 import { updateJobProgress } from '../model/update-progress.js';
@@ -168,6 +169,7 @@ export function AppUpdateFooter({ onToast }) {
     updateState?.status === 'downloaded';
 
   const jobProgress = updateJobProgress(updateState);
+  const UpdateIcon = loading ? LoaderCircle : CircleFadingArrowUp;
   if (jobProgress) {
     return <div className="app-update-footer"><JobProgress {...jobProgress} /></div>;
   }
@@ -183,21 +185,12 @@ export function AppUpdateFooter({ onToast }) {
             aria-label={updateTooltipText(updateState)}
             onClick={handleUpdateAction}
           >
-            <svg
+            <UpdateIcon
               className={`update-icon${loading ? ' is-loading' : ''}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+              size={20}
+              strokeWidth={1.75}
               aria-hidden="true"
-            >
-              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-              <path d="M21 3v5h-5" />
-              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-              <path d="M8 16H3v5" />
-            </svg>
+            />
             <span>{updateMenuLabel(updateState)}</span>
           </button>
         </div>

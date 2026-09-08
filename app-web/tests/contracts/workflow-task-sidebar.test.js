@@ -137,8 +137,10 @@ test('workflow projects reveal a three-task preview until the user collapses the
   assert.equal(withDefaultExpansion({ executionMode: 'bot', conversations: [] }).expanded, true);
   assert.equal(withDefaultExpansion({ executionMode: 'bot', userExpanded: false, conversations: [] }).expanded, false);
   assert.match(appShellSource, /taskPreviewLimit=\{3\}/);
-  assert.match(projectNodeSource, /allWorkflowTasks\.slice\(0, taskLimit\)/);
-  assert.match(projectNodeSource, /Show \$\{workflowTaskMode \? hiddenWorkflowTaskCount : hiddenConversationCount\} more/);
+  assert.match(projectNodeSource, /allWorkflowTasks\.slice\(0, taskLimit \+ extraVisible\.bot\)/);
+  assert.match(projectNodeSource, /allConversations\.slice\(0, conversationLimit \+ extraVisible\.chat\)/);
+  assert.match(projectNodeSource, /hiddenCount > 0 \? 'Show more' : 'Show less'/);
+  assert.match(projectNodeSource, /nextExtraVisible\(previous\[mode\], hiddenCount\)/);
 });
 
 test('project directory maps bot project tasks without exposing bot conversations in the sidebar', () => {

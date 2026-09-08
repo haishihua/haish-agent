@@ -93,28 +93,28 @@ export function llmRetrySummary(event) {
 }
 
 
-export function chatTraceToolName(value) {
+function chatTraceToolName(value) {
   return String(value || 'tool').replace(/[_-]+/g, ' ').trim() || 'tool';
 }
 
-export function isSubAgentTraceItem(item) {
+function isSubAgentTraceItem(item) {
   const name = String(item?.toolName || item?.tool_name || '').toLowerCase();
   return name.includes('dispatch_sub_agent') || name.includes('sub_agent') || name.includes('subagent');
 }
 
-export function isSkillTraceItem(item) {
+function isSkillTraceItem(item) {
   const group = String(item?.toolGroup || item?.tool_group || '').toLowerCase();
   const kind = String(item?.kind || '').toLowerCase();
   return group === 'skill' || group === 'knowledge' || kind === 'skill' || Boolean(item?.skillName || item?.skill_name || item?.skillPath || item?.skill_path);
 }
 
-export function isMcpTraceItem(item) {
+function isMcpTraceItem(item) {
   const group = String(item?.toolGroup || item?.tool_group || '').toLowerCase();
   const kind = String(item?.kind || '').toLowerCase();
   return group === 'external' || kind === 'mcp';
 }
 
-export function getToolTraceStatus(state, fallbackStatus = 'running') {
+function getToolTraceStatus(state, fallbackStatus = 'running') {
   const normalized = String(state || '').toLowerCase();
   const fallback = normalizeTaskStatus(fallbackStatus);
   if (normalized === 'returned' || normalized === 'completed' || normalized === 'done') return 'done';
@@ -155,7 +155,7 @@ export function getToolResponseTraceStatus(response, fallback = '') {
   return fallback || '';
 }
 
-export function categorizeToolCall(call) {
+function categorizeToolCall(call) {
   if (isSubAgentTraceItem(call)) return 'subagent';
   if (isSkillTraceItem(call)) return 'skill';
   if (isMcpTraceItem(call)) return 'mcp';
@@ -168,7 +168,7 @@ export function categorizeToolCall(call) {
 // `sketch`, etc.) just fall through to the first-token fallback.
 const KNOWN_MCP_COMPOUND_PREFIXES = ['chrome_devtools'];
 
-export function mcpServerNameFromToolName(toolName) {
+function mcpServerNameFromToolName(toolName) {
   const s = String(toolName || '').toLowerCase().trim();
   if (!s) return 'mcp';
   // Strip dispatch control suffixes first (mcp_control_tool_name on the
@@ -190,7 +190,7 @@ export function mcpServerNameFromToolName(toolName) {
 // 'cancelled'`); `verbPresent` (present continuous) shows while at least one
 // tool in the group is still in flight, so the chip reads "using chrome
 // devtools 4 tools" → "used chrome devtools 4 tools" as it transitions.
-export function classifyToolForGroup(item) {
+function classifyToolForGroup(item) {
   const category = item?.category || 'tool';
   const name = String(item?.toolName || '').toLowerCase();
   const fileUnit = { unitSingular: 'file', unitPlural: 'files' };
@@ -252,7 +252,7 @@ export function classifyToolForGroup(item) {
   return { bucket: 'other', verbPast: 'used', verbPresent: 'using', subject: '', unitSingular: 'tool', unitPlural: 'tools' };
 }
 
-export function summarizeToolGroup(tools, status = 'done') {
+function summarizeToolGroup(tools, status = 'done') {
   const buckets = new Map();
   for (const tool of tools) {
     const meta = classifyToolForGroup(tool);
@@ -304,7 +304,7 @@ export function summarizeToolGroup(tools, status = 'done') {
   return { short: joined };
 }
 
-export function aggregateGroupStatus(tools) {
+function aggregateGroupStatus(tools) {
   let anyRunning = false;
   let anyFailed = false;
   let anyPending = false;
@@ -350,7 +350,7 @@ export function resolveAgentActivity(items, streaming = false) {
 // a single `tool_group` item. Skills and sub-agents are left untouched —
 // skills carry nested children that need their own affordance, sub-agents
 // are distinct narrative moments.
-export function groupConsecutiveTools(items) {
+function groupConsecutiveTools(items) {
   const result = [];
   const isGroupable = (it) => (
     it && it.kind === 'tool'
@@ -393,7 +393,7 @@ export function groupConsecutiveTools(items) {
   return result;
 }
 
-export function timelineToolLabel(call, category) {
+function timelineToolLabel(call, category) {
   if (category === 'skill') {
     return skillDisplayName({
       skill_name: call.skillName,
@@ -407,7 +407,7 @@ export function timelineToolLabel(call, category) {
   return chatTraceToolName(call.toolName);
 }
 
-export function toolProgressSummary(event) {
+function toolProgressSummary(event) {
   const toolName = chatTraceToolName(event.toolName);
   const message = String(event.message || '').trim();
   switch (event.type) {
@@ -1099,7 +1099,7 @@ export function buildChatTimeline(task, taskStatus) {
   return cacheTimeline(task, finalStatus, timeline);
 }
 
-export function sanitizeTodoItems(items) {
+function sanitizeTodoItems(items) {
   if (!Array.isArray(items)) return null;
   const sanitized = items
     .map((entry) => {

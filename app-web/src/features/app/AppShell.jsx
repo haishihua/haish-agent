@@ -104,6 +104,7 @@ import {
 import {
   createEmptyTaskRuntimeState,
   createPendingTaskDraft,
+  isPendingTaskId,
   buildTaskRuntimeRecord,
   taskSummaryToRuntimeTask,
   taskDetailToRuntimeTask,
@@ -1148,6 +1149,8 @@ export function AppShell() {
   function removeMissingTask(targetConversationId, taskId) {
     if (!targetConversationId || !taskId) return;
     const runtime = getRuntime(targetConversationId);
+    // A local draft has no server record yet; a 404 must not discard its images.
+    if (isPendingTaskId(runtime, taskId)) return;
     const wasActive = runtime?.activeTaskId === taskId
       || runtime?.taskRuntimeState?.activeTaskId === taskId
       || (runtime?.taskRuntimeState?.pendingTask?.taskId || runtime?.taskRuntimeState?.pendingTask?.id) === taskId;

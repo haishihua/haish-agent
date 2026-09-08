@@ -1,7 +1,7 @@
 import React from 'react';
 import { NAVIGATION_ICONS } from './NavigationIcons.jsx';
 
-export const NAV_TABS = [
+const NAV_TABS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'agents', label: 'Agents' },
   { id: 'tasks', label: 'Tasks' },

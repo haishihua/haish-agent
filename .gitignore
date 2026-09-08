@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-electron/
 app-web/dist/
+app-web/dist-release/
 build/runtime/
 release/
 tmp/

@@ -13,7 +13,7 @@ import {
 
 const { useRef } = React;
 
-export function WorkflowVariablePicker({ variables, onInsert, disabled = false, hint = '' }) {
+function WorkflowVariablePicker({ variables, onInsert, disabled = false, hint = '' }) {
   if (!variables.length) return null;
   const options = variables.map((item) => ({
     id: item.path,

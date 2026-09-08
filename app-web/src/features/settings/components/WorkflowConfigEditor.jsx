@@ -202,15 +202,15 @@ function WorkflowDropCanvas({
 
 const WORKFLOW_REACT_FLOW_NODE_TYPES = { workflowNode: WorkflowFlowNode };
 
-export function canConnectWorkflowNodes(source, target) {
+function canConnectWorkflowNodes(source, target) {
   return Boolean(source && target && source.id !== target.id && source.type !== 'output' && target.type !== 'start');
 }
 
-export function workflowEdgeId(edge) {
+function workflowEdgeId(edge) {
   return `${edge?.from || ''}:${edge?.branch || ''}->${edge?.to || ''}`;
 }
 
-export function addWorkflowEdge(edges, from, to, branch = '') {
+function addWorkflowEdge(edges, from, to, branch = '') {
   if (!from || !to || from === to) return edges;
   const normalizedBranch = branch === 'default' ? 'false' : branch;
   if (edges.some((edge) => (

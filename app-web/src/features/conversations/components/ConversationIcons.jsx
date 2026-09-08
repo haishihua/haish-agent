@@ -17,7 +17,7 @@ export function ConversationAction({ label, icon, onClick, disabled = false, too
   );
 }
 
-export function StopCancelIcon() {
+function StopCancelIcon() {
   return (
     <svg className="stop-cancel-svg" viewBox="0 0 18 18" aria-hidden="true">
       <circle cx="9" cy="9" r="8" fill="#ffa20a" />

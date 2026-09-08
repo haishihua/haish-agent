@@ -204,7 +204,7 @@ export function getLoopIndexFromEvents(events) {
   return events.reduce((max, event) => Math.max(max, event.loop_index || 0), 0);
 }
 
-export function normalizeProviderKey(value) {
+function normalizeProviderKey(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (!normalized) return 'deepseek';
   if (normalized === 'auto' || normalized === 'generic' || normalized === 'default') return 'generic';

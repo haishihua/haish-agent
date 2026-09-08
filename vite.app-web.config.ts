@@ -7,7 +7,6 @@ import tailwindcss from '@tailwindcss/vite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appWebRoot = path.resolve(__dirname, 'app-web');
-const outDir = path.resolve(appWebRoot, 'dist');
 const runtimeAssetPaths = [
   'ui/empty-state/penguin-hug-card.png',
   'ui/empty-state/penguin-relax-card.png',
@@ -20,7 +19,7 @@ const runtimeAssetPaths = [
 ] as const;
 
 /** Copy runtime static assets that are referenced by plain string URLs (not Vite imports). */
-function copyPublicAssetsPlugin(): Plugin {
+function copyPublicAssetsPlugin(outDir: string): Plugin {
   return {
     name: 'haish-copy-public-assets',
     apply: 'build',
@@ -88,11 +87,14 @@ function guessContentType(filePath: string): string {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const releaseBuild = mode === 'release';
+  const outDir = path.resolve(appWebRoot, releaseBuild ? 'dist-release' : 'dist');
+  return {
   root: appWebRoot,
   base: './',
   publicDir: false,
-  plugins: [react(), tailwindcss(), serveStaticAssetsPlugin(), copyPublicAssetsPlugin()],
+  plugins: [react(), tailwindcss(), serveStaticAssetsPlugin(), copyPublicAssetsPlugin(outDir)],
   resolve: {
     alias: {
       '@': path.join(appWebRoot, 'src'),
@@ -105,7 +107,9 @@ export default defineConfig({
   },
   build: {
     outDir,
-    emptyOutDir: process.env.HAISH_DEV_WEB_WATCH === '1' ? false : true,
+    // Open desktop windows may still import chunks from an earlier local build.
+    // Only clean the isolated release output, never the live renderer directory.
+    emptyOutDir: releaseBuild,
     sourcemap: process.env.HAISH_DEV_WEB_WATCH === '1',
     target: 'es2022',
     cssCodeSplit: false,
@@ -136,4 +140,5 @@ export default defineConfig({
     // Keep existing JSX runtime style (React in scope via imports).
     jsx: 'automatic',
   },
+  };
 });

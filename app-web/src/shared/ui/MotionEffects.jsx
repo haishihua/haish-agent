@@ -63,6 +63,8 @@ export const MetalActionEffect = React.forwardRef(function MetalActionEffect({ c
 });
 
 export function MetalFxRuntimeKeeper() {
+  // metal-fx insets its circular SVG mask by 2px per side, even with disableGlow.
+  const keeperSize = 8;
   return (
     <MetalFx
       className="metal-fx-runtime-keeper"
@@ -73,9 +75,9 @@ export function MetalFxRuntimeKeeper() {
       paused
       disableGlow
       aria-hidden="true"
-      style={{ position: 'fixed', left: -100, top: -100, width: 1, height: 1, pointerEvents: 'none' }}
+      style={{ position: 'fixed', left: -100, top: -100, width: keeperSize, height: keeperSize, pointerEvents: 'none' }}
     >
-      <span style={{ width: 1, height: 1 }} />
+      <span style={{ width: keeperSize, height: keeperSize }} />
     </MetalFx>
   );
 }

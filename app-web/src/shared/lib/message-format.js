@@ -1,5 +1,5 @@
 // Formatting shared by chat and approval message chrome.
-export function formatContextTokens(value) {
+function formatContextTokens(value) {
   const tokens = Math.max(0, Math.round(Number(value) || 0));
   const thousands = tokens / 1000;
   if (tokens === 0) return '0k';

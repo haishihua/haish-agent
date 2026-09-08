@@ -1,8 +1,8 @@
 // Settings domain model.
 export const SETTINGS_RECORDS_STORAGE_KEY = 'haish.settingsRecordsDraft.v1';
-export const SETTINGS_CONNECTION_STATUS_STORAGE_KEY = 'haish.settingsConnectionStatus.v1';
-export const SETTINGS_CONNECTION_SECTIONS = ['memory', 'knowledge'];
-export const SETTINGS_PERSISTED_CONNECTION_STATES = new Set(['success', 'error']);
+const SETTINGS_CONNECTION_STATUS_STORAGE_KEY = 'haish.settingsConnectionStatus.v1';
+const SETTINGS_CONNECTION_SECTIONS = ['memory', 'knowledge'];
+const SETTINGS_PERSISTED_CONNECTION_STATES = new Set(['success', 'error']);
 export const DEFAULT_MCP_CONFIG_JSON = JSON.stringify({ servers: {} }, null, 2);
 export const MCP_CONFIG_TEMPLATE_JSON = JSON.stringify({
   servers: {
@@ -16,14 +16,14 @@ export const MCP_CONFIG_TEMPLATE_JSON = JSON.stringify({
     },
   },
 }, null, 2);
-export const DEFAULT_NEO4J_CONFIG = {
+const DEFAULT_NEO4J_CONFIG = {
   uri: '',
   username: '',
   password: '',
   password_configured: false,
   database: '',
 };
-export const DEFAULT_QDRANT_CONFIG = {
+const DEFAULT_QDRANT_CONFIG = {
   url: '',
   api_key: '',
   api_key_configured: false,
@@ -38,7 +38,7 @@ export const QDRANT_DISTANCE_OPTIONS = [
   { id: 'euclid', label: 'Euclid' },
   { id: 'dot', label: 'Dot' },
 ];
-export const LEGACY_DEFAULT_QDRANT_COLLECTION = 'haish_rag_default';
+const LEGACY_DEFAULT_QDRANT_COLLECTION = 'haish_rag_default';
 export const WEB_SEARCH_PROVIDER_OPTIONS = [
   { id: 'tavily', label: 'Tavily', keyLabel: 'Tavily API Key' },
   { id: 'serpapi', label: 'SerpApi', keyLabel: 'SerpApi API Key' },
@@ -141,12 +141,12 @@ export function loadSettingsRecordsDraft() {
   }
 }
 
-export function settingsConnectionRecord(records, section, itemId) {
+function settingsConnectionRecord(records, section, itemId) {
   const items = Array.isArray(records?.[section]) ? records[section] : [];
   return items.find((item) => item?.id === itemId) || null;
 }
 
-export function settingsConnectionSignature(section, record) {
+function settingsConnectionSignature(section, record) {
   if (!record) return '';
   if (section === 'memory') {
     const rawNeo4j = record.neo4j || {};

@@ -5,6 +5,7 @@ import { ConversationNode } from './ConversationNode.jsx';
 import { TaskRecordCompact } from './ConversationTaskCards.jsx';
 import { useConversationOrderAnimation } from '../hooks/useConversationOrderAnimation.js';
 import { projectCreatedTimestamp, projectWorkflowTasks } from '../model/workspace-state.js';
+import { nextExtraVisible } from '../model/list-preview.js';
 
 function formatProjectCreated(ts) {
   if (!ts) return '';
@@ -53,11 +54,9 @@ export function ProjectNode({
   onAddConversation,
   onSelectConversation,
   onSelectTask,
-  onToggleConversationTasks,
   showTaskRecords = true,
   workflowTaskMode = false,
   activeTaskId = null,
-  onToggleProjectConversations,
   onRequestDeleteConversation,
   onRequestDeleteTask,
   onRequestRenameConversation,
@@ -76,18 +75,14 @@ export function ProjectNode({
   const allConversations = Array.isArray(project.conversations) ? project.conversations : [];
   const allWorkflowTasks = workflowTaskMode ? projectWorkflowTasks(project) : [];
   const conversationLimit = Math.max(1, Number(conversationPreviewLimit) || 3);
-  const listExpanded = Boolean(workflowTaskMode
-    ? project.workflowTasksExpanded
-    : project.chatConversationsExpanded);
-  const visibleConversations = listExpanded
-    ? allConversations
-    : allConversations.slice(0, conversationLimit);
-  const hiddenConversationCount = Math.max(0, allConversations.length - conversationLimit);
+  const [extraVisible, setExtraVisible] = React.useState({ chat: 0, bot: 0 });
+  const visibleConversations = allConversations.slice(0, conversationLimit + extraVisible.chat);
+  const hiddenConversationCount = Math.max(0, allConversations.length - visibleConversations.length);
   const taskLimit = Math.max(1, Number(taskPreviewLimit) || 3);
-  const visibleWorkflowTasks = listExpanded
-    ? allWorkflowTasks
-    : allWorkflowTasks.slice(0, taskLimit);
-  const hiddenWorkflowTaskCount = Math.max(0, allWorkflowTasks.length - taskLimit);
+  const visibleWorkflowTasks = allWorkflowTasks.slice(0, taskLimit + extraVisible.bot);
+  const hiddenWorkflowTaskCount = Math.max(0, allWorkflowTasks.length - visibleWorkflowTasks.length);
+  const hiddenCount = workflowTaskMode ? hiddenWorkflowTaskCount : hiddenConversationCount;
+  const mode = workflowTaskMode ? 'bot' : 'chat';
   const registerConversationNode = useConversationOrderAnimation(visibleConversations);
   const [dropPosition, setDropPosition] = React.useState(null);
 
@@ -226,7 +221,6 @@ export function ProjectNode({
               taskPreviewLimit={taskPreviewLimit}
               onSelectConversation={onSelectConversation}
               showTaskRecords={showTaskRecords}
-              onToggleConversationTasks={onToggleConversationTasks}
               onRequestDeleteConversation={onRequestDeleteConversation}
               onRequestRenameConversation={onRequestRenameConversation}
               onPinConversation={onPinConversation}
@@ -235,15 +229,16 @@ export function ProjectNode({
               onRetryTask={onRetryTask}
             />
           ))}
-          {(workflowTaskMode ? hiddenWorkflowTaskCount : hiddenConversationCount) > 0 && (
+          {(hiddenCount > 0 || extraVisible[mode] > 0) && (
             <button
               type="button"
               className="conversation-show-more"
-              onClick={() => onToggleProjectConversations?.(project.id, workflowTaskMode)}
+              onClick={() => setExtraVisible((previous) => ({
+                ...previous,
+                [mode]: nextExtraVisible(previous[mode], hiddenCount),
+              }))}
             >
-              {listExpanded
-                ? 'Show less'
-                : `Show ${workflowTaskMode ? hiddenWorkflowTaskCount : hiddenConversationCount} more`}
+              {hiddenCount > 0 ? 'Show more' : 'Show less'}
             </button>
           )}
           {!workflowTaskMode ? <ConversationDropEnd projectId={project.id} onDropConversation={onDropConversation} /> : null}

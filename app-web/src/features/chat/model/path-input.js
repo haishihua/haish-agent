@@ -1,9 +1,9 @@
 // Path and paste normalization for the composer.
-export function isAbsolutePathLike(value) {
+function isAbsolutePathLike(value) {
   return value.startsWith('/') || value === '~' || value.startsWith('~/') || /^[A-Za-z]:[\\/]/.test(value);
 }
 
-export function normalizeFsPath(value, homePath = '') {
+function normalizeFsPath(value, homePath = '') {
   const raw = String(value || '').trim().replace(/\\/g, '/');
   const normalizedHome = String(homePath || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
   const expanded = normalizedHome && (raw === '~' || raw.startsWith('~/'))
@@ -12,14 +12,14 @@ export function normalizeFsPath(value, homePath = '') {
   return expanded.replace(/\/+$/, '');
 }
 
-export function basenameFromPath(value) {
+function basenameFromPath(value) {
   const normalized = normalizeFsPath(value);
   if (!normalized) return '';
   const parts = normalized.split('/').filter(Boolean);
   return parts[parts.length - 1] || normalized;
 }
 
-export function workspaceRelativePath(filePath, workspacePath, homePath = '') {
+function workspaceRelativePath(filePath, workspacePath, homePath = '') {
   const normalizedFile = normalizeFsPath(filePath, homePath);
   if (!normalizedFile) return '';
   const normalizedWorkspace = normalizeFsPath(workspacePath || homePath, homePath);
@@ -30,7 +30,7 @@ export function workspaceRelativePath(filePath, workspacePath, homePath = '') {
   return normalizedFile;
 }
 
-export function stripWorkspaceNamePrefix(relativePath, workspacePath, homePath = '') {
+function stripWorkspaceNamePrefix(relativePath, workspacePath, homePath = '') {
   const normalized = normalizeFsPath(relativePath, homePath).replace(/^\.\/+/, '');
   if (!normalized) return '';
   const workspaceName = basenameFromPath(workspacePath || homePath);
@@ -40,7 +40,7 @@ export function stripWorkspaceNamePrefix(relativePath, workspacePath, homePath =
   return normalized;
 }
 
-export function normalizePastedPathLine(line, workspacePath, options = {}) {
+function normalizePastedPathLine(line, workspacePath, options = {}) {
   const homePath = options.homePath || '';
   let text = String(line || '').trim();
   if (!text) return '';
@@ -103,7 +103,7 @@ export function clipboardUriListToPathText(uriList, workspacePath, homePath = ''
     .join('\n');
 }
 
-export function insertTextAtSelection(value, insertText, selectionStart, selectionEnd, maxLength) {
+function insertTextAtSelection(value, insertText, selectionStart, selectionEnd, maxLength) {
   const current = String(value || '');
   const start = Number.isFinite(selectionStart) ? selectionStart : current.length;
   const end = Number.isFinite(selectionEnd) ? selectionEnd : start;

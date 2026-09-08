@@ -65,7 +65,7 @@ export function saveStoredContextUsage(usage) {
   }
 }
 
-export function estimateTextTokens(text) {
+function estimateTextTokens(text) {
   const value = String(text || '').trim();
   if (!value) return 0;
   let cjk = 0;

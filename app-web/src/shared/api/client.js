@@ -1,7 +1,7 @@
 export const CONVERSATION_STORAGE_KEY = 'haish_conversation_id';
 export const WORKSPACE_STORAGE_KEY = 'haish_workspaces_v2';
 export const CONTEXT_USAGE_STORAGE_KEY = 'haish_context_usage_v1';
-export const RUN_CONFIG_STORAGE_PREFIX = 'haish_run_config_v1';
+const RUN_CONFIG_STORAGE_PREFIX = 'haish_run_config_v1';
 export const RESTORED_CONTEXT_BASE_TOKENS = 4200;
 export const DEFAULT_PROJECT_NAME = 'Default project';
 export const DEFAULT_SESSION_NAME = 'Default Session';
@@ -41,7 +41,7 @@ export function buildApiHeaders(extraHeaders = {}) {
   return Object.fromEntries(headers.entries());
 }
 
-export function withApiInit(init = {}, options = {}) {
+function withApiInit(init = {}, options = {}) {
   const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
   const headers = new Headers(init.headers || {});
   if (options.json !== false && !isFormData && !headers.has('Content-Type')) {

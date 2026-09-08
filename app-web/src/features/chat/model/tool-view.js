@@ -1,8 +1,8 @@
 import { normalizeToolName } from './tool-names.js';
 
-export const TOOL_READ_NAMES = new Set(['read_file', 'search_text', 'glob_files', 'list_dir']);
-export const TOOL_DIFF_NAMES = new Set(['write_file', 'edit_file', 'replace_lines', 'multi_edit', 'apply_patch']);
-export const TOOL_CHANGE_NAMES = new Set([
+const TOOL_READ_NAMES = new Set(['read_file', 'search_text', 'glob_files', 'list_dir']);
+const TOOL_DIFF_NAMES = new Set(['write_file', 'edit_file', 'replace_lines', 'multi_edit', 'apply_patch']);
+const TOOL_CHANGE_NAMES = new Set([
   'write_file',
   'edit_file',
   'replace_lines',
@@ -17,7 +17,7 @@ export const TOOL_SHELL_NAMES = new Set([
   'exec_command',
   'write_stdin',
 ]);
-export const TOOL_PROCESS_NAMES = new Set([
+const TOOL_PROCESS_NAMES = new Set([
   'dispatch_sub_agent',
   'sub_agent',
   'subagent',
@@ -25,14 +25,14 @@ export const TOOL_PROCESS_NAMES = new Set([
   'visual_inspect',
   'image_describe',
 ]);
-export const TOOL_BLOCK_LIMIT = 16000;
-export const TOOL_SHELL_TAIL_LINES = 80;
-export const TOOL_SHELL_TAIL_CHARS = 8192;
-export const TOOL_JSON_STRING_LIMIT = 2000;
-export const TOOL_JSON_ARRAY_LIMIT = 20;
-export const TOOL_JSON_DEPTH_LIMIT = 4;
-export const TOOL_SUMMARY_VALUE_LIMIT = 420;
-export const TOOL_JSON_OMIT_KEYS = new Set([
+const TOOL_BLOCK_LIMIT = 16000;
+const TOOL_SHELL_TAIL_LINES = 80;
+const TOOL_SHELL_TAIL_CHARS = 8192;
+const TOOL_JSON_STRING_LIMIT = 2000;
+const TOOL_JSON_ARRAY_LIMIT = 20;
+const TOOL_JSON_DEPTH_LIMIT = 4;
+const TOOL_SUMMARY_VALUE_LIMIT = 420;
+const TOOL_JSON_OMIT_KEYS = new Set([
   'meta',
   'metadata',
   'limits',
@@ -54,7 +54,7 @@ export const TOOL_JSON_OMIT_KEYS = new Set([
   'tool_call',
   'tool_call_id',
 ]);
-export const TOOL_ARTIFACT_KEEP_KEYS = new Set([
+const TOOL_ARTIFACT_KEEP_KEYS = new Set([
   'preview',
   'output',
   'content',
@@ -63,13 +63,13 @@ export const TOOL_ARTIFACT_KEEP_KEYS = new Set([
   'stderr',
   'log_preview',
 ]);
-export function compactToolText(value, limit = TOOL_BLOCK_LIMIT) {
+function compactToolText(value, limit = TOOL_BLOCK_LIMIT) {
   const text = String(value ?? '');
   if (text.length <= limit) return text;
   return `${text.slice(0, limit - 24)}\n... output truncated ...`;
 }
 
-export function stableJson(value) {
+function stableJson(value) {
   try {
     return compactToolText(JSON.stringify(value, null, 2));
   } catch {
@@ -77,19 +77,19 @@ export function stableJson(value) {
   }
 }
 
-export function compactToolValue(value, limit = TOOL_SUMMARY_VALUE_LIMIT) {
+function compactToolValue(value, limit = TOOL_SUMMARY_VALUE_LIMIT) {
   if (value == null) return '';
   const text = typeof value === 'string' ? value : stableJson(value);
   return truncateToolString(text.replace(/\n{3,}/g, '\n\n').trim(), limit);
 }
 
-export function truncateToolString(value, limit = TOOL_JSON_STRING_LIMIT) {
+function truncateToolString(value, limit = TOOL_JSON_STRING_LIMIT) {
   const text = String(value ?? '');
   if (text.length <= limit) return text;
   return `${text.slice(0, limit - 18)}... truncated ...`;
 }
 
-export function tailToolOutput(value) {
+function tailToolOutput(value) {
   const text = String(value ?? '');
   if (!text.trim()) return 'No output.';
   const lineTail = text.split('\n').slice(-TOOL_SHELL_TAIL_LINES).join('\n');
@@ -101,7 +101,7 @@ export function tailToolOutput(value) {
   return `... output truncated, showing tail ...\n${lineTail.slice(-TOOL_SHELL_TAIL_CHARS)}`;
 }
 
-export function sanitizeToolJson(value, depth = 0, keyName = '') {
+function sanitizeToolJson(value, depth = 0, keyName = '') {
   if (value == null || typeof value === 'number' || typeof value === 'boolean') return value;
   if (typeof value === 'string') return truncateToolString(value);
   if (depth >= TOOL_JSON_DEPTH_LIMIT) return '[Object truncated]';
@@ -132,7 +132,7 @@ export function sanitizeToolJson(value, depth = 0, keyName = '') {
   return result;
 }
 
-export function compactToolJsonPayload(input, output) {
+function compactToolJsonPayload(input, output) {
   const payload = {};
   if (input) payload.input = sanitizeToolJson(input);
   if (output) {
@@ -153,7 +153,7 @@ export function compactToolJsonPayload(input, output) {
   return payload;
 }
 
-export function isEmptyToolJsonValue(value) {
+function isEmptyToolJsonValue(value) {
   if (value == null) return true;
   if (typeof value === 'string') return value.trim().length === 0;
   if (Array.isArray(value)) return value.length === 0;
@@ -161,14 +161,14 @@ export function isEmptyToolJsonValue(value) {
   return false;
 }
 
-export function toolJsonText(value, limit = TOOL_BLOCK_LIMIT) {
+function toolJsonText(value, limit = TOOL_BLOCK_LIMIT) {
   if (value == null || value === '') return '';
   const sanitized = sanitizeToolJson(value);
   if (isEmptyToolJsonValue(sanitized)) return '';
   return compactToolText(JSON.stringify(sanitized, null, 2), limit);
 }
 
-export function outputJsonText(output) {
+function outputJsonText(output) {
   if (output == null || output === '') return '';
   if (output && typeof output === 'object') {
     const payload = compactToolJsonPayload(undefined, output);
@@ -177,7 +177,7 @@ export function outputJsonText(output) {
   return toolJsonText(output);
 }
 
-export function toolPlainObject(value) {
+function toolPlainObject(value) {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value;
   if (typeof value === 'string') {
     const text = value.trim();
@@ -193,7 +193,7 @@ export function toolPlainObject(value) {
   return {};
 }
 
-export function isToolFailure(item) {
+function isToolFailure(item) {
   const status = String(item?.status || '').toLowerCase();
   if (status === 'failed' || status === 'error') return true;
   const response = toolPlainObject(item?.toolResponse);
@@ -207,7 +207,7 @@ export function isToolFailure(item) {
     || resultState === 'error';
 }
 
-export function firstToolDisplayValue(...values) {
+function firstToolDisplayValue(...values) {
   for (const value of values) {
     if (value === undefined || value === null) continue;
     if (typeof value === 'string' && !value.trim()) continue;
@@ -216,11 +216,11 @@ export function firstToolDisplayValue(...values) {
   return '';
 }
 
-export function isRawToolResponseText(value) {
+function isRawToolResponseText(value) {
   return String(value || '').trimStart().startsWith('TOOL_RESPONSE');
 }
 
-export function isVisualProcessTool(name) {
+function isVisualProcessTool(name) {
   return name === 'vision_analyze'
     || name === 'visual_inspect'
     || name === 'image_describe'
@@ -229,11 +229,11 @@ export function isVisualProcessTool(name) {
     || name.includes('vision');
 }
 
-export function isProcessTool(item, name) {
+function isProcessTool(item, name) {
   return item.category === 'subagent' || TOOL_PROCESS_NAMES.has(name) || isVisualProcessTool(name);
 }
 
-export function getToolSubject(item) {
+function getToolSubject(item) {
   const response = toolPlainObject(item.toolResponse);
   const subject = toolPlainObject(response.subject);
   const input = toolPlainObject(item.toolInput);
@@ -243,7 +243,7 @@ export function getToolSubject(item) {
   };
 }
 
-export function firstToolPath(item) {
+function firstToolPath(item) {
   const subject = getToolSubject(item);
   if (subject.path) return String(subject.path);
   if (subject.source_path && subject.destination_path) return `${subject.source_path} -> ${subject.destination_path}`;
@@ -255,7 +255,7 @@ export function firstToolPath(item) {
   return '';
 }
 
-export function toolStreamTextForEvent(event, item) {
+function toolStreamTextForEvent(event, item) {
   const type = String(event?.type || '');
   const text = compactToolValue(event?.summary || event?.message || event?.outputSummary || event?.inputSummary, TOOL_BLOCK_LIMIT);
   const normalizedText = text.trim().toLowerCase();
@@ -271,7 +271,7 @@ export function toolStreamTextForEvent(event, item) {
   return text;
 }
 
-export function buildToolStreamAnswerText(item) {
+function buildToolStreamAnswerText(item) {
   const events = Array.isArray(item.progressEvents) ? item.progressEvents : [];
   return events
     .filter((event) => event?.type === 'sub_agent_answer_delta')
@@ -280,7 +280,7 @@ export function buildToolStreamAnswerText(item) {
     .join('');
 }
 
-export function buildToolStreamLines(item) {
+function buildToolStreamLines(item) {
   const lines = [];
   const events = Array.isArray(item.progressEvents) ? item.progressEvents : [];
   events.forEach((event, index) => {
@@ -300,25 +300,25 @@ export function buildToolStreamLines(item) {
   return lines;
 }
 
-export function subAgentEventText(event) {
+function subAgentEventText(event) {
   return String(event?.message || event?.summary || event?.outputSummary || event?.inputSummary || '').trim();
 }
 
-export function subAgentToolEventKey(event) {
+function subAgentToolEventKey(event) {
   return event?.callId
     || event?.toolCallId
     || event?.tool_call_id
     || '';
 }
 
-export function subAgentToolNameKey(event) {
+function subAgentToolNameKey(event) {
   return String(event?.toolName || event?.label || event?.summary || 'tool')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
 }
 
-export function findPendingSubAgentTool(items, event) {
+function findPendingSubAgentTool(items, event) {
   const nameKey = subAgentToolNameKey(event);
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
@@ -328,7 +328,7 @@ export function findPendingSubAgentTool(items, event) {
   return null;
 }
 
-export function subAgentToolCategory(event) {
+function subAgentToolCategory(event) {
   const explicit = String(event?.category || event?.toolCategory || event?.tool_category || '').trim();
   if (explicit) return explicit;
   const name = String(event?.toolName || '').trim();
@@ -415,7 +415,7 @@ export function buildSubAgentTimelineItems(view) {
   return items;
 }
 
-export function extractProcessResultText(item) {
+function extractProcessResultText(item) {
   const response = toolPlainObject(item.toolResponse);
   const data = toolPlainObject(response.data);
   const verdict = toolPlainObject(data.verdict);
@@ -434,7 +434,7 @@ export function extractProcessResultText(item) {
   ), TOOL_BLOCK_LIMIT);
 }
 
-export function extractTerminalOutput(item, response, artifacts, data) {
+function extractTerminalOutput(item, response, artifacts, data) {
   const rawToolOutput = isRawToolResponseText(item.toolOutput) ? '' : item.toolOutput;
   return firstToolDisplayValue(
     artifacts.output,
@@ -447,13 +447,13 @@ export function extractTerminalOutput(item, response, artifacts, data) {
   );
 }
 
-export function toolDisplayOutput(item) {
+function toolDisplayOutput(item) {
   if (item.toolResponse) return item.toolResponse;
   if (isRawToolResponseText(item.toolOutput)) return item.outputSummary || undefined;
   return item.toolOutput || item.outputSummary || undefined;
 }
 
-export function toolLineDelta(item, diffText) {
+function toolLineDelta(item, diffText) {
   const data = item.toolResponse && typeof item.toolResponse === 'object' && item.toolResponse.data
     ? item.toolResponse.data
     : {};
@@ -475,14 +475,14 @@ export function toolLineDelta(item, diffText) {
   return { added, removed };
 }
 
-export function getToolDiff(item) {
+function getToolDiff(item) {
   const response = item.toolResponse && typeof item.toolResponse === 'object' ? item.toolResponse : {};
   const artifacts = response.artifacts && typeof response.artifacts === 'object' ? response.artifacts : {};
   const data = response.data && typeof response.data === 'object' ? response.data : {};
   return artifacts.diff || data.diff || artifacts.unified_diff || '';
 }
 
-export function toolActionLabel(item) {
+function toolActionLabel(item) {
   const name = normalizeToolName(item.toolName);
   if (name === 'write_file') return 'Wrote';
   if (name === 'edit_file') return 'Edited';
@@ -502,7 +502,7 @@ export function toolActionLabel(item) {
   return item.label || item.toolName || 'Tool';
 }
 
-export function toolFailureActionLabel(item) {
+function toolFailureActionLabel(item) {
   const name = normalizeToolName(item.toolName);
   if (name === 'write_file') return 'Write failed';
   if (name === 'edit_file') return 'Edit failed';
@@ -515,7 +515,7 @@ export function toolFailureActionLabel(item) {
   return `${toolActionLabel(item)} failed`;
 }
 
-export function extractProcessChatMeta(item, name) {
+function extractProcessChatMeta(item, name) {
   const input = toolPlainObject(item.toolInput);
   const task = firstToolDisplayValue(
     input.task,

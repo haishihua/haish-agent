@@ -12,13 +12,15 @@
     "dev:web": "HAISH_DEV_WEB_WATCH=1 vite build --config vite.app-web.config.ts --watch",
     "dev:electron": "npm run build:web && tsc -p tsconfig.electron.json && electron .",
     "build:web": "vite build --config vite.app-web.config.ts",
+    "build:web:release": "vite build --config vite.app-web.config.ts --mode release",
     "build": "npm run build:web && tsc --noEmit && tsc -p tsconfig.electron.json",
+    "build:release": "npm run build:web:release && tsc --noEmit && tsc -p tsconfig.electron.json",
     "build:runtime": "node scripts/build-runtime.mjs",
     "start": "electron .",
-    "pack:mac": "npm run build && npm run build:runtime && electron-builder --mac dir",
-    "dist:mac": "npm run build && npm run build:runtime && electron-builder --mac dmg zip",
+    "pack:mac": "npm run build:release && npm run build:runtime && electron-builder --mac dir",
+    "dist:mac": "npm run build:release && npm run build:runtime && electron-builder --mac dmg zip",
     "check:mac-release": "node scripts/check-mac-release.mjs",
-    "dist:mac:release": "npm run check:mac-release && npm run build && npm run build:runtime && electron-builder --mac dmg zip --config.forceCodeSigning=true",
+    "dist:mac:release": "npm run check:mac-release && npm run build:release && npm run build:runtime && electron-builder --mac dmg zip --config.forceCodeSigning=true",
     "release:mac": "node scripts/release-mac.mjs",
     "release:mac:unsigned": "node scripts/release-mac.mjs --unsigned",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
@@ -38,7 +40,11 @@
       "output": "release"
     },
     "files": [
-      "app-web/dist/**/*",
+      {
+        "from": "app-web/dist-release",
+        "to": "app-web/dist",
+        "filter": ["**/*"]
+      },
       "build/icon.png",
       "dist-electron/**/*",
       "package.json"

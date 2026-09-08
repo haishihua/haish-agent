@@ -32,9 +32,9 @@ import {
 import { ScrollToBottomButton } from '../../../shared/ui/ScrollToBottomButton.jsx';
 import { LexicalComposerInput } from './LexicalComposerInput.jsx';
 import { ComposerBorderBeam, MetalActionEffect } from '../../../shared/ui/MotionEffects.jsx';
-export const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
-export const CHAT_IMAGE_MAX_COUNT = 4;
-export const CHAT_IMAGE_ACCEPTED_MIME = new Set([
+const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const CHAT_IMAGE_MAX_COUNT = 4;
+const CHAT_IMAGE_ACCEPTED_MIME = new Set([
   'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
 ]);
 const EMPTY_AGENT_SKILLS = [];

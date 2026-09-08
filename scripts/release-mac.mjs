@@ -149,7 +149,7 @@ function main() {
   }
 
   console.log('[release:mac] building web + electron + runtime…');
-  run('npm', ['run', 'build']);
+  run('npm', ['run', 'build:release']);
   run('npm', ['run', 'build:runtime']);
 
   const builderArgs = ['--mac', 'dmg', 'zip', '--publish', 'never'];

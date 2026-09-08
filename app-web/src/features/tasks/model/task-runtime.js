@@ -24,6 +24,11 @@ export function createEmptyTaskRuntimeState() {
   };
 }
 
+export function isPendingTaskId(runtime, taskId) {
+  const pending = runtime?.taskRuntimeState?.pendingTask;
+  return Boolean(taskId && pending && (pending.taskId || pending.id) === taskId);
+}
+
 export function normalizeTaskStatus(status) {
   if (status === 'aborted') return 'cancelled';
   if (status === 'completed') return 'done';

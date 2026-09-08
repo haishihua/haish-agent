@@ -137,7 +137,7 @@ export function ChatTimelineChevron({ open }) {
   );
 }
 
-export function ChatTimelineToolBody({ view }) {
+function ChatTimelineToolBody({ view }) {
   if (view.mode === 'terminal') {
     return <TerminalDetail view={view} />;
   }
@@ -198,7 +198,7 @@ export function ChatTodoPanel({ todos = [], streaming = false }) {
   );
 }
 
-export function ChatTodoRow({ todo }) {
+function ChatTodoRow({ todo }) {
   const status = todo.status || 'pending';
   return (
     <div className={`chat-todo-item status-${status}`} role="listitem">
@@ -208,7 +208,7 @@ export function ChatTodoRow({ todo }) {
   );
 }
 
-export function ChatTodoStatusIcon({ status }) {
+function ChatTodoStatusIcon({ status }) {
   if (status === 'completed') {
     return (
       <span className="chat-todo-icon completed" aria-label="completed">
@@ -230,12 +230,12 @@ export function ChatTodoStatusIcon({ status }) {
   return <span className="chat-todo-icon pending" aria-label="pending" />;
 }
 
-export function ChatJsonBlock({ text, compact = false }) {
+function ChatJsonBlock({ text, compact = false }) {
   if (!text) return null;
   return <pre className={`chat-json-block ${compact ? 'compact' : ''}`}>{text}</pre>;
 }
 
-export function ChatJsonPair({ requestJson, responseJson }) {
+function ChatJsonPair({ requestJson, responseJson }) {
   const segments = [];
   if (requestJson) segments.push({ id: 'request', label: 'Request', text: requestJson });
   if (responseJson) segments.push({ id: 'response', label: 'Response', text: responseJson });
@@ -269,13 +269,13 @@ export function ChatJsonPair({ requestJson, responseJson }) {
   );
 }
 
-export function chatProcessFileName(path) {
+function chatProcessFileName(path) {
   if (!path) return '';
   const segments = String(path).split(/[\\/]/).filter(Boolean);
   return segments[segments.length - 1] || path;
 }
 
-export function ChatImsgCollapsible({ children, maxHeight = 360 }) {
+function ChatImsgCollapsible({ children, maxHeight = 360 }) {
   const bodyRef = React.useRef(null);
   const [expanded, setExpanded] = React.useState(false);
   const [overflows, setOverflows] = React.useState(false);
@@ -314,7 +314,7 @@ export function ChatImsgCollapsible({ children, maxHeight = 360 }) {
   );
 }
 
-export function ChatProcessConversation({ view }) {
+function ChatProcessConversation({ view }) {
   const hasPrompt = Boolean(view.task || view.role || view.systemPrompt || view.mediaPath);
   const streamAnswerText = String(view.streamAnswerText || '');
   const hasStreamAnswer = Boolean(streamAnswerText.trim());
@@ -523,7 +523,7 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
 // tool chip (same shared chip primitive) but the label is a
 // verb-counted summary like "read 3 files · executed 2 commands · used
 // chrome devtools 11 tools". Click expands to the original per-tool chips.
-export function ChatTimelineToolGroup({
+function ChatTimelineToolGroup({
   item,
   conversationId = '',
   taskId = '',
@@ -568,7 +568,7 @@ export function ChatTimelineToolGroup({
   );
 }
 
-export function ChatTimelineMetaNode({ item }) {
+function ChatTimelineMetaNode({ item }) {
   const [open, setOpen] = React.useState(false);
   const isContextCompaction = String(item.summary || '').toLowerCase() === 'auto-compacting context';
   const isRetry = item.metaType === 'llm_retry';
@@ -607,7 +607,7 @@ export function ChatTimelineMetaNode({ item }) {
   );
 }
 
-export function ChatTimelineThinkingNode({ item }) {
+function ChatTimelineThinkingNode({ item }) {
   const [open, setOpen] = React.useState(false);
   const text = String(item.text || '');
   const hasText = text.trim().length > 0;

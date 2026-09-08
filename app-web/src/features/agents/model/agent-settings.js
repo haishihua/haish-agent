@@ -16,7 +16,7 @@ export const DEFAULT_AGENT_TOOL_GROUPS = [
   { id: 'planning', label: 'Planning', description: 'Write and update task plans.', tools: ['todo_write'] },
   { id: 'sub_agent', label: 'Sub-agent', description: 'Delegate scoped work to a sub-agent.', tools: ['dispatch_sub_agent'] },
 ];
-export const DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS = [];
+const DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS = [];
 
 const PRESET_AGENT_ICON_NAMES = {
   'preset.general': 'sparkles',
@@ -58,7 +58,7 @@ export const DEFAULT_AGENT_SETTINGS = {
   mcp_servers: [],
 };
 
-export function normalizeAgentProfileRow(item, fallback = {}) {
+function normalizeAgentProfileRow(item, fallback = {}) {
   const id = String(item?.agent_id || item?.profile_id || item?.id || fallback.agent_id || fallback.id || '').trim();
   const draft = Boolean(item?.draft);
   const displayName = String(item?.display_name ?? item?.label ?? fallback.display_name ?? fallback.label ?? '');
@@ -76,7 +76,7 @@ export function normalizeAgentProfileRow(item, fallback = {}) {
   };
 }
 
-export function normalizeAgentToolGroups(groups) {
+function normalizeAgentToolGroups(groups) {
   const defaultsById = new Map(DEFAULT_AGENT_TOOL_GROUPS.map((group) => [group.id, group]));
   const sourceGroups = Array.isArray(groups) && groups.length ? groups : DEFAULT_AGENT_TOOL_GROUPS;
   return sourceGroups.map((group) => {

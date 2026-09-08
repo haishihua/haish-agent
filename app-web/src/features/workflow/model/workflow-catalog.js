@@ -320,7 +320,7 @@ export function placeDroppedWorkflowNode(nodes = [], newNode, dropPosition) {
   };
 }
 
-export function layoutWorkflowNodes(nodes = [], edges = []) {
+function layoutWorkflowNodes(nodes = [], edges = []) {
   const list = Array.isArray(nodes) ? nodes.filter((node) => node?.id) : [];
   if (!list.length) return [];
 
@@ -481,7 +481,7 @@ export function workflowSchemaFields(schema) {
     : DEFAULT_WORKFLOW_INPUT_SCHEMA.fields;
 }
 
-export function workflowUpstreamNodeIds(workflow, selectedNodeId) {
+function workflowUpstreamNodeIds(workflow, selectedNodeId) {
   if (!selectedNodeId) return new Set();
   const incoming = new Map();
   (workflow?.edges || []).forEach((edge) => {
@@ -499,7 +499,7 @@ export function workflowUpstreamNodeIds(workflow, selectedNodeId) {
   return upstream;
 }
 
-export function workflowFriendlyVariableLabel(item) {
+function workflowFriendlyVariableLabel(item) {
   if (!item) return 'Value';
   if (item.path === 'input.message') return 'User message';
   if (item.path === 'input.attachments') return 'Files';

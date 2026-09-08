@@ -2709,25 +2709,25 @@
 }
 
 .chat-skill-token {
-    display: inline-flex;
-    align-items: center;
+    display: inline;
     vertical-align: baseline;
-    gap: 6px;
-    max-width: calc(100% - 4px);
-    min-height: 20px;
     margin-right: 6px;
-    padding: 0 4px;
+    padding: 0;
     border: 0;
     border-radius: 6px;
     background: transparent;
     color: #84cfff;
-    font-family: var(--conversation-font);
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 20px;
+    font: inherit;
     text-transform: capitalize;
     white-space: nowrap;
     cursor: pointer;
+}
+
+.chat-skill-token .chat-skill-menu-icon {
+    display: inline-block;
+    vertical-align: -0.125em;
+    margin-right: 4px;
+    color: currentColor;
 }
 
 .chat-composer-attachments,
