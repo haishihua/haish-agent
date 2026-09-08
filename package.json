@@ -1,6 +1,6 @@
 {
   "name": "haish-agent",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "private": true,
   "description": "Haish desktop app with a local agent runtime.",
   "main": "dist-electron/main/main.js",
@@ -43,7 +43,9 @@
       {
         "from": "app-web/dist-release",
         "to": "app-web/dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       "build/icon.png",
       "dist-electron/**/*",
