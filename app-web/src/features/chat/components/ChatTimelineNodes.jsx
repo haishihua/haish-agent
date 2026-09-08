@@ -738,7 +738,18 @@ export function ChatAgentTimeline({
             style={{ width: 40, height: 40 }}
             aria-hidden="true"
           />
-          <span className="chat-timeline-activity-label">{activity.label}</span>
+          <span className="chat-timeline-activity-label" aria-label={activity.label}>
+            <span
+              className="chat-timeline-activity-text"
+              style={{ '--activity-spread': `${activity.label.replace(/…$/, '').length * 2}px` }}
+              aria-hidden="true"
+            >
+              {activity.label.replace(/…$/, '')}
+            </span>
+            <span className="chat-timeline-activity-dots" aria-hidden="true">
+              <span /><span /><span />
+            </span>
+          </span>
         </div>
       ) : null}
       {todos ? <ChatTodoPanel todos={todos} streaming={streaming} /> : null}

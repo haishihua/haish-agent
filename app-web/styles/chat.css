@@ -162,32 +162,47 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    transform: translateY(-48px);
+    transform: translateY(-40px);
 }
 
 .chat-empty-illustration {
+    image-rendering: auto;
+    translate: 0 8px;
     position: relative;
-    width: 236px;
-    height: 190px;
-    margin: 0 auto 16px;
+    width: min(380px, calc(100vw - 64px));
+    max-width: 100%;
+    height: 228px;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+    gap: 0;
+    padding: 0 8px;
+    margin: 0 auto 8px;
     isolation: isolate;
 }
 
 .chat-empty-card {
-    position: absolute;
-    width: 108px;
-    height: 144px;
+    position: relative;
+    width: calc(100% + 8px);
+    height: auto;
+    aspect-ratio: 3 / 4;
     border-radius: 16px;
-    overflow: hidden;
+    overflow: visible;
+    padding: 0;
+    cursor: pointer;
+    appearance: none;
     border: 1px solid rgba(255, 246, 216, 0.72);
     background: #fbf6e7;
     box-shadow: 0 18px 34px rgba(0, 0, 0, 0.3),
     0 2px 0 rgba(255, 255, 255, 0.34) inset;
     transform-origin: 50% 82%;
-    transition: left 180ms ease,
-    top 180ms ease,
-    opacity 180ms ease,
-    transform 180ms ease,
+    left: -4px;
+    top: 0;
+    transform: translateY(var(--card-y)) rotate(var(--card-angle));
+    transition: opacity 240ms ease,
+    transform 240ms ease,
+    translate 180ms ease,
     box-shadow 180ms ease;
 }
 
@@ -197,70 +212,60 @@
     display: block;
     object-fit: cover;
     object-position: center;
-    filter: contrast(1.08);
+    border-radius: inherit;
+    pointer-events: none;
 }
 
-.chat-empty-card-primary {
-    left: 18px;
-    top: 0;
-    z-index: 2;
-    opacity: 1;
-    transform: rotate(-5deg);
+.chat-empty-card:focus-visible { outline: 2px solid #f2c15a; outline-offset: 5px; }
+.chat-empty-card.is-greeting .chat-empty-card-original {
+    /* Hide the printed character even while the paper texture is loading. */
+    mask-image: linear-gradient(to bottom, black 23%, transparent 25%, transparent 78%, black 80%);
+}
+.chat-empty-card-paper {
+    position: absolute; inset: 0; opacity: 0;
+    /* Preserve the exact original title/footer pixels in every animation state. */
+    /* Overlap the original's faded edges instead of joining two translucent masks. */
+    mask-image: linear-gradient(to bottom, transparent 21%, black 23%, black 80%, transparent 82%);
+    pointer-events: none; transition: opacity 120ms ease 160ms;
+}
+.chat-empty-penguin {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    pointer-events: none; opacity: 0; transform-origin: 0 0;
+    transform: translate(23.3%, 25%) scale(.55);
+    transition: transform 220ms ease-in, opacity 100ms ease 140ms;
+}
+.chat-empty-penguin svg {
+    display: block; width: 100%; height: 100%;
+    /* Trim chroma-key sampling artifacts at the bitmap's outer edge. */
+    clip-path: inset(1px);
+}
+.chat-empty-penguin svg { transform-origin: 50% 90%; }
+.chat-empty-card.is-greeting .chat-empty-card-paper { opacity: 1; transition-delay: var(--penguin-delay); }
+.chat-empty-card.is-greeting .chat-empty-penguin {
+    pointer-events: auto; opacity: 1; transform: translate(0, 26%) scale(1);
+    transition: transform 340ms cubic-bezier(.22, 1.25, .36, 1) var(--penguin-delay), opacity 80ms ease var(--penguin-delay);
+}
+@media (hover: hover) {
+    .chat-empty-card:hover { translate: 0 -4px; }
+}
+.chat-empty-card.is-greeting { translate: 0 -4px; z-index: 3; }
+@media (prefers-reduced-motion: reduce) {
+    .chat-empty-illustration .chat-empty-card,
+    .chat-empty-illustration .chat-empty-card-original,
+    .chat-empty-illustration .chat-empty-card-paper,
+    .chat-empty-illustration .chat-empty-penguin { transition: none; }
+    .chat-empty-illustration .chat-empty-card { translate: none; }
+    .chat-empty-illustration .chat-empty-penguin svg { animation: none; transition: none; }
 }
 
-.chat-empty-card-secondary {
-    left: 56px;
-    top: 18px;
-    z-index: 1;
-    opacity: 1;
-    transform: rotate(6deg);
-}
+/* Loose postcard fan: small overlap at the feet, clear faces, fixed targets. */
+.chat-empty-card-primary { --card-y: 20px; --card-angle: -10deg; }
+.chat-empty-card-secondary { --card-y: 0px; --card-angle: -2deg; }
+.chat-empty-card-tertiary { --card-y: 28px; --card-angle: 9deg; }
 
-/* 第三张在最底层：只露出约 1/3、微微透明、向右倾斜。 */
-.chat-empty-card-tertiary {
-    left: 94px;
-    top: 36px;
-    z-index: 0;
-    opacity: 0.85;
-    transform: rotate(8deg);
-}
-
-/* 悬停第二张：第二张移到第一位，第一张退到第二张位置；移开还原。 */
-.chat-empty-illustration.swap-secondary .chat-empty-card-primary {
-    left: 56px;
-    top: 18px;
-    z-index: 1;
-    opacity: 1;
-    transform: rotate(6deg);
-}
-
-.chat-empty-illustration.swap-secondary .chat-empty-card-secondary {
-    left: 18px;
-    top: 0;
-    z-index: 2;
-    opacity: 1;
-    transform: rotate(-5deg);
-    box-shadow: 0 20px 38px rgba(0, 0, 0, 0.34),
-        0 2px 0 rgba(255, 255, 255, 0.38) inset;
-}
-
-/* 悬停第三张：第三张移到第一位，第一张退到第三张位置；移开还原。 */
-.chat-empty-illustration.swap-tertiary .chat-empty-card-primary {
-    left: 94px;
-    top: 36px;
-    z-index: 0;
-    opacity: 0.85;
-    transform: rotate(8deg);
-}
-
-.chat-empty-illustration.swap-tertiary .chat-empty-card-tertiary {
-    left: 18px;
-    top: 0;
-    z-index: 2;
-    opacity: 1;
-    transform: rotate(-5deg);
-    box-shadow: 0 20px 38px rgba(0, 0, 0, 0.34),
-        0 2px 0 rgba(255, 255, 255, 0.38) inset;
+.chat-empty-title,
+.chat-empty-copy {
+    translate: 0 -12px;
 }
 
 .chat-empty-title {
@@ -2390,27 +2395,55 @@
 }
 
 .chat-timeline-activity-label {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.16em;
+    color: #a6b2c4;
+    white-space: nowrap;
+}
+
+.chat-timeline-activity-text {
     color: transparent;
-    background: linear-gradient(
-        105deg,
-        #8e9bad 0%,
-        #8e9bad 25%,
-        #eef4ff 40%,
-        #ffffff 50%,
-        #eef4ff 60%,
-        #8e9bad 75%,
-        #8e9bad 100%
-    );
-    background-size: 220% 100%;
-    background-position: 150% 50%;
+    background-image:
+        linear-gradient(90deg, transparent calc(50% - var(--activity-spread)), #ffffff 50%, transparent calc(50% + var(--activity-spread))),
+        linear-gradient(#8290a5, #8290a5);
+    background-size: 250% 100%, 100% 100%;
+    background-repeat: no-repeat;
+    background-position: 100% center, center;
     -webkit-background-clip: text;
     background-clip: text;
-    animation: chat-activity-shimmer 3s linear infinite;
+    animation: chat-activity-shimmer 2s linear infinite;
 }
 
 @keyframes chat-activity-shimmer {
-    from { background-position: 150% 50%; }
-    to { background-position: -150% 50%; }
+    from { background-position: 100% center, center; }
+    to { background-position: 0% center, center; }
+}
+
+.chat-timeline-activity-dots {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 0.14em;
+    width: 0.82em;
+    height: 0.18em;
+    flex: none;
+}
+
+.chat-timeline-activity-dots > span {
+    width: 0.18em;
+    height: 0.18em;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.3;
+    animation: chat-activity-dot 1.2s ease-in-out infinite;
+}
+
+.chat-timeline-activity-dots > span:nth-child(2) { animation-delay: 0.16s; }
+.chat-timeline-activity-dots > span:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes chat-activity-dot {
+    0%, 60%, 100% { opacity: 0.3; }
+    30% { opacity: 1; }
 }
 
 .chat-timeline.streaming {
@@ -3507,10 +3540,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .chat-timeline-activity-label {
+    .chat-timeline-activity-text {
         color: rgba(241, 246, 255, 0.9);
         background: none;
         animation: none;
+    }
+
+    .chat-timeline-activity-dots > span {
+        animation: none;
+        opacity: 0.8;
     }
 
     .animated-gradient-text {

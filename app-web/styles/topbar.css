@@ -92,15 +92,24 @@ select,
     font-weight: 800;
     letter-spacing: 0.01em;
     text-transform: none;
-    color: var(--cream-title);
+    color: #f3f4f6;
     background: none;
     -webkit-background-clip: initial;
     background-clip: initial;
     -webkit-text-fill-color: currentColor;
-    text-shadow: 0 1px 8px rgba(223, 169, 78, 0.18);
+    text-shadow: none;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.topbar-title-secondary {
+    color: #606674;
+}
+
+.topbar-title-metal {
+    /* Preserve the brand tracking over MetalText's inline zero spacing. */
+    letter-spacing: inherit !important;
 }
 
 .topbar-actions {
@@ -171,4 +180,3 @@ select,
     height: 17px;
     filter: none;
 }
-

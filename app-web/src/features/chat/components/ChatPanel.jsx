@@ -1,4 +1,5 @@
 import React from 'react';
+import { PenguinCards } from './PenguinCards.jsx';
 import { ConversationSearch } from './ConversationSearch.jsx';
 import { ArrowUp, BookOpen, CornerDownLeft, Square } from 'lucide-react';
 import { ApprovalInline } from '../../approvals/components/ApprovalOverlay.jsx';
@@ -38,7 +39,6 @@ const CHAT_IMAGE_ACCEPTED_MIME = new Set([
   'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
 ]);
 const EMPTY_AGENT_SKILLS = [];
-const EMPTY_CARD_HOVER_DELAY_MS = 140;
 
 export function ChatPanel({
   conversationId,
@@ -84,28 +84,9 @@ export function ChatPanel({
   const [skillMenuDismissed, setSkillMenuDismissed] = React.useState(false);
   const selectedSkillNameRef = React.useRef('');
   const skillSelectionPendingRef = React.useRef(false);
-  // 空状态卡片 hover：'secondary' | 'tertiary' | null。悬停某张卡时它与第一张换位，
-  // 只有指针离开整个插图区才还原，避免卡片移动后指针落点变化导致来回抖动。
-  const [emptyHoverCard, setEmptyHoverCard] = React.useState(null);
-  const emptyHoverTimerRef = React.useRef(null);
   const draft = draftProp !== undefined ? draftProp : localDraft;
   const setDraft = draftProp !== undefined ? onDraftChangeProp : setLocalDraft;
 
-  function cancelEmptyCardHover() {
-    if (!emptyHoverTimerRef.current) return;
-    window.clearTimeout(emptyHoverTimerRef.current);
-    emptyHoverTimerRef.current = null;
-  }
-
-  function scheduleEmptyCardHover(card) {
-    cancelEmptyCardHover();
-    emptyHoverTimerRef.current = window.setTimeout(() => {
-      setEmptyHoverCard(card);
-      emptyHoverTimerRef.current = null;
-    }, EMPTY_CARD_HOVER_DELAY_MS);
-  }
-
-  React.useEffect(() => () => cancelEmptyCardHover(), []);
 
   // Collect user messages for ArrowUp history navigation (most recent first).
   const userMessageHistory = React.useMemo(() => {
@@ -410,32 +391,7 @@ export function ChatPanel({
         <div ref={listRef} className={`chat-message-list${searchActive ? ' is-searching' : ''}`}>
           {messages.length === 0 ? (
             <div className="chat-empty">
-              <div
-                className={`chat-empty-illustration${emptyHoverCard === 'secondary' ? ' swap-secondary' : ''}${emptyHoverCard === 'tertiary' ? ' swap-tertiary' : ''}`}
-                onMouseLeave={() => {
-                  cancelEmptyCardHover();
-                  setEmptyHoverCard(null);
-                }}
-                aria-hidden="true"
-              >
-                <div className="chat-empty-card chat-empty-card-primary">
-                  <img src="/assets/ui/empty-state/penguin-relax-card.png" alt="" />
-                </div>
-                <div
-                  className="chat-empty-card chat-empty-card-secondary"
-                  onMouseEnter={() => scheduleEmptyCardHover('secondary')}
-                  onMouseLeave={cancelEmptyCardHover}
-                >
-                  <img src="/assets/ui/empty-state/penguin-sleepy-card.png" alt="" />
-                </div>
-                <div
-                  className="chat-empty-card chat-empty-card-tertiary"
-                  onMouseEnter={() => scheduleEmptyCardHover('tertiary')}
-                  onMouseLeave={cancelEmptyCardHover}
-                >
-                  <img src="/assets/ui/empty-state/penguin-hug-card.png" alt="" />
-                </div>
-              </div>
+              <PenguinCards />
               <div className="chat-empty-title">What's on your mind?</div>
               <div className="chat-empty-copy">Drop a task, a question, or a loose idea. I'll take it from there.</div>
             </div>

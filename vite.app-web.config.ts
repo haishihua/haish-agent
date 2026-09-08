@@ -44,6 +44,8 @@ function serveStaticAssetsPlugin(): Plugin {
         '/assets': path.join(appWebRoot, 'assets'),
       };
       server.middlewares.use((req, res, next) => {
+        // Let Vite turn imported assets into URL-exporting JavaScript modules.
+        if (new URL(req.url || '/', 'http://localhost').searchParams.has('import')) return next();
         const url = req.url?.split('?')[0] || '';
         for (const [prefix, root] of Object.entries(roots)) {
           if (!url.startsWith(`${prefix}/`) && url !== prefix) continue;

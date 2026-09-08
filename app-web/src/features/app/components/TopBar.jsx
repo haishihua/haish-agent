@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { MetalText } from 'metal-fx-text';
 
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { RemoteControlDialog } from '../../remote/components/RemoteControlDialog.jsx';
@@ -10,13 +11,30 @@ export function TopBar({
   onToggleSettings,
 }) {
   const chatMode = viewMode === 'chat';
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReducedMotion(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
   const [remoteControlOpen, setRemoteControlOpen] = useState(false);
   return (
     <>
       <div className="app-topbar">
         <div className="topbar-brand">
           <img className="topbar-logo" src="assets/ui/penguin_logo_user.png" alt="" draggable={false} />
-          <div className="topbar-title">Haish Agent</div>
+          <div className="topbar-title">
+            {reducedMotion ? 'Haish' : (
+              <MetalText font="inherit" color="#f3f4f6" theme="dark" className="topbar-title-metal">
+                Haish
+              </MetalText>
+            )}{' '}
+            <span className="topbar-title-secondary">Agent</span>
+          </div>
         </div>
         <div className="topbar-actions">
           <PortalTooltip text="Remote Control" position="below">
