@@ -1,0 +1,26 @@
+/* Official standalone EditMessage layout, scoped to avoid chat bubble styles. */
+.aui-edit-message {
+  display: flex; flex-direction: column; gap: 12px; width: 100%; box-sizing: border-box;
+  border: 1px solid #3a3a3a; border-radius: 20px; padding: 14px;
+  background: #282828; color: #daddef; font-family: ui-sans-serif, system-ui, sans-serif;
+}
+.aui-edit-message textarea {
+  width: 100%; box-sizing: border-box; resize: none; border: 0; border-radius: 12px;
+  padding: 10px 12px; background: rgb(218 221 239 / 6%); color: rgb(218 221 239 / 90%);
+  font: 13.5px/1.625 ui-sans-serif, system-ui, sans-serif; outline: none;
+}
+.aui-edit-message textarea:focus-visible { box-shadow: 0 0 0 1px rgb(218 221 239 / 20%); }
+.aui-edit-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.aui-edit-actions button {
+  height: 32px; padding: 0 14px; border: 0; border-radius: 9999px; background: transparent;
+  color: rgb(218 221 239 / 55%); font: 500 12px ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer; transition: background-color 150ms, color 150ms, transform 150ms;
+}
+.aui-edit-actions button:hover:not(:disabled) { background: rgb(218 221 239 / 6%); color: #daddef; }
+.aui-edit-actions .aui-edit-send { background: #daddef; color: #10131d; }
+.aui-edit-actions .aui-edit-send:hover:not(:disabled) { background: #daddef; color: #10131d; opacity: .9; }
+.aui-edit-actions button:active:not(:disabled) { transform: scale(.96); }
+.aui-edit-actions button:disabled { opacity: .5; cursor: default; }
+.aui-edit-actions button:focus-visible { outline: 2px solid #daddef; outline-offset: 2px; }
+.message-shell .message-speech-body:has(> .aui-edit-message) { padding: 0; border: 0; background: transparent; }
+@media (prefers-reduced-motion: reduce) { .aui-edit-actions button { transition: none; } }

@@ -1,6 +1,9 @@
 import React from 'react';
-import { UserRound } from 'lucide-react';
+import { UserRound, Split, Pencil, LoaderCircle } from 'lucide-react';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
+import { EditMessage } from '../../../shared/ui/agent-elements/EditMessage.jsx';
+import { QuoteBlock } from '../../../shared/ui/agent-elements/Quote.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { stripInjectedSkillInstruction } from '../model/chat-text.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
@@ -27,18 +30,32 @@ function blobToDataUrl(blob) {
   });
 }
 
-function FinalAnswerMarkdown({ source, streaming }) {
+function FinalAnswerMarkdown({ source, streaming, sourceMessageId }) {
   const text = String(source || '');
 
   if (!text || streaming) return null;
   return (
-    <div className="chat-bubble-text">
+    <div className="chat-bubble-text" data-annotation-source={sourceMessageId}>
       {Markdown ? <Markdown source={text} /> : text}
     </div>
   );
 }
 
-function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
+function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onEdit, onAnnotationJump, actionsDisabled = false }) {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const [actionBusy, setActionBusy] = React.useState(false);
+  const [actionError, setActionError] = React.useState('');
+  const actionLock = React.useRef(false);
+  async function perform(action) {
+    if (actionLock.current) return;
+    actionLock.current = true;
+    setActionBusy(true);
+    setActionError('');
+    try { await action(); setEditing(false); }
+    catch (error) { setActionError(String(error?.message || error)); }
+    finally { actionLock.current = false; setActionBusy(false); }
+  }
   const timeline = Array.isArray(message.traceTimeline) ? message.traceTimeline : [];
   const hasTimeline = timeline.length > 0;
   const isAgent = message.role === 'agent';
@@ -145,6 +162,9 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
             </span>
           </div>}
           <div className="message-speech-body">
+          {isUser && message.annotations?.length > 0 && <div className="haish-sent-annotations" aria-label="Quoted comments">
+            {message.annotations.map((item, index) => <QuoteBlock key={item.id} item={item} index={index + 1} onJump={onAnnotationJump} />)}
+          </div>}
           {!isUser ? imageAttachments : null}
           {showTimelineExpanded ? (
             <ChatAgentTimeline
@@ -156,8 +176,14 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
               onPreviewImage={onPreviewImage}
             />
           ) : null}
-          {isAgent ? (
-            <FinalAnswerMarkdown source={message.text} streaming={message.streaming} />
+          {editing ? (
+            <EditMessage value={draft} onValueChange={setDraft} busy={actionBusy} disabled={actionsDisabled}
+              onCancel={() => setEditing(false)} onSave={() => perform(() => onEdit(draft))} />
+          ) : isAgent && message.status === 'failed' ? (
+            <ErrorState title="Task failed" detail={message.text} retrying={actionBusy}
+              disabled={actionsDisabled} onRetry={onRetry ? () => perform(onRetry) : undefined} />
+          ) : isAgent ? (
+            <FinalAnswerMarkdown source={message.text} streaming={message.streaming} sourceMessageId={message.status === 'done' ? message.messageId : undefined} />
           ) : visibleText ? (
             <div className="chat-bubble-text">
               {(isUser || message.markdown) && Markdown
@@ -166,10 +192,11 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
             </div>
           ) : null}
           </div>
+          {actionError ? <div role="alert" className="message-action-error">{actionError}</div> : null}
         </div>
-      {(messageClock || copyText || onRetry) ? (
+      {(messageClock || copyText || onRetry || onFork || onEdit) && !editing ? (
         <div className="chat-message-actions">
-          {messageClock ? <span className="chat-bubble-clock">{messageClock}</span> : null}
+          {isUser && messageClock ? <span className="chat-bubble-clock">{messageClock}</span> : null}
           {copyText ? (
             <PortalTooltip text={copied ? 'Copied' : 'Copy'} position="above">
               <button
@@ -182,7 +209,9 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
               </button>
             </PortalTooltip>
           ) : null}
-          {onRetry ? (
+          {onFork ? <PortalTooltip text="Branch into new chat" position="above"><button type="button" className="chat-bubble-copy message-turn-action" aria-label="Branch into new chat" disabled={actionBusy} onClick={() => perform(onFork)}>{actionBusy ? <LoaderCircle size={14} /> : <Split size={16} strokeWidth={1.75} style={{ transform: 'rotate(90deg)' }} />}</button></PortalTooltip> : null}
+          {onEdit ? <PortalTooltip text="Edit message" position="above"><button type="button" className="chat-bubble-copy message-turn-action" aria-label="Edit message" disabled={actionsDisabled || actionBusy} onClick={() => { setDraft(visibleText); setEditing(true); }}><Pencil size={15} /></button></PortalTooltip> : null}
+          {onRetry && message.status !== 'failed' ? (
             <PortalTooltip text="ReRun" position="above">
               <button
                 type="button"
@@ -194,6 +223,7 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry }) {
               </button>
             </PortalTooltip>
           ) : null}
+          {!isUser && messageClock ? <span className="chat-bubble-clock">{messageClock}</span> : null}
         </div>
       ) : null}
     </div>
@@ -206,6 +236,10 @@ export const ChatMessageRow = React.memo(
     previous.message === next.message
     && previous.onPreviewImage === next.onPreviewImage
     && previous.onRetry === next.onRetry
+    && previous.onFork === next.onFork
+    && previous.onEdit === next.onEdit
+    && previous.onAnnotationJump === next.onAnnotationJump
+    && previous.actionsDisabled === next.actionsDisabled
   ),
 );
 

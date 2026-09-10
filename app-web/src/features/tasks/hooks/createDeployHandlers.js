@@ -36,7 +36,6 @@ export function createDeployHandlers(ctx) {
     normalizeWorkspaceOrdering,
     pendingCreatedDetailRef,
     queuedDeploy,
-    readRuntimeAnswerBuffer,
     selectedConversationId,
     setComposerAttachment,
     setQueuedDeploy,
@@ -46,7 +45,6 @@ export function createDeployHandlers(ctx) {
     setRuntimeFetchController,
     setWorkspaceState,
     showToast,
-    taskHasAssistantStreamContent,
     taskUpdatedTimestamp,
     titleFromTaskText,
     updateConversationTitle,
@@ -121,11 +119,6 @@ export function createDeployHandlers(ctx) {
       || queuedRequest?.text
       || ''
     ).trim();
-    // Only agent-visible content (thinking/answer/tool/trace) counts as started.
-    // Lifecycle receipts before visualization must still roll the turn back.
-    const answerBuffer = String(readRuntimeAnswerBuffer(targetConvId) || '').trim();
-    const hasAssistantOutput = taskHasAssistantStreamContent(activeTask || pendingTask)
-      || Boolean(answerBuffer);
     const hasActiveRun = runtimeBusy || taskId || pendingTask || controllerToAbort || hadQueuedDeploy;
     if (!hasActiveRun) return '';
     // Mark abort BEFORE any async cancel / abort side effects so in-flight
@@ -171,8 +164,8 @@ export function createDeployHandlers(ctx) {
     }
     controllerToAbort?.abort?.();
     if (taskId) {
-      if (hasAssistantOutput) {
-        // Assistant already produced visible content: keep the partial turn.
+        // Keep persisted turns even before the first token; edit the user
+        // message to resend instead of rolling it back into the composer.
         updateTaskById(taskId, (task) => applyTerminalTaskState(task, 'cancelled', { aborted: true }), targetConvId);
         updateTaskRuntimeState((state) => ({
           ...state,
@@ -180,21 +173,6 @@ export function createDeployHandlers(ctx) {
           pendingTask: null,
           taskOrder: state.taskOrder.includes(taskId) ? state.taskOrder : [...state.taskOrder, taskId],
         }), targetConvId);
-      } else {
-        // No agent-visible content yet: drop both bubbles and restore composer.
-        updateTaskRuntimeState((state) => {
-          const nextTasksById = { ...(state.tasksById || {}) };
-          delete nextTasksById[taskId];
-          return {
-            ...state,
-            activeTaskId: null,
-            pendingTask: null,
-            taskOrder: (state.taskOrder || []).filter((id) => id !== taskId),
-            tasksById: nextTasksById,
-          };
-        }, targetConvId);
-        removeConversationTaskFromWorkspace(targetConvId, taskId);
-      }
     } else if (pendingTask) {
       const pendingKey = pendingTask.id || pendingTask.taskId || null;
       // Pending-only turns never have agent-visible content yet.
@@ -219,10 +197,10 @@ export function createDeployHandlers(ctx) {
     });
     // Keep sidebar task list in sync after a hard rollback/cancel.
     flushRuntimeTasksToWorkspace(targetConvId);
-    return hasAssistantOutput ? '' : restoreText;
+    return taskId ? '' : restoreText;
   }
 
-  function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, selectionId, providerRequest, displayText = text) {
+  function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, selectionId, providerRequest, displayText = text, annotations = []) {
     const sanitizedImageAttachments = Array.isArray(imageAttachments)
       ? imageAttachments
           .filter((ref) => ref && (ref.file || (ref.image_id && ref.path)))
@@ -238,6 +216,7 @@ export function createDeployHandlers(ctx) {
       id: `queued-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       text,
       displayText: String(displayText || text || '').trim(),
+      annotations: annotations.map((item) => ({ ...item })),
       attachment,
       modelId,
       reasoningEffort,
@@ -262,6 +241,8 @@ export function createDeployHandlers(ctx) {
       request.imageAttachments,
     );
     pendingTask.requestText = request.text;
+    pendingTask.annotations = request.annotations;
+    pendingTask.displayText = request.displayText;
     pendingTask.requestedModelId = request.modelId || '';
     pendingTask.requestedAgentId = request.executionMode === 'chat'
       ? (request.agentId || defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id)
@@ -458,8 +439,8 @@ export function createDeployHandlers(ctx) {
     });
   }
 
-  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText = text) {
-    const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText);
+  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText = text, annotations = []) {
+    const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText, annotations);
     const activeId = conversationIdRef.current || conversationId;
     const activeRuntime = activeId ? getRuntime(activeId) : null;
     if (!activeId || !activeRuntime) {
@@ -490,6 +471,10 @@ export function createDeployHandlers(ctx) {
       || runningTaskId
     );
     if (runtimeRunning && viewModeRef.current === 'chat') {
+      if (request.annotations.length) {
+        showToast('error', 'Wait for the task to finish or stop it before sending comments.');
+        return false;
+      }
       if (!runningTaskId) {
         showToast('error', 'The task is still starting. Try again in a moment.');
         return false;

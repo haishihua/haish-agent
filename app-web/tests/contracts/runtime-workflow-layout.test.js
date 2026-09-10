@@ -367,7 +367,7 @@ test('terminal workflow tasks can rerun an executed business node', () => {
   assert.match(runtimeSource, /\['agent', 'llm', 'tool', 'human_approval'\]\.includes\(node\.type\)/);
   assert.match(runtimeSource, /onRetry\?\.\(node\.id\)/);
   assert.match(taskStreamSource, /workflow\/nodes\/\$\{encodeURIComponent\(streamRequest\.rerunNodeId\)\}\/rerun\/stream/);
-  assert.match(taskStreamSource, /const runId = rerunningNode \? generateHexId\(\)/);
+  assert.match(taskStreamSource, /const runId = \(rerunningNode \|\| fullAttempt\) \? generateHexId\(\)/);
   assert.match(appShellSource, /setViewedWorkflowTask\(null\);\s*executeWorkflowNodeRerun\(currentWorkflowTask, nodeId, botRunConfigRef\.current\)/);
   assert.match(appShellSource, /onRunConfigChange=\{handleBotRunConfigChange\}/);
   assert.match(taskStreamSource, /provider: streamRequest\.runConfig\.provider/);

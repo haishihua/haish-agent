@@ -252,6 +252,10 @@ export function buildTaskRuntimeRecord(event, pendingTask) {
     workflowSnapshot: pendingTask?.workflowSnapshot || null,
     workflowRun: pendingTask?.workflowRun || null,
     sourceTaskId: pendingTask?.sourceTaskId || event.source_task_id || null,
+    userMessageId: event.user_message_id || pendingTask?.userMessageId || null,
+    annotations: event.annotations ?? pendingTask?.annotations ?? [],
+    displayText: event.display_text ?? pendingTask?.displayText ?? null,
+    assistantMessageId: null,
     sourceRunId: pendingTask?.sourceRunId || event.source_run_id || null,
     rerunFromNodeId: pendingTask?.rerunFromNodeId || event.start_node_id || null,
     providerState: pendingTask?.requestedProvider ? {
@@ -307,6 +311,12 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = []) {
     workflowSnapshot: usableWorkflowSnapshot(task.workflow_snapshot),
     workflowRun: task.workflow_run || null,
     sourceTaskId: task.source_task_id || null,
+    userMessageId: task.user_message_id || null,
+    annotations: task.annotations || [],
+    displayText: task.display_text ?? null,
+    inherited: Boolean(task.inherited),
+    assistantMessageId: task.assistant_message_id || null,
+    requestedReasoningEffort: task.reasoning_effort || null,
     sourceRunId: task.source_run_id || null,
     rerunFromNodeId: task.rerun_from_node_id || null,
     requestedModelId: task.model || '',
@@ -356,6 +366,9 @@ export function upsertToolCall(toolCalls, callId, patch) {
 
 export function runtimeTaskToQuest(task) {
   return {
+    conversationId: task.conversationId,
+    userMessageId: task.userMessageId,
+    assistantMessageId: task.assistantMessageId,
     id: task.taskId,
     title: task.title,
     description: task.description,

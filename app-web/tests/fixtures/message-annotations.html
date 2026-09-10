@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Message annotations regression</title>
+<h2 id="result">Running checks…</h2>
+<pre id="checks"></pre>
+<script type="module">
+  const result = document.querySelector('#result');
+  try {
+    const { runAnnotationDomChecks } = await import('./message-annotations.dom-checks.js');
+    const passed = runAnnotationDomChecks();
+    document.querySelector('#checks').textContent = passed.join('\n');
+    result.textContent = `PASS — ${passed.length} annotation DOM checks`;
+  } catch (error) {
+    result.textContent = `FAIL — ${error.message}`;
+    throw error;
+  }
+</script>
+</html>

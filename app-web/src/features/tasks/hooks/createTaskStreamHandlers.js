@@ -69,7 +69,6 @@ export function createTaskStreamHandlers(ctx) {
     conversationIdRef,
     ensureTaskForEvent,
     eventDeltaText,
-    flushRuntimeTasksToWorkspace,
     generateHexId,
     getChatProgressLine,
     getRuntime,
@@ -96,7 +95,6 @@ export function createTaskStreamHandlers(ctx) {
     showToast,
     streamTargetConvIdRef,
     stripChatImageAugmentation,
-    taskHasAssistantStreamContent,
     toDisplayText,
     updateTaskById,
     updateTaskRuntimeState,
@@ -651,27 +649,6 @@ export function createTaskStreamHandlers(ctx) {
         if (terminalStatus === 'cancelled') {
           chatFinalizedTaskIdsRef.current.add(taskId);
           userCancelledTaskIdsRef.current.add(taskId);
-          const existing = getTaskById(taskId, ownerConvId);
-          const answerBuffer = String(readRuntimeAnswerBuffer(ownerConvId) || '').trim();
-          if (!taskHasAssistantStreamContent(existing) && !answerBuffer) {
-            updateTaskRuntimeState((state) => {
-              const nextTasksById = { ...(state.tasksById || {}) };
-              delete nextTasksById[taskId];
-              return {
-                ...state,
-                activeTaskId: null,
-                pendingTask: null,
-                taskOrder: (state.taskOrder || []).filter((id) => id !== taskId),
-                tasksById: nextTasksById,
-              };
-            }, ownerConvId);
-            removeConversationTaskFromWorkspace(ownerConvId, taskId);
-            if (ownerConvId) flushRuntimeTasksToWorkspace(ownerConvId);
-            setRuntimeBusy(false, ownerConvId);
-            setRuntimeActiveTaskId(null, ownerConvId);
-            setRuntimeFetchController(null, ownerConvId);
-            break;
-          }
         }
         updateTaskById(taskId, (run) => {
           const persistedImages = normalizeChatImageRefs(
@@ -710,6 +687,10 @@ export function createTaskStreamHandlers(ctx) {
               run.workflowSnapshot || null,
             ),
             sourceTaskId: persistedTask?.source_task_id || run.sourceTaskId || null,
+            userMessageId: persistedTask?.user_message_id || run.userMessageId || null,
+            annotations: persistedTask?.annotations ?? run.annotations ?? [],
+            displayText: persistedTask?.display_text ?? run.displayText ?? null,
+            assistantMessageId: persistedTask?.assistant_message_id || null,
             sourceRunId: persistedTask?.source_run_id || run.sourceRunId || null,
             rerunFromNodeId: persistedTask?.rerun_from_node_id || run.rerunFromNodeId || null,
             profileId: persistedTask?.profile_id || run.profileId || null,
@@ -752,16 +733,18 @@ export function createTaskStreamHandlers(ctx) {
       throw new Error('conversation is not ready');
     }
     const rerunningNode = Boolean(streamRequest?.rerunNodeId);
-    const sourceTaskId = pendingTask.id || pendingTask.taskId || null;
-    const runId = rerunningNode ? generateHexId() : (sourceTaskId || generateHexId());
-    if (rerunningNode) {
+    const fullAttempt = Boolean(streamRequest?.attempt);
+    const sourceTaskId = pendingTask.taskId || pendingTask.id || null;
+    const runId = (rerunningNode || fullAttempt) ? generateHexId() : (sourceTaskId || generateHexId());
+    if (rerunningNode || fullAttempt) {
       pendingTask = {
         ...pendingTask,
         id: runId,
         taskId: runId,
         sourceTaskId,
         sourceRunId: pendingTask.workflowRun?.run_id || null,
-        rerunFromNodeId: streamRequest.rerunNodeId,
+        rerunFromNodeId: streamRequest.rerunNodeId || null,
+        title: fullAttempt && streamRequest.message != null ? streamRequest.message : pendingTask.title,
         status: 'running',
         stage: 'assigned',
         completedAt: null,
@@ -769,10 +752,13 @@ export function createTaskStreamHandlers(ctx) {
         error: null,
         answerText: '',
         chatStreamText: '',
+        eventLog: [],
+        toolCalls: [],
+        assistantMessageId: null,
       };
     }
     pendingTask.id = runId;
-    if (rerunningNode) {
+    if (rerunningNode || fullAttempt) {
       chatFinalizedTaskIdsRef.current.delete(runId);
       userCancelledTaskIdsRef.current.delete(runId);
     }
@@ -793,13 +779,13 @@ export function createTaskStreamHandlers(ctx) {
         stage: 'assigned',
       },
     }), runConversationId);
-    if (rerunningNode) {
+    if (rerunningNode || fullAttempt) {
       setRuntimeActiveTaskId(runId, runConversationId);
       setRuntimeBusy(true, runConversationId);
     }
 
     const rollbackUnconfirmedRerun = () => {
-      if (!rerunningNode) return;
+      if (!rerunningNode && !fullAttempt) return;
       updateTaskRuntimeState((state) => {
         const tasksById = { ...(state.tasksById || {}) };
         delete tasksById[runId];
@@ -824,7 +810,7 @@ export function createTaskStreamHandlers(ctx) {
       userCancelledTaskIdsRef.current.delete(runId);
     };
 
-    if (!rerunningNode && pendingTask.attachment?.file && !pendingTask.attachment?.uploaded) {
+    if (!rerunningNode && !fullAttempt && pendingTask.attachment?.file && !pendingTask.attachment?.uploaded) {
       const uploadController = new AbortController();
       const uploadName = pendingTask.attachment.name || pendingTask.attachment.file.name || 'document';
       setRuntimeFetchController(uploadController, runConversationId);
@@ -873,15 +859,21 @@ export function createTaskStreamHandlers(ctx) {
 
     const controller = new AbortController();
     setRuntimeFetchController(controller, runConversationId);
-    const streamUrl = rerunningNode
+    const streamUrl = fullAttempt
+      ? `${API_BASE}/api/tasks/${sourceTaskId}/${streamRequest.attempt === 'edit' ? 'edit-and-resend' : 'rerun'}/stream`
+      : rerunningNode
       ? `${API_BASE}/api/tasks/${sourceTaskId}/workflow/nodes/${encodeURIComponent(streamRequest.rerunNodeId)}/rerun/stream`
       : `${API_BASE}/api/conversations/${runConversationId}/tasks/stream`;
-    const requestBody = rerunningNode ? JSON.stringify({
+    const requestBody = fullAttempt ? JSON.stringify({
+      request_id: streamRequest.requestId,
+      ...(streamRequest.attempt === 'edit' ? { message: streamRequest.message } : {}),
+    }) : rerunningNode ? JSON.stringify({
       provider: streamRequest.runConfig.provider,
       model_id: streamRequest.runConfig.modelId,
       reasoning_effort: streamRequest.runConfig.reasoningEffort,
     }) : JSON.stringify({
-      message: pendingTask.requestText || pendingTask.title,
+      message: pendingTask.requestText ?? pendingTask.title,
+      annotations: pendingTask.annotations || [],
       attachments: pendingTask.attachment ? [{
         name: pendingTask.attachment.name,
         size: pendingTask.attachment.size,
@@ -982,6 +974,15 @@ export function createTaskStreamHandlers(ctx) {
     };
     try {
       await readNdjsonStream(response, queueRuntimeEvent, controller.signal);
+    } catch (error) {
+      if (fullAttempt) {
+        flushQueuedEvents();
+        const activeId = getRuntime(runConversationId)?.activeTaskId;
+        if (activeId) updateTaskById(activeId, (task) => applyTerminalTaskState(task, 'failed', { error: String(error?.message || error) }), runConversationId);
+        setRuntimeBusy(false, runConversationId);
+        setRuntimeActiveTaskId(null, runConversationId);
+      }
+      throw error;
     } finally {
       flushQueuedEvents();
       const guardRt = getRuntime(runConversationId);

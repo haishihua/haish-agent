@@ -39,6 +39,7 @@ export function createConversationHandlers(ctx) {
     setWorkspaceState,
     showToast,
     startDeploy,
+    executeQuest,
     stopConversationRuntimeBeforeDelete,
     taskUpdatedTimestamp,
     viewModeRef,
@@ -750,9 +751,29 @@ export function createConversationHandlers(ctx) {
     });
   }
 
-  async function handleRetryTask(task) {
+  async function handleForkMessage(message) {
+    const response = await apiFetch(`${API_BASE}/api/conversations/${message.conversationId}/fork`, {
+      method: 'POST', headers: buildApiHeaders(),
+      body: JSON.stringify({ from_message_id: message.messageId }),
+    });
+    const detail = await response.json();
+    if (!response.ok) throw new Error(detail.detail || 'Cannot fork conversation.');
+    setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
+    await activateConversationDetail(detail, { restoreLatest: false });
+  }
+
+  async function handleRetryTask(task, editedMessage = null) {
     const targetConversationId = task?.conversationId || task?.conversation_id;
     if (!targetConversationId) return;
+    if ((task?.userMessageId || task?.user_message_id) && executeQuest) {
+      if (!canStartDeployForConversation(targetConversationId)) return;
+      const source = getRuntime(targetConversationId)?.taskRuntimeState?.tasksById?.[task.taskId || task.task_id || task.id] || task;
+      return executeQuest(source, targetConversationId, {
+        attempt: editedMessage == null ? 'rerun' : 'edit',
+        message: editedMessage,
+        requestId: crypto.randomUUID(),
+      });
+    }
     if (targetConversationId !== conversationIdRef.current) {
       await loadAndActivateConversation({
         projectId: findProjectByConversationId(workspaceState, targetConversationId)?.id,
@@ -799,5 +820,6 @@ export function createConversationHandlers(ctx) {
     handleToggleViewMode,
     handleOpenTaskReport,
     handleRetryTask,
+    handleForkMessage,
   };
 }

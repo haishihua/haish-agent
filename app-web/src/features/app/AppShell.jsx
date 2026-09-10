@@ -1,4 +1,5 @@
 import React from 'react';
+import { collapseFullTaskAttempts } from '../chat/model/task-attempts.js';
 import { BoundedCache } from '../../shared/lib/bounded-cache.js';
 import { evictInactiveRuntimes, releaseWorkspaceRuntimeDetails } from '../conversations/model/runtime-cache.js';
 import { approvalStore } from '../approvals/model/approval-store.js';
@@ -991,7 +992,9 @@ export function AppShell() {
     handleToggleViewMode,
     handleOpenTaskReport,
     handleRetryTask,
+    handleForkMessage,
   } = createConversationHandlers({
+    executeQuest,
     API_BASE,
     DEFAULT_SESSION_NAME,
     activateConversationDetail,
@@ -1392,9 +1395,9 @@ export function AppShell() {
   }, [taskRuntimeState]);
   const chatMessages = useMemo(() => {
     const rows = [];
-    const orderedTasks = taskRuntimeState.taskOrder
+    const orderedTasks = collapseFullTaskAttempts(taskRuntimeState.taskOrder
       .map((taskId) => taskRuntimeState.tasksById[taskId])
-      .filter(Boolean);
+      .filter(Boolean));
     const rowCache = chatMessageRowsCacheRef.current;
     for (const task of orderedTasks) {
       const cachedRows = rowCache.get(task);
@@ -1408,32 +1411,24 @@ export function AppShell() {
       const answer = String(task.answerText || '').trim();
       const progress = String(task.chatStreamText || '').trim();
       const error = String(task.error || '').trim();
-      // User-cancelled turns with no agent-visible content are rolled back
-      // entirely (composer restore). Ignore early chatStreamText receipts such as
-      // "Task received." — those are not agent visualization and must not keep
-      // empty You / Assistant shells after Stop.
-      if (
-        status === 'cancelled'
-        && !error
-        && !answer
-        && !taskHasAssistantStreamContent(task)
-      ) {
-        continue;
-      }
-      // Cancelled tasks that already streamed content stay in history so the
-      // partial answer / trace remains visible.
-      if (task.title) {
+      // Keep cancelled turns, including those stopped before the first token,
+      // so the original user message remains available for edit-and-resend.
+      if (task.title || task.annotations?.length) {
         taskRows.push({
           id: `${taskId}-user`,
+          taskId,
+          conversationId,
+          messageId: task.userMessageId,
           role: 'user',
-          text: stripInjectedSkillInstruction(task.title),
+          text: stripInjectedSkillInstruction(task.displayText ?? task.title),
+          annotations: task.annotations || [],
           status,
           createdAt: task.createdAt,
           completedAt: task.completedAt,
           images: Array.isArray(task.imageAttachments) ? task.imageAttachments : [],
         });
       }
-      if (answer || progress || error || status === 'running' || status === 'queued' || status === 'failed' || status === 'cancelled') {
+      if (!(task.inherited && status === 'cancelled') && (answer || progress || error || status === 'running' || status === 'queued' || status === 'failed' || status === 'cancelled')) {
         const progressLines = progress
           ? progress.split('\n').map((line) => line.trim()).filter(Boolean)
           : [];
@@ -1463,6 +1458,7 @@ export function AppShell() {
         // blocks. All items keep their original chronological order.
         taskRows.push({
           id: `${taskId}-agent`,
+          messageId: task.assistantMessageId,
           taskId,
           conversationId,
           role: 'agent',
@@ -1488,7 +1484,8 @@ export function AppShell() {
         rows.push({
           id: `${taskRuntimeState.pendingTask.id || 'pending'}-user`,
           role: 'user',
-          text: stripInjectedSkillInstruction(taskRuntimeState.pendingTask.title),
+          text: stripInjectedSkillInstruction(taskRuntimeState.pendingTask.displayText ?? taskRuntimeState.pendingTask.title),
+          annotations: taskRuntimeState.pendingTask.annotations || [],
           status: pendingStatus,
           createdAt: taskRuntimeState.pendingTask.createdAt,
           completedAt: taskRuntimeState.pendingTask.completedAt,
@@ -1688,13 +1685,15 @@ export function AppShell() {
                     selectionStorageKey={runConfigStorageKey}
                     draft={chatDraft}
 	                    onDraftChange={setChatDraft}
+                    onForkMessage={handleForkMessage}
+                    onEditMessage={(taskId, text) => handleRetryTask(getTaskById(taskId, conversationId), text)}
                     onRetryTask={(taskId) => {
                       const pendingTask = taskRuntimeState.pendingTask;
                       const pendingTaskId = pendingTask?.taskId || pendingTask?.id;
-                      handleRetryTask(
+                      return handleRetryTask(
                         getTaskById(taskId, conversationId)
                         || (pendingTaskId === taskId ? pendingTask : null),
-                      ).catch((error) => showToast('error', String(error?.message || error)));
+                      );
                     }}
 		                  />
 	                </div>

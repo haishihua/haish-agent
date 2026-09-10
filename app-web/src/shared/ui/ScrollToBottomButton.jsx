@@ -1,13 +1,14 @@
 import React from 'react';
 
-const SHOW_THRESHOLD = 96;
+// Allow fractional scroll offsets without hiding a genuinely available action.
+const SHOW_THRESHOLD = 2;
 
 export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = false, resetKey = '' }) {
   const [visible, setVisible] = React.useState(false);
   const frameRef = React.useRef(null);
   const followLatestRef = React.useRef(true);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     const element = scrollRef?.current;
     if (!element) return undefined;
 
@@ -23,14 +24,29 @@ export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = f
       setVisible(distance > SHOW_THRESHOLD);
     };
     const scheduleUpdate = () => {
-      if (frameRef.current) return;
+      if (frameRef.current !== null) return;
       frameRef.current = requestAnimationFrame(update);
     };
 
     const handleScroll = () => {
       const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
-      followLatestRef.current = distance <= SHOW_THRESHOLD;
+      // Lazy row layout/scroll anchoring can move scrollTop backwards without
+      // user input. Keep following until an actual navigation gesture opts out.
+      if (distance <= SHOW_THRESHOLD) followLatestRef.current = true;
+      if (autoFollow && followLatestRef.current) contentChanged = true;
       scheduleUpdate();
+    };
+    const handleWheel = (event) => {
+      // Stop following before a queued resize update can undo an upward gesture.
+      if (event.deltaY < 0) followLatestRef.current = false;
+    };
+    const stopFollowing = () => { followLatestRef.current = false; };
+    const handleKeyDown = (event) => {
+      if (event.target?.closest?.('input, textarea, [contenteditable="true"]')) return;
+      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) stopFollowing();
+    };
+    const handlePointerDown = (event) => {
+      if (event.target === element) stopFollowing(); // Scrollbar dragging.
     };
     const handleContentChange = () => {
       contentChanged = true;
@@ -38,6 +54,10 @@ export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = f
     };
 
     element.addEventListener('scroll', handleScroll, { passive: true });
+    element.addEventListener('wheel', handleWheel, { passive: true });
+    element.addEventListener('touchstart', stopFollowing, { passive: true });
+    element.addEventListener('keydown', handleKeyDown);
+    element.addEventListener('pointerdown', handlePointerDown);
     const resizeObserver = new ResizeObserver(handleContentChange);
     resizeObserver.observe(element);
     // Observe row sizes, not every token mutation inside the message tree.
@@ -50,14 +70,21 @@ export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = f
     const mutationObserver = new MutationObserver(observeRows);
     mutationObserver.observe(element, { childList: true });
     observeRows();
-    if (autoFollow) element.scrollTop = element.scrollHeight;
+    if (autoFollow) {
+      element.scrollTop = element.scrollHeight;
+    }
     scheduleUpdate();
 
     return () => {
       element.removeEventListener('scroll', handleScroll);
+      element.removeEventListener('wheel', handleWheel);
+      element.removeEventListener('touchstart', stopFollowing);
+      element.removeEventListener('keydown', handleKeyDown);
+      element.removeEventListener('pointerdown', handlePointerDown);
       mutationObserver.disconnect();
       resizeObserver.disconnect();
-      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
     };
   }, [autoFollow, resetKey, scrollRef]);
 

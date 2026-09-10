@@ -1,6 +1,10 @@
 import React from 'react';
 import { PenguinCards } from './PenguinCards.jsx';
 import { ConversationSearch } from './ConversationSearch.jsx';
+import { MessageAnnotations } from './MessageAnnotations.jsx';
+import { QuoteBlock } from '../../../shared/ui/agent-elements/Quote.jsx';
+import { useAnnotationDraft } from '../hooks/useAnnotationDraft.js';
+import { annotationError } from '../model/message-annotations.js';
 import { ArrowUp, BookOpen, CornerDownLeft, Square } from 'lucide-react';
 import { ApprovalInline } from '../../approvals/components/ApprovalOverlay.jsx';
 import {
@@ -69,6 +73,8 @@ export function ChatPanel({
   draft: draftProp,
   onDraftChange: onDraftChangeProp,
   onRetryTask,
+  onForkMessage,
+  onEditMessage,
 }) {
   const resolvedProviderOptions = Array.isArray(providerOptions) && providerOptions.length > 0
     ? providerOptions
@@ -86,6 +92,26 @@ export function ChatPanel({
   const skillSelectionPendingRef = React.useRef(false);
   const draft = draftProp !== undefined ? draftProp : localDraft;
   const setDraft = draftProp !== undefined ? onDraftChangeProp : setLocalDraft;
+  const { items: annotationDrafts, update: updateAnnotations, storageError } = useAnnotationDraft(conversationId, messages);
+  const [annotationNotice, setAnnotationNotice] = React.useState('');
+  const annotationUiRef = React.useRef(null);
+  const jumpToAnnotation = React.useCallback((item) => annotationUiRef.current?.jump(item), []);
+  const editAnnotation = React.useCallback((item) => annotationUiRef.current?.edit(item), []);
+  const saveAnnotation = (item) => {
+    const exists = annotationDrafts.some((draft) => draft.id === item.id);
+    const next = exists ? annotationDrafts.map((draft) => draft.id === item.id ? item : draft) : [...annotationDrafts, item];
+    const error = annotationError(next);
+    setAnnotationNotice(error);
+    if (error) return false;
+    updateAnnotations(() => next);
+    return true;
+  };
+  const highlightedAnnotations = React.useMemo(() => [
+    ...messages.filter((m) => m.role === 'user' && m.messageId).flatMap((m) => (m.annotations || [])
+      .map((item, index) => ({ item, index: index + 1, key: `${m.messageId}:${item.id}` }))),
+    ...annotationDrafts.map((item, index) => ({ item, index: index + 1, key: `draft:${item.id}` })),
+  ], [messages, annotationDrafts]);
+  React.useEffect(() => setAnnotationNotice(''), [conversationId]);
 
 
   // Collect user messages for ArrowUp history navigation (most recent first).
@@ -250,8 +276,8 @@ export function ChatPanel({
       mime: img.mime,
       previewUrl: img.previewUrl || null,
     }));
-  const hasComposerPayload = Boolean(draft.trim() || composerImages.length > 0);
-  const canSubmitPayload = Boolean((draft.trim() || readyImages.length > 0) && !imagesUploading);
+  const hasComposerPayload = Boolean(draft.trim() || composerImages.length > 0 || annotationDrafts.length);
+  const canSubmitPayload = Boolean((draft.trim() || readyImages.length > 0 || annotationDrafts.length) && !imagesUploading && !(running && annotationDrafts.length));
   const openImagePreview = React.useCallback((image) => {
     const src = image?.src || image?.previewUrl || image?.path || '';
     if (!src) return;
@@ -321,13 +347,16 @@ export function ChatPanel({
     if (Date.now() < suppressSubmitUntilRef.current) return;
     if (skillSelectionPendingRef.current) return;
     const text = draft.trim();
-    if ((!text && readyImages.length === 0) || imagesUploading || disabled || submitPending || runtimeInputPending) return;
+    if ((!text && readyImages.length === 0 && !annotationDrafts.length) || imagesUploading || disabled || submitPending || runtimeInputPending || (running && annotationDrafts.length)) return;
     const skillInvocation = selectedSkill || !text ? null : extractAgentSkillInvocation(text, currentAgentSkills);
     const submittedText = selectedSkill
       ? withSelectedSkillInstruction(text, selectedSkill)
       : skillInvocation
         ? withSelectedSkillInstruction(skillInvocation.prompt, skillInvocation.skill)
         : text;
+    const commentsError = annotationDrafts.length ? annotationError(annotationDrafts, submittedText) : '';
+    setAnnotationNotice(commentsError);
+    if (commentsError) return;
     if (running) {
       setRuntimeInputPending(true);
       try {
@@ -349,7 +378,7 @@ export function ChatPanel({
     if (!providerConfigured) return;
     if (!sendModelId) return;
     if (!resolvedAgentOptions.some((o) => o.id === effectiveAgentId)) return;
-    const accepted = await onSend?.(submittedText, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text);
+    const accepted = await onSend?.(submittedText, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text, annotationDrafts);
     if (accepted === false) return;
     if (currentComposerScopeRef.current !== composerScopeId) { setComposerImages([]); return; }
     setSendScrollKey((value) => value + 1);
@@ -400,7 +429,13 @@ export function ChatPanel({
               key={message.id}
               message={searchActive ? { ...message, traceOpen: true } : message}
               onPreviewImage={openImagePreview}
-              onRetry={message.role === 'agent' && message.status === 'failed' && message.taskId
+              onAnnotationJump={jumpToAnnotation}
+              actionsDisabled={running || submitPending}
+              onFork={message.role === 'agent' && message.status === 'done' && message.messageId
+                ? () => onForkMessage?.(message) : null}
+              onEdit={message.role === 'user' && message.status === 'cancelled' && message.taskId === messages.at(-1)?.taskId
+                ? (text) => onEditMessage?.(message.taskId, text) : null}
+              onRetry={message.role === 'agent' && message.status === 'failed' && message.taskId && message.taskId === messages.at(-1)?.taskId
                 ? () => onRetryTask?.(message.taskId)
                 : null}
             />
@@ -418,6 +453,13 @@ export function ChatPanel({
         onDrop={handleComposerDrop}
       >
         <ComposerBorderBeam active={running || submitPending || hasComposerPayload} />
+        {annotationDrafts.length > 0 && <div className="haish-annotation-drafts" aria-label="Comment drafts">
+          {annotationDrafts.map((item, index) => <QuoteBlock key={item.id} item={item} index={index + 1} preview
+            onJump={jumpToAnnotation} onEdit={editAnnotation}
+            onRemove={() => updateAnnotations((previous) => previous.filter((draft) => draft.id !== item.id))} />)}
+        </div>}
+        {(annotationNotice || storageError) && <p className="haish-annotation-notice" role="status">{annotationNotice || storageError}</p>}
+        {running && annotationDrafts.length > 0 && <p className="haish-annotation-notice">Comments are saved as a draft. Send after the task finishes or stops.</p>}
         {skillMenuOpen && (
           <div ref={skillMenuRef} className="chat-skill-menu" role="listbox" aria-label="Available skills">
             {matchingSkills.map((skill, index) => (
@@ -651,7 +693,7 @@ export function ChatPanel({
                   <Square className="chat-send-icon chat-stop-icon" fill="currentColor" strokeWidth={0} aria-hidden="true" />
                 </button>
               </MetalActionEffect>
-            ) : running && hasComposerPayload ? (
+            ) : running && hasComposerPayload && !annotationDrafts.length ? (
               // Running + user typed a mid-run instruction: replace Stop with Send,
               // so Stop and Send never appear side by side. Sending clears the
               // draft and the button flips back to Stop.
@@ -676,6 +718,8 @@ export function ChatPanel({
           </div>
         </div>
       </form>
+      <MessageAnnotations key={conversationId || 'draft'} ref={annotationUiRef} listRef={listRef}
+        items={highlightedAnnotations} drafts={annotationDrafts} onSave={saveAnnotation} onError={setAnnotationNotice} />
       <ImagePreviewOverlay image={previewImage} onClose={closeImagePreview} />
     </section>
   );

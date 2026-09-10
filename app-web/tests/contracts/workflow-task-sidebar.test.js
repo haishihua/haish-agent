@@ -227,5 +227,6 @@ test('first draft send is visible before server conversation materialization', (
   assert.match(deployHandlersSource, /stagePendingDeploy\(request, draftConversationId\)/);
   assert.match(deployHandlersSource, /pendingTask\.requestText = request\.text/);
   assert.match(deployHandlersSource, /function failPendingDeploy\(request, error\)/);
-  assert.match(streamHandlersSource, /message: pendingTask\.requestText \|\| pendingTask\.title/);
+  // An annotation-only turn intentionally has an empty requestText.
+  assert.match(streamHandlersSource, /message: pendingTask\.requestText \?\? pendingTask\.title/);
 });
