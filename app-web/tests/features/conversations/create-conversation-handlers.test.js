@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createConversationHandlers } from '../../../src/features/conversations/hooks/createConversationHandlers.js';
+import { createDeployHandlers } from '../../../src/features/tasks/hooks/createDeployHandlers.js';
 
 const findConversationById = (state, conversationId) => state.projects
   .flatMap((project) => project.conversations)
@@ -26,9 +27,9 @@ test('selecting a conversation reveals it even beyond the collapsed preview', as
   assert.equal(state.projects[0].chatConversationsExpanded, true);
 });
 
-test('rapid mode switches reuse unchanged hydrated runtimes without requests', async () => {
+test('rapid mode switches keep cached conversation selection and send target in sync without requests', async () => {
   const task = (taskId) => ({ taskId, updatedAt: 1, runtimeHydrated: true });
-  const workspaceState = {
+  let workspaceState = {
     activeProjectId: 'chat-project',
     activeConversationId: 'chat-conversation',
     projects: [
@@ -96,13 +97,31 @@ test('rapid mode switches reuse unchanged hydrated runtimes without requests', a
     settingsMode: false,
     setActiveTab: () => {},
     setViewMode: () => {},
+    setWorkspaceState: (update) => { workspaceState = update(workspaceState); },
     showToast: () => {},
     taskUpdatedTimestamp,
     viewModeRef,
     workspaceState,
   });
 
-  for (let index = 0; index < 12; index += 1) handlers.handleToggleViewMode();
+  const switchCount = 12;
+  for (let index = 0; index < switchCount; index += 1) {
+    handlers.handleToggleViewMode();
+    const mode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
+    assert.equal(workspaceState.activeProjectId, `${mode}-project`);
+    assert.equal(workspaceState.activeConversationId, conversationIdRef.current);
+    const deploy = createDeployHandlers({
+      draftConversationRef: { current: null },
+      conversationIdRef,
+      selectedConversationId: workspaceState.activeConversationId,
+      conversationReady: true,
+      conversationSelectionPending: workspaceState.activeConversationId !== conversationIdRef.current,
+      viewModeRef,
+    });
+    const request = deploy.buildDeployRequest('hello');
+    assert.equal(request.targetConversationId, `${mode}-conversation`);
+    assert.equal(deploy.canStartDeployForConversation(request.targetConversationId), true);
+  }
   await Promise.resolve();
 
   assert.equal(viewModeRef.current, 'chat');

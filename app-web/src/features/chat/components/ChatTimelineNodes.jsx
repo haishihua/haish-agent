@@ -3,7 +3,7 @@ import { TerminalDetail, DiffDetail } from '../../../shared/ui/agent-elements/To
 import { ToolCall, ToolStatus } from '../../../shared/ui/agent-elements/ToolCall.jsx';
 import { ToolTimeline } from '../../../shared/ui/agent-elements/ToolTimeline.jsx';
 import { WebSearch } from '../../../shared/ui/agent-elements/WebSearch.jsx';
-import { Bot, Sparkles } from 'lucide-react';
+import { Bot, LoaderCircle, Sparkles } from 'lucide-react';
 import { BrowserToolDetail } from './BrowserToolDetail.jsx';
 import { VisionToolDetail } from './VisionToolDetail.jsx';
 import { toolCardHeading } from '../model/tool-presentation.js';
@@ -583,6 +583,7 @@ function ChatTimelineMetaNode({ item }) {
     return <div className={`chat-timeline-meta chat-tool-node is-retry status-${item.status || 'done'}`}
       role="status" aria-live="polite" aria-atomic="true">
       <ToolCall label={item.summary || 'Retrying model response…'} status={item.status || 'done'} expandable={false}
+        statusIcon={LoaderCircle}
         icon={<AppIcon name="retry" size={13} className="chat-timeline-retry-icon" />} />
     </div>;
   }
@@ -591,6 +592,7 @@ function ChatTimelineMetaNode({ item }) {
       className={`chat-timeline-meta chat-tool-node status-${item.status || 'done'} ${isContextCompaction ? 'is-compaction' : ''}`}
     >
       <ToolCall label={item.summary || 'Thinking…'} status={item.status || 'done'}
+        statusIcon={isContextCompaction ? LoaderCircle : undefined}
         open={open} onOpenChange={setOpen} expandable={expandable}
         icon={isContextCompaction ? <span className="chat-timeline-compaction-icon" /> : null}>
         <div className="chat-timeline-meta-body">

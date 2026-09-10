@@ -243,14 +243,18 @@ async function run() {
   await click(trigger('subagent'));
   await click(trigger('subagent-running'));
   check(document.documentElement.scrollWidth <= window.innerWidth, 'No page-level horizontal overflow');
+  let runningStatusIcons;
   for (const [status, expected] of [['running', 'running'], ['completed', 'done'], ['failed', 'failed'], ['cancelled', 'cancelled']]) {
     await click([...document.querySelectorAll('.meta-lifecycle-controls button')].find((button) => button.textContent === status));
     const rows = [...document.querySelectorAll('.meta-lifecycle-fixture .chat-timeline-meta')];
+    const statusIcons = rows.map((row) => row.querySelector('.aui-tool-status svg'));
+    if (status === 'running') runningStatusIcons = statusIcons.map((icon) => icon.innerHTML);
     const textAnimation = status === 'running' ? runningAnimation : 'none';
     const iconAnimation = status === 'running' && runningAnimation !== 'none' ? 'aui-tool-spin' : 'none';
-    check(rows.length === 2 && rows.every((row) => row.classList.contains(`status-${expected}`)
+    check(rows.length === 2 && rows.every((row, index) => row.classList.contains(`status-${expected}`)
+      && statusIcons[index].innerHTML === runningStatusIcons[index]
       && getComputedStyle(row.querySelector('.aui-tool-label')).animationName === textAnimation
-      && getComputedStyle(row.querySelector('.aui-tool-status svg')).animationName === iconAnimation), `Retry and compaction follow ${status} task state without finish events`);
+      && getComputedStyle(statusIcons[index]).animationName === iconAnimation), `Retry and compaction keep their ring and follow ${status} task state without finish events`);
   }
   document.getElementById('checks').dataset.result = 'PASS';
   document.getElementById('checks').textContent = checks.join('\n');

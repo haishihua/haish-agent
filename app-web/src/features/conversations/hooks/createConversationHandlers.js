@@ -95,6 +95,12 @@ export function createConversationHandlers(ctx) {
     restoreLatest = true,
   }) {
     if (!targetConversationId) throw new Error('conversation activation requires a conversation id');
+    // Cached runtimes skip detail hydration, so selection must move with the shell.
+    setWorkspaceState((state) => (
+      state.activeProjectId === projectId && state.activeConversationId === targetConversationId
+        ? state
+        : { ...state, activeProjectId: projectId, activeConversationId: targetConversationId }
+    ));
     if (switchShell) activateConversationShell(projectId, targetConversationId);
     if (conversationRuntimeIsCurrent(targetConversationId)) return null;
     conversationDetailAbortRef.current?.abort?.();

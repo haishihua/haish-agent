@@ -12,8 +12,9 @@ const STATUS = {
   cancelled: [Minus, 'Cancelled'], approval: [LockKeyhole, 'Awaiting approval'],
 };
 
-export function ToolStatus({ status = 'pending', label }) {
-  const [Icon, description] = STATUS[status] || STATUS.pending;
+export function ToolStatus({ status = 'pending', label, icon }) {
+  const [DefaultIcon, description] = STATUS[status] || STATUS.pending;
+  const Icon = icon || DefaultIcon;
   return <span className={`aui-tool-status status-${status}`} role="img" aria-label={label || description}>
     <Icon size={13} aria-hidden="true" />
   </span>;
@@ -30,14 +31,14 @@ export function ToolPanel({ open, id, children, className = '' }) {
   </AnimatePresence>;
 }
 
-export function ToolCall({ label, query, icon, status, statusLabel, open, onOpenChange, expandable = true, children }) {
+export function ToolCall({ label, query, icon, status, statusLabel, statusIcon, open, onOpenChange, expandable = true, children }) {
   const panelId = React.useId();
   const content = <>
     {expandable ? <ChevronRight size={13} className={`aui-tool-chevron ${open ? 'is-open' : ''}`} aria-hidden="true" /> : <span className="aui-tool-chevron-space" />}
     {icon && <span className="aui-tool-icon" aria-hidden="true">{icon}</span>}
     <span className={`aui-tool-label ${status === 'running' ? 'is-running' : ''}`}>{label}</span>
     {query && <span className="aui-tool-query">{query}</span>}
-    <ToolStatus status={status} label={statusLabel} />
+    <ToolStatus status={status} label={statusLabel} icon={statusIcon} />
   </>;
   return <div className="aui-tool-call">
     {expandable ? <button type="button" className="aui-tool-trigger" aria-expanded={open} aria-controls={open ? panelId : undefined}
