@@ -37,6 +37,44 @@ test('context compaction summary is rendered only after expanding the card', () 
   assert.match(source, /<Markdown source=\{summaryText\} \/>/);
 });
 
+test('unfinished compactions settle with terminal tasks without changing active snapshots', () => {
+  const task = { eventLog: [runtimeEventToLog({ type: 'context_compaction_started', event_id: 'compact-start' })] };
+  const running = buildChatTimeline(task, 'running');
+  for (const [status, expected] of [['done', 'done'], ['completed', 'done'], ['failed', 'failed'], ['cancelled', 'cancelled'], ['aborted', 'cancelled']]) {
+    const live = buildChatTimeline(task, status);
+    assert.equal(live.items[0].status, expected, status);
+    assert.equal(live.items[0].id, running.items[0].id);
+    assert.equal(buildChatTimeline({ ...task, status }).items[0].status, expected);
+  }
+  assert.equal(running.items[0].status, 'running');
+  assert.equal(buildChatTimeline(task, 'queued').items[0].status, 'running');
+});
+
+test('compaction failure closes its running row even while the task continues', () => {
+  const started = runtimeEventToLog({ type: 'context_compaction_started' });
+  const failed = runtimeEventToLog({ type: 'context_compaction_failed', error: 'Provider unavailable' });
+  for (const eventLog of [[started, failed], [failed]]) {
+    for (const status of ['running', 'done', 'cancelled']) {
+      const items = buildChatTimeline({ eventLog }, status).items;
+      assert.equal(items.length, 1);
+      assert.equal(items[0].status, 'failed');
+    }
+  }
+});
+
+test('later termination preserves completed compaction snapshots and settles only unfinished rows', () => {
+  const eventLog = [
+    runtimeEventToLog({ type: 'context_compaction_started' }),
+    runtimeEventToLog({ type: 'context_compaction_completed', summary_text: 'Saved summary', summary_tokens: 42 }),
+    runtimeEventToLog({ type: 'context_compaction_started' }),
+    runtimeEventToLog({ type: 'context_compaction_started' }),
+  ];
+  const items = buildChatTimeline({ eventLog }, 'cancelled').items;
+  assert.deepEqual(items.map((item) => item.status), ['done', 'cancelled', 'cancelled']);
+  assert.equal(items[0].summaryText, 'Saved summary');
+  assert.deepEqual(items[0].details, ['42 summary tokens']);
+});
+
 test('todo panel consumes todo_updated instead of tool response artifacts', () => {
   const event = runtimeEventToLog({
     type: 'todo_updated',

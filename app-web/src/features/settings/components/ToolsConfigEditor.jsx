@@ -1,339 +1,87 @@
-import React from 'react';
-import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
-import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
+import React, { useState } from 'react';
+import { AlertTriangle, ChevronRight, FileJson2, FlaskConical, LoaderCircle, Plus, Server, Sparkles } from 'lucide-react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
-import {
-  DEFAULT_MCP_CONFIG_JSON,
-  MCP_CONFIG_TEMPLATE_JSON,
-  WEB_SEARCH_PROVIDER_OPTIONS,
-} from '../model/settings-records.js';
-import {
-  parseJsonSafe,
-  highlightJsonSyntax,
-  isEmptyMcpConfigDraft,
-  countMcpServersFromJson,
-  formatMcpServerCountLabel,
-  normalizeWebSearchDraft,
-} from '../model/settings-payload.js';
-import {
-  SecretKeyField,
-  SettingsTooltipIconButton,
-  BrandLogoIcon,
-  WEB_SEARCH_BRAND_LOGOS,
-} from './settings-ui.jsx';
-import { GenericConfigEditor } from './GenericConfigEditor.jsx';
+import { DEFAULT_MCP_CONFIG_JSON, MCP_CONFIG_TEMPLATE_JSON, WEB_SEARCH_PROVIDER_OPTIONS } from '../model/settings-records.js';
+import { parseJsonSafe, isEmptyMcpConfigDraft, normalizeWebSearchDraft } from '../model/settings-payload.js';
+import { WEB_SEARCH_BRAND_LOGOS } from './settings-ui.jsx';
+import { SecretKeyField, FieldRow, SettingsRow, SettingsSearch, SettingsSheet, SettingsDeleteDialog } from './SettingsPrimitives.jsx';
+import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
+import { Item, ItemGroup } from '../../../shared/ui/settings-elements/ui/item.tsx';
+import { Textarea } from '../../../shared/ui/settings-elements/ui/textarea.tsx';
+import { BrandLogoIcon } from './settings-ui.jsx';
+import { SheetFooter } from '../../../shared/ui/settings-elements/ui/sheet.tsx';
+import { Switch } from '../../../shared/ui/settings-elements/ui/switch.tsx';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../../../shared/ui/settings-elements/ui/collapsible.tsx';
+import { SkillUpload } from './SkillUpload.jsx';
 
-const { useState, useEffect, useRef } = React;
+export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSaveTools, onTestWebProvider, onInstallSkill, onToggleSkill, onUninstallSkill, skillActionBusy }) {
+  const [query, setQuery] = useState('');
+  const [editing, setEditing] = useState(null);
+  const [installing, setInstalling] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+  const current = (records.tools || []).find(item => item.id === selectedId);
+  if (!current) return <div className="settings-empty">No configuration available.</div>;
+  const patchedRecords = patch => ({ ...records, tools: (records.tools || []).map(item => item.id === current.id ? { ...item, ...patch } : item) });
+  const update = patch => onRecordsChange(prev => ({ ...prev, tools: (prev.tools || []).map(item => item.id === current.id ? { ...item, ...patch } : item) }));
+  const run = async (name, action) => { setBusy(name); setError(''); try { return await action(); } catch (failure) { setError(String(failure?.message || failure)); return false; } finally { setBusy(''); } };
 
-export function ToolsConfigEditor({
-  selectedId,
-  records,
-  onRecordsChange,
-  onSaveTools,
-  onTestWebProvider,
-  onInstallSkill,
-  onToggleSkill,
-  onUninstallSkill,
-  skillActionBusy,
-}) {
-  const current = (records.tools || []).find((item) => item.id === selectedId) || null;
-  const mcpDirtyRef = useRef(false);
-  const mcpHighlightRef = useRef(null);
-  const [testingWebProvider, setTestingWebProvider] = useState('');
-  const [mcpServerCount, setMcpServerCount] = useState(0);
-  useEffect(() => {
-    mcpDirtyRef.current = false;
-  }, [selectedId]);
-  useEffect(() => {
-    if (selectedId !== 'tools-mcp') return;
-    if (mcpDirtyRef.current) return;
-    const mcpRecord = (records.tools || []).find((item) => item.id === 'tools-mcp');
-    setMcpServerCount(countMcpServersFromJson(mcpRecord?.mcp_json));
-  }, [selectedId, records]);
-  if (!current) {
-    return <div className="settings-empty">Select a Tools configuration.</div>;
-  }
-  const nextRecordsForPatch = (patch) => ({
-    ...records,
-    tools: (records.tools || []).map((item) => (
-      item.id === current.id ? { ...item, ...patch } : item
-    )),
-  });
-  const updateRecord = (patch) => onRecordsChange((prev) => ({
-    ...prev,
-    tools: (prev.tools || []).map((item) => (
-      item.id === current.id ? { ...item, ...patch } : item
-    )),
-  }));
-
-  if (current.id === 'tools-mcp') {
-    const mcpJson = current.mcp_json ?? DEFAULT_MCP_CONFIG_JSON;
-    const parsed = parseJsonSafe(mcpJson);
-    const updateMcpJson = (value) => {
-      mcpDirtyRef.current = true;
-      updateRecord({ mcp_json: value, mcp_error: '', mcp_status: '' });
+  if (selectedId === 'tools-mcp') {
+    const json = current.mcp_json ?? DEFAULT_MCP_CONFIG_JSON;
+    const parsed = parseJsonSafe(json);
+    const servers = parsed.ok && parsed.value?.servers && typeof parsed.value.servers === 'object' && !Array.isArray(parsed.value.servers) ? Object.entries(parsed.value.servers) : [];
+    const validate = async () => {
+      if (!parsed.ok) throw new Error(parsed.error);
+      const response = await apiFetch(`${API_BASE}/api/settings/tools/mcp/validate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: parsed.value }) }, { json: false });
+      if (!response.ok) throw new Error(await parseResponseMessage(response, `MCP validation failed (${response.status})`));
+      update({ mcp_error: '', mcp_status: 'MCP config is valid.' });
     };
-    const applyTemplate = () => {
-      if (!isEmptyMcpConfigDraft(mcpJson)) {
-        updateRecord({ mcp_error: 'Template can only fill an empty MCP config.', mcp_status: '' });
-        return;
-      }
-      updateMcpJson(MCP_CONFIG_TEMPLATE_JSON);
-    };
-    const formatJson = () => {
-      if (!parsed.ok) return;
-      const formatted = JSON.stringify(parsed.value, null, 2);
-      if (formatted !== current.mcp_json) mcpDirtyRef.current = true;
-      updateRecord({ mcp_json: formatted, mcp_error: '', mcp_status: '' });
-    };
-    const validateJson = async (value) => {
-      const parsedDraft = parseJsonSafe(value ?? DEFAULT_MCP_CONFIG_JSON);
-      if (!parsedDraft.ok) {
-        updateRecord({ mcp_json: value, mcp_error: parsedDraft.error, mcp_status: '' });
-        return false;
-      }
-      try {
-        const response = await apiFetch(`${API_BASE}/api/settings/tools/mcp/validate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ config: parsedDraft.value }),
-        }, { json: false });
-        if (!response.ok) {
-          const message = await parseResponseMessage(response, `mcp validation failed: ${response.status}`);
-          throw new Error(message);
-        }
-        updateRecord({ mcp_json: value, mcp_error: '', mcp_status: 'MCP config is valid.' });
-        return true;
-      } catch (error) {
-        updateRecord({ mcp_json: value, mcp_error: String(error?.message || error), mcp_status: '' });
-        return false;
-      }
-    };
-    const saveJson = async (value) => {
-      if (!await validateJson(value)) return;
-      const parsedDraft = parseJsonSafe(value ?? DEFAULT_MCP_CONFIG_JSON);
-      if (!parsedDraft.ok) return;
-      const formatted = JSON.stringify(parsedDraft.value, null, 2);
-      const nextRecords = nextRecordsForPatch({ mcp_json: formatted, mcp_error: '', mcp_status: '' });
-      onRecordsChange(() => nextRecords);
-      const saved = await onSaveTools?.(nextRecords, 'mcp config saved and reloaded');
-      if (saved) {
-        mcpDirtyRef.current = false;
-        setMcpServerCount(countMcpServersFromJson(formatted));
-        updateRecord({ mcp_error: '', mcp_status: 'Saved and MCP reloaded.' });
-      }
-    };
-    const syncHighlightScroll = (event) => {
-      if (!mcpHighlightRef.current) return;
-      mcpHighlightRef.current.style.transform = `translate(${-event.currentTarget.scrollLeft}px, ${-event.currentTarget.scrollTop}px)`;
-    };
-    return (
-      <div className="settings-editor-form settings-tools-form settings-mcp-form">
-        <div className="settings-mcp-config">
-          <div className="settings-mcp-editor-shell">
-            <div className="settings-mcp-actions">
-              <span className="settings-mcp-server-count">{formatMcpServerCountLabel(mcpServerCount)}</span>
-              <div className="settings-mcp-actions-group">
-                <SettingsTooltipIconButton
-                  label="Template"
-                  icon="template"
-                  iconSize={20}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={applyTemplate}
-                />
-                <SettingsTooltipIconButton
-                  label="Format"
-                  icon="format"
-                  iconSize={20}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={formatJson}
-                  disabled={!parsed.ok}
-                />
-                <SettingsTooltipIconButton
-                  label="Validate"
-                  icon="validate"
-                  iconSize={20}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => validateJson(mcpJson)}
-                />
-                <SettingsTooltipIconButton
-                  label="Save"
-                  icon="save"
-                  iconSize={20}
-                  className="primary"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => saveJson(mcpJson)}
-                />
-              </div>
-            </div>
-            <div className="settings-json-editor-layer">
-              <pre className="settings-json-highlight" aria-hidden="true"><code ref={mcpHighlightRef} dangerouslySetInnerHTML={{ __html: highlightJsonSyntax(mcpJson) }} /></pre>
-              <textarea
-                className="settings-json-editor"
-                aria-label="Mcp Config JSON"
-                value={mcpJson}
-                onChange={(event) => updateMcpJson(event.target.value)}
-                onScroll={syncHighlightScroll}
-                spellCheck={false}
-                wrap="off"
-              />
-            </div>
-          </div>
-        </div>
-        {current.mcp_error ? <div className="settings-inline-error">{current.mcp_error}</div> : null}
-        {!current.mcp_error && current.mcp_status ? <div className="settings-inline-success">{current.mcp_status}</div> : null}
-      </div>
-    );
+    return <div className="settings-content-modern"><div className="settings-page-heading"><h1>MCP servers</h1></div><div className="mcp-workspace">
+      {servers.length > 0 && <div className="mcp-servers-surface"><div className="mcp-server-columns" aria-hidden="true"><span /><span>Server</span><span>Transport</span><span>Status</span></div><ItemGroup className="mcp-server-list">{servers.map(([name, server]) => <Item key={name} className="mcp-server-row"><Server size={16} /><span className="mcp-server-name">{name}</span><span className="mcp-server-transport">{typeof server?.transport === 'string' ? server.transport : 'stdio'}</span><span className={`mcp-server-status ${server?.enabled === false ? 'is-disabled' : ''}`}><span className="mcp-status-dot" />{server?.enabled === false ? 'Disabled' : 'Enabled'}</span></Item>)}</ItemGroup></div>}
+      <div className="mcp-code-surface"><div className="mcp-code-toolbar"><div className="mcp-file-label"><FileJson2 size={16} /><strong>mcp.json</strong><span>{servers.length} {servers.length === 1 ? 'server' : 'servers'}</span></div><div className="mcp-editor-actions">
+        <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => { if (!isEmptyMcpConfigDraft(json)) { setError('Template can only fill an empty MCP config.'); return; } setError(''); update({ mcp_json: MCP_CONFIG_TEMPLATE_JSON, mcp_error: '', mcp_status: '' }); }}>Template</Button>
+        <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => { if (!parsed.ok) { setError(parsed.error); return; } setError(''); update({ mcp_json: JSON.stringify(parsed.value, null, 2), mcp_error: '', mcp_status: '' }); }}>Format</Button>
+        <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('validate', validate)}>{busy === 'validate' ? 'Validating…' : 'Validate'}</Button>
+        <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', async () => { await validate(); const next = patchedRecords({ mcp_json: JSON.stringify(parsed.value, null, 2), mcp_error: '', mcp_status: '' }); onRecordsChange(next); if (await onSaveTools?.(next, 'MCP config saved and reloaded') !== false) update({ mcp_status: 'Saved and MCP reloaded.' }); })}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>
+      </div></div><Textarea className="mcp-json" aria-label="MCP configuration JSON" value={json} disabled={Boolean(busy)} onChange={event => { setError(''); update({ mcp_json: event.target.value, mcp_error: '', mcp_status: '' }); }} spellCheck={false} wrap="off" /></div>
+      {(error || current.mcp_error) && <p className="settings-inline-error" role="alert">{error || current.mcp_error}</p>}{!error && current.mcp_status && <p className="settings-inline-success" role="status">{current.mcp_status}</p>}
+    </div></div>;
   }
 
-  if (current.id === 'tools-skills') {
-    const skills = Array.isArray(current.skills) ? current.skills : [];
-    const errors = Array.isArray(current.skill_errors) ? current.skill_errors : [];
-    return (
-      <div className="settings-editor-form settings-tools-form">
-        <div className="settings-skills-toolbar">
-          <span>{skills.length ? `${skills.length} installed skill${skills.length === 1 ? '' : 's'}` : 'No installed skills yet.'}</span>
-          <SettingsTooltipIconButton
-            label="Install Directory"
-            icon="folder-plus"
-            iconSize={20}
-            onClick={onInstallSkill}
-            disabled={Boolean(skillActionBusy)}
-          />
-        </div>
-        {errors.map((error, index) => (
-          <div className="settings-inline-error" key={`${error.origin || 'skill-error'}-${index}`}>
-            {error.origin ? `${error.origin}: ` : ''}{error.message || error.code || 'Skill load failed'}
-          </div>
-        ))}
-        <div className="settings-skill-list">
-          {skills.map((skill) => {
-            const skillEnabled = skill.enabled !== false;
-            return (
-              <div className="settings-skill-row" key={skill.id || skill.name}>
-                <div>
-                  <strong>{skill.name}</strong>
-                  <span>{skill.description || 'No description.'}</span>
-                </div>
-                <div className="settings-row-actions">
-                  <SettingsTooltipIconButton
-                    label={skillEnabled ? 'Disable' : 'Enable'}
-                    icon={skillEnabled ? 'toggle-right' : 'toggle-left'}
-                    iconSize={22}
-                    onClick={() => onToggleSkill(skill.name, !skillEnabled)}
-                    disabled={Boolean(skillActionBusy)}
-                  />
-                  {skill.can_uninstall === true ? (
-                    <SettingsTooltipIconButton
-                      label="Uninstall"
-                      icon="delete"
-                      danger
-                      iconSize={22}
-                      onClick={() => onUninstallSkill(skill.name)}
-                      disabled={Boolean(skillActionBusy)}
-                    />
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
-          {!skills.length ? <div className="settings-empty">Install a local skill directory to use it in agent runs.</div> : null}
-        </div>
-      </div>
-    );
-  }
-
-  if (current.id === 'tools-web') {
-    const web = normalizeWebSearchDraft(current.web_search);
-    const updateWeb = (patch) => updateRecord({ web_search: normalizeWebSearchDraft({ ...web, ...patch }) });
-    const nextRecordsForProvider = (providerId, patch) => nextRecordsForPatch({
-      web_search: normalizeWebSearchDraft({
-        ...web,
-        providers: {
-          ...web.providers,
-          [providerId]: { ...web.providers[providerId], ...patch },
-        },
-      }),
-    });
-    const updateProvider = (providerId, patch) => updateWeb({
-      providers: {
-        ...web.providers,
-        [providerId]: { ...web.providers[providerId], ...patch },
-      },
-    });
-    const saveProviderKey = async (providerId, apiKey) => {
-      const trimmed = String(apiKey || '').trim();
-      if (!trimmed) return true;
-      const nextRecords = nextRecordsForProvider(providerId, { api_key: trimmed });
-      onRecordsChange(() => nextRecords);
-      return await onSaveTools?.(nextRecords, '') !== false;
-    };
-    const testProviderKey = async (provider, apiKey) => {
-      const trimmed = String(apiKey || '').trim();
-      setTestingWebProvider(provider.id);
-      try {
-        const saved = await saveProviderKey(provider.id, trimmed);
-        if (!saved) return;
-        await onTestWebProvider?.(provider.id, trimmed);
-      } finally {
-        setTestingWebProvider('');
-      }
-    };
-    return (
-      <div className="settings-editor-form settings-tools-form">
-        <div className="settings-skills-toolbar settings-provider-toolbar">
-          <span>{WEB_SEARCH_PROVIDER_OPTIONS.length} search providers</span>
-        </div>
-        <div className="settings-provider-list">
-          {WEB_SEARCH_PROVIDER_OPTIONS.map((provider) => {
-            const draft = web.providers[provider.id] || {};
-            const configured = Boolean(draft.api_key_configured || String(draft.api_key || '').trim());
-            const hasUsableKey = configured || String(draft.api_key || '').trim();
-            const testing = testingWebProvider === provider.id;
-            const statusLabel = configured ? 'Configured' : 'Not configured';
-            return (
-              <div className="settings-provider-row" key={provider.id}>
-                <div className="settings-provider-identity">
-                  <BrandLogoIcon logo={WEB_SEARCH_BRAND_LOGOS[provider.id]} />
-                  <strong>{provider.label}</strong>
-                </div>
-                <SecretKeyField
-                  className="settings-provider-key-field"
-                  value={draft.api_key || ''}
-                  onChange={(event) => updateProvider(provider.id, { api_key: event.target.value })}
-                  onBlur={(event) => saveProviderKey(provider.id, event.currentTarget.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') event.currentTarget.blur();
-                  }}
-                  configured={Boolean(draft.api_key_configured)}
-                  placeholder={provider.keyLabel}
-                />
-                <div className="settings-row-actions">
-                  <PortalTooltip text={statusLabel} position="above">
-                    <span
-                      className={`settings-provider-status-icon ${configured ? 'configured' : 'missing'}`}
-                      aria-label={statusLabel}
-                    >
-                      <AppIcon name={configured ? 'active' : 'close'} size={18} />
-                    </span>
-                  </PortalTooltip>
-                  <SettingsTooltipIconButton
-                    label={testing ? 'Testing...' : 'Test'}
-                    icon="test"
-                    iconSize={18}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => testProviderKey(provider, draft.api_key)}
-                    disabled={testing || !hasUsableKey}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  return <GenericConfigEditor section="tools" selectedId={selectedId} records={records} onRecordsChange={onRecordsChange} />;
+  const skillsPane = selectedId === 'tools-skills';
+  const skills = Array.isArray(current.skills) ? current.skills : [];
+  const skillErrors = current.skill_errors || [];
+  const web = normalizeWebSearchDraft(current.web_search);
+  const shown = (skillsPane ? skills : WEB_SEARCH_PROVIDER_OPTIONS).filter(item => `${item.name || item.label} ${item.description || ''}`.toLowerCase().includes(query.toLowerCase()));
+  const selectedSkill = skills.find(skill => (skill.id || skill.name) === editing);
+  const provider = WEB_SEARCH_PROVIDER_OPTIONS.find(item => item.id === editing);
+  const providerDraft = provider ? web.providers[provider.id] || {} : {};
+  const patchProvider = patch => update({ web_search: normalizeWebSearchDraft({ ...web, providers: { ...web.providers, [provider.id]: { ...providerDraft, ...patch } } }) });
+  const saveProvider = async () => {
+    const saved = await onSaveTools?.(patchedRecords({ web_search: web }), 'Search provider saved');
+    if (saved !== false) setEditing(null);
+  };
+  return <div className={`settings-tools-modern ${editing ? 'with-editor' : ''}`}><div className="settings-content-modern">
+    <div className="settings-page-heading"><h1>{skillsPane ? 'Installed skills' : 'Search providers'}</h1>{skillsPane && current.skill_can_install !== false && <Button size="sm" disabled={Boolean(skillActionBusy)} onClick={() => { setEditing(null); setInstalling(true); }}><Plus size={16} />Install skill</Button>}</div>
+    <SettingsSearch value={query} onChange={setQuery} label={skillsPane ? 'Search skills' : 'Search providers'} />
+    <ItemGroup className="settings-list-modern">{shown.map(item => {
+      const id = skillsPane ? item.id || item.name : item.id;
+      const configured = !skillsPane && Boolean(web.providers[id]?.api_key_configured || web.providers[id]?.api_key);
+      return <SettingsRow key={id} title={item.name || item.label} description={item.description} icon={skillsPane ? <Sparkles size={22} /> : <BrandLogoIcon logo={WEB_SEARCH_BRAND_LOGOS[id]} />} selected={editing === id} onOpen={() => { setEditing(id); setError(''); }} enabled={item.enabled} onToggle={skillsPane ? enabled => onToggleSkill(item.name, enabled) : undefined} busy={Boolean(skillActionBusy || busy)} onDelete={skillsPane && item.can_uninstall ? () => setDeleting({ title: item.name }) : undefined} deleteLabel="Uninstall skill" status={!skillsPane ? { label: configured ? 'Configured' : 'Needs setup', className: configured ? 'success' : '' } : undefined} />;
+    })}{!shown.length && <div className="settings-empty">{query ? 'No matching items.' : 'No installed skills.'}</div>}</ItemGroup>
+    {skillsPane && skillErrors.length > 0 && <Collapsible className="settings-skill-errors">
+      <CollapsibleTrigger asChild><Button variant="ghost" size="sm"><AlertTriangle size={14} /><span>{skillErrors.length} {skillErrors.length === 1 ? 'skill' : 'skills'} couldn’t be loaded</span><ChevronRight size={14} className="settings-skill-errors-chevron" /></Button></CollapsibleTrigger>
+      <CollapsibleContent><ul>{skillErrors.map((failure, index) => <li key={index}><p>{failure.message || failure.code}</p>{failure.origin && <span>{failure.origin}</span>}</li>)}</ul></CollapsibleContent>
+    </Collapsible>}
+    </div>
+    <SettingsSheet open={Boolean(editing)} title={selectedSkill?.name || provider?.label || 'Details'} onClose={() => { if (!busy) setEditing(null); }}><div className="settings-editor-scroll">
+      {selectedSkill && <div className="skill-details"><p>{selectedSkill.description}</p>{(selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path) && <dl><dt>Location</dt><dd>{selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path}</dd></dl>}<div className="settings-toggle-modern"><span>Enable skill</span><Switch aria-label="Enable skill" checked={selectedSkill.enabled !== false} disabled={Boolean(skillActionBusy)} onCheckedChange={enabled => onToggleSkill(selectedSkill.name, enabled)} /></div></div>}
+      {provider && <FieldRow label={`${provider.label} API key`}><SecretKeyField value={providerDraft.api_key || ''} configured={providerDraft.api_key_configured} onChange={event => patchProvider({ api_key: event.target.value })} disabled={Boolean(busy)} /></FieldRow>}
+      {error && <p className="settings-inline-error" role="alert">{error}</p>}
+    </div><SheetFooter><div>{provider && <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('test', async () => { if (await onSaveTools?.(patchedRecords({ web_search: web }), '') !== false) await onTestWebProvider?.(provider.id, providerDraft.api_key || ''); })}>{busy === 'test' ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button variant="ghost" size="sm" disabled={Boolean(busy)} onClick={() => setEditing(null)}>{skillsPane ? 'Close' : 'Cancel'}</Button>{provider && <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', saveProvider)}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></SettingsSheet>
+    {installing && <SkillUpload installedSkills={skills} onClose={() => setInstalling(false)} onInstall={(_skill, file) => onInstallSkill(file)} />}
+    <SettingsDeleteDialog target={deleting} label="Uninstall skill" onClose={() => setDeleting(null)} onConfirm={async target => { const success = await onUninstallSkill(target.title); if (success !== false && selectedSkill?.name === target.title) setEditing(null); return success; }} />
+  </div>;
 }

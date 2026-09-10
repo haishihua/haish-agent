@@ -20,7 +20,7 @@
   <div class="chat-timeline-text-body">过程中的 211</div>
 </div>
 <script type="module">
-  import { collectConversationMatches, scrollToConversationMatch } from '../../src/features/chat/model/conversation-search.js';
+  import { collectConversationMatches, conversationMatchPositions, scrollToConversationMatch } from '../../src/features/chat/model/conversation-search.js';
   const container = document.querySelector('#messages');
   const assert = (value, label) => { if (!value) throw new Error(label); };
   try {
@@ -30,6 +30,9 @@
     assert(collectConversationMatches(container, 'a.b').length === 1, 'Literal regex escaping');
     assert(collectConversationMatches(container, 'draft').length === 2, 'Case insensitive');
     assert(collectConversationMatches(container, ' ').length === 0, 'Empty query');
+    const positions = conversationMatchPositions(container, hits);
+    assert(positions.every((position) => position >= 0 && position <= 100), 'Markers stay inside the track');
+    assert(positions[0] < positions[1] && positions[1] < positions[2], 'Positions distinguish hits within one long message');
     CSS.highlights.set('conversation-matches', new Highlight(...hits.map(hit => hit.range)));
     document.querySelector('#candidate').onclick = () => scrollToConversationMatch(container, hits[1].range);
     document.querySelector('#candidate').click();
@@ -37,7 +40,18 @@
     const hitRect = hits[1].range.getBoundingClientRect();
     const viewport = container.getBoundingClientRect();
     assert(hitRect.top >= viewport.top && hitRect.bottom <= viewport.bottom, 'Exact keyword visible');
-    document.querySelector('#result').textContent = 'PASS — keyword ranges and candidate navigation';
+    const scrolledPositions = conversationMatchPositions(container, hits);
+    assert(scrolledPositions.every((position, index) => Math.abs(position - positions[index]) < 0.01), 'Scrolling does not move content-relative markers');
+    const spacer = container.querySelector('.spacer');
+    spacer.style.height = '700px';
+    const resizedPositions = conversationMatchPositions(container, hits);
+    assert(resizedPositions[1] > positions[1], 'Layout changes update keyword positions');
+    spacer.style.height = '';
+    const removed = container.lastElementChild;
+    removed.remove();
+    assert(conversationMatchPositions(container, hits).at(-1) === null, 'Detached ranges have no marker');
+    container.append(removed);
+    document.querySelector('#result').textContent = 'PASS — keyword ranges, navigation and scrollbar positions';
   } catch (error) {
     document.querySelector('#result').textContent = `FAIL — ${error.message}`;
     throw error;

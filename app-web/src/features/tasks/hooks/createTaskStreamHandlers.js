@@ -3,6 +3,7 @@ import { DEFAULT_REASONING_EFFORT } from '../../chat/model/run-catalog.js';
 import { usableWorkflowSnapshot } from '../../workflow/model/workflow-snapshot.js';
 import { stripInjectedSkillInstruction } from '../../chat/model/chat-text.js';
 import { runtimeEventToLog } from '../model/runtime-events.js';
+import { contextUsageFromRuntimeEvent } from '../../chat/model/context-usage.js';
 
 export function workflowNodeStartedState(event) {
   return {
@@ -78,7 +79,6 @@ export function createTaskStreamHandlers(ctx) {
     mergeChatImageRefs,
     mutateRuntime,
     normalizeChatImageRefs,
-    normalizeContextUsage,
     normalizeTaskStatus,
     normalizeRuntimeEvent,
     readRuntimeAnswerBuffer,
@@ -207,6 +207,13 @@ export function createTaskStreamHandlers(ctx) {
       return;
     }
     appendTaskEvent(taskId, event);
+    const nextContextUsage = contextUsageFromRuntimeEvent(event, ownerConvId || conversationId);
+    if (nextContextUsage) {
+      if (!ownerConvId || ownerConvId === conversationIdRef.current) {
+        setContextUsage(nextContextUsage);
+      }
+      saveStoredContextUsage(nextContextUsage);
+    }
     const loopIndex = Math.max(1, event.loop_index || 1);
     if (isChatOriginTask(taskId, ownerConvId)) {
       const progressLine = getChatProgressLine(event);
@@ -343,31 +350,6 @@ export function createTaskStreamHandlers(ctx) {
           },
         }));
         break;
-      case 'context_usage_updated': {
-        if (event.source === 'provider_usage' && event.context_used_tokens == null && event.usedTokens == null) {
-          break;
-        }
-        const usageConversationId = event.conversation_id || ownerConvId || conversationId;
-        const nextContextUsage = normalizeContextUsage({
-          conversationId: usageConversationId,
-          contextUsedTokens: event.context_used_tokens,
-          contextTotalTokens: event.context_total_tokens,
-          usedTokens: event.usedTokens ?? event.used_tokens,
-          totalTokens: event.totalTokens ?? event.total_tokens,
-          valid: event.valid_context_usage,
-          compressed: event.compressed,
-          compressedCount: event.compressed_count,
-          updatedAt: event.created_at || event.timestamp || new Date().toISOString(),
-        }, usageConversationId);
-        if (!nextContextUsage.valid) {
-          break;
-        }
-        if (!ownerConvId || ownerConvId === conversationIdRef.current) {
-          setContextUsage(nextContextUsage);
-        }
-        saveStoredContextUsage(nextContextUsage);
-        break;
-      }
       case 'run_started':
         chatFinalizedTaskIdsRef.current.delete(taskId);
         updateTaskById(taskId, (run) => ({
@@ -734,6 +716,11 @@ export function createTaskStreamHandlers(ctx) {
     }
     const rerunningNode = Boolean(streamRequest?.rerunNodeId);
     const fullAttempt = Boolean(streamRequest?.attempt);
+    const previousRuntime = getRuntime(runConversationId);
+    if (fullAttempt && (previousRuntime?.busy || previousRuntime?.fetchController || previousRuntime?.activeRunId)) {
+      throw new Error('Wait for the current task to finish or stop before resending. Your changes have not been sent.');
+    }
+    const editedText = streamRequest?.attempt === 'edit' ? streamRequest.message : null;
     const sourceTaskId = pendingTask.taskId || pendingTask.id || null;
     const runId = (rerunningNode || fullAttempt) ? generateHexId() : (sourceTaskId || generateHexId());
     if (rerunningNode || fullAttempt) {
@@ -745,6 +732,8 @@ export function createTaskStreamHandlers(ctx) {
         sourceRunId: pendingTask.workflowRun?.run_id || null,
         rerunFromNodeId: streamRequest.rerunNodeId || null,
         title: fullAttempt && streamRequest.message != null ? streamRequest.message : pendingTask.title,
+        displayText: editedText ?? pendingTask.displayText,
+        requestText: editedText ?? pendingTask.requestText,
         status: 'running',
         stage: 'assigned',
         completedAt: null,
@@ -912,6 +901,9 @@ export function createTaskStreamHandlers(ctx) {
         ? payload.detail
         : (payload?.detail ? JSON.stringify(payload.detail) : '');
       rollbackUnconfirmedRerun();
+      if (fullAttempt && response.status === 409 && detail === 'Conversation already has an active task.') {
+        throw new Error('The previous task is still running or stopping. Your changes have not been sent. Wait for it to stop, then try again.');
+      }
       throw new Error(detail || `task stream failed: ${response.status}`);
     }
     if (!response.body) {

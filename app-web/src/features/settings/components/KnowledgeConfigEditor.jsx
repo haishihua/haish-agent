@@ -1,8 +1,9 @@
+import { Input } from '../../../shared/ui/settings-elements/ui/input.tsx';
 import {
   normalizeQdrantDraft,
   QDRANT_DISTANCE_OPTIONS,
 } from '../model/settings-records.js';
-import { FieldRow, SecretKeyField, SettingsMenuSelect } from './settings-ui.jsx';
+import { FieldRow, SecretKeyField, SettingsMenuSelect } from './SettingsPrimitives.jsx';
 
 export function KnowledgeConfigEditor({ selectedId, records, onRecordsChange, onDirty, readOnly = false }) {
   const current = (records.knowledge || []).find((item) => item.id === selectedId) || null;
@@ -26,7 +27,7 @@ export function KnowledgeConfigEditor({ selectedId, records, onRecordsChange, on
   return (
     <div className="settings-editor-form settings-tools-form">
       <FieldRow label="URL">
-        <input value={qdrant.url} onChange={(event) => update({ url: event.target.value })} disabled={readOnly} placeholder="Optional, e.g. http://localhost:6333" />
+        <Input value={qdrant.url} onChange={(event) => update({ url: event.target.value })} disabled={readOnly} placeholder="Optional, e.g. http://localhost:6333" />
       </FieldRow>
       <FieldRow label="API Key">
         <SecretKeyField
@@ -38,10 +39,10 @@ export function KnowledgeConfigEditor({ selectedId, records, onRecordsChange, on
         />
       </FieldRow>
       <FieldRow label="Collection Name">
-        <input value={qdrant.collection.name} onChange={(event) => update({ collection: { name: event.target.value } })} disabled={readOnly} placeholder="Leave blank to use workspace default" />
+        <Input value={qdrant.collection.name} onChange={(event) => update({ collection: { name: event.target.value } })} disabled={readOnly} placeholder="Leave blank to use workspace default" />
       </FieldRow>
       <FieldRow label="Vector Size">
-        <input type="number" min="1" value={qdrant.collection.vector_size} onChange={(event) => update({ collection: { vector_size: event.target.value } })} disabled={readOnly} />
+        <Input type="number" min="1" value={qdrant.collection.vector_size} onChange={(event) => update({ collection: { vector_size: event.target.value } })} disabled={readOnly} />
       </FieldRow>
       <FieldRow label="Distance">
         <SettingsMenuSelect

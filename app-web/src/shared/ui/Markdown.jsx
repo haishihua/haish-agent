@@ -79,6 +79,7 @@ export function Markdown({ source, streaming = false }) {
         parseIncompleteMarkdown={streaming}
         rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
         plugins={plugins}
+        codeBlockMaxHeight={320}
         controls
         linkSafety={LINK_SAFETY}
         urlTransform={safeMarkdownUrl}

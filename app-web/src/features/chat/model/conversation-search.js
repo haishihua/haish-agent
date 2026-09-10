@@ -34,3 +34,15 @@ export function scrollToConversationMatch(container, range) {
   const viewport = container.getBoundingClientRect();
   container.scrollBy({ top: rect.top - viewport.top - viewport.height / 2 + rect.height / 2, behavior: 'instant' });
 }
+
+// Content-relative coordinates stay fixed while the viewport scrolls.
+export function conversationMatchPositions(container, hits) {
+  if (!container || !container.scrollHeight) return [];
+  const viewportTop = container.getBoundingClientRect().top + container.clientTop;
+  const { scrollTop, scrollHeight } = container;
+  return hits.map(({ range }) => {
+    if (!range.startContainer.isConnected || !range.getClientRects().length) return null;
+    const rect = range.getBoundingClientRect();
+    return Math.max(0, Math.min(100, (rect.top + rect.height / 2 - viewportTop + scrollTop) / scrollHeight * 100));
+  });
+}

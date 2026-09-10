@@ -14,7 +14,7 @@ export function normalizeContextUsage(value, fallbackConversationId = null) {
   const rawUsedValue = Number(value?.contextUsedTokens ?? value?.context_used_tokens ?? value?.usedTokens ?? value?.used_tokens ?? 0);
   const rawUsedTokens = Math.max(0, Math.round(rawUsedValue || 0));
   const totalTokens = Math.max(0, Math.round(Number(value?.contextTotalTokens ?? value?.context_total_tokens ?? value?.totalTokens ?? value?.total_tokens ?? value?.effective_budget ?? runtimeContextTotalTokens) || runtimeContextTotalTokens));
-  const valid = Number.isFinite(rawUsedValue) && rawUsedValue >= 0;
+  const valid = value?.valid !== false && Number.isFinite(rawUsedValue) && rawUsedValue >= 0;
   const usedTokens = valid ? rawUsedTokens : 0;
   const compressedCount = Math.max(0, Math.round(Number(value?.compressedCount ?? value?.compressed_count ?? 0) || 0));
   return {
@@ -36,6 +36,32 @@ export function createEmptyContextUsage(conversationId = null) {
     usedTokens: 0,
     totalTokens: runtimeContextTotalTokens,
   }, conversationId);
+}
+
+export function contextUsageFromRuntimeEvent(event, fallbackConversationId = null) {
+  const compacted = event.type === 'context_compaction_completed';
+  const compacting = event.type === 'context_compaction_started';
+  if (!compacted && !compacting && event.type !== 'context_usage_updated') return null;
+  // A completed event also carries the old used_tokens; only the post-compaction
+  // count describes the rebuilt prompt. Skips and failures must keep the meter.
+  const usedTokens = compacted
+    ? event.prompt_tokens_after_compaction
+    : compacting
+      ? event.total_prompt_tokens ?? event.projected_input_tokens ?? event.used_tokens
+      : event.context_used_tokens ?? event.usedTokens ?? event.used_tokens;
+  if (usedTokens == null || !Number.isFinite(Number(usedTokens)) || Number(usedTokens) < 0) return null;
+  if (compacting && Number(usedTokens) === 0) return null;
+  if (compacted && (event.skipped || event.business_llm_blocked || Number(usedTokens) === 0)) return null;
+  return normalizeContextUsage({
+    conversationId: event.conversation_id || fallbackConversationId,
+    usedTokens,
+    totalTokens: event.context_total_tokens ?? event.totalTokens ?? event.total_tokens ?? event.context_window_tokens,
+    compressed: compacted || event.compressed,
+    compressedCount: compacted
+      ? event.message_count ?? event.compacted_messages ?? event.compressed_count
+      : event.compressed_count,
+    updatedAt: event.created_at || event.timestamp || new Date().toISOString(),
+  }, fallbackConversationId);
 }
 
 export function loadStoredContextUsage(conversationId) {
@@ -102,7 +128,13 @@ export function estimateContextUsageFromConversationDetail(detail) {
 export function mergeContextUsage(primary, fallback) {
   const normalizedPrimary = normalizeContextUsage(primary, fallback?.conversationId || null);
   const normalizedFallback = normalizeContextUsage(fallback, normalizedPrimary.conversationId);
-  return normalizedPrimary.usedTokens >= normalizedFallback.usedTokens
+  const primaryTime = normalizedPrimary.valid && primary?.valid !== false
+    ? Date.parse(normalizedPrimary.updatedAt) || 0 : 0;
+  const fallbackTime = normalizedFallback.valid && fallback?.valid !== false
+    ? Date.parse(normalizedFallback.updatedAt) || 0 : 0;
+  // Recorded usage can decrease after compaction. Untimestamped history
+  // estimates are only a fallback, never a lower bound on the current prompt.
+  return primaryTime > 0 && primaryTime >= fallbackTime
     ? normalizedPrimary
     : normalizedFallback;
 }

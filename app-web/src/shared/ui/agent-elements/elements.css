@@ -5,7 +5,7 @@
   --color-foreground: #daddef;
   --color-popover: #141928;
   --color-border: #3a4463;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-mono: var(--conversation-font, ui-sans-serif);
 }
 @custom-variant dark (&:where(.dark, .dark *));
 @scope (.haish-tool-elements) {
@@ -18,7 +18,8 @@
   --color-foreground: #daddef;
   --color-popover: #141928;
   --color-border: #3a4463;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-mono: var(--conversation-font, ui-sans-serif);
+  font-family: var(--conversation-font, inherit);
   min-width: 0;
   max-width: 100%;
   white-space: normal;

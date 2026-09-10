@@ -764,9 +764,9 @@ export function createConversationHandlers(ctx) {
 
   async function handleRetryTask(task, editedMessage = null) {
     const targetConversationId = task?.conversationId || task?.conversation_id;
-    if (!targetConversationId) return;
+    if (!targetConversationId) throw new Error('Conversation is unavailable. Your changes have not been sent.');
     if ((task?.userMessageId || task?.user_message_id) && executeQuest) {
-      if (!canStartDeployForConversation(targetConversationId)) return;
+      if (!canStartDeployForConversation(targetConversationId)) throw new Error('Conversation is still loading. Your changes have not been sent.');
       const source = getRuntime(targetConversationId)?.taskRuntimeState?.tasksById?.[task.taskId || task.task_id || task.id] || task;
       return executeQuest(source, targetConversationId, {
         attempt: editedMessage == null ? 'rerun' : 'edit',

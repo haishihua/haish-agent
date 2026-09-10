@@ -1,0 +1,10 @@
+/* Shared chat and settings backgrounds. */
+:root {
+    --app-canvas-background: radial-gradient(circle at 72% 12%, rgba(105, 200, 246, 0.05), transparent 32%),
+    linear-gradient(180deg, #080a12 0%, #05060b 100%);
+    --app-workspace-background: linear-gradient(180deg, rgba(26, 36, 54, 0.72), rgba(14, 21, 34, 0.62)),
+    radial-gradient(circle at 72% 14%, rgba(105, 200, 246, 0.12), transparent 34%);
+    --app-sidebar-background: linear-gradient(180deg, rgba(16, 24, 36, 0.06), rgba(11, 18, 29, 0.015));
+    --app-sidebar-highlight-background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 24%),
+    linear-gradient(135deg, rgba(130, 179, 255, 0.028), transparent 46%);
+}

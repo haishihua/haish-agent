@@ -1,0 +1,11 @@
+body { margin: 0; background: #121c2b; color: #dfe4ef; font-family: var(--conversation-font); }
+.tool-fixture { max-width: 680px; margin: 40px auto; padding: 20px; --ink: #dfe4ef; --dim-2: #95a1b9; }
+.tool-fixture > h1 { font: inherit; font-size: 20px; }
+.tool-fixture > p { font-size: 13px; opacity: .65; line-height: 1.7; }
+#checks { white-space: pre-wrap; font: inherit; font-size: 12px; color: #8dc8ae; padding-top: 24px; border-top: 1px solid #ffffff10; }
+#checks[data-result="FAIL"] { color: #f39f9f; }
+.meta-lifecycle-fixture { margin-top: 24px; padding-top: 16px; border-top: 1px solid #ffffff10; }
+.meta-lifecycle-fixture h2 { font: inherit; }
+.meta-lifecycle-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.meta-lifecycle-controls button { padding: 6px 10px; border: 1px solid #ffffff30; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.meta-lifecycle-controls button[aria-pressed="true"] { background: #ffffff15; }

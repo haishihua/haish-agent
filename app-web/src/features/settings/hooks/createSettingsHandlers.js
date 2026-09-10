@@ -114,8 +114,10 @@ export function createSettingsHandlers(ctx) {
         return next;
       });
       showToast('success', 'settings saved');
+      return true;
     } catch (error) {
       showToast('error', String(error?.message || error));
+      return false;
     }
   }
 
@@ -521,32 +523,20 @@ export function createSettingsHandlers(ctx) {
     }
   }
 
-  async function handleInstallSkillDirectory() {
+  async function handleInstallSkillPackage(file) {
     try {
-      let sourcePath = '';
-      if (window.haish?.pickSkillDirectory) {
-        const result = await window.haish.pickSkillDirectory();
-        if (result?.canceled) return;
-        sourcePath = result?.path || '';
-      } else {
-        sourcePath = String(window.prompt?.('Skill directory path') || '').trim();
-      }
-      if (!sourcePath) return;
       setSkillActionBusy('install');
       const response = await apiFetch(`${API_BASE}/api/settings/tools/skills/install`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: sourcePath }),
+        method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: file,
       }, { json: false });
-      if (!response.ok) {
-        const message = await parseResponseMessage(response, `skill install failed: ${response.status}`);
-        throw new Error(message);
-      }
+      if (!response.ok) throw new Error(await parseResponseMessage(response, `Skill install failed (${response.status})`));
       const payload = await response.json();
-      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
-      showToast('success', 'skill installed');
+      setSettingsRecordsDraft(prev => applyToolsSettingsPayloadToRecords(prev, payload));
+      showToast('success', 'Skill installed');
+      return true;
     } catch (error) {
       showToast('error', String(error?.message || error));
+      throw error;
     } finally {
       setSkillActionBusy('');
     }
@@ -568,8 +558,10 @@ export function createSettingsHandlers(ctx) {
       const payload = await response.json();
       setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
       showToast('success', enabled ? 'skill enabled' : 'skill disabled');
+      return true;
     } catch (error) {
       showToast('error', String(error?.message || error));
+      return false;
     } finally {
       setSkillActionBusy('');
     }
@@ -589,8 +581,10 @@ export function createSettingsHandlers(ctx) {
       const payload = await response.json();
       setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
       showToast('success', 'skill uninstalled');
+      return true;
     } catch (error) {
       showToast('error', String(error?.message || error));
+      return false;
     } finally {
       setSkillActionBusy('');
     }
@@ -617,7 +611,7 @@ export function createSettingsHandlers(ctx) {
     handleTestWebProvider,
     handleSettingsConnectionDirty,
     handleTestSettingsConnection,
-    handleInstallSkillDirectory,
+    handleInstallSkillPackage,
     handleToggleSkill,
     handleUninstallSkill,
   };

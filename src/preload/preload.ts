@@ -48,6 +48,8 @@ const api: HaishDesktopApi = {
   readFile: (projectId: string, relativePath: string) =>
     ipcRenderer.invoke('fs:read-file', projectId, relativePath) as Promise<ReadFileResult>,
   copyImage: (dataUrl: string) => ipcRenderer.invoke('clipboard:write-image', dataUrl) as Promise<boolean>,
+  readToolScreenshot: (imagePath: string, taskId: string) =>
+    ipcRenderer.invoke('tool:read-screenshot', imagePath, taskId) as Promise<string>,
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
 };
 

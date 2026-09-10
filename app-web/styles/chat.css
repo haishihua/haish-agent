@@ -7,8 +7,7 @@
     grid-template-rows: minmax(0, 1fr) auto;
     border: 1px solid rgba(176, 206, 255, 0.16);
     border-radius: 10px;
-    background: linear-gradient(180deg, rgba(26, 36, 54, 0.72), rgba(14, 21, 34, 0.62)),
-    radial-gradient(circle at 72% 14%, rgba(105, 200, 246, 0.12), transparent 34%);
+    background: var(--app-workspace-background);
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.025);
     backdrop-filter: blur(18px) saturate(116%);
     -webkit-backdrop-filter: blur(18px) saturate(116%);
@@ -28,7 +27,7 @@
     background: rgba(22, 31, 48, 0.34);
 }
 
-.haish-thread-search { position: relative; margin: 0 0 4px; }
+.haish-thread-search { position: relative; margin: 0 10px 8px; }
 .haish-search-field { display: flex; align-items: center; gap: 6px; padding: 7px 9px; min-width: 0; border: 1px solid #334155; border-radius: 10px; background: #111a28; color: #a6b5ca; }
 .haish-search-field input { width: 100%; min-width: 0; border: 0; outline: none; background: transparent; color: #e1e8f2; font: 14px var(--conversation-font); }
 .haish-search-field:focus-within { border-color: #7798bd; }
@@ -36,14 +35,39 @@
 .haish-search-field button:hover { background: #253348; }
 .haish-search-field button:disabled { opacity: 0.35; cursor: default; }
 .haish-search-field button:focus-visible, .haish-thread-search-results button:focus-visible { outline: 2px solid #82c7ff; outline-offset: 1px; }
-.haish-thread-search-results { max-height: 300px; overflow: auto; padding: 6px; margin-top: 6px; border: 1px solid #3a3a3a; border-radius: 12px; background: #292929; }
+.haish-thread-search .haish-search-field {
+    min-height: 34px;
+    padding: 2px 8px;
+    gap: 8px;
+    border-color: transparent;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+    color: var(--dim);
+    transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+.haish-thread-search .haish-search-field > svg { flex-shrink: 0; }
+.haish-thread-search .haish-search-field input { padding: 0; color: var(--ink); font: 13px/20px var(--conversation-font); }
+.haish-thread-search .haish-search-field input::placeholder { color: var(--dim); opacity: 1; }
+.haish-thread-search .haish-search-field:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.haish-thread-search .haish-search-field:focus-within {
+    border-color: color-mix(in srgb, var(--cyan) 65%, transparent);
+    background: var(--panel-2);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--cyan) 12%, transparent);
+    color: var(--ink);
+}
+.haish-thread-search .haish-search-field button { color: var(--dim); }
+.haish-thread-search .haish-search-field button:hover { background: var(--panel-3); color: var(--ink); }
+@media (prefers-reduced-motion: reduce) {
+    .haish-thread-search .haish-search-field { transition: none; }
+}
+.haish-thread-search-results { max-height: 300px; overflow: auto; padding: 6px; margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .haish-thread-search-results small { display: block; padding: 8px; color: #97a6bb; font: 12px var(--conversation-font); }
 .haish-thread-search-results button { display: block; width: 100%; padding: 9px; border: 0; border-radius: 7px; background: transparent; text-align: left; color: #dfe6f1; font: 14px var(--conversation-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.haish-thread-search-results button:hover, .haish-thread-search-results button.is-active { background: #3a3a3a; }
+.haish-thread-search-results button:hover, .haish-thread-search-results button.is-active { background: var(--panel-3); }
 .haish-thread-search-results p { color: #a6b5ca; font: 13px var(--conversation-font); }
-.haish-conversation-search { position: absolute; right: 14px; top: 12px; z-index: 30; width: min(400px, calc(100% - 28px)); pointer-events: none; }
+.haish-conversation-search { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
 .haish-conversation-search > * { pointer-events: auto; }
-.haish-conversation-search-panel { box-sizing: border-box; display: grid; gap: 8px; width: 100%; }
+.haish-conversation-search-panel { position: absolute; right: 14px; top: 12px; box-sizing: border-box; display: grid; gap: 8px; width: min(400px, calc(100% - 28px)); }
 .haish-conversation-search-panel .haish-search-field { min-height: 42px; box-sizing: border-box; padding: 7px 12px; border: 1px solid #334155; border-radius: 999px; background: #111a28; box-shadow: 0 4px 16px #0003; }
 .haish-conversation-search-panel .haish-search-field:focus-within { border-color: #7798bd; }
 .haish-search-leading-icon { flex-shrink: 0; }
@@ -57,6 +81,13 @@
 .haish-conversation-search-panel mark { padding: 0 2px; background: #efbf64; color: #241b0e; border-radius: 3px; }
 .chat-message-list.is-searching .chat-message-row { content-visibility: visible; }
 ::highlight(conversation-matches) { background-color: #efbf64; color: #241b0e; }
+::highlight(conversation-active-match) { background-color: #ff9f32; color: #241b0e; }
+.haish-search-hit-track { position: absolute; right: 2px; top: 12px; bottom: 12px; width: 10px; border-radius: 5px; background: rgba(166, 181, 202, 0.08); }
+.haish-search-hit-marker { position: absolute; left: 0; width: 100%; height: 8px; padding: 0; transform: translateY(-50%); border: 0; background: transparent; cursor: pointer; }
+.haish-search-hit-marker::before { content: ''; position: absolute; left: 2px; right: 2px; top: 2px; height: 4px; border-radius: 2px; background: rgba(239, 191, 100, 0.55); }
+.haish-search-hit-marker.is-active { z-index: 1; }
+.haish-search-hit-marker.is-active::before, .haish-search-hit-marker:hover::before { background: #ff9f32; }
+.haish-search-hit-marker:focus-visible { outline: 2px solid #82c7ff; outline-offset: 1px; border-radius: 3px; }
 
 .chat-message-region {
     position: relative;
@@ -500,7 +531,8 @@
     background: rgb(24, 33, 49);
 }
 
-.chat-message-row.user .message-speech-body {
+.chat-message-row.user .message-speech-body,
+.chat-subagent-dispatch > .message-speech-body {
     border-radius: 16px 4px 16px 16px;
     border-color: rgba(92, 154, 255, 0.36);
     background: rgba(40, 75, 134, 0.3);
@@ -643,7 +675,7 @@
     border-radius: 8px; padding: 7px 12px; cursor: pointer;
 }
 .chat-message-row.agent .message-shell.failed .message-speech-body { padding: 0; border: 0; background: transparent; }
-.message-action-error { color: #ffb8c5; margin-top: 8px; }
+.message-action-error { color: #ffb8c5; margin-top: 8px; font: 12px/1.5 var(--conversation-font); overflow-wrap: anywhere; }
 .chat-bubble-copy.message-turn-action { width: 24px; height: 24px; border-radius: 50%; }
 .message-turn-action:hover { background: rgba(138, 166, 209, 0.12); }
 .message-turn-action:focus-visible, .message-edit-composer textarea:focus-visible,
@@ -955,54 +987,9 @@
     display: none;
 }
 
-.chat-timeline-chip {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.chat-timeline-chip-head {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    width: fit-content;
-    max-width: 100%;
-    padding: 4px 8px;
-    background: rgba(20, 28, 48, 0.42);
-    /* Keep card chrome neutral; status semantics live on the colored dot. */
-    border: 1px solid rgba(105, 134, 178, 0.34);
-    border-radius: 6px;
-    color: rgba(220, 227, 244, 0.9);
-    font-family: var(--tool-card-font, 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace);
-    font-size: 12px;
-    min-width: 0;
-    text-align: left;
-}
-
-.chat-timeline-chip-head:disabled,
-.chat-timeline-meta-head {
-    cursor: default;
-}
-
-.chat-timeline-meta-head:disabled {
-    opacity: 1;
-}
-
 .chat-timeline-retry-icon {
     flex: 0 0 auto;
     color: currentColor;
-}
-
-.chat-timeline-meta.status-running .chat-timeline-retry-icon {
-    animation: chat-todo-spin 0.9s linear infinite;
-}
-
-.chat-timeline-meta-head:hover:not(:disabled) {
-    color: rgba(220, 227, 244, 0.9);
-}
-
-.chat-timeline-meta.is-compaction .chat-timeline-meta-head {
-    color: rgba(239, 191, 100, 0.94);
 }
 
 .chat-timeline-compaction-icon {
@@ -1047,11 +1034,6 @@
     mask-image: url("../assets/ui/icons/down.png");
 }
 
-.chat-timeline-meta-label {
-    color: rgba(220, 227, 244, 0.9);
-    font-weight: 700;
-}
-
 .chat-timeline-meta-count {
     margin-left: 4px;
     padding: 0 6px;
@@ -1082,20 +1064,6 @@
     padding-right: 8px;
     color: rgba(220, 227, 244, 0.9);
     font-size: 12px;
-}
-
-/* Hide nested card chrome without disabling wheel, trackpad or keyboard scrolling. */
-.chat-message-row.agent .chat-timeline-chip,
-.chat-message-row.agent .chat-timeline-chip * {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-}
-
-.chat-message-row.agent .chat-timeline-chip::-webkit-scrollbar,
-.chat-message-row.agent .chat-timeline-chip *::-webkit-scrollbar {
-    display: none;
-    width: 0;
-    height: 0;
 }
 
 .chat-timeline-thinking {
@@ -1209,7 +1177,7 @@
      * Keep the font token on the shared timeline root so tool groups, normal
      * tools and nested sub-agent tools cannot silently fall back to the font
      * of whichever page happens to contain them. */
-    --tool-card-font: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+    --tool-card-font: var(--conversation-font);
 }
 
 .chat-timeline-tool {
@@ -2789,6 +2757,7 @@
 }
 
 .chat-composer-attachments,
+.chat-message-files,
 .task-delegation .td-attachments {
     display: flex;
     flex-wrap: wrap;
@@ -2796,26 +2765,48 @@
     gap: 8px;
 }
 
+.chat-composer-input-row .chat-composer-attachments {
+    margin-bottom: 8px;
+}
+
+.chat-message-files {
+    min-width: 0;
+    justify-content: flex-end;
+}
+
 .task-delegation .td-attachments {
     margin-bottom: 10px;
 }
 
 .composer-file-chip {
+    box-sizing: border-box;
     position: relative;
-    width: min(240px, 100%);
-    height: 58px;
-    padding: 8px 30px 8px 8px;
+    width: min(212px, 100%);
+    height: 52px;
+    padding: 6px 28px 6px 6px;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
+    border-radius: 14px;
     background: rgba(60, 60, 67, 0.42);
     color: #f4f4f6;
     display: inline-flex;
     align-items: center;
-    gap: 12px;
-    flex: 0 1 240px;
+    gap: 10px;
+    flex: 0 1 212px;
     min-width: 0;
     overflow: hidden;
     box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+}
+
+.composer-file-chip.is-path-reference {
+    max-width: 100%;
+    vertical-align: middle;
+    text-align: left;
+}
+
+.composer-file-chip:focus-visible,
+.composer-file-remove:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
 }
 
 .composer-file-chip.is-uploading {
@@ -2823,9 +2814,9 @@
 }
 
 .composer-file-icon {
-    width: 42px;
-    height: 42px;
-    flex: 0 0 42px;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
     border-radius: 10px;
     background: rgba(8, 10, 15, 0.88);
     color: #dfe3ec;
@@ -2835,23 +2826,24 @@
 }
 
 .composer-file-glyph.ico-attach {
-    width: 23px;
-    height: 23px;
+    width: 20px;
+    height: 20px;
 }
 
 .composer-file-glyph.ico-loading {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     animation: live-loading-spin 1s linear infinite;
 }
 
 .composer-file-glyph.ico-google-docs {
-    width: 26px;
-    height: 26px;
+    width: 22px;
+    height: 22px;
 }
 
 .composer-file-copy {
     min-width: 0;
+    flex: 1;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -2862,26 +2854,26 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 14px;
-    font-weight: 700;
+    font-family: var(--conversation-font);
+    font-size: 13px;
+    font-weight: 600;
     line-height: 1.2;
 }
 
 .composer-file-kind {
     color: rgba(244, 244, 246, 0.68);
-    font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 14px;
-    font-weight: 700;
+    font-family: var(--conversation-font);
+    font-size: 11px;
+    font-weight: 500;
     line-height: 1;
 }
 
 .composer-file-remove {
     position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 22px;
-    height: 22px;
+    top: 6px;
+    right: 6px;
+    width: 18px;
+    height: 18px;
     border: 0;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.1);

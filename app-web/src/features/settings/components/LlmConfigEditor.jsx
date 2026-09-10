@@ -1,3 +1,5 @@
+import { Input } from '../../../shared/ui/settings-elements/ui/input.tsx';
+import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import React from 'react';
 import {
   CircleCheck,
@@ -22,12 +24,8 @@ import {
   llmEditorModelChoices,
   llmProviderRequestPayload,
 } from '../model/settings-payload.js';
-import {
-  FieldRow,
-  SecretKeyField,
-  SettingsMenuSelect,
-  SettingsComboInput,
-} from './settings-ui.jsx';
+import { FieldRow, SecretKeyField, SettingsMenuSelect, ProviderIcon } from './SettingsPrimitives.jsx';
+import { ModelSelectorRoot, ModelSelectorTrigger, ModelSelectorValue, ModelSelectorContent, ModelSelectorSearch, ModelSelectorList, ModelSelectorEffort } from '../../../shared/ui/settings-elements/assistant-ui/model-selector.tsx';
 
 const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
@@ -263,7 +261,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       </FieldRow>
       {showProviderNameField && (
         <FieldRow label="Provider Name">
-          <input
+          <Input
             value={config.name || config.custom_provider || ''}
             onChange={(event) => update({ name: event.target.value, custom_provider: event.target.value })}
             disabled={readOnly}
@@ -298,7 +296,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       </FieldRow>
       )}
       {showApiKeyField && (
-        <FieldRow label="API Key" hint="Saved as secret.">
+        <FieldRow label="API Key">
           <SecretKeyField
             value={config.api_key || ''}
             onChange={(event) => update({ api_key: event.target.value })}
@@ -311,14 +309,13 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       {showOAuthCallbackLogin && (
         <FieldRow
           label="OAuth"
-          hint={oauthFlowPending
-            ? `Finish signing in with ${provider.label} in the browser. No code needs to be copied.`
-            : 'Authorization tokens are stored in ~/.haish/auth.json.'}
+
         >
           <div className="settings-oauth-connect">
-            <button
+            <Button
               type="button"
-              className="settings-primary-button settings-oauth-connect-button"
+              variant="outline"
+              className="settings-oauth-connect-button"
               disabled={disabled || oauthFlowPending}
               onClick={() => { void startOAuthLogin(); }}
             >
@@ -328,7 +325,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
               {oauthFlowPending
                 ? 'Waiting for sign-in...'
                 : (config.oauth_configured ? `Reconnect ${provider.label}` : `Connect ${provider.label}`)}
-            </button>
+            </Button>
             {oauthStartError ? (
               <div className="settings-inline-error" role="alert">{oauthStartError}</div>
             ) : null}
@@ -348,7 +345,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       )}
       {showBaseUrlField && (
       <FieldRow label="Base URL">
-        <input
+        <Input
           value={config.base_url || ''}
           onChange={(event) => update({ base_url: event.target.value })}
           disabled={disabled}
@@ -356,32 +353,15 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
         />
       </FieldRow>
       )}
-      <FieldRow label="Default Model">
-        <div className="settings-oauth-connect">
-          <SettingsComboInput
-            value={config.model || ''}
-            options={modelChoices}
-            onChange={(model) => update({ model })}
-            disabled={disabled}
-            placeholder={provider.defaultModel}
-            header="default model"
-          />
-          {modelCatalogError ? (
-            <div className="settings-inline-error" role="alert">{modelCatalogError}</div>
-          ) : null}
-        </div>
-      </FieldRow>
-      {selectedId !== 'vision' && selectedId !== 'embedding' && (
-        <FieldRow label="Default Reasoning">
-          <SettingsMenuSelect
-            value={config.reasoning_effort || 'high'}
-            options={SETTINGS_REASONING_OPTIONS}
-            onChange={(reasoningEffort) => update({ reasoning_effort: reasoningEffort })}
-            disabled={readOnly}
-            header="default reasoning"
-          />
-        </FieldRow>
-      )}
+      <ModelSelectorRoot
+        models={uniqueModelChoices(modelChoices, config.model).map(model => ({ id: model.id, name: model.label, icon: <ProviderIcon provider={config.provider} name={config.name || provider.label} />, efforts: selectedId !== 'vision' && selectedId !== 'embedding' ? SETTINGS_REASONING_OPTIONS.map(item => ({ id: item.id, name: item.id === 'medium' ? 'Med' : item.id === 'xhigh' ? 'XHigh' : item.id === 'high' ? 'High' : 'Low' })) : undefined }))}
+        value={config.model || ''} onValueChange={model => { if (!disabled) update({ model }); }} effort={config.reasoning_effort || 'high'} onEffortChange={reasoning_effort => { if (!disabled) update({ reasoning_effort }); }}>
+        <FieldRow label="Default model"><ModelSelectorTrigger disabled={disabled} className="w-full"><ModelSelectorValue showEffort={false} /></ModelSelectorTrigger></FieldRow>
+        <ModelSelectorContent searchable className="settings-model-options"><ModelSelectorSearch aria-label="Search models" /><ModelSelectorList /></ModelSelectorContent>
+        <FieldRow label="Model ID"><Input value={config.model || ''} onChange={event => update({ model: event.target.value })} disabled={disabled} placeholder={provider.defaultModel || 'Enter a model ID'} /></FieldRow>
+        {modelCatalogError && <div className="settings-inline-error" role="alert">{modelCatalogError}</div>}
+        {selectedId !== 'vision' && selectedId !== 'embedding' && <ModelSelectorEffort label="Reasoning effort" className="settings-model-effort" />}
+      </ModelSelectorRoot>
     </div>
   );
 }

@@ -142,7 +142,7 @@ app-web/tests/**        # 所有 test/spec
 
 测试文件按被测领域放置；跨领域行为进入 `integration`；静态架构与历史 bug 契约进入 `contracts`。禁止在生产目录旁放 `*.test.*` 或 `*.spec.*`。
 
-依赖真实浏览器 DOM 的回归页放在 `app-web/tests/fixtures`，加载后自动执行断言并显示 `PASS` / `FAIL`，不调用模型或写入会话。前端仓库运行 `python3 -m http.server 5188 --bind 127.0.0.1 --directory app-web` 后，可访问 `/tests/fixtures/conversation-search.html` 和 `/tests/fixtures/message-annotations.html`；修改相关 DOM 逻辑时需单独运行，`npm test` 不包含这些浏览器检查。临时演示页、手工造数和全局请求 mock 不作为长期测试保留。
+依赖真实浏览器 DOM 的回归页放在 `app-web/tests/fixtures`，加载后自动执行断言并显示 `PASS` / `FAIL`，不调用模型或写入会话。运行 `npx vite --config vite.app-web.config.ts` 后，可访问 `/tests/fixtures/conversation-search.html`、`/tests/fixtures/message-annotations.html` 和 `/tests/fixtures/tool-cards.html`；修改相关 DOM 逻辑时需单独运行，`npm test` 不包含这些浏览器检查。临时演示页、手工造数和全局请求 mock 不作为长期测试保留，当前入口见 [回归测试说明](../app-web/tests/README.md)。
 
 ## 9. 自动门禁
 

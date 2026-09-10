@@ -1,5 +1,6 @@
+import { Input } from '../../../shared/ui/settings-elements/ui/input.tsx';
 import { normalizeNeo4jDraft } from '../model/settings-records.js';
-import { FieldRow, SecretKeyField } from './settings-ui.jsx';
+import { FieldRow, SecretKeyField } from './SettingsPrimitives.jsx';
 
 export function MemoryConfigEditor({ selectedId, records, onRecordsChange, onDirty, readOnly = false }) {
   const current = (records.memory || []).find((item) => item.id === selectedId) || null;
@@ -19,10 +20,10 @@ export function MemoryConfigEditor({ selectedId, records, onRecordsChange, onDir
   return (
     <div className="settings-editor-form settings-tools-form">
       <FieldRow label="URI">
-        <input value={neo4j.uri} onChange={(event) => update({ uri: event.target.value })} disabled={readOnly} placeholder="Optional, e.g. bolt://localhost:7687" />
+        <Input value={neo4j.uri} onChange={(event) => update({ uri: event.target.value })} disabled={readOnly} placeholder="Optional, e.g. bolt://localhost:7687" />
       </FieldRow>
       <FieldRow label="Username">
-        <input value={neo4j.username} onChange={(event) => update({ username: event.target.value })} disabled={readOnly} placeholder="neo4j" />
+        <Input value={neo4j.username} onChange={(event) => update({ username: event.target.value })} disabled={readOnly} placeholder="neo4j" />
       </FieldRow>
       <FieldRow label="Password">
         <SecretKeyField
@@ -34,7 +35,7 @@ export function MemoryConfigEditor({ selectedId, records, onRecordsChange, onDir
         />
       </FieldRow>
       <FieldRow label="Database">
-        <input value={neo4j.database} onChange={(event) => update({ database: event.target.value })} disabled={readOnly} />
+        <Input value={neo4j.database} onChange={(event) => update({ database: event.target.value })} disabled={readOnly} />
       </FieldRow>
     </div>
   );

@@ -20,7 +20,7 @@
 
 @custom-variant dark (&:where(.dark, .dark *, [data-streamdown$="-fullscreen"], [data-streamdown$="-fullscreen"] *));
 
-/* Haish typography and palette; component layout remains Streamdown's own. */
+/* Haish typography and palette for Streamdown's standard components. */
 @theme inline {
     --font-sans: var(--conversation-font);
     --font-mono: 'JetBrains Mono', monospace;
@@ -51,7 +51,7 @@
     color: var(--ink);
     font-family: var(--conversation-font);
     font-size: var(--markdown-content-size);
-    line-height: 1.55;
+    line-height: 1.5;
     white-space: normal;
     overflow-wrap: anywhere;
     image-rendering: auto;
@@ -71,28 +71,101 @@
     font-size: 16px;
 }
 
-/* One content size across standard Markdown components, including portal views. */
+.haish-markdown [data-streamdown="heading-4"] {
+    font-size: 15px;
+}
+
+.haish-markdown [data-streamdown="heading-5"],
+.haish-markdown [data-streamdown="heading-6"] {
+    font-size: 14px;
+}
+
+/* Keep body text readable; compact code and table content in portal views too. */
 @scope (.haish-markdown, [data-streamdown$="-fullscreen"]) {
-    p, li, blockquote, table, th, td, pre, code,
-    [data-streamdown="code-block-body"],
-    [data-streamdown="code-block-header"] {
+    p, li, blockquote, table, th, td, code {
         font-size: var(--markdown-content-size);
-        line-height: 1.6;
+        line-height: 1.5;
+    }
+
+    pre, pre code, [data-streamdown="code-block-body"] {
+        font-size: 13px;
+        line-height: 20px;
+    }
+
+    th, td {
+        padding: 6px 12px;
     }
 }
 
-/* Anchor actions to their own block, not the conversation's scroll viewport. */
 @scope (.haish-markdown) {
-    [data-streamdown="code-block"],
-    [data-streamdown="mermaid-block"] {
-        position: relative;
+    :where(:scope > div > :not(:last-child)) {
+        margin-block-end: 12px;
     }
 
+    [data-streamdown^="heading-"] {
+        margin-block: 18px 6px;
+        line-height: 1.4;
+    }
+
+    li {
+        padding-block: 2px;
+    }
+
+    [data-streamdown="inline-code"] {
+        padding: 1px 4px;
+    }
+
+    blockquote {
+        margin-block: 12px;
+        padding-left: 12px;
+    }
+
+    hr {
+        margin-block: 16px;
+    }
+
+    [data-streamdown="code-block"],
+    [data-streamdown="mermaid-block"],
+    [data-streamdown="table-wrapper"] {
+        position: relative;
+        margin-block: 12px;
+        padding: 6px;
+        gap: 4px;
+        border-radius: 8px;
+    }
+
+    [data-streamdown="code-block-header"],
+    [data-streamdown="mermaid-block"] > :first-child {
+        height: 26px;
+        font-size: 12px;
+        line-height: 18px;
+    }
+
+    [data-streamdown="code-block-body"] {
+        padding: 10px 12px;
+    }
+
+    /* Keep the existing button hit areas; only remove toolbar padding. */
+    [data-streamdown="code-block-actions"],
+    [data-streamdown="mermaid-block-actions"] {
+        padding-block: 0;
+    }
+
+    /* Anchor actions to their own block, not the conversation's scroll viewport. */
     [data-streamdown="code-block"] > div:has(> [data-streamdown="code-block-actions"]),
     [data-streamdown="mermaid-block"] > div:has(> [data-streamdown="mermaid-block-actions"]) {
         position: absolute;
-        top: 8px;
-        right: 8px;
+        top: 6px;
+        right: 6px;
+        height: 26px;
         margin-top: 0;
+    }
+
+    :scope > div > :first-child {
+        margin-top: 0;
+    }
+
+    :scope > div > :last-child {
+        margin-bottom: 0;
     }
 }

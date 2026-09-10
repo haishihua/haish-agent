@@ -4,7 +4,7 @@ import { ConversationSearch } from './ConversationSearch.jsx';
 import { MessageAnnotations } from './MessageAnnotations.jsx';
 import { QuoteBlock } from '../../../shared/ui/agent-elements/Quote.jsx';
 import { useAnnotationDraft } from '../hooks/useAnnotationDraft.js';
-import { annotationError } from '../model/message-annotations.js';
+import { annotationError, isSubmittedAnnotationMessage, visibleAnnotationDrafts } from '../model/message-annotations.js';
 import { ArrowUp, BookOpen, CornerDownLeft, Square } from 'lucide-react';
 import { ApprovalInline } from '../../approvals/components/ApprovalOverlay.jsx';
 import {
@@ -15,11 +15,7 @@ import {
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
 import { firstPastedDocument } from '../model/document-paste.js';
-import {
-  clipboardFilesToPathText,
-  clipboardUriListToPathText,
-  normalizePastedPathText,
-} from '../model/path-input.js';
+import { composePathReferenceDraft, splitPathReferenceDraft, transferredLocalPaths } from '../model/path-references.js';
 import { formatContextUsageLabel } from '../../../shared/lib/message-format.js';
 import {
   usePersistentRunConfig,
@@ -59,8 +55,6 @@ export function ChatPanel({
   attachment,
   uploading,
   contextUsage,
-  workspacePath,
-  homePath,
   activeTaskText,
   providerOptions = [],
   agentOptions,
@@ -92,26 +86,31 @@ export function ChatPanel({
   const skillSelectionPendingRef = React.useRef(false);
   const draft = draftProp !== undefined ? draftProp : localDraft;
   const setDraft = draftProp !== undefined ? onDraftChangeProp : setLocalDraft;
-  const { items: annotationDrafts, update: updateAnnotations, storageError } = useAnnotationDraft(conversationId, messages);
+  const { items: annotationSnapshots, update: updateAnnotations, storageError } = useAnnotationDraft(conversationId, messages);
+  const annotationDrafts = React.useMemo(() => visibleAnnotationDrafts(annotationSnapshots, messages), [annotationSnapshots, messages]);
   const [annotationNotice, setAnnotationNotice] = React.useState('');
+  const [pathNotice, setPathNotice] = React.useState('');
   const annotationUiRef = React.useRef(null);
   const jumpToAnnotation = React.useCallback((item) => annotationUiRef.current?.jump(item), []);
   const editAnnotation = React.useCallback((item) => annotationUiRef.current?.edit(item), []);
   const saveAnnotation = (item) => {
-    const exists = annotationDrafts.some((draft) => draft.id === item.id);
-    const next = exists ? annotationDrafts.map((draft) => draft.id === item.id ? item : draft) : [...annotationDrafts, item];
+    const exists = annotationSnapshots.some((draft) => draft.id === item.id);
+    const next = exists ? annotationSnapshots.map((draft) => draft.id === item.id ? item : draft) : [...annotationSnapshots, item];
     const error = annotationError(next);
     setAnnotationNotice(error);
     if (error) return false;
-    updateAnnotations(() => next);
+    updateAnnotations((previous) => previous.some((draft) => draft.id === item.id)
+      ? previous.map((draft) => draft.id === item.id ? item : draft)
+      : [...previous, item]);
     return true;
   };
   const highlightedAnnotations = React.useMemo(() => [
-    ...messages.filter((m) => m.role === 'user' && m.messageId).flatMap((m) => (m.annotations || [])
-      .map((item, index) => ({ item, index: index + 1, key: `${m.messageId}:${item.id}` }))),
+    ...messages.filter(isSubmittedAnnotationMessage).flatMap((m) => (m.annotations || [])
+      .map((item, index) => ({ item, index: index + 1, key: `${m.messageId || m.id}:${item.id}` }))),
     ...annotationDrafts.map((item, index) => ({ item, index: index + 1, key: `draft:${item.id}` })),
   ], [messages, annotationDrafts]);
   React.useEffect(() => setAnnotationNotice(''), [conversationId]);
+  React.useEffect(() => setPathNotice(''), [composerScopeId, draft]);
 
 
   // Collect user messages for ArrowUp history navigation (most recent first).
@@ -146,7 +145,8 @@ export function ChatPanel({
   const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
   const currentAgentSkills = currentSelection?.skills || EMPTY_AGENT_SKILLS;
   const selectedSkill = currentAgentSkills.find((skill) => skill.name === selectedSkillName) || null;
-  const matchingSkills = matchingAgentSkills(draft, currentAgentSkills);
+  const composerContent = React.useMemo(() => splitPathReferenceDraft(draft), [draft]);
+  const matchingSkills = matchingAgentSkills(composerContent.text, currentAgentSkills);
   const skillMenuOpen = Boolean(matchingSkills?.length && !selectedSkill && !skillMenuDismissed);
   const skillMenuRef = React.useRef(null);
   React.useEffect(() => {
@@ -239,25 +239,38 @@ export function ChatPanel({
         if (!disabled && !submitPending && !running && !uploading) onSelectFile?.(document, effectiveAgentId);
         return;
       }
-      const normalizedText = clipboardUriListToPathText(clipboard.getData('text/uri-list'), workspacePath, homePath)
-        || clipboardFilesToPathText(clipboard.files, workspacePath, homePath)
-        || normalizePastedPathText(clipboard.getData('text/plain'), workspacePath, homePath);
-      if (normalizedText) {
+      const pathText = transferredLocalPaths(clipboard);
+      if (pathText) {
         event.preventDefault();
-        inputRef.current?.insertText(normalizedText);
+        insertLocalPaths(pathText);
       }
       return;
     }
     event.preventDefault();
     imageFiles.forEach((file) => attachImageFile(file));
+    const paths = transferredLocalPaths(event.clipboardData);
+    if (paths) insertLocalPaths(paths);
   }
 
   function handleComposerDrop(event) {
-    const files = Array.from(event.dataTransfer?.files || [])
-      .filter((file) => (file.type || '').toLowerCase().startsWith('image/'));
-    if (!files.length) return;
+    const files = Array.from(event.dataTransfer?.files || []);
+    const paths = transferredLocalPaths(event.dataTransfer);
+    if (!files.length && !paths) return;
     event.preventDefault();
-    files.forEach((file) => attachImageFile(file));
+    event.stopPropagation();
+    if (disabled) return;
+    files.filter((file) => (file.type || '').toLowerCase().startsWith('image/')).forEach(attachImageFile);
+    if (paths) insertLocalPaths(paths);
+    else if (files.some((file) => !String(file.type || '').startsWith('image/'))) {
+      setPathNotice('Local path unavailable. Copy the full path and paste it instead.');
+    }
+  }
+
+  function insertLocalPaths(text) {
+    if (disabled) return;
+    if (!inputRef.current?.insertText(text)) {
+      setPathNotice('The reference exceeds the message limit (5,000 characters). Shorten the draft and try again.');
+    }
   }
 
   function handleComposerDragOver(event) {
@@ -348,11 +361,11 @@ export function ChatPanel({
     if (skillSelectionPendingRef.current) return;
     const text = draft.trim();
     if ((!text && readyImages.length === 0 && !annotationDrafts.length) || imagesUploading || disabled || submitPending || runtimeInputPending || (running && annotationDrafts.length)) return;
-    const skillInvocation = selectedSkill || !text ? null : extractAgentSkillInvocation(text, currentAgentSkills);
+    const skillInvocation = selectedSkill || !text ? null : extractAgentSkillInvocation(composerContent.text, currentAgentSkills);
     const submittedText = selectedSkill
       ? withSelectedSkillInstruction(text, selectedSkill)
       : skillInvocation
-        ? withSelectedSkillInstruction(skillInvocation.prompt, skillInvocation.skill)
+        ? withSelectedSkillInstruction(composePathReferenceDraft(skillInvocation.prompt, composerContent.references), skillInvocation.skill)
         : text;
     const commentsError = annotationDrafts.length ? annotationError(annotationDrafts, submittedText) : '';
     setAnnotationNotice(commentsError);
@@ -378,7 +391,10 @@ export function ChatPanel({
     if (!providerConfigured) return;
     if (!sendModelId) return;
     if (!resolvedAgentOptions.some((o) => o.id === effectiveAgentId)) return;
-    const accepted = await onSend?.(submittedText, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text, annotationDrafts);
+    const sendResult = onSend?.(submittedText, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text, annotationDrafts);
+    // Local acceptance is synchronous: clear the composer in the same render as
+    // its optimistic message. Only async send handlers need a separate wait.
+    const accepted = sendResult && typeof sendResult.then === 'function' ? await sendResult : sendResult;
     if (accepted === false) return;
     if (currentComposerScopeRef.current !== composerScopeId) { setComposerImages([]); return; }
     setSendScrollKey((value) => value + 1);
@@ -400,11 +416,11 @@ export function ChatPanel({
     if (!skill) return;
     event?.preventDefault?.();
     event?.stopPropagation?.();
-    const prompt = String(draft || '').match(/^\s*\/[a-z0-9-]*(?:\s+([\s\S]*))?$/i)?.[1] || '';
+    const prompt = composerContent.text.match(/^\s*\/[a-z0-9-]*(?:\s+([\s\S]*))?$/i)?.[1] || '';
     selectedSkillNameRef.current = skill.name;
-    skillSelectionPendingRef.current = !prompt.trim();
+    skillSelectionPendingRef.current = !prompt.trim() && !composerContent.references.length;
     setSelectedSkillName(skill.name);
-    setDraft(prompt);
+    setDraft(composePathReferenceDraft(prompt, composerContent.references));
     setSkillMenuDismissed(false);
     requestAnimationFrame(() => inputRef.current?.focusAtEnd?.());
   }
@@ -450,7 +466,7 @@ export function ChatPanel({
         className="chat-composer"
         onSubmit={submit}
         onDragOver={handleComposerDragOver}
-        onDrop={handleComposerDrop}
+        onDropCapture={handleComposerDrop}
       >
         <ComposerBorderBeam active={running || submitPending || hasComposerPayload} />
         {annotationDrafts.length > 0 && <div className="haish-annotation-drafts" aria-label="Comment drafts">
@@ -459,6 +475,7 @@ export function ChatPanel({
             onRemove={() => updateAnnotations((previous) => previous.filter((draft) => draft.id !== item.id))} />)}
         </div>}
         {(annotationNotice || storageError) && <p className="haish-annotation-notice" role="status">{annotationNotice || storageError}</p>}
+        {pathNotice && <p className="haish-annotation-notice" role="status">{pathNotice}</p>}
         {running && annotationDrafts.length > 0 && <p className="haish-annotation-notice">Comments are saved as a draft. Send after the task finishes or stops.</p>}
         {skillMenuOpen && (
           <div ref={skillMenuRef} className="chat-skill-menu" role="listbox" aria-label="Available skills">
@@ -485,8 +502,14 @@ export function ChatPanel({
             ))}
           </div>
         )}
-        {(composerImages.length > 0 || attachment) && (
-          <div className="chat-composer-attachments" aria-label="Attachments">
+        <div className="chat-composer-input-row">
+          <LexicalComposerInput
+            key={composerScopeId}
+            ref={inputRef}
+            value={draft}
+            selectedSkill={selectedSkill}
+            attachments={(composerImages.length > 0 || attachment) && (
+          <>
             {attachment && (
               <AttachmentFileChip attachment={attachment} uploading={uploading} onClear={clearFile} />
             )}
@@ -529,14 +552,8 @@ export function ChatPanel({
                 ))}
               </div>
             )}
-          </div>
+          </>
         )}
-        <div className="chat-composer-input-row">
-          <LexicalComposerInput
-            key={composerScopeId}
-            ref={inputRef}
-            value={draft}
-            selectedSkill={selectedSkill}
             onRemoveSkill={() => {
               selectedSkillNameRef.current = '';
               skillSelectionPendingRef.current = false;
@@ -547,9 +564,11 @@ export function ChatPanel({
                 const selectedQuery = selectedSkillNameRef.current
                   ? `/${selectedSkillNameRef.current}`.toLowerCase()
                   : '';
-                const normalizedDraft = String(nextDraft || '').trim().toLowerCase();
+                const nextContent = splitPathReferenceDraft(nextDraft);
+                const normalizedDraft = nextContent.text.trim().toLowerCase();
                 if (!normalizedDraft || normalizedDraft === selectedQuery) {
-                  setDraft('');
+                  skillSelectionPendingRef.current = !nextContent.references.length;
+                  setDraft(composePathReferenceDraft('', nextContent.references));
                   return;
                 }
                 skillSelectionPendingRef.current = false;
@@ -559,6 +578,7 @@ export function ChatPanel({
               setSkillMenuIndex(0);
             }}
             onPaste={handleComposerPaste}
+            onPathLimit={() => setPathNotice('The reference exceeds the message limit (5,000 characters). Shorten the draft and try again.')}
             onKeyDown={(event) => {
             if (
               event.key === 'Backspace'

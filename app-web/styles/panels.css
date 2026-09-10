@@ -2,7 +2,7 @@
 /* ============ Side Panels (shared) ============ */
 .side-panel {
     position: relative;
-    background: linear-gradient(180deg, rgba(16, 24, 36, 0.06), rgba(11, 18, 29, 0.015));
+    background: var(--app-sidebar-background);
     border: 1px solid rgba(176, 206, 255, 0.09);
     border-radius: 10px;
     display: flex;
@@ -27,8 +27,7 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 24%),
-    linear-gradient(135deg, rgba(130, 179, 255, 0.028), transparent 46%);
+    background: var(--app-sidebar-highlight-background);
     z-index: 1;
     pointer-events: none;
 }

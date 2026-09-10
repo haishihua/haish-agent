@@ -1,10 +1,8 @@
 import React from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronRight, Settings2, Plus, FlaskConical, LoaderCircle } from 'lucide-react';
 import {
   SETTINGS_SECTIONS,
   SETTINGS_SUBTABS,
-  SETTINGS_SECTION_COPY,
-  LLM_SUBTAB_COPY,
   settingsSectionMeta,
 } from '../model/settings-navigation.js';
 import { normalizeAgentSettings } from '../../agents/model/agent-settings.js';
@@ -13,9 +11,8 @@ import {
   workflowById,
   normalizeWorkflowRow,
 } from '../../workflow/model/workflow-catalog.js';
-import { PortalTooltip, closeAllPortalTooltips } from '../../../shared/ui/PortalTooltip.jsx';
+import { closeAllPortalTooltips } from '../../../shared/ui/PortalTooltip.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
-import { ConversationDialog } from '../../conversations/components/ConversationTaskCards.jsx';
 import {
   configItemsForSection,
   createGenericRecord,
@@ -24,7 +21,6 @@ import {
 } from '../model/settings-payload.js';
 import {
   SettingsTooltipIconButton,
-  ProviderIcon,
   ConnectionBrandIcon,
   AgentListIcon,
   WorkflowListIcon,
@@ -37,6 +33,13 @@ import { KnowledgeConfigEditor } from './KnowledgeConfigEditor.jsx';
 import { AgentConfigEditor } from './AgentConfigEditor.jsx';
 import { WorkflowConfigEditor } from './WorkflowConfigEditor.jsx';
 import { ToolsConfigEditor } from './ToolsConfigEditor.jsx';
+
+import { SettingsRow, SettingsSearch, SettingsSheet, SettingsDeleteDialog, ProviderIcon } from './SettingsPrimitives.jsx';
+import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
+import { ItemGroup } from '../../../shared/ui/settings-elements/ui/item.tsx';
+import { SheetFooter } from '../../../shared/ui/settings-elements/ui/sheet.tsx';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../../../shared/ui/settings-elements/ui/collapsible.tsx';
+import '../settings.css';
 
 const { useState, useEffect } = React;
 
@@ -77,6 +80,8 @@ export function SettingsPage({
   const [editingSettings, setEditingSettings] = useState(null);
   const [settingsSearch, setSettingsSearch] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [panelBusy, setPanelBusy] = useState('');
+  const [panelError, setPanelError] = useState('');
   const [expandedSettingsSections, setExpandedSettingsSections] = useState(() => new Set([activeSection]));
   const sectionMeta = settingsSectionMeta(activeSection) || SETTINGS_SECTIONS[0];
   const subtabs = SETTINGS_SUBTABS[activeSection] || [];
@@ -91,27 +96,15 @@ export function SettingsPage({
   const selectedId = activeSection === 'tools'
     ? activeSubtab
     : (items.some((item) => item.id === selectedConfigId) ? selectedConfigId : (items[0]?.id || ''));
-  const selectedItem = displayItems.find((item) => item.id === selectedId) || (showConfigList ? items[0] : null) || null;
   const listTitle = activeSection === 'llm'
     ? (activeSubtab === 'vision' ? 'Vision' : (activeSubtab === 'embedding' ? 'Embedding' : 'Chat'))
     : sectionMeta.label;
-  const listDescription = activeSection === 'llm'
-    ? (activeSubtab === 'vision'
-        ? 'Manage dedicated vision providers and image inspection fallback.'
-        : activeSubtab === 'embedding'
-          ? 'Manage embedding providers for retrieval and indexing.'
-        : 'Manage providers, default models, and chat runtime behavior.')
-    : (SETTINGS_SECTION_COPY[activeSection] || 'Manage runtime configuration.');
   const hideSettingsSearch = activeSection === 'memory' || activeSection === 'knowledge';
   const filteredItems = !hideSettingsSearch && settingsSearch.trim()
     ? items.filter((item) => `${item.title} ${item.kind || ''} ${item.summary || ''}`.toLowerCase().includes(settingsSearch.trim().toLowerCase()))
     : items;
   // Memory/Knowledge 是单后端配置，隐藏添加；其他（含已配置的 Embedding）始终显示，点“连接”即重新打开配置入口。
   const canAddItem = !['memory', 'knowledge'].includes(activeSection);
-  const isMcpConfigPane = activeSection === 'tools' && activeSubtab === 'tools-mcp';
-  const isSkillsConfigPane = activeSection === 'tools' && activeSubtab === 'tools-skills';
-  const isWebConfigPane = activeSection === 'tools' && activeSubtab === 'tools-web';
-  const isPlainToolsPane = isMcpConfigPane || isSkillsConfigPane || isWebConfigPane;
   useEffect(() => {
     setExpandedSettingsSections((prev) => {
       const next = new Set([...prev, activeSection]);
@@ -130,6 +123,7 @@ export function SettingsPage({
   };
   const openEditor = (section, id, mode = 'edit') => {
     if (!id) return;
+    setPanelError('');
     setEditingSettings({ section, id, mode });
   };
   const closeEditor = () => setEditingSettings(null);
@@ -192,6 +186,7 @@ export function SettingsPage({
   };
   const selectSubtab = (section, id) => {
     cancelEditor();
+    setSettingsSearch('');
     setExpandedSettingsSections((prev) => new Set([...prev, section]));
     onSectionChange(section);
     onSelectionChange((prev) => {
@@ -283,7 +278,6 @@ export function SettingsPage({
     openEditor(activeSection, record.id, 'new');
   };
   const showSideEditor = showConfigList && Boolean(editingSettings);
-  const workbenchClassName = `settings-workbench ${activeSection === 'workflow' ? 'workflow-workbench' : ''} ${showConfigList ? `provider-list-only ${showSideEditor ? 'has-detail' : ''}` : `single-pane ${isMcpConfigPane ? 'mcp-pane' : ''}`}`;
   const panelSection = editingSettings?.section || '';
   const panelSelectedId = editingSettings?.id || '';
   const panelMode = editingSettings?.mode || 'edit';
@@ -341,8 +335,9 @@ export function SettingsPage({
     const label = String(target.title || target.id || 'this entry').trim();
     closeAllPortalTooltips();
     setDeleteConfirm({
+      section, id,
       kind: 'delete',
-      title: `Delete ${label}?`,
+      title: label,
       message: `"${label}" will be permanently removed. This cannot be undone.`,
       confirmLabel: 'Delete',
       danger: true,
@@ -350,16 +345,17 @@ export function SettingsPage({
     });
   };
   const saveAndClose = async () => {
-    const saved = panelSection === 'agent'
-      ? await onSaveCustomAgent?.(panelSelectedId)
-      : panelSection === 'workflow'
-        ? await onSaveCustomWorkflow?.(panelSelectedId)
-        : await onSave();
-    if (saved !== false) closeEditor();
+    setPanelBusy('save'); setPanelError('');
+    try {
+      const saved = panelSection === 'agent' ? await onSaveCustomAgent?.(panelSelectedId) : panelSection === 'workflow' ? await onSaveCustomWorkflow?.(panelSelectedId) : await onSave();
+      if (saved !== false) closeEditor();
+    } catch (error) { setPanelError(String(error?.message || error)); }
+    finally { setPanelBusy(''); }
   };
   const testSelectedProvider = async () => {
-    if (panelSection !== 'llm' || !panelSelectedId) return;
-    await onTestLlmConfig?.(panelSelectedId);
+    setPanelBusy('test');
+    try { if (panelSection === 'llm') await onTestLlmConfig?.(panelSelectedId); else await onTestSettingsConnection?.(panelSection, panelSelectedId); }
+    finally { setPanelBusy(''); }
   };
   const editorBody = (section, id, mode = panelMode) => {
     const readOnly = mode === 'detail';
@@ -379,6 +375,7 @@ export function SettingsPage({
     if (section === 'tools') {
       return (
         <ToolsConfigEditor
+          key={id}
           selectedId={id}
           records={records}
           onRecordsChange={onRecordsChange}
@@ -423,303 +420,28 @@ export function SettingsPage({
     return <GenericConfigEditor section={section} selectedId={id} records={records} onRecordsChange={onRecordsChange} readOnly={readOnly} />;
   };
 
-  return (
-    <div className="settings-page">
-      <aside className="settings-sidebar">
-        <div className="settings-sidebar-head">
-          <span>Settings</span>
-        </div>
-        <nav className="settings-side-tabs">
-          {SETTINGS_SECTIONS.map((section) => {
-            // 分组导航（如 Context → Memory / Knowledge）：子项是真实的 section id，
-            // 点击子项直接切换 onSectionChange(child.id)，后端/存储逻辑完全不变。
-            const isGroup = Array.isArray(section.children) && section.children.length > 0;
-            if (isGroup) {
-              const isActive = section.children.some((child) => child.id === activeSection);
-              const isExpanded = expandedSettingsSections.has(section.id);
-              return (
-                <div className="settings-side-section" key={section.id}>
-                  <button
-                    type="button"
-                    className={isActive ? 'active' : ''}
-                    aria-expanded={isExpanded}
-                    onClick={() => {
-                      setExpandedSettingsSections((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(section.id)) next.delete(section.id);
-                        else next.add(section.id);
-                        return next;
-                      });
-                    }}
-                  >
-                    <span>{section.label}</span>
-                    <ChevronDown
-                      className={`settings-side-section-chevron${isExpanded ? ' expanded' : ''}`}
-                      size={16}
-                      aria-hidden="true"
-                    />
-                  </button>
-                  {isExpanded ? (
-                    <div className="settings-side-subtabs" role="tablist" aria-label={`${section.label} settings`}>
-                      {section.children.map((child) => {
-                        const isChildActive = activeSection === child.id;
-                        return (
-                          <button
-                            key={child.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={isChildActive}
-                            className={isChildActive ? 'active' : ''}
-                            onClick={() => {
-                              cancelEditor();
-                              setExpandedSettingsSections((prev) => new Set([...prev, section.id]));
-                              onSectionChange(child.id);
-                            }}
-                          >
-                            <span className="settings-side-subtab-icon">
-                              <AppIcon name={child.icon || 'database'} size={16} />
-                            </span>
-                            <span>{child.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            }
-            const sectionSubtabs = SETTINGS_SUBTABS[section.id] || [];
-            const sectionSubtab = sectionSubtabs.some((item) => item.id === selectionBySection[section.id])
-              ? selectionBySection[section.id]
-              : (sectionSubtabs[0]?.id || '');
-            const isActive = activeSection === section.id;
-            const isExpanded = expandedSettingsSections.has(section.id);
-            return (
-              <div className="settings-side-section" key={section.id}>
-                <button
-                  type="button"
-                  className={`${isActive ? 'active' : ''}`.trim()}
-                  aria-expanded={sectionSubtabs.length ? isExpanded : undefined}
-                  onClick={() => {
-                    if (sectionSubtabs.length) {
-                      setExpandedSettingsSections((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(section.id)) next.delete(section.id);
-                        else next.add(section.id);
-                        return next;
-                      });
-                      return;
-                    }
-                    cancelEditor();
-                    onSectionChange(section.id);
-                  }}
-                >
-                  <span>{section.label}</span>
-                  {sectionSubtabs.length ? (
-                    <ChevronDown
-                      className={`settings-side-section-chevron${isExpanded ? ' expanded' : ''}`}
-                      size={16}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                </button>
-                {isExpanded && sectionSubtabs.length ? (
-                  <div className="settings-side-subtabs" role="tablist" aria-label={`${section.label} settings`}>
-                    {sectionSubtabs.map((tab) => {
-                      const isSubtabActive = isActive && sectionSubtab === tab.id;
-                      return (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          role="tab"
-                          aria-selected={isSubtabActive}
-                          className={isSubtabActive ? 'active' : ''}
-                          onClick={() => selectSubtab(section.id, tab.id)}
-                        >
-                          <span className="settings-side-subtab-icon">
-                            <AppIcon name={SETTINGS_SUBTAB_ICONS[tab.id] || 'configure'} size={16} />
-                          </span>
-                          <span>{tab.label}</span>
-                          {section.id === 'llm' ? (
-                            <strong className="settings-side-subtab-count">
-                              {configItemsForSection(section.id, llmDraft, records, tab.id, agentSettings).length}
-                            </strong>
-                          ) : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </nav>
-      </aside>
-      <main className="settings-main">
-        <div className={workbenchClassName}>
-          {showConfigList ? (
-            <section className="settings-config-list">
-              <div className="settings-list-head">
-                <div className="settings-list-title">
-                  <strong>{listTitle}</strong>
-                  <span>{listDescription}</span>
-                </div>
-              </div>
-              {!hideSettingsSearch ? (
-                <div className="settings-search-row">
-                  <AppIcon name="search" className="settings-search-lucide" />
-                  <input
-                    value={settingsSearch}
-                    onChange={(event) => setSettingsSearch(event.target.value)}
-                    aria-label={`Search ${listTitle.toLowerCase()}`}
-                    placeholder={`Search ${listTitle.toLowerCase()}...`}
-                  />
-                </div>
-              ) : null}
-              <div className="settings-list-scroll">
-                {filteredItems.map((item) => {
-                  const isConnectionSection = activeSection === 'memory' || activeSection === 'knowledge';
-                  const connectionStatus = settingsConnectionStatus?.[activeSection]?.[item.id];
-                  const connectionMeta = connectionBadgeMeta(connectionStatus);
-                  const showBrandIcon = activeSection === 'llm'
-                    || activeSection === 'agent'
-                    || activeSection === 'workflow'
-                    || isConnectionSection;
-                  return (
-                    <div
-                      key={item.id}
-                      className={`settings-config-row${showBrandIcon ? ' provider-row' : ''}${selectedItem?.id === item.id ? ' active' : ''}`}
-                    >
-                      <button
-                        type="button"
-                        className={`settings-config-main${showBrandIcon ? ' has-provider-icon' : ''}`}
-                        onClick={() => {
-                          selectListItem(item.id);
-                        }}
-                      >
-                        {activeSection === 'llm' ? (
-                          <ProviderIcon provider={item.provider} />
-                        ) : activeSection === 'agent' ? (
-                          <AgentListIcon item={item} />
-                        ) : activeSection === 'workflow' ? (
-                          <WorkflowListIcon item={item} />
-                        ) : isConnectionSection ? (
-                          <ConnectionBrandIcon itemId={item.id} title={item.title} />
-                        ) : null}
-                        <span className="settings-config-copy">
-                          <span className="settings-config-title">{item.title}</span>
-                          <span className="settings-config-summary">{item.summary}</span>
-                        </span>
-                      </button>
-                      {isConnectionSection ? (
-                        <PortalTooltip text={connectionMeta.label} position="above">
-                          <span
-                            className={`settings-active-badge ${connectionMeta.className}`}
-                            aria-label={connectionMeta.label}
-                          >
-                            <AppIcon
-                              name={
-                                connectionMeta.className === 'success'
-                                  ? 'active'
-                                  : connectionMeta.className === 'testing'
-                                    ? 'test'
-                                    : 'close'
-                              }
-                              size={18}
-                            />
-                          </span>
-                        </PortalTooltip>
-                      ) : (
-                        <PortalTooltip text={item.enabled === false ? 'Disabled' : 'Enabled'} position="above">
-                          <span
-                            className={`settings-active-badge ${item.enabled === false ? 'disabled' : ''}`}
-                            aria-label={item.enabled === false ? 'Disabled' : 'Enabled'}
-                          >
-                            <AppIcon
-                              name={activeSection === 'llm'
-                                ? (item.enabled === false ? 'toggle-left' : 'toggle-right')
-                                : (item.enabled === false ? 'close' : 'active')}
-                              size={18}
-                            />
-                          </span>
-                        </PortalTooltip>
-                      )}
-                      <div className="settings-config-actions">
-                        {activeSection === 'agent' && item.canToggle ? (
-                          <SettingsTooltipIconButton
-                            label={item.enabled === false ? 'Enable' : 'Disable'}
-                            icon={item.enabled === false ? 'toggle-left' : 'toggle-right'}
-                            iconSize={22}
-                            onClick={() => onTogglePresetAgent?.(item.id, item.enabled === false)}
-                          />
-                        ) : null}
-                        {activeSection === 'workflow' && item.canToggle ? (
-                          <SettingsTooltipIconButton
-                            label={item.enabled === false ? 'Enable' : 'Disable'}
-                            icon={item.enabled === false ? 'toggle-left' : 'toggle-right'}
-                            iconSize={22}
-                            onClick={() => onTogglePresetWorkflow?.(item.id, item.enabled === false)}
-                          />
-                        ) : null}
-                        {activeSection !== 'agent' || item.canConfigure || item.readonly ? (
-                          <SettingsTooltipIconButton
-                            label={item.readonly ? 'View' : 'Edit'}
-                            icon={item.readonly ? 'book-open' : 'configure'}
-                            iconSize={item.readonly ? 20 : 18}
-                            onClick={() => {
-                              selectItem(item.id);
-                              openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit');
-                            }}
-                          />
-                        ) : null}
-                        {activeSection === 'llm' && item.canDelete ? (
-                          <SettingsTooltipIconButton
-                            label="Delete"
-                            icon="delete"
-                            danger
-                            iconSize={20}
-                            onClick={() => requestDelete('llm', item.id)}
-                          />
-                        ) : null}
-                        {activeSection === 'agent' && item.custom ? (
-                          <SettingsTooltipIconButton
-                            label="Delete"
-                            icon="delete"
-                            danger
-                            iconSize={20}
-                            onClick={() => requestDelete('agent', item.id)}
-                          />
-                        ) : null}
-                        {activeSection === 'workflow' && item.custom ? (
-                          <SettingsTooltipIconButton
-                            label="Delete"
-                            icon="delete"
-                            danger
-                            iconSize={20}
-                            onClick={() => requestDelete('workflow', item.id)}
-                          />
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-                {canAddItem ? (
-                  <button type="button" className="settings-connect-card" onClick={addItem}>
-                    <span className="settings-connect-icon" aria-hidden="true">
-                      <AppIcon name="plus" size={18} />
-                    </span>
-                    <span>
-                      <strong>{activeSection === 'llm' ? (activeSubtab === 'vision' ? 'Connect vision provider' : (activeSubtab === 'embedding' ? 'Connect embedding provider' : 'Connect provider')) : (activeSection === 'agent' ? 'Create custom agent' : (activeSection === 'workflow' ? 'Create workflow' : `Add ${sectionMeta.label}`))}</strong>
-                      <small>{activeSection === 'llm' ? 'Use official providers or OpenAI-compatible APIs.' : (activeSection === 'agent' ? 'Define prompt, tools, skills, and sub-agent access.' : (activeSection === 'workflow' ? 'Start from a blank canvas and wire agents, models, tools, conditions, and outputs into a reusable flow.' : 'Create another configuration.'))}</small>
-                    </span>
-                  </button>
-                ) : null}
-                {!filteredItems.length && items.length ? <div className="settings-empty">No matching configuration.</div> : null}
-                {!items.length ? <div className="settings-empty">No configuration yet.</div> : null}
-              </div>
-            </section>
-          ) : null}
-          {showSideEditor ? (
+  const workflowDetailOpen = showSideEditor && panelSection === 'workflow';
+  const ordinaryEditorOpen = showSideEditor && !workflowDetailOpen;
+  const navCount = (section, tab) => section === 'llm' ? configItemsForSection(section, llmDraft, records, tab, agentSettings).length : section === 'agent' || section === 'workflow' ? configItemsForSection(section, llmDraft, records, '', agentSettings, workflowSettings).length : tab === 'tools-skills' ? (records.tools || []).find(r => r.id === tab)?.skills?.length || 0 : null;
+  const addButton = canAddItem && <Button size="sm" onClick={addItem} disabled={Boolean(panelBusy)}><Plus size={16} />{activeSection === 'llm' ? 'Add provider' : activeSection === 'agent' ? 'Create agent' : 'Create workflow'}</Button>;
+  return <div className="settings-page settings-modern settings-theme dark">
+    <aside className="settings-nav-modern"><div className="settings-nav-title"><Settings2 size={17} />Settings</div><nav aria-label="Settings navigation">
+      {SETTINGS_SECTIONS.map(section => {
+        const children = section.children || SETTINGS_SUBTABS[section.id] || [];
+        const isGroup = Boolean(section.children);
+        const isActive = section.id === activeSection || children.some(child => child.id === activeSection);
+        return <Collapsible key={section.id} open={expandedSettingsSections.has(section.id)} onOpenChange={open => setExpandedSettingsSections(prev => { const next = new Set(prev); if (open) next.add(section.id); else next.delete(section.id); return next; })}>
+          <CollapsibleTrigger asChild><Button variant="ghost" className={`settings-nav-group ${isActive ? 'is-current' : ''}`}><span>{section.label}</span><ChevronRight size={14} /></Button></CollapsibleTrigger>
+          <CollapsibleContent><div className="settings-nav-children">{children.map(child => {
+            const selected = isGroup ? activeSection === child.id : activeSection === section.id && activeSubtab === child.id;
+            const count = navCount(isGroup ? child.id : section.id, child.id);
+            return <Button key={child.id} variant="ghost" className={`settings-nav-item ${selected ? 'is-selected' : ''}`} aria-current={selected ? 'page' : undefined} onClick={() => { if (panelBusy) return; if (isGroup) { cancelEditor(); setSettingsSearch(''); onSectionChange(child.id); } else selectSubtab(section.id, child.id); }}><AppIcon name={child.icon || SETTINGS_SUBTAB_ICONS[child.id] || 'configure'} size={16} /><span>{child.label}</span>{count !== null && <small>{count}</small>}</Button>;
+          })}</div></CollapsibleContent>
+        </Collapsible>;
+      })}
+    </nav></aside>
+    <main className={`settings-modern-main ${ordinaryEditorOpen ? 'with-editor' : ''}`}>
+      {workflowDetailOpen ? <div className="settings-legacy-workflow settings-workbench workflow-workbench provider-list-only has-detail">
             <section className="settings-editor settings-detail-drawer is-editing">
               <div className="settings-editor-head">
                 <div className="settings-editor-title">
@@ -783,35 +505,19 @@ export function SettingsPage({
                 </div>
               ) : null}
             </section>
-          ) : null}
-          {!showConfigList ? (
-            <section className={`settings-editor ${isPlainToolsPane ? 'settings-mcp-editor' : ''}`}>
-              <div className="settings-editor-head">
-                <div>
-                  <strong>{isMcpConfigPane ? 'Mcp Config' : (isSkillsConfigPane ? 'Installed skills' : (isWebConfigPane ? 'Search providers' : sectionMeta.label))}</strong>
-                  {isMcpConfigPane
-                    ? <span>Configure Model Context Protocol servers, commands, and tool integrations.</span>
-                    : isSkillsConfigPane
-                      ? <span>Install skills to the system library first, then sync them into each personal project environment.</span>
-                      : isWebConfigPane
-                        ? <span>Configure provider API keys used by web search and page fetch tools.</span>
-                    : <span>{LLM_SUBTAB_COPY[activeSubtab] || SETTINGS_SECTION_COPY[activeSection] || 'Configuration'}</span>}
-                </div>
-                {isPlainToolsPane ? null : (
-                  <div className="settings-head-actions">
-                    <button type="button" className="settings-primary-button" onClick={onSave}>Save</button>
-                  </div>
-                )}
-              </div>
-              {editorBody(activeSection, selectedId, 'edit')}
-            </section>
-          ) : null}
-        </div>
-      </main>
-      <ConversationDialog
-        dialog={deleteConfirm}
-        onCancel={() => setDeleteConfirm(null)}
-      />
-    </div>
-  );
+      </div> : showConfigList ? <div className="settings-content-modern">
+        <div className="settings-page-heading"><h1>{activeSection === 'llm' ? `${listTitle} providers` : activeSection === 'agent' ? 'Agents' : activeSection === 'workflow' ? 'Agentic workflows' : listTitle}</h1>{activeSection !== 'llm' && addButton}</div>
+        {!hideSettingsSearch && <div className={activeSection === 'llm' ? 'settings-provider-toolbar' : undefined}>
+          <SettingsSearch label={activeSection === 'llm' ? 'Search providers or models' : `Search ${listTitle.toLowerCase()}`} value={settingsSearch} onChange={setSettingsSearch} />
+          {activeSection === 'llm' && addButton}
+        </div>}
+        <ItemGroup className="settings-list-modern">{filteredItems.map(item => <SettingsRow key={item.id} title={item.title} description={item.summary} readOnly={item.readonly} selected={editingSettings?.id === item.id} icon={activeSection === 'llm' ? <ProviderIcon provider={item.provider} name={item.title} /> : activeSection === 'agent' ? <AgentListIcon item={item} /> : activeSection === 'workflow' ? <WorkflowListIcon item={item} /> : <ConnectionBrandIcon itemId={item.id} title={item.title} />} onOpen={() => { if (panelBusy) return; selectListItem(item.id); openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit'); }} enabled={item.enabled} onToggle={item.canToggle ? enabled => (activeSection === 'agent' ? onTogglePresetAgent : onTogglePresetWorkflow)?.(item.id, enabled) : undefined} busy={Boolean(panelBusy)} onDelete={item.canDelete || item.custom ? () => requestDelete(activeSection, item.id) : undefined} status={['memory', 'knowledge'].includes(activeSection) ? connectionBadgeMeta(settingsConnectionStatus?.[activeSection]?.[item.id]) : undefined} />)}{!filteredItems.length && <div className="settings-empty">{settingsSearch ? 'No matching configuration.' : 'No configuration yet.'}</div>}</ItemGroup>
+      </div> : editorBody(activeSection, selectedId, 'edit')}
+    </main>
+    <div data-settings-portal="" />
+    <SettingsSheet open={ordinaryEditorOpen} title={panelSelectedItem?.title || listTitle} onClose={() => { if (!panelBusy) cancelEditor(); }}>
+      {ordinaryEditorOpen && <><div className="settings-editor-scroll">{editorBody(panelSection, panelSelectedId, panelMode)}{panelConnectionStatus?.message && <p className={`settings-inline-${panelConnectionStatus.state === 'error' ? 'error' : 'success'}`} role="status">{panelConnectionStatus.message}</p>}{panelError && <p className="settings-inline-error" role="alert">{panelError}</p>}</div><SheetFooter><div>{(panelSection === 'llm' || panelIsConnectionSection) && <Button size="sm" variant="outline" onClick={testSelectedProvider} disabled={Boolean(panelBusy) || panelConnectionTesting}>{panelBusy === 'test' || panelConnectionTesting ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button size="sm" variant="ghost" disabled={Boolean(panelBusy)} onClick={cancelEditor}>{panelCanSave ? 'Cancel' : 'Close'}</Button>{panelCanSave && <Button size="sm" onClick={saveAndClose} disabled={Boolean(panelBusy)}>{panelBusy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></>}
+    </SettingsSheet>
+    <SettingsDeleteDialog target={deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={target => performDelete(target.section, target.id)} />
+  </div>;
 }

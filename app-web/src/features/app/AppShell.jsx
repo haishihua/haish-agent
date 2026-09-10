@@ -837,7 +837,7 @@ export function AppShell() {
     handleTestWebProvider,
     handleSettingsConnectionDirty,
     handleTestSettingsConnection,
-    handleInstallSkillDirectory,
+    handleInstallSkillPackage,
     handleToggleSkill,
     handleUninstallSkill,
   } = createSettingsHandlers({
@@ -1597,7 +1597,7 @@ export function AppShell() {
             onTestSettingsConnection={handleTestSettingsConnection}
             onSettingsConnectionDirty={handleSettingsConnectionDirty}
             settingsConnectionStatus={settingsConnectionStatus}
-            onInstallSkill={handleInstallSkillDirectory}
+            onInstallSkill={handleInstallSkillPackage}
             onToggleSkill={handleToggleSkill}
             onUninstallSkill={handleUninstallSkill}
             skillActionBusy={skillActionBusy}
@@ -1664,7 +1664,7 @@ export function AppShell() {
 	                    running={currentConversationRunning}
 	                    disabled={composerDisabled}
 	                    submitPending={submitPending}
-	                    onSend={(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText) => handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText)}
+	                    onSend={handleDeploy}
                     onStop={handleStop}
                     onSelectFile={(file, selectedAgentId) => { handleAttachmentSelect(file, selectedAgentId, 'chat').catch((error) => console.error('attachment upload failed', error)); }}
                     onClearFile={handleAttachmentClear}

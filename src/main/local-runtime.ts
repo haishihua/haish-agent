@@ -109,7 +109,7 @@ function runtimeRepoPath(paths: RuntimePaths): string {
   );
 }
 
-function runtimeWorkdir(userDataPath: string): string {
+export function runtimeWorkdir(userDataPath: string): string {
   return process.env.HAISH_LOCAL_RUNTIME_WORKDIR || path.join(userDataPath, 'runtime');
 }
 

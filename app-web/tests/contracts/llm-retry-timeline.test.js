@@ -39,13 +39,37 @@ test('exhausted retry uses the failed state without exposing raw errors', () => 
   assert.equal(item.errorMessage, undefined);
 });
 
+test('unfinished retries settle with terminal tasks on live updates and history rebuilds', () => {
+  const task = { eventLog: [retryEvent('retrying')] };
+  const running = buildChatTimeline(task, 'running');
+  for (const [status, expected] of [['done', 'done'], ['completed', 'done'], ['failed', 'failed'], ['cancelled', 'cancelled'], ['aborted', 'cancelled']]) {
+    const live = buildChatTimeline(task, status);
+    assert.equal(live.items[0].status, expected, status);
+    assert.equal(live.items[0].id, running.items[0].id);
+    assert.equal(buildChatTimeline({ ...task, status }).items[0].status, expected);
+  }
+  assert.equal(running.items[0].status, 'running', 'cached running snapshot stays unchanged');
+  assert.equal(task.eventLog[0].retryState, 'retrying', 'recorded event stays unchanged');
+  assert.equal(buildChatTimeline(task, 'queued').items[0].status, 'running');
+});
+
+test('task termination preserves explicitly recovered and exhausted retries', () => {
+  for (const taskStatus of ['done', 'failed', 'cancelled']) {
+    for (const [retryState, expected] of [['recovered', 'done'], ['exhausted', 'failed']]) {
+      const task = { eventLog: [retryEvent('retrying'), retryEvent(retryState)] };
+      const [item] = buildChatTimeline(task, taskStatus).items;
+      assert.equal(item.status, expected);
+      assert.equal(item.retryState, retryState);
+    }
+  }
+});
+
 test('retry status is accessible and replaces generic activity while running', () => {
   const source = fs.readFileSync(
     new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url),
     'utf8',
   );
-  assert.match(source, /role=\{isRetry \? 'status' : undefined\}/);
-  assert.match(source, /aria-live=\{isRetry \? 'polite' : undefined\}/);
+  assert.match(source, /role="status" aria-live="polite" aria-atomic="true"/);
   assert.match(source, /<AppIcon name="retry" size=\{13\} className="chat-timeline-retry-icon" \/>/);
   assert.match(source, /activity && !retrying/);
   assert.match(source, /<ThinkingOrb\s+state=\{activity\.state === 'composing' \? 'working' : activity\.state === 'working' \? 'composing' : activity\.state\}/);
@@ -58,18 +82,21 @@ test('retry cards and actions use the shared vector icon', () => {
 
   assert.match(iconSource, /retry: RefreshCw/);
   assert.match(taskCardSource, /<AppIcon name="retry" size=\{15\} \/>/);
-  assert.match(styleSource, /\.chat-timeline-meta\.status-running \.chat-timeline-retry-icon/);
+  assert.doesNotMatch(styleSource, /\.chat-timeline-meta\.status-running \.chat-timeline-retry-icon/);
   assert.doesNotMatch(styleSource, /\.chat-bubble-rerun-icon/);
 });
 
-test('tool and retry cards share the same timeline chip primitive', () => {
+test('retry and compaction use shared tool rows with their own disclosure behavior', () => {
   const componentSource = fs.readFileSync(
     new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url),
     'utf8',
   );
   const styleSource = fs.readFileSync(new URL('../../styles/chat.css', import.meta.url), 'utf8');
 
-  assert.match(componentSource, /chat-timeline-chip-head chat-timeline-tool-head/);
-  assert.match(componentSource, /chat-timeline-chip-head chat-timeline-meta-head/);
-  assert.match(styleSource, /\.chat-timeline-chip-head \{/);
+  assert.match(componentSource, /<ToolCall /);
+  assert.match(componentSource, /<ToolTimeline /);
+  assert.match(componentSource, /<ToolCall label=\{item\.summary \|\| 'Retrying model response…'\} status=\{item\.status \|\| 'done'\} expandable=\{false\}/);
+  assert.match(componentSource, /open=\{open\} onOpenChange=\{setOpen\} expandable=\{expandable\}/);
+  assert.doesNotMatch(componentSource, /chat-timeline-chip-head/);
+  assert.doesNotMatch(styleSource, /\.chat-timeline-chip-head \{/);
 });

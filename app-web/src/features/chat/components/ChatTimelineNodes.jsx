@@ -1,12 +1,19 @@
 import React from 'react';
 import { TerminalDetail, DiffDetail } from '../../../shared/ui/agent-elements/ToolDetails.jsx';
+import { ToolCall, ToolStatus } from '../../../shared/ui/agent-elements/ToolCall.jsx';
+import { ToolTimeline } from '../../../shared/ui/agent-elements/ToolTimeline.jsx';
+import { WebSearch } from '../../../shared/ui/agent-elements/WebSearch.jsx';
+import { Bot, Sparkles } from 'lucide-react';
+import { BrowserToolDetail } from './BrowserToolDetail.jsx';
+import { VisionToolDetail } from './VisionToolDetail.jsx';
+import { toolCardHeading } from '../model/tool-presentation.js';
 import { ThinkingOrb } from 'thinking-orbs';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { IncrementalText } from '../../../shared/ui/IncrementalText.jsx';
 import { AskUserInlineForm } from './AskUserInlineForm.jsx';
 import { selectActiveAskUserItemId } from '../model/pending-user-input.js';
-import { CATEGORY_ICON_CLASS, CATEGORY_LABEL } from '../model/run-catalog.js';
+import { CATEGORY_ICON_CLASS } from '../model/run-catalog.js';
 import { BrowserRuntimeCard, selectBrowserRuntimeRequest, useBrowserRuntimeRequests } from '../../approvals/components/ApprovalOverlay.jsx';
 import { buildSubAgentTimelineItems, buildToolView } from '../model/tool-view.js';
 import { resolveAgentActivity } from '../model/chat-timeline.js';
@@ -137,14 +144,19 @@ export function ChatTimelineChevron({ open }) {
   );
 }
 
-function ChatTimelineToolBody({ view }) {
+function ChatTimelineToolBody({ view, conversationId, taskId }) {
   if (view.mode === 'terminal') {
     return <TerminalDetail view={view} />;
   }
   if (view.mode === 'process') {
-    return <ChatProcessConversation view={view} />;
+    return view.isVision ? <VisionToolDetail view={view} />
+      : <ChatProcessConversation view={view} conversationId={conversationId} taskId={taskId} />;
   }
   if (view.mode === 'diff') return <DiffDetail view={view} />;
+  if (view.mode === 'web-search') return <WebSearch {...view.search}
+    running={view.running} failed={view.failed} cancelled={view.cancelled} />;
+  if (view.mode === 'browser') return <BrowserToolDetail {...view.browser} taskId={taskId}
+    running={view.running} failed={view.failed} cancelled={view.cancelled} />;
   if (view.mode === 'json') {
     return <ChatJsonPair requestJson={view.requestJson} responseJson={view.responseJson || view.body} />;
   }
@@ -236,6 +248,7 @@ function ChatJsonBlock({ text, compact = false }) {
 }
 
 function ChatJsonPair({ requestJson, responseJson }) {
+  const id = React.useId();
   const segments = [];
   if (requestJson) segments.push({ id: 'request', label: 'Request', text: requestJson });
   if (responseJson) segments.push({ id: 'response', label: 'Response', text: responseJson });
@@ -245,15 +258,26 @@ function ChatJsonPair({ requestJson, responseJson }) {
   return (
     <div className="chat-json-card">
       {segments.length > 1 ? (
-        <div className="chat-json-segments" role="tablist">
+        <div className="chat-json-segments" role="tablist" aria-label="Tool data">
           {segments.map((seg) => (
             <button
               key={seg.id}
               type="button"
               role="tab"
+              id={`${id}-${seg.id}`}
+              aria-controls={`${id}-panel`}
+              tabIndex={seg.id === active.id ? 0 : -1}
               aria-selected={seg.id === active.id}
               className={`chat-json-segment ${seg.id === active.id ? 'is-active' : ''}`}
               onClick={() => setActiveId(seg.id)}
+              onKeyDown={(event) => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                const next = event.key === 'Home' ? segments[0] : event.key === 'End' ? segments.at(-1)
+                  : segments.find((segment) => segment.id !== active.id);
+                setActiveId(next.id);
+                document.getElementById(`${id}-${next.id}`)?.focus();
+              }}
             >
               {seg.label}
             </button>
@@ -264,18 +288,25 @@ function ChatJsonPair({ requestJson, responseJson }) {
           <span className="chat-json-card-title">{active.label}</span>
         </div>
       )}
-      <pre className="chat-json-card-body">{active.text}</pre>
+      <pre className="chat-json-card-body" id={`${id}-panel`} role={segments.length > 1 ? 'tabpanel' : undefined}
+        aria-labelledby={segments.length > 1 ? `${id}-${active.id}` : undefined} tabIndex={0}>
+        <JsonText text={active.text} />
+      </pre>
     </div>
   );
 }
 
-function chatProcessFileName(path) {
-  if (!path) return '';
-  const segments = String(path).split(/[\\/]/).filter(Boolean);
-  return segments[segments.length - 1] || path;
+function JsonText({ text }) {
+  // Tokenize as text so truncated JSON remains readable and never becomes HTML.
+  return String(text).split(/("(?:\\.|[^"\\])*"\s*:|"(?:\\.|[^"\\])*"|\b(?:true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b)/g).map((part, index) => {
+    const kind = part.startsWith('"') ? (part.trimEnd().endsWith(':') ? 'key' : 'string')
+      : /^(?:true|false|null|-?\d)/.test(part) ? 'value' : '';
+    return kind ? <span key={index} className={`aui-json-${kind}`}>{part}</span> : part;
+  });
 }
 
-function ChatImsgCollapsible({ children, maxHeight = 360 }) {
+function ChatSubAgentCollapsible({ children, maxHeight = 360 }) {
+  const bodyId = React.useId();
   const bodyRef = React.useRef(null);
   const [expanded, setExpanded] = React.useState(false);
   const [overflows, setOverflows] = React.useState(false);
@@ -296,17 +327,19 @@ function ChatImsgCollapsible({ children, maxHeight = 360 }) {
   const showToggle = overflows || expanded;
   return (
     <div
-      className={`chat-imsg-collapsible ${expanded ? 'is-expanded' : ''} ${overflows && !expanded ? 'is-collapsed' : ''}`}
+      className={`chat-subagent-collapsible ${expanded ? 'is-expanded' : ''} ${overflows && !expanded ? 'is-collapsed' : ''}`}
     >
       <div
         ref={bodyRef}
-        className="chat-imsg-collapsible-body"
+        id={bodyId}
+        className="chat-subagent-collapsible-body"
         style={expanded ? null : { maxHeight: `${maxHeight}px` }}
       >
         {children}
       </div>
       {showToggle ? (
-        <button type="button" className="chat-imsg-show-toggle" onClick={() => setExpanded((v) => !v)}>
+        <button type="button" className="chat-subagent-show-toggle" aria-expanded={expanded}
+          aria-controls={bodyId} onClick={() => setExpanded((v) => !v)}>
           {expanded ? 'Collapse' : 'View All'}
         </button>
       ) : null}
@@ -314,8 +347,8 @@ function ChatImsgCollapsible({ children, maxHeight = 360 }) {
   );
 }
 
-function ChatProcessConversation({ view }) {
-  const hasPrompt = Boolean(view.task || view.role || view.systemPrompt || view.mediaPath);
+function ChatProcessConversation({ view, conversationId, taskId }) {
+  const hasPrompt = Boolean(view.task || view.role || view.systemPrompt);
   const streamAnswerText = String(view.streamAnswerText || '');
   const hasStreamAnswer = Boolean(streamAnswerText.trim());
   const hasStream = Array.isArray(view.streamLines) && view.streamLines.length > 0;
@@ -325,7 +358,6 @@ function ChatProcessConversation({ view }) {
   if (!hasPrompt && !hasSubTimeline && !hasStreamAnswer && !hasStream && !hasFinal && !view.requestJson) {
     return null;
   }
-  const fileName = chatProcessFileName(view.mediaPath);
   const fields = [];
   if (view.role) fields.push({ label: 'Role', value: view.role });
   if (view.systemPrompt)
@@ -333,72 +365,56 @@ function ChatProcessConversation({ view }) {
   if (view.task) fields.push({ label: 'Task', value: view.task, multiline: true, markdown: true });
   const renderSubContent = () => {
     if (hasFinal) {
-      const inner = view.isVision ? (
-        <div className="chat-imsg-plain">{view.finalText}</div>
-      ) : (
-        <Markdown source={view.finalText} />
-      );
-      return <ChatImsgCollapsible maxHeight={360}>{inner}</ChatImsgCollapsible>;
+      return <ChatSubAgentCollapsible><Markdown source={view.finalText} /></ChatSubAgentCollapsible>;
     }
     if (hasSubTimeline) {
       return (
-        <ChatImsgCollapsible maxHeight={420}>
-          <div className="chat-imsg-subtimeline">
-            <ChatAgentTimeline items={subTimelineItems} streaming={view.isRunning} />
-          </div>
-        </ChatImsgCollapsible>
+        <ChatSubAgentCollapsible maxHeight={420}>
+          <ChatAgentTimeline items={subTimelineItems} streaming={view.isRunning}
+            conversationId={conversationId} taskId={taskId} />
+        </ChatSubAgentCollapsible>
       );
     }
     if (hasStreamAnswer || hasStream) {
       return (
-        <ChatImsgCollapsible maxHeight={360}>
+        <ChatSubAgentCollapsible>
           {hasStreamAnswer ? (
-            <div className="chat-imsg-stream-answer">
-              <span className="chat-imsg-stream-answer-body">{streamAnswerText}</span>
-              {view.isRunning ? <span className="chat-imsg-cursor" aria-hidden="true" /> : null}
+            <div className="chat-timeline-text">
+              <IncrementalText text={streamAnswerText} streaming={view.isRunning} />
+              {view.isRunning ? <span className="chat-timeline-text-cursor" aria-hidden="true" /> : null}
             </div>
           ) : null}
           {hasStream ? (
-            <div className="chat-imsg-stream-activity" aria-label="Sub-agent activity">
+            <div className="chat-subagent-activity" aria-label="Sub-agent activity">
               {view.streamLines.map((row) => (
-                <div key={row.id} className={`chat-imsg-stream-line ${row.state || ''}`}>
+                <div key={row.id} className={`chat-subagent-activity-line ${row.state || ''}`}>
                   {row.text}
                 </div>
               ))}
             </div>
           ) : null}
-          {!hasStreamAnswer && view.isRunning ? <span className="chat-imsg-cursor" aria-hidden="true" /> : null}
-        </ChatImsgCollapsible>
+          {!hasStreamAnswer && view.isRunning ? <span className="chat-timeline-text-cursor" aria-hidden="true" /> : null}
+        </ChatSubAgentCollapsible>
       );
     }
-    return (
-      <span className="chat-imsg-thinking">
-        <span className="chat-imsg-dot" />
-        <span className="chat-imsg-dot" />
-        <span className="chat-imsg-dot" />
-      </span>
-    );
+    return <ChatAgentTimeline streaming={view.isRunning} conversationId={conversationId} taskId={taskId} />;
   };
   const showSub = hasSubTimeline || hasStreamAnswer || hasStream || hasFinal || view.isRunning;
-  const subState = hasFinal ? 'final' : hasSubTimeline || hasStreamAnswer || hasStream ? 'stream' : 'thinking';
   return (
-    <div className="chat-imsg">
+    <div className="chat-subagent-conversation">
       {hasPrompt ? (
-        <div className="chat-imsg-row from-main">
-          <div className="chat-imsg-bubble main">
-            {view.mediaPath ? (
-              <div className="chat-imsg-attachment">
-                <span className="chat-imsg-attachment-icon ico ico-image-describe" aria-hidden="true" />
-                <span className="chat-imsg-attachment-name">{fileName}</span>
-                {view.visionMode ? <span className="chat-imsg-attachment-mode">{view.visionMode}</span> : null}
-              </div>
-            ) : null}
+        <div className="chat-subagent-message chat-subagent-dispatch message-shell">
+          <div className="chat-subagent-speaker">
+            <span>Main agent</span>
+            <span className="chat-subagent-avatar" aria-hidden="true"><span className="ico-assistant-avatar" /></span>
+          </div>
+          <div className="message-speech-body">
             {fields.length > 0 ? (
-              <div className="chat-imsg-fields">
+              <div className="chat-subagent-fields">
                 {fields.map((field) => (
-                  <div key={field.label} className={`chat-imsg-field ${field.multiline ? 'is-multiline' : ''}`}>
-                    <div className="chat-imsg-field-label">{field.label}</div>
-                    <div className={`chat-imsg-field-value ${field.markdown ? 'is-md' : ''}`}>
+                  <div key={field.label} className="chat-subagent-field">
+                    {field.label !== 'Task' || fields.length > 1 ? <div className="chat-subagent-field-label">{field.label}</div> : null}
+                    <div className={`chat-subagent-field-value ${field.markdown ? 'is-md' : ''}`} tabIndex={field.multiline ? 0 : undefined}>
                       {field.markdown ? <Markdown source={String(field.value || '')} /> : field.value}
                     </div>
                   </div>
@@ -410,8 +426,12 @@ function ChatProcessConversation({ view }) {
       ) : null}
 
       {showSub ? (
-        <div className="chat-imsg-row from-sub">
-          <div className={`chat-imsg-bubble sub ${subState} ${hasSubTimeline ? 'timeline' : ''}`}>
+        <div className="chat-subagent-message chat-subagent-reply message-shell">
+          <div className="chat-subagent-speaker">
+            <span className="chat-subagent-avatar" aria-hidden="true"><Bot size={18} /></span>
+            <span>{view.role || 'Sub-agent'}</span>
+          </div>
+          <div className="message-speech-body">
             {renderSubContent()}
           </div>
         </div>
@@ -430,8 +450,12 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
   const defaultIconClass = CATEGORY_ICON_CLASS[category] || CATEGORY_ICON_CLASS.tool;
   // 先按 toolName 匹配专属 icon；匹配不到再退回 skill/mcp/subagent 分类图标。
   const iconClass = resolveToolIconClass(item.toolName, defaultIconClass);
-  const categoryLabel = CATEGORY_LABEL[category] || 'Tool';
   const view = buildToolView(item);
+  const heading = toolCardHeading(item, view);
+  const isSkill = view.mode === 'skill';
+  const displayStatus = approvalRequest ? 'approval' : view.failed ? 'failed' : status;
+  const skillStatus = ['done', 'completed'].includes(displayStatus) ? 'Loaded'
+    : displayStatus === 'failed' ? 'Load failed' : displayStatus === 'cancelled' ? 'Cancelled' : 'Loading';
   // 默认折叠：shell/terminal 卡片不自动展开，用户点击头部才展开查看输出。
   const [open, setOpen] = React.useState(Boolean(view.defaultOpen));
   React.useEffect(() => setOpen(false), [conversationId, taskId, item.id]);
@@ -451,12 +475,13 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
     conversationId,
     taskId,
   });
-  const hasBody = !approvalRequest && (view.mode === 'terminal'
+  const hasBody = !isSkill && !approvalRequest && (view.mode === 'terminal'
     ? Boolean(view.command || view.stdout || view.stderr || view.running || hasChildren)
     : (
       Boolean(view.body) ||
       Boolean(view.requestJson) ||
       Boolean(view.responseJson) ||
+      Boolean(view.search) || Boolean(view.browser) ||
       (Array.isArray(view.streamLines) && view.streamLines.length > 0) ||
       Boolean(view.finalText) ||
       fallbackLines.length > 0 ||
@@ -464,25 +489,19 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
     ));
   return (
     <div
-      className={`chat-timeline-chip chat-timeline-tool category-${category} status-${status} mode-${view.mode}`}
+      className={`chat-timeline-tool chat-tool-node category-${category} status-${displayStatus} mode-${view.mode}`}
       data-tool-call-id={item.callId || ''}
       data-tool-name={String(item.toolName || '').toLowerCase()}
     >
-      <button
-        type="button"
-        className="chat-timeline-chip-head chat-timeline-tool-head"
-        onClick={() => hasBody && setOpen((value) => !value)}
-        aria-expanded={open}
-        disabled={!hasBody}
-      >
-        <span className={`chat-timeline-status status-${status}`} aria-hidden="true" />
-        <span className={`ico ${iconClass}`} aria-label={categoryLabel} role="img" />
-        <span className="chat-timeline-tool-name">{approvalRequest ? `${item.toolName} · Awaiting approval` : view.label}</span>
-        {hasBody ? <ChatTimelineChevron open={open} /> : null}
-      </button>
-      {open && hasBody ? (
-        <div className="chat-timeline-tool-body">
-          {view.mode !== 'read' ? <ChatTimelineToolBody view={view} /> : null}
+      {isSkill ? <div className="aui-tool-trigger is-static aui-skill-line">
+        <Sparkles size={14} aria-hidden="true" />
+        <span className={`aui-tool-label ${displayStatus === 'running' ? 'is-running' : ''}`}>{view.label}</span>
+        <span className="aui-skill-state">{skillStatus}</span>
+        <ToolStatus status={displayStatus} label={skillStatus} />
+      </div> : <ToolCall label={approvalRequest ? `${item.toolName} · Awaiting approval` : heading.label}
+        query={approvalRequest ? '' : heading.query} status={displayStatus} open={open} onOpenChange={setOpen} expandable={hasBody}
+        icon={<span className={`ico ${iconClass}`} />}>
+          {view.mode !== 'read' ? <ChatTimelineToolBody view={view} conversationId={conversationId} taskId={taskId} /> : null}
           {view.mode === 'read' &&
             fallbackLines.map((line, index) => (
               <div key={index} className="chat-timeline-tool-line">
@@ -502,8 +521,11 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
               ))}
             </div>
           ) : null}
-        </div>
-      ) : null}
+      </ToolCall>}
+      {isSkill && hasChildren ? <div className="chat-timeline-tool-children">
+        {item.children.map((child) => <ChatTimelineToolNode key={child.id} item={child}
+          conversationId={conversationId} taskId={taskId} askUserActive={askUserActive} />)}
+      </div> : null}
       {isAskUser ? (
         <AskUserInlineForm
           toolCallId={item.callId || ''}
@@ -519,10 +541,8 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
   );
 }
 
-// Collapsed view of a run of consecutive tool calls. Looks like a regular
-// tool chip (same shared chip primitive) but the label is a
-// verb-counted summary like "read 3 files · executed 2 commands · used
-// chrome devtools 11 tools". Click expands to the original per-tool chips.
+// Keep the existing action-count summary and per-call interaction inside
+// the assistant-ui timeline surface.
 function ChatTimelineToolGroup({
   item,
   conversationId = '',
@@ -539,21 +559,8 @@ function ChatTimelineToolGroup({
   const summary = item.summary || `used ${tools.length} tools`;
 
   return (
-    <div className={`chat-timeline-chip chat-timeline-tool category-tool status-${status} is-group`}>
-      <button
-        type="button"
-        className="chat-timeline-chip-head chat-timeline-tool-head"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={expanded}
-      >
-        <span className={`chat-timeline-status status-${status}`} aria-hidden="true" />
-        <span className="ico ico-tool" aria-label="Tools" role="img" />
-        <span className="chat-timeline-tool-name">{summary}</span>
-        <ChatTimelineChevron open={expanded} />
-      </button>
-      {expanded ? (
-        <div className="chat-timeline-tool-group-body">
-          {tools.map((tool) => (
+    <ToolTimeline summary={summary} steps={tools} status={status} open={expanded} onOpenChange={setOpen}
+      renderStep={(tool) => (
             <ChatTimelineToolNode
               key={tool.id}
               item={tool}
@@ -561,10 +568,7 @@ function ChatTimelineToolGroup({
               taskId={taskId}
               askUserActive={askUserActive}
             />
-          ))}
-        </div>
-      ) : null}
-    </div>
+      )} />
   );
 }
 
@@ -575,34 +579,27 @@ function ChatTimelineMetaNode({ item }) {
   const summaryText = String(item.summaryText || '').trim();
   const details = Array.isArray(item.details) ? item.details : [];
   const expandable = isContextCompaction && Boolean(summaryText);
+  if (isRetry) {
+    return <div className={`chat-timeline-meta chat-tool-node is-retry status-${item.status || 'done'}`}
+      role="status" aria-live="polite" aria-atomic="true">
+      <ToolCall label={item.summary || 'Retrying model response…'} status={item.status || 'done'} expandable={false}
+        icon={<AppIcon name="retry" size={13} className="chat-timeline-retry-icon" />} />
+    </div>;
+  }
   return (
     <div
-      className={`chat-timeline-chip chat-timeline-meta status-${item.status || 'done'} ${isContextCompaction ? 'is-compaction' : ''} ${isRetry ? 'is-retry' : ''}`}
-      role={isRetry ? 'status' : undefined}
-      aria-live={isRetry ? 'polite' : undefined}
-      aria-atomic={isRetry ? 'true' : undefined}
+      className={`chat-timeline-meta chat-tool-node status-${item.status || 'done'} ${isContextCompaction ? 'is-compaction' : ''}`}
     >
-      <button
-        type="button"
-        className="chat-timeline-chip-head chat-timeline-meta-head"
-        onClick={() => expandable && setOpen((value) => !value)}
-        aria-expanded={expandable ? open : false}
-        disabled={!expandable}
-      >
-        <span className={`chat-timeline-status status-${item.status || 'done'}`} aria-hidden="true" />
-        {isRetry ? <AppIcon name="retry" size={13} className="chat-timeline-retry-icon" /> : null}
-        {isContextCompaction ? <span className="chat-timeline-compaction-icon" aria-hidden="true" /> : null}
-        <span className="chat-timeline-meta-label">{item.summary || 'Thinking…'}</span>
-        {expandable ? <ChatTimelineChevron open={open} /> : null}
-      </button>
-      {open && expandable ? (
+      <ToolCall label={item.summary || 'Thinking…'} status={item.status || 'done'}
+        open={open} onOpenChange={setOpen} expandable={expandable}
+        icon={isContextCompaction ? <span className="chat-timeline-compaction-icon" /> : null}>
         <div className="chat-timeline-meta-body">
           {details.length > 0 ? (
             <div className="chat-timeline-meta-stats">{details.join(' · ')}</div>
           ) : null}
-          <div className="chat-timeline-meta-summary"><Markdown source={summaryText} /></div>
+          <div className="chat-timeline-meta-summary" tabIndex={0}><Markdown source={summaryText} /></div>
         </div>
-      ) : null}
+      </ToolCall>
     </div>
   );
 }

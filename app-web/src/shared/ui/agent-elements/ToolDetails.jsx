@@ -1,6 +1,6 @@
 import React from 'react';
-import { TerminalBlock } from './terminal-block';
-import { CodeDiff } from './code-diff';
+import { TerminalBlock } from './terminal-block.tsx';
+import { CodeDiff } from './code-diff.tsx';
 import './elements.css';
 
 export function TerminalDetail({ view }) {

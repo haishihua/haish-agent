@@ -1,8 +1,9 @@
 import { eventDeltaText, stripInjectedSkillInstruction } from './chat-text.js';
 import { streamEventUpdate } from './stream-events.js';
 import { normalizeToolName } from './tool-names.js';
-import { normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
+import { isTerminalTaskStatus, normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
 import { skillDisplayName } from '../../tasks/model/runtime-events.js';
+import { skillTrigger } from './tool-presentation.js';
 import { mergeChatImageRefs, normalizeChatImageRefs } from '../../conversations/model/workspace-state.js';
 
 export function getChatProgressLine(event) {
@@ -103,9 +104,7 @@ function isSubAgentTraceItem(item) {
 }
 
 function isSkillTraceItem(item) {
-  const group = String(item?.toolGroup || item?.tool_group || '').toLowerCase();
-  const kind = String(item?.kind || '').toLowerCase();
-  return group === 'skill' || group === 'knowledge' || kind === 'skill' || Boolean(item?.skillName || item?.skill_name || item?.skillPath || item?.skill_path);
+  return Boolean(skillTrigger(item));
 }
 
 function isMcpTraceItem(item) {
@@ -395,6 +394,8 @@ function groupConsecutiveTools(items) {
 
 function timelineToolLabel(call, category) {
   if (category === 'skill') {
+    const skill = skillTrigger(call);
+    if (skill) return skill.name;
     return skillDisplayName({
       skill_name: call.skillName,
       skill_path: call.skillPath,
@@ -750,11 +751,11 @@ export function buildChatTimeline(task, taskStatus) {
       thinkingBuf += eventDeltaText(event);
       continue;
     }
-    if (type === 'context_compaction_started' || type === 'context_compaction_completed') {
+    if (type === 'context_compaction_started' || type === 'context_compaction_completed' || type === 'context_compaction_failed') {
       flushThinking(false);
       if (textBuf.trim()) flushText();
-      if (type === 'context_compaction_completed') {
-        const completedItem = {
+      if (type !== 'context_compaction_started') {
+        const finishedItem = {
           summaryText: String(event.compactionSummary || event.summary_text || '').trim(),
           details: [
             (event.compactedMessageCount ?? event.message_count) != null
@@ -767,16 +768,16 @@ export function buildChatTimeline(task, taskStatus) {
               ? `${Number(event.summaryTokens ?? event.summary_tokens).toLocaleString()} summary tokens`
               : '',
           ].filter(Boolean),
-          status: 'done',
+          status: type === 'context_compaction_failed' ? 'failed' : 'done',
         };
         if (currentCompactionItem) {
-          Object.assign(currentCompactionItem, completedItem);
+          Object.assign(currentCompactionItem, finishedItem);
         } else {
           items.push({
             kind: 'meta',
             id: event.event_id || `meta-${items.length}`,
             summary: 'Auto-Compacting context',
-            ...completedItem,
+            ...finishedItem,
           });
         }
         currentCompactionItem = null;
@@ -930,6 +931,8 @@ export function buildChatTimeline(task, taskStatus) {
         category,
         label,
         toolName: call.toolName || '',
+        skillName: skillTrigger(call)?.name || '',
+        skillPath: skillTrigger(call)?.path || '',
         inputSummary: call.inputSummary || '',
         outputSummary: call.outputSummary || '',
         toolInput: call.toolInput || null,
@@ -996,6 +999,14 @@ export function buildChatTimeline(task, taskStatus) {
     // 不在聊天时间线里渲染——只保留 LLM 文本、reasoning 流和工具调用。
   }
 
+  // Cancellation or stream termination may omit the matching retry/compaction
+  // finish event. Settle only unfinished rows; keep recorded outcomes intact.
+  if (isTerminalTaskStatus(finalStatus)) {
+    for (const item of items) {
+      if (item.kind === 'meta' && item.status === 'running') item.status = finalStatus;
+    }
+  }
+
   // Tail flush: streaming text still in buffer becomes a live segment.
   if (thinkingBuf.trim()) {
     flushThinking(isRunning);
@@ -1032,9 +1043,12 @@ export function buildChatTimeline(task, taskStatus) {
     const toolItem = {
       kind: 'tool',
       id: call.callId,
+      callId: call.callId,
       category,
       label,
       toolName: call.toolName || '',
+      skillName: skillTrigger(call)?.name || '',
+      skillPath: skillTrigger(call)?.path || '',
       inputSummary: call.inputSummary || '',
       outputSummary: call.outputSummary || '',
       toolInput: call.toolInput || null,

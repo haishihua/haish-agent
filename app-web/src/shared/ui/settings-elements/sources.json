@@ -1,0 +1,150 @@
+{
+  "retrieved": "2026-09-10",
+  "components": [
+    {
+      "file": "ui/item.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/item.tsx",
+      "upstreamSha256": "9ade8136f010284b7ec0142f52606616dd4b23798012e75a9fc6aac1fb2d792e",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/field.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/field.tsx",
+      "upstreamSha256": "4a4d17fcb933513f637f9f7e2daf5d8348f7de086b29738337dec7e6dd1819a0",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/sheet.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/sheet.tsx",
+      "upstreamSha256": "ea473d38a26a9b0b879e5a13139899ad45e9782e896b3fa205c7763a6c506876",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/button.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/button.tsx",
+      "upstreamSha256": "79dd6f75f8136394442202d6b8b922fb269eaad0a5dba579397c9d5b41f893bb",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/input.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/input.tsx",
+      "upstreamSha256": "0c9457181f6ddc80969bcf854e92c362903a55b6e889fbef3fd85343ecc4af5b",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/select.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/select.tsx",
+      "upstreamSha256": "962830436bd0b7ee50e556f0747e277d6a86869ed27d167516346b15f26309d8",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/dropdown-menu.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/dropdown-menu.tsx",
+      "upstreamSha256": "d954efb735f13734751207ad22cb0cddd7f6ec53c59d16675d103dae08cb61fb",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/popover.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/popover.tsx",
+      "upstreamSha256": "3f99d3add6c9fa4f03721e81297ee10e1310785ee1d9d9d4c82a114d84ab0757",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/command.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/command.tsx",
+      "upstreamSha256": "319e9264567dd46f04d705028bc345470663ca5919f31292c4ec43ea5ceb9336",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/dialog.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/dialog.tsx",
+      "upstreamSha256": "2ade6074e5fad0a4eb171ead44c43d3301a3c83d186d7236fb1fdbea80ee556b",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/label.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/label.tsx",
+      "upstreamSha256": "344bde38b8531615dbf8e14af3895517c24d8ef6ce56ddeda7e2e6fe4b5d0c00",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/separator.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/separator.tsx",
+      "upstreamSha256": "ad7d5403fe337160e41dbf04147896e448ae3a747b8d06660d627d74d60021bc",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/alert-dialog.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/alert-dialog.tsx",
+      "upstreamSha256": "b3dfb83e54ed8c82071df5289e5149628bf573458fc2da2d62f93f8380041b28",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/badge.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/badge.tsx",
+      "upstreamSha256": "13a9380dfff853ee730c14a52df49f22aecd31f40f2998d7c1e7ec458b6e1650",
+      "adaptation": "Local imports; portal container scoped to production Settings or the scaled desktop preview. All component logic and utility classes retained."
+    },
+    {
+      "file": "assistant-ui/logos.tsx",
+      "source": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/main/packages/ui/src/components/react/assistant-ui/elements/logos.tsx",
+      "upstreamSha256": "63ecebfd780689f9af364ea107398dbaf0fc116df06989a8ce4a81d9cd6bea51",
+      "adaptation": "Unmodified upstream source."
+    },
+    {
+      "file": "assistant-ui/model-selector.tsx",
+      "source": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/main/packages/ui/src/components/react/assistant-ui/elements/model-selector.radix.tsx",
+      "upstreamSha256": "8ff1eceb606b1203ba9999e2aa7add88bede9d8aacdee0dd4aff52274768e355",
+      "adaptation": "Import paths only."
+    },
+    {
+      "file": "ui/switch.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/switch.tsx",
+      "upstreamSha256": "743676f33f823ffa8008bbd5eb94cb68e227599447d60e132a202291a395f8e4",
+      "adaptation": "Local utils import only. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/textarea.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/textarea.tsx",
+      "upstreamSha256": "5cafcfeeee29534f449387a16b585f5923d2faab1a0cdc50a874416b175f59ce",
+      "adaptation": "Local utils import only. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/checkbox.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/checkbox.tsx",
+      "upstreamSha256": "ba0ac64064e2d8fa7299d53e9e84b9a4772fef8dd4cf6170c56d3030a1d69941",
+      "adaptation": "Local utils import only. All component logic and utility classes retained."
+    },
+    {
+      "file": "ui/collapsible.tsx",
+      "source": "https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/v4/registry/new-york-v4/ui/collapsible.tsx",
+      "upstreamSha256": "c6598e5584f4258b5d9fefadbc5ad6a66888ad58729f4b634a0bb2d9c513188b",
+      "adaptation": "Local utils import only. All component logic and utility classes retained."
+    },
+    {
+      "file": "dice-ui/file-upload.tsx",
+      "source": "https://diceui.com/r/file-upload.json",
+      "upstreamSha256": "dbf9a771444a49c2d155055eac82d6956ab1661d475e910077c03ffbbaef54c5",
+      "adaptation": "Local imports only; complete upstream implementation retained."
+    },
+    {
+      "file": "dice-ui/hooks/use-as-ref.tsx",
+      "source": "https://diceui.com/r/use-as-ref.json",
+      "upstreamSha256": "c57db69670d1b022d7e7adf945c77b8f57ec97b1e0bafcce831ac2be4a67aa6f",
+      "adaptation": "Local imports only; complete upstream implementation retained."
+    },
+    {
+      "file": "dice-ui/hooks/use-lazy-ref.tsx",
+      "source": "https://diceui.com/r/use-lazy-ref.json",
+      "upstreamSha256": "815ed074131bb1f360b2d70131c1bddb8ad43d2c9be39e4dc2d8420351909130",
+      "adaptation": "Local imports only; complete upstream implementation retained."
+    },
+    {
+      "file": "dice-ui/hooks/use-isomorphic-layout-effect.tsx",
+      "source": "https://diceui.com/r/use-isomorphic-layout-effect.json",
+      "upstreamSha256": "4a327e15f1cf27f3bd46f159d4b4356f0d42a033d8ae7fe52c3957580033fcfd",
+      "adaptation": "Unchanged upstream hook."
+    }
+  ],
+  "usage": "Production settings components; the settings demo re-exports these same sources."
+}

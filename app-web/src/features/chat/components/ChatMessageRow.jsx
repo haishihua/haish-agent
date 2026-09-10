@@ -7,6 +7,8 @@ import { QuoteBlock } from '../../../shared/ui/agent-elements/Quote.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { stripInjectedSkillInstruction } from '../model/chat-text.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
+import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
+import { localPathReference, splitPathReferenceDraft } from '../model/path-references.js';
 import {
   formatElapsedDuration,
   formatMessageClock,
@@ -43,6 +45,8 @@ function FinalAnswerMarkdown({ source, streaming, sourceMessageId }) {
 
 function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onEdit, onAnnotationJump, actionsDisabled = false }) {
   const [editing, setEditing] = React.useState(false);
+  const [editWidth, setEditWidth] = React.useState(undefined);
+  const shellRef = React.useRef(null);
   const [draft, setDraft] = React.useState('');
   const [actionBusy, setActionBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState('');
@@ -52,7 +56,11 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onE
     actionLock.current = true;
     setActionBusy(true);
     setActionError('');
-    try { await action(); setEditing(false); }
+    try {
+      const accepted = await action();
+      if (accepted === false) { setActionError('Your changes were not sent. Please try again.'); return; }
+      setEditing(false);
+    }
     catch (error) { setActionError(String(error?.message || error)); }
     finally { actionLock.current = false; setActionBusy(false); }
   }
@@ -70,6 +78,8 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onE
   const showTimelineToggle = hasTraceDisclosure && !traceForcedOpen;
   const isUser = message.role === 'user';
   const visibleText = isUser ? stripInjectedSkillInstruction(message.text) : message.text;
+  const userContent = React.useMemo(() => isUser ? splitPathReferenceDraft(visibleText) : null, [isUser, visibleText]);
+  const bodyText = userContent ? userContent.text : visibleText;
   const [copied, setCopied] = React.useState(false);
   const copyTimerRef = React.useRef(null);
   const [nowMs, setNowMs] = React.useState(() => Date.now());
@@ -137,7 +147,8 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onE
 
   return (
     <div data-message-id={message.id} className={`chat-message-row ${message.role}${message.streaming ? ' is-streaming' : ''}`}>
-        <div className={`chat-bubble message-shell ${isAgent ? 'agent-response' : ''} ${message.status || ''}`}>
+        <div ref={shellRef} style={editing ? { width: editWidth } : undefined}
+          className={`chat-bubble message-shell ${isAgent ? 'agent-response' : ''} ${message.status || ''}`}>
           {!isUser ? (
             <div className="chat-bubble-meta">
               <span className="chat-bubble-meta-main">
@@ -155,13 +166,17 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onE
           {traceForcedOpen && firstTokenMs ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
             </div>
           ) : <div className="chat-bubble-meta user-speaker-meta">
+            {userContent.references.length > 0 && <div className="chat-message-files" aria-label="Referenced files and folders">
+              {userContent.references.map((text, index) => <AttachmentFileChip key={`${index}:${text}`}
+                attachment={localPathReference(text)} pathReference />)}
+            </div>}
             {imageAttachments}
             <span className="chat-bubble-meta-main">
               <span>You</span>
               <span className="chat-speaker-avatar" aria-hidden="true"><UserRound size={18} strokeWidth={1.75} /></span>
             </span>
           </div>}
-          <div className="message-speech-body">
+          <div className={`message-speech-body${editing ? ' is-editing' : ''}`} hidden={isUser && !bodyText && !message.annotations?.length && !editing}>
           {isUser && message.annotations?.length > 0 && <div className="haish-sent-annotations" aria-label="Quoted comments">
             {message.annotations.map((item, index) => <QuoteBlock key={item.id} item={item} index={index + 1} onJump={onAnnotationJump} />)}
           </div>}
@@ -178,17 +193,17 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onE
           ) : null}
           {editing ? (
             <EditMessage value={draft} onValueChange={setDraft} busy={actionBusy} disabled={actionsDisabled}
-              onCancel={() => setEditing(false)} onSave={() => perform(() => onEdit(draft))} />
+              onCancel={() => { setEditing(false); setActionError(''); }} onSave={() => perform(() => onEdit(draft))} />
           ) : isAgent && message.status === 'failed' ? (
             <ErrorState title="Task failed" detail={message.text} retrying={actionBusy}
               disabled={actionsDisabled} onRetry={onRetry ? () => perform(onRetry) : undefined} />
           ) : isAgent ? (
             <FinalAnswerMarkdown source={message.text} streaming={message.streaming} sourceMessageId={message.status === 'done' ? message.messageId : undefined} />
-          ) : visibleText ? (
+          ) : bodyText ? (
             <div className="chat-bubble-text">
               {(isUser || message.markdown) && Markdown
-                ? <Markdown source={String(visibleText)} />
-                : <span className="chat-stream-text">{visibleText}</span>}
+                ? <Markdown source={String(bodyText)} />
+                : <span className="chat-stream-text">{bodyText}</span>}
             </div>
           ) : null}
           </div>
@@ -210,7 +225,13 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onE
             </PortalTooltip>
           ) : null}
           {onFork ? <PortalTooltip text="Branch into new chat" position="above"><button type="button" className="chat-bubble-copy message-turn-action" aria-label="Branch into new chat" disabled={actionBusy} onClick={() => perform(onFork)}>{actionBusy ? <LoaderCircle size={14} /> : <Split size={16} strokeWidth={1.75} style={{ transform: 'rotate(90deg)' }} />}</button></PortalTooltip> : null}
-          {onEdit ? <PortalTooltip text="Edit message" position="above"><button type="button" className="chat-bubble-copy message-turn-action" aria-label="Edit message" disabled={actionsDisabled || actionBusy} onClick={() => { setDraft(visibleText); setEditing(true); }}><Pencil size={15} /></button></PortalTooltip> : null}
+          {onEdit ? <PortalTooltip text="Edit message" position="above"><button type="button" className="chat-bubble-copy message-turn-action" aria-label="Edit message" disabled={actionsDisabled || actionBusy} onClick={() => {
+            // Retain the reading width; very short messages still need room for Cancel/Send.
+            setEditWidth(Math.max(shellRef.current?.getBoundingClientRect().width || 0, 220));
+            setActionError('');
+            setDraft(visibleText);
+            setEditing(true);
+          }}><Pencil size={15} /></button></PortalTooltip> : null}
           {onRetry && message.status !== 'failed' ? (
             <PortalTooltip text="ReRun" position="above">
               <button

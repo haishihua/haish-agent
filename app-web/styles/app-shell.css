@@ -237,8 +237,7 @@
 
 .app-body.chat-mode,
 .app-body.workflow-mode {
-    background: radial-gradient(circle at 72% 12%, rgba(105, 200, 246, 0.05), transparent 32%),
-    linear-gradient(180deg, #080a12 0%, #05060b 100%);
+    background: var(--app-canvas-background);
 }
 
 .app-body > * {
@@ -280,8 +279,7 @@
     grid-template-columns: minmax(0, 1fr);
     padding: 0;
     gap: 0;
-    background: radial-gradient(circle at 72% 12%, rgba(105, 200, 246, 0.05), transparent 32%),
-    linear-gradient(180deg, #080a12 0%, #05060b 100%);
+    background: var(--app-canvas-background);
 }
 
 .app-body.settings-mode::before {
@@ -2574,16 +2572,20 @@
     transform: scale(0.98);
 }
 
-.workflow-toolbar-add-icon {
+.workflow-toolbar-add > span {
+    display: inline-flex;
+    margin: 0;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+}
+
+.workflow-toolbar-add .workflow-toolbar-add-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 auto;
-    line-height: 0;
-}
-
-.workflow-toolbar-add-icon {
-    position: relative;
+    flex: 0 0 26px;
+    box-sizing: border-box;
     width: 26px;
     height: 26px;
     border: 1px solid rgba(176, 206, 255, 0.14);
@@ -2594,19 +2596,13 @@
     transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
-.workflow-toolbar-add-icon .settings-lucide {
+.workflow-toolbar-add-icon > .app-icon {
     display: block;
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
     margin: 0;
-    flex: 0 0 auto;
-    overflow: visible;
-    shape-rendering: geometricPrecision;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 15px;
-    height: 15px;
     stroke-width: 1.8;
-    transform: translate(-50%, -50%);
 }
 
 .workflow-toolbar-add.is-agent .workflow-toolbar-add-icon {

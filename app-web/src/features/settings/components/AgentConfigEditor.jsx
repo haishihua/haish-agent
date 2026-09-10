@@ -1,3 +1,7 @@
+import { Input } from '../../../shared/ui/settings-elements/ui/input.tsx';
+import { Textarea } from '../../../shared/ui/settings-elements/ui/textarea.tsx';
+import { Checkbox } from '../../../shared/ui/settings-elements/ui/checkbox.tsx';
+import { Switch } from '../../../shared/ui/settings-elements/ui/switch.tsx';
 import React from 'react';
 import {
   DEFAULT_AGENT_TOOL_GROUPS,
@@ -5,11 +9,7 @@ import {
   toolsForAgentGroups,
   groupIdsForAgentTools,
 } from '../../agents/model/agent-settings.js';
-import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
-import {
-  FieldRow,
-  SettingsMenuSelect,
-} from './settings-ui.jsx';
+import { FieldRow, SettingsMenuSelect } from './SettingsPrimitives.jsx';
 
 export function AgentConfigEditor({ selectedId, settings, onSettingsChange, readOnly = false }) {
   const normalized = normalizeAgentSettings(settings);
@@ -34,10 +34,10 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
     return (
       <div className="settings-editor-form settings-agent-form">
         <FieldRow label="Name">
-          <input value={preset.display_name || ''} disabled />
+          <Input value={preset.display_name || ''} disabled />
         </FieldRow>
         <FieldRow label="Description">
-          <textarea value={preset.description || ''} disabled />
+          <Textarea value={preset.description || ''} disabled />
         </FieldRow>
         <FieldRow label="Tools">{renderReadOnlyList(effectiveTools, 'No tools.')}</FieldRow>
         <FieldRow label="Skills">{renderReadOnlyList(effectiveSkills, 'No skills.')}</FieldRow>
@@ -60,22 +60,12 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
     skill_policy: { ...(current.skill_policy || {}), ...patch },
   });
   const toolGroups = normalized.tool_groups || DEFAULT_AGENT_TOOL_GROUPS;
-  const renderHelpDot = (text) => {
-    const label = String(text || '').trim();
-    const dot = <span className="settings-help-dot" aria-label={label} tabIndex={0}>?</span>;
-    const Tooltip = PortalTooltip;
-    return Tooltip ? <Tooltip text={label} position="above" multiline>{dot}</Tooltip> : dot;
-  };
   const allowedTools = Array.isArray(current.tool_policy?.allow) ? current.tool_policy.allow : [];
   const selectedGroupIds = new Set(groupIdsForAgentTools(allowedTools, toolGroups));
   const baseOptions = normalized.base_profiles.map((profile) => ({
     id: profile.agent_id,
     label: profile.display_name,
   }));
-  const statusOptions = [
-    { id: 'enabled', label: 'Active' },
-    { id: 'disabled', label: 'Disabled' },
-  ];
   const toggleGroup = (groupId) => {
     const next = new Set(selectedGroupIds);
     if (next.has(groupId)) next.delete(groupId);
@@ -125,10 +115,10 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
   return (
     <div className="settings-editor-form settings-agent-form">
       <FieldRow label="Name">
-        <input value={current.display_name || ''} onChange={(event) => update({ display_name: event.target.value })} disabled={readOnly} placeholder="Agent name" />
+        <Input value={current.display_name || ''} onChange={(event) => update({ display_name: event.target.value })} disabled={readOnly} placeholder="Agent name" />
       </FieldRow>
       <FieldRow label="Description">
-        <textarea value={current.description || ''} onChange={(event) => update({ description: event.target.value })} disabled={readOnly} />
+        <Textarea value={current.description || ''} onChange={(event) => update({ description: event.target.value })} disabled={readOnly} />
       </FieldRow>
       <FieldRow label="Based on">
         <SettingsMenuSelect
@@ -139,25 +129,16 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
           header="base profile"
         />
       </FieldRow>
-      <FieldRow label="Status">
-        <SettingsMenuSelect
-          value={current.enabled === false ? 'disabled' : 'enabled'}
-          options={statusOptions}
-          onChange={(status) => update({ enabled: status === 'enabled' })}
-          disabled={readOnly}
-          header="status"
-        />
-      </FieldRow>
+      <div className="settings-toggle-modern"><span>Enable agent</span><Switch aria-label="Enable agent" checked={current.enabled !== false} onCheckedChange={enabled => update({ enabled })} disabled={readOnly} /></div>
       <FieldRow label="Additional instructions">
-        <textarea value={current.system_prompt || ''} onChange={(event) => update({ system_prompt: event.target.value })} disabled={readOnly} />
+        <Textarea value={current.system_prompt || ''} onChange={(event) => update({ system_prompt: event.target.value })} disabled={readOnly} />
       </FieldRow>
       <FieldRow label="Tools">
         <div className="settings-check-grid">
           {toolGroups.map((group) => (
             <label className="settings-check-row" key={group.id}>
-              <input type="checkbox" checked={selectedGroupIds.has(group.id)} onChange={() => toggleGroup(group.id)} disabled={readOnly} />
+              <Checkbox checked={selectedGroupIds.has(group.id)} onCheckedChange={() => toggleGroup(group.id)} disabled={readOnly} />
               <span className="settings-check-label">{group.label}</span>
-              {renderHelpDot(group.description || (group.tools || []).join(', '))}
             </label>
           ))}
         </div>
@@ -168,20 +149,18 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
             {mcpServers.map((server) => (
               <div key={server.name} className="settings-check-group">
                 <label className="settings-check-row">
-                  <input type="checkbox" checked={allowedMcpServers.has(server.name)} onChange={() => toggleMcpServer(server.name)} disabled={readOnly} />
+                  <Checkbox checked={allowedMcpServers.has(server.name)} onCheckedChange={() => toggleMcpServer(server.name)} disabled={readOnly} />
                   <span className="settings-check-label">{server.name} · all tools</span>
-                  {server.error ? renderHelpDot(server.error) : null}
+                  {server.error && <span className="settings-inline-error" role="status">{server.error}</span>}
                 </label>
                 {(server.tools || []).map((tool) => (
                   <label className="settings-check-row" key={`${server.name}.${tool.name}`}>
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={allowedMcpServers.has(server.name) || allowedMcpTools.has(`${server.name}.${tool.name}`)}
-                      onChange={() => toggleMcpTool(server.name, tool.name)}
+                      onCheckedChange={() => toggleMcpTool(server.name, tool.name)}
                       disabled={readOnly || allowedMcpServers.has(server.name)}
                     />
                     <span className="settings-check-label">{tool.name}</span>
-                    {tool.description ? renderHelpDot(tool.description) : null}
                   </label>
                 ))}
               </div>
@@ -192,21 +171,19 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
       ) : null}
       <FieldRow label="Skills">
         <label className="settings-check-row">
-          <input
-            type="checkbox"
+          <Switch
             checked={inheritsAllSkills}
-            onChange={() => updateSkillPolicy({ allow: inheritsAllSkills ? [] : null })}
+            onCheckedChange={() => updateSkillPolicy({ allow: inheritsAllSkills ? [] : null })}
             disabled={readOnly}
           />
-          <span className="settings-check-label">Automatically allow all skills</span>
-          {renderHelpDot('Checked saves null and automatically allows every current and future enabled skill. Unchecked allows only the skills selected below.')}
+          <span className="settings-check-label">Allow all enabled skills</span>
+
         </label>
         <div className="settings-check-grid">
           {skillOptions.map((skill) => (
             <label className="settings-check-row" key={skill.id}>
-              <input type="checkbox" checked={allowedSkills.has(skill.id)} onChange={() => toggleSkill(skill.id)} disabled={readOnly || !skill.enabled} />
+              <Checkbox checked={allowedSkills.has(skill.id)} onCheckedChange={() => toggleSkill(skill.id)} disabled={readOnly || inheritsAllSkills || !skill.enabled} />
               <span className="settings-check-label">{skill.label}</span>
-              {skill.description ? renderHelpDot(skill.description) : null}
             </label>
           ))}
           {!skillOptions.length ? <small>No installed skills.</small> : null}

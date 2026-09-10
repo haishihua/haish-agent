@@ -47,9 +47,10 @@ export function TerminalBlock({
       {...props}
     >
       {cwd ? <div className="px-4 pt-3 text-foreground/50">{cwd}</div> : null}
-      <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-1.5">
+      <div className="flex items-center gap-2 px-4 pt-3 pb-1.5">
         <span
           className={cn(
+            "min-w-0",
             ink
               ? "text-background/90 dark:text-foreground/90"
               : "text-foreground/90",
@@ -58,7 +59,7 @@ export function TerminalBlock({
           <span className="break-all">{command}</span>
         </span>
         {done ? (
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1 whitespace-nowrap">
             {failed ? <XIcon className="size-3 text-red-400" /> : Number(exitCode) === 0 && exitCode !== "" && exitCode != null ? <CheckIcon className="size-3 text-emerald-500" /> : <MinusIcon className="size-3" />}
             <span
               className={cn(

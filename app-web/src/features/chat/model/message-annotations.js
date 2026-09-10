@@ -35,16 +35,29 @@ export function writeAnnotationDraft(storage, scope, items) {
   else storage.removeItem(STORAGE_PREFIX + scope);
 }
 
-export function withoutAcknowledgedAnnotations(drafts, messages) {
-  // A pending optimistic row is not an acknowledgement. Match the full snapshot,
-  // so comments edited or added while the request was in flight remain drafts.
-  const saved = new Map(messages.filter((m) => m.role === 'user' && m.messageId)
-    .flatMap((m) => (m.annotations || []).map((item) => [item.id, item])));
+function withoutMessageAnnotations(drafts, messages) {
+  // Match the full snapshot so edits made during a send remain drafts.
+  const saved = new Map(messages.flatMap((m) => (m.annotations || []).map((item) => [item.id, item])));
   const next = drafts.filter((item) => {
     const ack = saved.get(item.id);
     return !ack || Object.keys(item).some((key) => item[key] !== ack[key]);
   });
   return next.length === drafts.length ? drafts : next;
+}
+
+export function withoutAcknowledgedAnnotations(drafts, messages) {
+  // Only server confirmation may remove the persisted recovery copy.
+  return withoutMessageAnnotations(drafts, messages.filter((m) => m.role === 'user' && m.messageId));
+}
+
+export function isSubmittedAnnotationMessage(message) {
+  return message.role === 'user' && Boolean(message.messageId || message.status === 'queued' || message.status === 'running');
+}
+
+export function visibleAnnotationDrafts(drafts, messages) {
+  // The optimistic message owns the submitted snapshot until confirmation.
+  // An unconfirmed failure/cancellation releases it back to the composer.
+  return withoutMessageAnnotations(drafts, messages.filter(isSubmittedAnnotationMessage));
 }
 
 export function locateAnnotation(text, item) {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, MotionConfig } from 'motion/react';
-import { TooltipProvider, TooltipArrow, useGlobalTooltip } from './animate-ui/tooltip';
+import { TooltipProvider, TooltipArrow, useGlobalTooltip } from './animate-ui/tooltip.tsx';
 
 const closeFns = new Set();
 export function closeAllPortalTooltips() { closeFns.forEach((close) => close()); }

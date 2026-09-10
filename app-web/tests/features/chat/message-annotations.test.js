@@ -1,8 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { annotationError, locateAnnotation, readAnnotationDraft, withoutAcknowledgedAnnotations, writeAnnotationDraft } from '../../../src/features/chat/model/message-annotations.js';
+import { readFileSync } from 'node:fs';
+import { annotationError, locateAnnotation, readAnnotationDraft, visibleAnnotationDrafts, withoutAcknowledgedAnnotations, writeAnnotationDraft } from '../../../src/features/chat/model/message-annotations.js';
 
 const quote = { id: 'q1', source_message_id: 'a1', text: 'gray', comment: 'Use #282828', start: 5, end: 9, prefix: 'dark ', suffix: ' background' };
+
+test('AppShell forwards the full composer payload and send result, including annotations', async () => {
+  // Exercise the actual JSX binding: testing the deploy handler alone missed the dropped ninth argument.
+  const shell = readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
+  const binding = shell.match(/<ChatPanel\b[\s\S]*?\bonSend=\{([^\n]+)\}/);
+  assert.ok(binding, 'ChatPanel must have an onSend binding');
+  for (const payload of [
+    { text: 'Please check these comments', annotations: [quote, { ...quote, id: 'q2', comment: 'Check contrast too' }] },
+    { text: '', annotations: [quote] },
+    { text: 'Plain message', annotations: [] },
+  ]) {
+    for (const accepted of [true, false]) {
+      let received;
+      const sendResult = Promise.resolve(accepted);
+      const onSend = new Function('handleDeploy', `return (${binding[1]});`)((...args) => {
+        received = args;
+        return sendResult;
+      });
+      const args = [payload.text, null, 'model', 'high', [], 'agent', 'provider', payload.text, payload.annotations];
+      const result = onSend(...args);
+      assert.deepEqual(received, args, 'message and comment snapshots must reach the same send');
+      assert.equal(result, sendResult, 'the composer must receive the original acknowledgement');
+      assert.equal(await result, accepted);
+    }
+  }
+});
 
 test('anchors use rendered UTF-16 offsets, including emoji', () => {
   const text = '😀 dark gray background';
@@ -39,6 +66,46 @@ test('only server acknowledgement clears matching submitted snapshots', () => {
   const edited = { ...quote, comment: 'Changed while sending' };
   assert.deepEqual(withoutAcknowledgedAnnotations([quote, added], confirmed), [added]);
   assert.deepEqual(withoutAcknowledgedAnnotations([edited, added], confirmed), [edited, added]);
+});
+
+test('submitted comments leave the composer immediately but remain recoverable until confirmation', () => {
+  const drafts = [quote];
+  const values = new Map();
+  const storage = { getItem: (key) => values.get(key), setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key) };
+  for (const status of ['queued', 'running']) {
+    const pending = [{ role: 'user', status, annotations: [quote] }];
+    assert.deepEqual(visibleAnnotationDrafts(drafts, pending), []);
+    const recoverable = withoutAcknowledgedAnnotations(drafts, pending);
+    writeAnnotationDraft(storage, 'sending', recoverable);
+    const reloaded = readAnnotationDraft(storage, 'sending');
+    assert.deepEqual(reloaded, drafts);
+    assert.deepEqual(visibleAnnotationDrafts(reloaded, pending), []);
+    const confirmed = [{ ...pending[0], messageId: 'saved-user' }];
+    assert.deepEqual(visibleAnnotationDrafts(reloaded, confirmed), []);
+    assert.deepEqual(withoutAcknowledgedAnnotations(reloaded, confirmed), []);
+  }
+});
+
+test('rejection, unconfirmed failure and cancellation preserve comments for retry', () => {
+  const drafts = [quote];
+  assert.equal(visibleAnnotationDrafts(drafts, []), drafts, 'a rejected send has no submitted message');
+  for (const status of ['failed', 'cancelled']) {
+    const unconfirmed = [{ role: 'user', status, annotations: [quote] }];
+    assert.equal(visibleAnnotationDrafts(drafts, unconfirmed), drafts);
+    assert.equal(withoutAcknowledgedAnnotations(drafts, unconfirmed), drafts);
+    const confirmed = [{ ...unconfirmed[0], messageId: 'saved-user' }];
+    assert.deepEqual(visibleAnnotationDrafts(drafts, confirmed), [], 'a saved message is not an unsent draft even when execution fails');
+  }
+  assert.equal(visibleAnnotationDrafts(drafts, [{ role: 'agent', status: 'running', annotations: [quote] }]), drafts);
+});
+
+test('new and edited comments remain separate from the in-flight snapshot', () => {
+  const pending = [{ role: 'user', status: 'running', annotations: [quote] }];
+  const added = { ...quote, id: 'q2' };
+  const edited = { ...quote, comment: 'Changed while sending' };
+  assert.deepEqual(visibleAnnotationDrafts([quote, added], pending), [added]);
+  assert.deepEqual(visibleAnnotationDrafts([edited, added], pending), [edited, added]);
+  assert.deepEqual(visibleAnnotationDrafts([quote, added], []), [quote, added], 'pending state must not leak into another conversation');
 });
 
 test('bounds and duplicate IDs are checked before send', () => {

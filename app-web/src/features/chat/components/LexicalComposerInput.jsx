@@ -7,6 +7,9 @@ import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
+import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
+import { composePathReferenceDraft, localPathReference, splitPathReferenceDraft, splitPathReferences } from '../model/path-references.js';
+import { composerReferenceState } from '../model/composer-reference-state.js';
 import {
   $applyNodeReplacement,
   $createLineBreakNode,
@@ -14,9 +17,12 @@ import {
   $createTextNode,
   $getRoot,
   $getSelection,
+  $getState,
   $isRangeSelection,
   $nodesOfType,
+  $setState,
   DecoratorNode,
+  HISTORY_PUSH_TAG,
 } from 'lexical';
 
 class SkillTokenNode extends DecoratorNode {
@@ -93,11 +99,19 @@ function $createSkillTokenNode(skillName) {
 }
 
 function appendPlainText(parent, value) {
-  const lines = String(value || '').split('\n');
-  lines.forEach((line, index) => {
-    if (index > 0) parent.append($createLineBreakNode());
-    if (line) parent.append($createTextNode(line));
-  });
+  parent.append(...composerNodes(value));
+}
+
+function composerNodes(value) {
+  return value.split('\n').flatMap((line, index) => [
+    ...(index > 0 ? [$createLineBreakNode()] : []),
+    ...(line ? [$createTextNode(line)] : []),
+  ]);
+}
+
+function $composerValue() {
+  const root = $getRoot();
+  return composePathReferenceDraft(root.getTextContent(), $getState(root, composerReferenceState));
 }
 
 function selectionHasContent(rootElement, direction) {
@@ -117,7 +131,7 @@ function selectionHasContent(rootElement, direction) {
   return Boolean(fragment.textContent || fragment.querySelector?.('br'));
 }
 
-function ComposerController({ value, selectedSkill, disabled, maxLength, onChange, apiRef }) {
+function ComposerController({ value, selectedSkill, disabled, maxLength, onChange, onReferencesChange, apiRef }) {
   const [editor] = useLexicalComposerContext();
   const lastEmittedValueRef = React.useRef(String(value || ''));
 
@@ -131,7 +145,7 @@ function ComposerController({ value, selectedSkill, disabled, maxLength, onChang
     let shouldSync = false;
     editor.getEditorState().read(() => {
       const currentSkillName = $nodesOfType(SkillTokenNode)[0]?.getSkillName() || '';
-      shouldSync = $getRoot().getTextContent() !== nextValue || currentSkillName !== nextSkillName;
+      shouldSync = $composerValue() !== nextValue || currentSkillName !== nextSkillName;
     });
     if (!shouldSync) return;
 
@@ -139,11 +153,13 @@ function ComposerController({ value, selectedSkill, disabled, maxLength, onChang
       const root = $getRoot();
       root.clear();
       const paragraph = $createParagraphNode();
+      const { text, references } = splitPathReferenceDraft(nextValue);
+      $setState(root, composerReferenceState, references);
       if (nextSkillName) paragraph.append($createSkillTokenNode(nextSkillName));
-      appendPlainText(paragraph, nextValue);
+      appendPlainText(paragraph, text);
       root.append(paragraph);
+      lastEmittedValueRef.current = $composerValue();
     }, { tag: 'composer-controlled-value' });
-    lastEmittedValueRef.current = nextValue;
   }, [editor, maxLength, selectedSkill?.name, value]);
 
   React.useEffect(() => {
@@ -157,12 +173,31 @@ function ComposerController({ value, selectedSkill, disabled, maxLength, onChang
         });
       },
       insertText(text) {
+        let accepted = false;
         editor.update(() => {
-          const selection = $getSelection();
+          if (!editor.isEditable()) return;
+          const selection = $getSelection() || $getRoot().selectEnd();
           if (!$isRangeSelection(selection)) return;
-          const remaining = Math.max(0, maxLength - $getRoot().getTextContent().length);
-          selection.insertText(String(text || '').slice(0, remaining));
-        });
+          const root = $getRoot();
+          const insertion = splitPathReferenceDraft(String(text || '').replace(/\r\n?/g, '\n'));
+          const references = [...$getState(root, composerReferenceState), ...insertion.references];
+          const bodyLength = root.getTextContent().length + insertion.text.length
+            - (insertion.text ? selection.getTextContent().length : 0);
+          const nextLength = references.join('\n').length + (references.length && bodyLength ? 1 : 0) + bodyLength;
+          // Never turn an over-limit path into a different, truncated path.
+          if (nextLength > maxLength) return;
+          if (insertion.references.length) $setState(root, composerReferenceState, references);
+          if (insertion.text) selection.insertNodes(composerNodes(insertion.text));
+          accepted = true;
+        }, { tag: HISTORY_PUSH_TAG, discrete: true });
+        return accepted;
+      },
+      removeReference(index) {
+        if (!editor.isEditable()) return;
+        editor.update(() => {
+          $setState($getRoot(), composerReferenceState, (references) => references.filter((_, itemIndex) => itemIndex !== index));
+        }, { tag: HISTORY_PUSH_TAG });
+        editor.focus();
       },
       isSelectionAtStart() {
         return !selectionHasContent(editor.getRootElement(), 'before');
@@ -178,12 +213,13 @@ function ComposerController({ value, selectedSkill, disabled, maxLength, onChang
 
   const handleChange = React.useCallback((editorState) => {
     editorState.read(() => {
-      const nextValue = $getRoot().getTextContent().slice(0, maxLength);
+      onReferencesChange($getState($getRoot(), composerReferenceState));
+      const nextValue = $composerValue().slice(0, maxLength);
       if (nextValue === lastEmittedValueRef.current) return;
       lastEmittedValueRef.current = nextValue;
       onChange(nextValue);
     });
-  }, [maxLength, onChange]);
+  }, [maxLength, onChange, onReferencesChange]);
 
   return <OnChangePlugin onChange={handleChange} ignoreSelectionChange />;
 }
@@ -198,8 +234,11 @@ export const LexicalComposerInput = React.forwardRef(function LexicalComposerInp
   onKeyDown,
   onPaste,
   onRemoveSkill,
+  onPathLimit,
+  attachments,
 }, forwardedRef) {
   const apiRef = React.useRef(null);
+  const [references, setReferences] = React.useState([]);
   React.useImperativeHandle(forwardedRef, () => ({
     focus: () => apiRef.current?.focus(),
     focusAtEnd: () => apiRef.current?.focusAtEnd(),
@@ -223,6 +262,12 @@ export const LexicalComposerInput = React.forwardRef(function LexicalComposerInp
   return (
     <LexicalComposer initialConfig={initialConfig}>
       <HistoryPlugin />
+      {(references.length > 0 || attachments) && <div className="chat-composer-attachments" aria-label="Attachments">
+        {references.map((text, index) => <AttachmentFileChip key={`${index}:${text}`}
+          attachment={localPathReference(text)} pathReference disabled={disabled}
+          onClear={(event) => { event.preventDefault(); apiRef.current?.removeReference(index); }} />)}
+        {attachments}
+      </div>}
       <div
         className="chat-composer-editor-shell"
         onMouseDown={(event) => {
@@ -240,7 +285,16 @@ export const LexicalComposerInput = React.forwardRef(function LexicalComposerInp
               aria-label="Message"
               spellCheck
               onKeyDownCapture={onKeyDown}
-              onPaste={onPaste}
+              onPasteCapture={(event) => {
+                if (disabled) { event.preventDefault(); event.stopPropagation(); return; }
+                onPaste?.(event);
+                if (event.defaultPrevented) { event.stopPropagation(); return; }
+                const text = event.clipboardData?.getData('text/plain') || '';
+                if (!splitPathReferences(text).some((part) => part.reference)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                if (!apiRef.current?.insertText(text)) onPathLimit?.();
+              }}
             />
           )}
           placeholder={selectedSkill ? null : <div className="chat-composer-placeholder">{placeholder}</div>}
@@ -252,6 +306,7 @@ export const LexicalComposerInput = React.forwardRef(function LexicalComposerInp
           disabled={disabled}
           maxLength={maxLength}
           onChange={onChange}
+          onReferencesChange={setReferences}
           apiRef={apiRef}
         />
       </div>

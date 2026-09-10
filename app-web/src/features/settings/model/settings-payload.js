@@ -267,6 +267,7 @@ export function applyToolsSettingsPayloadToRecords(records, payload) {
           skills: Array.isArray(payload.skills.items) ? payload.skills.items : [],
           skill_errors: Array.isArray(payload.skills.errors) ? payload.skills.errors : [],
           skill_install_root: payload.skills.install_root || '',
+          skill_can_install: payload.skills.can_install !== false,
         };
       }
       if (record.id === 'tools-web' && payload.web_search) {

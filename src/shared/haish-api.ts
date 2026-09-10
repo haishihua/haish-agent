@@ -90,6 +90,7 @@ export type HaishDesktopApi = {
   listProjects: () => Promise<LocalProject[]>;
   listDirectory: (projectId: string, relativePath?: string) => Promise<FileEntry[]>;
   readFile: (projectId: string, relativePath: string) => Promise<ReadFileResult>;
+  readToolScreenshot: (imagePath: string, taskId: string) => Promise<string>;
   copyImage: (dataUrl: string) => Promise<boolean>;
   getPathForFile: (file: File) => string;
 };

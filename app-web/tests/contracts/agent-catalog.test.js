@@ -162,8 +162,10 @@ test('selected skill renders as an inline Lexical token inside the composer', ()
   assert.doesNotMatch(chatStyles, /--skill-chip-indent/);
   assert.match(
     chatPanelSource,
-    /function selectSkill\(skill, event\)[\s\S]*skillSelectionPendingRef\.current = !prompt\.trim\(\)[\s\S]*setDraft\(prompt\)/,
+    /function selectSkill\(skill, event\)[\s\S]*skillSelectionPendingRef\.current = !prompt\.trim\(\)[\s\S]*setDraft\(composePathReferenceDraft\(prompt, composerContent\.references\)\)/,
   );
+  assert.match(chatPanelSource, /matchingAgentSkills\(composerContent\.text, currentAgentSkills\)/);
+  assert.match(chatPanelSource, /extractAgentSkillInvocation\(composerContent\.text, currentAgentSkills\)/);
   assert.match(chatPanelSource, /async function submit\(e\)[\s\S]*if \(skillSelectionPendingRef\.current\) return/);
 });
 

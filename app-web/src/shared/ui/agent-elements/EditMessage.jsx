@@ -7,7 +7,7 @@ import './edit-message.css';
 export function EditMessage({ value, onValueChange, onSave, onCancel, busy, disabled }) {
   const save = () => { if (value.trim() && !busy && !disabled) onSave(); };
   return <div data-slot="edit-message" className="aui-edit-message">
-    <textarea value={value} rows={2} autoFocus aria-label="Edit your message" disabled={busy}
+    <textarea value={value} rows={1} autoFocus aria-label="Edit your message" disabled={busy}
       onChange={(event) => onValueChange(event.target.value)}
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing) return;

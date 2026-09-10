@@ -1,4 +1,5 @@
 import { normalizeToolName } from './tool-names.js';
+import { browserPresentation, fetchPresentation, searchPresentation, skillTrigger } from './tool-presentation.js';
 
 const TOOL_READ_NAMES = new Set(['read_file', 'search_text', 'glob_files', 'list_dir']);
 const TOOL_DIFF_NAMES = new Set(['write_file', 'edit_file', 'replace_lines', 'multi_edit', 'apply_patch']);
@@ -425,6 +426,7 @@ function extractProcessResultText(item) {
   return compactToolValue(firstToolDisplayValue(
     data.answer,
     data.final_answer,
+    data.text,
     verdict.summary,
     report.summary,
     data.summary,
@@ -516,7 +518,7 @@ function toolFailureActionLabel(item) {
 }
 
 function extractProcessChatMeta(item, name) {
-  const input = toolPlainObject(item.toolInput);
+  const input = getToolSubject(item);
   const task = firstToolDisplayValue(
     input.task,
     input.prompt,
@@ -560,7 +562,24 @@ function extractProcessChatMeta(item, name) {
 export function buildToolView(item) {
   const name = normalizeToolName(item.toolName);
   const path = firstToolPath(item);
+  const skill = skillTrigger(item);
+  if (skill) return { mode: 'skill', label: skill.name, skill, failed: isToolFailure(item) };
+  if (name === 'web_search' || name === 'web_fetch' || name === 'browser_use') {
+    const output = toolDisplayOutput(item);
+    return {
+      mode: name === 'browser_use' ? 'browser' : 'web-search',
+      label: item.label || name.replaceAll('_', ' '),
+      failed: isToolFailure(item),
+      running: ['running', 'pending'].includes(item.status || 'pending'),
+      cancelled: item.status === 'cancelled',
+      requestJson: toolJsonText(item.toolInput),
+      responseJson: outputJsonText(output),
+      ...(name === 'browser_use' ? { browser: browserPresentation(item) }
+        : { search: name === 'web_fetch' ? fetchPresentation(item) : searchPresentation(item) }),
+    };
+  }
   if (isProcessTool(item, name)) {
+    const response = toolPlainObject(item.toolResponse);
     const streamLines = buildToolStreamLines(item);
     const streamAnswerText = buildToolStreamAnswerText(item);
     const finalText = extractProcessResultText(item);
@@ -582,7 +601,10 @@ export function buildToolView(item) {
       mediaPath: chatMeta.mediaPath,
       visionMode: chatMeta.visionMode,
       isVision: chatMeta.isVision,
-      isRunning: (item.status || '') === 'running',
+      failed: isToolFailure(item),
+      error: compactToolValue(toolPlainObject(response.error).message || response.summary, TOOL_BLOCK_LIMIT),
+      cancelled: item.status === 'cancelled',
+      isRunning: item.status === 'running' || (chatMeta.isVision && (!item.status || item.status === 'pending')),
     };
   }
   if (TOOL_DIFF_NAMES.has(name)) {

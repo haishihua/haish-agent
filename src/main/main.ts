@@ -21,7 +21,8 @@ import {
   installAppUpdate,
   setupAppUpdater,
 } from './app-updater.js';
-import { ensureLocalRuntime, getLocalRuntimeState, stopLocalRuntime } from './local-runtime.js';
+import { ensureLocalRuntime, getLocalRuntimeState, runtimeWorkdir, stopLocalRuntime } from './local-runtime.js';
+import { readToolScreenshot } from './tool-screenshot.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -323,6 +324,11 @@ ipcMain.handle('skill:pick-directory', async (): Promise<SkillDirectoryPickResul
 });
 
 ipcMain.handle('runtime:status', async () => getLocalRuntimeState());
+ipcMain.handle('tool:read-screenshot', async (event, imagePath: string, taskId: string): Promise<string> => {
+  const sender = new URL(event.senderFrame?.url || 'about:blank');
+  if (sender.protocol !== 'haish:' || sender.hostname !== 'app') throw new Error('Untrusted screenshot request');
+  return readToolScreenshot(runtimeWorkdir(app.getPath('userData')), imagePath, taskId);
+});
 ipcMain.handle('remote-control:start-pairing', async (): Promise<RemotePairingState> => {
   return remoteAdapterJson('/remote/pairing/start', { method: 'POST' });
 });
