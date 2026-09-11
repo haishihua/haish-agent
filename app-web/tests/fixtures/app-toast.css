@@ -1,0 +1,44 @@
+/* Fixture-only layout: the production toast is position: fixed, the fixture stacks it inline. */
+.toast-fixture {
+    padding: 24px;
+    display: grid;
+    gap: 22px;
+    justify-items: start;
+    overflow: auto;
+}
+
+.toast-fixture .app-toast {
+    position: static;
+    top: auto;
+    left: auto;
+    transform: none;
+    animation: none;
+}
+
+.toast-fixture-row {
+    display: grid;
+    gap: 10px;
+    justify-items: start;
+}
+
+.toast-fixture h1 {
+    margin: 0;
+    font-size: 15px;
+}
+
+.toast-fixture p {
+    margin: 0;
+    color: #878da6;
+    font-size: 12px;
+}
+
+.toast-fixture #checks {
+    margin: 0;
+    color: #8ee3b7;
+    font-size: 12px;
+    white-space: pre-wrap;
+}
+
+.toast-fixture #checks[data-result="FAIL"] {
+    color: #fb7185;
+}

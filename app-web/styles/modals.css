@@ -47,16 +47,22 @@
 
 .app-toast-success {
     border-color: rgba(96, 211, 160, 0.34);
+    --toast-accent: #1fa876;
 }
 
 .app-toast-error {
     border-color: rgba(236, 94, 111, 0.34);
+    --toast-accent: #e0476a;
 }
 
 .app-toast-info {
     border-color: rgba(120, 168, 255, 0.34);
+    --toast-accent: #4a7ce8;
 }
 
+/* 向量徽标：lucide 图形 + 纯色圆底。
+   image-rendering 必须回到 auto，否则会继承 body 的 pixelated，
+   SVG 与圆底边缘都会被最近邻采样成硬阶梯。 */
 .app-toast-icon {
     display: inline-flex;
     align-items: center;
@@ -64,32 +70,10 @@
     width: 20px;
     height: 20px;
     border-radius: 999px;
-    font-size: 12px;
-    font-weight: 700;
     flex: 0 0 20px;
-}
-
-.app-toast-icon-success {
-    background: url("../assets/ui/icons/check-success.png") center / contain no-repeat;
-}
-
-.app-toast-icon-error {
-    background: url("../assets/ui/icons/exclamation.png") center / contain no-repeat;
-    color: transparent;
-    font-size: 0;
-}
-
-.app-toast-icon-info {
-    background: rgba(120, 168, 255, 0.18);
-    color: rgba(180, 210, 255, 0.96);
-    font-size: 12px;
-    line-height: 1;
-}
-
-.app-toast-icon-info::before {
-    content: "i";
-    font-style: italic;
-    font-weight: 700;
+    background: var(--toast-accent, #4a7ce8);
+    color: #ffffff;
+    image-rendering: auto;
 }
 
 .app-toast-message {

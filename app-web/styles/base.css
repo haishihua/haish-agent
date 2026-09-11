@@ -243,18 +243,6 @@ svg {
     height: 18px;
 }
 
-.ico-check {
-    -webkit-mask-image: none;
-    mask-image: none;
-    background-color: transparent;
-    background-image: url("../assets/ui/icons/check.png?v=2");
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: contain;
-    width: 18px;
-    height: 18px;
-}
-
 .ico-close {
     -webkit-mask-image: none;
     mask-image: none;

@@ -16,6 +16,7 @@
 | [conversation-search.html](fixtures/conversation-search.html) | 关键词 Range、跨标签匹配、精确跳转和滚动条标记 |
 | [message-annotations.html](fixtures/message-annotations.html) | 选区引用、UTF-16 偏移、跨 Markdown 选取和重新定位 |
 | [tool-cards.html](fixtures/tool-cards.html) | 生产工具卡片、分组、详情、流式状态、终态收尾和子 Agent 交互 |
+| [app-toast.html](fixtures/app-toast.html) | 生产 AppToast：向量徽标、三种状态配色、未知 kind 回退与 `image-rendering` 回归 |
 
 页面地址前缀为 `http://127.0.0.1:5173/tests/fixtures/`。保留 `message-annotations.dom-checks.js`、`task-attempt-runtime.js` 和工具卡片页面资源，它们是回归测试依赖。
 

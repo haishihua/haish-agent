@@ -15,6 +15,7 @@ import { ConversationsPanel } from '../conversations/components/ConversationsPan
 import { ChatPanel } from '../chat/components/ChatPanel.jsx';
 import { TaskDelegation } from '../tasks/components/TaskDelegation.jsx';
 import { BottomNav, TabPlaceholder } from './components/Shell.jsx';
+import { AppToast } from './components/AppToast.jsx';
 import {
   applyToolsSettingsPayloadToRecords,
   applyMemorySettingsPayloadToRecords,
@@ -1727,18 +1728,7 @@ export function AppShell() {
         )}
       </div>
 
-      {toast && (
-        <div className={`app-toast app-toast-${toast.kind}`} role="status" aria-live="polite">
-          {toast.kind === 'success' ? (
-            <span className="app-toast-icon app-toast-icon-success" aria-hidden="true" />
-          ) : toast.kind === 'error' ? (
-            <span className="app-toast-icon app-toast-icon-error" aria-hidden="true" />
-          ) : (
-            <span className="app-toast-icon app-toast-icon-info" aria-hidden="true" />
-          )}
-          <span className="app-toast-message">{toast.message}</span>
-        </div>
-      )}
+      {toast && <AppToast kind={toast.kind} message={toast.message} />}
 
       <ResultDialog open={!!hollow} title={hollow?.title} result={hollow?.result} onClose={() => setHollow(null)} />
     </div>
