@@ -12,6 +12,14 @@ const STATUS = {
   cancelled: [Minus, 'Cancelled'], approval: [LockKeyhole, 'Awaiting approval'],
 };
 
+// Rows in these states are over. Everything else (running, pending, approval…)
+// still counts as in flight, which is what drives the label shimmer.
+const SETTLED_STATUSES = new Set(['done', 'completed', 'failed', 'error', 'cancelled']);
+
+export function isActiveToolStatus(status) {
+  return !SETTLED_STATUSES.has(status);
+}
+
 export function ToolStatus({ status = 'pending', label, icon }) {
   const [DefaultIcon, description] = STATUS[status] || STATUS.pending;
   const Icon = icon || DefaultIcon;
@@ -33,10 +41,11 @@ export function ToolPanel({ open, id, children, className = '' }) {
 
 export function ToolCall({ label, query, icon, status, statusLabel, statusIcon, open, onOpenChange, expandable = true, children }) {
   const panelId = React.useId();
+  const isActive = isActiveToolStatus(status);
   const content = <>
     {expandable ? <ChevronRight size={13} className={`aui-tool-chevron ${open ? 'is-open' : ''}`} aria-hidden="true" /> : <span className="aui-tool-chevron-space" />}
     {icon && <span className="aui-tool-icon" aria-hidden="true">{icon}</span>}
-    <span className={`aui-tool-label ${status === 'running' ? 'is-running' : ''}`}>{label}</span>
+    <span className={`aui-tool-label ${isActive ? 'is-running' : ''}`}>{label}</span>
     {query && <span className="aui-tool-query">{query}</span>}
     <ToolStatus status={status} label={statusLabel} icon={statusIcon} />
   </>;

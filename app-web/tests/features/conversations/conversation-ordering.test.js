@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 import { createConversationRuntime } from '../../../src/features/conversations/hooks/createConversationRuntime.js';
 
 globalThis.window = {};
-const { normalizeWorkspaceOrdering, conversationDetailToWorkspaceConversation, compactWorkspaceStateForStorage, loadStoredWorkspaceState } = await import('../../../src/features/conversations/model/workspace-state.js');
+const {
+  normalizeWorkspaceOrdering,
+  conversationDetailToWorkspaceConversation,
+  compactWorkspaceStateForStorage,
+  loadStoredWorkspaceState,
+  workspaceStateWithConversationRuntimeTask,
+  workspaceStateWithTouchedConversation,
+} = await import('../../../src/features/conversations/model/workspace-state.js');
 const OLD = 1000;
 const RECENT = 2000;
 const DRAGGED = 3000;
@@ -42,6 +49,76 @@ test('manual ordering marker survives local storage without replacing backend ra
   globalThis.window.localStorage = { getItem: () => JSON.stringify(compactWorkspaceStateForStorage(state)) };
   const restored = loadStoredWorkspaceState('test-owner');
   assert.equal(restored.projects[0].conversations[0].manualOrderAt, DRAGGED);
+});
+
+test('streaming a running task never reshuffles concurrently running conversations', () => {
+  const startedA = 10_000;
+  const startedB = 11_000;
+  let state = workspace([
+    conversation('a', startedA, { tasks: [{ taskId: 'a1', status: 'running', createdAt: startedA, updatedAt: startedA }] }),
+    conversation('b', startedB, { tasks: [{ taskId: 'b1', status: 'running', createdAt: startedB, updatedAt: startedB }] }),
+    conversation('idle', 500),
+  ]);
+  assert.deepEqual(ids(state), ['b', 'a', 'idle']);
+  // Every streamed chunk and every runtime poll rewrites the task's own
+  // timestamps; none of that may move the row.
+  for (let tick = 1; tick <= 5; tick += 1) {
+    state = workspaceStateWithConversationRuntimeTask(state, 'a', {
+      taskId: 'a1',
+      status: 'running',
+      createdAt: startedA,
+      updatedAt: startedA + tick * 1_000,
+      answerText: `chunk ${tick}`,
+    });
+    assert.deepEqual(ids(state), ['b', 'a', 'idle']);
+  }
+  // Polling the other conversation must not drag it above either.
+  state = workspaceStateWithConversationRuntimeTask(state, 'b', {
+    taskId: 'b1', status: 'running', createdAt: startedB, updatedAt: 999_999,
+  });
+  assert.deepEqual(ids(state), ['b', 'a', 'idle']);
+});
+
+test('a send floats its conversation up once, then the order freezes until the next send', () => {
+  const first = 5_000;
+  const second = 6_000;
+  const sendAt = 50_000;
+  const settled = (taskId, at) => ({ taskId, status: 'done', createdAt: at, updatedAt: at, completedAt: at });
+  let state = workspace([
+    conversation('a', first, { tasks: [settled('a1', first)] }),
+    conversation('b', second, { tasks: [settled('b1', second)] }),
+  ]);
+  assert.deepEqual(ids(state), ['b', 'a']);
+
+  state = workspaceStateWithTouchedConversation(state, 'a', {
+    tasks: [settled('a1', first), { taskId: 'a2', status: 'queued', createdAt: sendAt, updatedAt: sendAt }],
+  });
+  assert.deepEqual(ids(state), ['a', 'b']);
+
+  // The run's own progress (chunks on 'a', a late poll on 'b') leaves both rows alone.
+  for (let tick = 1; tick <= 4; tick += 1) {
+    state = workspaceStateWithConversationRuntimeTask(state, 'a', {
+      taskId: 'a2', status: 'running', createdAt: sendAt, updatedAt: sendAt + tick * 1_000,
+    });
+    state = workspaceStateWithConversationRuntimeTask(state, 'b', {
+      ...settled('b1', second), updatedAt: second + tick * 1_000, completedAt: second + tick * 1_000,
+    });
+    assert.deepEqual(ids(state), ['a', 'b']);
+  }
+});
+
+test('completion settles a row in place instead of following every stream tick', () => {
+  const started = 20_000;
+  let state = workspace([
+    conversation('running', 30_000, { tasks: [{ taskId: 'r1', status: 'running', createdAt: 30_000, updatedAt: 30_000 }] }),
+    conversation('finishing', 21_000, { tasks: [{ taskId: 'f1', status: 'running', createdAt: started, updatedAt: started }] }),
+    conversation('idle', 1_000),
+  ]);
+  assert.deepEqual(ids(state), ['running', 'finishing', 'idle']);
+  state = workspaceStateWithConversationRuntimeTask(state, 'finishing', {
+    taskId: 'f1', status: 'done', createdAt: started, updatedAt: 40_000, completedAt: 40_000, serverFinished: true,
+  });
+  assert.deepEqual(ids(state), ['running', 'finishing', 'idle']);
 });
 
 test('running work floats above idle work and completion keeps its actual latest position', () => {

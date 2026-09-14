@@ -111,8 +111,20 @@
         padding-block: 2px;
     }
 
+    /* A long path inside backticks can strand its own line. In JetBrains Mono
+       `app-web/styles/markdown.css` is 219px and its only normal break point is
+       the hyphen: `app-` (34px) + `web/styles/markdown.css` (194px). When that
+       194px tail does not fit in the space left on the line, the whole token
+       moves down, so the line ends ~155px early and the paragraph grows a line.
+       `overflow-wrap: anywhere` (inherited) does not help: it only splits a word
+       that cannot fit on a line by itself. Letting inline code break anywhere
+       keeps the line full; the cost is that the path itself may be split
+       (`…markdo` / `wn.css`). Only inline code is affected — prose keeps the
+       standard CJK/Latin break rules, and `white-space: nowrap` in table headers
+       still suppresses breaking. */
     [data-streamdown="inline-code"] {
         padding: 1px 4px;
+        word-break: break-all;
     }
 
     blockquote {

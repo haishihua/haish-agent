@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { annotationError, locateAnnotation, readAnnotationDraft, visibleAnnotationDrafts, withoutAcknowledgedAnnotations, writeAnnotationDraft } from '../../../src/features/chat/model/message-annotations.js';
+import { annotationError, createAnnotationMessageSelector, locateAnnotation, numberAnnotations, readAnnotationDraft, visibleAnnotationDrafts, withoutAcknowledgedAnnotations, writeAnnotationDraft } from '../../../src/features/chat/model/message-annotations.js';
 
 const quote = { id: 'q1', source_message_id: 'a1', text: 'gray', comment: 'Use #282828', start: 5, end: 9, prefix: 'dark ', suffix: ' background' };
 
@@ -119,6 +119,76 @@ test('bounds and duplicate IDs are checked before send', () => {
   assert.ok(annotationError([quote], 'x'.repeat(20000)));
 });
 
+test('comment numbers keep accumulating across the conversation', () => {
+  const first = { ...quote, id: 'q1' };
+  const second = { ...quote, id: 'q2', source_message_id: 'a2' };
+  const third = { ...quote, id: 'q3', source_message_id: 'a2' };
+  const messages = [
+    { role: 'user', messageId: 'u1', annotations: [first] },
+    { role: 'agent', status: 'done' },
+    { role: 'user', status: 'running', annotations: [second, third] },
+  ];
+  assert.deepEqual([...numberAnnotations(messages, [])], [['q1', 1], ['q2', 2], ['q3', 3]], 'a later message must not restart at 1');
+  const draft = { ...quote, id: 'q4', source_message_id: 'a3' };
+  assert.deepEqual([...numberAnnotations(messages, [draft])], [['q1', 1], ['q2', 2], ['q3', 3], ['q4', 4]], 'pending comments continue the sequence');
+  // A failed send releases its comments back to the composer, so they are numbered last.
+  const unsent = [{ role: 'user', status: 'failed', annotations: [third] }];
+  assert.deepEqual([...numberAnnotations(unsent, visibleAnnotationDrafts([third], unsent))], [['q3', 1]]);
+  assert.deepEqual([...numberAnnotations([], [])], []);
+  assert.deepEqual([...numberAnnotations(undefined, undefined)], []);
+});
+
+test('markers, composer drafts and sent quotes share one conversation number', () => {
+  const panel = readFileSync(new URL('../../../src/features/chat/components/ChatPanel.jsx', import.meta.url), 'utf8');
+  const row = readFileSync(new URL('../../../src/features/chat/components/ChatMessageRow.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /numberAnnotations\(annotationMessages, annotationDrafts\)/, 'ChatPanel must number from the annotation-only projection');
+  assert.doesNotMatch(panel, /index: index \+ 1/, 'markers must not number per message');
+  assert.match(panel, /annotationNumbers=\{annotationNumbers\}/, 'rows need the shared numbers');
+  assert.match(row, /annotationNumbers\?\.get\(item\.id\)/);
+  assert.match(row, /previous\.annotationNumbers === next\.annotationNumbers/, 'memo must not freeze stale numbers');
+});
+
+test('annotation projection stays referentially stable through answer deltas and equivalent snapshots', () => {
+  const select = createAnnotationMessageSelector();
+  const user = { id: 'u1', role: 'user', status: 'queued', annotations: [quote] };
+  const selected = select([user], 'chat-a');
+  const STREAM_BATCH_COUNT = 100;
+  for (let batch = 0; batch < STREAM_BATCH_COUNT; batch += 1) {
+    assert.equal(select([
+      { ...user, status: 'running', annotations: [{ ...quote }] },
+      { role: 'agent', status: 'running', text: `delta ${batch}` },
+    ], 'chat-a'), selected);
+  }
+  assert.deepEqual(visibleAnnotationDrafts([quote], selected), []);
+  assert.deepEqual(withoutAcknowledgedAnnotations([quote], selected), [quote]);
+  assert.notEqual(select([user], 'chat-b'), selected, 'conversation changes release the old cache');
+  const empty = select([], 'chat-b');
+  assert.equal(select([{ role: 'agent', text: 'plain answer' }], 'chat-b'), empty);
+});
+
+test('annotation projection invalidates on acknowledgement, rejection, edits, ordering and source changes', () => {
+  const user = { id: 'u1', role: 'user', status: 'running', annotations: [quote] };
+  for (const change of [
+    { messageId: 'saved-user' }, { status: 'failed' }, { status: 'cancelled' },
+    ...['text', 'comment', 'source_message_id', 'prefix', 'suffix'].map((key) => ({ annotations: [{ ...quote, [key]: 'changed' }] })),
+    { annotations: [{ ...quote, start: 6, end: 10 }] }, { annotations: [] },
+  ]) {
+    const select = createAnnotationMessageSelector();
+    const before = select([user]);
+    const after = select([{ ...user, ...change }]);
+    assert.notEqual(after, before);
+    if (change.messageId) assert.deepEqual(withoutAcknowledgedAnnotations([quote], after), []);
+    if (change.status) assert.deepEqual(visibleAnnotationDrafts([quote], after), [quote]);
+  }
+  const select = createAnnotationMessageSelector();
+  const second = { ...user, id: 'u2', annotations: [{ ...quote, id: 'q2' }] };
+  const before = select([user, second]);
+  const after = select([second, user]);
+  assert.notEqual(after, before);
+  assert.deepEqual([...numberAnnotations(after, [])], [['q2', 1], ['q1', 2]]);
+  assert.equal(select([{ ...second, annotations: [{ ...quote, id: 'q2' }] }, { ...user }]), after);
+});
+
 test('runtime projections retain annotations and genuinely empty message text', async () => {
   globalThis.window = { HAISH_API_BASE: '' };
   const { buildTaskRuntimeRecord, taskSummaryToRuntimeTask } = await import('../../../src/features/tasks/model/task-runtime.js');
@@ -130,4 +200,34 @@ test('runtime projections retain annotations and genuinely empty message text', 
   assert.equal(restored.displayText, '');
   assert.equal(restored.userMessageId, 'u1');
   assert.deepEqual(taskSummaryToRuntimeTask({ task_id: 'old' }).annotations, []);
+});
+
+test('the comment box commits on Enter and keeps Shift+Enter as a newline', () => {
+  // Exercise the real JSX binding: the editor is a keyboard surface and the
+  // previous Cmd/Ctrl+Enter-only shortcut was not discoverable.
+  const source = readFileSync(new URL('../../../src/features/chat/components/MessageAnnotations.jsx', import.meta.url), 'utf8');
+  const binding = source.match(/onKeyDown=\{([\s\S]*?\n\s*\})\}/);
+  assert.ok(binding, 'the comment textarea must bind onKeyDown');
+  const commits = [];
+  const onKeyDown = new Function('save', `return (${binding[1]});`)(() => commits.push('save'));
+  const press = (key, extra = {}) => {
+    const event = {
+      key, shiftKey: false, metaKey: false, ctrlKey: false, nativeEvent: { isComposing: false },
+      defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra,
+    };
+    onKeyDown(event);
+    return event;
+  };
+  assert.equal(press('Enter').defaultPrevented, true, 'plain Enter must not insert a newline');
+  assert.deepEqual(commits, ['save']);
+  assert.deepEqual(press('Enter', { shiftKey: true }).defaultPrevented, false, 'Shift+Enter must keep the newline');
+  assert.deepEqual(commits, ['save']);
+  assert.equal(press('Enter', { nativeEvent: { isComposing: true } }).defaultPrevented, false, 'IME confirmation must not commit');
+  assert.equal(press('a').defaultPrevented, false, 'other keys must stay inert');
+  assert.deepEqual(commits, ['save']);
+  // The old modifier shortcut keeps working for muscle memory.
+  assert.equal(press('Enter', { metaKey: true }).defaultPrevented, true);
+  assert.equal(press('Enter', { ctrlKey: true }).defaultPrevented, true);
+  assert.equal(commits.length, 3);
+  assert.match(source, />\{drafts\.some\(\(item\) => item\.id === editor\.id\) \? 'Save comment' : 'Add to chat'\}/, 'Enter must mirror the labelled button');
 });

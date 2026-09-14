@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat streaming regression</title>
+<style>
+  body { margin: 20px; background: #15171b; color: #eee; font: 15px system-ui; }
+  #checks { white-space: pre-wrap; }
+  #root .chat-workspace { height: 500px; }
+  #annotation-host { position: fixed; top: 100px; right: 20px; width: 600px; height: 240px; overflow: auto; border: 1px solid #777; padding: 36px; background: #15171b; }
+</style>
+<h1>Chat streaming regression</h1>
+<p>Offline checks against production components; no model calls or real conversations.</p>
+<pre id="checks" role="status">Running checks…</pre>
+<div id="root"></div>
+<script type="module" src="./chat-streaming-regression.jsx"></script>
+</html>

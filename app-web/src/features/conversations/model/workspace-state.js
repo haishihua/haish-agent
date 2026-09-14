@@ -336,6 +336,43 @@ function conversationUpdatedTimestamp(conversation) {
   );
 }
 
+const SETTLED_TASK_STATUSES = new Set(['done', 'completed', 'failed', 'cancelled', 'aborted']);
+
+function isSettledTask(task) {
+  if (!task) return true;
+  if (task.completedAt || task.completed_at || task.serverFinished === true) return true;
+  return SETTLED_TASK_STATUSES.has(String(task.status || '').toLowerCase());
+}
+
+export function taskOrderTimestamp(task) {
+  if (!task) return 0;
+  // A task that has not settled yet (running / queued / waiting for input) has
+  // its `updatedAt` rewritten by every streamed chunk and by the runtime poll,
+  // so ordering on it reshuffled the sidebar while several conversations of the
+  // same project ran at once (the reported "whichever conversation just emitted
+  // output jumps to the top and they keep swapping"). Its start time is the
+  // stable anchor, so a run moves its conversation exactly once — when the task
+  // is created. A settled task ranks by when it settled instead, so finished
+  // work still floats above untouched rows and then stays put.
+  return isSettledTask(task) ? taskUpdatedTimestamp(task) : taskCreatedTimestamp(task);
+}
+
+export function conversationOrderTimestamp(conversation) {
+  if (!conversation) return 0;
+  const manualOrderAt = timestampValue(conversation.manualOrderAt);
+  const tasks = Array.isArray(conversation.tasks) ? conversation.tasks : [];
+  // Conversation-level `updatedAt` is also rewritten during a run (task runtime
+  // merges write `Date.now()`, the directory poll rewrites `last_message_at`),
+  // so it only decides the order for conversations that carry no task at all.
+  if (tasks.length === 0) {
+    return Math.max(manualOrderAt, conversationUpdatedTimestamp(conversation));
+  }
+  return Math.max(
+    manualOrderAt,
+    tasks.reduce((latest, task) => Math.max(latest, taskOrderTimestamp(task)), 0),
+  );
+}
+
 function projectUpdatedTimestamp(project) {
   if (!project) return 0;
   const conversationUpdatedAt = Array.isArray(project.conversations)
@@ -430,9 +467,12 @@ export function normalizeWorkspaceOrdering(state) {
   // Sidebar ordering policy:
   //   - Conversations: pinned first, then any conversation with a running/
   //     queued task floats to the top of its project so active work is always
-  //     visible. Completed work remains ordered by its latest task activity,
-  //     which survives the directory poll that rebuilds this array. Clicking
-  //     only changes active highlighting and therefore never reshuffles it.
+  //     visible. Inside those groups the order is frozen for the duration of a
+  //     run: it is anchored on when work was started (task creation) or last
+  //     settled (completion), never on the continuously-moving
+  //     `updatedAt`/stream timestamps — so a new task floats its conversation up
+  //     exactly once and concurrent runs no longer swap places. Clicking only
+  //     changes active highlighting and therefore never reshuffles it.
   //   - Projects: pinned first, then backend sortOrder (manual drag). Running
   //     state never participates in project ordering.
   const projects = (Array.isArray(state?.projects) ? state.projects : [])
@@ -450,8 +490,7 @@ export function normalizeWorkspaceOrdering(state) {
         if (bActive && !aActive) return 1;
         // A drag establishes an order until newer real activity occurs.
         // Keep this separate from updatedAt: viewing is not an update.
-        return Math.max(conversationUpdatedTimestamp(b), timestampValue(b.manualOrderAt))
-          - Math.max(conversationUpdatedTimestamp(a), timestampValue(a.manualOrderAt))
+        return conversationOrderTimestamp(b) - conversationOrderTimestamp(a)
           || (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
       }),
     }))

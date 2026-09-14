@@ -54,10 +54,55 @@ export function isSubmittedAnnotationMessage(message) {
   return message.role === 'user' && Boolean(message.messageId || message.status === 'queued' || message.status === 'running');
 }
 
+// Ignore answer deltas and task-runtime changes. Keep only the fields that
+// affect quote ownership, acknowledgement and numbering, in message order.
+export function createAnnotationMessageSelector() {
+  let previous = [];
+  let previousScope;
+  const sameQuote = (left, right) => left === right || (
+    Object.keys(left).length === Object.keys(right).length
+    && Object.keys(left).every((key) => left[key] === right[key])
+  );
+  return (messages, scope) => {
+    if (scope !== previousScope) { previous = []; previousScope = scope; }
+    const next = messages.filter((message) => message.role === 'user' && message.annotations?.length)
+      .map(({ id, messageId, status, annotations }) => ({ id, messageId, status, annotations, role: 'user' }));
+    const unchanged = next.length === previous.length && next.every((message, index) => {
+      const before = previous[index];
+      return message.id === before.id && message.messageId === before.messageId
+        && isSubmittedAnnotationMessage(message) === isSubmittedAnnotationMessage(before)
+        && (message.annotations === before.annotations || (
+          message.annotations.length === before.annotations.length
+          && message.annotations.every((item, i) => sameQuote(item, before.annotations[i]))
+        ));
+    });
+    if (!unchanged) previous = next;
+    return previous;
+  };
+}
+
 export function visibleAnnotationDrafts(drafts, messages) {
   // The optimistic message owns the submitted snapshot until confirmation.
   // An unconfirmed failure/cancellation releases it back to the composer.
   return withoutMessageAnnotations(drafts, messages.filter(isSubmittedAnnotationMessage));
+}
+
+export function numberAnnotations(messages, drafts) {
+  // Numbering is conversation-scoped: a marker, its composer draft and the sent
+  // quote must all show the same number for the same comment.
+  const numbers = new Map();
+  let next = 0;
+  const assign = (items) => {
+    for (const item of items || []) {
+      if (!item?.id || numbers.has(item.id)) continue;
+      numbers.set(item.id, ++next);
+    }
+  };
+  for (const message of messages || []) {
+    if (isSubmittedAnnotationMessage(message)) assign(message.annotations);
+  }
+  assign(drafts);
+  return numbers;
 }
 
 export function locateAnnotation(text, item) {
@@ -117,7 +162,11 @@ export function findAnnotationRange(container, item) {
   const source = [...(container?.querySelectorAll('[data-annotation-source]') || [])]
     .find((node) => node.dataset.annotationSource === item.source_message_id);
   if (!source) return null;
-  const { text, nodes } = annotationText(source);
+  return annotationRange(annotationText(source), item);
+}
+
+// Several quotes in one answer can share a single DOM text traversal.
+export function annotationRange({ text, nodes }, item) {
   const match = locateAnnotation(text, item);
   if (!match) return null;
   const first = nodes.find((part) => part.end > match.start);

@@ -1,6 +1,6 @@
 import React from 'react';
 import { TerminalDetail, DiffDetail } from '../../../shared/ui/agent-elements/ToolDetails.jsx';
-import { ToolCall, ToolStatus } from '../../../shared/ui/agent-elements/ToolCall.jsx';
+import { ToolCall, ToolStatus, isActiveToolStatus } from '../../../shared/ui/agent-elements/ToolCall.jsx';
 import { ToolTimeline } from '../../../shared/ui/agent-elements/ToolTimeline.jsx';
 import { WebSearch } from '../../../shared/ui/agent-elements/WebSearch.jsx';
 import { Bot, LoaderCircle, Sparkles } from 'lucide-react';
@@ -572,6 +572,11 @@ function ChatTimelineToolGroup({
   );
 }
 
+// Retry and compaction rows keep the in-flight ring only while the row is
+// still active. Once it settles the ring gives way to the shared terminal
+// icons (Check / CircleAlert / Minus), exactly like every other tool call.
+const metaActivityIcon = (status) => (isActiveToolStatus(status) ? LoaderCircle : undefined);
+
 function ChatTimelineMetaNode({ item }) {
   const [open, setOpen] = React.useState(false);
   const isContextCompaction = String(item.summary || '').toLowerCase() === 'auto-compacting context';
@@ -583,7 +588,7 @@ function ChatTimelineMetaNode({ item }) {
     return <div className={`chat-timeline-meta chat-tool-node is-retry status-${item.status || 'done'}`}
       role="status" aria-live="polite" aria-atomic="true">
       <ToolCall label={item.summary || 'Retrying model response…'} status={item.status || 'done'} expandable={false}
-        statusIcon={LoaderCircle}
+        statusIcon={metaActivityIcon(item.status || 'done')}
         icon={<AppIcon name="retry" size={13} className="chat-timeline-retry-icon" />} />
     </div>;
   }
@@ -592,7 +597,7 @@ function ChatTimelineMetaNode({ item }) {
       className={`chat-timeline-meta chat-tool-node status-${item.status || 'done'} ${isContextCompaction ? 'is-compaction' : ''}`}
     >
       <ToolCall label={item.summary || 'Thinking…'} status={item.status || 'done'}
-        statusIcon={isContextCompaction ? LoaderCircle : undefined}
+        statusIcon={isContextCompaction ? metaActivityIcon(item.status || 'done') : undefined}
         open={open} onOpenChange={setOpen} expandable={expandable}
         icon={isContextCompaction ? <span className="chat-timeline-compaction-icon" /> : null}>
         <div className="chat-timeline-meta-body">

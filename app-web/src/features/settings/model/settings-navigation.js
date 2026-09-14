@@ -44,21 +44,3 @@ export const SETTINGS_SUBTABS = {
     { id: 'tools-web', label: 'Web Search' },
   ],
 };
-
-export const SETTINGS_SECTION_COPY = {
-  llm: 'Provider management',
-  tools: 'Tool integrations',
-  memory: 'Configure Neo4j for long-term graph memory and relationship recall.',
-  knowledge: 'Configure Qdrant for document retrieval and vector search.',
-  agent: 'Manage preset and custom agents for chat and workflows.',
-  workflow: 'Compose multi-step agent flows with models, tools, conditions, and structured outputs.',
-};
-
-export const LLM_SUBTAB_COPY = {
-  chat: 'Chat',
-  vision: 'Vision',
-  embedding: 'Embedding',
-  'tools-mcp': 'JSON MCP config',
-  'tools-skills': 'Installed skills',
-  'tools-web': 'Search providers',
-};

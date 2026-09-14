@@ -43,7 +43,7 @@ function FinalAnswerMarkdown({ source, streaming, sourceMessageId }) {
   );
 }
 
-function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onEdit, onAnnotationJump, actionsDisabled = false }) {
+function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, onRetry, onFork, onEdit, onAnnotationJump, actionsDisabled = false, forceTraceOpen = false }) {
   const [editing, setEditing] = React.useState(false);
   const [editWidth, setEditWidth] = React.useState(undefined);
   const shellRef = React.useRef(null);
@@ -73,9 +73,12 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onE
   const hasTraceDisclosure = isAgent && (hasTimeline || message.streaming);
   // The live trace is the task's progress view, so keep it visible by default.
   // Individual tool cards inside ChatAgentTimeline manage their own collapsed state.
-  const traceForcedOpen = message.streaming || message.traceOpen;
+  const traceForcedOpen = message.streaming || message.traceOpen || forceTraceOpen;
   const showTimelineExpanded = hasTraceDisclosure && (traceForcedOpen || traceExpanded);
   const showTimelineToggle = hasTraceDisclosure && !traceForcedOpen;
+  // Older turns load their execution record only once they are scrolled into
+  // view, so name the missing steps instead of leaving the turn looking empty.
+  const tracePending = isAgent && message.traceHydrated === false && !message.streaming;
   const isUser = message.role === 'user';
   const visibleText = isUser ? stripInjectedSkillInstruction(message.text) : message.text;
   const userContent = React.useMemo(() => isUser ? splitPathReferenceDraft(visibleText) : null, [isUser, visibleText]);
@@ -146,7 +149,7 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onE
       ) : null;
 
   return (
-    <div data-message-id={message.id} className={`chat-message-row ${message.role}${message.streaming ? ' is-streaming' : ''}`}>
+    <div data-message-id={message.id} data-trace-pending={tracePending ? '' : undefined} className={`chat-message-row ${message.role}${message.streaming ? ' is-streaming' : ''}`}>
         <div ref={shellRef} style={editing ? { width: editWidth } : undefined}
           className={`chat-bubble message-shell ${isAgent ? 'agent-response' : ''} ${message.status || ''}`}>
           {!isUser ? (
@@ -178,7 +181,7 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onE
           </div>}
           <div className={`message-speech-body${editing ? ' is-editing' : ''}`} hidden={isUser && !bodyText && !message.annotations?.length && !editing}>
           {isUser && message.annotations?.length > 0 && <div className="haish-sent-annotations" aria-label="Quoted comments">
-            {message.annotations.map((item, index) => <QuoteBlock key={item.id} item={item} index={index + 1} onJump={onAnnotationJump} />)}
+            {message.annotations.map((item, index) => <QuoteBlock key={item.id} item={item} index={annotationNumbers?.get(item.id) ?? index + 1} onJump={onAnnotationJump} />)}
           </div>}
           {!isUser ? imageAttachments : null}
           {showTimelineExpanded ? (
@@ -191,12 +194,15 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onE
               onPreviewImage={onPreviewImage}
             />
           ) : null}
+          {tracePending ? (
+            <div className="chat-trace-pending" role="status">Steps load when you scroll up.</div>
+          ) : null}
           {editing ? (
             <EditMessage value={draft} onValueChange={setDraft} busy={actionBusy} disabled={actionsDisabled}
-              onCancel={() => { setEditing(false); setActionError(''); }} onSave={() => perform(() => onEdit(draft))} />
+              onCancel={() => { setEditing(false); setActionError(''); }} onSave={() => perform(() => onEdit(draft, message))} />
           ) : isAgent && message.status === 'failed' ? (
             <ErrorState title="Task failed" detail={message.text} retrying={actionBusy}
-              disabled={actionsDisabled} onRetry={onRetry ? () => perform(onRetry) : undefined} />
+              disabled={actionsDisabled} onRetry={onRetry ? () => perform(() => onRetry(message)) : undefined} />
           ) : isAgent ? (
             <FinalAnswerMarkdown source={message.text} streaming={message.streaming} sourceMessageId={message.status === 'done' ? message.messageId : undefined} />
           ) : bodyText ? (
@@ -224,7 +230,7 @@ function ChatMessageRowComponent({ message, onPreviewImage, onRetry, onFork, onE
               </button>
             </PortalTooltip>
           ) : null}
-          {onFork ? <PortalTooltip text="Branch into new chat" position="above"><button type="button" className="chat-bubble-copy message-turn-action" aria-label="Branch into new chat" disabled={actionBusy} onClick={() => perform(onFork)}>{actionBusy ? <LoaderCircle size={14} /> : <Split size={16} strokeWidth={1.75} style={{ transform: 'rotate(90deg)' }} />}</button></PortalTooltip> : null}
+          {onFork ? <PortalTooltip text="Branch into new chat" position="above"><button type="button" className="chat-bubble-copy message-turn-action" aria-label="Branch into new chat" disabled={actionBusy} onClick={() => perform(() => onFork(message))}>{actionBusy ? <LoaderCircle size={14} /> : <Split size={16} strokeWidth={1.75} style={{ transform: 'rotate(90deg)' }} />}</button></PortalTooltip> : null}
           {onEdit ? <PortalTooltip text="Edit message" position="above"><button type="button" className="chat-bubble-copy message-turn-action" aria-label="Edit message" disabled={actionsDisabled || actionBusy} onClick={() => {
             // Retain the reading width; very short messages still need room for Cancel/Send.
             setEditWidth(Math.max(shellRef.current?.getBoundingClientRect().width || 0, 220));
@@ -255,12 +261,14 @@ export const ChatMessageRow = React.memo(
   ChatMessageRowComponent,
   (previous, next) => (
     previous.message === next.message
+    && previous.annotationNumbers === next.annotationNumbers
     && previous.onPreviewImage === next.onPreviewImage
     && previous.onRetry === next.onRetry
     && previous.onFork === next.onFork
     && previous.onEdit === next.onEdit
     && previous.onAnnotationJump === next.onAnnotationJump
     && previous.actionsDisabled === next.actionsDisabled
+    && previous.forceTraceOpen === next.forceTraceOpen
   ),
 );
 

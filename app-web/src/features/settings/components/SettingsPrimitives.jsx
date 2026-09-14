@@ -45,10 +45,14 @@ export function SettingsSearch({ value, onChange, label }) {
   return <div className="settings-search-modern"><Search size={15} /><Input type="search" aria-label={label} placeholder={`${label}…`} value={value} onChange={e => onChange(e.target.value)} />{value && <Button variant="ghost" size="icon-sm" aria-label="Clear search" onClick={() => onChange('')}><X /></Button>}</div>;
 }
 
-export function SettingsRow({ title, description, icon, selected, onOpen, readOnly, enabled, onToggle, busy, onDelete, deleteLabel = 'Delete', status }) {
+export function SettingsToggleRow({ label, checked, onCheckedChange, disabled = false }) {
+  return <div className="settings-toggle-modern"><span>{label}</span><Switch aria-label={label} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} /></div>;
+}
+
+export function SettingsRow({ title, description, icon, selected, onOpen, readOnly, badge, enabled, onToggle, busy, onDelete, deleteLabel = 'Delete', status }) {
   return <Item className={`settings-row-modern ${selected ? 'is-selected' : ''}`}>
     <Button variant="ghost" className="settings-row-main" onClick={onOpen} aria-label={`${readOnly ? 'View' : 'Edit'} ${title}`} aria-expanded={selected}>
-      <ItemMedia>{icon}</ItemMedia><ItemContent><ItemTitle>{title}{readOnly && <Badge variant="secondary">Built-in</Badge>}</ItemTitle>{description && <ItemDescription>{description}</ItemDescription>}</ItemContent>
+      <ItemMedia>{icon}</ItemMedia><ItemContent><ItemTitle>{title}{readOnly && <Badge variant="secondary">Built-in</Badge>}{badge && <Badge variant="secondary">{badge}</Badge>}</ItemTitle>{description && <ItemDescription>{description}</ItemDescription>}</ItemContent>
       {status && <span className={`settings-row-status ${status.className || ''}`}>{status.className === 'success' && <Check size={12} />}{status.label}</span>}
       {!onToggle && <ChevronRight size={14} className="settings-row-chevron" />}
     </Button>

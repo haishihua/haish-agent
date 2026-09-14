@@ -452,7 +452,6 @@
     font-family: var(--conversation-font) !important;
 }
 
-
 .workflow-detail-history {
     max-width: 100%;
     margin-bottom: 8px;
@@ -572,10 +571,6 @@
     line-height: 1.45;
 }
 
-.workflow-detail-body .chat-agent-timeline {
-    margin: 0;
-}
-
 .workflow-detail-body .chat-json-card-body,
 .workflow-detail-body .chat-json-block {
     max-height: 260px;
@@ -626,11 +621,6 @@
 @keyframes workflow-detail-enter {
     from { opacity: 0; transform: translateX(12px); }
     to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes workflow-config-tooltip-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

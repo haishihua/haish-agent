@@ -120,6 +120,10 @@ import {
   upsertToolCall,
   } from '../tasks/model/task-runtime.js';
 import {
+  nextEarlierTaskRuntimeIds,
+  pendingTaskRuntimeIds,
+} from '../tasks/model/task-runtime-paging.js';
+import {
   buildChatTimeline,
   getChatProgressLine,
   appendChatProgressText,
@@ -1394,6 +1398,24 @@ export function AppShell() {
     }
     return '';
   }, [taskRuntimeState]);
+  // Older turns keep their summary until the user scrolls up to them, so the
+  // conversation no longer replays every task event log on open.
+  const pendingEarlierTaskRuntimeIds = useMemo(
+    () => pendingTaskRuntimeIds(taskRuntimeState.taskOrder, taskRuntimeState.tasksById),
+    [taskRuntimeState],
+  );
+  const loadEarlierTaskRuntimes = async (targetConversationId) => {
+    if (!targetConversationId || conversationIdRef.current !== targetConversationId) return;
+    const activationSeq = conversationActivationSeqRef.current;
+    const runtimeState = getRuntime(targetConversationId)?.taskRuntimeState;
+    const taskIds = nextEarlierTaskRuntimeIds(runtimeState?.taskOrder, runtimeState?.tasksById);
+    if (taskIds.length === 0) return;
+    return restoreTaskRuntimes(taskIds, {
+      targetConversationId,
+      isCurrentActivation: () => conversationIdRef.current === targetConversationId
+        && isConversationActivationCurrent(activationSeq),
+    });
+  };
   const chatMessages = useMemo(() => {
     const rows = [];
     const orderedTasks = collapseFullTaskAttempts(taskRuntimeState.taskOrder
@@ -1441,6 +1463,10 @@ export function AppShell() {
         const timeline = hasTraceSource ? buildChatTimeline(task, status) : null;
         const streaming = (status === 'running' || status === 'queued') && !error;
         const timelineItems = Array.isArray(timeline?.items) ? timeline.items : [];
+        // Older turns keep only their summary until the user scrolls up to them.
+        // Such a turn has no trace to read its content from, so a cancelled run
+        // falls back to the persisted answer instead of rendering blank.
+        const traceHydrated = task.runtimeHydrated !== false;
         // Keep streamed answer segments in the trace so text and tool calls
         // stay in their original chronological order. The final answer moves
         // into the Markdown bubble only after the run completes.
@@ -1450,7 +1476,7 @@ export function AppShell() {
         // the user saw before pressing Stop.
         const bubbleText = streaming
           ? ''
-          : (status === 'cancelled' ? '' : (error || answer));
+          : (status === 'cancelled' && traceHydrated ? '' : (error || answer));
         // Mid-run steering inputs ("user_input" timeline items) stay inside the
         // assistant trace — they do NOT become standalone user bubbles. The
         // correction embeds inline in the interrupted assistant box and the
@@ -1466,6 +1492,7 @@ export function AppShell() {
           text: bubbleText,
           progressLines,
           traceTimeline: timelineItems,
+          traceHydrated,
           traceLatestTodos: timeline?.latestTodos || null,
           status,
           streaming,
@@ -1660,6 +1687,8 @@ export function AppShell() {
                 <div className="app-chat-main">
 	                  <ChatPanel
 	                    conversationId={conversationId}
+	                    earlierTaskRuntimesPending={pendingEarlierTaskRuntimeIds.length > 0}
+	                    onLoadEarlierTasks={loadEarlierTaskRuntimes}
 	                    composerScopeId={draftConversationRef.current?.composerScopeId || conversationId}
 	                    messages={chatMessages}
 	                    running={currentConversationRunning}
@@ -1687,7 +1716,7 @@ export function AppShell() {
                     draft={chatDraft}
 	                    onDraftChange={setChatDraft}
                     onForkMessage={handleForkMessage}
-                    onEditMessage={(taskId, text) => handleRetryTask(getTaskById(taskId, conversationId), text)}
+                    onEditMessage={(taskId, text, runConfig) => handleRetryTask(getTaskById(taskId, conversationId), text, runConfig)}
                     onRetryTask={(taskId) => {
                       const pendingTask = taskRuntimeState.pendingTask;
                       const pendingTaskId = pendingTask?.taskId || pendingTask?.id;

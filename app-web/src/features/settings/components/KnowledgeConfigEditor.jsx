@@ -3,29 +3,37 @@ import {
   normalizeQdrantDraft,
   QDRANT_DISTANCE_OPTIONS,
 } from '../model/settings-records.js';
-import { FieldRow, SecretKeyField, SettingsMenuSelect } from './SettingsPrimitives.jsx';
+import { FieldRow, SecretKeyField, SettingsMenuSelect, SettingsToggleRow } from './SettingsPrimitives.jsx';
 
 export function KnowledgeConfigEditor({ selectedId, records, onRecordsChange, onDirty, readOnly = false }) {
   const current = (records.knowledge || []).find((item) => item.id === selectedId) || null;
   if (!current) return <div className="settings-empty">Select a knowledge configuration.</div>;
   const qdrant = normalizeQdrantDraft({ ...current.qdrant, endpoint: current.endpoint });
-  const update = (patch) => {
+  const update = ({ enabled, ...patch }) => {
     onDirty?.('knowledge', selectedId);
     onRecordsChange((prev) => ({
       ...prev,
       knowledge: (prev.knowledge || []).map((item) => {
         if (item.id !== selectedId) return item;
+        // Only the draft fields feed the connection settings; `enabled` is a
+        // record-level switch and must not be swallowed by the normalization.
         const nextQdrant = normalizeQdrantDraft({
           ...qdrant,
           ...patch,
           collection: { ...qdrant.collection, ...(patch.collection || {}) },
         });
-        return { ...item, endpoint: nextQdrant.url, qdrant: nextQdrant };
+        return { ...item, enabled: enabled ?? item.enabled, endpoint: nextQdrant.url, qdrant: nextQdrant };
       }),
     }));
   };
   return (
     <div className="settings-editor-form settings-tools-form">
+      <SettingsToggleRow
+        label="Enable knowledge base"
+        checked={current.enabled !== false}
+        onCheckedChange={(enabled) => update({ enabled })}
+        disabled={readOnly}
+      />
       <FieldRow label="URL">
         <Input value={qdrant.url} onChange={(event) => update({ url: event.target.value })} disabled={readOnly} placeholder="Optional, e.g. http://localhost:6333" />
       </FieldRow>

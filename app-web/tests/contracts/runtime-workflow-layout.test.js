@@ -122,7 +122,8 @@ test('node execution details can be resized without hiding the workflow', () => 
 });
 
 test('assistant messages keep the original penguin icon', () => {
-  assert.match(baseStyles, /\.ico-assistant-avatar\s*\{[^}]*penguin\.png/s);
+  // penguin-36.png is the pre-downsampled copy of penguin.png (same silhouette).
+  assert.match(baseStyles, /\.ico-assistant-avatar\s*\{[^}]*penguin(-\d+)?\.png/s);
 });
 
 test('live traces stay visible while their tool cards remain collapsed', () => {

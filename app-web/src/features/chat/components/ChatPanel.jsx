@@ -4,7 +4,7 @@ import { ConversationSearch } from './ConversationSearch.jsx';
 import { MessageAnnotations } from './MessageAnnotations.jsx';
 import { QuoteBlock } from '../../../shared/ui/agent-elements/Quote.jsx';
 import { useAnnotationDraft } from '../hooks/useAnnotationDraft.js';
-import { annotationError, isSubmittedAnnotationMessage, visibleAnnotationDrafts } from '../model/message-annotations.js';
+import { annotationError, createAnnotationMessageSelector, isSubmittedAnnotationMessage, numberAnnotations, visibleAnnotationDrafts } from '../model/message-annotations.js';
 import { ArrowUp, BookOpen, CornerDownLeft, Square } from 'lucide-react';
 import { ApprovalInline } from '../../approvals/components/ApprovalOverlay.jsx';
 import {
@@ -35,6 +35,8 @@ import { LexicalComposerInput } from './LexicalComposerInput.jsx';
 import { ComposerBorderBeam, MetalActionEffect } from '../../../shared/ui/MotionEffects.jsx';
 const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const CHAT_IMAGE_MAX_COUNT = 4;
+// Prefetch execution records as their summary rows approach the viewport.
+const EARLIER_TASKS_SCROLL_TRIGGER_PX = 160;
 const CHAT_IMAGE_ACCEPTED_MIME = new Set([
   'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
 ]);
@@ -69,6 +71,8 @@ export function ChatPanel({
   onRetryTask,
   onForkMessage,
   onEditMessage,
+  onLoadEarlierTasks,
+  earlierTaskRuntimesPending = false,
 }) {
   const resolvedProviderOptions = Array.isArray(providerOptions) && providerOptions.length > 0
     ? providerOptions
@@ -86,8 +90,12 @@ export function ChatPanel({
   const skillSelectionPendingRef = React.useRef(false);
   const draft = draftProp !== undefined ? draftProp : localDraft;
   const setDraft = draftProp !== undefined ? onDraftChangeProp : setLocalDraft;
-  const { items: annotationSnapshots, update: updateAnnotations, storageError } = useAnnotationDraft(conversationId, messages);
-  const annotationDrafts = React.useMemo(() => visibleAnnotationDrafts(annotationSnapshots, messages), [annotationSnapshots, messages]);
+  const selectAnnotationMessages = React.useMemo(() => createAnnotationMessageSelector(), []);
+  const annotationMessages = selectAnnotationMessages(messages, conversationId);
+  const { items: annotationSnapshots, update: updateAnnotations, storageError } = useAnnotationDraft(conversationId, annotationMessages);
+  const annotationDrafts = React.useMemo(() => visibleAnnotationDrafts(annotationSnapshots, annotationMessages), [annotationSnapshots, annotationMessages]);
+  // Conversation-scoped: a marker, its composer draft and the sent quote share one number.
+  const annotationNumbers = React.useMemo(() => numberAnnotations(annotationMessages, annotationDrafts), [annotationMessages, annotationDrafts]);
   const [annotationNotice, setAnnotationNotice] = React.useState('');
   const [pathNotice, setPathNotice] = React.useState('');
   const annotationUiRef = React.useRef(null);
@@ -105,10 +113,10 @@ export function ChatPanel({
     return true;
   };
   const highlightedAnnotations = React.useMemo(() => [
-    ...messages.filter(isSubmittedAnnotationMessage).flatMap((m) => (m.annotations || [])
-      .map((item, index) => ({ item, index: index + 1, key: `${m.messageId || m.id}:${item.id}` }))),
-    ...annotationDrafts.map((item, index) => ({ item, index: index + 1, key: `draft:${item.id}` })),
-  ], [messages, annotationDrafts]);
+    ...annotationMessages.filter(isSubmittedAnnotationMessage).flatMap((m) => (m.annotations || [])
+      .map((item) => ({ item, index: annotationNumbers.get(item.id), key: `${m.messageId || m.id}:${item.id}` }))),
+    ...annotationDrafts.map((item) => ({ item, index: annotationNumbers.get(item.id), key: `draft:${item.id}` })),
+  ], [annotationMessages, annotationDrafts, annotationNumbers]);
   React.useEffect(() => setAnnotationNotice(''), [conversationId]);
   React.useEffect(() => setPathNotice(''), [composerScopeId, draft]);
 
@@ -162,6 +170,24 @@ export function ChatPanel({
   const sendModelId = activeModelOptions.some((item) => item.id === modelId)
     ? modelId
     : (providerModels.defaultModelId || currentProvider?.defaultModelId || modelId);
+
+  // AppShell's handler factories return fresh functions on each stream batch.
+  // Stable row callbacks dispatch to the latest *committed* handlers/config.
+  const rowActionRef = React.useRef(null);
+  React.useLayoutEffect(() => {
+    rowActionRef.current = { onForkMessage, onRetryTask, onEditMessage, providerConfigured, sendModelId, modelLoading, providerRequest, reasoningEffort };
+  });
+  const forkMessage = React.useCallback((message) => rowActionRef.current.onForkMessage?.(message), []);
+  const retryMessage = React.useCallback((message) => rowActionRef.current.onRetryTask?.(message.taskId), []);
+  const editMessage = React.useCallback((text, message) => {
+    const current = rowActionRef.current;
+    if (!current.providerConfigured || !current.sendModelId || current.modelLoading) {
+      throw new Error('Select an available provider and model before resending. Your changes have not been sent.');
+    }
+    return current.onEditMessage?.(message.taskId, text, {
+      provider: current.providerRequest, modelId: current.sendModelId, reasoningEffort: current.reasoningEffort,
+    });
+  }, []);
 
   React.useEffect(() => {
     if (modelLoading) return;
@@ -301,6 +327,54 @@ export function ChatPanel({
   }, []);
 
   const listRef = React.useRef(null);
+  const [earlierTasksState, setEarlierTasksState] = React.useState(null);
+  const earlierTasksLoadRef = React.useRef(null);
+  const earlierTasksContextRef = React.useRef(null);
+  React.useLayoutEffect(() => {
+    if (earlierTasksContextRef.current?.conversationId !== conversationId) {
+      earlierTasksLoadRef.current = null;
+      setEarlierTasksState(null);
+    }
+    earlierTasksContextRef.current = { conversationId, onLoadEarlierTasks };
+  }, [conversationId, onLoadEarlierTasks]);
+  const earlierTaskRuntimesLoading = earlierTasksState?.conversationId === conversationId && earlierTasksState?.loading;
+  const earlierTasksError = earlierTasksState?.conversationId === conversationId ? earlierTasksState?.error : '';
+  const loadEarlierTasks = React.useCallback(async () => {
+    const context = earlierTasksContextRef.current;
+    if (!context.onLoadEarlierTasks || earlierTasksLoadRef.current?.conversationId === context.conversationId) return;
+    const request = { conversationId: context.conversationId, loading: true, error: '' };
+    earlierTasksLoadRef.current = request;
+    setEarlierTasksState(request);
+    let error = '';
+    try {
+      await context.onLoadEarlierTasks(context.conversationId);
+    } catch {
+      error = 'Could not load earlier steps.';
+    } finally {
+      // A slow request from a previous conversation must not clear a newer one.
+      if (earlierTasksLoadRef.current === request) {
+        earlierTasksLoadRef.current = null;
+        setEarlierTasksState({ ...request, loading: false, error });
+      }
+    }
+  }, []);
+  const handleListScroll = React.useCallback(() => {
+    if (!earlierTaskRuntimesPending || earlierTaskRuntimesLoading || earlierTasksError) return;
+    const element = listRef.current;
+    if (!element) return;
+    const viewport = element.getBoundingClientRect();
+    const pendingVisible = [...element.querySelectorAll('[data-trace-pending]')].some((row) => {
+      const rect = row.getBoundingClientRect();
+      return rect.bottom >= viewport.top && rect.top <= viewport.bottom + EARLIER_TASKS_SCROLL_TRIGGER_PX;
+    });
+    if (searchActive || element.scrollTop <= EARLIER_TASKS_SCROLL_TRIGGER_PX || pendingVisible) loadEarlierTasks();
+  }, [earlierTaskRuntimesPending, earlierTaskRuntimesLoading, earlierTasksError, searchActive, loadEarlierTasks]);
+  React.useEffect(() => {
+    // Re-check after each page settles, even if row count/scrollTop did not
+    // change. Search needs every page, not just the currently visible steps.
+    const frame = requestAnimationFrame(handleListScroll);
+    return () => cancelAnimationFrame(frame);
+  }, [handleListScroll, messages, conversationId]);
   const inputRef = React.useRef(null);
   const suppressSubmitUntilRef = React.useRef(0);
   const historyCursorRef = React.useRef(-1);
@@ -315,6 +389,11 @@ export function ChatPanel({
   };
   const runConfigReadOnly = running || submitPending;
   const runConfigDisabled = !runConfigReadOnly && (disabled || submitPending);
+  // The send/stop metal ring is an in-progress signal, not decoration: it only
+  // runs while this conversation actually has work in flight (a task
+  // streaming, or a send that has not started streaming yet). Switching to an
+  // idle conversation therefore hides it automatically.
+  const sendBeamActive = running || submitPending;
 
   const restoreActiveTaskText = React.useCallback((value = activeTaskText) => {
     const text = String(value || '').trim();
@@ -432,8 +511,15 @@ export function ChatPanel({
   return (
     <section className="chat-workspace" aria-label="Chat">
       <div className="chat-message-region">
-        <ConversationSearch key={conversationId || 'draft'} scrollRef={listRef} onSearchChange={setSearchActive} />
-        <div ref={listRef} className={`chat-message-list${searchActive ? ' is-searching' : ''}`}>
+        <ConversationSearch key={conversationId || 'draft'} scrollRef={listRef} onSearchChange={setSearchActive}
+          loading={earlierTaskRuntimesPending && !earlierTasksError} />
+        <div ref={listRef} className={`chat-message-list${searchActive ? ' is-searching' : ''}`} onScroll={handleListScroll}>
+          {messages.length > 0 && (earlierTaskRuntimesPending || earlierTaskRuntimesLoading) ? (
+            <div className="chat-earlier-tasks" role="status">
+              {earlierTasksError ? <>{earlierTasksError} <button type="button" onClick={loadEarlierTasks}>Retry loading steps</button></>
+                : earlierTaskRuntimesLoading ? 'Loading earlier steps…' : 'Scroll up to load earlier steps'}
+            </div>
+          ) : null}
           {messages.length === 0 ? (
             <div className="chat-empty">
               <PenguinCards />
@@ -443,16 +529,18 @@ export function ChatPanel({
           ) : messages.map((message) => (
             <ChatMessageRow
               key={message.id}
-              message={searchActive ? { ...message, traceOpen: true } : message}
+              message={message}
+              forceTraceOpen={searchActive}
+              annotationNumbers={annotationNumbers}
               onPreviewImage={openImagePreview}
               onAnnotationJump={jumpToAnnotation}
               actionsDisabled={running || submitPending}
               onFork={message.role === 'agent' && message.status === 'done' && message.messageId
-                ? () => onForkMessage?.(message) : null}
+                ? forkMessage : null}
               onEdit={message.role === 'user' && message.status === 'cancelled' && message.taskId === messages.at(-1)?.taskId
-                ? (text) => onEditMessage?.(message.taskId, text) : null}
+                ? editMessage : null}
               onRetry={message.role === 'agent' && message.status === 'failed' && message.taskId && message.taskId === messages.at(-1)?.taskId
-                ? () => onRetryTask?.(message.taskId)
+                ? retryMessage
                 : null}
             />
           ))}
@@ -470,7 +558,7 @@ export function ChatPanel({
       >
         <ComposerBorderBeam active={running || submitPending || hasComposerPayload} />
         {annotationDrafts.length > 0 && <div className="haish-annotation-drafts" aria-label="Comment drafts">
-          {annotationDrafts.map((item, index) => <QuoteBlock key={item.id} item={item} index={index + 1} preview
+          {annotationDrafts.map((item) => <QuoteBlock key={item.id} item={item} index={annotationNumbers.get(item.id)} preview
             onJump={jumpToAnnotation} onEdit={editAnnotation}
             onRemove={() => updateAnnotations((previous) => previous.filter((draft) => draft.id !== item.id))} />)}
         </div>}
@@ -708,7 +796,7 @@ export function ChatPanel({
               agentLockedReason={agentLockedReason}
             />
             {submitPending ? (
-              <MetalActionEffect>
+              <MetalActionEffect active={sendBeamActive}>
                 <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Cancel pending request">
                   <Square className="chat-send-icon chat-stop-icon" fill="currentColor" strokeWidth={0} aria-hidden="true" />
                 </button>
@@ -717,19 +805,19 @@ export function ChatPanel({
               // Running + user typed a mid-run instruction: replace Stop with Send,
               // so Stop and Send never appear side by side. Sending clears the
               // draft and the button flips back to Stop.
-              <MetalActionEffect>
+              <MetalActionEffect active={sendBeamActive}>
                 <button type="submit" className="chat-send" disabled={disabled || runtimeInputPending || !canSubmitPayload} aria-label="Add instruction">
                   <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
                 </button>
               </MetalActionEffect>
             ) : running ? (
-              <MetalActionEffect>
+              <MetalActionEffect active={sendBeamActive}>
                 <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Stop">
                   <Square className="chat-send-icon chat-stop-icon" fill="currentColor" strokeWidth={0} aria-hidden="true" />
                 </button>
               </MetalActionEffect>
             ) : (
-              <MetalActionEffect>
+              <MetalActionEffect active={sendBeamActive}>
                 <button type="submit" className="chat-send" disabled={disabled || !canSubmitPayload || !providerConfigured || !sendModelId} aria-label="Send">
                   <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
                 </button>

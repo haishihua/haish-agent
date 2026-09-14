@@ -42,7 +42,9 @@
   --spacing: .25rem; color: var(--foreground); font-family: var(--conversation-font, 'LXGW WenKai Screen', sans-serif);
 }
 .settings-page.settings-modern { position: relative; display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 0; height: 100%; padding: 0; overflow: hidden; }
-.settings-modern-main { min-width: 0; min-height: 0; overflow: auto; background: var(--app-workspace-background); backdrop-filter: blur(18px) saturate(116%); -webkit-backdrop-filter: blur(18px) saturate(116%); }
+/* No backdrop-filter here or on .settings-nav-modern: both sit on .app-shell's
+   opaque gradient (see the note on .chat-workspace in app-web/styles/chat.css). */
+.settings-modern-main { min-width: 0; min-height: 0; overflow: auto; background: var(--app-workspace-background); }
 .settings-modern-main.with-editor, .settings-tools-modern.with-editor { padding-right: var(--editor-width); }
 .settings-legacy-workflow { height: 100%; }
 [data-settings-portal] { display: contents; }
@@ -58,7 +60,7 @@
   ::-webkit-scrollbar { display: block; width: 7px; height: 7px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: #a3b4d033; background-clip: padding-box; }
-  .settings-nav-modern { min-height: 0; overflow: auto; padding: 26px 14px; background: var(--app-sidebar-highlight-background), var(--app-sidebar-background); backdrop-filter: blur(22px) saturate(122%); -webkit-backdrop-filter: blur(22px) saturate(122%); border-right: 1px solid #ffffff0b; }
+  .settings-nav-modern { min-height: 0; overflow: auto; padding: 26px 14px; background: var(--app-sidebar-highlight-background), var(--app-sidebar-background); border-right: 1px solid #ffffff0b; }
   .settings-nav-title { display: flex; align-items: center; gap: 10px; margin: 0 13px 31px; font-size: 17px; font-weight: 600; }
   .settings-nav-title svg { color: #96a0b3; }
   .settings-nav-group { width: 100%; display: flex; justify-content: space-between; padding: 10px 12px; margin: 3px 0 5px; color: #91a0b7; font-size: 12px; background: transparent; }

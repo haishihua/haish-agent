@@ -1,7 +1,7 @@
 import React from 'react';
 import { autoUpdate, flip, FloatingFocusManager, FloatingPortal, inline, offset, shift, useDismiss, useFloating, useInteractions } from '@floating-ui/react';
 import { QuoteBlock, SelectionToolbar } from '../../../shared/ui/agent-elements/Quote.jsx';
-import { annotationError, captureAnnotationSelection, findAnnotationRange } from '../model/message-annotations.js';
+import { annotationError, annotationRange, annotationText, captureAnnotationSelection, findAnnotationRange } from '../model/message-annotations.js';
 import { scrollToConversationMatch } from '../model/conversation-search.js';
 import './message-annotations.css';
 
@@ -71,18 +71,39 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
 
   React.useEffect(() => {
     const container = listRef.current;
-    if (!container) return undefined;
-    let frame;
-    let dirty = true;
-    let located = [];
+    if (!container || !items.length) {
+      setMarkers((previous) => previous.length ? [] : previous);
+      return undefined;
+    }
+    let frame = null;
+    const sources = new Map();
+    for (const entry of items) {
+      const id = entry.item.source_message_id;
+      if (!sources.has(id)) sources.set(id, { source: null, items: [], located: [], dirty: true });
+      sources.get(id).items.push(entry);
+    }
+    const bindSource = (node) => {
+      const group = sources.get(node.dataset.annotationSource);
+      if (group && group.source !== node) {
+        group.source = node;
+        group.dirty = true;
+      }
+    };
+    container.querySelectorAll('[data-annotation-source]').forEach(bindSource);
     const refresh = () => {
-      cancelAnimationFrame(frame);
+      if (frame !== null) return;
       frame = requestAnimationFrame(() => {
-        if (dirty) {
-          located = items.map((item) => ({ ...item, range: findAnnotationRange(container, item.item) })).filter((item) => item.range);
-          if (globalThis.CSS?.highlights && globalThis.Highlight) CSS.highlights.set('message-annotations', new Highlight(...located.map((item) => item.range)));
-          dirty = false;
+        frame = null;
+        let rangesChanged = false;
+        for (const group of sources.values()) {
+          if (!group.dirty) continue;
+          const text = group.source && annotationText(group.source);
+          group.located = text ? group.items.map((entry) => ({ ...entry, range: annotationRange(text, entry.item) })).filter((entry) => entry.range) : [];
+          group.dirty = false;
+          rangesChanged = true;
         }
+        const located = [...sources.values()].flatMap((group) => group.located);
+        if (rangesChanged && globalThis.CSS?.highlights && globalThis.Highlight) CSS.highlights.set('message-annotations', new Highlight(...located.map((entry) => entry.range)));
         const viewport = container.getBoundingClientRect();
         const next = [];
         const occupied = [];
@@ -90,6 +111,8 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
           const rect = [...range.getClientRects()].at(-1);
           if (!rect || rect.bottom < viewport.top + 20 || rect.top > viewport.bottom - 20) continue;
           let top = rect.top - 12;
+          // Marker is position:fixed; keep its viewport coordinates tied to the
+          // current range rect after every scroll/layout refresh.
           let left = Math.min(rect.right + 2, viewport.right - 24);
           while (occupied.some((pos) => Math.abs(pos.top - top) < 20 && Math.abs(pos.left - left) < 20)) {
             top -= 20;
@@ -97,17 +120,51 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
           occupied.push({ top, left });
           next.push({ item, index, key, top, left });
         }
-        setMarkers(next);
+        setMarkers((previous) => previous.length === next.length && next.every((marker, index) => {
+          const before = previous[index];
+          return marker.key === before.key && marker.item === before.item && marker.index === before.index
+            && marker.top === before.top && marker.left === before.left;
+        }) ? previous : next);
       });
     };
-    const observer = new MutationObserver(() => { dirty = true; refresh(); });
-    observer.observe(container, { childList: true, subtree: true, characterData: true });
+    const observer = new MutationObserver((records) => {
+      let layoutChanged = false;
+      for (const record of records) {
+        for (const group of sources.values()) {
+          const source = group.source;
+          if (!source) continue;
+          // A source can disappear during Markdown replacement, history paging
+          // or a conversation switch. Never keep a detached/stale Range alive.
+          if (!container.contains(source) || !sources.has(source.dataset.annotationSource)
+            || sources.get(source.dataset.annotationSource) !== group) {
+            group.source = null;
+            group.dirty = true;
+            layoutChanged = true;
+            continue;
+          }
+          if (source.contains(record.target)) group.dirty = true;
+          // Output *after* an old quote cannot move it, unless scrolling occurs
+          // (handled separately). Changes before/inside it can affect layout.
+          if (source.contains(record.target) || record.target.contains(source)
+            || (source.compareDocumentPosition(record.target) & Node.DOCUMENT_POSITION_PRECEDING)) layoutChanged = true;
+        }
+        for (const node of record.type === 'attributes' ? [record.target] : record.addedNodes || []) {
+          if (node.nodeType !== Node.ELEMENT_NODE) continue;
+          if (node.matches('[data-annotation-source]')) bindSource(node);
+          node.querySelectorAll('[data-annotation-source]').forEach(bindSource);
+        }
+      }
+      if (layoutChanged || [...sources.values()].some((group) => group.dirty)) refresh();
+    });
+    observer.observe(container, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['data-annotation-source'] });
     const resize = new ResizeObserver(refresh);
     resize.observe(container);
     // Layout can move when Markdown images or fonts finish loading.
     container.addEventListener('load', refresh, true);
     document.fonts?.addEventListener('loadingdone', refresh);
     window.addEventListener('scroll', refresh, true);
+    window.visualViewport?.addEventListener('scroll', refresh);
+    window.visualViewport?.addEventListener('resize', refresh);
     window.addEventListener('resize', refresh);
     refresh();
     return () => {
@@ -115,6 +172,8 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
       container.removeEventListener('load', refresh, true);
       document.fonts?.removeEventListener('loadingdone', refresh);
       window.removeEventListener('scroll', refresh, true);
+      window.visualViewport?.removeEventListener('scroll', refresh);
+      window.visualViewport?.removeEventListener('resize', refresh);
       window.removeEventListener('resize', refresh);
       globalThis.CSS?.highlights?.delete('message-annotations');
       globalThis.CSS?.highlights?.delete('annotation-focus');
@@ -145,7 +204,9 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
             onChange={(event) => setComment(event.target.value)}
             onKeyDown={(event) => {
               if (event.nativeEvent.isComposing) return;
-              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); save(); }
+              // Enter commits the comment like the primary button; Shift+Enter
+              // keeps the default newline so the box still takes multi-line text.
+              if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); save(); }
             }} />
           <div className="haish-annotation-editor-actions">
             <button type="button" onClick={close}>Cancel</button>

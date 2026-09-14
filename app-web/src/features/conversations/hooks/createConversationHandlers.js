@@ -58,8 +58,9 @@ export function createConversationHandlers(ctx) {
     return summaries.every((summary) => {
       const taskId = summary.taskId || summary.id || summary.task_id;
       const task = state.tasksById[taskId];
+      // Deferred execution logs do not make an otherwise current summary stale.
       return Boolean(
-        task?.runtimeHydrated
+        task
         && taskUpdatedTimestamp(task) === taskUpdatedTimestamp(summary)
       );
     });
@@ -768,7 +769,7 @@ export function createConversationHandlers(ctx) {
     await activateConversationDetail(detail, { restoreLatest: false });
   }
 
-  async function handleRetryTask(task, editedMessage = null) {
+  async function handleRetryTask(task, editedMessage = null, runConfig = null) {
     const targetConversationId = task?.conversationId || task?.conversation_id;
     if (!targetConversationId) throw new Error('Conversation is unavailable. Your changes have not been sent.');
     if ((task?.userMessageId || task?.user_message_id) && executeQuest) {
@@ -777,6 +778,7 @@ export function createConversationHandlers(ctx) {
       return executeQuest(source, targetConversationId, {
         attempt: editedMessage == null ? 'rerun' : 'edit',
         message: editedMessage,
+        runConfig: editedMessage == null ? null : runConfig,
         requestId: crypto.randomUUID(),
       });
     }

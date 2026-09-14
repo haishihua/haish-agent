@@ -1,3 +1,5 @@
+import { splitTaskRuntimeRestoreOrder } from '../../tasks/model/task-runtime-paging.js';
+
 export function createConversationActivationHandlers(ctx) {
   const {
     API_BASE,
@@ -251,8 +253,12 @@ export function createConversationActivationHandlers(ctx) {
         latestTaskId,
         ...taskIdsToRestore.slice().reverse().filter((taskId) => taskId !== latestTaskId),
       ].filter((taskId) => taskIdsToRestore.includes(taskId));
+      // Hydrate only the newest slice up front. Older turns keep the summary the
+      // conversation detail already carries and are hydrated in pages when the
+      // user scrolls up (see task-runtime-paging.js).
+      const { initialIds } = splitTaskRuntimeRestoreOrder(restoreOrder);
       try {
-        await restoreTaskRuntimes(restoreOrder, {
+        await restoreTaskRuntimes(initialIds, {
           targetConversationId: restoredConversationId,
           isCurrentActivation,
           signal,

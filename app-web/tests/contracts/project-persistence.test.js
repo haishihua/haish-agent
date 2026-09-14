@@ -38,7 +38,9 @@ test('project and project conversation reorder use scoped backend routes', () =>
 test('conversation activation restores changed task runtimes in one batch', () => {
   assert.match(activationHandlersSource, /const restoreOrder = \[/);
   assert.match(activationHandlersSource, /latestTaskId,[\s\S]*taskIdsToRestore\.slice\(\)\.reverse\(\)/);
-  assert.match(activationHandlersSource, /await restoreTaskRuntimes\(restoreOrder/);
+  // Only the newest slice is hydrated up front; older turns are paged in on scroll.
+  assert.match(activationHandlersSource, /const \{ initialIds \} = splitTaskRuntimeRestoreOrder\(restoreOrder\);/);
+  assert.match(activationHandlersSource, /await restoreTaskRuntimes\(initialIds/);
   assert.doesNotMatch(activationHandlersSource, /for \(const taskId of restoreOrder\)/);
 });
 

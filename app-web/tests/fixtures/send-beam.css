@@ -1,0 +1,42 @@
+.beam-fixture {
+    min-height: 100vh;
+    padding: 22px 26px;
+    font-family: 'JetBrains Mono', monospace;
+    color: #daddef;
+}
+
+.beam-fixture h1 {
+    margin: 0 0 6px;
+    font-size: 18px;
+}
+
+.beam-fixture > p {
+    margin: 0 0 22px;
+    max-width: 640px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #8e9ab8;
+}
+
+.beam-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 18px 0;
+}
+
+.beam-state {
+    min-width: 132px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #8e9ab8;
+}
+
+#checks {
+    margin: 18px 0 0;
+    font-size: 11px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    color: #9fd8a4;
+}

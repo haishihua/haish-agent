@@ -2,7 +2,7 @@ import React from 'react';
 import { Search, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { collectConversationMatches, conversationMatchPositions, scrollToConversationMatch } from '../model/conversation-search.js';
 
-export function ConversationSearch({ scrollRef, onSearchChange }) {
+export function ConversationSearch({ scrollRef, onSearchChange, loading = false }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
   const [index, setIndex] = React.useState(0);
@@ -87,12 +87,12 @@ export function ConversationSearch({ scrollRef, onSearchChange }) {
             if (event.nativeEvent.isComposing) return;
             if (event.key === 'Enter') { event.preventDefault(); step(event.shiftKey ? -1 : 1); }
           }} />
-        {query.trim() && <small className="haish-search-count" aria-live="polite">{hits.length ? `${Math.min(index + 1, hits.length)} / ${hits.length}` : '0 matches'}</small>}
+        {query.trim() && <small className="haish-search-count" aria-live="polite">{loading ? 'Searching…' : hits.length ? `${Math.min(index + 1, hits.length)} / ${hits.length}` : '0 matches'}</small>}
         <button type="button" disabled={!hits.length} aria-label="Previous match" onClick={() => step(-1)}><ChevronUp size={16} /></button>
         <button type="button" disabled={!hits.length} aria-label="Next match" onClick={() => step(1)}><ChevronDown size={16} /></button>
         <button type="button" aria-label="Close search" title="Close search" onClick={close}><X size={16} /></button>
       </div>
-      {active ? <button type="button" className="haish-search-match-preview" aria-label="Jump to match" onClick={() => scrollToConversationMatch(scrollRef.current, active.range)}>{active.before}<mark>{active.match}</mark>{active.after}</button> : query.trim() && <p>No matches in loaded messages</p>}
+      {active ? <button type="button" className="haish-search-match-preview" aria-label="Jump to match" onClick={() => scrollToConversationMatch(scrollRef.current, active.range)}>{active.before}<mark>{active.match}</mark>{active.after}</button> : query.trim() && <p>{loading ? 'Loading earlier steps…' : 'No matches in loaded messages'}</p>}
     </div>}
     {open && query.trim() && hits.length > 0 && <div className="haish-search-hit-track" role="group" aria-label="Search match locations">
       {positions.map((position, hitIndex) => position !== null && <button

@@ -180,26 +180,6 @@ export function parseJsonSafe(text) {
   }
 }
 
-function escapeHtml(text) {
-  return String(text ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-export function highlightJsonSyntax(text) {
-  return escapeHtml(text).replace(
-    /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/g,
-    (match) => {
-      let cls = 'settings-json-number';
-      if (match.startsWith('"')) cls = match.endsWith(':') ? 'settings-json-key' : 'settings-json-string';
-      else if (match === 'true' || match === 'false') cls = 'settings-json-boolean';
-      else if (match === 'null') cls = 'settings-json-null';
-      return `<span class="${cls}">${match}</span>`;
-    },
-  );
-}
-
 export function isEmptyMcpConfigDraft(text) {
   const raw = String(text || '').trim();
   if (!raw) return true;
@@ -214,19 +194,6 @@ export function isEmptyMcpConfigDraft(text) {
     && !Array.isArray(servers)
     && Object.keys(servers).length === 0
   );
-}
-
-export function countMcpServersFromJson(text) {
-  const parsed = parseJsonSafe(text || DEFAULT_MCP_CONFIG_JSON);
-  if (!parsed.ok || !parsed.value || typeof parsed.value !== 'object' || Array.isArray(parsed.value)) return 0;
-  const servers = parsed.value.servers;
-  if (!servers || typeof servers !== 'object' || Array.isArray(servers)) return 0;
-  return Object.keys(servers).length;
-}
-
-export function formatMcpServerCountLabel(count) {
-  const total = Number.isFinite(count) && count > 0 ? count : 0;
-  return `${total} mcp server${total === 1 ? '' : 's'}`;
 }
 
 export function normalizeWebSearchDraft(value) {
@@ -283,11 +250,12 @@ export function applyToolsSettingsPayloadToRecords(records, payload) {
 
 export function applyMemorySettingsPayloadToRecords(records, payload) {
   const neo4j = normalizeNeo4jDraft(payload?.neo4j);
+  const enabled = payload?.enabled !== false;
   return {
     ...records,
     memory: mergeKnownDefaultRecords(createDefaultSettingsRecords().memory, records?.memory).map((record) => (
       record.id === 'memory-neo4j'
-        ? { ...record, endpoint: neo4j.uri, neo4j }
+        ? { ...record, enabled, endpoint: neo4j.uri, neo4j }
         : record
     )),
   };
@@ -295,11 +263,12 @@ export function applyMemorySettingsPayloadToRecords(records, payload) {
 
 export function applyKnowledgeSettingsPayloadToRecords(records, payload) {
   const qdrant = normalizeQdrantDraft(payload?.qdrant);
+  const enabled = payload?.enabled !== false;
   return {
     ...records,
     knowledge: mergeKnownDefaultRecords(createDefaultSettingsRecords().knowledge, records?.knowledge).map((record) => (
       record.id === 'knowledge-qdrant'
-        ? { ...record, endpoint: qdrant.url, qdrant }
+        ? { ...record, enabled, endpoint: qdrant.url, qdrant }
         : record
     )),
   };
@@ -344,6 +313,8 @@ export function buildMemorySettingsPayload(records) {
   const record = memory.find((item) => item.id === 'memory-neo4j') || {};
   const neo4j = normalizeNeo4jDraft({ ...record.neo4j, endpoint: record.endpoint });
   return {
+    // 总开关：关掉后后端不注册记忆工具、也不再每轮自动召回。
+    enabled: record.enabled !== false,
     neo4j: {
       uri: neo4j.uri,
       username: neo4j.username,
@@ -358,6 +329,8 @@ export function buildKnowledgeSettingsPayload(records) {
   const record = knowledge.find((item) => item.id === 'knowledge-qdrant') || {};
   const qdrant = normalizeQdrantDraft({ ...record.qdrant, endpoint: record.endpoint });
   return {
+    // 总开关：关掉后后端不注册知识库工具。
+    enabled: record.enabled !== false,
     qdrant: {
       url: qdrant.url,
       ...(qdrant.api_key ? { api_key: qdrant.api_key } : {}),
@@ -422,4 +395,3 @@ export function llmEditorModelChoices(config) {
     discovered.length ? discovered : modelChoicesFor(config?.provider),
   );
 }
-

@@ -692,7 +692,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
           proOptions={{ hideAttribution: true }}
         >
           <Background gap={22} size={1.2} color="rgba(176, 206, 255, 0.07)" />
-          <Controls showInteractive={false} position="bottom-left" />
+          <Controls showInteractive={false} position="top-right" />
           <FitWorkflow workflowKey={workflowKey} detailOpen={Boolean(selectedNode)} layoutKey={layoutKey} />
         </ReactFlow>
         {composer}

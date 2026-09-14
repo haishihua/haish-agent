@@ -192,10 +192,27 @@ test('approval mode uses a compact icon orbit with copy moved to tooltips', () =
 test('send and stop actions share the chromatic metal circle effect', () => {
   assert.match(motionEffectsSource, /import \{ MetalFx \} from 'metal-fx'/);
   assert.match(motionEffectsSource, /variant="circle"[\s\S]*preset="chromatic"[\s\S]*theme="dark"/);
-  assert.match(motionEffectsSource, /strength=\{1\}[\s\S]*paused=\{reduceMotion\(\)\}/);
+  assert.match(motionEffectsSource, /strength=\{1\}/);
   assert.doesNotMatch(motionEffectsSource, /children\.props\.disabled/);
-  assert.match(chatPanelSource, /<MetalActionEffect>[\s\S]*chat-send-icon/);
-  assert.match(taskDelegationSource, /<MetalActionEffect>[\s\S]*chat-send-icon/);
+  assert.match(chatPanelSource, /<MetalActionEffect active=\{sendBeamActive\}>[\s\S]*chat-send-icon/);
+  assert.match(taskDelegationSource, /<MetalActionEffect active=\{sendBeamActive\}>[\s\S]*chat-send-icon/);
+});
+
+// The ring moved from "always on" to "only while this conversation has work in
+// flight". Both call sites must pass the same state and neither may fall back
+// to the unconditional form, which would silently light up an idle composer.
+test('the metal ring tracks the running task instead of staying lit', () => {
+  assert.match(motionEffectsSource, /active = true, \.\.\.props \}, ref\)/);
+  assert.match(motionEffectsSource, /`chat-send-metal \$\{active \? 'is-active' : 'is-idle'\}/);
+  assert.match(motionEffectsSource, /paused=\{reduceMotion\(\) \|\| !active\}/);
+  for (const source of [chatPanelSource, taskDelegationSource]) {
+    assert.match(source, /const sendBeamActive = running \|\| submitPending;/);
+    assert.doesNotMatch(source, /<MetalActionEffect>/);
+  }
+  // Unmounting the shell would swap the button surface mid-press, so the idle
+  // state hides the shader layers instead and keeps the shell mounted.
+  assert.match(chatStyles, /\.chat-send-metal\.is-idle \.metal-fx-canvas[\s\S]*opacity: 0;/);
+  assert.match(chatStyles, /\.chat-send-metal\.is-idle \.metal-fx-glow-svg[\s\S]*opacity: 0;/);
 });
 
 test('the shared MetalFx context survives chat and workflow mode switches', () => {

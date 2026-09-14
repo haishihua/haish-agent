@@ -5,6 +5,7 @@ import { collapseFullTaskAttempts } from '../../../src/features/chat/model/task-
 globalThis.window = {};
 const { createAttemptHarness } = await import('../../fixtures/task-attempt-runtime.js');
 const { createConversationHandlers } = await import('../../../src/features/conversations/hooks/createConversationHandlers.js');
+const { taskOrderTimestamp } = await import('../../../src/features/conversations/model/workspace-state.js');
 
 const sourceTurn = () => ({ taskId: 'source', conversationId: 'conversation', userMessageId: 'original-user',
   title: 'Old message', displayText: 'Old message', requestText: 'Old message', status: 'cancelled', originViewMode: 'chat' });
@@ -30,18 +31,84 @@ test('an ordinary retry preserves the original display text', async () => {
   const harness = createAttemptHarness(source);
   await harness.executeQuest(source, source.conversationId, { attempt: 'rerun', requestId: 'retry-request' });
   assert.equal(harness.requests[0].body.message, undefined);
+  assert.equal(harness.requests[0].body.provider, undefined);
+  assert.equal(harness.requests[0].body.model_id, undefined);
   assert.equal(harness.runtime.taskRuntimeState.tasksById['confirmed-attempt'].displayText, source.displayText);
 });
 
-test('a rejected edit restores the original turn and removes the temporary attempt', async () => {
+test('editing uses the current run configuration without changing the original task', async () => {
+  const source = { ...sourceTurn(), requestedProvider: 'old-provider', requestedModelId: 'old-model', requestedReasoningEffort: 'high' };
+  const harness = createAttemptHarness(source);
+  const handlers = createConversationHandlers({
+    executeQuest: harness.executeQuest,
+    canStartDeployForConversation: () => true,
+    getRuntime: () => harness.runtime,
+  });
+  const runConfig = { provider: 'current-provider', modelId: 'current-model', reasoningEffort: 'low' };
+  await handlers.handleRetryTask(source, 'Revised message', runConfig);
+  const body = harness.requests[0].body;
+  assert.equal(body.provider, runConfig.provider);
+  assert.equal(body.model_id, runConfig.modelId);
+  assert.equal(body.reasoning_effort, runConfig.reasoningEffort);
+  assert.equal(harness.snapshots[0].requestedProvider, runConfig.provider);
+  assert.equal(harness.snapshots[0].requestedModelId, runConfig.modelId);
+  assert.equal(harness.snapshots[0].requestedReasoningEffort, runConfig.reasoningEffort);
+  assert.equal(source.requestedProvider, 'old-provider');
+  assert.equal(source.requestedModelId, 'old-model');
+  assert.equal(source.requestedReasoningEffort, 'high');
+});
+
+test('a new attempt orders by its own start rather than the original task time', async () => {
+  const OLD_TASK_TIME = Date.UTC(2026, 0, 1);
+  for (const attempt of ['edit', 'rerun']) {
+    const source = { ...sourceTurn(), createdAt: OLD_TASK_TIME, updatedAt: OLD_TASK_TIME };
+    const startedAfter = Date.now();
+    const harness = createAttemptHarness(source);
+    await harness.executeQuest(source, source.conversationId, { attempt, message: 'New attempt', requestId: attempt });
+    assert.ok(taskOrderTimestamp(harness.snapshots[0]) >= startedAfter, 'running attempts must rank at the new send time');
+    assert.equal(source.createdAt, OLD_TASK_TIME);
+  }
+});
+
+test('rerunning a summary-only turn builds a complete live runtime', async () => {
+  const source = { ...sourceTurn(), runtimeHydrated: false };
+  const harness = createAttemptHarness(source);
+  await harness.executeQuest(source, source.conversationId, { attempt: 'rerun', requestId: 'summary-retry' });
+  const completed = harness.runtime.taskRuntimeState.tasksById['confirmed-attempt'];
+  assert.equal(completed.status, 'done');
+  assert.notEqual(completed.runtimeHydrated, false, 'the completed live trace must not be marked as waiting for history');
+  assert.equal(source.runtimeHydrated, false);
+});
+
+test('a rejected edit waits for the previous task to release, then fails in plain language', async () => {
   const source = sourceTurn();
   const harness = createAttemptHarness(source, { reject: true });
-  await assert.rejects(harness.executeQuest(source, source.conversationId, { attempt: 'edit', message: 'Keep my draft', requestId: 'rejected-edit' }), /not been sent/);
+  await assert.rejects(
+    harness.executeQuest(source, source.conversationId, { attempt: 'edit', message: 'Keep my draft', requestId: 'rejected-edit' }),
+    /not been sent/,
+  );
+  // 409 “active task” 不再立刻报错：先用同一个 request_id 重发（后端幂等），
+  // 窗口用尽才算失败。
+  assert.deepEqual(harness.requests.map((request) => request.body.request_id), ['rejected-edit', 'rejected-edit', 'rejected-edit']);
   assert.deepEqual(harness.runtime.taskRuntimeState.taskOrder, [source.taskId]);
   assert.equal(harness.runtime.taskRuntimeState.pendingTask, null);
   assert.equal(harness.runtime.taskRuntimeState.tasksById.source, source);
   assert.equal(harness.runtime.busy, false);
   assert.equal(harness.runtime.fetchController, null);
+});
+
+test('an edit blocked by a stopping task is sent as soon as the previous turn releases', async () => {
+  const source = sourceTurn();
+  const harness = createAttemptHarness(source, { reject: 1 });
+  await harness.executeQuest(source, source.conversationId, { attempt: 'edit', message: 'Revised message', requestId: 'waited-edit' });
+
+  assert.equal(harness.requests.length, 2);
+  assert.equal(harness.requests[1].body.message, 'Revised message');
+  assert.equal(harness.requests[1].body.request_id, 'waited-edit');
+  const state = harness.runtime.taskRuntimeState;
+  const visible = collapseFullTaskAttempts(state.taskOrder.map((id) => state.tasksById[id]));
+  assert.equal(visible[0].displayText ?? visible[0].title, 'Revised message');
+  assert.equal(visible[0].status, 'done');
 });
 
 test('an edit against an unready conversation cannot be acknowledged as successful', async () => {

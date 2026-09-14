@@ -88,15 +88,6 @@
     word-break: break-word;
 }
 
-@keyframes upload-spinner-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
-}
-
 @keyframes toast-in {
     from {
         opacity: 0;
@@ -256,18 +247,6 @@
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.2));
 }
 
-@keyframes iv-slide-in {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-
 /* Action buttons */
 /* 底部按钮区改为 sheet footer，参考 macOS 标准对话框：右下方贴边，分隔线 */
 .iv-actions {
@@ -391,33 +370,6 @@
 
     .iv-btn {
         width: 100%;
-    }
-}
-
-/* ============ Empty state ============ */
-.empty-tip {
-    position: absolute;
-    left: 50%;
-    top: 38%;
-    transform: translateX(-50%);
-    font-family: 'Zpix', monospace;
-    font-size: 14px;
-    color: var(--gold);
-    z-index: 10;
-    pointer-events: none;
-    background: rgba(12, 10, 22, 0.7);
-    padding: 6px 14px;
-    border: 1px dashed var(--gold);
-    letter-spacing: 1px;
-    animation: blink 1.6s steps(2) infinite;
-}
-
-@keyframes blink {
-    0%, 100% {
-        opacity: .5;
-    }
-    50% {
-        opacity: 1;
     }
 }
 

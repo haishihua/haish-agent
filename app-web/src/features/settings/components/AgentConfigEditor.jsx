@@ -9,7 +9,7 @@ import {
   toolsForAgentGroups,
   groupIdsForAgentTools,
 } from '../../agents/model/agent-settings.js';
-import { FieldRow, SettingsMenuSelect } from './SettingsPrimitives.jsx';
+import { FieldRow, SettingsMenuSelect, SettingsToggleRow } from './SettingsPrimitives.jsx';
 
 export function AgentConfigEditor({ selectedId, settings, onSettingsChange, readOnly = false }) {
   const normalized = normalizeAgentSettings(settings);
@@ -129,7 +129,7 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
           header="base profile"
         />
       </FieldRow>
-      <div className="settings-toggle-modern"><span>Enable agent</span><Switch aria-label="Enable agent" checked={current.enabled !== false} onCheckedChange={enabled => update({ enabled })} disabled={readOnly} /></div>
+      <SettingsToggleRow label="Enable agent" checked={current.enabled !== false} onCheckedChange={enabled => update({ enabled })} disabled={readOnly} />
       <FieldRow label="Additional instructions">
         <Textarea value={current.system_prompt || ''} onChange={(event) => update({ system_prompt: event.target.value })} disabled={readOnly} />
       </FieldRow>

@@ -13,8 +13,9 @@
     box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
     max-width: none;
     box-sizing: border-box;
-    backdrop-filter: blur(22px) saturate(122%);
-    -webkit-backdrop-filter: blur(22px) saturate(122%);
+    /* No backdrop-filter: the workflow canvas stops 154px above the bottom (see
+       .workflow-run-canvas > .react-flow), so only the stage's own opaque
+       gradient sits behind this bar. */
 }
 
 .task-delegation * {
@@ -122,113 +123,6 @@
     flex-wrap: nowrap;
     flex: 1 1 auto;
     min-width: 0;
-}
-
-.task-delegation .td-btn {
-    flex-shrink: 0;
-    height: 30px;
-    border: 1px solid rgba(72, 83, 109, 0.82);
-    background: linear-gradient(180deg, #171d2d, #121724);
-    color: #98a0ba;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    line-height: 1;
-    padding: 0 12px;
-    border-radius: 3px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    transition: all .12s;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
-    white-space: nowrap;
-}
-
-.task-delegation .td-btn svg {
-    flex-shrink: 0;
-    display: block;
-}
-
-.task-delegation .td-btn span {
-    display: inline-block;
-    line-height: 1;
-}
-
-.task-delegation .td-btn:hover {
-    color: var(--gold);
-    border-color: var(--gold);
-}
-
-.task-delegation .td-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.task-delegation .td-btn-attach.icon-only {
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-}
-
-.task-delegation .td-btn-attach.icon-only:hover {
-    border-color: transparent;
-    background: transparent;
-}
-
-.task-delegation .td-btn-attach.icon-only .ico-attach {
-    width: 22px;
-    height: 22px;
-}
-
-.task-delegation .td-file-input {
-    display: none;
-}
-
-.task-delegation .td-workspace-chip {
-    flex-shrink: 1;
-    min-width: 0;
-    height: 30px;
-    padding: 0 10px;
-    display: inline-flex;
-    align-items: center;
-    border: 1px solid rgba(96, 186, 255, 0.42);
-    background: rgba(96, 186, 255, 0.08);
-    color: #9fdcff;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    border-radius: 3px;
-    max-width: 160px;
-}
-
-.task-delegation .td-workspace-chip .name {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.task-delegation .priority-select {
-    flex-shrink: 0;
-    height: 30px;
-    border: 1px solid rgba(72, 83, 109, 0.82);
-    background: linear-gradient(180deg, #171d2d, #121724);
-    color: var(--ink);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    line-height: 1;
-    padding: 0 28px 0 12px;
-    border-radius: 3px;
-    cursor: pointer;
-    -webkit-appearance: none;
-    appearance: none;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(180,188,208,0.78)' d='M0 0h10L5 6z'/></svg>");
-    background-repeat: no-repeat;
-    background-position: right 9px center;
-}
-
-.task-delegation .priority-select:hover {
-    border-color: var(--gold);
 }
 
 .task-delegation .model-picker {
@@ -454,18 +348,6 @@
     color: var(--gold);
 }
 
-.chat-composer .model-picker-option-value,
-.task-delegation .model-picker-option-value {
-    flex: 0 1 auto;
-    min-width: 0;
-    max-width: 86px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: rgba(220, 227, 244, 0.72);
-    text-align: right;
-}
-
 .chat-composer .model-picker-subcaret,
 .task-delegation .model-picker-subcaret {
     flex-shrink: 0;
@@ -627,92 +509,6 @@
     display: inline-block;
     border-radius: 50%;
     color: rgba(255, 255, 255, 0.48);
-}
-
-.task-delegation .deploy-btn {
-    flex-shrink: 0;
-    height: 30px;
-    background: linear-gradient(180deg, #e0ad44 0%, #c4902f 55%, #9c6f22 100%);
-    color: #1a1419;
-    border: 1px solid #d49d35;
-    padding: 0 18px;
-    min-width: 138px;
-    font-family: 'Zpix', 'VT323', monospace;
-    font-size: 10px;
-    line-height: 1;
-    letter-spacing: 0.8px;
-    border-radius: 3px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    transition: all .12s;
-    box-shadow: inset 0 1px 0 rgba(255, 234, 176, 0.55), inset 0 -1px 0 rgba(82, 52, 14, 0.5), 0 6px 18px rgba(0, 0, 0, 0.32);
-}
-
-.task-delegation .deploy-btn svg {
-    flex-shrink: 0;
-    display: block;
-}
-
-.task-delegation .deploy-btn span {
-    display: inline-block;
-    line-height: 1;
-    text-shadow: 0 1px 0 rgba(255, 234, 176, 0.45);
-}
-
-.task-delegation .deploy-btn .ico-loading {
-    width: 16px;
-    height: 16px;
-    animation: live-loading-spin 1s linear infinite;
-}
-
-.task-delegation .deploy-btn:hover {
-    background: linear-gradient(180deg, #ecbb50 0%, #d09b35 55%, #aa7d27 100%);
-    transform: translateY(-1px);
-}
-
-.task-delegation .deploy-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-}
-
-.task-delegation .deploy-btn.stop {
-    background: linear-gradient(180deg, #d65a5a 0%, #b73a3a 55%, #8b2a2a 100%);
-    border-color: #d05050;
-    color: #fff8f3;
-    box-shadow: inset 0 1px 0 rgba(255, 210, 200, 0.5), inset 0 -1px 0 rgba(60, 12, 12, 0.5), 0 6px 18px rgba(120, 16, 16, 0.36);
-}
-
-.task-delegation .deploy-btn.stop span {
-    text-shadow: 0 1px 0 rgba(60, 8, 8, 0.6);
-}
-
-.task-delegation .deploy-btn.stop:hover {
-    background: linear-gradient(180deg, #e26565 0%, #c54545 55%, #9c3030 100%);
-    transform: translateY(-1px);
-}
-
-.task-delegation .td-btn.icon-only {
-    width: 30px;
-    padding: 0;
-    gap: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.task-delegation .deploy-btn.icon-only {
-    min-width: 0;
-    width: 44px;
-    padding: 0;
-    gap: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
 }
 
 /* Compact run configuration: thinking first, advanced agent/model selection second. */

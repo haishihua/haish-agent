@@ -4,6 +4,8 @@ import { createConversationActivationHandlers } from '../../src/features/convers
 import { buildTaskRuntimeRecord } from '../../src/features/tasks/model/task-runtime.js';
 
 export function createAttemptHarness(source, { reject = false } = {}) {
+  // reject=true：每次都 409（模拟“上一轮永远没收尾”）；reject=N：前 N 次 409。
+  let remainingRejections = reject === true ? Number.POSITIVE_INFINITY : (Number.isFinite(reject) ? reject : 0);
   const runtime = {
     busy: false, activeRunId: null, activeTaskId: null, fetchController: null,
     cancelledRunIds: new Set(),
@@ -28,6 +30,8 @@ export function createAttemptHarness(source, { reject = false } = {}) {
     isTerminalTaskStatus: (status) => ['done', 'failed', 'cancelled'].includes(status),
     generateHexId: () => 'pending-attempt',
     buildApiHeaders: () => ({}),
+    // 测试里不要真的等 10s：只重试 2 次、每次 1ms。
+    activeTaskConflictRetry: { maxWaits: 2, waitMs: 1 },
     normalizeRuntimeEvent: (event) => event,
     normalizeTaskStatus: (status) => status,
     normalizeChatImageRefs: (images) => images,
@@ -42,7 +46,10 @@ export function createAttemptHarness(source, { reject = false } = {}) {
       const request = JSON.parse(options.body);
       requests.push({ url, body: request });
       snapshots.push({ ...runtime.taskRuntimeState.pendingTask });
-      if (reject) return Response.json({ detail: 'Conversation already has an active task.' }, { status: 409 });
+      if (remainingRejections > 0) {
+        remainingRejections -= 1;
+        return Response.json({ detail: 'Conversation already has an active task.' }, { status: 409 });
+      }
       const text = request.message ?? source.requestText ?? source.title;
       const event = { task_id: 'confirmed-attempt', conversation_id: source.conversationId,
         source_task_id: source.taskId, user_message_id: 'edited-user', annotations: source.annotations || [], display_text: null };

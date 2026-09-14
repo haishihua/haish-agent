@@ -5,13 +5,12 @@ import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import { DEFAULT_MCP_CONFIG_JSON, MCP_CONFIG_TEMPLATE_JSON, WEB_SEARCH_PROVIDER_OPTIONS } from '../model/settings-records.js';
 import { parseJsonSafe, isEmptyMcpConfigDraft, normalizeWebSearchDraft } from '../model/settings-payload.js';
 import { WEB_SEARCH_BRAND_LOGOS } from './settings-ui.jsx';
-import { SecretKeyField, FieldRow, SettingsRow, SettingsSearch, SettingsSheet, SettingsDeleteDialog } from './SettingsPrimitives.jsx';
+import { SecretKeyField, FieldRow, SettingsRow, SettingsSearch, SettingsSheet, SettingsDeleteDialog, SettingsToggleRow } from './SettingsPrimitives.jsx';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import { Item, ItemGroup } from '../../../shared/ui/settings-elements/ui/item.tsx';
 import { Textarea } from '../../../shared/ui/settings-elements/ui/textarea.tsx';
 import { BrandLogoIcon } from './settings-ui.jsx';
 import { SheetFooter } from '../../../shared/ui/settings-elements/ui/sheet.tsx';
-import { Switch } from '../../../shared/ui/settings-elements/ui/switch.tsx';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../../../shared/ui/settings-elements/ui/collapsible.tsx';
 import { SkillUpload } from './SkillUpload.jsx';
 
@@ -69,7 +68,8 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
     <ItemGroup className="settings-list-modern">{shown.map(item => {
       const id = skillsPane ? item.id || item.name : item.id;
       const configured = !skillsPane && Boolean(web.providers[id]?.api_key_configured || web.providers[id]?.api_key);
-      return <SettingsRow key={id} title={item.name || item.label} description={item.description} icon={skillsPane ? <Sparkles size={22} /> : <BrandLogoIcon logo={WEB_SEARCH_BRAND_LOGOS[id]} />} selected={editing === id} onOpen={() => { setEditing(id); setError(''); }} enabled={item.enabled} onToggle={skillsPane ? enabled => onToggleSkill(item.name, enabled) : undefined} busy={Boolean(skillActionBusy || busy)} onDelete={skillsPane && item.can_uninstall ? () => setDeleting({ title: item.name }) : undefined} deleteLabel="Uninstall skill" status={!skillsPane ? { label: configured ? 'Configured' : 'Needs setup', className: configured ? 'success' : '' } : undefined} />;
+      const skillSource = item.source === 'haish' || item.source === 'installed' ? 'Haish' : 'Codex';
+      return <SettingsRow key={id} title={item.name || item.label} description={item.description} icon={skillsPane ? <Sparkles size={22} /> : <BrandLogoIcon logo={WEB_SEARCH_BRAND_LOGOS[id]} />} selected={editing === id} onOpen={() => { setEditing(id); setError(''); }} enabled={item.enabled} onToggle={skillsPane ? enabled => onToggleSkill(item.name, enabled) : undefined} busy={Boolean(skillActionBusy || busy)} onDelete={skillsPane && item.can_uninstall ? () => setDeleting({ title: item.name }) : undefined} deleteLabel="Uninstall skill" badge={skillsPane ? skillSource : undefined} status={!skillsPane ? { label: configured ? 'Configured' : 'Needs setup', className: configured ? 'success' : '' } : undefined} />;
     })}{!shown.length && <div className="settings-empty">{query ? 'No matching items.' : 'No installed skills.'}</div>}</ItemGroup>
     {skillsPane && skillErrors.length > 0 && <Collapsible className="settings-skill-errors">
       <CollapsibleTrigger asChild><Button variant="ghost" size="sm"><AlertTriangle size={14} /><span>{skillErrors.length} {skillErrors.length === 1 ? 'skill' : 'skills'} couldn’t be loaded</span><ChevronRight size={14} className="settings-skill-errors-chevron" /></Button></CollapsibleTrigger>
@@ -77,7 +77,7 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
     </Collapsible>}
     </div>
     <SettingsSheet open={Boolean(editing)} title={selectedSkill?.name || provider?.label || 'Details'} onClose={() => { if (!busy) setEditing(null); }}><div className="settings-editor-scroll">
-      {selectedSkill && <div className="skill-details"><p>{selectedSkill.description}</p>{(selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path) && <dl><dt>Location</dt><dd>{selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path}</dd></dl>}<div className="settings-toggle-modern"><span>Enable skill</span><Switch aria-label="Enable skill" checked={selectedSkill.enabled !== false} disabled={Boolean(skillActionBusy)} onCheckedChange={enabled => onToggleSkill(selectedSkill.name, enabled)} /></div></div>}
+      {selectedSkill && <div className="skill-details"><p>{selectedSkill.description}</p>{(selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path) && <dl><dt>Location</dt><dd>{selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path}</dd></dl>}<SettingsToggleRow label="Enable skill" checked={selectedSkill.enabled !== false} disabled={Boolean(skillActionBusy)} onCheckedChange={enabled => onToggleSkill(selectedSkill.name, enabled)} /></div>}
       {provider && <FieldRow label={`${provider.label} API key`}><SecretKeyField value={providerDraft.api_key || ''} configured={providerDraft.api_key_configured} onChange={event => patchProvider({ api_key: event.target.value })} disabled={Boolean(busy)} /></FieldRow>}
       {error && <p className="settings-inline-error" role="alert">{error}</p>}
     </div><SheetFooter><div>{provider && <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('test', async () => { if (await onSaveTools?.(patchedRecords({ web_search: web }), '') !== false) await onTestWebProvider?.(provider.id, providerDraft.api_key || ''); })}>{busy === 'test' ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button variant="ghost" size="sm" disabled={Boolean(busy)} onClick={() => setEditing(null)}>{skillsPane ? 'Close' : 'Cancel'}</Button>{provider && <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', saveProvider)}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></SettingsSheet>

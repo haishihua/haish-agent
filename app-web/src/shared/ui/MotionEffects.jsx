@@ -45,16 +45,23 @@ export function ComposerBorderBeam({ active }) {
   );
 }
 
-export const MetalActionEffect = React.forwardRef(function MetalActionEffect({ children, className = '', ...props }, ref) {
+// `active` marks "this conversation has work running". The metal shell itself
+// stays mounted in both states so the button keeps its exact size and disc
+// color — only the decorative shader layers are hidden while idle (see
+// .chat-send-metal.is-idle in chat.css). Unmounting the shell instead would
+// re-create the canvas and visibly change the button mid-press.
+// Pausing it also parks metal-fx's shared render loop: an instance that is
+// paused and already painted stops requesting frames.
+export const MetalActionEffect = React.forwardRef(function MetalActionEffect({ children, className = '', active = true, ...props }, ref) {
   return (
     <MetalFx
       ref={ref}
-      className={`chat-send-metal ${className}`.trim()}
+      className={`chat-send-metal ${active ? 'is-active' : 'is-idle'}${className ? ` ${className}` : ''}`}
       variant="circle"
       preset="chromatic"
       theme="dark"
       strength={1}
-      paused={reduceMotion()}
+      paused={reduceMotion() || !active}
       {...props}
     >
       {children}

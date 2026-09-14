@@ -19,10 +19,3 @@ export const CATEGORY_ICON_CLASS = {
   mcp: 'ico-mcp',
   subagent: 'ico-subagent',
 };
-
-export const CATEGORY_LABEL = {
-  tool: 'Tool',
-  skill: 'Skill',
-  mcp: 'MCP',
-  subagent: 'SubAgent',
-};

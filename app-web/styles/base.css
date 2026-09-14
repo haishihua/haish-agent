@@ -344,23 +344,30 @@ svg {
     height: 14px;
 }
 
+/* 头像源图是 512px 平滑绘制图，18px 显示时既会被 body 的 image-rendering:pixelated
+   最近邻硬缩（阶梯边缘、五官糊成一团），浏览器也没有合适的采样基准。
+   这里改用 36px 预缩图（= 18px 的 2x，LANCZOS 预乘 alpha 生成，与源图同构图）
+   并显式 image-rendering:auto，让浏览器平滑缩放。
+   注意：源图若有改动，需要同步重新生成 *-36.png。 */
+
 /* user 头像是蓝色填充图，保留原色用 background-image */
 .ico-user-avatar {
     -webkit-mask-image: none;
     mask-image: none;
     background-color: transparent;
-    background-image: url("../assets/ui/icons/user.png");
+    background-image: url("../assets/ui/icons/user-36.png");
     background-repeat: no-repeat;
     background-position: center;
     background-size: contain;
+    image-rendering: auto;
     width: 18px;
     height: 18px;
 }
 
 /* penguin 是黑色填充图，在深色背景上看不见——用 mask 模式让它跟随 chat-bubble-meta 的金色 currentColor */
 .ico-assistant-avatar {
-    -webkit-mask-image: url("../assets/ui/icons/penguin.png");
-    mask-image: url("../assets/ui/icons/penguin.png");
+    -webkit-mask-image: url("../assets/ui/icons/penguin-36.png");
+    mask-image: url("../assets/ui/icons/penguin-36.png");
     -webkit-mask-repeat: no-repeat;
     mask-repeat: no-repeat;
     -webkit-mask-position: center;
@@ -368,6 +375,7 @@ svg {
     -webkit-mask-size: contain;
     mask-size: contain;
     background-color: currentColor;
+    image-rendering: auto;
     width: 18px;
     height: 18px;
 }
@@ -532,12 +540,6 @@ svg {
     mask-image: url("../assets/ui/icons/down.png");
     width: 10px;
     height: 10px;
-}
-
-@keyframes tooltipIn {
-    to {
-        opacity: 1;
-    }
 }
 
 /* Animate UI shared overlay, using Haish typography and dark colors. */

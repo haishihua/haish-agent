@@ -5,6 +5,14 @@ import { stripInjectedSkillInstruction } from '../../chat/model/chat-text.js';
 import { runtimeEventToLog } from '../model/runtime-events.js';
 import { contextUsageFromRuntimeEvent } from '../../chat/model/context-usage.js';
 
+// 后端在会话上持“一次只能跑一个任务”的占用锁，锁直到上一轮 stream 收尾
+// 才释放。用户点“停止”后立刻编辑重发时，上一轮可能还在收尾（最长几秒）→ 409。
+// 这里不把它当错误：保持“发送中”，用**同一个 request_id** 轮询重发（后端幂等 / 可 replay），
+// 占用释放后自动发出，超时才算失败。
+export const ACTIVE_TASK_CONFLICT_DETAIL = 'Conversation already has an active task.';
+const ACTIVE_TASK_CONFLICT_MAX_WAITS = 20;
+const ACTIVE_TASK_CONFLICT_WAIT_MS = 500;
+
 export function workflowNodeStartedState(event) {
   return {
     status: 'running',
@@ -102,6 +110,14 @@ export function createTaskStreamHandlers(ctx) {
     upsertToolCall,
     userCancelledTaskIdsRef,
   } = ctx;
+
+  // 测试 / 特殊宿主可以缩小等特窗口；默认 20 × 500ms = 10s。
+  const activeTaskConflictMaxWaits = Number.isFinite(ctx?.activeTaskConflictRetry?.maxWaits)
+    ? ctx.activeTaskConflictRetry.maxWaits
+    : ACTIVE_TASK_CONFLICT_MAX_WAITS;
+  const activeTaskConflictWaitMs = Number.isFinite(ctx?.activeTaskConflictRetry?.waitMs)
+    ? ctx.activeTaskConflictRetry.waitMs
+    : ACTIVE_TASK_CONFLICT_WAIT_MS;
 
   const isChatOriginTask = (taskId, targetConvId = null) => (
     getTaskById(taskId, targetConvId)?.originViewMode === 'chat'
@@ -724,8 +740,14 @@ export function createTaskStreamHandlers(ctx) {
     const sourceTaskId = pendingTask.taskId || pendingTask.id || null;
     const runId = (rerunningNode || fullAttempt) ? generateHexId() : (sourceTaskId || generateHexId());
     if (rerunningNode || fullAttempt) {
+      const startedAt = Date.now();
       pendingTask = {
         ...pendingTask,
+        ...(fullAttempt && streamRequest.runConfig ? {
+          requestedProvider: streamRequest.runConfig.provider,
+          requestedModelId: streamRequest.runConfig.modelId,
+          requestedReasoningEffort: streamRequest.runConfig.reasoningEffort,
+        } : {}),
         id: runId,
         taskId: runId,
         sourceTaskId,
@@ -736,6 +758,8 @@ export function createTaskStreamHandlers(ctx) {
         requestText: editedText ?? pendingTask.requestText,
         status: 'running',
         stage: 'assigned',
+        createdAt: startedAt,
+        updatedAt: startedAt,
         completedAt: null,
         serverFinished: false,
         error: null,
@@ -848,6 +872,21 @@ export function createTaskStreamHandlers(ctx) {
 
     const controller = new AbortController();
     setRuntimeFetchController(controller, runConversationId);
+    const waitForActiveTaskRelease = () => new Promise((resolve, reject) => {
+      if (controller.signal.aborted) {
+        reject(new DOMException('Aborted', 'AbortError'));
+        return;
+      }
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+      const timer = setTimeout(() => {
+        controller.signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, activeTaskConflictWaitMs);
+      controller.signal.addEventListener('abort', onAbort, { once: true });
+    });
     const streamUrl = fullAttempt
       ? `${API_BASE}/api/tasks/${sourceTaskId}/${streamRequest.attempt === 'edit' ? 'edit-and-resend' : 'rerun'}/stream`
       : rerunningNode
@@ -856,6 +895,11 @@ export function createTaskStreamHandlers(ctx) {
     const requestBody = fullAttempt ? JSON.stringify({
       request_id: streamRequest.requestId,
       ...(streamRequest.attempt === 'edit' ? { message: streamRequest.message } : {}),
+      ...(streamRequest.runConfig ? {
+        provider: streamRequest.runConfig.provider,
+        model_id: streamRequest.runConfig.modelId,
+        reasoning_effort: streamRequest.runConfig.reasoningEffort,
+      } : {}),
     }) : rerunningNode ? JSON.stringify({
       provider: streamRequest.runConfig.provider,
       model_id: streamRequest.runConfig.modelId,
@@ -883,28 +927,40 @@ export function createTaskStreamHandlers(ctx) {
         use_history: true,
       },
     });
+    const postStream = () => apiFetch(streamUrl, {
+      method: 'POST',
+      headers: buildApiHeaders(),
+      body: requestBody,
+      signal: controller.signal,
+    });
     let response;
+    let conflictDetail = '';
     try {
-      response = await apiFetch(streamUrl, {
-        method: 'POST',
-        headers: buildApiHeaders(),
-        body: requestBody,
-        signal: controller.signal,
-      });
+      for (let attempt = 0; ; attempt += 1) {
+        response = await postStream();
+        if (response.ok) break;
+        const payload = await response.json().catch(() => ({}));
+        conflictDetail = typeof payload?.detail === 'string'
+          ? payload.detail
+          : (payload?.detail ? JSON.stringify(payload.detail) : '');
+        const waitable = fullAttempt
+          && response.status === 409
+          && conflictDetail === ACTIVE_TASK_CONFLICT_DETAIL;
+        if (!waitable || attempt >= activeTaskConflictMaxWaits) break;
+        // 上一轮还在收尾：保持“发送中”，等它释放后再用同一 request_id 发一次。
+        if (attempt === 0) showToast?.('info', 'The previous task is still stopping — sending automatically once it is done…');
+        await waitForActiveTaskRelease();
+      }
     } catch (error) {
       rollbackUnconfirmedRerun();
       throw error;
     }
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      const detail = typeof payload?.detail === 'string'
-        ? payload.detail
-        : (payload?.detail ? JSON.stringify(payload.detail) : '');
       rollbackUnconfirmedRerun();
-      if (fullAttempt && response.status === 409 && detail === 'Conversation already has an active task.') {
+      if (conflictDetail === ACTIVE_TASK_CONFLICT_DETAIL) {
         throw new Error('The previous task is still running or stopping. Your changes have not been sent. Wait for it to stop, then try again.');
       }
-      throw new Error(detail || `task stream failed: ${response.status}`);
+      throw new Error(conflictDetail || `task stream failed: ${response.status}`);
     }
     if (!response.body) {
       rollbackUnconfirmedRerun();

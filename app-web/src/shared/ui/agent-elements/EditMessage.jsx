@@ -12,7 +12,8 @@ export function EditMessage({ value, onValueChange, onSave, onCancel, busy, disa
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing) return;
         if (event.key === 'Escape' && !busy) onCancel();
-        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); save(); }
+        // Enter sends like the Send button; Shift+Enter keeps the newline.
+        if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); save(); }
       }} />
     <div className="aui-edit-actions">
       <button type="button" onClick={onCancel} disabled={busy}>Cancel</button>

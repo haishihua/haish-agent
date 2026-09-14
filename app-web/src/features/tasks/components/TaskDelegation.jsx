@@ -71,6 +71,9 @@ export function TaskDelegation({
   };
   const runConfigReadOnly = running || submitPending;
   const runConfigDisabled = !runConfigReadOnly && (disabled || submitPending);
+  // Task delegation owns its own send/stop button: same rule as the chat
+  // composer — the metal ring marks "a deploy is in flight", nothing else.
+  const sendBeamActive = running || submitPending;
   const effectiveAgentId = agentLocked && lockedAgentId ? lockedAgentId : agentId;
   const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
   const canUploadDocuments = currentSelection?.canUploadDocuments === true;
@@ -252,7 +255,7 @@ export function TaskDelegation({
           />
           {submitPending || running ? (
             <PortalTooltip text={submitPending ? 'Cancel pending request' : 'Stop'} position="above">
-              <MetalActionEffect>
+              <MetalActionEffect active={sendBeamActive}>
                 <button
                   type="button"
                   className="chat-send stop"
@@ -266,7 +269,7 @@ export function TaskDelegation({
             </PortalTooltip>
           ) : (
             <PortalTooltip text="Send" position="above">
-              <MetalActionEffect>
+              <MetalActionEffect active={sendBeamActive}>
                 <button
                   type="button"
                   className="chat-send"

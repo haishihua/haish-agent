@@ -229,8 +229,13 @@ async function run() {
   taskId = 'another-task';
   render();
   await tick();
-  check(!node('search'), 'Switching tasks resets disclosure state');
+  // Disclosure state is asserted, not DOM removal: ToolPanel keeps collapsed
+  // content mounted until its exit animation finishes, and that animation is
+  // frame-driven — a background window parks it, so "node is gone" is flaky.
+  check(document.querySelector('.aui-timeline-trigger').getAttribute('aria-expanded') === 'false',
+    'Switching tasks collapses the tool group');
   await click(document.querySelector('.aui-timeline-trigger'));
+  check(trigger('search').getAttribute('aria-expanded') === 'false', 'Switching tasks resets disclosure state');
   await click(trigger('search'));
   await click(trigger('json-1'));
   await click(trigger('browser'));
@@ -243,19 +248,27 @@ async function run() {
   await click(trigger('subagent'));
   await click(trigger('subagent-running'));
   check(document.documentElement.scrollWidth <= window.innerWidth, 'No page-level horizontal overflow');
-  let runningStatusIcons;
+  let runningStatusIcons = [];
+  const settledStatusIcons = new Map();
   for (const [status, expected] of [['running', 'running'], ['completed', 'done'], ['failed', 'failed'], ['cancelled', 'cancelled']]) {
     await click([...document.querySelectorAll('.meta-lifecycle-controls button')].find((button) => button.textContent === status));
     const rows = [...document.querySelectorAll('.meta-lifecycle-fixture .chat-timeline-meta')];
     const statusIcons = rows.map((row) => row.querySelector('.aui-tool-status svg'));
-    if (status === 'running') runningStatusIcons = statusIcons.map((icon) => icon.innerHTML);
-    const textAnimation = status === 'running' ? runningAnimation : 'none';
-    const iconAnimation = status === 'running' && runningAnimation !== 'none' ? 'aui-tool-spin' : 'none';
+    const isRunning = status === 'running';
+    // The running pass defines the in-flight ring; every settled pass must have
+    // swapped it for its own terminal icon (asserted right below).
+    if (isRunning) runningStatusIcons = statusIcons.map((icon) => icon.innerHTML);
+    else settledStatusIcons.set(expected, statusIcons.map((icon) => icon.innerHTML).join('|'));
+    const textAnimation = isRunning ? runningAnimation : 'none';
+    const iconAnimation = isRunning && runningAnimation !== 'none' ? 'aui-tool-spin' : 'none';
     check(rows.length === 2 && rows.every((row, index) => row.classList.contains(`status-${expected}`)
-      && statusIcons[index].innerHTML === runningStatusIcons[index]
       && getComputedStyle(row.querySelector('.aui-tool-label')).animationName === textAnimation
-      && getComputedStyle(statusIcons[index]).animationName === iconAnimation), `Retry and compaction keep their ring and follow ${status} task state without finish events`);
+      && getComputedStyle(statusIcons[index]).animationName === iconAnimation)
+      && (isRunning || statusIcons.every((icon) => !runningStatusIcons.includes(icon.innerHTML))),
+      `Retry and compaction follow ${status} task state without finish events`);
   }
+  check(settledStatusIcons.size === 3 && new Set(settledStatusIcons.values()).size === 3,
+    'Settled retry and compaction rows swap the ring for distinct done/failed/cancelled icons');
   document.getElementById('checks').dataset.result = 'PASS';
   document.getElementById('checks').textContent = checks.join('\n');
 }

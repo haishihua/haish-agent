@@ -972,7 +972,7 @@ export function WorkflowConfigEditor({
                 proOptions={{ hideAttribution: true }}
               >
                 {Background ? <Background gap={22} size={1.2} color="rgba(176, 206, 255, 0.07)" /> : null}
-                {Controls ? <Controls showInteractive={false} position="bottom-left" /> : null}
+                {Controls ? <Controls showInteractive={false} position="top-right" /> : null}
                 <WorkflowCanvasFitView workflowKey={`${workflow.workflow_id}:${layout.columns}:${layout.rowCount}:${canvasWidth}`} />
               </WorkflowDropCanvas>
             </ReactFlowProvider>
