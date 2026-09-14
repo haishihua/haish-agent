@@ -3,6 +3,10 @@
 .chat-workspace {
     width: 100%;
     min-height: 0;
+    /* 面板统一的左右留白：消息列表的内边距和输入框的外边距共用这一个值。内联编辑框
+       占满消息区域（见 shared/ui/agent-elements/edit-message.css），因此只要两者同
+       源，编辑框和输入框就永远等宽；改这里等于同时改两个。 */
+    --chat-gutter: 28px;
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto;
     border: 1px solid rgba(176, 206, 255, 0.16);
@@ -141,7 +145,7 @@
 
 .chat-message-list {
     min-height: 0;
-    padding: 24px 28px;
+    padding: 24px var(--chat-gutter, 28px);
     overflow-y: auto;
     overflow-x: hidden;
     display: flex;
@@ -1460,7 +1464,7 @@
 
 .chat-composer {
     position: relative;
-    margin: 0 22px 16px;
+    margin: 0 var(--chat-gutter, 28px) 16px;
     min-height: 100px;
     display: grid;
     grid-template-columns: minmax(0, 1fr);

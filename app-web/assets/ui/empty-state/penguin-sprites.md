@@ -1,12 +1,14 @@
 # Penguin hover prototype assets
 
-Files: `penguin-relax-sprite.png`, `penguin-sleepy-sprite.png`, `penguin-hug-sprite.png`.
+Shipped files: `penguin-<name>-smooth.png` (character), `penguin-<name>-plate.png` (paper background) and `penguin-<name>-card.png` (untouched original card), where `<name>` is one of `relax`, `sleepy`, `hug`.
+
+Earlier intermediate cutouts (`penguin-<name>-sprite.png`) were deleted on 2026-09-14 to save 5.9 MB. They were never part of the built bundle; recover them from git history if the artwork ever needs revisiting (`git show 8d2aaed:app-web/assets/ui/empty-state/penguin-hug-sprite.png`). Their prompt is kept below for provenance.
 
 Derived with the built-in image generation tool from the user's three supplied penguin cards, without overwriting those originals.
 
 Prompt (one per source): “Extract ONLY the full-body penguin and its held accessories as an isolated UI sprite on genuinely transparent alpha background. Remove the entire paper card, all text, ground shadow and surrounding motion strokes. Preserve exactly the black and cream hand-drawn penguin appearance, pose, face, texture and accessories. Center full penguin tightly within canvas with small even transparent padding, no clipping. No new elements. This is a cutout, not a redesign.”
 
-The original extraction returned a painted checkerboard instead of alpha. Those files are retained for reference, but are no longer rendered by PenguinCards.jsx.
+The original extraction returned a painted checkerboard instead of alpha, so those cutouts were superseded by the smooth/plate pair and are no longer rendered by PenguinCards.jsx.
 
 ## Smooth texture revision
 

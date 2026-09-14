@@ -18,18 +18,20 @@ function render() {
     <main className="beam-fixture">
       <h1>Send beam regression</h1>
       <p>
-        The chromatic ring is an in-progress signal, not decoration: it shows while the
-        conversation has work in flight and disappears when it settles. The metal shell stays
-        mounted either way so the button never changes shape or disc color.
+        The chromatic ring is a state signal, not decoration: it runs while the
+        conversation has work in flight and while the composer still holds
+        something sendable, then disappears once the composer is empty and
+        nothing is running. The metal shell stays mounted either way so the
+        button never changes shape or disc color.
       </p>
       <section className="beam-row" aria-label="Send buttons">
-        <span className="beam-state">Task running</span>
+        <span className="beam-state">Task running / composer has text</span>
         <MetalActionEffect active={beamActive}>
           <button type="button" className="chat-send" aria-label="Send">
             <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
           </button>
         </MetalActionEffect>
-        <span className="beam-state">Idle conversation</span>
+        <span className="beam-state">Empty composer, nothing running</span>
         <MetalActionEffect active={false}>
           <button type="button" className="chat-send" aria-label="Send">
             <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />

@@ -2,6 +2,20 @@
 .chat-message-row.user .message-speech-body.is-editing {
   border-radius: 20px; border-color: rgb(218 221 239 / 12%); background: #202126;
 }
+/* 编辑框宽度固定成“消息区域的内容宽”，不再跟着被编辑消息的气泡宽度走，也不外扩。
+   和输入框等宽靠 chat.css 里的 --chat-gutter（消息列表内边距 == 输入框外边距）保证；
+   这里绝不能用 calc(100% + Npx) 去凑宽度：容器一换（例如 workflow 详情列表用的是
+   16px 18px 28px 内边距）外扩出来的部分就会被裁掉，圆角看着像被截断。 */
+.chat-message-row.user > .chat-bubble.message-shell:has(> .message-speech-body.is-editing) {
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+  padding-right: 0;
+}
+
+.chat-message-row.user > .chat-bubble.message-shell:has(> .message-speech-body.is-editing) .user-speaker-meta {
+  margin-right: 0;
+}
 .aui-edit-message {
   display: flex; flex-direction: column; gap: 12px; width: 100%; box-sizing: border-box;
   min-width: 0; color: inherit; font-family: var(--conversation-font);

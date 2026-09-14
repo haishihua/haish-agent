@@ -72,8 +72,10 @@ export function TaskDelegation({
   const runConfigReadOnly = running || submitPending;
   const runConfigDisabled = !runConfigReadOnly && (disabled || submitPending);
   // Task delegation owns its own send/stop button: same rule as the chat
-  // composer — the metal ring marks "a deploy is in flight", nothing else.
-  const sendBeamActive = running || submitPending;
+  // composer — the metal ring tracks "there is something to send, or a deploy
+  // is in flight", so it already animates while the box has text.
+  const hasComposerPayload = Boolean(v.trim());
+  const sendBeamActive = running || submitPending || hasComposerPayload;
   const effectiveAgentId = agentLocked && lockedAgentId ? lockedAgentId : agentId;
   const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
   const canUploadDocuments = currentSelection?.canUploadDocuments === true;
@@ -182,7 +184,7 @@ export function TaskDelegation({
 
   return (
     <div className="task-delegation">
-      <ComposerBorderBeam active={running || submitPending || Boolean(v.trim())} />
+      <ComposerBorderBeam active={running || submitPending || hasComposerPayload} />
       <div className="td-head">
         <div className="td-title">
           <span className="td-glyph ico ico-task-delegation" aria-hidden="true" />

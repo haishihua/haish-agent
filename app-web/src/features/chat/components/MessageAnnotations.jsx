@@ -6,7 +6,7 @@ import { scrollToConversationMatch } from '../model/conversation-search.js';
 import './message-annotations.css';
 
 /** Selection is snapshotted before focus moves into the comment editor. */
-export const MessageAnnotations = React.forwardRef(function MessageAnnotations({ listRef, items, drafts, onSave, onError }, ref) {
+export const MessageAnnotations = React.forwardRef(function MessageAnnotations({ listRef, items, drafts, onSave, onSaved, onError }, ref) {
   const [selection, setSelection] = React.useState(null);
   const [editor, setEditor] = React.useState(null);
   const [comment, setComment] = React.useState('');
@@ -189,7 +189,8 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
   };
   const save = () => {
     const item = { ...editor, comment: comment.trim() };
-    if (onSave(item) !== false) { window.getSelection()?.removeAllRanges(); close(); }
+    // 保存成功后通知调用方（聊天里要把光标交回输入框），否则用户还得手动点一下输入框。
+    if (onSave(item) !== false) { window.getSelection()?.removeAllRanges(); close(); onSaved?.(); }
   };
   return <FloatingPortal>
     {markers.map(({ item, index, key, top, left }) => <button key={key} type="button" className="haish-annotation-marker"

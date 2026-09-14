@@ -34,6 +34,15 @@
     box-sizing: border-box;
 }
 
+/* 键盘 Tab 焦点高亮：Chromium 默认用系统强调色画一圈圆角 outline（本机是橙色），
+   和深色主题冲突；各处自定义的 outline 焦点环观感也不统一。统一去掉。
+   需要 !important：:focus-visible 基础选择器权重低于 `.message-turn-action:focus-visible`
+   这类带类名的规则，不加会被它们覆盖。文本框仍靠 border-color / box-shadow 提示焦点。 */
+:focus,
+:focus-visible {
+    outline: none !important;
+}
+
 /* html/body 用与 .app-shell 一致的深色填充：macOS 会按窗口圆角裁剪，不会渗出方角；
    同时确保 titleBarStyle:'hiddenInset' 下顶部标题栏区域也被 web 内容完整覆盖 */
 html, body {
@@ -333,6 +342,15 @@ svg {
 .ico-subagent {
     -webkit-mask-image: url("../assets/ui/icons/chat.png");
     mask-image: url("../assets/ui/icons/chat.png");
+    width: 14px;
+    height: 14px;
+}
+
+/* ask_user（Agent 反问用户）后端标成 tool_group=external，会落到 ico-mcp 的魔法棒上，
+   语义不对。用“对话气泡 + 省略号”表示“在等你回答”，和 approval 的 ask-for-help 区分开。 */
+.ico-ask-user {
+    -webkit-mask-image: url("../assets/ui/icons/comment-alt-dots.png");
+    mask-image: url("../assets/ui/icons/comment-alt-dots.png");
     width: 14px;
     height: 14px;
 }

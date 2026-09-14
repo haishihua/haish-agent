@@ -25,6 +25,11 @@ const ToolApprovalsContext = React.createContext(new Map());
 export function resolveToolIconClass(toolName, defaultClass) {
   const name = String(toolName || '').toLowerCase();
   if (!name) return defaultClass;
+  if (name === 'ask_user') {
+    // ask_user 是平台控制工具（后端 tool_group=external），不显式匹配会落到
+    // ico-mcp 的魔法棒图标上，语义不对。
+    return 'ico-ask-user';
+  }
   if (name === 'workspace_artifact') {
     return 'ico-workspace-artifact';
   }

@@ -111,6 +111,18 @@
         padding-block: 2px;
     }
 
+    /* 列表换行要和列表正文对齐。Streamdown 给 ul/ol 用的是 Tailwind 的 `list-inside`
+       （`list-style-position: inside`）：标记跟着首行文字一起排，所以首行有「标记 +
+       空隙」的缩进，换行后的行却退回标记那一列——看上去像第二行没缩进、跟上一行
+       的字错开了。把标记挪到正文列左边（outside）并用左内边距给标记留位置，正文和
+       折行就落在同一列，恢复成迁到 Streamdown 之前（旧渲染器 `.md-ul{ padding-left:
+       1.35em }`）的对齐方式。 */
+    [data-streamdown="unordered-list"],
+    [data-streamdown="ordered-list"] {
+        list-style-position: outside;
+        padding-left: 1.35em;
+    }
+
     /* A long path inside backticks can strand its own line. In JetBrains Mono
        `app-web/styles/markdown.css` is 219px and its only normal break point is
        the hyphen: `app-` (34px) + `web/styles/markdown.css` (194px). When that

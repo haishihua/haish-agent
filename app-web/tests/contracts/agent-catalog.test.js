@@ -198,17 +198,22 @@ test('send and stop actions share the chromatic metal circle effect', () => {
   assert.match(taskDelegationSource, /<MetalActionEffect active=\{sendBeamActive\}>[\s\S]*chat-send-icon/);
 });
 
-// The ring moved from "always on" to "only while this conversation has work in
-// flight". Both call sites must pass the same state and neither may fall back
-// to the unconditional form, which would silently light up an idle composer.
-test('the metal ring tracks the running task instead of staying lit', () => {
+// The ring is a state signal: it runs while this conversation has work in
+// flight AND while the composer holds something sendable. Regression: gating it
+// on the run state alone meant the button never animated during typing — the
+// ring only appeared after the send had already been dispatched.
+test('the metal ring tracks in-flight work and typed payload instead of staying lit', () => {
   assert.match(motionEffectsSource, /active = true, \.\.\.props \}, ref\)/);
   assert.match(motionEffectsSource, /`chat-send-metal \$\{active \? 'is-active' : 'is-idle'\}/);
   assert.match(motionEffectsSource, /paused=\{reduceMotion\(\) \|\| !active\}/);
   for (const source of [chatPanelSource, taskDelegationSource]) {
-    assert.match(source, /const sendBeamActive = running \|\| submitPending;/);
+    assert.match(source, /const sendBeamActive = running \|\| submitPending \|\| hasComposerPayload;/);
     assert.doesNotMatch(source, /<MetalActionEffect>/);
   }
+  // Each composer derives that payload from its own box: chat also counts
+  // attached images and annotation drafts, delegation is text-only.
+  assert.match(chatPanelSource, /const hasComposerPayload = Boolean\(draft\.trim\(\) \|\| composerImages\.length > 0 \|\| annotationDrafts\.length\)/);
+  assert.match(taskDelegationSource, /const hasComposerPayload = Boolean\(v\.trim\(\)\)/);
   // Unmounting the shell would swap the button surface mid-press, so the idle
   // state hides the shader layers instead and keeps the shell mounted.
   assert.match(chatStyles, /\.chat-send-metal\.is-idle \.metal-fx-canvas[\s\S]*opacity: 0;/);
@@ -226,7 +231,7 @@ test('composer border animation only runs during interaction, input, or a task r
   assert.doesNotMatch(motionEffectsSource, /addEventListener\('focusin', engage\)/);
   assert.match(motionEffectsSource, /active=\{\(Boolean\(active\) \|\| interacting\)/);
   assert.match(chatPanelSource, /<ComposerBorderBeam active=\{running \|\| submitPending \|\| hasComposerPayload\}/);
-  assert.match(taskDelegationSource, /<ComposerBorderBeam active=\{running \|\| submitPending \|\| Boolean\(v\.trim\(\)\)\}/);
+  assert.match(taskDelegationSource, /<ComposerBorderBeam active=\{running \|\| submitPending \|\| hasComposerPayload\}/);
 });
 
 test('workflow catalog exposes the human approval gate and its decision contract', () => {

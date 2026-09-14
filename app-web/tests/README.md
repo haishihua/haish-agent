@@ -6,6 +6,7 @@
 - `npm run check:web`：架构检查、自动测试、ESLint 和生产构建。
 - `features/` 按被测功能分组，`contracts/` 保留架构约束和历史缺陷测试，`integration/` 覆盖跨模块行为。
 - `features/settings/skill-package.test.js` 直接测试正式 Skill 包解析器，覆盖正常包、坏包、元数据、路径及大小限制。
+- `contracts/markdown-list-indent.test.js` 锁住渲染后的 Markdown 列表缩进：标记必须挂在正文列外（`outside` + 左内边距），折行与列表正文同列，并禁止任何样式表再引入 `list-style-position: inside`。
 
 ## 浏览器 DOM 回归
 
@@ -19,7 +20,7 @@
 | [chat-streaming-regression.html](fixtures/chat-streaming-regression.html) | 生产 ChatPanel 的历史消息缓存、最新分支/重试/编辑参数；批注增量处理、滚动布局、DOM 替换及清理；历史步骤连续翻页、搜索、失败重试与切换会话 |
 | [tool-cards.html](fixtures/tool-cards.html) | 生产工具卡片、分组、详情、流式状态、终态收尾和子 Agent 交互 |
 | [app-toast.html](fixtures/app-toast.html) | 生产 AppToast：向量徽标、三种状态配色、未知 kind 回退与 `image-rendering` 回归 |
-| [send-beam.html](fixtures/send-beam.html) | 生产 MetalActionEffect：彩虹环只在任务运行中显示，空闲隐藏图层但不重挂外壳 |
+| [send-beam.html](fixtures/send-beam.html) | 生产 MetalActionEffect：彩虹环在“输入框有内容或任务运行中”点亮，空闲隐藏图层但不重挂外壳 |
 
 页面地址前缀为 `http://127.0.0.1:5173/tests/fixtures/`。保留 `message-annotations.dom-checks.js`、`annotation-numbering.jsx`、`task-attempt-runtime.js` 和工具卡片页面资源，它们是回归测试依赖。
 

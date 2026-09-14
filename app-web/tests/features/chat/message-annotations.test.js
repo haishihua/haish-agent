@@ -231,3 +231,21 @@ test('the comment box commits on Enter and keeps Shift+Enter as a newline', () =
   assert.equal(commits.length, 3);
   assert.match(source, />\{drafts\.some\(\(item\) => item\.id === editor\.id\) \? 'Save comment' : 'Add to chat'\}/, 'Enter must mirror the labelled button');
 });
+
+test('saving a comment hands focus back to the composer', () => {
+  // The comment box is a keyboard surface: after it closes the caret belongs in
+  // the composer, otherwise the user has to click the input again.
+  const source = readFileSync(new URL('../../../src/features/chat/components/MessageAnnotations.jsx', import.meta.url), 'utf8');
+  const save = source.match(/const save = \(\) => \{([\s\S]*?)\n {2}\};/);
+  assert.ok(save, 'MessageAnnotations must keep its save handler');
+  assert.match(save[1], /if \(onSave\(item\) !== false\) \{[^}]*close\(\);[^}]*onSaved\?\.\(\);/);
+  assert.match(source, /onSave, onSaved, onError \}, ref\)/);
+  const panel = readFileSync(new URL('../../../src/features/chat/components/ChatPanel.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /onSave=\{saveAnnotation\} onSaved=\{focusComposerInput\}/, 'ChatPanel must wire the post-save focus');
+  const focus = panel.match(/const focusComposerInput = React\.useCallback\(\(\) => \{([\s\S]*?)\}, \[\]\);/);
+  assert.ok(focus, 'ChatPanel must own the composer focus helper');
+  // Focus synchronously (the focus manager only restores when focus did not move)
+  // and once more on the next frame in case it was restored first.
+  assert.match(focus[1], /inputRef\.current\?\.focusAtEnd\?\.\(\)/);
+  assert.match(focus[1], /requestAnimationFrame\(\(\) => inputRef\.current\?\.focusAtEnd\?\.\(\)\)/);
+});

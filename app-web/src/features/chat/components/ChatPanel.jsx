@@ -379,6 +379,12 @@ export function ChatPanel({
   const suppressSubmitUntilRef = React.useRef(0);
   const historyCursorRef = React.useRef(-1);
   const historySavedDraftRef = React.useRef('');
+  // 保存批注后把光标交回输入框：FloatingFocusManager 的 returnFocus 只在“焦点没被
+  // 移走”时才还原，所以先同步聚焦一次，下一帧再兜一次，避免被它抢回去。
+  const focusComposerInput = React.useCallback(() => {
+    inputRef.current?.focusAtEnd?.();
+    requestAnimationFrame(() => inputRef.current?.focusAtEnd?.());
+  }, []);
   const usedTokens = Math.max(0, Math.round(Number(contextUsage?.usedTokens) || 0));
   const totalTokens = Math.max(0, Math.round(Number(contextUsage?.totalTokens) || 0));
   const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (totalTokens > 0 ? usedTokens / totalTokens : 0)));
@@ -389,11 +395,12 @@ export function ChatPanel({
   };
   const runConfigReadOnly = running || submitPending;
   const runConfigDisabled = !runConfigReadOnly && (disabled || submitPending);
-  // The send/stop metal ring is an in-progress signal, not decoration: it only
-  // runs while this conversation actually has work in flight (a task
-  // streaming, or a send that has not started streaming yet). Switching to an
-  // idle conversation therefore hides it automatically.
-  const sendBeamActive = running || submitPending;
+  // The send/stop metal ring is a state signal, not decoration: it lights up as
+  // soon as the composer holds something sendable (typed text, images, or
+  // annotation drafts) and keeps running while work is in flight. Gating on
+  // `running || submitPending` alone left the button visually dead for the
+  // whole time the user was typing — the ring only appeared after the send.
+  const sendBeamActive = running || submitPending || hasComposerPayload;
 
   const restoreActiveTaskText = React.useCallback((value = activeTaskText) => {
     const text = String(value || '').trim();
@@ -827,7 +834,7 @@ export function ChatPanel({
         </div>
       </form>
       <MessageAnnotations key={conversationId || 'draft'} ref={annotationUiRef} listRef={listRef}
-        items={highlightedAnnotations} drafts={annotationDrafts} onSave={saveAnnotation} onError={setAnnotationNotice} />
+        items={highlightedAnnotations} drafts={annotationDrafts} onSave={saveAnnotation} onSaved={focusComposerInput} onError={setAnnotationNotice} />
       <ImagePreviewOverlay image={previewImage} onClose={closeImagePreview} />
     </section>
   );

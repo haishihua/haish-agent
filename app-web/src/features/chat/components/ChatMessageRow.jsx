@@ -45,8 +45,6 @@ function FinalAnswerMarkdown({ source, streaming, sourceMessageId }) {
 
 function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, onRetry, onFork, onEdit, onAnnotationJump, actionsDisabled = false, forceTraceOpen = false }) {
   const [editing, setEditing] = React.useState(false);
-  const [editWidth, setEditWidth] = React.useState(undefined);
-  const shellRef = React.useRef(null);
   const [draft, setDraft] = React.useState('');
   const [actionBusy, setActionBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState('');
@@ -150,7 +148,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
 
   return (
     <div data-message-id={message.id} data-trace-pending={tracePending ? '' : undefined} className={`chat-message-row ${message.role}${message.streaming ? ' is-streaming' : ''}`}>
-        <div ref={shellRef} style={editing ? { width: editWidth } : undefined}
+        <div
           className={`chat-bubble message-shell ${isAgent ? 'agent-response' : ''} ${message.status || ''}`}>
           {!isUser ? (
             <div className="chat-bubble-meta">
@@ -232,8 +230,8 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
           ) : null}
           {onFork ? <PortalTooltip text="Branch into new chat" position="above"><button type="button" className="chat-bubble-copy message-turn-action" aria-label="Branch into new chat" disabled={actionBusy} onClick={() => perform(() => onFork(message))}>{actionBusy ? <LoaderCircle size={14} /> : <Split size={16} strokeWidth={1.75} style={{ transform: 'rotate(90deg)' }} />}</button></PortalTooltip> : null}
           {onEdit ? <PortalTooltip text="Edit message" position="above"><button type="button" className="chat-bubble-copy message-turn-action" aria-label="Edit message" disabled={actionsDisabled || actionBusy} onClick={() => {
-            // Retain the reading width; very short messages still need room for Cancel/Send.
-            setEditWidth(Math.max(shellRef.current?.getBoundingClientRect().width || 0, 220));
+            // The editor is a fixed width (edit-message.css, same width as the
+            // composer), so there is no bubble width to measure here.
             setActionError('');
             setDraft(visibleText);
             setEditing(true);
