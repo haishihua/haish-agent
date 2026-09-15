@@ -11,7 +11,6 @@ import xaiLogo from '@lobehub/icons-static-svg/icons/xai.svg';
 import zhipuLogo from '@lobehub/icons-static-svg/icons/zhipu.svg';
 import tavilyLogo from '@lobehub/icons-static-svg/icons/tavily.svg';
 import serpapiLogo from '../../../../assets/ui/icons/serpapi.svg';
-import neo4jLogo from '../../../../assets/ui/icons/neo4j.svg';
 import qdrantLogo from '../../../../assets/ui/icons/qdrant.svg';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
@@ -41,9 +40,7 @@ const PROVIDER_LOGOS = {
 };
 
 const CONNECTION_BRAND_LOGOS = {
-  'memory-neo4j': neo4jLogo,
-  'knowledge-qdrant': qdrantLogo,
-  neo4j: neo4jLogo,
+  'memory-qdrant': qdrantLogo,
   qdrant: qdrantLogo,
 };
 

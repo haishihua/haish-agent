@@ -7,7 +7,7 @@ export const SETTINGS_SECTIONS = [
     label: 'Context',
     children: [
       { id: 'memory', label: 'Memory', icon: 'database' },
-      { id: 'knowledge', label: 'Knowledge', icon: 'book-open' },
+      { id: 'embedding', label: 'Embedding', icon: 'layers' },
     ],
   },
   {
@@ -36,7 +36,6 @@ export const SETTINGS_SUBTABS = {
   llm: [
     { id: 'chat', label: 'Chat' },
     { id: 'vision', label: 'Vision' },
-    { id: 'embedding', label: 'Embedding' },
   ],
   tools: [
     { id: 'tools-mcp', label: 'MCP' },

@@ -31,8 +31,8 @@ test('workflow editor exposes a configurable human approval node', () => {
   assert.match(editorSource, /<WorkflowOutputContract node=\{selectedNode\} \/>/);
 });
 
-test('workflow approval card submits to its own endpoint and requires rejection feedback', () => {
-  assert.match(approvalApiSource, /\/api\/workflow-approvals\/\$\{encodeURIComponent\(requestId\)\}\/resolve/);
+test('workflow approval card submits through its own realtime command and requires rejection feedback', () => {
+  assert.match(approvalApiSource, /resolveApproval\('workflow'/);
   assert.match(approvalStoreSource, /approval_kind === 'workflow_human_approval'/);
   assert.match(overlaySource, /disabled=\{!feedback\.trim\(\)\}/);
   assert.match(overlaySource, /onDecide\('reject', feedback\)/);

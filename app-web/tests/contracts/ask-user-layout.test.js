@@ -46,7 +46,8 @@ test('ask_user option state stays inside the main React tree with square control
   assert.match(formSource, /approvalStore.subscribeInputs\(setPending\)/);
   assert.doesNotMatch(formSource, /approvals\/state|scheduleInitialRetry/);
   assert.doesNotMatch(formSource, /new EventSource/);
-  assert.equal((approvalStoreSource.match(/new EventSource/g) || []).length, 1);
+  assert.equal((approvalStoreSource.match(/new EventSource/g) || []).length, 0);
+  assert.match(approvalStoreSource, /onApprovalEvent/);
   assert.match(approvalStoreSource, /payload.type === 'input_resolved'/);
   assert.doesNotMatch(formSource, /function closeWhenResolved/);
   assert.match(formSource, /approvalStore.removeInput\(request.request_id\)/);

@@ -1,7 +1,4 @@
-import {
-  CONTEXT_USAGE_STORAGE_KEY,
-  RESTORED_CONTEXT_BASE_TOKENS,
-} from '../../../shared/api/client.js';
+import { CONTEXT_USAGE_STORAGE_KEY } from '../../../shared/api/client.js';
 
 let runtimeContextTotalTokens = 0;
 
@@ -40,17 +37,20 @@ export function createEmptyContextUsage(conversationId = null) {
 
 export function contextUsageFromRuntimeEvent(event, fallbackConversationId = null) {
   const compacted = event.type === 'context_compaction_completed';
-  const compacting = event.type === 'context_compaction_started';
-  if (!compacted && !compacting && event.type !== 'context_usage_updated') return null;
-  // A completed event also carries the old used_tokens; only the post-compaction
-  // count describes the rebuilt prompt. Skips and failures must keep the meter.
+  // 压缩开始只表示“即将压缩”，其中的 projected/total_prompt_tokens 不是实际
+  // 发给模型的输入，不能写入表盘；保持压缩前最后一次真实值。
+  if (event.type === 'context_compaction_started') return null;
+  if (!compacted && event.type !== 'context_usage_updated') return null;
+
+  // 表盘只认 provider 实测输入量（prompt_tokens）；used_tokens 只是同一份
+  // 数据的别名。其它 source（含构建阶段的估算）没有真实输入量，一律不更新。
   const usedTokens = compacted
     ? event.prompt_tokens_after_compaction
-    : compacting
-      ? event.total_prompt_tokens ?? event.projected_input_tokens ?? event.used_tokens
-      : event.context_used_tokens ?? event.usedTokens ?? event.used_tokens;
+    : event.source === 'provider_usage'
+      ? event.prompt_tokens
+      : null;
   if (usedTokens == null || !Number.isFinite(Number(usedTokens)) || Number(usedTokens) < 0) return null;
-  if (compacting && Number(usedTokens) === 0) return null;
+  if (event.source === 'provider_usage' && Number(usedTokens) === 0) return null;
   if (compacted && (event.skipped || event.business_llm_blocked || Number(usedTokens) === 0)) return null;
   return normalizeContextUsage({
     conversationId: event.conversation_id || fallbackConversationId,
@@ -117,7 +117,6 @@ export function estimateContextUsageFromConversationDetail(detail) {
     + estimateTextTokens(task?.answer_text)
     + 16
   ), 0);
-  if (usedTokens > 0) usedTokens += RESTORED_CONTEXT_BASE_TOKENS;
   return normalizeContextUsage({
     conversationId: detail.conversation_id,
     usedTokens,

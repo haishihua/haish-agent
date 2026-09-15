@@ -1,9 +1,7 @@
-import { API_BASE } from '../../../shared/api/base.js';
-
 export const approvalStore = (() => {
   let pending = [];
   const listeners = new Set();
-  let es = null;
+  let stopEvents = null;
   let inputs = [];
   let mode = null;
   const inputListeners = new Set();
@@ -24,22 +22,12 @@ export const approvalStore = (() => {
   }
 
   function ensureStream() {
-    if (es) return;
-    const url = `${API_BASE}/api/approvals/stream`;
-    try {
-      es = new EventSource(url);
-    } catch (err) {
-      console.warn('[approval] EventSource construction failed', err);
-      es = null;
+    if (stopEvents) return;
+    if (!window.haish?.onApprovalEvent) {
+      console.warn('[approval] realtime event bridge is unavailable');
       return;
     }
-    es.onmessage = (ev) => {
-      let payload;
-      try {
-        payload = JSON.parse(ev.data);
-      } catch (_) {
-        return;
-      }
+    stopEvents = window.haish.onApprovalEvent((payload) => {
       if (payload.type === 'approval_snapshot') {
         const state = payload.state;
         pending = [
@@ -76,12 +64,12 @@ export const approvalStore = (() => {
         pending = pending.filter((p) => p.request_id !== payload.request_id);
         if (pending.length !== before) notify();
       }
-    };
+    });
   }
 
   function closeStream() {
-    es?.close();
-    es = null;
+    stopEvents?.();
+    stopEvents = null;
   }
 
   return {

@@ -286,6 +286,15 @@
     content: none;
 }
 
+/* Settings 懒加载占位（assistant-ui Elements 的 Loader）：这片区域是「设置页还没加载
+   出来」时唯一的内容，所以要整块居中，而不是像以前那样贴在左上角。 */
+.app-body-loading {
+    grid-column: 1 / -1;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+}
+
 .settings-page {
     grid-column: 1 / -1;
     min-height: 0;

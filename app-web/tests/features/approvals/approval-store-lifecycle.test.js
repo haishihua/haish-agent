@@ -3,27 +3,17 @@ import assert from 'node:assert/strict';
 
 test('application owns one stream across view switches and snapshots replace stale state', async (t) => {
   const originalWindow = globalThis.window;
-  const originalFetch = globalThis.fetch;
-  const originalEventSource = globalThis.EventSource;
   const streams = [];
 
-  globalThis.window = {};
-  globalThis.fetch = async () => ({ ok: true, json: async () => ({ pending: [] }) });
-  globalThis.EventSource = class {
-    constructor(url) {
-      this.url = url;
-      this.closed = false;
-      streams.push(this);
-    }
-
-    close() {
-      this.closed = true;
-    }
-  };
+  globalThis.window = { haish: {
+    onApprovalEvent(callback) {
+      const stream = { callback, closed: false };
+      streams.push(stream);
+      return () => { stream.closed = true; };
+    },
+  } };
   t.after(() => {
     globalThis.window = originalWindow;
-    globalThis.fetch = originalFetch;
-    globalThis.EventSource = originalEventSource;
   });
 
   const { approvalStore } = await import('../../../src/features/approvals/model/approval-store.js');
@@ -45,7 +35,7 @@ test('application owns one stream across view switches and snapshots replace sta
   approvalStore.subscribe(value => { approvals = value; });
   approvalStore.subscribeInputs(value => { inputs = value; });
   approvalStore.subscribeMode(value => { mode = value; });
-  const emit = payload => streams[0].onmessage({ data: JSON.stringify(payload) });
+  const emit = payload => streams[0].callback(payload);
   const state = { mode: 'strict', pending: [{ request_id: 'a' }],
     pending_workflow_approvals: [], pending_browser_runtime_installs: [],
     pending_user_inputs: [{ request_id: 'q' }] };

@@ -29,7 +29,6 @@ import {
 import { LlmConfigEditor } from './LlmConfigEditor.jsx';
 import { GenericConfigEditor } from './GenericConfigEditor.jsx';
 import { MemoryConfigEditor } from './MemoryConfigEditor.jsx';
-import { KnowledgeConfigEditor } from './KnowledgeConfigEditor.jsx';
 import { AgentConfigEditor } from './AgentConfigEditor.jsx';
 import { WorkflowConfigEditor } from './WorkflowConfigEditor.jsx';
 import { ToolsConfigEditor } from './ToolsConfigEditor.jsx';
@@ -42,6 +41,13 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../../../sh
 import '../settings.css';
 
 const { useState, useEffect } = React;
+
+// Qdrant 上次连接测试的结果跟着已保存的配置存在后端；本轮还没测过时按它显示。
+function storedMemoryConnectionStatus(records, section, itemId) {
+  if (section !== 'memory') return null;
+  const record = (records?.memory || []).find((item) => item.id === itemId);
+  return record?.qdrant?.last_test || null;
+}
 
 export function SettingsPage({
   activeSection,
@@ -97,18 +103,21 @@ export function SettingsPage({
     ? activeSubtab
     : (items.some((item) => item.id === selectedConfigId) ? selectedConfigId : (items[0]?.id || ''));
   const listTitle = activeSection === 'llm'
-    ? (activeSubtab === 'vision' ? 'Vision' : (activeSubtab === 'embedding' ? 'Embedding' : 'Chat'))
+    ? (activeSubtab === 'vision' ? 'Vision' : 'Chat')
     : sectionMeta.label;
-  const hideSettingsSearch = activeSection === 'memory' || activeSection === 'knowledge';
+  // 单条目段（Memory / Embedding）不需要搜索框。
+  const hideSettingsSearch = activeSection === 'memory' || activeSection === 'embedding';
   const filteredItems = !hideSettingsSearch && settingsSearch.trim()
     ? items.filter((item) => `${item.title} ${item.kind || ''} ${item.summary || ''}`.toLowerCase().includes(settingsSearch.trim().toLowerCase()))
     : items;
-  // Memory/Knowledge 是单后端配置，隐藏添加；其他（含已配置的 Embedding）始终显示，点“连接”即重新打开配置入口。
-  const canAddItem = !['memory', 'knowledge'].includes(activeSection);
+  // Memory 是单后端配置，隐藏添加；Embedding 已配置时同样隐藏（点条目即打开配置）；
+  // 其他段始终显示添加入口。
+  const canAddItem = activeSection !== 'memory'
+    && !(activeSection === 'embedding' && Boolean(llmDraft.embedding?.enabled));
   useEffect(() => {
     setExpandedSettingsSections((prev) => {
       const next = new Set([...prev, activeSection]);
-      // memory / knowledge 归属 Context 分组：激活子项时自动展开所属分组。
+      // memory 归属 Context 分组：激活子项时自动展开所属分组。
       const group = SETTINGS_SECTIONS.find((item) => (
         Array.isArray(item.children) && item.children.some((child) => child.id === activeSection)
       ));
@@ -141,6 +150,11 @@ export function SettingsPage({
         }));
       }
       if (selectionBySection.llmConfig === draft.id) selectItem('chat');
+      return;
+    }
+    // Embedding 现在挂在 Context 分组下：草稿作废时只要关回去，不动 llm 草稿的其它入口。
+    if (draft.section === 'embedding') {
+      onLlmDraftChange((prev) => ({ ...prev, embedding: { ...prev.embedding, enabled: false } }));
       return;
     }
     if (draft.section === 'agent') {
@@ -200,6 +214,11 @@ export function SettingsPage({
   };
   const addItem = async () => {
     if (activeSection === 'tools') return;
+    if (activeSection === 'embedding') {
+      onLlmDraftChange((prev) => ({ ...prev, embedding: { ...prev.embedding, enabled: true } }));
+      openEditor('embedding', 'embedding', 'new');
+      return;
+    }
     if (activeSection === 'agent') {
       const id = await onCreateCustomAgent?.();
       if (id) {
@@ -284,8 +303,9 @@ export function SettingsPage({
   const panelItems = panelSection === activeSection ? displayItems : configItemsForSection(panelSection, llmDraft, records, activeSubtab, agentSettings, workflowSettings);
   const panelSelectedItem = panelItems.find((item) => item.id === panelSelectedId) || null;
   const panelEyebrow = panelMode === 'new' ? 'New' : (panelMode === 'detail' ? 'Details' : 'Edit');
-  const panelIsConnectionSection = panelSection === 'memory' || panelSection === 'knowledge';
-  const panelConnectionStatus = settingsConnectionStatus?.[panelSection]?.[panelSelectedId];
+  const panelUsesLlmTest = panelSection === 'llm' || panelSection === 'embedding';
+  const panelIsConnectionSection = panelSection === 'memory';
+  const panelConnectionStatus = settingsConnectionStatus?.[panelSection]?.[panelSelectedId] || storedMemoryConnectionStatus(records, panelSection, panelSelectedId);
   const panelConnectionTesting = panelConnectionStatus?.state === 'testing';
   const panelCanSave = !panelSelectedItem?.readonly && !(panelSection === 'workflow' && !panelSelectedItem?.custom);
   const panelWorkflow = panelSection === 'workflow' ? workflowById(workflowSettings, panelSelectedId) : null;
@@ -309,8 +329,8 @@ export function SettingsPage({
     } else if (section === 'workflow') {
       const deleted = await onDeleteCustomWorkflow?.(id);
       if (deleted === false) return false;
-    } else if (section === 'llm') {
-      const deleted = await onDeleteLlmProvider?.(activeSubtab, id);
+    } else if (section === 'llm' || section === 'embedding') {
+      const deleted = await onDeleteLlmProvider?.(section === 'llm' ? activeSubtab : 'embedding', id);
       if (deleted === false) return false;
     } else {
       onRecordsChange((prev) => ({
@@ -354,12 +374,12 @@ export function SettingsPage({
   };
   const testSelectedProvider = async () => {
     setPanelBusy('test');
-    try { if (panelSection === 'llm') await onTestLlmConfig?.(panelSelectedId); else await onTestSettingsConnection?.(panelSection, panelSelectedId); }
+    try { if (panelUsesLlmTest) await onTestLlmConfig?.(panelSelectedId); else await onTestSettingsConnection?.(panelSection, panelSelectedId); }
     finally { setPanelBusy(''); }
   };
   const editorBody = (section, id, mode = panelMode) => {
     const readOnly = mode === 'detail';
-    if (section === 'llm') {
+    if (section === 'llm' || section === 'embedding') {
       return id ? (
         <LlmConfigEditor
           selectedId={id}
@@ -414,16 +434,13 @@ export function SettingsPage({
     if (section === 'memory') {
       return <MemoryConfigEditor section={section} selectedId={id} records={records} onRecordsChange={onRecordsChange} onDirty={onSettingsConnectionDirty} readOnly={readOnly} />;
     }
-    if (section === 'knowledge') {
-      return <KnowledgeConfigEditor section={section} selectedId={id} records={records} onRecordsChange={onRecordsChange} onDirty={onSettingsConnectionDirty} readOnly={readOnly} />;
-    }
     return <GenericConfigEditor section={section} selectedId={id} records={records} onRecordsChange={onRecordsChange} readOnly={readOnly} />;
   };
 
   const workflowDetailOpen = showSideEditor && panelSection === 'workflow';
   const ordinaryEditorOpen = showSideEditor && !workflowDetailOpen;
-  const navCount = (section, tab) => section === 'llm' ? configItemsForSection(section, llmDraft, records, tab, agentSettings).length : section === 'agent' || section === 'workflow' ? configItemsForSection(section, llmDraft, records, '', agentSettings, workflowSettings).length : tab === 'tools-skills' ? (records.tools || []).find(r => r.id === tab)?.skills?.length || 0 : null;
-  const addButton = canAddItem && <Button size="sm" onClick={addItem} disabled={Boolean(panelBusy)}><Plus size={16} />{activeSection === 'llm' ? 'Add provider' : activeSection === 'agent' ? 'Create agent' : 'Create workflow'}</Button>;
+  const navCount = (section, tab) => section === 'llm' || section === 'embedding' ? configItemsForSection(section, llmDraft, records, tab, agentSettings).length : section === 'agent' || section === 'workflow' ? configItemsForSection(section, llmDraft, records, '', agentSettings, workflowSettings).length : tab === 'tools-skills' ? (records.tools || []).find(r => r.id === tab)?.skills?.length || 0 : null;
+  const addButton = canAddItem && <Button size="sm" onClick={addItem} disabled={Boolean(panelBusy)}><Plus size={16} />{activeSection === 'llm' || activeSection === 'embedding' ? 'Add provider' : activeSection === 'agent' ? 'Create agent' : 'Create workflow'}</Button>;
   return <div className="settings-page settings-modern settings-theme dark">
     <aside className="settings-nav-modern"><div className="settings-nav-title"><Settings2 size={17} />Settings</div><nav aria-label="Settings navigation">
       {SETTINGS_SECTIONS.map(section => {
@@ -511,12 +528,12 @@ export function SettingsPage({
           <SettingsSearch label={activeSection === 'llm' ? 'Search providers or models' : `Search ${listTitle.toLowerCase()}`} value={settingsSearch} onChange={setSettingsSearch} />
           {activeSection === 'llm' && addButton}
         </div>}
-        <ItemGroup className="settings-list-modern">{filteredItems.map(item => <SettingsRow key={item.id} title={item.title} description={item.summary} readOnly={item.readonly} selected={editingSettings?.id === item.id} icon={activeSection === 'llm' ? <ProviderIcon provider={item.provider} name={item.title} /> : activeSection === 'agent' ? <AgentListIcon item={item} /> : activeSection === 'workflow' ? <WorkflowListIcon item={item} /> : <ConnectionBrandIcon itemId={item.id} title={item.title} />} onOpen={() => { if (panelBusy) return; selectListItem(item.id); openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit'); }} enabled={item.enabled} onToggle={item.canToggle ? enabled => (activeSection === 'agent' ? onTogglePresetAgent : onTogglePresetWorkflow)?.(item.id, enabled) : undefined} busy={Boolean(panelBusy)} onDelete={item.canDelete || item.custom ? () => requestDelete(activeSection, item.id) : undefined} status={['memory', 'knowledge'].includes(activeSection) ? connectionBadgeMeta(settingsConnectionStatus?.[activeSection]?.[item.id]) : undefined} />)}{!filteredItems.length && <div className="settings-empty">{settingsSearch ? 'No matching configuration.' : 'No configuration yet.'}</div>}</ItemGroup>
+        <ItemGroup className="settings-list-modern">{filteredItems.map(item => <SettingsRow key={item.id} title={item.title} description={item.summary} readOnly={item.readonly} selected={editingSettings?.id === item.id} icon={activeSection === 'llm' || activeSection === 'embedding' ? <ProviderIcon provider={item.provider} name={item.title} /> : activeSection === 'agent' ? <AgentListIcon item={item} /> : activeSection === 'workflow' ? <WorkflowListIcon item={item} /> : <ConnectionBrandIcon itemId={item.id} title={item.title} />} onOpen={() => { if (panelBusy) return; selectListItem(item.id); openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit'); }} enabled={item.enabled} onToggle={item.canToggle ? enabled => (activeSection === 'agent' ? onTogglePresetAgent : onTogglePresetWorkflow)?.(item.id, enabled) : undefined} busy={Boolean(panelBusy)} onDelete={item.canDelete || item.custom ? () => requestDelete(activeSection, item.id) : undefined} status={activeSection === 'memory' ? connectionBadgeMeta(settingsConnectionStatus?.[activeSection]?.[item.id] || storedMemoryConnectionStatus(records, activeSection, item.id)) : undefined} />)}{!filteredItems.length && <div className="settings-empty">{settingsSearch ? 'No matching configuration.' : 'No configuration yet.'}</div>}</ItemGroup>
       </div> : editorBody(activeSection, selectedId, 'edit')}
     </main>
     <div data-settings-portal="" />
     <SettingsSheet open={ordinaryEditorOpen} title={panelSelectedItem?.title || listTitle} onClose={() => { if (!panelBusy) cancelEditor(); }}>
-      {ordinaryEditorOpen && <><div className="settings-editor-scroll">{editorBody(panelSection, panelSelectedId, panelMode)}{panelConnectionStatus?.message && <p className={`settings-inline-${panelConnectionStatus.state === 'error' ? 'error' : 'success'}`} role="status">{panelConnectionStatus.message}</p>}{panelError && <p className="settings-inline-error" role="alert">{panelError}</p>}</div><SheetFooter><div>{(panelSection === 'llm' || panelIsConnectionSection) && <Button size="sm" variant="outline" onClick={testSelectedProvider} disabled={Boolean(panelBusy) || panelConnectionTesting}>{panelBusy === 'test' || panelConnectionTesting ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button size="sm" variant="ghost" disabled={Boolean(panelBusy)} onClick={cancelEditor}>{panelCanSave ? 'Cancel' : 'Close'}</Button>{panelCanSave && <Button size="sm" onClick={saveAndClose} disabled={Boolean(panelBusy)}>{panelBusy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></>}
+      {ordinaryEditorOpen && <><div className="settings-editor-scroll">{editorBody(panelSection, panelSelectedId, panelMode)}{panelConnectionStatus?.message && <p className={`settings-inline-${panelConnectionStatus.state === 'error' ? 'error' : 'success'}`} role="status">{panelConnectionStatus.message}</p>}{panelError && <p className="settings-inline-error" role="alert">{panelError}</p>}</div><SheetFooter><div>{(panelUsesLlmTest || panelIsConnectionSection) && <Button size="sm" variant="outline" onClick={testSelectedProvider} disabled={Boolean(panelBusy) || panelConnectionTesting}>{panelBusy === 'test' || panelConnectionTesting ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button size="sm" variant="ghost" disabled={Boolean(panelBusy)} onClick={cancelEditor}>{panelCanSave ? 'Cancel' : 'Close'}</Button>{panelCanSave && <Button size="sm" onClick={saveAndClose} disabled={Boolean(panelBusy)}>{panelBusy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></>}
     </SettingsSheet>
     <SettingsDeleteDialog target={deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={target => performDelete(target.section, target.id)} />
   </div>;

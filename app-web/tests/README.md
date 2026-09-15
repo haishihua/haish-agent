@@ -7,6 +7,7 @@
 - `features/` 按被测功能分组，`contracts/` 保留架构约束和历史缺陷测试，`integration/` 覆盖跨模块行为。
 - `features/settings/skill-package.test.js` 直接测试正式 Skill 包解析器，覆盖正常包、坏包、元数据、路径及大小限制。
 - `contracts/markdown-list-indent.test.js` 锁住渲染后的 Markdown 列表缩进：标记必须挂在正文列外（`outside` + 左内边距），折行与列表正文同列，并禁止任何样式表再引入 `list-style-position: inside`。
+- `contracts/loading-state.test.js` 锁住设置页的加载占位：懒加载回退必须渲染 assistant-ui Loader（九宫格点亮规则、120ms 计时与清理）、整块居中，标签用正文字体 `--conversation-font` 并有扫光与 reduced-motion 回退。
 
 ## 浏览器 DOM 回归
 

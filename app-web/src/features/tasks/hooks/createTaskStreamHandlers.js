@@ -13,6 +13,9 @@ export const ACTIVE_TASK_CONFLICT_DETAIL = 'Conversation already has an active t
 const ACTIVE_TASK_CONFLICT_MAX_WAITS = 20;
 const ACTIVE_TASK_CONFLICT_WAIT_MS = 500;
 
+const realtimeRequestId = () => globalThis.crypto?.randomUUID?.()
+  || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
 export function workflowNodeStartedState(event) {
   return {
     status: 'running',
@@ -61,7 +64,6 @@ export function workflowNodeFinishedState(event, currentNode = {}, savedAttempts
 
 export function createTaskStreamHandlers(ctx) {
   const {
-    API_BASE,
     CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
     STREAM_EVENT_BATCH_MS,
     STREAM_IMMEDIATE_EVENT_TYPES,
@@ -71,8 +73,6 @@ export function createTaskStreamHandlers(ctx) {
     applyConversationSnapshot,
     applyTerminalTaskState,
     batchRuntimeMutations,
-    apiFetch,
-    buildApiHeaders,
     chatFinalizedTaskIdsRef,
     conversationId,
     conversationIdRef,
@@ -91,6 +91,7 @@ export function createTaskStreamHandlers(ctx) {
     normalizeRuntimeEvent,
     readRuntimeAnswerBuffer,
     removeConversationTaskFromWorkspace,
+    runTaskStream = (command, onEvent) => window.haish.runTaskStream(command, onEvent),
     resolveProviderMeta,
     saveStoredContextUsage,
     setComposerAttachment,
@@ -142,50 +143,6 @@ export function createTaskStreamHandlers(ctx) {
   const coalesceStreamEvent = (previous, event) => (
     mergeQueuedStreamDelta(previous, event, eventDeltaText)
   );
-
-  async function readNdjsonStream(response, onEvent, signal) {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    const cancelReader = () => {
-      reader.cancel().catch(() => undefined);
-    };
-    if (signal?.aborted) {
-      await reader.cancel().catch(() => undefined);
-      return;
-    }
-    signal?.addEventListener?.('abort', cancelReader, { once: true });
-    let buffer = '';
-    try {
-      while (true) {
-        if (signal?.aborted) return;
-        const { value, done } = await reader.read();
-        if (done || signal?.aborted) break;
-        buffer += decoder.decode(value, { stream: true });
-        let newlineIndex = buffer.indexOf('\n');
-        while (newlineIndex >= 0) {
-          if (signal?.aborted) return;
-          const line = buffer.slice(0, newlineIndex).trim();
-          buffer = buffer.slice(newlineIndex + 1);
-          if (line) {
-            const event = normalizeRuntimeEvent(JSON.parse(line));
-            if (event && !signal?.aborted) onEvent(event);
-          }
-          newlineIndex = buffer.indexOf('\n');
-        }
-      }
-      if (signal?.aborted) return;
-      const tail = buffer.trim();
-      if (tail) {
-        const event = normalizeRuntimeEvent(JSON.parse(tail));
-        if (event && !signal?.aborted) onEvent(event);
-      }
-    } catch (error) {
-      if (signal?.aborted || error?.name === 'AbortError') return;
-      throw error;
-    } finally {
-      signal?.removeEventListener?.('abort', cancelReader);
-    }
-  }
 
   function applyRuntimeEvent(event, targetConvId = null) {
     const eventConversationId = event.conversation_id || null;
@@ -887,12 +844,7 @@ export function createTaskStreamHandlers(ctx) {
       }, activeTaskConflictWaitMs);
       controller.signal.addEventListener('abort', onAbort, { once: true });
     });
-    const streamUrl = fullAttempt
-      ? `${API_BASE}/api/tasks/${sourceTaskId}/${streamRequest.attempt === 'edit' ? 'edit-and-resend' : 'rerun'}/stream`
-      : rerunningNode
-      ? `${API_BASE}/api/tasks/${sourceTaskId}/workflow/nodes/${encodeURIComponent(streamRequest.rerunNodeId)}/rerun/stream`
-      : `${API_BASE}/api/conversations/${runConversationId}/tasks/stream`;
-    const requestBody = fullAttempt ? JSON.stringify({
+    const requestBody = fullAttempt ? {
       request_id: streamRequest.requestId,
       ...(streamRequest.attempt === 'edit' ? { message: streamRequest.message } : {}),
       ...(streamRequest.runConfig ? {
@@ -900,11 +852,11 @@ export function createTaskStreamHandlers(ctx) {
         model_id: streamRequest.runConfig.modelId,
         reasoning_effort: streamRequest.runConfig.reasoningEffort,
       } : {}),
-    }) : rerunningNode ? JSON.stringify({
+    } : rerunningNode ? {
       provider: streamRequest.runConfig.provider,
       model_id: streamRequest.runConfig.modelId,
       reasoning_effort: streamRequest.runConfig.reasoningEffort,
-    }) : JSON.stringify({
+    } : {
       message: pendingTask.requestText ?? pendingTask.title,
       annotations: pendingTask.annotations || [],
       attachments: pendingTask.attachment ? [{
@@ -926,46 +878,7 @@ export function createTaskStreamHandlers(ctx) {
         reasoning_effort: pendingTask.requestedReasoningEffort || DEFAULT_REASONING_EFFORT,
         use_history: true,
       },
-    });
-    const postStream = () => apiFetch(streamUrl, {
-      method: 'POST',
-      headers: buildApiHeaders(),
-      body: requestBody,
-      signal: controller.signal,
-    });
-    let response;
-    let conflictDetail = '';
-    try {
-      for (let attempt = 0; ; attempt += 1) {
-        response = await postStream();
-        if (response.ok) break;
-        const payload = await response.json().catch(() => ({}));
-        conflictDetail = typeof payload?.detail === 'string'
-          ? payload.detail
-          : (payload?.detail ? JSON.stringify(payload.detail) : '');
-        const waitable = fullAttempt
-          && response.status === 409
-          && conflictDetail === ACTIVE_TASK_CONFLICT_DETAIL;
-        if (!waitable || attempt >= activeTaskConflictMaxWaits) break;
-        // 上一轮还在收尾：保持“发送中”，等它释放后再用同一 request_id 发一次。
-        if (attempt === 0) showToast?.('info', 'The previous task is still stopping — sending automatically once it is done…');
-        await waitForActiveTaskRelease();
-      }
-    } catch (error) {
-      rollbackUnconfirmedRerun();
-      throw error;
-    }
-    if (!response.ok) {
-      rollbackUnconfirmedRerun();
-      if (conflictDetail === ACTIVE_TASK_CONFLICT_DETAIL) {
-        throw new Error('The previous task is still running or stopping. Your changes have not been sent. Wait for it to stop, then try again.');
-      }
-      throw new Error(conflictDetail || `task stream failed: ${response.status}`);
-    }
-    if (!response.body) {
-      rollbackUnconfirmedRerun();
-      throw new Error('task stream failed: empty response');
-    }
+    };
 
     const queuedEvents = [];
     let flushTimer = null;
@@ -1021,8 +934,41 @@ export function createTaskStreamHandlers(ctx) {
       }
     };
     try {
-      await readNdjsonStream(response, queueRuntimeEvent, controller.signal);
+      for (let attempt = 0; ; attempt += 1) {
+        const command = {
+          request_id: `${realtimeRequestId()}-${attempt}`,
+          operation: fullAttempt
+            ? (streamRequest.attempt === 'edit' ? 'edit' : 'rerun')
+            : (rerunningNode ? 'rerun_node' : 'start'),
+          conversation_id: runConversationId,
+          ...(fullAttempt || rerunningNode ? { task_id: sourceTaskId } : {}),
+          ...(rerunningNode ? { node_id: streamRequest.rerunNodeId } : {}),
+          payload: requestBody,
+        };
+        try {
+          await runTaskStream(command, (event) => {
+            if (controller.signal.aborted) return;
+            const normalized = normalizeRuntimeEvent(event);
+            if (normalized) queueRuntimeEvent(normalized);
+          });
+          break;
+        } catch (error) {
+          const detail = String(error?.message || error || '');
+          const waitable = fullAttempt
+            && (error?.status == null || Number(error.status) === 409)
+            && detail === ACTIVE_TASK_CONFLICT_DETAIL;
+          if (!waitable || attempt >= activeTaskConflictMaxWaits) {
+            if (detail === ACTIVE_TASK_CONFLICT_DETAIL) {
+              throw new Error('The previous task is still running or stopping. Your changes have not been sent. Wait for it to stop, then try again.');
+            }
+            throw error;
+          }
+          if (attempt === 0) showToast?.('info', 'The previous task is still stopping — sending automatically once it is done…');
+          await waitForActiveTaskRelease();
+        }
+      }
     } catch (error) {
+      rollbackUnconfirmedRerun();
       if (fullAttempt) {
         flushQueuedEvents();
         const activeId = getRuntime(runConversationId)?.activeTaskId;

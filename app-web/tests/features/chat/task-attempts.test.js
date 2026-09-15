@@ -15,7 +15,7 @@ test('edited text replaces every display projection while preserving the source 
   const harness = createAttemptHarness(source);
   await harness.executeQuest(source, source.conversationId, { attempt: 'edit', message: 'Revised message', requestId: 'edit-request' });
   assert.equal(harness.requests[0].body.message, 'Revised message');
-  assert.match(harness.requests[0].url, /edit-and-resend\/stream$/);
+  assert.equal(harness.requests[0].operation, 'edit');
   assert.equal(harness.snapshots[0].displayText, 'Revised message');
   assert.equal(harness.snapshots[0].requestText, 'Revised message');
   const state = harness.runtime.taskRuntimeState;

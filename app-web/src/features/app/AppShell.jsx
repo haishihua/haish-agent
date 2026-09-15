@@ -4,6 +4,7 @@ import { BoundedCache } from '../../shared/lib/bounded-cache.js';
 import { evictInactiveRuntimes, releaseWorkspaceRuntimeDetails } from '../conversations/model/runtime-cache.js';
 import { approvalStore } from '../approvals/model/approval-store.js';
 import { ResultDialog } from '../../shared/ui/ResultDialog.jsx';
+import { LoadingState } from '../../shared/ui/agent-elements/LoadingState.jsx';
 import { MetalFxRuntimeKeeper } from '../../shared/ui/MotionEffects.jsx';
 import {
   eventDeltaText,
@@ -19,10 +20,8 @@ import { AppToast } from './components/AppToast.jsx';
 import {
   applyToolsSettingsPayloadToRecords,
   applyMemorySettingsPayloadToRecords,
-  applyKnowledgeSettingsPayloadToRecords,
   buildToolsSettingsPayload,
   buildMemorySettingsPayload,
-  buildKnowledgeSettingsPayload,
   getSelectedLlmConfig,
   llmProviderRequestPayload,
 } from '../settings/model/settings-payload.js';
@@ -57,10 +56,6 @@ import {
 import {
   SETTINGS_RECORDS_STORAGE_KEY,
   loadSettingsRecordsDraft,
-  loadSettingsConnectionStatus,
-  persistSettingsConnectionStatus,
-  settingsConnectionSignatureFor,
-  sanitizeSettingsConnectionStatus,
   WEB_SEARCH_PROVIDER_OPTIONS,
 } from '../settings/model/settings-records.js';
 import {
@@ -244,13 +239,13 @@ export function AppShell() {
   const [settingsSection, setSettingsSection] = useState('llm');
   const [llmSettingsDraft, setLlmSettingsDraft] = useState(() => loadLlmSettingsDraft());
   const [settingsRecordsDraft, setSettingsRecordsDraft] = useState(() => loadSettingsRecordsDraft());
-  const [settingsConnectionStatus, setSettingsConnectionStatus] = useState(() => loadSettingsConnectionStatus(settingsRecordsDraft));
+  // 测试结果的权威副本随已保存的连接一起存（后端）。这里只放本轮会话的临时状态。
+  const [settingsConnectionStatus, setSettingsConnectionStatus] = useState({ memory: {} });
   const [settingsSelection, setSettingsSelection] = useState(() => ({
     llm: 'chat',
     llmConfig: 'chat',
     tools: 'tools-mcp',
-    memory: 'memory-neo4j',
-    knowledge: 'knowledge-qdrant',
+    memory: 'memory-qdrant',
     agent: 'agent-default',
     workflow: '',
   }));
@@ -305,20 +300,8 @@ export function AppShell() {
   // implicit dynamic context — set on flush enter, cleared on flush exit.
   const streamTargetConvIdRef = useRef(null);
 
-  function syncSettingsConnectionStatus(records) {
-    setSettingsConnectionStatus((prev) => {
-      const next = sanitizeSettingsConnectionStatus(prev, records);
-      persistSettingsConnectionStatus(next, records);
-      return next;
-    });
-  }
-
-  function updateSettingsConnectionStatus(updater, records = settingsRecordsDraft) {
-    setSettingsConnectionStatus((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      persistSettingsConnectionStatus(next, records);
-      return next;
-    });
+  function updateSettingsConnectionStatus(updater) {
+    setSettingsConnectionStatus((prev) => (typeof updater === 'function' ? updater(prev) : updater));
   }
 
   useEffect(() => {
@@ -448,7 +431,7 @@ export function AppShell() {
   }, [settingsMode, settingsSection]);
 
   useEffect(() => {
-    if (!settingsMode || settingsSection !== 'llm') return undefined;
+    if (!settingsMode || (settingsSection !== 'llm' && settingsSection !== 'embedding')) return undefined;
     let cancelled = false;
     apiFetch(`${API_BASE}/api/settings/llm`, { method: 'GET' }, { json: false })
       .then((response) => (response.ok ? response.json() : null))
@@ -461,21 +444,15 @@ export function AppShell() {
   }, [settingsMode, settingsSection]);
 
   useEffect(() => {
-    if (!settingsMode || !['memory', 'knowledge'].includes(settingsSection)) return undefined;
+    if (!settingsMode || settingsSection !== 'memory') return undefined;
     let cancelled = false;
-    apiFetch(`${API_BASE}/api/settings/${settingsSection}`, { method: 'GET' }, { json: false })
+    apiFetch(`${API_BASE}/api/settings/memory`, { method: 'GET' }, { json: false })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (cancelled || !payload) return;
-        setSettingsRecordsDraft((prev) => {
-          const next = settingsSection === 'memory'
-            ? applyMemorySettingsPayloadToRecords(prev, payload)
-            : applyKnowledgeSettingsPayloadToRecords(prev, payload);
-          syncSettingsConnectionStatus(next);
-          return next;
-        });
+        setSettingsRecordsDraft((prev) => applyMemorySettingsPayloadToRecords(prev, payload));
       })
-      .catch((error) => console.warn(`failed to fetch ${settingsSection} settings`, error));
+      .catch((error) => console.warn('failed to fetch memory settings', error));
     return () => { cancelled = true; };
   }, [settingsMode, settingsSection]);
 
@@ -853,12 +830,10 @@ export function AppShell() {
     activeTab,
     agentCatalogFromSettings,
     agentSettingsDraft,
-    applyKnowledgeSettingsPayloadToRecords,
     applyLlmSettingsPayloadToDraft,
     applyMemorySettingsPayloadToRecords,
     applyToolsSettingsPayloadToRecords,
     apiFetch,
-    buildKnowledgeSettingsPayload,
     buildMemorySettingsPayload,
     buildToolsSettingsPayload,
     busy,
@@ -880,10 +855,8 @@ export function AppShell() {
     setSettingsSection,
     setSkillActionBusy,
     setWorkflowSettingsDraft,
-    settingsConnectionSignatureFor,
     settingsRecordsDraft,
     showToast,
-    syncSettingsConnectionStatus,
     updateSettingsConnectionStatus,
     withAlwaysAllowedAgentTools,
     workflowById,
@@ -1595,7 +1568,7 @@ export function AppShell() {
       />
       <div className={`app-body ${settingsMode ? 'settings-mode' : viewMode === 'chat' ? 'chat-mode' : 'workflow-mode'} ${!settingsMode && conversationPanelCollapsed ? 'conversations-collapsed' : ''}`}>
         {settingsMode ? (
-          <React.Suspense fallback={<div role="status">Loading settings…</div>}>
+          <React.Suspense fallback={<div className="app-body-loading"><LoadingState role="status" label="Loading settings…" /></div>}>
           <SettingsPage
             activeSection={settingsSection}
             onSectionChange={setSettingsSection}

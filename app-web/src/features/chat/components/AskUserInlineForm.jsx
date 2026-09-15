@@ -2,18 +2,8 @@ import { ApprovalSurface } from '../../../shared/ui/agent-elements/ApprovalSurfa
 import React from 'react';
 import { approvalStore } from '../../approvals/model/approval-store.js';
 import { selectPendingUserInput } from '../model/pending-user-input.js';
-import { apiFetch } from '../../../shared/api/client.js';
-import { API_BASE } from '../../../shared/api/base.js';
 async function submitAnswers(requestId, answers) {
-  const response = await apiFetch(`${API_BASE}/api/user-inputs/${encodeURIComponent(requestId)}/resolve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ answers }),
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new Error(`answer submission failed: HTTP ${response.status} ${detail}`);
-  }
+  await window.haish.resolveApproval('user_input', requestId, { answers });
 }
 
 function usePendingInputs(active) {

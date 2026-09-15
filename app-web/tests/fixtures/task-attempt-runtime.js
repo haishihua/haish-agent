@@ -42,21 +42,21 @@ export function createAttemptHarness(source, { reject = false } = {}) {
     batchRuntimeMutations: (_id, update) => update(),
     CHAT_FINAL_FOLLOWUP_EVENT_TYPES: new Set(['run_finished']),
     STREAM_IMMEDIATE_EVENT_TYPES: new Set(['run_started', 'run_finished']),
-    apiFetch: async (url, options) => {
-      const request = JSON.parse(options.body);
-      requests.push({ url, body: request });
+    runTaskStream: async (command, onEvent) => {
+      const request = command.payload;
+      requests.push({ operation: command.operation, body: request });
       snapshots.push({ ...runtime.taskRuntimeState.pendingTask });
       if (remainingRejections > 0) {
         remainingRejections -= 1;
-        return Response.json({ detail: 'Conversation already has an active task.' }, { status: 409 });
+        throw Object.assign(new Error('Conversation already has an active task.'), { status: 409 });
       }
       const text = request.message ?? source.requestText ?? source.title;
       const event = { task_id: 'confirmed-attempt', conversation_id: source.conversationId,
         source_task_id: source.taskId, user_message_id: 'edited-user', annotations: source.annotations || [], display_text: null };
-      return new Response([
+      for (const item of [
         { ...event, type: 'run_started', message: text },
         { ...event, type: 'run_finished', status: 'done', task: { ...event, title: text, status: 'done', answer_text: 'Updated reply' } },
-      ].map((item) => JSON.stringify(item)).join('\n'));
+      ]) onEvent(item);
     },
   };
   const activation = createConversationActivationHandlers(context);

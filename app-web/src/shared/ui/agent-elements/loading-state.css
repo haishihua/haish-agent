@@ -1,0 +1,81 @@
+/* assistant-ui Elements "Loader" (generation-loader) utilities translated to scoped
+   CSS, same approach as error-state.css.
+   Upstream: packages/ui/src/components/react/assistant-ui/elements/loading-state.tsx
+   - root:  flex flex-col items-center gap-4
+   - grid:  grid grid-cols-3 gap-1, nine `size-2` cells, lit = opacity-90 / dim = opacity-15,
+            transition-opacity 300ms
+   - label: text-sm text-foreground/55 with the shared shimmer treatment
+
+   字体按需求改成“正文字体”（--conversation-font，和聊天正文一致）。body 用的是
+   Zpix 像素字体，所以这里必须显式指定，不能只靠继承。shimmer 用的是本项目已有
+   的那套写法（见 styles/tool-elements.css 的 .aui-tool-label.is-running 和
+   error-state.css 的重试行），等价于上游 tw-shimmer 的 `.shimmer` 工具类。 */
+.aui-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--ink, #daddef);
+  font-family: var(--conversation-font, inherit);
+}
+
+.aui-loader-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 8px);
+  gap: 4px;
+}
+
+.aui-loader-cell {
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+  opacity: .15;
+  transition: opacity 300ms;
+}
+
+.aui-loader-cell.is-lit {
+  opacity: .9;
+}
+
+.aui-loader-cell.is-dots {
+  border-radius: 9999px;
+}
+
+.aui-loader-cell.is-rounded {
+  border-radius: 3px;
+}
+
+.aui-loader-cell.is-squares {
+  border-radius: 1px;
+}
+
+.aui-loader-label {
+  position: relative;
+  display: inline-block;
+  font-size: 14px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--ink, #daddef) 55%, transparent);
+  background-image: linear-gradient(110deg, color-mix(in srgb, currentColor 55%, transparent) 35%, currentColor 50%, color-mix(in srgb, currentColor 55%, transparent) 65%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: aui-loader-shimmer 2s linear infinite;
+}
+
+@keyframes aui-loader-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aui-loader-cell {
+    transition: none;
+  }
+
+  .aui-loader-label {
+    animation: none;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}

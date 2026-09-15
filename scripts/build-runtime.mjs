@@ -220,6 +220,8 @@ function main() {
     'tiktoken_ext',
     '--collect-submodules',
     'keyring.backends',
+    '--collect-submodules',
+    'websockets',
     '--collect-data',
     'haish_agent_core',
     '--collect-data',
@@ -238,6 +240,16 @@ function main() {
   );
   if (!fs.existsSync(certifiBundlePath)) {
     throw new Error(`Bundled TLS CA certificate is missing: ${certifiBundlePath}`);
+  }
+  const websocketPackagePath = path.join(
+    runtimeRoot,
+    'bin',
+    'haish-runtime',
+    '_internal',
+    'websockets',
+  );
+  if (!fs.existsSync(websocketPackagePath)) {
+    throw new Error(`Bundled WebSocket runtime is missing: ${websocketPackagePath}`);
   }
   console.log(`Built minimal runtime at ${runtimeRoot}`);
 }

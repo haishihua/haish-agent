@@ -5,7 +5,6 @@ import {
   createDefaultWebSearchSettings,
   mergeDefaultRecords,
   mergeKnownDefaultRecords,
-  normalizeNeo4jDraft,
   normalizeQdrantDraft,
 } from './settings-records.js';
 import { settingsSectionMeta } from './settings-navigation.js';
@@ -77,23 +76,11 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
 
 export function configItemsForSection(section, llmDraft, records, activeSubtab = '', agentSettings = null, workflowSettings = null) {
   if (section === 'llm') return getLlmConfigItems(llmDraft, activeSubtab);
+  if (section === 'embedding') return getLlmConfigItems(llmDraft, 'embedding');
   if (section === 'agent') return agentListItems(agentSettings);
   if (section === 'workflow') return workflowListItems(workflowSettings);
   if (section === 'memory') {
     return Array.isArray(records?.memory) ? records.memory.map((item) => {
-      const neo4j = normalizeNeo4jDraft({ ...item.neo4j, endpoint: item.endpoint });
-      return {
-        id: item.id,
-        title: item.name,
-        kind: item.kind,
-        summary: neo4j.uri || 'URI not configured',
-        protected: Boolean(item.protected),
-        enabled: true,
-      };
-    }) : [];
-  }
-  if (section === 'knowledge') {
-    return Array.isArray(records?.knowledge) ? records.knowledge.map((item) => {
       const qdrant = normalizeQdrantDraft({ ...item.qdrant, endpoint: item.endpoint });
       return {
         id: item.id,
@@ -249,25 +236,12 @@ export function applyToolsSettingsPayloadToRecords(records, payload) {
 }
 
 export function applyMemorySettingsPayloadToRecords(records, payload) {
-  const neo4j = normalizeNeo4jDraft(payload?.neo4j);
-  const enabled = payload?.enabled !== false;
-  return {
-    ...records,
-    memory: mergeKnownDefaultRecords(createDefaultSettingsRecords().memory, records?.memory).map((record) => (
-      record.id === 'memory-neo4j'
-        ? { ...record, enabled, endpoint: neo4j.uri, neo4j }
-        : record
-    )),
-  };
-}
-
-export function applyKnowledgeSettingsPayloadToRecords(records, payload) {
   const qdrant = normalizeQdrantDraft(payload?.qdrant);
   const enabled = payload?.enabled !== false;
   return {
     ...records,
-    knowledge: mergeKnownDefaultRecords(createDefaultSettingsRecords().knowledge, records?.knowledge).map((record) => (
-      record.id === 'knowledge-qdrant'
+    memory: mergeKnownDefaultRecords(createDefaultSettingsRecords().memory, records?.memory).map((record) => (
+      record.id === 'memory-qdrant'
         ? { ...record, enabled, endpoint: qdrant.url, qdrant }
         : record
     )),
@@ -310,27 +284,12 @@ export function buildToolsSettingsPayload(records) {
 
 export function buildMemorySettingsPayload(records) {
   const memory = Array.isArray(records?.memory) ? records.memory : [];
-  const record = memory.find((item) => item.id === 'memory-neo4j') || {};
-  const neo4j = normalizeNeo4jDraft({ ...record.neo4j, endpoint: record.endpoint });
+  const record = memory.find((item) => item.id === 'memory-qdrant') || {};
+  const qdrant = normalizeQdrantDraft({ ...record.qdrant, endpoint: record.endpoint });
   return {
     // 总开关：关掉后后端不注册记忆工具、也不再每轮自动召回。
     enabled: record.enabled !== false,
-    neo4j: {
-      uri: neo4j.uri,
-      username: neo4j.username,
-      ...(neo4j.password ? { password: neo4j.password } : {}),
-      database: neo4j.database,
-    },
-  };
-}
-
-export function buildKnowledgeSettingsPayload(records) {
-  const knowledge = Array.isArray(records?.knowledge) ? records.knowledge : [];
-  const record = knowledge.find((item) => item.id === 'knowledge-qdrant') || {};
-  const qdrant = normalizeQdrantDraft({ ...record.qdrant, endpoint: record.endpoint });
-  return {
-    // 总开关：关掉后后端不注册知识库工具。
-    enabled: record.enabled !== false,
+    // Qdrant 连接由 memory 段持有，知识库复用同一条。
     qdrant: {
       url: qdrant.url,
       ...(qdrant.api_key ? { api_key: qdrant.api_key } : {}),

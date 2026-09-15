@@ -64,6 +64,15 @@ export type AppUpdateState = {
   isPackaged: boolean;
 };
 
+export type RealtimeTaskCommand = {
+  request_id: string;
+  operation: 'start' | 'rerun' | 'edit' | 'rerun_node';
+  conversation_id?: string;
+  task_id?: string;
+  node_id?: string;
+  payload: Record<string, unknown>;
+};
+
 export type HaishDesktopApi = {
   platform: NodeJS.Platform;
   apiBase: string;
@@ -93,6 +102,13 @@ export type HaishDesktopApi = {
   readToolScreenshot: (imagePath: string, taskId: string) => Promise<string>;
   copyImage: (dataUrl: string) => Promise<boolean>;
   getPathForFile: (file: File) => string;
+  runTaskStream: (command: RealtimeTaskCommand, onEvent: (event: Record<string, unknown>) => void) => Promise<void>;
+  onApprovalEvent: (callback: (event: Record<string, unknown>) => void) => () => void;
+  resolveApproval: (
+    approvalKind: 'tool' | 'workflow' | 'user_input' | 'browser_runtime',
+    approvalId: string,
+    payload: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
 };
 
 declare global {

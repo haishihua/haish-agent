@@ -1,36 +1,58 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyToolsSettingsPayloadToRecords, applyMemorySettingsPayloadToRecords, applyKnowledgeSettingsPayloadToRecords, buildMemorySettingsPayload, buildKnowledgeSettingsPayload } from '../../../src/features/settings/model/settings-payload.js';
-import { createDefaultSettingsRecords } from '../../../src/features/settings/model/settings-records.js';
+import { applyToolsSettingsPayloadToRecords, applyMemorySettingsPayloadToRecords, buildMemorySettingsPayload } from '../../../src/features/settings/model/settings-payload.js';
+import { SETTINGS_RECORDS_STORAGE_KEY, createDefaultSettingsRecords, loadSettingsRecordsDraft } from '../../../src/features/settings/model/settings-records.js';
 import { createSettingsHandlers } from '../../../src/features/settings/hooks/createSettingsHandlers.js';
 
-test('the memory and knowledge switches survive a save round trip', () => {
+test('the memory switch survives a save round trip', () => {
   const defaults = createDefaultSettingsRecords();
+  assert.equal(defaults.memory[0].id, 'memory-qdrant');
   assert.equal(defaults.memory[0].enabled, true);
-  assert.equal(defaults.knowledge[0].enabled, true);
+  // Knowledge 页已下线：设置记录里不再有 knowledge 段。
+  assert.equal(defaults.knowledge, undefined);
 
   const off = {
     ...defaults,
     memory: defaults.memory.map((record) => ({ ...record, enabled: false })),
-    knowledge: defaults.knowledge.map((record) => ({ ...record, enabled: false })),
   };
   assert.equal(buildMemorySettingsPayload(off).enabled, false);
-  assert.equal(buildKnowledgeSettingsPayload(off).enabled, false);
+  assert.deepEqual(buildMemorySettingsPayload(off).qdrant, {
+    url: '',
+    collection: { name: '', vector_size: 1024, distance: 'cosine' },
+  });
 
-  // The editor switch is the only writer of `enabled`; the runtime must hand it
-  // back untouched instead of defaulting the switch to on again.
-  const restored = applyKnowledgeSettingsPayloadToRecords(
-    applyMemorySettingsPayloadToRecords(off, { enabled: false, neo4j: { uri: 'bolt://host:7687' } }),
-    { enabled: false, qdrant: { url: 'http://host:6333' } },
-  );
+  const restored = applyMemorySettingsPayloadToRecords(off, {
+    enabled: false,
+    qdrant: { url: 'http://host:6333', collection: { name: 'docs', vector_size: 768, distance: 'dot' } },
+  });
   assert.equal(restored.memory[0].enabled, false);
-  assert.equal(restored.memory[0].neo4j.uri, 'bolt://host:7687');
-  assert.equal(restored.knowledge[0].enabled, false);
-  assert.equal(restored.knowledge[0].qdrant.url, 'http://host:6333');
+  assert.equal(restored.memory[0].qdrant.url, 'http://host:6333');
+  assert.equal(restored.memory[0].qdrant.collection.vector_size, 768);
 
   // A runtime that predates the switch leaves it on rather than off.
-  const legacy = applyMemorySettingsPayloadToRecords(defaults, { neo4j: { uri: '' } });
+  const legacy = applyMemorySettingsPayloadToRecords(defaults, {});
   assert.equal(legacy.memory[0].enabled, true);
+});
+
+test('a stored draft that still lists knowledge records ignores that section', (t) => {
+  const previousWindow = globalThis.window;
+  const stored = {
+    memory: [],
+    knowledge: [{ id: 'knowledge-qdrant', enabled: false, qdrant: { url: 'http://stale:6333' } }],
+  };
+  globalThis.window = {
+    localStorage: {
+      getItem: (key) => (key === SETTINGS_RECORDS_STORAGE_KEY ? JSON.stringify(stored) : null),
+    },
+  };
+  t.after(() => { globalThis.window = previousWindow; });
+
+  const records = loadSettingsRecordsDraft();
+
+  assert.equal(records.knowledge, undefined);
+  assert.equal(records.memory.length, 1);
+  assert.equal(records.memory[0].id, 'memory-qdrant');
+  assert.equal(records.memory[0].qdrant.url, '');
 });
 
 test('failed settings saves return false so the editor keeps its draft open', async t => {

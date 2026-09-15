@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import { randomUUID } from 'node:crypto';
 import type {
   AppUpdateState,
   DirectoryPickResult,
@@ -51,6 +52,46 @@ const api: HaishDesktopApi = {
   readToolScreenshot: (imagePath: string, taskId: string) =>
     ipcRenderer.invoke('tool:read-screenshot', imagePath, taskId) as Promise<string>,
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
+  runTaskStream: (command, onEvent) => new Promise<void>((resolve, reject) => {
+    const requestId = command.request_id;
+    const listener = (_event: Electron.IpcRendererEvent, message: Record<string, unknown>) => {
+      if (message.request_id !== requestId) return;
+      if (message.type === 'task.event') {
+        onEvent(message.event as Record<string, unknown>);
+      } else if (message.type === 'task.error') {
+        cleanup();
+        const detail = typeof message.detail === 'string'
+          ? message.detail
+          : JSON.stringify(message.detail || 'Task stream failed.');
+        reject(Object.assign(new Error(detail), { status: message.status }));
+      } else if (message.type === 'task.end') {
+        cleanup();
+        resolve();
+      }
+    };
+    const cleanup = () => ipcRenderer.removeListener('runtime:task-message', listener);
+    ipcRenderer.on('runtime:task-message', listener);
+    ipcRenderer.invoke('runtime:command', { ...command, type: 'task.start' }).catch((error) => {
+      cleanup();
+      reject(error);
+    });
+  }),
+  onApprovalEvent: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, message: Record<string, unknown>) => callback(message);
+    ipcRenderer.on('runtime:approval-event', listener);
+    ipcRenderer.send('runtime:approval-subscribe');
+    return () => {
+      ipcRenderer.removeListener('runtime:approval-event', listener);
+      ipcRenderer.send('runtime:approval-unsubscribe');
+    };
+  },
+  resolveApproval: (approvalKind, approvalId, payload) => ipcRenderer.invoke('runtime:command', {
+    type: 'approval.resolve',
+    request_id: randomUUID(),
+    approval_id: approvalId,
+    approval_kind: approvalKind,
+    payload,
+  }) as Promise<Record<string, unknown>>,
 };
 
 contextBridge.exposeInMainWorld('HAISH_API_BASE', '');

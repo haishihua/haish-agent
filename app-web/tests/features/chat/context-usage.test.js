@@ -26,7 +26,10 @@ const recordedUsage = (overrides = {}) => normalizeContextUsage({
 });
 const usageEvent = (usedTokens, timestamp = EARLIER) => ({
   type: 'context_usage_updated', created_at: timestamp,
-  payload: { source: 'provider_usage', used_tokens: usedTokens, total_tokens: CONTEXT_LIMIT },
+  payload: {
+    source: 'provider_usage', prompt_tokens: usedTokens,
+    used_tokens: usedTokens + 668, total_tokens: CONTEXT_LIMIT,
+  },
 });
 const compactedEvent = (overrides = {}) => ({
   type: 'context_compaction_completed', created_at: LATER,
@@ -34,7 +37,7 @@ const compactedEvent = (overrides = {}) => ({
     total_tokens: CONTEXT_LIMIT, skipped: false, message_count: 341, ...overrides },
 });
 
-// Exercise the public stream consumer with offline NDJSON, not a copied reducer.
+// Exercise the public stream consumer with an offline realtime bridge, not a copied reducer.
 async function replayUsageEvents(events, { background = false } = {}) {
   let task = { taskId: 'compaction-task', title: 'Continue', originViewMode: 'chat', eventLog: [] };
   const runtime = { cancelledRunIds: new Set(), taskRuntimeState: {} };
@@ -56,9 +59,11 @@ async function replayUsageEvents(events, { background = false } = {}) {
     getChatProgressLine: () => '', batchRuntimeMutations: (_id, update) => update(),
     normalizeRuntimeEvent, normalizeContextUsage, buildApiHeaders: () => ({}),
     setContextUsage: (usage) => displayed.push(usage), saveStoredContextUsage: (usage) => saved.push(usage),
-    apiFetch: async () => new Response(events.map(event => JSON.stringify({
-      ...event, task_id: task.taskId, conversation_id: CONVERSATION_ID,
-    })).join('\n')),
+    runTaskStream: async (_command, onEvent) => {
+      for (const event of events) onEvent({
+        ...event, task_id: task.taskId, conversation_id: CONVERSATION_ID,
+      });
+    },
   });
   await handlers.executeQuest(task, CONVERSATION_ID);
   return { displayed, saved };
@@ -74,31 +79,27 @@ test('compaction updates the live meter before the next provider usage calibrate
   assert.equal(displayed[1].compressed, true);
 });
 
-test('pre-flight start replaces stale usage with the current projected prompt', async () => {
+test('compaction start never replaces the last actual provider measurement', async () => {
   const started = { type: 'context_compaction_started', created_at: LATER, payload: {
     total_prompt_tokens: PROJECTED_TOKENS, context_window_tokens: CONTEXT_LIMIT,
   } };
   const { displayed, saved } = await replayUsageEvents([usageEvent(STALE_TOKENS), started, compactedEvent()]);
-  assert.deepEqual(displayed.map(usage => usage.usedTokens), [STALE_TOKENS, PROJECTED_TOKENS, AFTER_TOKENS]);
+  assert.deepEqual(displayed.map(usage => usage.usedTokens), [STALE_TOKENS, AFTER_TOKENS]);
   assert.equal(displayed[1].totalTokens, CONTEXT_LIMIT);
-  assert.equal(displayed[1].overLimit, true);
-  assert.equal(displayed[1].compressed, false);
+  assert.equal(displayed[1].compressed, true);
   assert.deepEqual(saved, displayed);
   const background = await replayUsageEvents([started], { background: true });
   assert.deepEqual(background.displayed, []);
-  assert.equal(background.saved[0]?.usedTokens, PROJECTED_TOKENS);
+  assert.deepEqual(background.saved, []);
 });
 
-test('runtime start uses projected input, not previous provider input', () => {
+test('compaction start is not a context measurement', () => {
   for (const counts of [
     { total_prompt_tokens: PROJECTED_TOKENS, used_tokens: STALE_TOKENS },
     { projected_input_tokens: PROJECTED_TOKENS, used_tokens: STALE_TOKENS },
     { used_tokens: PROJECTED_TOKENS },
   ]) {
-    assert.equal(contextUsageFromRuntimeEvent({ type: 'context_compaction_started', ...counts })?.usedTokens, PROJECTED_TOKENS);
-  }
-  for (const value of [undefined, null, 0, -1, 'invalid']) {
-    assert.equal(contextUsageFromRuntimeEvent({ type: 'context_compaction_started', total_prompt_tokens: value }), null);
+    assert.equal(contextUsageFromRuntimeEvent({ type: 'context_compaction_started', ...counts }), null);
   }
 });
 
@@ -176,13 +177,45 @@ test('a recorded zero is valid and survives local storage and restore', () => {
   }
 });
 
+test('provider usage reports input only, so generated output tokens never inflate the meter', async () => {
+  const completionTokens = 6986;
+  const { displayed, saved } = await replayUsageEvents([
+    { type: 'context_usage_updated', created_at: EARLIER, payload: {
+      source: 'provider_usage', prompt_tokens: PROVIDER_TOKENS, completion_tokens: completionTokens,
+      // 缓存命中的输入本来就算在 prompt_tokens 里（命中 + 未命中 = prompt_tokens），不能再加一遍。
+      cached_tokens: PROVIDER_TOKENS - 1000, used_tokens: PROVIDER_TOKENS + completionTokens,
+      total_tokens: CONTEXT_LIMIT,
+    } },
+  ]);
+  assert.deepEqual(displayed.map(usage => usage.usedTokens), [PROVIDER_TOKENS]);
+  assert.deepEqual(saved, displayed);
+});
+
+test('context builder estimates never become meter readings', () => {
+  // 构建阶段的计数不含 provider tools 声明，也不等于真实输入量；表盘只认
+  // provider prompt_tokens 与压缩后实测值，所以这种 source 一律不更新。
+  for (const usedTokens of [STALE_TOKENS, 0, -1]) {
+    assert.equal(contextUsageFromRuntimeEvent({
+      type: 'context_usage_updated', source: 'context_builder', used_tokens: usedTokens,
+    }), null);
+  }
+});
+
+test('restored conversation estimate is pure character counting without a base offset', () => {
+  const estimate = estimateContextUsageFromConversationDetail({
+    conversation_id: CONVERSATION_ID, messages: [{ content: 'abcd' }],
+  });
+  // 'abcd' → 1 token，加每条消息 24 的固定开销；不再叠加恢复基线。
+  assert.equal(estimate.usedTokens, 25);
+});
+
 test('missing usage and unrelated events do not become zero-valued measurements', () => {
   for (const event of [{ type: 'run_started' }, { type: 'context_usage_updated' },
-    { type: 'context_usage_updated', used_tokens: -1 },
-    { type: 'context_usage_updated', used_tokens: Infinity }]) {
+    { type: 'context_usage_updated', source: 'provider_usage', prompt_tokens: -1, used_tokens: 1 },
+    { type: 'context_usage_updated', source: 'provider_usage', prompt_tokens: Infinity, used_tokens: 1 },
+    { type: 'context_usage_updated', source: 'unknown_source', used_tokens: STALE_TOKENS }]) {
     assert.equal(contextUsageFromRuntimeEvent(event), null);
   }
-  assert.equal(contextUsageFromRuntimeEvent({ type: 'context_usage_updated', used_tokens: 0 }).usedTokens, 0);
   assert.equal(estimateContextUsageFromConversationDetail(null).usedTokens, 0);
   assert.equal(estimateContextUsageFromConversationDetail({ conversation_id: CONVERSATION_ID }).usedTokens, 0);
   assert.equal(loadStoredContextUsage(null).usedTokens, 0);

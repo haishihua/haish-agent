@@ -1,54 +1,14 @@
-import { apiFetch } from '../../../shared/api/client.js';
-import { API_BASE } from '../../../shared/api/base.js';
-
 export async function postApprovalDecision(requestId, decision) {
-  const response = await apiFetch(`${API_BASE}/api/approvals/${encodeURIComponent(requestId)}/resolve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ decision }),
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new Error(`resolve failed: HTTP ${response.status} ${detail}`);
-  }
+  await window.haish.resolveApproval('tool', requestId, { decision });
 }
 
 export async function postWorkflowApprovalDecision(requestId, decision, feedback = '') {
-  const response = await apiFetch(`${API_BASE}/api/workflow-approvals/${encodeURIComponent(requestId)}/resolve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ decision, feedback }),
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new Error(`workflow approval failed: HTTP ${response.status} ${detail}`);
-  }
-}
-
-function endpointUrl(endpoint) {
-  const value = String(endpoint || '').trim();
-  if (!value) return '';
-  if (/^https?:\/\//i.test(value)) return value;
-  if (value.startsWith('/')) return `${API_BASE}${value}`;
-  return `${API_BASE}/${value.replace(/^\/+/, '')}`;
+  await window.haish.resolveApproval('workflow', requestId, { decision, feedback });
 }
 
 export async function postBrowserRuntimeDecision(request, decision) {
-  const endpoint = decision === 'deny' ? request.deny_endpoint : request.install_endpoint;
-  const url = endpointUrl(endpoint);
-  if (!url) {
-    throw new Error(`browser runtime ${decision === 'deny' ? 'deny' : 'install'} endpoint missing`);
-  }
-  const options = { method: 'POST' };
-  if (decision !== 'deny') {
-    options.headers = { 'Content-Type': 'application/json' };
-    options.body = JSON.stringify({ timeout_seconds: 900 });
-  }
-  const response = await apiFetch(url, options);
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new Error(
-      `browser runtime ${decision === 'deny' ? 'deny' : 'install'} failed: HTTP ${response.status} ${detail}`,
-    );
-  }
+  await window.haish.resolveApproval('browser_runtime', request.request_id, {
+    decision: decision === 'deny' ? 'deny' : 'install',
+    ...(decision === 'deny' ? {} : { timeout_seconds: 900 }),
+  });
 }

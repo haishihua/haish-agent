@@ -436,7 +436,7 @@ export function ApprovalInline() {
   const [collapsedRids, setCollapsedRids] = useState({});
 
   // Subscribe to the singleton approval store. The store owns the
-  // EventSource; this component just renders whatever it emits. No new
+  // The application-level realtime bridge owns the socket; this component only renders its events. No new
   // network connections are created when this component re-mounts during
   // conversation switches.
   useEffect(() => {

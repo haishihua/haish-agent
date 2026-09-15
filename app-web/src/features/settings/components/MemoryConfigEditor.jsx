@@ -1,11 +1,14 @@
 import { Input } from '../../../shared/ui/settings-elements/ui/input.tsx';
-import { normalizeNeo4jDraft } from '../model/settings-records.js';
-import { FieldRow, SecretKeyField, SettingsToggleRow } from './SettingsPrimitives.jsx';
+import {
+  normalizeQdrantDraft,
+  QDRANT_DISTANCE_OPTIONS,
+} from '../model/settings-records.js';
+import { FieldRow, SecretKeyField, SettingsMenuSelect, SettingsToggleRow } from './SettingsPrimitives.jsx';
 
 export function MemoryConfigEditor({ selectedId, records, onRecordsChange, onDirty, readOnly = false }) {
   const current = (records.memory || []).find((item) => item.id === selectedId) || null;
   if (!current) return <div className="settings-empty">Select a memory configuration.</div>;
-  const neo4j = normalizeNeo4jDraft({ ...current.neo4j, endpoint: current.endpoint });
+  const qdrant = normalizeQdrantDraft({ ...current.qdrant, endpoint: current.endpoint });
   const update = ({ enabled, ...patch }) => {
     onDirty?.('memory', selectedId);
     onRecordsChange((prev) => ({
@@ -14,8 +17,12 @@ export function MemoryConfigEditor({ selectedId, records, onRecordsChange, onDir
         if (item.id !== selectedId) return item;
         // Only the draft fields feed the connection settings; `enabled` is a
         // record-level switch and must not be swallowed by the normalization.
-        const nextNeo4j = normalizeNeo4jDraft({ ...neo4j, ...patch });
-        return { ...item, enabled: enabled ?? item.enabled, endpoint: nextNeo4j.uri, neo4j: nextNeo4j };
+        const nextQdrant = normalizeQdrantDraft({
+          ...qdrant,
+          ...patch,
+          collection: { ...qdrant.collection, ...(patch.collection || {}) },
+        });
+        return { ...item, enabled: enabled ?? item.enabled, endpoint: nextQdrant.url, qdrant: nextQdrant };
       }),
     }));
   };
@@ -27,26 +34,33 @@ export function MemoryConfigEditor({ selectedId, records, onRecordsChange, onDir
         onCheckedChange={(enabled) => update({ enabled })}
         disabled={readOnly}
       />
-      <FieldRow label="URI">
-        <Input value={neo4j.uri} onChange={(event) => update({ uri: event.target.value })} disabled={readOnly} placeholder="Optional, e.g. bolt://localhost:7687" />
+      <FieldRow label="URL">
+        <Input value={qdrant.url} onChange={(event) => update({ url: event.target.value })} disabled={readOnly} placeholder="Optional, e.g. http://localhost:6333" />
       </FieldRow>
-      <FieldRow label="Username">
-        <Input value={neo4j.username} onChange={(event) => update({ username: event.target.value })} disabled={readOnly} placeholder="neo4j" />
-      </FieldRow>
-      <FieldRow label="Password">
+      <FieldRow label="API Key">
         <SecretKeyField
-          value={neo4j.password}
-          onChange={(event) => update({ password: event.target.value })}
+          value={qdrant.api_key}
+          onChange={(event) => update({ api_key: event.target.value })}
           disabled={readOnly}
-          configured={Boolean(neo4j.password_configured)}
-          placeholder="Password"
+          configured={Boolean(qdrant.api_key_configured)}
+          placeholder="API key"
         />
       </FieldRow>
-      <FieldRow label="Database">
-        <Input value={neo4j.database} onChange={(event) => update({ database: event.target.value })} disabled={readOnly} />
+      <FieldRow label="Collection Name">
+        <Input value={qdrant.collection.name} onChange={(event) => update({ collection: { name: event.target.value } })} disabled={readOnly} placeholder="Leave blank to use workspace default" />
+      </FieldRow>
+      <FieldRow label="Vector Size">
+        <Input type="number" min="1" value={qdrant.collection.vector_size} onChange={(event) => update({ collection: { vector_size: event.target.value } })} disabled={readOnly} />
+      </FieldRow>
+      <FieldRow label="Distance">
+        <SettingsMenuSelect
+          value={qdrant.collection.distance}
+          options={QDRANT_DISTANCE_OPTIONS}
+          onChange={(distance) => update({ collection: { distance } })}
+          disabled={readOnly}
+          header="distance"
+        />
       </FieldRow>
     </div>
   );
 }
-
-

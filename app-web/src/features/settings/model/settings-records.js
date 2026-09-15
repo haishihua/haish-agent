@@ -1,8 +1,5 @@
 // Settings domain model.
 export const SETTINGS_RECORDS_STORAGE_KEY = 'haish.settingsRecordsDraft.v1';
-const SETTINGS_CONNECTION_STATUS_STORAGE_KEY = 'haish.settingsConnectionStatus.v1';
-const SETTINGS_CONNECTION_SECTIONS = ['memory', 'knowledge'];
-const SETTINGS_PERSISTED_CONNECTION_STATES = new Set(['success', 'error']);
 export const DEFAULT_MCP_CONFIG_JSON = JSON.stringify({ servers: {} }, null, 2);
 export const MCP_CONFIG_TEMPLATE_JSON = JSON.stringify({
   servers: {
@@ -16,17 +13,12 @@ export const MCP_CONFIG_TEMPLATE_JSON = JSON.stringify({
     },
   },
 }, null, 2);
-const DEFAULT_NEO4J_CONFIG = {
-  uri: '',
-  username: '',
-  password: '',
-  password_configured: false,
-  database: '',
-};
 const DEFAULT_QDRANT_CONFIG = {
   url: '',
   api_key: '',
   api_key_configured: false,
+  // 最近一次连接测试的结果：由后端随已保存的连接一起存回来。
+  last_test: null,
   collection: {
     name: '',
     vector_size: 1024,
@@ -52,10 +44,7 @@ export function createDefaultSettingsRecords() {
       { id: 'tools-web', name: 'Web Search', kind: 'Provider Keys', enabled: true, protected: true, endpoint: '', notes: 'Configure Tavily and SerpApi search keys.', web_search: createDefaultWebSearchSettings() },
     ],
     memory: [
-      { id: 'memory-neo4j', name: 'Neo4j', kind: 'Graph Memory', enabled: true, protected: true, endpoint: '', notes: 'Graph-backed long-term memory.', neo4j: normalizeNeo4jDraft() },
-    ],
-    knowledge: [
-      { id: 'knowledge-qdrant', name: 'Qdrant', kind: 'Vector Store', enabled: true, protected: true, endpoint: '', notes: 'Vector search for indexed documents.', qdrant: normalizeQdrantDraft() },
+      { id: 'memory-qdrant', name: 'Qdrant', kind: 'Vector Store', enabled: true, protected: true, endpoint: '', notes: 'Vector search for long-term memory and the knowledge base.', qdrant: normalizeQdrantDraft() },
     ],
     agent: [
       { id: 'agent-default', name: 'Default Agent', kind: 'Profile', enabled: true, endpoint: '', notes: 'Default assistant profile.' },
@@ -77,18 +66,6 @@ export function createDefaultWebSearchSettings() {
   };
 }
 
-export function normalizeNeo4jDraft(value = {}) {
-  const raw = value && typeof value === 'object' ? value : {};
-  return {
-    ...DEFAULT_NEO4J_CONFIG,
-    uri: String(raw.uri ?? raw.endpoint ?? DEFAULT_NEO4J_CONFIG.uri).trim(),
-    username: String(raw.username ?? DEFAULT_NEO4J_CONFIG.username).trim(),
-    password: String(raw.password ?? '').trim(),
-    password_configured: Boolean(raw.password_configured),
-    database: String(raw.database ?? DEFAULT_NEO4J_CONFIG.database).trim(),
-  };
-}
-
 export function normalizeQdrantDraft(value = {}) {
   const raw = value && typeof value === 'object' ? value : {};
   const collectionRaw = raw.collection && typeof raw.collection === 'object' ? raw.collection : {};
@@ -100,6 +77,7 @@ export function normalizeQdrantDraft(value = {}) {
     url: String(raw.url ?? raw.endpoint ?? DEFAULT_QDRANT_CONFIG.url).trim(),
     api_key: String(raw.api_key ?? '').trim(),
     api_key_configured: Boolean(raw.api_key_configured),
+    last_test: raw.last_test && typeof raw.last_test === 'object' ? raw.last_test : DEFAULT_QDRANT_CONFIG.last_test,
     collection: {
       name: collectionName === LEGACY_DEFAULT_QDRANT_COLLECTION ? '' : collectionName,
       vector_size: Number.isFinite(vectorSize) && vectorSize > 0 ? vectorSize : DEFAULT_QDRANT_CONFIG.collection.vector_size,
@@ -131,84 +109,12 @@ export function loadSettingsRecordsDraft() {
     return Object.fromEntries(
       Object.entries(fallback).map(([section, records]) => [
         section,
-        ['memory', 'knowledge'].includes(section)
+        section === 'memory'
           ? mergeKnownDefaultRecords(records, stored?.[section])
           : mergeDefaultRecords(records, stored?.[section]),
       ]),
     );
   } catch {
     return fallback;
-  }
-}
-
-function settingsConnectionRecord(records, section, itemId) {
-  const items = Array.isArray(records?.[section]) ? records[section] : [];
-  return items.find((item) => item?.id === itemId) || null;
-}
-
-function settingsConnectionSignature(section, record) {
-  if (!record) return '';
-  if (section === 'memory') {
-    const rawNeo4j = record.neo4j || {};
-    const neo4j = normalizeNeo4jDraft({ ...rawNeo4j, uri: rawNeo4j.uri || record.endpoint });
-    if (!neo4j.uri) return '';
-    return JSON.stringify(['memory', neo4j.uri, neo4j.username, Boolean(neo4j.password || neo4j.password_configured), neo4j.database]);
-  }
-  if (section === 'knowledge') {
-    const rawQdrant = record.qdrant || {};
-    const qdrant = normalizeQdrantDraft({ ...rawQdrant, url: rawQdrant.url || record.endpoint });
-    if (!qdrant.url) return '';
-    return JSON.stringify([
-      'knowledge',
-      qdrant.url,
-      Boolean(qdrant.api_key || qdrant.api_key_configured),
-      qdrant.collection?.name || '',
-      qdrant.collection?.vector_size || '',
-      qdrant.collection?.distance || '',
-    ]);
-  }
-  return '';
-}
-
-export function settingsConnectionSignatureFor(records, section, itemId) {
-  return settingsConnectionSignature(section, settingsConnectionRecord(records, section, itemId));
-}
-
-export function sanitizeSettingsConnectionStatus(status, records) {
-  const next = { memory: {}, knowledge: {} };
-  for (const section of SETTINGS_CONNECTION_SECTIONS) {
-    const items = Array.isArray(records?.[section]) ? records[section] : [];
-    for (const item of items) {
-      const itemStatus = status?.[section]?.[item.id];
-      if (!SETTINGS_PERSISTED_CONNECTION_STATES.has(String(itemStatus?.state || ''))) continue;
-      const signature = settingsConnectionSignature(section, item);
-      if (!signature || itemStatus.signature !== signature) continue;
-      next[section][item.id] = {
-        state: String(itemStatus.state),
-        message: String(itemStatus.message || ''),
-        signature,
-      };
-    }
-  }
-  return next;
-}
-
-export function loadSettingsConnectionStatus(records) {
-  try {
-    const raw = window.localStorage?.getItem(SETTINGS_CONNECTION_STATUS_STORAGE_KEY);
-    return sanitizeSettingsConnectionStatus(raw ? JSON.parse(raw) : null, records);
-  } catch {
-    return { memory: {}, knowledge: {} };
-  }
-}
-
-export function persistSettingsConnectionStatus(status, records) {
-  try {
-    window.localStorage?.setItem(
-      SETTINGS_CONNECTION_STATUS_STORAGE_KEY,
-      JSON.stringify(sanitizeSettingsConnectionStatus(status, records)),
-    );
-  } catch {
-    // Ignore storage failures; the live status still updates in React state.
   }
 }

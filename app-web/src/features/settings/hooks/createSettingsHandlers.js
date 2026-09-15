@@ -11,12 +11,10 @@ export function createSettingsHandlers(ctx) {
     activeTab,
     agentCatalogFromSettings,
     agentSettingsDraft,
-    applyKnowledgeSettingsPayloadToRecords,
     applyLlmSettingsPayloadToDraft,
     applyMemorySettingsPayloadToRecords,
     applyToolsSettingsPayloadToRecords,
     apiFetch,
-    buildKnowledgeSettingsPayload,
     buildMemorySettingsPayload,
     buildToolsSettingsPayload,
     createDefaultCustomAgentPayload,
@@ -37,10 +35,8 @@ export function createSettingsHandlers(ctx) {
     setSettingsSection,
     setSkillActionBusy,
     setWorkflowSettingsDraft,
-    settingsConnectionSignatureFor,
     settingsRecordsDraft,
     showToast,
-    syncSettingsConnectionStatus,
     updateSettingsConnectionStatus,
     withAlwaysAllowedAgentTools,
     workflowById,
@@ -93,26 +89,9 @@ export function createSettingsHandlers(ctx) {
         throw new Error(message);
       }
       const memoryPayload = await memoryResponse.json();
-      setSettingsRecordsDraft((prev) => {
-        const next = applyMemorySettingsPayloadToRecords(prev, memoryPayload);
-        syncSettingsConnectionStatus(next);
-        return next;
-      });
-      const knowledgeResponse = await apiFetch(`${API_BASE}/api/settings/knowledge`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildKnowledgeSettingsPayload(settingsRecordsDraft)),
-      }, { json: false });
-      if (!knowledgeResponse.ok) {
-        const message = await parseResponseMessage(knowledgeResponse, `knowledge settings save failed: ${knowledgeResponse.status}`);
-        throw new Error(message);
-      }
-      const knowledgePayload = await knowledgeResponse.json();
-      setSettingsRecordsDraft((prev) => {
-        const next = applyKnowledgeSettingsPayloadToRecords(prev, knowledgePayload);
-        syncSettingsConnectionStatus(next);
-        return next;
-      });
+      setSettingsRecordsDraft((prev) => applyMemorySettingsPayloadToRecords(prev, memoryPayload));
+      // 保存后由服务端存的测试结果接手，会话内的临时状态清空。
+      updateSettingsConnectionStatus({ memory: {} });
       showToast('success', 'settings saved');
       return true;
     } catch (error) {
@@ -452,7 +431,7 @@ export function createSettingsHandlers(ctx) {
   }
 
   function handleSettingsConnectionDirty(section, itemId) {
-    if (!['memory', 'knowledge'].includes(section) || !itemId) return;
+    if (section !== 'memory' || !itemId) return;
     updateSettingsConnectionStatus((prev) => {
       const current = prev?.[section]?.[itemId];
       if (!current || current.state === 'idle') return prev;
@@ -467,19 +446,20 @@ export function createSettingsHandlers(ctx) {
   }
 
   async function handleTestSettingsConnection(section, itemId) {
-    if (!['memory', 'knowledge'].includes(section) || !itemId) return false;
-    const label = section === 'memory' ? 'Neo4j' : 'Qdrant';
-    const payload = section === 'memory'
-      ? buildMemorySettingsPayload(settingsRecordsDraft)
-      : buildKnowledgeSettingsPayload(settingsRecordsDraft);
-    const signature = settingsConnectionSignatureFor(settingsRecordsDraft, section, itemId);
-    updateSettingsConnectionStatus((prev) => ({
-      ...prev,
-      [section]: {
-        ...(prev?.[section] || {}),
-        [itemId]: { state: 'testing', message: '', signature },
-      },
-    }));
+    // Qdrant 连接归 memory 段（知识库复用同一条），只有它有连接测试。
+    if (section !== 'memory' || !itemId) return false;
+    const label = 'Qdrant';
+    const payload = buildMemorySettingsPayload(settingsRecordsDraft);
+    // 结果只在“还在测”时落地：期间改过配置（handleSettingsConnectionDirty 打回 idle）就不能当数。
+    const setStatus = (state, message = '', ifCurrent = null) => updateSettingsConnectionStatus((prev) => {
+      const current = prev?.[section]?.[itemId];
+      if (ifCurrent && current?.state !== ifCurrent) return prev;
+      return {
+        ...prev,
+        [section]: { ...(prev?.[section] || {}), [itemId]: { state, message } },
+      };
+    });
+    setStatus('testing');
     try {
       const response = await apiFetch(`${API_BASE}/api/settings/${section}/test`, {
         method: 'POST',
@@ -492,32 +472,12 @@ export function createSettingsHandlers(ctx) {
       }
       const result = await response.json();
       const message = String(result?.message || `${label} connection verified.`);
-      updateSettingsConnectionStatus((prev) => {
-        const current = prev?.[section]?.[itemId];
-        if (current?.state !== 'testing' || current?.signature !== signature) return prev;
-        return {
-          ...prev,
-          [section]: {
-            ...(prev?.[section] || {}),
-            [itemId]: { state: 'success', message, signature },
-          },
-        };
-      });
+      setStatus('success', message, 'testing');
       showToast('success', message);
       return true;
     } catch (error) {
       const message = String(error?.message || error);
-      updateSettingsConnectionStatus((prev) => {
-        const current = prev?.[section]?.[itemId];
-        if (current?.state !== 'testing' || current?.signature !== signature) return prev;
-        return {
-          ...prev,
-          [section]: {
-            ...(prev?.[section] || {}),
-            [itemId]: { state: 'error', message, signature },
-          },
-        };
-      });
+      setStatus('error', message, 'testing');
       showToast('error', message);
       return false;
     }

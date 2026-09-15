@@ -2,7 +2,6 @@ export const CONVERSATION_STORAGE_KEY = 'haish_conversation_id';
 export const WORKSPACE_STORAGE_KEY = 'haish_workspaces_v2';
 export const CONTEXT_USAGE_STORAGE_KEY = 'haish_context_usage_v1';
 const RUN_CONFIG_STORAGE_PREFIX = 'haish_run_config_v1';
-export const RESTORED_CONTEXT_BASE_TOKENS = 4200;
 export const DEFAULT_PROJECT_NAME = 'Default project';
 export const DEFAULT_SESSION_NAME = 'Default Session';
 export const DEFAULT_CONVERSATION_NAMES = new Set([

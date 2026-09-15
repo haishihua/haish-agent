@@ -1,4 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, net, protocol, shell } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { proxyResponse } from './proxy-response.js';
 import fs from 'node:fs/promises';
@@ -50,6 +51,148 @@ const runtimePaths = () => ({
   resourcesPath: process.resourcesPath,
   isPackaged: app.isPackaged && !devMode,
 });
+
+type RealtimeMessage = Record<string, unknown> & { type?: string; request_id?: string };
+type CommandWaiter = {
+  resolve: (value: Record<string, unknown>) => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
+};
+
+let realtimeSocket: WebSocket | null = null;
+let realtimeSocketPromise: Promise<WebSocket> | null = null;
+let realtimeReconnectTimer: NodeJS.Timeout | null = null;
+const realtimeCommandWaiters = new Map<string, CommandWaiter>();
+const realtimeTaskOwners = new Map<string, number>();
+const realtimeApprovalSubscribers = new Set<number>();
+
+function realtimeSocketUrl(baseUrl: string): string {
+  const url = new URL('/api/events/ws', baseUrl);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
+}
+
+function sendToWebContents(id: number, channel: string, payload: unknown): void {
+  const target = BrowserWindow.getAllWindows().map((item) => item.webContents).find((item) => item.id === id);
+  if (target && !target.isDestroyed()) target.send(channel, payload);
+}
+
+function failRealtimeConnection(detail = 'Local runtime connection closed.'): void {
+  const error = new Error(detail);
+  for (const waiter of realtimeCommandWaiters.values()) {
+    clearTimeout(waiter.timer);
+    waiter.reject(error);
+  }
+  realtimeCommandWaiters.clear();
+  for (const [requestId, ownerId] of realtimeTaskOwners) {
+    sendToWebContents(ownerId, 'runtime:task-message', {
+      type: 'task.error', request_id: requestId, status: 503, detail,
+    });
+  }
+  realtimeTaskOwners.clear();
+}
+
+function scheduleRealtimeReconnect(): void {
+  if (runtimeStopInFlight || !realtimeApprovalSubscribers.size || realtimeReconnectTimer) return;
+  realtimeReconnectTimer = setTimeout(() => {
+    realtimeReconnectTimer = null;
+    ensureRealtimeSocket().catch(() => scheduleRealtimeReconnect());
+  }, 1_000);
+}
+
+function handleRealtimeMessage(event: MessageEvent): void {
+  let message: RealtimeMessage;
+  try {
+    message = JSON.parse(String(event.data)) as RealtimeMessage;
+  } catch {
+    return;
+  }
+  const requestId = String(message.request_id || '');
+  if (message.type === 'command.result') {
+    const waiter = realtimeCommandWaiters.get(requestId);
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    realtimeCommandWaiters.delete(requestId);
+    if (message.ok) waiter.resolve((message.result as Record<string, unknown>) || { ok: true });
+    else waiter.reject(Object.assign(new Error(String(message.detail || 'Runtime command failed.')), { status: message.status }));
+    return;
+  }
+  if (message.type === 'task.event' || message.type === 'task.error' || message.type === 'task.end') {
+    const ownerId = realtimeTaskOwners.get(requestId);
+    if (ownerId) sendToWebContents(ownerId, 'runtime:task-message', message);
+    if (message.type === 'task.end') realtimeTaskOwners.delete(requestId);
+    return;
+  }
+  if (message.type === 'approval.event') {
+    for (const subscriberId of realtimeApprovalSubscribers) {
+      sendToWebContents(subscriberId, 'runtime:approval-event', message.event);
+    }
+  }
+}
+
+async function ensureRealtimeSocket(): Promise<WebSocket> {
+  if (realtimeSocket?.readyState === WebSocket.OPEN) return realtimeSocket;
+  if (realtimeSocketPromise) return realtimeSocketPromise;
+  realtimeSocketPromise = (async () => {
+    const runtime = await ensureLocalRuntime(runtimePaths());
+    return new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(realtimeSocketUrl(runtime.baseUrl));
+      let opened = false;
+      socket.addEventListener('open', () => {
+        opened = true;
+        realtimeSocket = socket;
+        resolve(socket);
+      });
+      socket.addEventListener('message', handleRealtimeMessage);
+      socket.addEventListener('error', () => {
+        if (!opened) reject(new Error('Could not connect to the local runtime event socket.'));
+      });
+      socket.addEventListener('close', () => {
+        if (realtimeSocket === socket) realtimeSocket = null;
+        if (!opened) reject(new Error('Local runtime event socket closed before connecting.'));
+        failRealtimeConnection();
+        scheduleRealtimeReconnect();
+      });
+    });
+  })().finally(() => {
+    realtimeSocketPromise = null;
+  });
+  return realtimeSocketPromise;
+}
+
+async function sendRealtimeCommand(command: RealtimeMessage): Promise<Record<string, unknown>> {
+  const requestId = String(command.request_id || '');
+  if (!requestId) throw new Error('Realtime command request_id is required.');
+  const socket = await ensureRealtimeSocket();
+  return new Promise<Record<string, unknown>>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      realtimeCommandWaiters.delete(requestId);
+      reject(new Error('Runtime command timed out.'));
+    }, 16 * 60_000);
+    realtimeCommandWaiters.set(requestId, { resolve, reject, timer });
+    try {
+      socket.send(JSON.stringify(command));
+    } catch (error) {
+      clearTimeout(timer);
+      realtimeCommandWaiters.delete(requestId);
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+}
+
+async function refreshApprovalSnapshot(subscriberId: number): Promise<void> {
+  const result = await sendRealtimeCommand({
+    type: 'approval.snapshot',
+    request_id: randomUUID(),
+  });
+  if (!realtimeApprovalSubscribers.has(subscriberId)) return;
+  const state = result.state;
+  if (!state || typeof state !== 'object') throw new Error('Runtime returned an invalid approval snapshot.');
+  sendToWebContents(subscriberId, 'runtime:approval-event', {
+    type: 'approval_snapshot',
+    state,
+  });
+}
 
 // Electron 默认会调 macOS Keychain 给 SafeStorage 派密钥，启动时会弹"允许访问钥匙串"
 // 的系统对话框。我们没有用 safeStorage 存任何敏感数据，所以把 password-store 切到
@@ -322,6 +465,32 @@ ipcMain.handle('skill:pick-directory', async (): Promise<SkillDirectoryPickResul
 });
 
 ipcMain.handle('runtime:status', async () => getLocalRuntimeState());
+ipcMain.handle('runtime:command', async (event, command: RealtimeMessage) => {
+  const sender = new URL(event.senderFrame?.url || 'about:blank');
+  if (sender.protocol !== 'haish:' || sender.hostname !== 'app') throw new Error('Untrusted runtime command');
+  const requestId = String(command?.request_id || '');
+  if (command?.type === 'task.start') realtimeTaskOwners.set(requestId, event.sender.id);
+  try {
+    return await sendRealtimeCommand(command);
+  } catch (error) {
+    if (command?.type === 'task.start') realtimeTaskOwners.delete(requestId);
+    throw error;
+  }
+});
+ipcMain.on('runtime:approval-subscribe', (event) => {
+  const sender = new URL(event.senderFrame?.url || 'about:blank');
+  if (sender.protocol !== 'haish:' || sender.hostname !== 'app') return;
+  const senderId = event.sender.id;
+  realtimeApprovalSubscribers.add(senderId);
+  event.sender.once('destroyed', () => realtimeApprovalSubscribers.delete(senderId));
+  refreshApprovalSnapshot(senderId).catch((error) => {
+    console.warn('[realtime] failed to refresh approval snapshot', error);
+    scheduleRealtimeReconnect();
+  });
+});
+ipcMain.on('runtime:approval-unsubscribe', (event) => {
+  realtimeApprovalSubscribers.delete(event.sender.id);
+});
 ipcMain.handle('tool:read-screenshot', async (event, imagePath: string, taskId: string): Promise<string> => {
   const sender = new URL(event.senderFrame?.url || 'about:blank');
   if (sender.protocol !== 'haish:' || sender.hostname !== 'app') throw new Error('Untrusted screenshot request');
@@ -437,6 +606,8 @@ app.on('before-quit', (event) => {
   }
   runtimeStopInFlight = true;
   event.preventDefault();
+  realtimeSocket?.close();
+  realtimeSocket = null;
   for (const window of BrowserWindow.getAllWindows()) {
     window.destroy();
   }

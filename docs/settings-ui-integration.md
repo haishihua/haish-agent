@@ -48,3 +48,19 @@
 - 按最新反馈，用聊天页原有渐变替代上一节的平面底色。主区、侧栏和应用底层背景提取到 `app-web/styles/surfaces.css`，聊天页与设置页共用；列表、输入框和编辑面板继续保留现有深灰色。
 - Chat、Vision、Embedding 的 Add provider 移到搜索框同一行右侧，位于数据列表正上方。
 - 验证：ESLint、正式构建及 `git diff --check` 通过；浏览器确认背景、按钮位置及新增提供商编辑面板正常打开。
+
+## Settings 加载占位（2026-09-15）
+
+设置页首次打开时，`AppShell` 的懒加载回退原来只是一个没有样式的 `<div role="status">Loading settings…</div>`：纯文本贴在左上角，而且继承 `body` 的 Zpix 像素字体，观感很差。现在改为 assistant-ui Elements 的 **Loader**（`/elements/loading-state`，像素矩阵 + 扫光标签）：
+
+- 组件 `app-web/src/shared/ui/agent-elements/LoadingState.jsx`，样式 `loading-state.css`。九宫格、`pixelOffset = floor(tick / 3)`、`(index * 2 + pixelOffset) % 9 < 3` 的点亮规则、8px 格子与 4px 间距、300ms 透明度过渡都沿用上游；`variant` 保留 `dots` / `squares` / `rounded`。上游把时钟交给调用方（120ms 一拍），`LoadingState` 在挂载时自行计时、卸载时清掉，`GenerationLoader` 仍是无状态的原版接口。
+- Tailwind 工具类改为 `aui-loader-*` 作用域 CSS（与 `error-state.css` 同一做法），扫光沿用项目已有的写法，等价于上游的 `tw-shimmer`（MIT，assistant-ui）。许可证见同目录 `LICENSE-assistant-ui.txt`。
+- 标签文字保持 “Loading settings…”，但字体按要求换成**正文字体** `--conversation-font`（聊天正文那一套）：`body` 用的是像素字体，不显式指定会继承成像素字。
+- 占位整块居中：`app-shell.css` 新增 `.app-body-loading { display: grid; place-items: center; }`；工作流的 `Loading workflow…` 占位未改。
+- 验证：Electron 挂生产样式表实测，loader 中心与设置区中心重合（1280×716 区域内 640/414 对 640/414），9 个格子 8px、间距 4px，点亮格按拍移动，标签 14px、55% 透明度、`LXGW WenKai Screen`、扫光动画运行；`npm test` 新增 `contracts/loading-state.test.js` 锁住上述结论。
+
+## Embedding 归入 Context、连接测试结果跟着配置存（2026-09-15）
+
+- 导航分组调整：Embedding 从 Providers 子标签移到 **Context** 分组，与 Memory 并列；Providers 只剩 Chat / Vision。Embedding 段的列表、编辑面板、Add provider、连接测试与删除全部复用原 LLM 通道（`configItemsForSection('embedding')` 走 `getLlmConfigItems`，测试走 `onTestLlmConfig`，删除走 `onDeleteLlmProvider('embedding')`）。单条目段的搜索框和已配置时的 Add 一并隐藏。
+- Qdrant 的“测没测过”原来只存在浏览器 `localStorage`（`haish.settingsConnectionStatus.v1`，靠一段连接签名匹配）。签名由本地草稿算出，草稿没落盘、记录改名（knowledge-qdrant → memory-qdrant）或换过一个段都会让它对不上，结果就退回 `Not tested`，下一次同步还会把已存的结果覆盖掉。现在改由后端跟着已保存的连接存：`memory.qdrant.last_test`（state / message / tested_at + 内部 `identity`），`GET /api/settings/memory` 只返回结果不返回 identity，连接（URL、collection、是否带 key）变了就当没测过。前端删掉整层签名与 localStorage 持久化，只保留本轮会话的临时状态。
+- 验证：`npm test` 310 项、ESLint、架构检查（128 个模块）与 `build:web` 通过；后端新增 `test_connection_test_result_is_stored_with_the_saved_connection`，全量 `pytest --ignore=tests/test_app_web.py` 1613 passed。
