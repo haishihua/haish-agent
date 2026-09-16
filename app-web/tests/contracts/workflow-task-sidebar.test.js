@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-  conversationHasRunningTask,
+  isTaskLive,
   workflowTaskDisplayStatus,
 } from '../../src/features/conversations/model/conversation-status.js';
 
@@ -211,9 +211,13 @@ test('workflow wait states do not look like active agent execution', () => {
   assert.equal(workflowTaskDisplayStatus(approvalTask), 'approval');
   assert.equal(workflowTaskDisplayStatus(inputTask), 'waiting_input');
   assert.equal(workflowTaskDisplayStatus(cancelledTask), 'cancelled');
-  assert.equal(conversationHasRunningTask({ tasks: [approvalTask] }), false);
-  assert.equal(conversationHasRunningTask({ tasks: [inputTask] }), false);
-  assert.equal(conversationHasRunningTask({ tasks: [cancelledTask] }), false);
+  // 任务卡显示的是「这条任务被记成什么状态」，那是它自己的事。
+  // 会话状态灯（蓝/黄/熄）只认任务自身是否落地终态 + 后端实时「等人」快照，
+  // 不看 workflowRun 快照——那份快照是轮询回来的旧值，会让恢复后的行回不到蓝灯。
+  assert.equal(isTaskLive(approvalTask), true);
+  assert.equal(isTaskLive(inputTask), true);
+  assert.equal(isTaskLive({ status: 'running', completedAt: '2026-01-01' }), false);
+  assert.equal(isTaskLive({ status: 'cancelled' }), false);
 });
 
 test('failed task creation cannot leave a restorable local-only task', () => {

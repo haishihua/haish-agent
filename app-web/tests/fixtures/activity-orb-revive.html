@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>activity orb revive checks</title>
+<!--
+  The page needs its probes installed before the module graph runs:
+  `thinking-orbs` captures `window.requestAnimationFrame` and `window.IntersectionObserver`
+  when it is first evaluated, so the recorders have to exist by then.
+-->
+<script>
+  window.__pageErrors = [];
+  window.addEventListener('error', (event) => {
+    window.__pageErrors.push(String(event.message || event.error));
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    window.__pageErrors.push('rejection: ' + String(event.reason));
+  });
+  window.__ioSuppressed = false;
+  window.__orbRafIds = [];
+  (() => {
+    const nativeRaf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (callback) => {
+      const stack = new Error().stack || '';
+      const id = nativeRaf(callback);
+      if (stack.includes('thinking-orbs')) {
+        window.__orbRafIds.push(id);
+        if (window.__orbRafIds.length > 30) window.__orbRafIds.shift();
+      }
+      return id;
+    };
+
+    const NativeIntersectionObserver = window.IntersectionObserver;
+    window.IntersectionObserver = class SwitchableIntersectionObserver extends NativeIntersectionObserver {
+      constructor(callback, options) {
+        super((entries, observer) => {
+          if (window.__ioSuppressed) return; // drop deliveries, like a lost resume entry
+          callback(entries, observer);
+        }, options);
+      }
+    };
+
+    // Cancel whatever the orb has queued. A draw that throws leaves the library exactly
+    // here: the loop flag is still "running" but no frame will ever be delivered again.
+    window.__killOrbFrames = () => {
+      const ids = window.__orbRafIds.splice(0, window.__orbRafIds.length);
+      for (const id of ids) window.cancelAnimationFrame(id);
+      return ids.length;
+    };
+  })();
+</script>
+<div id="root"></div>
+<script type="module" src="./activity-orb-revive.jsx"></script>
+</html>

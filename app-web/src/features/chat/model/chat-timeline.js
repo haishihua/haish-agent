@@ -5,6 +5,10 @@ import { isTerminalTaskStatus, normalizeTaskStatus } from '../../tasks/model/tas
 import { skillDisplayName } from '../../tasks/model/runtime-events.js';
 import { skillTrigger } from './tool-presentation.js';
 import { mergeChatImageRefs, normalizeChatImageRefs } from '../../conversations/model/workspace-state.js';
+import {
+  RUN_STATE_APPROVAL,
+  RUN_STATE_WAITING_INPUT,
+} from '../../conversations/model/conversation-run-state.js';
 
 export function getChatProgressLine(event) {
   const toolName = event.tool_name || event.toolName || 'tool';
@@ -154,7 +158,7 @@ export function getToolResponseTraceStatus(response, fallback = '') {
   return fallback || '';
 }
 
-function categorizeToolCall(call) {
+export function categorizeToolCall(call) {
   if (isSubAgentTraceItem(call)) return 'subagent';
   if (isSkillTraceItem(call)) return 'skill';
   if (isMcpTraceItem(call)) return 'mcp';
@@ -321,17 +325,18 @@ function aggregateGroupStatus(tools) {
 
 const SEARCH_ACTIVITY_BUCKETS = new Set(['read', 'searched', 'fetched', 'queried', 'visualized']);
 
-export function resolveAgentActivity(items, streaming = false) {
+export function resolveAgentActivity(items, streaming = false, waitState = '') {
   if (!streaming) return null;
+  // 「在等人」由会话状态判据给（后端实时快照），不再看时间线上有没有 ask_user 卡片：
+  // 卡片是渲染结果，快照才是状态。用户一提交答案，快照清空，这里立刻回到在跑的文案。
+  if (waitState === RUN_STATE_WAITING_INPUT) return { state: 'listening', label: 'Waiting for you…' };
+  if (waitState === RUN_STATE_APPROVAL) return { state: 'listening', label: 'Awaiting approval…' };
   const safeItems = Array.isArray(items) ? items : [];
   const tools = safeItems.flatMap((item) => (
     item?.kind === 'tool_group' ? item.tools || [] : item?.kind === 'tool' ? [item] : []
   ));
   const activeTools = tools.filter((item) => ['pending', 'running'].includes(String(item?.status || '')));
 
-  if (activeTools.some((item) => normalizeToolName(item.toolName) === 'ask_user')) {
-    return { state: 'listening', label: 'Waiting for you…' };
-  }
   if (activeTools.some((item) => SEARCH_ACTIVITY_BUCKETS.has(classifyToolForGroup(item).bucket))) {
     return { state: 'searching', label: 'Searching…' };
   }
@@ -349,7 +354,10 @@ export function resolveAgentActivity(items, streaming = false) {
 // a single `tool_group` item. Skills and sub-agents are left untouched —
 // skills carry nested children that need their own affordance, sub-agents
 // are distinct narrative moments.
-function groupConsecutiveTools(items) {
+//
+// Exported for the mobile remote app (haish-agent-remote/src/App.jsx), which
+// reuses this walk to render the same tool grouping on the phone.
+export function groupConsecutiveTools(items) {
   const result = [];
   const isGroupable = (it) => (
     it && it.kind === 'tool'
@@ -392,7 +400,7 @@ function groupConsecutiveTools(items) {
   return result;
 }
 
-function timelineToolLabel(call, category) {
+export function timelineToolLabel(call, category) {
   if (category === 'skill') {
     const skill = skillTrigger(call);
     if (skill) return skill.name;

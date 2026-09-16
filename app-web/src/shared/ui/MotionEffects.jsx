@@ -1,11 +1,7 @@
 import React from 'react';
 import { BorderBeam } from 'border-beam';
 import { MetalFx } from 'metal-fx';
-
-function reduceMotion() {
-  return typeof window !== 'undefined'
-    && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-}
+import { prefersReducedMotion } from '../lib/reduced-motion.js';
 
 export function ComposerBorderBeam({ active }) {
   const beamRef = React.useRef(null);
@@ -37,7 +33,7 @@ export function ComposerBorderBeam({ active }) {
       saturation={1.18}
       hueRange={30}
       borderRadius={10}
-      active={(Boolean(active) || interacting) && !reduceMotion()}
+      active={(Boolean(active) || interacting) && !prefersReducedMotion()}
       aria-hidden="true"
     >
       <span className="composer-border-beam-anchor" />
@@ -61,7 +57,7 @@ export const MetalActionEffect = React.forwardRef(function MetalActionEffect({ c
       preset="chromatic"
       theme="dark"
       strength={1}
-      paused={reduceMotion() || !active}
+      paused={prefersReducedMotion() || !active}
       {...props}
     >
       {children}

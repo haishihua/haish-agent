@@ -2,6 +2,13 @@ import { ApprovalSurface } from '../../../shared/ui/agent-elements/ApprovalSurfa
 import React from 'react';
 import { approvalStore } from '../../approvals/model/approval-store.js';
 import { selectPendingUserInput } from '../model/pending-user-input.js';
+import {
+  allQuestionsAnswered,
+  buildAnswers,
+  readDraft,
+  toggleDraftSelection,
+  writeDraftText,
+} from '../model/ask-user-draft.js';
 async function submitAnswers(requestId, answers) {
   await window.haish.resolveApproval('user_input', requestId, { answers });
 }
@@ -50,41 +57,20 @@ export function AskUserInlineForm({
   const questions = Array.isArray(request.questions) ? request.questions : [];
   const activeStep = Math.min(step, Math.max(0, questions.length - 1));
   const toggleSelection = (question, label) => {
-    setDrafts((previous) => {
-      const current = previous[question.id];
-      const values = current?.kind === 'selection' && Array.isArray(current.values)
-        ? current.values
-        : [];
-      const nextValues = question.multiple
-        ? (values.includes(label) ? values.filter((value) => value !== label) : [...values, label])
-        : [label];
-      return {
-        ...previous,
-        [question.id]: { kind: 'selection', values: nextValues },
-      };
-    });
+    setDrafts((previous) => ({
+      ...previous,
+      [question.id]: toggleDraftSelection(previous[question.id], label, question.multiple),
+    }));
   };
   const setFreeform = (questionId, text) => {
     setDrafts((previous) => ({
       ...previous,
-      [questionId]: { kind: 'freeform', text },
+      [questionId]: writeDraftText(previous[questionId], text),
     }));
   };
-  const answers = questions.flatMap((question) => {
-    const draft = drafts[question.id];
-    if (draft?.kind === 'selection' && Array.isArray(draft.values) && draft.values.length) {
-      return [{ question_id: question.id, kind: 'selection', values: draft.values }];
-    }
-    if (draft?.kind === 'freeform' && String(draft.text || '').trim()) {
-      return [{ question_id: question.id, kind: 'freeform', text: String(draft.text).trim() }];
-    }
-    return [];
-  });
-  const canSubmit = questions.length > 0 && questions.every((question) => {
-    const draft = drafts[question.id];
-    return (draft?.kind === 'selection' && Array.isArray(draft.values) && draft.values.length > 0)
-      || (draft?.kind === 'freeform' && String(draft.text || '').trim().length > 0);
-  });
+  // 选项与手写互不排除：只选、只写、又选又写（note）三种都能交。
+  const answers = buildAnswers(questions, drafts);
+  const canSubmit = allQuestionsAnswered(questions, drafts);
 
   const handleSubmit = async () => {
     if (!canSubmit || submitting) return;
@@ -108,8 +94,8 @@ export function AskUserInlineForm({
         <div className="haish-user-input-questions">
           {questions.map((question, index) => {
             const options = Array.isArray(question.options) ? question.options : [];
-            const draft = drafts[question.id];
-            const selected = draft?.kind === 'selection' && Array.isArray(draft.values) ? draft.values : [];
+            const draft = readDraft(drafts, question.id);
+            const selected = draft.values;
             return (
                 <fieldset className="haish-user-input-question" key={question.id || index} hidden={index !== activeStep} disabled={submitting}>
                 <legend>
@@ -142,10 +128,12 @@ export function AskUserInlineForm({
                 ) : null}
                 <textarea
                   className="haish-user-input-textarea"
-                  value={draft?.kind === 'freeform' ? draft.text : ''}
+                  value={draft.text}
                   onChange={(event) => setFreeform(question.id, event.target.value)}
-                  placeholder={options.length ? 'Or enter a custom answer…' : 'Enter your answer…'}
-                  aria-label={`Custom answer: ${question.question}`}
+                  placeholder={options.length ? 'Extra details (optional)…' : 'Enter your answer…'}
+                  aria-label={options.length
+                    ? `Extra details: ${question.question}`
+                    : `Your answer: ${question.question}`}
                   rows={2}
                 />
               </fieldset>

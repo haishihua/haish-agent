@@ -1,3 +1,4 @@
+import { isTaskLive } from './conversation-status.js';
 import { stripChatImageAugmentation } from '../../chat/model/chat-text.js';
 import { API_BASE } from '../../../shared/api/base.js';
 import {
@@ -447,18 +448,12 @@ export function conversationHasActiveTask(conversation) {
 }
 
 export function isTaskActuallyActive(task) {
-  const status = String(task?.status || '').toLowerCase();
-  if (status !== 'running' && status !== 'queued') return false;
-  // Server status alone is unreliable: a task may have already finished
-  // from the user's perspective while the persisted status lagged behind
-  // (the user-facing symptom is "no task is running but composer is locked").
-  // Only terminal completion markers override raw running/queued state.
-  // Do NOT treat answerText as done — streaming runs write partial
-  // answerText while status remains running; using answer presence here
-  // prematurely unlocks the composer and hides the stop button mid-run.
-  if (task?.completedAt || task?.completed_at) return false;
-  if (task?.serverFinished === true) return false;
-  return true;
+  // 判据只有一份：conversation-status.isTaskLive。服务端的 status 单看并不可靠——
+  // 用户眼里已经结束、持久化状态还停在 running 时，composer 会被锁住（"没有任务在跑但
+  // 输入框点不动"）。所以只有落地终态标记能推翻 running/queued。
+  // 注意：不要因为出现 answerText 就当成完成——流式写入会在 status 仍是 running 时
+  // 写部分 answerText，拿它判断会提前解锁输入框、跑一半就把停止按钮藏掉。
+  return isTaskLive(task);
 }
 
 export function normalizeWorkspaceOrdering(state) {

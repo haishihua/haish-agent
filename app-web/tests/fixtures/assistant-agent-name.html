@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant agent name</title>
+<style>
+  body { margin: 0; padding: 24px; background: #0f1723; }
+  .app-shell { font: 14px system-ui; color: #dce3f4; }
+  #rows { display: flex; flex-direction: column; gap: 18px; }
+  #checks { margin: 24px 0 0; font-size: 11px; line-height: 1.7; white-space: pre-wrap; color: #9fd8a4; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<h1>Assistant agent name</h1>
+<p>生产 ChatMessageRow：助手气泡上方的名字必须写会话选定的 agent（任务记录 → 会话记录 → 当轮 agent id），拿不到 agent 记录的旧轮次才退回 Assistant。</p>
+<div id="root"></div>
+<pre id="checks" role="status">Running checks…</pre>
+<script type="module" src="./assistant-agent-name.jsx"></script>
+</html>

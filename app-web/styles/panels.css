@@ -440,6 +440,13 @@
     animation: live-loading-spin 1s linear infinite;
 }
 
+/* 等回答 / 等审批：琥珀色等待图标，与「在跑」的蓝色转圈一眼分得开。 */
+.conversation-running-indicator.waiting-input,
+.conversation-running-indicator.awaiting-approval {
+    color: #efbf64;
+    opacity: 0.95;
+}
+
 .conversation-row:hover .conversation-running-indicator,
 .conversation-row:not(:focus):focus-within .conversation-running-indicator {
     opacity: 0;
@@ -714,15 +721,23 @@
     opacity: 0.92;
 }
 
-.conversation-task-status-icon.approval svg,
-.conversation-task-status-icon.waiting-input svg {
-    width: 17px;
-    height: 17px;
+/* 等回答 / 等审批图标：任务卡与会话行共用同一份描边定义（唯一来源），尺寸各自覆盖。 */
+.conversation-status-glyph {
     fill: none;
     stroke: currentColor;
     stroke-width: 1.9;
     stroke-linecap: round;
     stroke-linejoin: round;
+}
+
+.conversation-task-status-icon .conversation-status-glyph {
+    width: 17px;
+    height: 17px;
+}
+
+.conversation-running-indicator .conversation-status-glyph {
+    width: 15px;
+    height: 15px;
 }
 
 .conversation-task-status-icon.pending {

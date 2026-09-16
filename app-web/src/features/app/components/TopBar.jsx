@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MetalText } from 'metal-fx-text';
 
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
+import { REDUCED_MOTION_QUERY, prefersReducedMotion } from '../../../shared/lib/reduced-motion.js';
 import { RemoteControlDialog } from '../../remote/components/RemoteControlDialog.jsx';
 export function TopBar({
   viewMode = 'workflow',
@@ -11,11 +12,9 @@ export function TopBar({
   onToggleSettings,
 }) {
   const chatMode = viewMode === 'chat';
-  const [reducedMotion, setReducedMotion] = useState(
-    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  );
+  const [reducedMotion, setReducedMotion] = useState(prefersReducedMotion);
   useEffect(() => {
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const media = window.matchMedia(REDUCED_MOTION_QUERY);
     const update = () => setReducedMotion(media.matches);
     update();
     media.addEventListener('change', update);

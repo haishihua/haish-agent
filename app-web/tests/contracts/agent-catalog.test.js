@@ -57,7 +57,7 @@ test('empty-state penguins stay out until dismissed and cards never swap', () =>
   assert.match(chatStyles, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(chatStyles, /\.swap-secondary|\.swap-tertiary/);
   assert.match(cards, /sprite\.getAnimations\(\)/);
-  assert.match(cards, /matchMedia\('\(prefers-reduced-motion: reduce\)'\)/);
+  assert.match(cards, /if \(active !== card\.id \|\| prefersReducedMotion\(\)\) return;/);
   assert.match(chatStyles, /pointer-events: auto; opacity: 1/);
   assert.match(chatStyles, /prefers-reduced-motion: reduce/);
   assert.match(cards, /colorInterpolationFilters="sRGB"/);
@@ -205,7 +205,7 @@ test('send and stop actions share the chromatic metal circle effect', () => {
 test('the metal ring tracks in-flight work and typed payload instead of staying lit', () => {
   assert.match(motionEffectsSource, /active = true, \.\.\.props \}, ref\)/);
   assert.match(motionEffectsSource, /`chat-send-metal \$\{active \? 'is-active' : 'is-idle'\}/);
-  assert.match(motionEffectsSource, /paused=\{reduceMotion\(\) \|\| !active\}/);
+  assert.match(motionEffectsSource, /paused=\{prefersReducedMotion\(\) \|\| !active\}/);
   for (const source of [chatPanelSource, taskDelegationSource]) {
     assert.match(source, /const sendBeamActive = running \|\| submitPending \|\| hasComposerPayload;/);
     assert.doesNotMatch(source, /<MetalActionEffect>/);

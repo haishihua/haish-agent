@@ -36,6 +36,19 @@ export function agentIconNameForAgentId(agentId, agentOptions = []) {
   return id.startsWith('custom.') ? 'box' : 'sparkles';
 }
 
+/**
+ * agent id → 这个名字在选单里怎么写（和 ModelPicker 用的是同一份 catalog）。
+ *
+ * 已下线 / 被删掉的 agent 不在 catalog 里，返回 ''，由调用方决定这时显示什么——
+ * 不要把 id（`custom.agent-1783440010656`）当名字漏到界面上。
+ */
+export function agentDisplayNameForId(agentId, agentOptions = []) {
+  const id = String(agentId || '').trim();
+  if (!id) return '';
+  const match = (Array.isArray(agentOptions) ? agentOptions : []).find((item) => item.id === id);
+  return String(match?.label || '').trim();
+}
+
 export const DEFAULT_AGENT_SETTINGS = {
   presets: APP_DEFAULT_AGENT_OPTIONS.map((item) => ({
     agent_id: item.id,

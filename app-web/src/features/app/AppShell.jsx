@@ -1,5 +1,6 @@
 import React from 'react';
 import { collapseFullTaskAttempts } from '../chat/model/task-attempts.js';
+import { assistantNameForTask } from '../chat/model/assistant-name.js';
 import { BoundedCache } from '../../shared/lib/bounded-cache.js';
 import { evictInactiveRuntimes, releaseWorkspaceRuntimeDetails } from '../conversations/model/runtime-cache.js';
 import { approvalStore } from '../approvals/model/approval-store.js';
@@ -94,10 +95,15 @@ import {
   chatImageFallbacksByTaskIdFromMessages,
   timestampValue,
   taskUpdatedTimestamp,
-  conversationHasActiveTask,
   mergeConversationTasks,
   isTaskActuallyActive,
 } from '../conversations/model/workspace-state.js';
+import {
+  isRunStateLive,
+  settledTaskIds,
+} from '../conversations/model/conversation-run-state.js';
+import { isTaskLive } from '../conversations/model/conversation-status.js';
+import { useConversationRunState } from '../conversations/hooks/useConversationRunState.js';
 import {
   createEmptyTaskRuntimeState,
   createPendingTaskDraft,
@@ -1194,20 +1200,19 @@ export function AppShell() {
         ),
       })),
   }), [panelWorkspaceState, conversationId, visibleConversationMode]);
-  // True when the currently-viewed conversation has at least one task in
-  // `running` / `queued` state. Drives both the composer disabled state and
-  // the polling loop below — so a running task in this conversation always
-  // blocks input and keeps the UI in sync, regardless of whether THIS client
-  // is the one who started the run (the previous logic only ever consulted
-  // local `busy`, which is false after a tab-switch round-trip).
-  const currentConversationActive = useMemo(() => {
-    if (!conversationId) return false;
-    for (const project of panelWorkspaceState.projects) {
-      const conversation = project.conversations.find((item) => item.id === conversationId);
-      if (conversation) return conversationHasActiveTask(conversation);
-    }
-    return false;
-  }, [panelWorkspaceState, conversationId]);
+  // 当前会话的任务（服务端列表 + 本地运行时合并）——会话状态判据的唯一入口。
+  const currentConversation = useMemo(
+    () => findConversationById(panelWorkspaceState, conversationId),
+    [panelWorkspaceState, conversationId],
+  );
+  const currentConversationRunState = useConversationRunState({
+    conversationId,
+    tasks: currentConversation?.tasks,
+  });
+  // 「在跑 / 在等人」都算这一轮还没结束，两者共用同一判据。它驱动输入框禁用和下面的
+  // 轮询循环：会话里只要有未落终态的任务就挡住新输入、保持 UI 同步——无论这一轮是不是
+  // 本客户端发起的（只看本地 busy 的话，切回标签页后就是 false）。
+  const currentConversationActive = isRunStateLive(currentConversationRunState.state);
   const currentConversationRunning = busy
     || currentConversationActive
     || Boolean(conversationId && getRuntime(conversationId)?.fetchController);
@@ -1395,18 +1400,27 @@ export function AppShell() {
   };
   const chatMessages = useMemo(() => {
     const rows = [];
+    // 助手气泡上的名字跟着会话选定的 agent 走（见 chat/model/assistant-name.js）。
+    const agentNameFor = (task) => assistantNameForTask(task, currentConversation, agentOptions);
     const orderedTasks = collapseFullTaskAttempts(taskRuntimeState.taskOrder
       .map((taskId) => taskRuntimeState.tasksById[taskId])
       .filter(Boolean));
+    // 同一轮对话在面板里同时存在本地运行时拷贝和服务端列表拷贝。任何一份落地终态，
+    // 这一轮就算收工（否则过期的本地拷贝能让气泡一直转圈），所以先把「已收工」的
+    // taskId 收齐——和侧边栏用的是同一个判据（model/conversation-run-state.js）。
+    const settled = settledTaskIds([...orderedTasks, ...(currentConversation?.tasks || [])]);
     const rowCache = chatMessageRowsCacheRef.current;
     for (const task of orderedTasks) {
+      const taskId = task.taskId || task.id || task.title;
+      const live = isTaskLive(task) && !settled.has(String(task.taskId || task.id || ''));
+      const agentName = agentNameFor(task);
       const cachedRows = rowCache.get(task);
-      if (cachedRows) {
-        rows.push(...cachedRows);
+      // catalog 是异步到的：名字也会变，所以名字一起比，不能只比 live。
+      if (cachedRows && cachedRows.live === live && cachedRows.agentName === agentName) {
+        rows.push(...cachedRows.rows);
         continue;
       }
       const taskRows = [];
-      const taskId = task.taskId || task.id || task.title;
       const status = normalizeTaskStatus(task.status);
       const answer = String(task.answerText || '').trim();
       const progress = String(task.chatStreamText || '').trim();
@@ -1438,7 +1452,7 @@ export function AppShell() {
           || (Array.isArray(task.eventLog) && task.eventLog.length > 0)
           || (Array.isArray(task.toolCalls) && task.toolCalls.length > 0);
         const timeline = hasTraceSource ? buildChatTimeline(task, status) : null;
-        const streaming = (status === 'running' || status === 'queued') && !error;
+        const streaming = live;
         const timelineItems = Array.isArray(timeline?.items) ? timeline.items : [];
         // Older turns keep only their summary until the user scrolls up to them.
         // Such a turn has no trace to read its content from, so a cancelled run
@@ -1466,6 +1480,7 @@ export function AppShell() {
           taskId,
           conversationId,
           role: 'agent',
+          agentName,
           text: bubbleText,
           progressLines,
           traceTimeline: timelineItems,
@@ -1478,7 +1493,7 @@ export function AppShell() {
           firstTokenAt: taskFirstStreamTimestamp(task),
         });
       }
-      rowCache.set(task, taskRows);
+      rowCache.set(task, { rows: taskRows, live, agentName });
       rows.push(...taskRows);
     }
     if (taskRuntimeState.pendingTask && !taskRuntimeState.activeTaskId) {
@@ -1499,12 +1514,14 @@ export function AppShell() {
             : [],
         });
         if (pendingError || pendingStatus === 'failed' || pendingStatus === 'cancelled' || pendingStatus === 'running' || pendingStatus === 'queued') {
-          const pendingStreaming = (pendingStatus === 'running' || pendingStatus === 'queued') && !pendingError;
+          const pendingStreaming = isTaskLive(taskRuntimeState.pendingTask)
+            && !settled.has(String(taskRuntimeState.pendingTask.taskId || taskRuntimeState.pendingTask.id || ''));
           rows.push({
             id: `${taskRuntimeState.pendingTask.id || 'pending'}-agent`,
             taskId: taskRuntimeState.pendingTask.id || '',
             conversationId,
             role: 'agent',
+            agentName: agentNameFor(taskRuntimeState.pendingTask),
             text: pendingStreaming ? '' : (pendingStatus === 'cancelled' ? '' : pendingError),
             progressLines: [],
             traceTimeline: [],
@@ -1518,11 +1535,7 @@ export function AppShell() {
       }
     }
     return rows;
-  }, [conversationId, taskRuntimeState]);
-  const currentConversation = useMemo(
-    () => findConversationById(panelWorkspaceState, conversationId),
-    [panelWorkspaceState, conversationId],
-  );
+  }, [agentOptions, conversationId, taskRuntimeState, currentConversation]);
   const lockedAgentId = currentConversation?.agentId
     || currentConversation?.tasks?.find((task) => task?.requestedAgentId)?.requestedAgentId
     || '';

@@ -7,6 +7,7 @@ const approvalStoreSource = fs.readFileSync(new URL('../../src/features/approval
 const approvalStyles = fs.readFileSync(new URL('../../styles/approvals.css', import.meta.url), 'utf8');
 const timelineSource = fs.readFileSync(new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url), 'utf8');
 const formSource = fs.readFileSync(new URL('../../src/features/chat/components/AskUserInlineForm.jsx', import.meta.url), 'utf8');
+const draftModelSource = fs.readFileSync(new URL('../../src/features/chat/model/ask-user-draft.js', import.meta.url), 'utf8');
 const timelineBuilderSource = fs.readFileSync(new URL('../../src/features/chat/model/chat-timeline.js', import.meta.url), 'utf8');
 const chatPanelSource = fs.readFileSync(new URL('../../src/features/chat/components/ChatPanel.jsx', import.meta.url), 'utf8');
 const streamHandlersSource = fs.readFileSync(
@@ -59,6 +60,17 @@ test('ask_user option state stays inside the main React tree with square control
   assert.match(approvalStyles, /\.haish-user-input-question legend \{[\s\S]*?flex-direction: column;/);
   assert.match(approvalStyles, /\.haish-user-input-prompt \{[\s\S]*?overflow-wrap: anywhere;/);
   assert.match(approvalStyles, /\.haish-user-input-card \.haish-approval-body \{[\s\S]*?box-sizing: border-box;[\s\S]*?width: calc\(100% - 36px\);/);
+});
+
+test('ask_user answers keep one canonical shape: selection + optional note', () => {
+  assert.match(formSource, /from '\.\.\/model\/ask-user-draft\.js';/);
+  assert.match(formSource, /const answers = buildAnswers\(questions, drafts\);/);
+  assert.match(formSource, /const canSubmit = allQuestionsAnswered\(questions, drafts\);/);
+  assert.doesNotMatch(formSource, /kind: '(?:selection|freeform)'/);
+  // 「选了选项又写字」= 同一题一条答案带 note；core 只认这个形状。
+  assert.match(draftModelSource, /kind: 'selection', values: \[\.\.\.values\], note: text/);
+  assert.match(draftModelSource, /kind: 'freeform', text \} : null/);
+  assert.match(formSource, /placeholder=\{options\.length \? 'Extra details \(optional\)…' : 'Enter your answer…'\}/);
 });
 
 test('ask_user focus cannot programmatically scroll the workflow shell off-screen', () => {

@@ -7,7 +7,7 @@ import { Bot, LoaderCircle, Sparkles } from 'lucide-react';
 import { BrowserToolDetail } from './BrowserToolDetail.jsx';
 import { VisionToolDetail } from './VisionToolDetail.jsx';
 import { toolCardHeading } from '../model/tool-presentation.js';
-import { ThinkingOrb } from 'thinking-orbs';
+import { ActivityOrb } from './ActivityOrb.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { IncrementalText } from '../../../shared/ui/IncrementalText.jsx';
@@ -17,6 +17,7 @@ import { CATEGORY_ICON_CLASS } from '../model/run-catalog.js';
 import { BrowserRuntimeCard, selectBrowserRuntimeRequest, useBrowserRuntimeRequests } from '../../approvals/components/ApprovalOverlay.jsx';
 import { buildSubAgentTimelineItems, buildToolView } from '../model/tool-view.js';
 import { resolveAgentActivity } from '../model/chat-timeline.js';
+import { useConversationWaitState } from '../../conversations/hooks/useConversationRunState.js';
 import { ToolApprovalCard, useToolApprovalRequests } from '../../approvals/components/ApprovalOverlay.jsx';
 import { placeToolApprovals } from '../../approvals/model/approval-placement.js';
 
@@ -694,7 +695,9 @@ export function ChatAgentTimeline({
   const todos = Array.isArray(latestTodos) && latestTodos.length > 0 ? latestTodos : null;
   const retrying = safeItems.some((item) => item.metaType === 'llm_retry' && item.status === 'running');
   const activeAskUserItemId = selectActiveAskUserItemId(safeItems, streaming);
-  const activity = resolveAgentActivity(safeItems, streaming);
+  // 「在等人」只有一份来源：会话状态判据（后端实时快照）。
+  const waitState = useConversationWaitState(conversationId);
+  const activity = resolveAgentActivity(safeItems, streaming, waitState.state);
   // Empty timeline + done + no todos = nothing to show.
   // Empty timeline + streaming = activity indicator carries the "alive" hint.
   // Has todos = always show the panel even if there are no other items.
@@ -746,7 +749,7 @@ export function ChatAgentTimeline({
       })}
       {activity && !retrying ? (
         <div className={`chat-timeline-activity state-${activity.state}`} role="status" aria-live="polite">
-          <ThinkingOrb
+          <ActivityOrb
             state={activity.state === 'composing' ? 'working' : activity.state === 'working' ? 'composing' : activity.state}
             size={64}
             theme="dark"

@@ -72,7 +72,11 @@ test('retry status is accessible and replaces generic activity while running', (
   assert.match(source, /role="status" aria-live="polite" aria-atomic="true"/);
   assert.match(source, /<AppIcon name="retry" size=\{13\} className="chat-timeline-retry-icon" \/>/);
   assert.match(source, /activity && !retrying/);
-  assert.match(source, /<ThinkingOrb\s+state=\{activity\.state === 'composing' \? 'working' : activity\.state === 'working' \? 'composing' : activity\.state\}/);
+  // The orb itself is rendered through <ActivityOrb> (the liveness guard in
+  // contracts/activity-orb-revive.test.js), but the state mapping this contract pins - a
+  // retry replaces the generic activity row, and the mapping stays as it was - still has to
+  // reach the library as the orb's state prop.
+  assert.match(source, /<ActivityOrb\s+state=\{activity\.state === 'composing' \? 'working' : activity\.state === 'working' \? 'composing' : activity\.state\}/);
 });
 
 test('retry cards and actions use the shared vector icon', () => {

@@ -86,6 +86,35 @@ test('code spans and code blocks are left untouched', () => {
   );
 });
 
+function listItems(hast) {
+  const list = hast.children.find((node) => node.tagName === 'ol' || node.tagName === 'ul');
+  return (list?.children || []).filter((node) => node.tagName === 'li');
+}
+
+function inlineOf(node) {
+  return node.children
+    .map((child) => (child.type === 'element' ? child.tagName : child.value))
+    .filter((value) => typeof value !== 'string' || value.trim());
+}
+
+// The shape the user edited-and-resent: a numbered list whose last item carries
+// on to the next line. CommonMark reads that line as a lazy continuation of the
+// list item, so the fold happens inside the item - not only in plain paragraphs.
+const NUMBERED_CONTINUATION = '1. 第一项\n2. 共用\n3. 删干净吧\n先在/docs 落设计文档，然后再开始改';
+
+test('a numbered prompt keeps the break before a continuation line', () => {
+  const items = listItems(hastFor(NUMBERED_CONTINUATION, { hardBreaks: true }));
+  assert.deepEqual(inlineOf(items.at(-1)), ['删干净吧', 'br', '先在/docs 落设计文档，然后再开始改'],
+    'the continuation line must stay on its own line inside the list item');
+});
+
+test('without the plugin the same continuation line folds into the item', () => {
+  const item = listItems(hastFor(NUMBERED_CONTINUATION, { hardBreaks: false })).at(-1);
+  const text = item.children.filter((node) => node.type === 'text').map((node) => node.value).join('');
+  assert.equal(inlineOf(item).includes('br'), false, 'no hard break is emitted without the plugin');
+  assert.match(text, /删干净吧\n先在/, 'HTML collapses that raw newline into a space - the flattened bubble');
+});
+
 test('code blocks keep their own line breaks in the real pipeline', () => {
   const hast = hastFor('```\nfirst\nsecond\n```', { hardBreaks: true });
   const code = hast.children[0].children[0];

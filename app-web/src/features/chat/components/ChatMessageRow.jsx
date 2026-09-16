@@ -78,6 +78,9 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
   // view, so name the missing steps instead of leaving the turn looking empty.
   const tracePending = isAgent && message.traceHydrated === false && !message.streaming;
   const isUser = message.role === 'user';
+  // 这一轮用的是哪个 agent（会话选定后锁定，所以整段对话同一个名字）。
+  // AppShell 从任务/会话记录里解析；拿不到历史 agent 记录的旧任务才退回 Assistant。
+  const agentName = String(message.agentName || '').trim();
   const visibleText = isUser ? stripInjectedSkillInstruction(message.text) : message.text;
   const userContent = React.useMemo(() => isUser ? splitPathReferenceDraft(visibleText) : null, [isUser, visibleText]);
   const bodyText = userContent ? userContent.text : visibleText;
@@ -154,7 +157,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
             <div className="chat-bubble-meta">
               <span className="chat-bubble-meta-main">
                 <span className="chat-speaker-avatar" aria-hidden="true"><span className="ico-assistant-avatar" /></span>
-                <span>Assistant</span>
+                <span>{agentName || 'Assistant'}</span>
               </span>
           {showTimelineToggle ? (
             <ChatTimelineCollapsed

@@ -1,9 +1,29 @@
 import React from 'react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
-import { ConversationAction } from './ConversationIcons.jsx';
+import { ApprovalGlyph, ConversationAction, WaitingInputGlyph } from './ConversationIcons.jsx';
 import { TaskRecordCompact } from './ConversationTaskCards.jsx';
-import { conversationHasRunningTask } from '../model/conversation-status.js';
+import {
+  RUN_STATE_APPROVAL,
+  RUN_STATE_RUNNING,
+  RUN_STATE_WAITING_INPUT,
+} from '../model/conversation-run-state.js';
+import { useConversationRunState } from '../hooks/useConversationRunState.js';
 import { nextExtraVisible } from '../model/list-preview.js';
+
+// 两种「等用户动手」的状态灯：颜色由 `.conversation-running-indicator.waiting-input` /
+// `.awaiting-approval` 给，图标与任务卡共用同一份 glyph（唯一来源）。
+const WAIT_INDICATORS = {
+  [RUN_STATE_WAITING_INPUT]: {
+    className: 'waiting-input',
+    label: 'Waiting for your answer',
+    Glyph: WaitingInputGlyph,
+  },
+  [RUN_STATE_APPROVAL]: {
+    className: 'awaiting-approval',
+    label: 'Awaiting approval',
+    Glyph: ApprovalGlyph,
+  },
+};
 
 /**
  * 会话标题：不用悬停 tooltip 展示完整标题；
@@ -97,7 +117,14 @@ export function ConversationNode({
   const visibleTasks = tasks.slice(-(visibleLimit + extraVisible)).reverse();
   const hiddenCount = Math.max(0, tasks.length - visibleTasks.length);
   const showTaskList = showTaskRecords && conversation.expanded && tasks.length > 0;
-  const runningTask = conversationHasRunningTask(conversation);
+  // 状态灯只有一份判据（model/conversation-run-state.js）：在跑 = 蓝灯、等用户动手 =
+  // 黄灯、任务落地终态 = 熄灯。这里不再自己算「有没有 running 任务」。
+  const runState = useConversationRunState({
+    conversationId: conversation.id,
+    tasks: conversation.tasks,
+  });
+  const waitIndicator = WAIT_INDICATORS[runState.state];
+  const WaitGlyph = waitIndicator?.Glyph;
   const isPinned = Boolean(conversation.pinned);
 
   const [dropPosition, setDropPosition] = React.useState(null);
@@ -178,7 +205,11 @@ export function ConversationNode({
           </PortalTooltip>
           <ConversationAction label="Delete conversation" icon="trash" onClick={() => onRequestDeleteConversation(project, conversation)} />
         </span>
-        {runningTask ? (
+        {WaitGlyph ? (
+          <span className={`conversation-running-indicator ${waitIndicator.className}`} role="status" aria-label={waitIndicator.label}>
+            <WaitGlyph />
+          </span>
+        ) : runState.state === RUN_STATE_RUNNING ? (
           <span className="conversation-running-indicator" role="status" aria-label="Task running">
             <span className="ico ico-loading" aria-hidden="true" />
           </span>

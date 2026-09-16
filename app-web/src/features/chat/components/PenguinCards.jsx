@@ -1,5 +1,6 @@
 import React from 'react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
+import { prefersReducedMotion } from '../../../shared/lib/reduced-motion.js';
 import relax from '../../../../assets/ui/empty-state/penguin-relax-smooth.png';
 import sleepy from '../../../../assets/ui/empty-state/penguin-sleepy-smooth.png';
 import hug from '../../../../assets/ui/empty-state/penguin-hug-smooth.png';
@@ -61,7 +62,7 @@ export function PenguinCards() {
 
   function react(event, card) {
     activate(card.id);
-    if (active !== card.id || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (active !== card.id || prefersReducedMotion()) return;
     // ponytail: whole-sprite gestures use native animation; no rig or animation dependency.
     const sprite = event.currentTarget.querySelector('svg');
     sprite.getAnimations().forEach((animation) => animation.cancel());
