@@ -644,8 +644,10 @@ export function ChatTimelineUserInputNode({ item, onPreviewImage }) {
   const text = String(item.text || '').trim();
   const images = Array.isArray(item.images) ? item.images : [];
   if (!text && images.length === 0) return null;
-  // 纠偏/打断指令与正常用户消息完全一致：右侧对齐的蓝色渐变气泡，
-  // 不加任何特殊标签（You / Queued instruction）或虚线边框。
+  // 纠偏/打断指令与用户自己发出的消息完全一样：气泡外观直接与
+  // .chat-message-row.user .message-speech-body 共用同一套 CSS 声明，正文也用同一个
+  // .chat-bubble-text + Markdown hardBreaks 渲染（换行照原样保留）。不加任何特殊
+  // 标签（You / Queued instruction）或虚线边框。
   return (
     <div className="chat-timeline-user-input">
       <div className="chat-timeline-user-input-bubble">
@@ -668,7 +670,11 @@ export function ChatTimelineUserInputNode({ item, onPreviewImage }) {
             ))}
           </div>
         ) : null}
-        {text ? <p className="chat-timeline-user-input-text">{text}</p> : null}
+        {text ? (
+          <div className="chat-bubble-text">
+            <Markdown source={text} hardBreaks />
+          </div>
+        ) : null}
       </div>
     </div>
   );

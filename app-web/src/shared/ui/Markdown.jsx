@@ -1,6 +1,7 @@
 import React from 'react';
 import { cjk } from '@streamdown/cjk';
 import { defaultRehypePlugins, Streamdown } from 'streamdown';
+import { remarkHardBreaks } from '../lib/remark-hard-breaks.js';
 import '../../../styles/markdown.css';
 
 let codePluginPromise;
@@ -28,12 +29,18 @@ function safeMarkdownUrl(url, key) {
   return null;
 }
 
-export function Markdown({ source, streaming = false }) {
+export function Markdown({ source, streaming = false, hardBreaks = false }) {
   const text = String(source || '');
   const [code, setCode] = React.useState(null);
   const [mermaid, setMermaid] = React.useState(null);
   const hasCode = /(`{3,}|~{3,})/.test(text);
   const hasMermaid = /(?:`{3,}|~{3,})mermaid\b/i.test(text);
+  // User-authored text keeps the line structure it was typed with; assistant
+  // answers stay plain CommonMark, where a single newline is a soft break.
+  const remarkPlugins = React.useMemo(
+    () => (hardBreaks ? [remarkHardBreaks] : undefined),
+    [hardBreaks],
+  );
 
   React.useEffect(() => {
     if (!hasCode || code) return undefined;
@@ -77,6 +84,7 @@ export function Markdown({ source, streaming = false }) {
         mode={streaming ? 'streaming' : 'static'}
         isAnimating={streaming}
         parseIncompleteMarkdown={streaming}
+        remarkPlugins={remarkPlugins}
         rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
         plugins={plugins}
         codeBlockMaxHeight={320}

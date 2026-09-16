@@ -472,7 +472,6 @@
 }
 
 .task-delegation .context-usage-btn {
-    --context-used: 0%;
     flex-shrink: 0;
     width: 26px;
     height: 26px;
@@ -502,7 +501,6 @@
 }
 
 .task-delegation .context-usage-icon {
-    --context-used: 0%;
     position: relative;
     width: 24px;
     height: 24px;

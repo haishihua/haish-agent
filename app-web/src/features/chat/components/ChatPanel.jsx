@@ -17,6 +17,7 @@ import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
 import { firstPastedDocument } from '../model/document-paste.js';
 import { composePathReferenceDraft, splitPathReferenceDraft, transferredLocalPaths } from '../model/path-references.js';
 import { formatContextUsageLabel } from '../../../shared/lib/message-format.js';
+import { contextSectorPath } from '../../../shared/lib/context-usage-ring.js';
 import {
   usePersistentRunConfig,
   useProviderModels,
@@ -390,9 +391,7 @@ export function ChatPanel({
   const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (totalTokens > 0 ? usedTokens / totalTokens : 0)));
   const visibleContextRatio = usedTokens > 0 ? Math.max(contextRatio, 0.01) : 0;
   const contextTooltip = `${formatContextUsageLabel(usedTokens, totalTokens)}${contextUsage?.overLimit ? ' · Over limit' : ''}`;
-  const contextRingStyle = {
-    '--context-used': `${visibleContextRatio * 100}%`,
-  };
+  const contextSector = contextSectorPath(visibleContextRatio);
   const runConfigReadOnly = running || submitPending;
   const runConfigDisabled = !runConfigReadOnly && (disabled || submitPending);
   // The send/stop metal ring is a state signal, not decoration: it lights up as
@@ -776,8 +775,9 @@ export function ChatPanel({
                 aria-label={contextTooltip}
                 aria-disabled="true"
               >
-                <span className="context-usage-icon" style={contextRingStyle} aria-hidden="true">
+                <span className="context-usage-icon" aria-hidden="true">
                   <svg className="context-usage-icon-ring" viewBox="0 0 24 24">
+                    <path className="context-usage-icon-sector" d={contextSector} />
                     <circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeDasharray="2.2 4.4" strokeLinecap="round" />
                   </svg>
                 </span>

@@ -271,6 +271,9 @@ export function AppShell() {
   // Local draft opened by "new conversation" before the user sends a message.
   // It is intentionally NOT inserted into the sidebar list until first send.
   const draftConversationRef = useRef(null);
+  // One remembered blank-chat id per project, so unsent text typed in a new
+  // conversation survives switching to another conversation and back.
+  const draftConversationIdsRef = useRef(new Map());
   // Unsent composer text is stored per conversation so switching chats keeps
   // each input box independent. Declared early so draft materialization can rekey it.
   const {
@@ -607,6 +610,7 @@ export function AppShell() {
     createEmptyContextUsage,
     createEmptyTaskRuntimeState,
     detachActiveRunFromCurrentConversation: (...args) => activationApiRef.current.detachActiveRunFromCurrentConversation?.(...args),
+    draftConversationIdsRef,
     draftConversationRef,
     flushRuntimeTasksToWorkspace: (...args) => runtimeApiRef.current.flushRuntimeTasksToWorkspace?.(...args),
     generateHexId,

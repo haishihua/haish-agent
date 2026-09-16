@@ -1,5 +1,9 @@
 import { eventDeltaText } from '../../chat/model/chat-text.js';
 import { compactStreamEvents } from '../../chat/model/stream-events.js';
+import {
+  forgetDraftConversationId,
+  rememberDraftConversationId,
+} from '../model/draft-conversation-id.js';
 
 export function createDraftConversationHandlers(ctx) {
   const {
@@ -18,6 +22,7 @@ export function createDraftConversationHandlers(ctx) {
     createEmptyContextUsage,
     createEmptyTaskRuntimeState,
     detachActiveRunFromCurrentConversation,
+    draftConversationIdsRef,
     draftConversationRef,
     flushRuntimeTasksToWorkspace,
     generateHexId,
@@ -75,6 +80,12 @@ export function createDraftConversationHandlers(ctx) {
     if (draft?.id) {
       runtimesRef.current.delete(draft.id);
     }
+    // A draft that already forced a server create (image / document upload)
+    // holds its unsent text under the server id. Put it back on the remembered
+    // draft id so re-opening the blank chat restores what the user typed.
+    if (draft?.localDraftId && draft.localDraftId !== draft.id) {
+      rekeyChatDraft?.(draft.id, draft.localDraftId);
+    }
     // If a draft already forced a server create (e.g. image upload) but the user
     // never sent a message, drop that empty server conversation so it cannot
     // reappear after a later workspace refresh.
@@ -116,7 +127,13 @@ export function createDraftConversationHandlers(ctx) {
     draftConversationRef.current = null;
     pendingCreatedDetailRef.current = null;
 
-    const draftId = `draft-${generateHexId()}`;
+    // Stable per project: leaving the draft and opening a new conversation again
+    // must land on the same id, or the unsent text stored under it is orphaned.
+    const draftId = rememberDraftConversationId(
+      draftConversationIdsRef.current,
+      project.id,
+      generateHexId,
+    );
     const now = Date.now();
     draftConversationRef.current = {
       id: draftId,
@@ -209,6 +226,7 @@ export function createDraftConversationHandlers(ctx) {
     draftConversationRef.current = {
       ...draft,
       id: realId,
+      localDraftId: previousDraftId,
       serverCreated: true,
     };
     rekeyChatDraft?.(previousDraftId, realId);
@@ -248,6 +266,9 @@ export function createDraftConversationHandlers(ctx) {
 
     const realId = detail.conversation_id;
     const previousDraftId = draft.id;
+    // The draft is real now: the next "new conversation" in this project starts
+    // from a fresh id (and a fresh, empty composer).
+    forgetDraftConversationId(draftConversationIdsRef.current, draft.projectId);
     setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
     setStoredConversationId(realId);
     rekeyChatDraft?.(previousDraftId, realId);

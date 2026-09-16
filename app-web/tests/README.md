@@ -7,7 +7,10 @@
 - `features/` 按被测功能分组，`contracts/` 保留架构约束和历史缺陷测试，`integration/` 覆盖跨模块行为。
 - `features/settings/skill-package.test.js` 直接测试正式 Skill 包解析器，覆盖正常包、坏包、元数据、路径及大小限制。
 - `contracts/markdown-list-indent.test.js` 锁住渲染后的 Markdown 列表缩进：标记必须挂在正文列外（`outside` + 左内边距），折行与列表正文同列，并禁止任何样式表再引入 `list-style-position: inside`。
+- `contracts/draft-conversation-reentry.test.js` + `features/conversations/draft-conversation-reentry.test.js` 锁住“新建会话草稿不丢”：空白会话 id 每项目稳定复用（否则未发送文本会被孤儿化），发送物化后释放 id，取消草稿时把文本还给该 id。
+- `contracts/user-message-line-breaks.test.js` + `features/chat/remark-hard-breaks.test.js` 锁住用户气泡换行：用户文本的软换行转成 `<br>`（真实 mdast→hast 管线断言），助手回答保持 CommonMark 软换行，代码块不受影响。
 - `contracts/loading-state.test.js` 锁住设置页的加载占位：懒加载回退必须渲染 assistant-ui Loader（九宫格点亮规则、120ms 计时与清理）、整块居中，标签用正文字体 `--conversation-font` 并有扫光与 reduced-motion 回退。
+- `contracts/steering-message-style.test.js` 锁住“纠偏气泡就是用户气泡”：气泡底色/边框/圆角/内边距必须与用户消息共用同一条规则（不许本地再抄一份），正文走 `.chat-bubble-text` + Markdown hardBreaks，且仍嵌在被打断的 assistant 回复框内。
 
 ## 浏览器 DOM 回归
 
@@ -22,6 +25,7 @@
 | [tool-cards.html](fixtures/tool-cards.html) | 生产工具卡片、分组、详情、流式状态、终态收尾和子 Agent 交互 |
 | [app-toast.html](fixtures/app-toast.html) | 生产 AppToast：向量徽标、三种状态配色、未知 kind 回退与 `image-rendering` 回归 |
 | [send-beam.html](fixtures/send-beam.html) | 生产 MetalActionEffect：彩虹环在“输入框有内容或任务运行中”点亮，空闲隐藏图层但不重挂外壳 |
+| [steering-message.html](fixtures/steering-message.html) | 生产 ChatMessageRow：纠偏指令与用户消息的气泡底色/边框/圆角/内边距/正文排版逐项一致，纠偏消息保留换行且仍嵌在 assistant 回复框内 |
 
 页面地址前缀为 `http://127.0.0.1:5173/tests/fixtures/`。保留 `message-annotations.dom-checks.js`、`annotation-numbering.jsx`、`task-attempt-runtime.js` 和工具卡片页面资源，它们是回归测试依赖。
 

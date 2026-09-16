@@ -5,7 +5,7 @@ import { ConversationNode } from './ConversationNode.jsx';
 import { TaskRecordCompact } from './ConversationTaskCards.jsx';
 import { useConversationOrderAnimation } from '../hooks/useConversationOrderAnimation.js';
 import { projectCreatedTimestamp, projectWorkflowTasks } from '../model/workspace-state.js';
-import { nextExtraVisible } from '../model/list-preview.js';
+import { DEFAULT_PREVIEW, nextExtraVisible, previewWhenHidden } from '../model/list-preview.js';
 
 function formatProjectCreated(ts) {
   if (!ts) return '';
@@ -68,6 +68,7 @@ export function ProjectNode({
   onRetryTask,
   taskPreviewLimit = 3,
   conversationPreviewLimit = 3,
+  panelCollapsed = false,
 }) {
   const isActiveProject = workspaceState.activeProjectId === project.id;
   const isPinned = Boolean(project.pinned);
@@ -75,7 +76,8 @@ export function ProjectNode({
   const allConversations = Array.isArray(project.conversations) ? project.conversations : [];
   const allWorkflowTasks = workflowTaskMode ? projectWorkflowTasks(project) : [];
   const conversationLimit = Math.max(1, Number(conversationPreviewLimit) || 3);
-  const [extraVisible, setExtraVisible] = React.useState({ chat: 0, bot: 0 });
+  const [extraVisible, setExtraVisible] = React.useState(DEFAULT_PREVIEW);
+  const listVisible = Boolean(project.expanded) && !panelCollapsed;
   const visibleConversations = allConversations.slice(0, conversationLimit + extraVisible.chat);
   const hiddenConversationCount = Math.max(0, allConversations.length - visibleConversations.length);
   const taskLimit = Math.max(1, Number(taskPreviewLimit) || 3);
@@ -85,6 +87,13 @@ export function ProjectNode({
   const mode = workflowTaskMode ? 'bot' : 'chat';
   const registerConversationNode = useConversationOrderAnimation(visibleConversations);
   const [dropPosition, setDropPosition] = React.useState(null);
+
+  // Folding the list away — the project icon, or the whole conversation panel —
+  // drops the "Show more" expansion, so opening it again falls back to the
+  // default three-row preview instead of the previously expanded list.
+  React.useEffect(() => {
+    setExtraVisible((previous) => previewWhenHidden(previous, listVisible));
+  }, [listVisible]);
 
   function handleDragStart(event) {
     event.dataTransfer.setData('application/x-project-id', project.id);

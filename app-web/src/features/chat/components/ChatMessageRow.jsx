@@ -206,7 +206,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
           ) : bodyText ? (
             <div className="chat-bubble-text">
               {(isUser || message.markdown) && Markdown
-                ? <Markdown source={String(bodyText)} />
+                ? <Markdown source={String(bodyText)} hardBreaks={isUser} />
                 : <span className="chat-stream-text">{bodyText}</span>}
             </div>
           ) : null}

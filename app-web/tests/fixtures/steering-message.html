@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steering message style</title>
+<style>
+  body { margin: 0; padding: 24px; background: #0f1723; }
+  .steering-message-fixture { width: 880px; font: 14px system-ui; color: #dce3f4; }
+  .steering-message-fixture > h1 { margin: 0 0 6px; font-size: 18px; }
+  .steering-message-fixture > p { margin: 0 0 20px; max-width: 640px; font-size: 12px; line-height: 1.6; color: #8e9ab8; }
+  #rows { display: flex; flex-direction: column; gap: 18px; }
+  #checks { margin: 24px 0 0; font-size: 11px; line-height: 1.7; white-space: pre-wrap; color: #9fd8a4; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<h1>Steering message style</h1>
+<p>生产 ChatMessageRow：用户自己发的消息与运行时纠偏指令必须渲染成同一个气泡（含正文排版与换行）。</p>
+<div id="root"></div>
+<pre id="checks" role="status">Running checks…</pre>
+<script type="module" src="./steering-message.jsx"></script>
+</html>

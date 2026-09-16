@@ -262,6 +262,7 @@ export function ConversationsPanel({
             taskTerminalNotices={taskTerminalNotices}
             taskPreviewLimit={taskPreviewLimit}
             conversationPreviewLimit={conversationPreviewLimit}
+            panelCollapsed={collapsed}
             onSelectProject={onSelectProject}
             onToggleProject={onToggleProject}
             onRemoveProject={requestRemoveProject}

@@ -530,7 +530,11 @@
     box-shadow: none;
 }
 
-.message-shell .message-speech-body {
+/* 一个气泡外观：正常消息、子代理派发、以及运行时纠偏/打断指令（user_input 时间轴
+   条目）共用下面同一套声明——纠偏气泡就是用户气泡，不另写一份内边距/边框/圆角，
+   避免两处各改各的而再次走样。 */
+.message-shell .message-speech-body,
+.chat-timeline-user-input-bubble {
     min-width: 0;
     padding: 12px 14px;
     border: 1px solid rgba(138, 166, 209, 0.22);
@@ -539,7 +543,8 @@
 }
 
 .chat-message-row.user .message-speech-body,
-.chat-subagent-dispatch > .message-speech-body {
+.chat-subagent-dispatch > .message-speech-body,
+.chat-timeline-user-input-bubble {
     border-radius: 16px 4px 16px 16px;
     border-color: rgba(92, 154, 255, 0.36);
     background: rgba(40, 75, 134, 0.3);
@@ -872,9 +877,10 @@
     overflow-wrap: anywhere;
 }
 
-/* 运行时用户纠偏/打断指令（user_input 时间轴条目）：内嵌在被打断的 assistant
-   时间轴中，样式与正常用户消息气泡（.chat-message-row.user .chat-bubble）完全一致：
-   右侧对齐 + 蓝色渐变 + 同一圆角/内边距/阴影，不加任何特殊标签或虚线边框。 */
+/* 运行时用户纠偏/打断指令（user_input 时间轴条目）：位置仍嵌在被纠偏的 assistant
+   回复框内，但外观与用户自己发出的消息逐项同值——气泡的 padding/边框/圆角/底色直接
+   挂在上面的用户气泡规则上，正文用 .chat-bubble-text 走同一套排版与换行，不加任何
+   特殊标签或虚线边框。 */
 .chat-timeline-user-input {
     display: flex;
     justify-content: flex-end;
@@ -882,26 +888,12 @@
 
 .chat-timeline-user-input-bubble {
     max-width: min(680px, 86%);
-    padding: 12px 14px 13px;
-    border-radius: 12px;
-    border: 1px solid rgba(92, 154, 255, 0.46);
-    background: linear-gradient(180deg, rgba(77, 141, 246, 0.32), rgba(40, 75, 134, 0.24));
     color: #dce3f4;
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
-    font-family: var(--conversation-font);
 }
 
 .chat-timeline-user-input-images {
     max-width: 100%;
     margin-bottom: 8px;
-}
-
-.chat-timeline-user-input-text {
-    margin: 0;
-    font-size: 13.5px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-word;
 }
 
 .chat-timeline {
@@ -2273,7 +2265,6 @@
 }
 
 .chat-composer .context-usage-btn {
-    --context-used: 0%;
     flex-shrink: 0;
     width: 26px;
     height: 26px;
@@ -2300,7 +2291,6 @@
 }
 
 .chat-composer .context-usage-icon {
-    --context-used: 0%;
     position: relative;
     width: 24px;
     height: 24px;
@@ -2318,13 +2308,9 @@
     overflow: visible;
 }
 
-.chat-composer .context-usage-icon::after,
-.task-delegation .context-usage-icon::after {
-    content: "";
-    position: absolute;
-    inset: 20%;
-    border-radius: 50%;
-    background: conic-gradient(#fff var(--context-used), transparent 0);
+.chat-composer .context-usage-icon-sector,
+.task-delegation .context-usage-icon-sector {
+    fill: #fff;
 }
 
 .chat-composer .context-usage-btn.over-limit .context-usage-icon,
@@ -2332,9 +2318,9 @@
     color: #ef5b5b;
 }
 
-.chat-composer .context-usage-btn.over-limit .context-usage-icon::after,
-.task-delegation .context-usage-btn.over-limit .context-usage-icon::after {
-    background: #ef5b5b;
+.chat-composer .context-usage-btn.over-limit .context-usage-icon-sector,
+.task-delegation .context-usage-btn.over-limit .context-usage-icon-sector {
+    fill: #ef5b5b;
 }
 
 .chat-send-metal {
