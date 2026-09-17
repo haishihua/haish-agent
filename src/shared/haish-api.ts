@@ -46,6 +46,37 @@ export type RemoteDevice = {
   last_seen_at: number;
 };
 
+export type RemoteAdapterStatus = 'idle' | 'starting' | 'ready' | 'failed' | 'stopped';
+
+export type RemoteTunnelState = {
+  enabled: boolean;
+  running: boolean;
+  pid: number | null;
+  server: string | null;
+  remote_port: number | null;
+  restarts: number;
+  last_error: string | null;
+};
+
+export type RemoteAdapterState = {
+  status: RemoteAdapterStatus;
+  origin: string;
+  pid?: number;
+  version?: string;
+  runtimeOnline?: boolean;
+  tunnel?: RemoteTunnelState;
+  message?: string;
+};
+
+/** The frps endpoint this computer publishes itself through. */
+export type RemoteSettings = {
+  serverAddr: string;
+  serverPort: number;
+  remotePort: number;
+  publicEndpoint: string;
+  token: string;
+};
+
 export type WindowVisualState = {
   fullScreen: boolean;
   maximized: boolean;
@@ -81,6 +112,9 @@ export type HaishDesktopApi = {
   startRemotePairing: () => Promise<RemotePairingState>;
   listRemoteDevices: () => Promise<RemoteDevice[]>;
   revokeRemoteDevice: (deviceId: string) => Promise<boolean>;
+  getRemoteStatus: () => Promise<RemoteAdapterState>;
+  getRemoteSettings: () => Promise<RemoteSettings | null>;
+  saveRemoteSettings: (settings: RemoteSettings) => Promise<RemoteAdapterState>;
   /** Start macOS's native Dock attention animation when Haish is not active. */
   notifyTaskComplete: () => Promise<boolean>;
   /** Display the absolute number of completed-but-unviewed tasks in the Dock. */

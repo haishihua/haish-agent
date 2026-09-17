@@ -10,8 +10,10 @@ import type {
   FileEntry,
   LocalProject,
   ReadFileResult,
+  RemoteAdapterState,
   RemoteDevice,
   RemotePairingState,
+  RemoteSettings,
   SkillDirectoryPickResult,
 } from '../shared/haish-api.js';
 import {
@@ -23,6 +25,15 @@ import {
   setupAppUpdater,
 } from './app-updater.js';
 import { ensureLocalRuntime, getLocalRuntimeState, runtimeWorkdir, stopLocalRuntime } from './local-runtime.js';
+import {
+  ensureRemoteAdapter,
+  readRemoteSettings,
+  refreshRemoteAdapterState,
+  remoteAdapterOrigin,
+  restartRemoteAdapter,
+  stopRemoteAdapter,
+  writeRemoteSettings,
+} from './local-remote.js';
 import { readToolScreenshot } from './tool-screenshot.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,7 +43,6 @@ const projectRoot = () => path.resolve(__dirname, '../..');
 const projectsFile = () => path.join(app.getPath('userData'), 'projects.json');
 const CLIPBOARD_IMAGE_MAX_DATA_URL_LENGTH = 14 * 1024 * 1024;
 const CLIPBOARD_IMAGE_MAX_PIXELS = 16 * 1024 * 1024;
-const REMOTE_ADAPTER_ORIGIN = 'http://127.0.0.1:8766';
 // Vite builds the product UI into app-web/dist. Prefer dist so the renderer always
 // loads the production bundle (no Babel-in-browser, production React).
 const webRoot = () => {
@@ -275,11 +285,12 @@ function registerWebProtocol(): void {
 }
 
 async function remoteAdapterJson<T>(pathname: string, init?: RequestInit): Promise<T> {
+  await ensureRemoteAdapter(runtimePaths());
   let response: Response;
   try {
-    response = await net.fetch(`${REMOTE_ADAPTER_ORIGIN}${pathname}`, init);
+    response = await net.fetch(`${remoteAdapterOrigin()}${pathname}`, init);
   } catch {
-    throw new Error('Remote Control is unavailable. Start the Haish Remote service and try again.');
+    throw new Error('Remote Control adapter is not reachable.');
   }
   if (!response.ok) {
     let message = `Remote Control request failed (${response.status}).`;
@@ -497,6 +508,9 @@ ipcMain.handle('tool:read-screenshot', async (event, imagePath: string, taskId: 
   return readToolScreenshot(runtimeWorkdir(app.getPath('userData')), imagePath, taskId);
 });
 ipcMain.handle('remote-control:start-pairing', async (): Promise<RemotePairingState> => {
+  if (!readRemoteSettings(app.getPath('userData'))) {
+    throw new Error('Set the remote server address and token in Remote Control first.');
+  }
   return remoteAdapterJson('/remote/pairing/start', { method: 'POST' });
 });
 ipcMain.handle('remote-control:list-devices', async (): Promise<RemoteDevice[]> => {
@@ -507,6 +521,16 @@ ipcMain.handle('remote-control:revoke-device', async (_event, deviceId: string):
   if (!/^[a-f0-9]{32}$/.test(deviceId)) throw new Error('Invalid remote device ID.');
   await remoteAdapterJson(`/remote/devices/${deviceId}`, { method: 'DELETE' });
   return true;
+});
+ipcMain.handle('remote-control:status', async (): Promise<RemoteAdapterState> => {
+  return refreshRemoteAdapterState();
+});
+ipcMain.handle('remote-control:get-settings', (): RemoteSettings | null => {
+  return readRemoteSettings(app.getPath('userData'));
+});
+ipcMain.handle('remote-control:save-settings', async (_event, settings: RemoteSettings): Promise<RemoteAdapterState> => {
+  const saved = writeRemoteSettings(app.getPath('userData'), settings);
+  return restartRemoteAdapter(runtimePaths(), saved);
 });
 ipcMain.handle('dock:notify-task-complete', (event): boolean => {
   return requestDockAttention(BrowserWindow.fromWebContents(event.sender));
@@ -582,6 +606,9 @@ app
     ensureLocalRuntime(runtimePaths()).catch((error) => {
       console.error('Failed to start local Haish runtime:', error);
     });
+    ensureRemoteAdapter(runtimePaths()).catch((error) => {
+      console.error('Failed to start the remote adapter:', error);
+    });
     registerWebProtocol();
     createWindow();
     app.on('activate', () => {
@@ -611,7 +638,13 @@ app.on('before-quit', (event) => {
   for (const window of BrowserWindow.getAllWindows()) {
     window.destroy();
   }
-  stopLocalRuntime()
-    .catch((error) => console.error('Failed to stop local Haish runtime cleanly:', error))
+  Promise.allSettled([stopLocalRuntime(), stopRemoteAdapter()])
+    .then((results) => {
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          console.error('Failed to stop a local service cleanly:', result.reason);
+        }
+      }
+    })
     .finally(() => app.quit());
 });

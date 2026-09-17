@@ -4,6 +4,8 @@ dist-electron/
 app-web/dist/
 app-web/dist-release/
 build/runtime/
+build/remote-adapter/
+build/remote-adapter-download/
 release/
 tmp/
 .DS_Store

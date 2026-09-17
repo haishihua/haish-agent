@@ -8,8 +8,10 @@ import type {
   LocalProject,
   LocalRuntimeState,
   ReadFileResult,
+  RemoteAdapterState,
   RemoteDevice,
   RemotePairingState,
+  RemoteSettings,
   SkillDirectoryPickResult,
   WindowVisualState,
 } from '../shared/haish-api.js';
@@ -23,6 +25,10 @@ const api: HaishDesktopApi = {
   listRemoteDevices: () => ipcRenderer.invoke('remote-control:list-devices') as Promise<RemoteDevice[]>,
   revokeRemoteDevice: (deviceId: string) =>
     ipcRenderer.invoke('remote-control:revoke-device', deviceId) as Promise<boolean>,
+  getRemoteStatus: () => ipcRenderer.invoke('remote-control:status') as Promise<RemoteAdapterState>,
+  getRemoteSettings: () => ipcRenderer.invoke('remote-control:get-settings') as Promise<RemoteSettings | null>,
+  saveRemoteSettings: (settings: RemoteSettings) =>
+    ipcRenderer.invoke('remote-control:save-settings', settings) as Promise<RemoteAdapterState>,
   notifyTaskComplete: () => ipcRenderer.invoke('dock:notify-task-complete') as Promise<boolean>,
   setTaskCompletionBadgeCount: (count: number) => ipcRenderer.invoke('dock:set-task-badge', count) as Promise<number>,
   getWindowState: () => ipcRenderer.invoke('window:state') as Promise<WindowVisualState>,

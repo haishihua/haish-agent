@@ -17,10 +17,11 @@
     "build:release": "npm run build:web:release && tsc --noEmit && tsc -p tsconfig.electron.json",
     "build:runtime": "node scripts/build-runtime.mjs",
     "start": "electron .",
-    "pack:mac": "npm run build:release && npm run build:runtime && electron-builder --mac dir",
-    "dist:mac": "npm run build:release && npm run build:runtime && electron-builder --mac dmg zip",
+    "fetch:remote-adapter": "node scripts/fetch-remote-adapter.mjs",
+    "pack:mac": "npm run fetch:remote-adapter && npm run build:release && npm run build:runtime && electron-builder --mac dir",
+    "dist:mac": "npm run fetch:remote-adapter && npm run build:release && npm run build:runtime && electron-builder --mac dmg zip",
     "check:mac-release": "node scripts/check-mac-release.mjs",
-    "dist:mac:release": "npm run check:mac-release && npm run build:release && npm run build:runtime && electron-builder --mac dmg zip --config.forceCodeSigning=true",
+    "dist:mac:release": "npm run check:mac-release && npm run fetch:remote-adapter && npm run build:release && npm run build:runtime && electron-builder --mac dmg zip --config.forceCodeSigning=true",
     "release:mac": "node scripts/release-mac.mjs",
     "release:mac:unsigned": "node scripts/release-mac.mjs --unsigned",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
@@ -69,6 +70,13 @@
           "!**/*.key",
           "!**/*.p12",
           "!**/*.pfx"
+        ]
+      },
+      {
+        "from": "build/remote-adapter",
+        "to": "remote-adapter",
+        "filter": [
+          "**/*"
         ]
       }
     ],

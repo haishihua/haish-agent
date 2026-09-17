@@ -1,0 +1,24 @@
+{
+  "repository": "haishihua/haish-agent-remote",
+  "tag": "adapter-v0.2.0",
+  "assets": [
+    {
+      "name": "haish-remote-adapter-macos-arm64",
+      "target": "haish-remote-adapter",
+      "sha256": "d08ee8c40229550242c4d4448cf226572c3d13a8a8e4942a6e3028a0ef775311",
+      "executable": true
+    },
+    {
+      "name": "frpc-macos-arm64",
+      "target": "frpc",
+      "sha256": "3ce4ba70ffce7da4026940586c5f3454df50814f4c050d6560efc556b3adef48",
+      "executable": true
+    },
+    {
+      "name": "frpc-LICENSE",
+      "target": "frpc-LICENSE",
+      "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
+      "executable": false
+    }
+  ]
+}
