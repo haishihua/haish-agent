@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  CheckCircle2, Clock3, LockKeyhole, MoreVertical, RefreshCw, Settings2, Smartphone, Unplug, X,
+  CheckCircle2, Clock3, LockKeyhole, MoreVertical, RefreshCw, Settings2, Smartphone, TriangleAlert, Unplug, X,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
@@ -75,7 +75,7 @@ export function RemoteControlDialog({ onClose }) {
       if (!window.haish?.startRemotePairing)
         throw new Error('Remote Control is only available in the Haish desktop app.');
       const nextPairing = await window.haish.startRemotePairing();
-      if (!nextPairing?.pairing_uri) throw new Error('Pairing is unavailable. Check the adapter status above.');
+      if (!nextPairing?.pairing_uri) throw new Error('Pairing is unavailable. Check the remote service and try again.');
       const image = await QRCode.toDataURL(nextPairing.pairing_uri, {
         width: 256,
         margin: 2,
@@ -204,29 +204,24 @@ export function RemoteControlDialog({ onClose }) {
 
   const notConfigured = settingsLoaded && !settings;
   const tunnel = adapterState?.tunnel || null;
-  const adapterTone = adapterState?.status === 'ready'
-    ? 'online'
-    : adapterState?.status === 'failed' ? 'offline' : 'pending';
-  const adapterDetail = !adapterState
-    ? 'checking…'
-    : adapterState.status === 'ready'
-      ? `${adapterState.version ? `v${adapterState.version} ` : ''}running`
-      : adapterState.status === 'failed'
-        ? (adapterState.message || 'failed')
-        : adapterState.status;
-  const tunnelTone = !settings
-    ? 'pending'
-    : tunnel?.running ? 'online' : tunnel?.last_error ? 'offline' : 'pending';
-  const tunnelDetail = !settings
-    ? 'not configured'
-    : tunnel?.running
-      ? `${tunnel.server || settings.serverAddr} → :${tunnel.remote_port ?? settings.remotePort}`
-      : tunnel?.last_error
-        ? `retrying (${tunnel.restarts}×)`
-        : 'starting…';
-  const runtimeTone = adapterState?.status !== 'ready'
-    ? 'pending'
-    : adapterState.runtimeOnline ? 'online' : 'offline';
+  // Users never configure the local service themselves, so the panel stays quiet
+  // while everything works and only speaks up when the phone cannot reach this Mac.
+  const adapterFailed = adapterState?.status === 'failed';
+  const tunnelFailed = Boolean(settings) && !adapterFailed
+    && Boolean(tunnel) && !tunnel.running && Boolean(tunnel.last_error);
+  const connecting = Boolean(settings) && !adapterFailed && !tunnelFailed
+    && Boolean(adapterState) && (adapterState.status === 'starting' || (tunnel ? !tunnel.running : false));
+  const accessNotice = adapterFailed
+    ? {
+      tone: 'error',
+      title: 'Remote access is offline',
+      detail: adapterState.message || 'The Haish remote service stopped unexpectedly.',
+    }
+    : tunnelFailed
+      ? { tone: 'error', title: 'Remote access is offline', detail: tunnel.last_error }
+      : connecting
+        ? { tone: 'pending', title: 'Connecting…', detail: 'Publishing this Mac through your server.' }
+        : null;
 
   return createPortal(
     <div className="remote-control-backdrop" role="presentation" onMouseDown={onClose}>
@@ -252,204 +247,208 @@ export function RemoteControlDialog({ onClose }) {
           </button>
         </header>
 
-        <div className="remote-status-strip" role="status">
-          <span className={`remote-status-item ${adapterTone}`} title={adapterState?.message || ''}>
-            <span className="remote-status-dot" aria-hidden="true" />
-            <strong>Adapter</strong>
-            <span className="remote-status-detail">{adapterDetail}</span>
-          </span>
-          <span className={`remote-status-item ${tunnelTone}`} title={tunnel?.last_error || ''}>
-            <span className="remote-status-dot" aria-hidden="true" />
-            <strong>Tunnel</strong>
-            <span className="remote-status-detail">{tunnelDetail}</span>
-          </span>
-          <span className={`remote-status-item ${runtimeTone}`}>
-            <span className="remote-status-dot" aria-hidden="true" />
-            <strong>Local Haish</strong>
-            <span className="remote-status-detail">
-              {adapterState?.status === 'ready' ? (adapterState.runtimeOnline ? 'online' : 'offline') : 'checking…'}
-            </span>
-          </span>
-        </div>
-
-        <div className="remote-control-content">
-          <section className="remote-pairing-panel" aria-label="Phone pairing">
-            <div className="remote-section-heading">
-              <h3>Scan with Haish mobile</h3>
-              {settings && !settingsOpen ? (
-                <button type="button" className="remote-settings-toggle" onClick={openSettings}>
-                  <Settings2 aria-hidden="true" />
-                  Server settings
+        {settingsOpen ? (
+          <form className="remote-settings-panel" onSubmit={saveSettings}>
+            <div className="remote-settings-heading">
+              <h3>Remote server</h3>
+              <p>
+                Publish this Mac through your frps server. The token stays on this computer and is
+                never shared with a phone.
+              </p>
+            </div>
+            <div className="remote-settings-grid">
+              <label className="wide">
+                <span>Server address</span>
+                <input
+                  value={settingsDraft.serverAddr}
+                  onChange={(event) => setSettingsDraft({ ...settingsDraft, serverAddr: event.target.value })}
+                  placeholder="203.0.113.9"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoFocus
+                />
+              </label>
+              <label>
+                <span>Server port</span>
+                <input
+                  value={settingsDraft.serverPort}
+                  onChange={(event) => setSettingsDraft({ ...settingsDraft, serverPort: event.target.value })}
+                  inputMode="numeric"
+                  placeholder="7000"
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                <span>Public port</span>
+                <input
+                  value={settingsDraft.remotePort}
+                  onChange={(event) => setSettingsDraft({ ...settingsDraft, remotePort: event.target.value })}
+                  inputMode="numeric"
+                  placeholder="18766"
+                  autoComplete="off"
+                />
+              </label>
+              <label className="wide">
+                <span>Public address</span>
+                <input
+                  value={settingsDraft.publicEndpoint}
+                  onChange={(event) => setSettingsDraft({ ...settingsDraft, publicEndpoint: event.target.value })}
+                  placeholder="https://203.0.113.9"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+              <label className="wide">
+                <span>Auth token</span>
+                <input
+                  type="password"
+                  value={settingsDraft.token}
+                  onChange={(event) => setSettingsDraft({ ...settingsDraft, token: event.target.value })}
+                  placeholder="frps auth token"
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+            {settingsError ? <p className="remote-settings-error" role="alert">{settingsError}</p> : null}
+            <div className="remote-settings-actions">
+              {settings ? (
+                <button type="button" onClick={() => setSettingsOpen(false)} disabled={savingSettings}>
+                  Cancel
                 </button>
               ) : null}
+              <button type="submit" className="primary" disabled={savingSettings}>
+                {savingSettings ? 'Saving…' : 'Save and connect'}
+              </button>
             </div>
-            {settingsOpen ? (
-              <form className="remote-settings-form" onSubmit={saveSettings}>
-                <p className="remote-settings-intro">
-                  Publish this Mac through your frps server. The token is stored only on this computer.
-                </p>
-                <div className="remote-settings-grid">
-                  <label>
-                    <span>Server address</span>
-                    <input
-                      value={settingsDraft.serverAddr}
-                      onChange={(event) => setSettingsDraft({ ...settingsDraft, serverAddr: event.target.value })}
-                      placeholder="203.0.113.9"
-                      autoComplete="off"
-                      spellCheck={false}
-                      autoFocus
-                    />
-                  </label>
-                  <label>
-                    <span>Server port</span>
-                    <input
-                      value={settingsDraft.serverPort}
-                      onChange={(event) => setSettingsDraft({ ...settingsDraft, serverPort: event.target.value })}
-                      inputMode="numeric"
-                      placeholder="7000"
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label>
-                    <span>Public port</span>
-                    <input
-                      value={settingsDraft.remotePort}
-                      onChange={(event) => setSettingsDraft({ ...settingsDraft, remotePort: event.target.value })}
-                      inputMode="numeric"
-                      placeholder="18766"
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label>
-                    <span>Public address</span>
-                    <input
-                      value={settingsDraft.publicEndpoint}
-                      onChange={(event) => setSettingsDraft({ ...settingsDraft, publicEndpoint: event.target.value })}
-                      placeholder="https://203.0.113.9"
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                  </label>
-                  <label className="wide">
-                    <span>Auth token</span>
-                    <input
-                      type="password"
-                      value={settingsDraft.token}
-                      onChange={(event) => setSettingsDraft({ ...settingsDraft, token: event.target.value })}
-                      placeholder="frps auth token"
-                      autoComplete="off"
-                    />
-                  </label>
+          </form>
+        ) : (
+          <div className="remote-control-content">
+            <section className="remote-pairing-panel" aria-label="Phone pairing">
+              <div className="remote-section-heading">
+                <div>
+                  <h3>Scan with Haish mobile</h3>
+                  <p>Open Haish on your phone and scan this code.</p>
                 </div>
-                {settingsError ? <p className="remote-settings-error" role="alert">{settingsError}</p> : null}
-                <div className="remote-settings-actions">
-                  {settings ? (
-                    <button type="button" onClick={() => setSettingsOpen(false)} disabled={savingSettings}>
-                      Cancel
-                    </button>
-                  ) : null}
-                  <button type="submit" className="primary" disabled={savingSettings}>
-                    {savingSettings ? 'Saving…' : 'Save & restart tunnel'}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <>
-                <div className={`remote-qr-frame ${secondsLeft === 0 && pairing ? 'expired' : ''}`}>
-                  {qrImage ? <img src={qrImage} alt="Haish phone pairing QR code" /> : null}
-                  {busy ? <div className="remote-qr-state">Creating secure code…</div> : null}
-                  {!busy && notConfigured ? (
-                    <div className="remote-qr-state">
-                      <strong>Set up the remote server</strong>
-                      <span>Enter the server address and token to publish this Mac.</span>
-                      <button type="button" onClick={openSettings}>Configure</button>
-                    </div>
-                  ) : null}
-                  {!busy && !notConfigured && error ? (
-                    <div className="remote-qr-state error">
-                      <strong>Connection unavailable</strong>
-                      <span>{error}</span>
-                    </div>
-                  ) : null}
-                  {!busy && !notConfigured && !error && pairing && secondsLeft === 0 ? (
-                    <div className="remote-qr-state">
-                      <strong>Code expired</strong>
-                      <button type="button" onClick={startPairing}>
-                        Create a new code
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-                <div className="remote-pairing-meta" aria-live="polite">
-                  <span className="remote-pairing-expiry">
-                    <Clock3 aria-hidden="true" />
-                    {secondsLeft > 0
-                      ? `Expires in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`
-                      : pairing
-                        ? 'Expired'
-                        : notConfigured
-                          ? 'Not configured'
-                          : 'Waiting for service'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="remote-refresh-button"
-                  onClick={startPairing}
-                  disabled={busy || notConfigured}
-                >
-                  <RefreshCw aria-hidden="true" /> Refresh QR
-                </button>
-              </>
-            )}
-          </section>
-
-          <section className="remote-devices-panel" aria-labelledby="remote-devices-title">
-            <div className="remote-devices-heading">
-              <h3 id="remote-devices-title">Paired devices</h3>
-            </div>
-            {deviceNotice ? (
-              <div className={`remote-device-notice ${deviceNotice.kind}`} role="status">
-                <CheckCircle2 aria-hidden="true" />
-                <span>{deviceNotice.text}</span>
               </div>
-            ) : null}
-            <div className="remote-device-list">
-              {devices.length ? (
-                devices.map((device) => (
-                  <article className="remote-device-row" key={device.device_id}>
-                    <span className="remote-device-icon">
-                      <Smartphone aria-hidden="true" />
-                    </span>
-                    <div>
-                      <strong>{device.name}</strong>
-                      <span>Last seen {formatLastSeen(device.last_seen_at)}</span>
-                    </div>
-                    <span className="remote-device-online" aria-label="Paired device" />
-                    <button
-                      type="button"
-                      onClick={() => setDeviceToRevoke(device)}
-                      aria-label={`Revoke access for ${device.name}`}
-                      title="Revoke access"
-                    >
-                      <MoreVertical aria-hidden="true" />
+              {accessNotice ? (
+                <div className={`remote-access-notice ${accessNotice.tone}`} role="status">
+                  <TriangleAlert aria-hidden="true" />
+                  <div>
+                    <strong>{accessNotice.title}</strong>
+                    <span title={accessNotice.detail}>{accessNotice.detail}</span>
+                  </div>
+                  {accessNotice.tone === 'error' ? (
+                    <button type="button" onClick={startPairing} disabled={busy}>
+                      Retry
                     </button>
-                  </article>
-                ))
-              ) : (
-                <div className="remote-device-empty">
-                  <Smartphone aria-hidden="true" />
-                  <strong>No paired phones yet</strong>
-                  <span>Your phone appears here after scanning the QR code.</span>
+                  ) : null}
                 </div>
-              )}
-            </div>
-          </section>
-        </div>
+              ) : null}
+              <div className={`remote-qr-frame ${secondsLeft === 0 && pairing ? 'expired' : ''}`}>
+                {qrImage ? <img src={qrImage} alt="Haish phone pairing QR code" /> : null}
+                {busy ? <div className="remote-qr-state">Creating secure code…</div> : null}
+                {!busy && notConfigured ? (
+                  <div className="remote-qr-state">
+                    <strong>Set up the remote server</strong>
+                    <span>Enter the server address and token to publish this Mac.</span>
+                    <button type="button" onClick={openSettings}>Configure</button>
+                  </div>
+                ) : null}
+                {!busy && !notConfigured && error ? (
+                  <div className="remote-qr-state error">
+                    <strong>Connection unavailable</strong>
+                    <span>{error}</span>
+                  </div>
+                ) : null}
+                {!busy && !notConfigured && !error && pairing && secondsLeft === 0 ? (
+                  <div className="remote-qr-state">
+                    <strong>Code expired</strong>
+                    <button type="button" onClick={startPairing}>
+                      Create a new code
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              <div className="remote-pairing-meta" aria-live="polite">
+                <span className={`remote-pairing-expiry ${secondsLeft > 0 && secondsLeft <= 60 ? 'urgent' : ''}`}>
+                  <Clock3 aria-hidden="true" />
+                  {secondsLeft > 0
+                    ? `Expires in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`
+                    : pairing
+                      ? 'Expired'
+                      : notConfigured
+                        ? 'Not configured'
+                        : 'Waiting for service'}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="remote-refresh-button"
+                onClick={startPairing}
+                disabled={busy || notConfigured}
+              >
+                <RefreshCw aria-hidden="true" /> Refresh QR
+              </button>
+            </section>
+
+            <section className="remote-devices-panel" aria-labelledby="remote-devices-title">
+              <div className="remote-devices-heading">
+                <h3 id="remote-devices-title">Paired devices</h3>
+                {devices.length ? <span className="remote-devices-count">{devices.length}</span> : null}
+              </div>
+              {deviceNotice ? (
+                <div className={`remote-device-notice ${deviceNotice.kind}`} role="status">
+                  <CheckCircle2 aria-hidden="true" />
+                  <span>{deviceNotice.text}</span>
+                </div>
+              ) : null}
+              <div className="remote-device-list">
+                {devices.length ? (
+                  devices.map((device) => (
+                    <article className="remote-device-row" key={device.device_id}>
+                      <span className="remote-device-icon">
+                        <Smartphone aria-hidden="true" />
+                      </span>
+                      <div>
+                        <strong>{device.name}</strong>
+                        <span>Last seen {formatLastSeen(device.last_seen_at)}</span>
+                      </div>
+                      <span className="remote-device-online" aria-label="Paired device" />
+                      <button
+                        type="button"
+                        onClick={() => setDeviceToRevoke(device)}
+                        aria-label={`Revoke access for ${device.name}`}
+                        title="Revoke access"
+                      >
+                        <MoreVertical aria-hidden="true" />
+                      </button>
+                    </article>
+                  ))
+                ) : (
+                  <div className="remote-device-empty">
+                    <Smartphone aria-hidden="true" />
+                    <strong>No paired phones yet</strong>
+                    <span>Your phone appears here after scanning the QR code.</span>
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+        )}
+
         <footer className="remote-security-note">
-          <LockKeyhole aria-hidden="true" />
-          <span>Only paired devices can access this Mac.</span>
+          <span className="remote-note-text">
+            <LockKeyhole aria-hidden="true" />
+            Only paired devices can access this Mac.
+          </span>
+          {settings && !settingsOpen ? (
+            <button type="button" className="remote-settings-link" onClick={openSettings}>
+              <Settings2 aria-hidden="true" />
+              Server settings
+            </button>
+          ) : null}
         </footer>
+
         {deviceToRevoke ? (
           <div className="remote-confirm-backdrop" role="presentation" onMouseDown={() => setDeviceToRevoke(null)}>
             <div

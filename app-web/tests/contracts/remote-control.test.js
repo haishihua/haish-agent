@@ -32,7 +32,11 @@ test('remote control uses the desktop bridge for QR pairing and device access', 
 
 test('remote control configures and surfaces the hosted adapter', () => {
   assert.match(dialogSource, /window\.haish\.saveRemoteSettings\(/);
-  assert.match(dialogSource, /remote-status-strip/);
+  // The panel stays quiet while the hosted adapter works and only speaks up with
+  // a plain-language notice (plus the real error text) when it cannot.
+  assert.match(dialogSource, /remote-access-notice/);
+  assert.doesNotMatch(dialogSource, /remote-status-strip/);
+  assert.match(dialogSource, /Remote access is offline/);
   assert.match(preloadSource, /remote-control:save-settings/);
   assert.match(mainSource, /ensureRemoteAdapter\(runtimePaths\(\)\)/);
   assert.match(mainSource, /stopRemoteAdapter\(\)/);
