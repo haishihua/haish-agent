@@ -23,6 +23,17 @@ function settingsToDraft(settings) {
   };
 }
 
+// A restart or a reconnect usually finishes within a couple of seconds, so the
+// panel waits out a short grace period before telling the user that remote
+// access is down — a self-healing blip must never flash a scary banner.
+const FAILURE_GRACE_MS = 6_000;
+
+// Internal errors talk about the remote "adapter"; users know it as the remote
+// service. The raw text stays available in tooltips.
+function humanizeRemoteError(message) {
+  return String(message || '').replace(/remote adapter/gi, 'remote service');
+}
+
 export function RemoteControlDialog({ onClose }) {
   const [pairing, setPairing] = useState(null);
   const [qrImage, setQrImage] = useState('');
@@ -41,6 +52,7 @@ export function RemoteControlDialog({ onClose }) {
   const [deviceNotice, setDeviceNotice] = useState(null);
   const [deviceToRevoke, setDeviceToRevoke] = useState(null);
   const [revoking, setRevoking] = useState(false);
+  const [failureSince, setFailureSince] = useState(0);
   const knownDeviceIdsRef = useRef(null);
 
   const refreshStatus = useCallback(async () => {
@@ -87,11 +99,17 @@ export function RemoteControlDialog({ onClose }) {
       setExpiresAt(Date.now() + nextPairing.expires_in * 1000);
       await refreshDevices();
     } catch (nextError) {
-      setError(String(nextError?.message || nextError));
+      setError(humanizeRemoteError(nextError?.message || nextError));
     } finally {
       setBusy(false);
     }
   }, [refreshDevices, settings]);
+
+  const notConfigured = settingsLoaded && !settings;
+  const tunnel = adapterState?.tunnel || null;
+  const adapterFailed = adapterState?.status === 'failed';
+  const tunnelFailed = Boolean(settings) && !adapterFailed
+    && Boolean(tunnel) && !tunnel.running && Boolean(tunnel.last_error);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +177,16 @@ export function RemoteControlDialog({ onClose }) {
     return () => window.clearTimeout(timer);
   }, [deviceNotice]);
 
+  // Track how long remote access has been failing; the notice only appears once
+  // the failure outlives the grace period above.
+  useEffect(() => {
+    if (!adapterFailed && !tunnelFailed) {
+      setFailureSince(0);
+      return;
+    }
+    setFailureSince((previous) => previous || Date.now());
+  }, [adapterFailed, tunnelFailed]);
+
   function openSettings() {
     setSettingsDraft(settingsToDraft(settings));
     setSettingsError('');
@@ -202,26 +230,38 @@ export function RemoteControlDialog({ onClose }) {
     }
   }
 
-  const notConfigured = settingsLoaded && !settings;
-  const tunnel = adapterState?.tunnel || null;
   // Users never configure the local service themselves, so the panel stays quiet
   // while everything works and only speaks up when the phone cannot reach this Mac.
-  const adapterFailed = adapterState?.status === 'failed';
-  const tunnelFailed = Boolean(settings) && !adapterFailed
-    && Boolean(tunnel) && !tunnel.running && Boolean(tunnel.last_error);
+  const failureStuck = failureSince > 0 && Date.now() - failureSince >= FAILURE_GRACE_MS;
   const connecting = Boolean(settings) && !adapterFailed && !tunnelFailed
     && Boolean(adapterState) && (adapterState.status === 'starting' || (tunnel ? !tunnel.running : false));
-  const accessNotice = adapterFailed
-    ? {
+  let accessNotice = null;
+  if (adapterFailed && failureStuck) {
+    // Haish restarts the remote service on its own; the raw exit reason stays in
+    // the tooltip instead of being shouted at the user.
+    accessNotice = {
+      tone: 'pending',
+      title: 'Reconnecting…',
+      detail: 'Remote access stopped unexpectedly. Haish is restarting it automatically.',
+      raw: adapterState.message || '',
+      canRetry: true,
+    };
+  } else if (tunnelFailed && failureStuck) {
+    accessNotice = {
       tone: 'error',
       title: 'Remote access is offline',
-      detail: adapterState.message || 'The Haish remote service stopped unexpectedly.',
-    }
-    : tunnelFailed
-      ? { tone: 'error', title: 'Remote access is offline', detail: tunnel.last_error }
-      : connecting
-        ? { tone: 'pending', title: 'Connecting…', detail: 'Publishing this Mac through your server.' }
-        : null;
+      detail: tunnel.last_error,
+      raw: tunnel.last_error,
+      canRetry: true,
+    };
+  } else if (connecting) {
+    accessNotice = {
+      tone: 'pending',
+      title: 'Connecting…',
+      detail: 'Publishing this Mac through your server.',
+      canRetry: false,
+    };
+  }
 
   return createPortal(
     <div className="remote-control-backdrop" role="presentation" onMouseDown={onClose}>
@@ -331,13 +371,19 @@ export function RemoteControlDialog({ onClose }) {
                 </div>
               </div>
               {accessNotice ? (
-                <div className={`remote-access-notice ${accessNotice.tone}`} role="status">
-                  <TriangleAlert aria-hidden="true" />
-                  <div>
+                <div
+                  className={`remote-access-notice ${accessNotice.tone}`}
+                  role="status"
+                  title={accessNotice.raw || undefined}
+                >
+                  <span className="remote-access-notice-icon" aria-hidden="true">
+                    <TriangleAlert />
+                  </span>
+                  <div className="remote-access-notice-text">
                     <strong>{accessNotice.title}</strong>
-                    <span title={accessNotice.detail}>{accessNotice.detail}</span>
+                    <span className="remote-access-notice-detail">{accessNotice.detail}</span>
                   </div>
-                  {accessNotice.tone === 'error' ? (
+                  {accessNotice.canRetry ? (
                     <button type="button" onClick={startPairing} disabled={busy}>
                       Retry
                     </button>

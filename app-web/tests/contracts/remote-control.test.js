@@ -37,6 +37,11 @@ test('remote control configures and surfaces the hosted adapter', () => {
   assert.match(dialogSource, /remote-access-notice/);
   assert.doesNotMatch(dialogSource, /remote-status-strip/);
   assert.match(dialogSource, /Remote access is offline/);
+  // Self-healing restarts must not flash a banner, and internal wording
+  // ("adapter", SIGTERM) is humanized before it reaches the UI.
+  assert.match(dialogSource, /FAILURE_GRACE_MS/);
+  assert.match(dialogSource, /Reconnecting…/);
+  assert.match(dialogSource, /humanizeRemoteError/);
   assert.match(preloadSource, /remote-control:save-settings/);
   assert.match(mainSource, /ensureRemoteAdapter\(runtimePaths\(\)\)/);
   assert.match(mainSource, /stopRemoteAdapter\(\)/);

@@ -180,72 +180,96 @@
 .remote-access-notice {
   display: grid;
   margin-top: 14px;
-  padding: 11px 12px;
-  grid-template-columns: 17px minmax(0, 1fr);
-  align-items: start;
+  padding: 10px 12px;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
   gap: 10px;
-  border: 1px solid rgba(239, 191, 100, 0.26);
+  border: 1px solid rgba(239, 191, 100, 0.2);
   border-radius: 12px;
-  background: rgba(239, 191, 100, 0.09);
-  color: #f3cf8e;
-  font-size: 12.5px;
-  line-height: 1.45;
+  background: rgba(239, 191, 100, 0.07);
 }
 
-.remote-access-notice > div {
-  min-width: 0;
-}
-
-.remote-access-notice svg {
-  width: 17px;
-  height: 17px;
-  margin-top: 1px;
+.remote-access-notice-icon {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(239, 191, 100, 0.13);
   color: var(--gold);
 }
 
-.remote-access-notice strong {
+.remote-access-notice-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.remote-access-notice-text {
+  min-width: 0;
+}
+
+.remote-access-notice-text strong {
   display: block;
+  color: #edcc90;
   font-size: 12.5px;
   font-weight: 650;
 }
 
-.remote-access-notice span {
-  display: block;
+.remote-access-notice-detail {
+  display: -webkit-box;
   margin-top: 3px;
+  overflow: hidden;
+  color: #98a3b8;
+  font-size: 12px;
+  line-height: 1.4;
   overflow-wrap: anywhere;
-  color: #a9b3c6;
-}
-
-.remote-access-notice.error {
-  border-color: rgba(255, 110, 122, 0.3);
-  background: rgba(196, 58, 72, 0.12);
-  color: #ffb2ba;
-}
-
-.remote-access-notice.error svg {
-  color: #ff8b98;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .remote-access-notice button {
-  grid-column: 2;
-  justify-self: start;
   min-height: 30px;
   padding: 0 12px;
-  border: 1px solid rgba(255, 130, 141, 0.34);
+  border: 1px solid rgba(239, 191, 100, 0.28);
   border-radius: 9px;
-  background: rgba(215, 65, 79, 0.16);
-  color: #ffb7be;
+  background: rgba(239, 191, 100, 0.1);
+  color: var(--gold);
   font-size: 12.5px;
   font-weight: 650;
 }
 
 .remote-access-notice button:hover {
-  border-color: rgba(255, 140, 150, 0.55);
-  background: rgba(215, 65, 79, 0.24);
+  border-color: rgba(239, 191, 100, 0.5);
+  background: rgba(239, 191, 100, 0.18);
 }
 
 .remote-access-notice button:disabled {
   opacity: 0.55;
+}
+
+.remote-access-notice.error {
+  border-color: rgba(255, 110, 122, 0.22);
+  background: rgba(196, 58, 72, 0.1);
+}
+
+.remote-access-notice.error .remote-access-notice-icon {
+  background: rgba(255, 110, 122, 0.13);
+  color: #ff8b98;
+}
+
+.remote-access-notice.error .remote-access-notice-text strong {
+  color: #ffb3bd;
+}
+
+.remote-access-notice.error button {
+  border-color: rgba(255, 130, 141, 0.3);
+  background: rgba(215, 65, 79, 0.14);
+  color: #ffb7be;
+}
+
+.remote-access-notice.error button:hover {
+  border-color: rgba(255, 140, 150, 0.5);
+  background: rgba(215, 65, 79, 0.22);
 }
 
 .remote-qr-frame {
