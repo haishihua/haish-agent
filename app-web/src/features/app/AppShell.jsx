@@ -123,6 +123,7 @@ import {
 import {
   nextEarlierTaskRuntimeIds,
   pendingTaskRuntimeIds,
+  staleTaskRuntimeIds,
 } from '../tasks/model/task-runtime-paging.js';
 import {
   buildChatTimeline,
@@ -705,6 +706,9 @@ export function AppShell() {
 
   runtimeApiRef.current = {
     getRuntime,
+    isConversationActivationCurrent,
+    removeMissingTask,
+    restoreLatestTaskRuntime,
     mutateRuntime,
     flushRuntimeTasksToWorkspace,
     updateTaskRuntimeState,
@@ -976,6 +980,7 @@ export function AppShell() {
     handleAddProject,
     handleDeleteConversation,
     handleRenameConversation,
+    handleRenameProject,
     handleRemoveProject,
     handleToggleViewMode,
     handleOpenTaskReport,
@@ -1386,6 +1391,64 @@ export function AppShell() {
     () => pendingTaskRuntimeIds(taskRuntimeState.taskOrder, taskRuntimeState.tasksById),
     [taskRuntimeState],
   );
+  // 会话目录（服务端列表）里那份任务拷贝。渲染用的 currentConversation.tasks 不是独立
+  // 快照：mergeConversationTasks 让本地拷贝覆写 status / completedAt，会把目录写下的
+  // 「已落地」信号盖掉（只剩 serverFinished，而它只认 done / failed / cancelled 三个串，
+  // 历史别名 completed / aborted 都不算）。所以收工判据直接读这份目录拷贝。
+  const directoryConversation = useMemo(
+    () => findConversationById(workspaceState, conversationId),
+    [conversationId, workspaceState],
+  );
+  // 两份权威快照：本地运行时拷贝 + 服务端列表拷贝。任何一份落地终态，这一轮就算收工
+  // ——和侧边栏用的是同一个判据（model/conversation-run-state.js）。收工的判据只在这里
+  // 算一次，行渲染读同一份；但手上那份拷贝可能还停在半路（正文、终态都没到），
+  // 那是重建要管的事，见下面的过期拷贝重建。
+  const settledRuntimeTaskIds = useMemo(() => settledTaskIds([
+    ...taskRuntimeState.taskOrder.map((taskId) => taskRuntimeState.tasksById[taskId]),
+    ...(directoryConversation?.tasks || []),
+  ]), [directoryConversation, taskRuntimeState]);
+  // 已经收工、可本地那份拷贝还停在半路的任务：它的正文永远不会自己出现（轮询只盯
+  // 「列表说还活着」的任务），得重建。「这份拷贝停在半路了没」和「这一次重建哪几条」
+  // 都在 tasks/model/task-runtime-paging.js，现算而不是 memo——重建过的名单在 ref 里，
+  // effect 跑的时候读到的才是最新的那份。
+  const staleRuntimeRefreshRef = useRef(new Set());
+  // 每次激活重新给一次机会：重建过一次仍然对不上（比如服务端说还在跑）就不再重试，
+  // 不然两份快照对不上时这里会一直打转；跳过它们的同时不挡着更早的拷贝接着排队。
+  useEffect(() => { staleRuntimeRefreshRef.current = new Set(); }, [conversationId]);
+  useEffect(() => {
+    if (!conversationId) return;
+    const runtime = runtimeApiRef.current;
+    // 本地流就是这一轮的主人：它在的时候由它写拷贝，不同时插一手。
+    if (runtime.getRuntime(conversationId)?.activeRunId) return;
+    const pending = staleTaskRuntimeIds(
+      taskRuntimeState.taskOrder,
+      taskRuntimeState.tasksById,
+      settledRuntimeTaskIds,
+      { attemptedIds: staleRuntimeRefreshRef.current },
+    );
+    if (pending.length === 0) return;
+    for (const taskId of pending) staleRuntimeRefreshRef.current.add(taskId);
+    const activationSeq = conversationActivationSeqRef.current;
+    const isCurrentActivation = () => conversationIdRef.current === conversationId
+      && runtime.isConversationActivationCurrent(activationSeq);
+    // 这份拷贝的游标可能停在半路（甚至对不上文件），丢掉缓存做一次全量回放——和
+    // 「切走再切回来」走的是同一条恢复路径。逐条重建：任务真的没了只移除它自己。
+    const rebuild = async (taskId) => {
+      try {
+        await runtime.restoreLatestTaskRuntime(taskId, {
+          targetConversationId: conversationId,
+          isCurrentActivation,
+        });
+      } catch (error) {
+        if (error?.status === 404) runtime.removeMissingTask(conversationId, taskId);
+        else console.warn('stale task runtime refresh failed', error);
+      }
+    };
+    for (const taskId of pending) {
+      taskRuntimeEventCacheRef.current.delete(taskId);
+      rebuild(taskId);
+    }
+  }, [conversationId, settledRuntimeTaskIds, taskRuntimeState]);
   const loadEarlierTaskRuntimes = async (targetConversationId) => {
     if (!targetConversationId || conversationIdRef.current !== targetConversationId) return;
     const activationSeq = conversationActivationSeqRef.current;
@@ -1405,10 +1468,7 @@ export function AppShell() {
     const orderedTasks = collapseFullTaskAttempts(taskRuntimeState.taskOrder
       .map((taskId) => taskRuntimeState.tasksById[taskId])
       .filter(Boolean));
-    // 同一轮对话在面板里同时存在本地运行时拷贝和服务端列表拷贝。任何一份落地终态，
-    // 这一轮就算收工（否则过期的本地拷贝能让气泡一直转圈），所以先把「已收工」的
-    // taskId 收齐——和侧边栏用的是同一个判据（model/conversation-run-state.js）。
-    const settled = settledTaskIds([...orderedTasks, ...(currentConversation?.tasks || [])]);
+    const settled = settledRuntimeTaskIds;
     const rowCache = chatMessageRowsCacheRef.current;
     for (const task of orderedTasks) {
       const taskId = task.taskId || task.id || task.title;
@@ -1535,7 +1595,7 @@ export function AppShell() {
       }
     }
     return rows;
-  }, [agentOptions, conversationId, taskRuntimeState, currentConversation]);
+  }, [agentOptions, conversationId, currentConversation, settledRuntimeTaskIds, taskRuntimeState]);
   const lockedAgentId = currentConversation?.agentId
     || currentConversation?.tasks?.find((task) => task?.requestedAgentId)?.requestedAgentId
     || '';
@@ -1664,13 +1724,13 @@ export function AppShell() {
               }}
               onDeleteTask={handleDeleteWorkflowTask}
               onRenameConversation={handleRenameConversation}
+              onRenameProject={handleRenameProject}
               onPinConversation={handlePinConversation}
               onPinProject={handlePinProject}
               onReorderConversations={handleReorderConversations}
               onReorderProjects={handleReorderProjects}
               onOpenTaskReport={handleOpenTaskReport}
               onRetryTask={handleRetryTask}
-              taskPreviewLimit={3}
             />
             {viewMode === 'chat' ? (
               <div className="app-chat-stage">

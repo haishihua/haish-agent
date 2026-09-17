@@ -4,6 +4,7 @@ import { ListTodo, MessagesSquare } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ConversationDialog } from './ConversationTaskCards.jsx';
 import { ProjectNode, ProjectDropEnd } from './ProjectNode.jsx';
+import { PREVIEW_PAGE_SIZE } from '../model/list-preview.js';
 import { AppUpdateFooter } from './AppUpdateFooter.jsx';
 import { ThreadSearch } from './ThreadSearch.jsx';
 
@@ -70,14 +71,15 @@ export function ConversationsPanel({
   onDeleteConversation,
   onDeleteTask,
   onRenameConversation,
+  onRenameProject,
   onPinConversation,
   onPinProject,
   onReorderConversations,
   onReorderProjects,
   onOpenTaskReport,
   onRetryTask,
-  taskPreviewLimit = 3,
-  conversationPreviewLimit = 3,
+  taskPreviewLimit = PREVIEW_PAGE_SIZE,
+  conversationPreviewLimit = PREVIEW_PAGE_SIZE,
   onToast,
 }) {
   const [panelRef, panelWidth] = usePanelWidth();
@@ -174,6 +176,16 @@ export function ConversationsPanel({
       value: conversation.name || 'Default Session',
       confirmLabel: 'Rename',
       onConfirm: (nextName) => onRenameConversation(project.id, conversation.id, nextName),
+    });
+  }
+
+  function requestRenameProject(project) {
+    setDialog({
+      kind: 'rename',
+      title: 'Rename project',
+      value: project.name || '',
+      confirmLabel: 'Rename',
+      onConfirm: (nextName) => onRenameProject(project.id, nextName),
     });
   }
 
@@ -277,6 +289,7 @@ export function ConversationsPanel({
             onRequestDeleteConversation={requestDeleteConversation}
             onRequestDeleteTask={requestDeleteTask}
             onRequestRenameConversation={requestRenameConversation}
+            onRequestRenameProject={requestRenameProject}
             onPinConversation={onPinConversation}
             onPinProject={onPinProject}
             onDropConversation={dropConversation}

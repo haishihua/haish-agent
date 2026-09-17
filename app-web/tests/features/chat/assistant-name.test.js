@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { assistantNameForTask } from '../../../src/features/chat/model/assistant-name.js';
+import { assistantNameForTask, workflowNodeAgentName } from '../../../src/features/chat/model/assistant-name.js';
 import { agentDisplayNameForId } from '../../../src/features/agents/model/agent-settings.js';
 
 const AGENT_OPTIONS = [
@@ -76,4 +76,27 @@ test('agent ids resolve through the picker catalog only', () => {
   assert.equal(agentDisplayNameForId('custom.agent-code', null), '');
   // 选单里没有的 id 不许把内部 id 当名字显示。
   assert.equal(agentDisplayNameForId('custom.agent-code', [{ id: 'preset.general', label: 'Task Assistant' }]), '');
+});
+
+test('a workflow agent node names its reply from the agent configured on that node', () => {
+  assert.equal(
+    workflowNodeAgentName({ id: 'requirements', type: 'agent', agent_id: 'custom.agent-code' }, AGENT_OPTIONS),
+    'Code Agent',
+  );
+  // 节点配置里没绑 agent（老配置）或绑的 agent 已下线 → 不给名字，气泡退回 "Assistant"。
+  assert.equal(workflowNodeAgentName({ type: 'agent' }, AGENT_OPTIONS), '');
+  assert.equal(workflowNodeAgentName({ type: 'agent', agent_id: 'custom.agent-gone' }, AGENT_OPTIONS), '');
+  assert.equal(workflowNodeAgentName({ type: 'agent', agent_id: 'custom.agent-code' }, null), '');
+});
+
+test('only agent nodes carry a reply name; the others have no agent to sign with', () => {
+  for (const type of ['llm', 'tool', 'condition', 'human_approval', 'loop', 'start', 'output']) {
+    assert.equal(
+      workflowNodeAgentName({ id: 'node', type, agent_id: 'custom.agent-code' }, AGENT_OPTIONS),
+      '',
+      `${type} nodes have no configured agent`,
+    );
+  }
+  assert.equal(workflowNodeAgentName(null, AGENT_OPTIONS), '');
+  assert.equal(workflowNodeAgentName(undefined, AGENT_OPTIONS), '');
 });

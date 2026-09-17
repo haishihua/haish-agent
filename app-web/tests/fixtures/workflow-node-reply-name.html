@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workflow node reply name</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0f1723; }
+  #root { position: fixed; inset: 16px; }
+  #checks { position: fixed; left: 16px; right: 16px; bottom: 12px; z-index: 5; margin: 0; padding: 10px 14px;
+    font: 11px/1.7 ui-monospace, monospace; white-space: pre-wrap; color: #9fd8a4;
+    background: rgba(9, 14, 24, 0.92); border: 1px solid rgba(138, 166, 209, 0.28); border-radius: 8px; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<h1 style="position: fixed; z-index: 5; top: 12px; left: 16px; margin: 0; font: 12px system-ui; color: #7f92b3;">Workflow node reply name</h1>
+<script>
+  // 夹具自己的失误也得看得见：React 渲染报错时节点画不出来，而「气泡写着某个名字」的
+  // 断言在空页面上会当成失败，所以报错既要记下来也要报出来。
+  window.__pageErrors = [];
+  window.addEventListener('error', (event) => { window.__pageErrors.push(String(event.message || event.error)); });
+  window.addEventListener('unhandledrejection', (event) => { window.__pageErrors.push('rejection: ' + String(event.reason)); });
+</script>
+<div id="root"></div>
+<pre id="checks" role="status">Running checks…</pre>
+<script type="module" src="./workflow-node-reply-name.jsx"></script>
+</html>

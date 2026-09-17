@@ -30,8 +30,12 @@ export function isPendingTaskId(runtime, taskId) {
 }
 
 export function normalizeTaskStatus(status) {
-  if (status === 'aborted') return 'cancelled';
-  if (status === 'completed') return 'done';
+  // 原始状态串的别名归一在这里，词表和 conversations/model/conversation-status.js 的
+  // TERMINAL_STATUSES 对齐：少归一个，「卡片写着 PENDING、行却按已收工排序」就会出现
+  // （success / error / canceled 这三个以前就这么漏过去了）。
+  if (status === 'aborted' || status === 'canceled') return 'cancelled';
+  if (status === 'completed' || status === 'success') return 'done';
+  if (status === 'error') return 'failed';
   return status || 'queued';
 }
 

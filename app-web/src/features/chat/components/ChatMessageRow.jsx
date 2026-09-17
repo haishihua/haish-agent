@@ -162,12 +162,12 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
           {showTimelineToggle ? (
             <ChatTimelineCollapsed
               onExpand={() => setTraceExpanded(!traceExpanded)}
-              label={elapsed || '0s'}
+              label={elapsed}
               expanded={traceExpanded}
             />
           ) : null}
           {/* 首字未到（排队/建连/模型首字等待期）不显示计时器 */}
-          {traceForcedOpen && firstTokenMs ? <ChatTimelineElapsedPill label={elapsed || '0s'} /> : null}
+          {traceForcedOpen && firstTokenMs ? <ChatTimelineElapsedPill label={elapsed} /> : null}
             </div>
           ) : <div className="chat-bubble-meta user-speaker-meta">
             {userContent.references.length > 0 && <div className="chat-message-files" aria-label="Referenced files and folders">

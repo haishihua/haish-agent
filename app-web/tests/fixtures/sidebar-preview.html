@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sidebar preview paging</title>
+<style>
+  body { margin: 0; padding: 24px; background: #0f1723; }
+  .app-shell { font: 13px system-ui; color: #dce3f4; }
+  .conversations-panel { display: block; }
+  #checks { margin: 20px 0 0; font-size: 11px; line-height: 1.7; white-space: pre-wrap; color: #9fd8a4; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<h1>Sidebar preview paging</h1>
+<script>
+  // 夹具自己的失误也得看得见：渲染报错时列表整块消失，
+  // 而「默认放几行」这类断言在空页面上会得到空数组、假装通过。
+  window.__pageErrors = [];
+  window.addEventListener('error', (event) => { window.__pageErrors.push(String(event.message || event.error)); });
+  window.addEventListener('unhandledrejection', (event) => { window.__pageErrors.push('rejection: ' + String(event.reason)); });
+</script>
+<p>生产 ConversationsPanel + ProjectNode + ConversationNode：8 个会话、其中第一个展开着 8 张任务卡。默认都只放 5 行，每点一次 “Show more” 再加 5 行，再点（“Show less”）收回默认预览；会话行与任务卡两份展开互不影响。</p>
+<div id="root"></div>
+<pre id="checks" role="status">Running checks…</pre>
+<script type="module" src="./sidebar-preview.jsx"></script>
+</html>

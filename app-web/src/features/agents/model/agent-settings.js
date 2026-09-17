@@ -27,10 +27,17 @@ export function agentIconNameForItem(item) {
   return PRESET_AGENT_ICON_NAMES[item?.id] || 'sparkles';
 }
 
+// catalog 里按 id 找 agent：图标、气泡名字、选单都从这一处取，别各抄一份 find。
+function findAgentOption(agentId, agentOptions) {
+  const id = String(agentId || '').trim();
+  if (!id) return null;
+  return (Array.isArray(agentOptions) ? agentOptions : []).find((item) => item.id === id) || null;
+}
+
 export function agentIconNameForAgentId(agentId, agentOptions = []) {
   const id = String(agentId || '').trim();
   if (!id) return 'sparkles';
-  const match = (Array.isArray(agentOptions) ? agentOptions : []).find((item) => item.id === id);
+  const match = findAgentOption(id, agentOptions);
   if (match) return agentIconNameForItem(match);
   if (PRESET_AGENT_ICON_NAMES[id]) return PRESET_AGENT_ICON_NAMES[id];
   return id.startsWith('custom.') ? 'box' : 'sparkles';
@@ -43,10 +50,7 @@ export function agentIconNameForAgentId(agentId, agentOptions = []) {
  * 不要把 id（`custom.agent-1783440010656`）当名字漏到界面上。
  */
 export function agentDisplayNameForId(agentId, agentOptions = []) {
-  const id = String(agentId || '').trim();
-  if (!id) return '';
-  const match = (Array.isArray(agentOptions) ? agentOptions : []).find((item) => item.id === id);
-  return String(match?.label || '').trim();
+  return String(findAgentOption(agentId, agentOptions)?.label || '').trim();
 }
 
 export const DEFAULT_AGENT_SETTINGS = {

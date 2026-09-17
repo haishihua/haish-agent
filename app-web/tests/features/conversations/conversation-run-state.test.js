@@ -28,6 +28,10 @@ const iconsSource = readFileSync(
   new URL('../../../src/features/conversations/components/ConversationIcons.jsx', import.meta.url),
   'utf8',
 );
+const cardsSource = readFileSync(
+  new URL('../../../src/features/conversations/components/ConversationTaskCards.jsx', import.meta.url),
+  'utf8',
+);
 const hookSource = readFileSync(
   new URL('../../../src/features/conversations/hooks/useConversationRunState.js', import.meta.url),
   'utf8',
@@ -36,8 +40,16 @@ const modelSource = readFileSync(
   new URL('../../../src/features/conversations/model/conversation-run-state.js', import.meta.url),
   'utf8',
 );
+const chatMessageRowSource = readFileSync(
+  new URL('../../../src/features/chat/components/ChatMessageRow.jsx', import.meta.url),
+  'utf8',
+);
 const appShellSource = readFileSync(
   new URL('../../../src/features/app/AppShell.jsx', import.meta.url),
+  'utf8',
+);
+const pagingSource = readFileSync(
+  new URL('../../../src/features/tasks/model/task-runtime-paging.js', import.meta.url),
   'utf8',
 );
 const timelineNodesSource = readFileSync(
@@ -181,6 +193,27 @@ test('any copy of a task that landed terminal settles the whole turn', () => {
   assert.equal(settled.has('task-b'), false);
 });
 
+test('the settled set reuses the landed-marker judge instead of its own list', () => {
+  const settled = settledTaskIds([
+    { taskId: 'marker-underscore', status: 'running', completed_at: '2026-01-01' },
+    { taskId: 'marker-camel', status: 'running', completedAt: 1 },
+    { taskId: 'marker-server', status: 'running', serverFinished: true },
+    { taskId: 'alias-completed', status: 'completed' },
+    { taskId: 'alias-aborted', status: 'aborted' },
+    { taskId: 'still-running', status: 'running' },
+    { task_id: '', status: 'done' },
+    { status: 'done' },
+  ]);
+
+  assert.deepEqual([...settled].sort(), [
+    'alias-aborted',
+    'alias-completed',
+    'marker-camel',
+    'marker-server',
+    'marker-underscore',
+  ]);
+});
+
 test('the lamp vocabulary is shared by both surfaces', () => {
   assert.equal(isRunStateLive(RUN_STATE_RUNNING), true);
   assert.equal(isRunStateLive(RUN_STATE_WAITING_INPUT), true);
@@ -215,7 +248,7 @@ test('the conversation row renders the three states from the single judge', () =
 test('the row table speaks the run-state vocabulary the model exports', () => {
   assert.match(
     nodeSource,
-    /import \{\n\s+RUN_STATE_APPROVAL,\n\s+RUN_STATE_RUNNING,\n\s+RUN_STATE_WAITING_INPUT,\n\} from '\.\.\/model\/conversation-run-state\.js';/,
+    /import \{\n\s+RUN_STATE_APPROVAL,\n\s+RUN_STATE_RUNNING,\n\s+RUN_STATE_WAITING_INPUT,\n\s+isRunStateWaiting,\n\s+taskIdOf,\n\} from '\.\.\/model\/conversation-run-state\.js';/,
   );
   assert.match(nodeSource, /\[RUN_STATE_WAITING_INPUT\]: \{\n\s+className: 'waiting-input',\n\s+label: 'Waiting for your answer',\n\s+Glyph: WaitingInputGlyph,/);
   assert.match(nodeSource, /\[RUN_STATE_APPROVAL\]: \{\n\s+className: 'awaiting-approval',\n\s+label: 'Awaiting approval',\n\s+Glyph: ApprovalGlyph,/);
@@ -224,7 +257,11 @@ test('the row table speaks the run-state vocabulary the model exports', () => {
 
 test('the message panel reads the same judge for streaming and for the activity copy', () => {
   // 气泡还在转圈 = 这一轮还活着：任务自身在跑，且没有任何一份拷贝落地终态。
-  assert.match(appShellSource, /const settled = settledTaskIds\(\[\.\.\.orderedTasks, \.\.\.\(currentConversation\?\.tasks \|\| \[\]\)\]\);/);
+  // 收工判据读的两份权威快照：本地运行时拷贝 + 会话目录拷贝（服务端列表）；渲染用的
+  // currentConversation.tasks 是合并出来的，不能拿来判——它会藏掉目录的落地标记。
+  assert.match(appShellSource, /const directoryConversation = useMemo\(\n\s+\(\) => findConversationById\(workspaceState, conversationId\),\n\s+\[conversationId, workspaceState\],\n\s+\);/);
+  assert.match(appShellSource, /const settledRuntimeTaskIds = useMemo\(\(\) => settledTaskIds\(\[\n\s+\.\.\.taskRuntimeState\.taskOrder\.map\(\(taskId\) => taskRuntimeState\.tasksById\[taskId\]\),\n\s+\.\.\.\(directoryConversation\?\.tasks \|\| \[\]\),\n\s+\]\), \[directoryConversation, taskRuntimeState\]\);/);
+  assert.match(appShellSource, /const settled = settledRuntimeTaskIds;/);
   assert.match(appShellSource, /const live = isTaskLive\(task\) && !settled\.has\(String\(task\.taskId \|\| task\.id \|\| ''\)\);/);
   assert.match(appShellSource, /const streaming = live;/);
   assert.match(appShellSource, /const currentConversationRunState = useConversationRunState\(\{/);
@@ -234,14 +271,56 @@ test('the message panel reads the same judge for streaming and for the activity 
   assert.match(timelineNodesSource, /resolveAgentActivity\(safeItems, streaming, waitState\.state\)/);
 });
 
+test('a copy that is behind while the turn already settled gets rebuilt instead of rendered around', () => {
+  // 用户报的问题：「任务完成了，怎么连字都没有」：侧边栏拿着服务端列表拷贝说收工，面板手上
+  // 那份本地运行时拷贝却停在半路（没正文、没 completedAt），于是渲染成「已完成却没有正文」
+  // 的空气泡。标准做法是把这份拷贝补齐（丢掉游标全量重放，和「切走再切回」同一条 restore
+  // 路径）——不给行加任何「正在加载」之类的兜底渲染。
+  // 要重建的名单现算（重建过的记在 ref 里，effect 跑的时候读到的才是最新的那份）：
+  // 只发一页，而且已经重建过的那几条不再占名额——它们一直排在最前面，更早的半路拷贝就
+  // 永远轮不到。顺序/页大小的约定与判据都在 model 里，这里只把名单喂进去。
+  assert.match(
+    appShellSource,
+    /const pending = staleTaskRuntimeIds\(\n\s+taskRuntimeState\.taskOrder,\n\s+taskRuntimeState\.tasksById,\n\s+settledRuntimeTaskIds,\n\s+\{ attemptedIds: staleRuntimeRefreshRef\.current \},\n\s+\);/,
+  );
+  assert.match(appShellSource, /\}, \[conversationId, settledRuntimeTaskIds, taskRuntimeState\]\);/);
+  assert.match(pagingSource, /export function staleTaskRuntimeIds\(\n\s+taskOrder,\n\s+tasksById,\n\s+settledIds,\n\s+\{ attemptedIds = null, limit = STALE_TASK_RUNTIME_REBUILD_LIMIT \} = \{\},\n\)/);
+  assert.match(pagingSource, /!isTaskSettled\(task\) && !attempted\.has\(taskId\)/);
+  // 过期游标必须丢：这份拷贝的游标可能对不上服务端文件，重建按全量走。
+  assert.match(appShellSource, /for \(const taskId of pending\) \{\n\s+taskRuntimeEventCacheRef\.current\.delete\(taskId\);\n\s+rebuild\(taskId\);\n\s+\}/);
+  // 重建走的是和「切走再切回来」同一条 restore 路径（从 runtimeApiRef 取，effect 里不留旧闭包）。
+  assert.match(appShellSource, /await runtime\.restoreLatestTaskRuntime\(taskId, \{/);
+  assert.match(appShellSource, /const isCurrentActivation = \(\) => conversationIdRef\.current === conversationId\n\s+&& runtime\.isConversationActivationCurrent\(activationSeq\);/);
+  // 逐条重建：任务真的没了只移除它自己，不牵连同批的其它拷贝。
+  assert.match(appShellSource, /if \(error\?\.status === 404\) runtime\.removeMissingTask\(conversationId, taskId\);/);
+  // 本地流在的时候不提手：它在写这份拷贝。
+  assert.match(appShellSource, /if \(runtime\.getRuntime\(conversationId\)\?\.activeRunId\) return;/);
+  // 重建只给一次机会，留在下一次激活。
+  assert.match(appShellSource, /if \(pending\.length === 0\) return;/);
+  assert.match(appShellSource, /staleRuntimeRefreshRef\.current\.add\(taskId\)/);
+  assert.doesNotMatch(appShellSource, /traceStale/, '拷贝落后不给行加兜底标记，只重建拷贝');
+  // 时长只来自真时间戳：算不出来就不显示数字，不许编 0s。
+  assert.doesNotMatch(chatMessageRowSource, /\|\| '0s'/, '不许给未知时长编一个 0s');
+  assert.match(chatMessageRowSource, /const elapsed = isAgent/);
+  // 数字位可以是空的，按钮却不能没名字（箭头图标是 aria-hidden 的）。
+  assert.match(timelineNodesSource, /aria-label=\{label \|\| \(expanded \? 'Hide steps' : 'Show steps'\)\}/);
+});
+
 test('both the row indicator and the task card share the same wait glyphs', () => {
   assert.match(iconsSource, /export function WaitingInputGlyph\(\)/);
   assert.match(iconsSource, /export function ApprovalGlyph\(\)/);
   assert.match(nodeSource, /import \{ ApprovalGlyph, ConversationAction, WaitingInputGlyph \} from '\.\/ConversationIcons\.jsx';/);
+  // 「等你回答」用 lucide 的气泡+问号（与 AppIcon 同源，不再自己手写路径）；只有审批那一个
+  // 状态还是本地描边路径。
+  assert.match(iconsSource, /import \{ MessageCircleQuestion \} from 'lucide-react';/);
+  assert.match(
+    iconsSource,
+    /export function WaitingInputGlyph\(\) \{\n\s+return <MessageCircleQuestion className="conversation-status-glyph" aria-hidden="true" \/>;/,
+  );
   assert.equal(
     (iconsSource.match(/<svg className="conversation-status-glyph"/g) || []).length,
-    2,
-    'the glyph markup must exist once per state, not duplicated in the row',
+    1,
+    'the hand-drawn glyph markup is left for the approval state only',
   );
   // 描边样式也只有一份：尺寸按场景覆盖（任务卡 17px / 会话行 15px）。
   const glyphRule = panelStyles.match(/\n\.conversation-status-glyph\s*\{([^}]*)\}/);
@@ -250,6 +329,20 @@ test('both the row indicator and the task card share the same wait glyphs', () =
   assert.match(glyphRule[1], /fill:\s*none/);
   assert.match(panelStyles, /\.conversation-task-status-icon \.conversation-status-glyph\s*\{[^}]*width:\s*17px/);
   assert.match(panelStyles, /\.conversation-running-indicator \.conversation-status-glyph\s*\{[^}]*width:\s*15px/);
+});
+
+test('the task card reads the live wait snapshot instead of waiting for the poll', () => {
+  // 用户报的问题：agent 提问后，侧边栏任务卡的黄灯要过几秒才出来（像被轮询拖了）。
+  // 任务卡原来的状态串来自任务拷贝（服务端列表 / 轮询回来的 workflowRun），而「在等人」
+  // 是后端实时快照说了算（同一份快照已经点了会话行的灯）——命中那张卡就该立刻变黄。
+  assert.match(modelSource, /export function isRunStateWaiting\(state\) \{\n\s+return state === RUN_STATE_WAITING_INPUT \|\| state === RUN_STATE_APPROVAL;/);
+  assert.match(modelSource, /export function isRunStateLive\(state\) \{\n\s+return state === RUN_STATE_RUNNING \|\| isRunStateWaiting\(state\);/);
+  assert.match(nodeSource, /const waitingTaskId = isRunStateWaiting\(runState\.state\) \? runState\.taskId : '';/);
+  assert.match(nodeSource, /liveWaitState=\{waitingTaskId && taskIdOf\(task\) === waitingTaskId \? runState\.state : ''\}/);
+  assert.match(cardsSource, /liveWaitState = '',/);
+  assert.match(cardsSource, /const status = normalizeTaskStatus\(liveWaitState \|\| workflowTaskDisplayStatus\(task\)\);/);
+  // 没命中快照的卡片照旧自己算状态（轮询那份仍然有效），只是压不过实时快照。
+  assert.match(cardsSource, /const pill = getTaskPillMeta\(status, stage\);/);
 });
 
 test('the amber wait indicator still yields to pin/trash on hover', () => {

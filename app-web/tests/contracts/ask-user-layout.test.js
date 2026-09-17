@@ -15,6 +15,7 @@ const streamHandlersSource = fs.readFileSync(
   'utf8',
 );
 const workflowRuntimeCss = fs.readFileSync(new URL('../../styles/workflow-runtime.css', import.meta.url), 'utf8');
+const approvalSurfaceCss = fs.readFileSync(new URL('../../src/shared/ui/agent-elements/approval-surface.css', import.meta.url), 'utf8');
 
 test('ask_user form is declarative and never mounted by the legacy overlay', () => {
   assert.match(timelineSource, /import \{ AskUserInlineForm \} from '\.\/AskUserInlineForm\.jsx';/);
@@ -70,7 +71,34 @@ test('ask_user answers keep one canonical shape: selection + optional note', () 
   // 「选了选项又写字」= 同一题一条答案带 note；core 只认这个形状。
   assert.match(draftModelSource, /kind: 'selection', values: \[\.\.\.values\], note: text/);
   assert.match(draftModelSource, /kind: 'freeform', text \} : null/);
-  assert.match(formSource, /placeholder=\{options\.length \? 'Extra details \(optional\)…' : 'Enter your answer…'\}/);
+  // 提示语说人话：只选、只写、又选又写三种都能交（选择 + 可选 note / 纯 freeform）。
+  assert.match(formSource, /'Add a note, or type your own answer \(optional\)…'/);
+  assert.match(formSource, /: 'Type your answer…'/);
+  assert.doesNotMatch(formSource, /Extra details|Enter your answer/);
+});
+
+test('the question pager looks and reads like a real control', () => {
+  // 「切到下一个问题太隐晦」：以前是 18px 无边框的 ‹ › 字形 + 暗灰的 “1 / 4”。
+  assert.match(
+    formSource,
+    /<span className="aicss-step-count" role="status">Question \{activeStep \+ 1\} of \{questions\.length\}<\/span>/,
+  );
+  assert.match(formSource, /<StepChevron direction="previous" \/>/);
+  assert.match(formSource, /<StepChevron direction="next" \/>/);
+  assert.match(formSource, /aria-label="Previous question"/);
+  assert.match(formSource, /aria-label="Next question"/);
+  // 悬停有说明，和卡片里其它图标按钮一样（Copy / ReRun）。
+  assert.match(formSource, /<PortalTooltip text="Previous question" position="above">/);
+  assert.match(formSource, /<PortalTooltip text="Next question" position="above">/);
+  // 有底、有描边的 26px 圆按钮；旧样式（18px、透明底、无边框）正是不显眼的原因。
+  // 底色/描边与卡片里其它次要按钮同一套 token，别做成「再暗一档」的幽灵控件。
+  assert.match(
+    approvalSurfaceCss,
+    /\.aicss-approval \.aicss-step-arrow \{[\s\S]*?width: 26px;[\s\S]*?height: 26px;[\s\S]*?border: 1px solid rgba\(138, 166, 209, 0\.42\);[\s\S]*?border-radius: 999px;[\s\S]*?background: #1a2133;[\s\S]*?color: #daddef;/,
+  );
+  assert.doesNotMatch(approvalSurfaceCss, /\.aicss-approval \.aicss-step-arrow \{[\s\S]{0,200}?background: transparent;/);
+  assert.match(approvalSurfaceCss, /\.aicss-approval \.aicss-step-arrow:hover:not\(:disabled\)/);
+  assert.match(approvalSurfaceCss, /\.aicss-approval \.aicss-step-arrow:disabled \{ opacity: \.38;/);
 });
 
 test('ask_user focus cannot programmatically scroll the workflow shell off-screen', () => {

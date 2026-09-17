@@ -6,9 +6,11 @@ import {
   RUN_STATE_APPROVAL,
   RUN_STATE_RUNNING,
   RUN_STATE_WAITING_INPUT,
+  isRunStateWaiting,
+  taskIdOf,
 } from '../model/conversation-run-state.js';
 import { useConversationRunState } from '../hooks/useConversationRunState.js';
-import { nextExtraVisible } from '../model/list-preview.js';
+import { PREVIEW_PAGE_SIZE, nextExtraVisible } from '../model/list-preview.js';
 
 // 两种「等用户动手」的状态灯：颜色由 `.conversation-running-indicator.waiting-input` /
 // `.awaiting-approval` 给，图标与任务卡共用同一份 glyph（唯一来源）。
@@ -101,7 +103,7 @@ export function ConversationNode({
   active,
   nodeRef,
   terminalStatus = '',
-  taskPreviewLimit = 3,
+  taskPreviewLimit = PREVIEW_PAGE_SIZE,
   onSelectConversation,
   showTaskRecords = true,
   onRequestDeleteConversation,
@@ -113,7 +115,7 @@ export function ConversationNode({
 }) {
   const tasks = conversation.tasks || [];
   const [extraVisible, setExtraVisible] = React.useState(0);
-  const visibleLimit = Math.max(1, Number(taskPreviewLimit) || 3);
+  const visibleLimit = Math.max(1, Number(taskPreviewLimit) || PREVIEW_PAGE_SIZE);
   const visibleTasks = tasks.slice(-(visibleLimit + extraVisible)).reverse();
   const hiddenCount = Math.max(0, tasks.length - visibleTasks.length);
   const showTaskList = showTaskRecords && conversation.expanded && tasks.length > 0;
@@ -125,6 +127,9 @@ export function ConversationNode({
   });
   const waitIndicator = WAIT_INDICATORS[runState.state];
   const WaitGlyph = waitIndicator?.Glyph;
+  // 任务卡的状态串来自任务拷贝（可能还在轮询路上），而「在等人」实时快照说了算：
+  // 同一份快照命中的那张卡立刻换黄灯图标，不必等下一次轮询把 workflowRun 追上来。
+  const waitingTaskId = isRunStateWaiting(runState.state) ? runState.taskId : '';
   const isPinned = Boolean(conversation.pinned);
 
   const [dropPosition, setDropPosition] = React.useState(null);
@@ -218,7 +223,15 @@ export function ConversationNode({
 
       {showTaskList && (
         <div className="conversation-task-list">
-          {visibleTasks.map((task) => <TaskRecordCompact key={task.taskId || task.id} task={task} onOpenReport={onOpenTaskReport} onRetry={onRetryTask} />)}
+          {visibleTasks.map((task) => (
+            <TaskRecordCompact
+              key={task.taskId || task.id}
+              task={task}
+              liveWaitState={waitingTaskId && taskIdOf(task) === waitingTaskId ? runState.state : ''}
+              onOpenReport={onOpenTaskReport}
+              onRetry={onRetryTask}
+            />
+          ))}
           {(hiddenCount > 0 || extraVisible > 0) && (
             <button
               type="button"

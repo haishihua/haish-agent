@@ -1,4 +1,5 @@
 import { ApprovalSurface } from '../../../shared/ui/agent-elements/ApprovalSurface.jsx';
+import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import React from 'react';
 import { approvalStore } from '../../approvals/model/approval-store.js';
 import { selectPendingUserInput } from '../model/pending-user-input.js';
@@ -11,6 +12,23 @@ import {
 } from '../model/ask-user-draft.js';
 async function submitAnswers(requestId, answers) {
   await window.haish.resolveApproval('user_input', requestId, { answers });
+}
+
+// 翻页箭头。字形 ‹ › 在深色底上又细又小（18px、无边框），是「切到下一个问题太隐晦」的
+// 来源；这里换成和卡片其他图标同粗细的描边 chevron。
+function StepChevron({ direction }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d={direction === 'previous' ? 'M10 3.5 5.5 8l4.5 4.5' : 'M6 3.5 10.5 8 6 12.5'}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 function usePendingInputs(active) {
@@ -130,9 +148,11 @@ export function AskUserInlineForm({
                   className="haish-user-input-textarea"
                   value={draft.text}
                   onChange={(event) => setFreeform(question.id, event.target.value)}
-                  placeholder={options.length ? 'Extra details (optional)…' : 'Enter your answer…'}
+                  placeholder={options.length
+                    ? 'Add a note, or type your own answer (optional)…'
+                    : 'Type your answer…'}
                   aria-label={options.length
-                    ? `Extra details: ${question.question}`
+                    ? `Note or your own answer: ${question.question}`
                     : `Your answer: ${question.question}`}
                   rows={2}
                 />
@@ -143,9 +163,17 @@ export function AskUserInlineForm({
         <div className="haish-approval-actions">
           {questions.length > 1 ? (
             <div className="aicss-step-nav">
-              <button type="button" className="aicss-step-arrow" aria-label="Previous question" disabled={submitting || activeStep === 0} onClick={() => setStep(activeStep - 1)}>‹</button>
-              <span className="aicss-step-count" role="status">{activeStep + 1} / {questions.length}</span>
-              <button type="button" className="aicss-step-arrow" aria-label="Next question" disabled={submitting || activeStep === questions.length - 1} onClick={() => setStep(activeStep + 1)}>›</button>
+              <PortalTooltip text="Previous question" position="above">
+                <button type="button" className="aicss-step-arrow" aria-label="Previous question" disabled={submitting || activeStep === 0} onClick={() => setStep(activeStep - 1)}>
+                  <StepChevron direction="previous" />
+                </button>
+              </PortalTooltip>
+              <span className="aicss-step-count" role="status">Question {activeStep + 1} of {questions.length}</span>
+              <PortalTooltip text="Next question" position="above">
+                <button type="button" className="aicss-step-arrow" aria-label="Next question" disabled={submitting || activeStep === questions.length - 1} onClick={() => setStep(activeStep + 1)}>
+                  <StepChevron direction="next" />
+                </button>
+              </PortalTooltip>
             </div>
           ) : null}
           {submitting ? (

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ask user card</title>
+<style>
+  body { margin: 0; padding: 24px; background: #0f1723; }
+  .app-shell { font: 14px system-ui; color: #dce3f4; }
+  #root { width: min(640px, 94vw); }
+  #checks { margin: 24px 0 0; font-size: 11px; line-height: 1.7; white-space: pre-wrap; color: #9fd8a4; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<h1>Ask user card</h1>
+<p>生产 AskUserInlineForm：提问卡的提示语与题目翻页。占位提示要说清「可以加备注，也可以自己写答案」；翻页箭头必须是有底、有描边的可见按钮，旁边写明 Question N of M，悬停有说明。</p>
+<div id="root"></div>
+<pre id="checks" role="status">Running checks…</pre>
+<script type="module" src="./ask-user-card.jsx"></script>
+</html>

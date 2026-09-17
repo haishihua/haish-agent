@@ -11,6 +11,7 @@ import {
 } from '@xyflow/react';
 import { WorkflowApprovalInline } from '../../approvals/components/ApprovalOverlay.jsx';
 import { buildChatTimeline } from '../../chat/model/chat-timeline.js';
+import { workflowNodeAgentName } from '../../chat/model/assistant-name.js';
 import { normalizeTaskStatus, taskFirstStreamTimestamp } from '../../tasks/model/task-runtime.js';
 import { workflowApprovalInput } from '../model/workflow-approval-markdown.js';
 import {
@@ -228,7 +229,7 @@ function timestampMs(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function NodeConversation({ node, task, attempt, result, status, running, showApproval, onRetry }) {
+function NodeConversation({ node, task, attempt, result, status, running, showApproval, onRetry, agentName = '' }) {
   const scopedTask = React.useMemo(() => attemptTask(task, attempt, result), [attempt, result, task]);
   const timelineStatus = running ? 'running' : normalizeTaskStatus(result?.status || status);
   const timeline = React.useMemo(
@@ -263,6 +264,8 @@ function NodeConversation({ node, task, attempt, result, status, running, showAp
     taskId: task?.taskId || '',
     conversationId: task?.conversationId || '',
     role: 'agent',
+    // 回复气泡署名节点配置里的 agent；非 agent 节点没名字，气泡显示 "Assistant"。
+    agentName,
     text: running ? '' : resultText,
     traceTimeline: timelineItems,
     traceLatestTodos: timeline?.latestTodos || null,
@@ -271,7 +274,7 @@ function NodeConversation({ node, task, attempt, result, status, running, showAp
     createdAt,
     completedAt,
     firstTokenAt: taskFirstStreamTimestamp(scopedTask),
-  }), [attempt?.id, completedAt, createdAt, node.id, resultText, running, scopedTask, task?.conversationId, task?.taskId, timeline?.latestTodos, timelineItems, timelineStatus]);
+  }), [agentName, attempt?.id, completedAt, createdAt, node.id, resultText, running, scopedTask, task?.conversationId, task?.taskId, timeline?.latestTodos, timelineItems, timelineStatus]);
   const showAssistant = node.type !== 'human_approval'
     ? running || Boolean(resultText) || timelineItems.length > 0
     : Boolean(resultText) || timelineItems.length > 0;
@@ -308,7 +311,7 @@ function NodeConversation({ node, task, attempt, result, status, running, showAp
   );
 }
 
-function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, onRetry }) {
+function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, onRetry, agentName = '' }) {
   const detailBodyRef = React.useRef(null);
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const attempts = React.useMemo(() => nodeAttempts(task, node.id), [node.id, task]);
@@ -346,6 +349,7 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
           running={isLatestAttempt && (status === 'running' || status === 'waiting_input' || status === 'approval')}
           showApproval={isLatestAttempt}
           onRetry={isLatestAttempt && canRetry ? retryLatest : null}
+          agentName={agentName}
         />
       </section>
     );
@@ -589,6 +593,10 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
   }), [latestTransition, layout, nodeById, statusById, traversedEdgeKeys, workflow?.edges]);
   const selectedNodeCandidate = selectedNodeId ? nodeById.get(selectedNodeId) || null : null;
   const selectedNode = canOpenNodeDetail(selectedNodeCandidate) ? selectedNodeCandidate : null;
+  // 节点详情的回复按节点配置的 agent 署名（catalog 与节点图标同一份）。
+  const selectedNodeAgentName = selectedNode
+    ? workflowNodeAgentName(selectedNode, agentOptions)
+    : '';
   const selectedStatus = selectedNode
     ? nodeStatus(selectedNode, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)
     : 'pending';
@@ -707,6 +715,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
           onResize={resizeDetail}
           onResizeBy={resizeDetailBy}
           onRetry={task ? onRetry : null}
+          agentName={selectedNodeAgentName}
         />
       ) : null}
     </div>

@@ -15,7 +15,7 @@
 // 等人快照是唯一例外：它按 conversation_id / task_id 匹配，命中且该任务没有收工 =>
 // 在等人。任务未知（列表里还没有这份任务）时信快照——后端说 agent 正等人，那就是在等人。
 
-import { isTaskLive } from './conversation-status.js';
+import { isTaskLive, isTaskSettled } from './conversation-status.js';
 
 export const RUN_STATE_IDLE = 'idle';
 export const RUN_STATE_RUNNING = 'running';
@@ -28,29 +28,28 @@ export function taskIdOf(task) {
   return String(task?.taskId || task?.task_id || task?.id || '');
 }
 
+/** 这个状态是不是「在等用户动手」（黄灯）。 */
+export function isRunStateWaiting(state) {
+  return state === RUN_STATE_WAITING_INPUT || state === RUN_STATE_APPROVAL;
+}
+
 /** 灯要亮着吗（在跑或在等人都算「还没结束」）。 */
 export function isRunStateLive(state) {
-  return state === RUN_STATE_RUNNING
-    || state === RUN_STATE_WAITING_INPUT
-    || state === RUN_STATE_APPROVAL;
+  return state === RUN_STATE_RUNNING || isRunStateWaiting(state);
 }
 
 /**
- * 全部任务拷贝里已经出现终态标记的 taskId 集合。
+ * 全部任务拷贝里已经落地的 taskId 集合。
  * 面板渲染同一轮对话时会同时拿到运行时拷贝和服务端列表拷贝，任何一份说「收工了」，
  * 这一轮就算收工——否则过期的本地拷贝能让气泡一直转下去。
+ * 落地判据就是 `isTaskSettled` 这一份，不在这里再列一遍状态串。
  */
 export function settledTaskIds(taskCopies) {
   const settled = new Set();
   for (const task of Array.isArray(taskCopies) ? taskCopies : []) {
-    if (!task) continue;
-    const status = String(task.status || '').toLowerCase();
-    const terminal = task.completedAt
-      || task.completed_at
-      || task.serverFinished === true
-      || ['done', 'completed', 'success', 'failed', 'error', 'cancelled', 'canceled', 'aborted'].includes(status);
     const taskId = taskIdOf(task);
-    if (terminal && taskId) settled.add(taskId);
+    if (!taskId) continue;
+    if (isTaskSettled(task)) settled.add(taskId);
   }
   return settled;
 }

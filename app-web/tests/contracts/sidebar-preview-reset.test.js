@@ -8,7 +8,7 @@ const conversationsPanelSource = read('../../src/features/conversations/componen
 const appShellSource = read('../../src/features/app/AppShell.jsx');
 const listPreviewSource = read('../../src/features/conversations/model/list-preview.js');
 
-test('a folded-away conversation list reopens at the default three-row preview', () => {
+test('a folded-away conversation list reopens at the default five-row preview', () => {
   // Reported flow: expand a project with "Show more", click the project icon to
   // fold the list, click it again — the previously expanded list came back.
   // The preview expansion is view state: hiding the list must drop it.

@@ -778,7 +778,14 @@ export function ChatAgentTimeline({
 
 export function ChatTimelineCollapsed({ onExpand, label = 'Trace', expanded = false }) {
   return (
-    <button type="button" className="chat-timeline-collapsed" onClick={onExpand}>
+    <button
+      type="button"
+      className="chat-timeline-collapsed"
+      onClick={onExpand}
+      // 数字位可以为空（算不出时长就不编一个数），但按钮得有个名字：箭头图标是
+      // aria-hidden 的，没名字时读屏只能听到「按钮」。
+      aria-label={label || (expanded ? 'Hide steps' : 'Show steps')}
+    >
       <ChatTimelineChevron open={expanded} />
       <span className="chat-timeline-collapsed-text">{label}</span>
     </button>

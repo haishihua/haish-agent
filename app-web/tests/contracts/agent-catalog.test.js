@@ -6,6 +6,8 @@ import {
   DEFAULT_AGENT_TOOL_GROUPS,
   agentCatalogFromProfiles,
   agentCatalogFromSettings,
+  agentDisplayNameForId,
+  agentIconNameForAgentId,
   extractAgentSkillInvocation,
   groupIdsForAgentTools,
   matchingAgentSkills,
@@ -278,4 +280,28 @@ test('agent tool catalog exposes browser_use and ask_user without legacy browser
   ]);
   const exposedTools = DEFAULT_AGENT_TOOL_GROUPS.flatMap((group) => group.tools || []);
   assert.equal(exposedTools.some((tool) => legacyBrowserTools.has(tool)), false);
+});
+
+test('icon and bubble-name lookups share one id → catalog lookup', () => {
+  // 选单、图标、气泡名字必须读同一份 catalog（同一个 id 只能有一个答案）。
+  const options = [
+    { id: 'preset.general', label: 'Task Assistant' },
+    { id: 'custom.agent-code', label: 'Code Agent', custom: true },
+  ];
+
+  assert.equal(agentIconNameForAgentId('preset.general', options), 'sparkles');
+  assert.equal(agentIconNameForAgentId('custom.agent-code', options), 'box');
+  // 已下线的 custom agent 不在 catalog 里，图标仍按 custom 前缀给。
+  assert.equal(agentIconNameForAgentId('custom.agent-gone', options), 'box');
+  assert.equal(agentIconNameForAgentId('preset.gone', options), 'sparkles');
+  assert.equal(agentIconNameForAgentId('', options), 'sparkles');
+
+  assert.equal(agentDisplayNameForId('  preset.general  ', options), 'Task Assistant');
+  assert.equal(agentDisplayNameForId('custom.agent-code', options), 'Code Agent');
+  // 内部 id 不能当名字漏到界面上。
+  assert.equal(agentDisplayNameForId('custom.agent-gone', options), '');
+  assert.equal(agentDisplayNameForId('preset.general', null), '');
+  assert.equal(agentDisplayNameForId(undefined, options), '');
+  // 名字取 catalog 的 label 并 trim 两端空白。
+  assert.equal(agentDisplayNameForId('custom.agent-padded', [{ id: 'custom.agent-padded', label: '  Padded  ' }]), 'Padded');
 });

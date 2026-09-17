@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   isTaskLive,
+  isTaskSettled,
+  isTerminalStatus,
   workflowTaskDisplayStatus,
 } from '../../src/features/conversations/model/conversation-status.js';
 
@@ -15,9 +17,15 @@ const {
   buildWorkspaceStateFromProjects,
   normalizeWorkspaceOrdering,
   projectWorkflowTasks,
+  taskOrderTimestamp,
   withDefaultExpansion,
 } = await import('../../src/features/conversations/model/workspace-state.js');
-const { taskSummaryToRuntimeTask } = await import('../../src/features/tasks/model/task-runtime.js');
+const {
+  isTerminalTaskStatus,
+  normalizeTaskStatus,
+  taskSummaryToRuntimeTask,
+} = await import('../../src/features/tasks/model/task-runtime.js');
+const { getTaskPillMeta } = await import('../../src/features/tasks/model/task-pill.js');
 const projectNodeSource = fs.readFileSync(new URL('../../src/features/conversations/components/ProjectNode.jsx', import.meta.url), 'utf8');
 const taskCardsSource = fs.readFileSync(new URL('../../src/features/conversations/components/ConversationTaskCards.jsx', import.meta.url), 'utf8');
 const appShellSource = fs.readFileSync(new URL('../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
@@ -133,10 +141,13 @@ test('conversation order is pinned first and keeps latest completed work above i
   ]);
 });
 
-test('workflow projects reveal a three-task preview until the user collapses them', () => {
+test('workflow projects reveal a five-task preview until the user collapses them', () => {
   assert.equal(withDefaultExpansion({ executionMode: 'bot', conversations: [] }).expanded, true);
   assert.equal(withDefaultExpansion({ executionMode: 'bot', userExpanded: false, conversations: [] }).expanded, false);
-  assert.match(appShellSource, /taskPreviewLimit=\{3\}/);
+  // 预览条数只有一份来源（list-preview.js 的 PREVIEW_PAGE_SIZE = 5）：
+  // AppShell 不再自己传一份数字，组件默认值统一引用这个常量。
+  assert.match(projectNodeSource, /taskPreviewLimit = PREVIEW_PAGE_SIZE/);
+  assert.match(projectNodeSource, /conversationPreviewLimit = PREVIEW_PAGE_SIZE/);
   assert.match(projectNodeSource, /allWorkflowTasks\.slice\(0, taskLimit \+ extraVisible\.bot\)/);
   assert.match(projectNodeSource, /allConversations\.slice\(0, conversationLimit \+ extraVisible\.chat\)/);
   assert.match(projectNodeSource, /hiddenCount > 0 \? 'Show more' : 'Show less'/);
@@ -218,6 +229,67 @@ test('workflow wait states do not look like active agent execution', () => {
   assert.equal(isTaskLive(inputTask), true);
   assert.equal(isTaskLive({ status: 'running', completedAt: '2026-01-01' }), false);
   assert.equal(isTaskLive({ status: 'cancelled' }), false);
+});
+
+test('a landed task beats a stale workflow snapshot, aliases included', () => {
+  // 早返回的终态清单必须认得服务端历史别名，否则「任务已经落地、workflowRun 还停在
+  // 等待」的旧任务卡会显示成「还在等人」。
+  assert.equal(isTerminalStatus('completed'), true);
+  assert.equal(isTerminalStatus('aborted'), true);
+  assert.equal(isTerminalStatus('success'), true);
+  assert.equal(isTerminalStatus('ERROR'), true);
+  assert.equal(isTerminalStatus('running'), false);
+  assert.equal(isTerminalStatus('waiting_input'), false);
+  assert.equal(isTerminalStatus(undefined), false);
+  assert.equal(workflowTaskDisplayStatus({ status: 'completed', workflowRun: { status: 'waiting_input' } }), 'completed');
+  assert.equal(workflowTaskDisplayStatus({ status: 'aborted', workflowRun: { status: 'approval' } }), 'aborted');
+});
+
+test('one landed judge feeds the lamps and the sidebar ordering anchor', () => {
+  // 同一份判据（conversation-status 的 isTaskSettled）以前在 workspace-state 里另抄了一份
+  // 更窄的清单：'success' / 'error' / 'canceled' 这些历史别名在那边漏了，已收工的任务
+  // 会被当成「还在跑」，侧边栏排序锚点跟着乱跳。
+  const running = { taskId: 'task-1', status: 'running', createdAt: 1000, updatedAt: 2000 };
+  assert.equal(isTaskSettled(running), false);
+  // 未收工：按创建时间锚定（流式输出不会把行顶来顶去）。
+  assert.equal(taskOrderTimestamp(running), 1000);
+  for (const status of ['success', 'error', 'canceled', 'completed', 'aborted']) {
+    assert.equal(isTaskSettled({ ...running, status }), true, `${status} must count as landed`);
+    assert.equal(taskOrderTimestamp({ ...running, status }), 2000, `${status} must rank by when it settled`);
+  }
+  // 落地标记压过 running：不能因为状态串还挂着 running 就当成未收工。
+  assert.equal(isTaskSettled({ ...running, completedAt: 1 }), true);
+  assert.equal(taskOrderTimestamp({ ...running, completedAt: 1 }), 2000);
+});
+
+test('every raw terminal alias normalizes to one of the canonical statuses', () => {
+  // 两张词表各司其职：原始串判「落地了没」（conversation-status 的 TERMINAL_STATUSES）、
+  // 归一后判终态（task-runtime 的 isTerminalTaskStatus）。但别名必须对得上——少归一个，
+  // 「任务卡写着 PENDING、行却按已收工排序」就会当场出现（success / error / canceled
+  // 以前就漏在归一表外面：卡片是 PENDING，分页和灯却已经把它当收工）。
+  for (const alias of ['completed', 'aborted', 'canceled', 'success', 'error']) {
+    assert.equal(isTerminalStatus(alias), true, `${alias} is a raw terminal alias`);
+    const canonical = normalizeTaskStatus(alias);
+    assert.ok(['done', 'failed', 'cancelled'].includes(canonical), `${alias} -> ${canonical}`);
+    assert.equal(isTerminalTaskStatus(canonical), true, `${alias} must stay terminal after normalizing`);
+  }
+  // 中间态和规范串自己不许被改写成别的东西。
+  assert.equal(normalizeTaskStatus('running'), 'running');
+  assert.equal(normalizeTaskStatus('queued'), 'queued');
+  assert.equal(normalizeTaskStatus('waiting_input'), 'waiting_input');
+  assert.equal(normalizeTaskStatus('approval'), 'approval');
+  assert.equal(normalizeTaskStatus('done'), 'done');
+  assert.equal(normalizeTaskStatus('failed'), 'failed');
+  assert.equal(normalizeTaskStatus('cancelled'), 'cancelled');
+  assert.equal(normalizeTaskStatus(''), 'queued');
+  // 卡片上那块牌子就是这套归一的用户可见出口：别名漏归一时，牌子上写的是兜底的
+  // “PENDING”，而同一张卡片已经被当成收工去排序了。
+  assert.equal(getTaskPillMeta('success').text, 'COMPLETED');
+  assert.equal(getTaskPillMeta('error').text, 'FAILED');
+  assert.equal(getTaskPillMeta('canceled').text, 'CANCELLED');
+  assert.equal(getTaskPillMeta('completed').text, 'COMPLETED');
+  assert.equal(getTaskPillMeta('aborted').text, 'CANCELLED');
+  assert.equal(getTaskPillMeta('running', 'check').text, 'REVIEW');
 });
 
 test('failed task creation cannot leave a restorable local-only task', () => {

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conversation run lamp</title>
+<style>
+  body { margin: 0; padding: 24px; background: #0f1723; }
+  .app-shell { font: 14px system-ui; color: #dce3f4; }
+  #checks { margin: 20px 0 0; font-size: 11px; line-height: 1.7; white-space: pre-wrap; color: #9fd8a4; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<h1>Conversation run lamp</h1>
+<script>
+  // 夹具自己的失误也得看得见：React 渲染报错时行会整块消失，
+  // 而「熄灯」的断言正是「查不到指示灯」——所以错误必须被记下来。
+  window.__pageErrors = [];
+  window.addEventListener('error', (event) => { window.__pageErrors.push(String(event.message || event.error)); });
+  window.addEventListener('unhandledrejection', (event) => { window.__pageErrors.push('rejection: ' + String(event.reason)); });
+</script>
+<p>生产 ConversationNode + 生产会话状态判据 + 生产 approvalStore：会话行状态灯必须只从「任务是否落地 + 后端实时等人快照」得出（熄灯 / 蓝灯 / 黄灯）。</p>
+<div id="root"></div>
+<pre id="checks" role="status">Running checks…</pre>
+<script type="module" src="./conversation-run-lamp.jsx"></script>
+</html>

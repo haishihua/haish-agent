@@ -375,6 +375,33 @@ export function createConversationHandlers(ctx) {
     });
   }
 
+  // 项目改名跟会话改名同一条路子：先落服务端，再把落定的名字写回工作区；
+  // 失败直接抛给对话框显示，本地名字保持原样（不做乐观改名再回滚）。
+  async function handleRenameProject(projectId, name) {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return;
+    const response = await apiFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
+      method: 'PATCH',
+      headers: buildApiHeaders(),
+      body: JSON.stringify({ name: trimmed }),
+    });
+    if (!response.ok) {
+      throw new Error(`project rename failed: ${response.status}`);
+    }
+    const summary = await response.json();
+    const nextName = String(summary?.name || trimmed);
+    setWorkspaceState((state) => ({
+      ...state,
+      projects: state.projects.map((project) => (
+        project.id === projectId
+          // workspaceLabel 是名字的第一顺位回退（草稿会话、目录标签都用它），跟着一起改，
+          // 只有系统项目（Default project）没有目录标签，保持 null。
+          ? { ...project, name: nextName, workspaceLabel: project.type === 'system' ? null : nextName }
+          : project
+      )),
+    }));
+  }
+
   function handleReorderProjects(sourceId, targetId, position) {
     setWorkspaceState((state) => {
       const previousState = state;
@@ -818,6 +845,7 @@ export function createConversationHandlers(ctx) {
     handlePinConversation,
     handleReorderConversations,
     handlePinProject,
+    handleRenameProject,
     handleReorderProjects,
     createConversationInProject,
     handleAddConversation,

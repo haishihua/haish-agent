@@ -1,4 +1,4 @@
-import { isTaskLive } from './conversation-status.js';
+import { isTaskLive, isTaskSettled } from './conversation-status.js';
 import { stripChatImageAugmentation } from '../../chat/model/chat-text.js';
 import { API_BASE } from '../../../shared/api/base.js';
 import {
@@ -337,14 +337,6 @@ function conversationUpdatedTimestamp(conversation) {
   );
 }
 
-const SETTLED_TASK_STATUSES = new Set(['done', 'completed', 'failed', 'cancelled', 'aborted']);
-
-function isSettledTask(task) {
-  if (!task) return true;
-  if (task.completedAt || task.completed_at || task.serverFinished === true) return true;
-  return SETTLED_TASK_STATUSES.has(String(task.status || '').toLowerCase());
-}
-
 export function taskOrderTimestamp(task) {
   if (!task) return 0;
   // A task that has not settled yet (running / queued / waiting for input) has
@@ -355,7 +347,9 @@ export function taskOrderTimestamp(task) {
   // stable anchor, so a run moves its conversation exactly once — when the task
   // is created. A settled task ranks by when it settled instead, so finished
   // work still floats above untouched rows and then stays put.
-  return isSettledTask(task) ? taskUpdatedTimestamp(task) : taskCreatedTimestamp(task);
+  // 落地判据走共享的那一份（conversation-status.js），别名不会再在这里漏；
+  // 未落地（running / queued / 在等人）的任务按创建时间锚定。
+  return isTaskSettled(task) ? taskUpdatedTimestamp(task) : taskCreatedTimestamp(task);
 }
 
 export function conversationOrderTimestamp(conversation) {

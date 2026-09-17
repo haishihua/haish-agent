@@ -1,4 +1,5 @@
 import React from 'react';
+import { MessageCircleQuestion } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 
 export function ConversationAction({ label, icon, onClick, disabled = false, tooltipPosition = 'above' }) {
@@ -36,12 +37,11 @@ export function ApprovalGlyph() {
   );
 }
 
+// 「等回答」用 lucide 的 message-circle-question（对话气泡 + 问号）：17px 下问号仍看得清，
+// 一眼就是「有个问题在等你」，比原来的空白气泡多一层语义；描边/尺寸仍走共用的
+// .conversation-status-glyph（任务卡 17px、会话行 15px），不再手写一份路径。
 export function WaitingInputGlyph() {
-  return (
-    <svg className="conversation-status-glyph" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-    </svg>
-  );
+  return <MessageCircleQuestion className="conversation-status-glyph" aria-hidden="true" />;
 }
 
 export function TaskStatusIcon({ statusClass }) {

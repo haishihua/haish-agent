@@ -180,8 +180,11 @@ test('runtime details use executed node data and real workflow transitions', () 
   assert.doesNotMatch(flowNodeSource, /WORKFLOW_RUNTIME_STATUS_ICON|workflow-run-node-status/);
   assert.match(flowNodeSource, /data.runtimeStatusLabel \|\| runtimeStatus/);
   assert.match(flowNodeSource, /NODE_TYPE_LABEL\[nodeType\]/);
-  assert.match(chatMessageSource, /label=\{elapsed \|\| '0s'\}/);
+  // 折叠按钮上的数字只能是量出来的时长：算不出来就什么都不显示，既不退回 'Trace'
+  // 也不编一个 '0s'（用户截图里那个「› 0s」就是这么来的）。
+  assert.match(chatMessageSource, /label=\{elapsed\}/);
   assert.doesNotMatch(chatMessageSource, /label=\{elapsed \|\| 'Trace'\}/);
+  assert.doesNotMatch(chatMessageSource, /'0s'/);
 });
 
 test('completed approval nodes preserve their explicit decision', () => {

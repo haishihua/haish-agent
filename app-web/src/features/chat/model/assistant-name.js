@@ -30,3 +30,14 @@ function conversationAgentName(conversation, agentOptions) {
 export function assistantNameForTask(task, conversation, agentOptions = []) {
   return taskAgentName(task, agentOptions) || conversationAgentName(conversation, agentOptions);
 }
+
+/**
+ * 工作流节点详情里这条回复该署谁的名：只有 agent 节点在配置里绑了 agent_id
+ * （llm / tool / condition / human_approval 在 core 里都没有 agent），所以其余节点
+ * 返回 ''，气泡退回 "Assistant"。名字和节点图标一样只从 catalog 取——catalog 里
+ * 查不到的 id（下线 / 删掉的 agent）不给名字，绝不把内部 id 漏到界面上。
+ */
+export function workflowNodeAgentName(node, agentOptions = []) {
+  if (node?.type !== 'agent') return '';
+  return agentDisplayNameForId(node.agent_id, agentOptions);
+}

@@ -15,10 +15,13 @@ export function TaskRecordCompact({
   onOpenReport,
   onRetry,
   showStatusIcon = true,
+  liveWaitState = '',
   actions = null,
 }) {
   const stage = task.stage || 'assigned';
-  const status = normalizeTaskStatus(workflowTaskDisplayStatus(task));
+  // 「在等人」由实时快照给出（ConversationNode 只喂给快照命中的那张卡）：任务拷贝里的
+  // workflowRun.status 要等下一次轮询才追上来，图标会晚几秒才变黄。
+  const status = normalizeTaskStatus(liveWaitState || workflowTaskDisplayStatus(task));
   const pill = getTaskPillMeta(status, stage);
   const hasReport = (status === 'done' && !!String(task.answerText || '').trim())
     || (task.executionMode === 'bot' && !!task.workflowRun)
