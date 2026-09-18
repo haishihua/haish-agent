@@ -10,6 +10,7 @@ import {
   groupIdsForAgentTools,
 } from '../../agents/model/agent-settings.js';
 import { FieldRow, SettingsMenuSelect, SettingsToggleRow } from './SettingsPrimitives.jsx';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 
 export function AgentConfigEditor({ selectedId, settings, onSettingsChange, readOnly = false }) {
   const normalized = normalizeAgentSettings(settings);
@@ -151,7 +152,7 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
                 <label className="settings-check-row">
                   <Checkbox checked={allowedMcpServers.has(server.name)} onCheckedChange={() => toggleMcpServer(server.name)} disabled={readOnly} />
                   <span className="settings-check-label">{server.name} · all tools</span>
-                  {server.error && <span className="settings-inline-error" role="status">{server.error}</span>}
+                  {server.error && <ErrorState variant="inline" detail={server.error} />}
                 </label>
                 {(server.tools || []).map((tool) => (
                   <label className="settings-check-row" key={`${server.name}.${tool.name}`}>

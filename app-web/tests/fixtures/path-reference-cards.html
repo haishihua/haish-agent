@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Path reference cards</title>
+<style>
+  body { margin: 0; padding: 24px; background: #0f1723; }
+  .app-shell { font: 14px system-ui; color: #dce3f4; }
+  #root { width: min(860px, 96vw); }
+  #checks { margin: 24px 0 0; font-size: 11px; line-height: 1.7; white-space: pre-wrap; color: #9fd8a4; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<h1>Path reference cards</h1>
+<p>生产 ChatMessageRow：分支名 / 版本号 / 中文短语不再变成 FOLDER 卡片、气泡正文一个字不丢；真路径（绝对路径、带后缀的相对路径）仍然出卡片。</p>
+<div id="root"></div>
+<pre id="checks" role="status">Running checks…</pre>
+<script type="module" src="./path-reference-cards.jsx"></script>
+</html>

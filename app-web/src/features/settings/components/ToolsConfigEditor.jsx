@@ -5,6 +5,7 @@ import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import { DEFAULT_MCP_CONFIG_JSON, MCP_CONFIG_TEMPLATE_JSON, WEB_SEARCH_PROVIDER_OPTIONS } from '../model/settings-records.js';
 import { parseJsonSafe, isEmptyMcpConfigDraft, normalizeWebSearchDraft } from '../model/settings-payload.js';
 import { WEB_SEARCH_BRAND_LOGOS } from './settings-ui.jsx';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { SecretKeyField, FieldRow, SettingsRow, SettingsSearch, SettingsSheet, SettingsDeleteDialog, SettingsToggleRow } from './SettingsPrimitives.jsx';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import { Item, ItemGroup } from '../../../shared/ui/settings-elements/ui/item.tsx';
@@ -45,7 +46,7 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
         <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('validate', validate)}>{busy === 'validate' ? 'Validating…' : 'Validate'}</Button>
         <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', async () => { await validate(); const next = patchedRecords({ mcp_json: JSON.stringify(parsed.value, null, 2), mcp_error: '', mcp_status: '' }); onRecordsChange(next); if (await onSaveTools?.(next, 'MCP config saved and reloaded') !== false) update({ mcp_status: 'Saved and MCP reloaded.' }); })}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>
       </div></div><Textarea className="mcp-json" aria-label="MCP configuration JSON" value={json} disabled={Boolean(busy)} onChange={event => { setError(''); update({ mcp_json: event.target.value, mcp_error: '', mcp_status: '' }); }} spellCheck={false} wrap="off" /></div>
-      {(error || current.mcp_error) && <p className="settings-inline-error" role="alert">{error || current.mcp_error}</p>}{!error && current.mcp_status && <p className="settings-inline-success" role="status">{current.mcp_status}</p>}
+      {(error || current.mcp_error) && <ErrorState variant="inline" detail={error || current.mcp_error} />}{!error && current.mcp_status && <p className="settings-inline-success" role="status">{current.mcp_status}</p>}
     </div></div>;
   }
 
@@ -79,7 +80,7 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
     <SettingsSheet open={Boolean(editing)} title={selectedSkill?.name || provider?.label || 'Details'} onClose={() => { if (!busy) setEditing(null); }}><div className="settings-editor-scroll">
       {selectedSkill && <div className="skill-details"><p>{selectedSkill.description}</p>{(selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path) && <dl><dt>Location</dt><dd>{selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path}</dd></dl>}<SettingsToggleRow label="Enable skill" checked={selectedSkill.enabled !== false} disabled={Boolean(skillActionBusy)} onCheckedChange={enabled => onToggleSkill(selectedSkill.name, enabled)} /></div>}
       {provider && <FieldRow label={`${provider.label} API key`}><SecretKeyField value={providerDraft.api_key || ''} configured={providerDraft.api_key_configured} onChange={event => patchProvider({ api_key: event.target.value })} disabled={Boolean(busy)} /></FieldRow>}
-      {error && <p className="settings-inline-error" role="alert">{error}</p>}
+      {error && <ErrorState variant="inline" detail={error} />}
     </div><SheetFooter><div>{provider && <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('test', async () => { if (await onSaveTools?.(patchedRecords({ web_search: web }), '') !== false) await onTestWebProvider?.(provider.id, providerDraft.api_key || ''); })}>{busy === 'test' ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button variant="ghost" size="sm" disabled={Boolean(busy)} onClick={() => setEditing(null)}>{skillsPane ? 'Close' : 'Cancel'}</Button>{provider && <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', saveProvider)}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></SettingsSheet>
     {installing && <SkillUpload installedSkills={skills} onClose={() => setInstalling(false)} onInstall={(_skill, file) => onInstallSkill(file)} />}
     <SettingsDeleteDialog target={deleting} label="Uninstall skill" onClose={() => setDeleting(null)} onConfirm={async target => { const success = await onUninstallSkill(target.title); if (success !== false && selectedSkill?.name === target.title) setEditing(null); return success; }} />

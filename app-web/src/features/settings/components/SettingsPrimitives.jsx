@@ -5,6 +5,7 @@ import deepseek from '@lobehub/icons-static-svg/icons/deepseek-color.svg';
 import zhipu from '@lobehub/icons-static-svg/icons/zhipu-color.svg';
 import siliconflow from '@lobehub/icons-static-svg/icons/siliconcloud-color.svg';
 import { ProviderIcon as LegacyProviderIcon } from './settings-ui.jsx';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import { Input } from '../../../shared/ui/settings-elements/ui/input.tsx';
 import { Field, FieldLabel, FieldDescription } from '../../../shared/ui/settings-elements/ui/field.tsx';
@@ -67,5 +68,5 @@ export function SettingsSheet({ open, title, onClose, children }) {
 export function SettingsDeleteDialog({ target, onClose, onConfirm, label = 'Delete' }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  return <AlertDialog open={Boolean(target)} onOpenChange={open => { if (!open && !busy) { setError(''); onClose(); } }}><AlertDialogContent className="settings-delete-dialog"><AlertDialogHeader><AlertDialogTitle>{label} {target?.title}?</AlertDialogTitle><AlertDialogDescription>This item will be removed from your settings.</AlertDialogDescription></AlertDialogHeader>{error && <p className="settings-inline-error" role="alert">{error}</p>}<AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={busy} onClick={async event => { event.preventDefault(); setBusy(true); setError(''); try { if (await onConfirm(target) !== false) onClose(); } catch (failure) { setError(String(failure?.message || failure)); } finally { setBusy(false); } }}>{busy ? 'Removing…' : label}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>;
+  return <AlertDialog open={Boolean(target)} onOpenChange={open => { if (!open && !busy) { setError(''); onClose(); } }}><AlertDialogContent className="settings-delete-dialog"><AlertDialogHeader><AlertDialogTitle>{label} {target?.title}?</AlertDialogTitle><AlertDialogDescription>This item will be removed from your settings.</AlertDialogDescription></AlertDialogHeader>{error && <ErrorState variant="inline" detail={error} />}<AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={busy} onClick={async event => { event.preventDefault(); setBusy(true); setError(''); try { if (await onConfirm(target) !== false) onClose(); } catch (failure) { setError(String(failure?.message || failure)); } finally { setBusy(false); } }}>{busy ? 'Removing…' : label}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>;
 }

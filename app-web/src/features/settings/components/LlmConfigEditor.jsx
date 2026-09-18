@@ -7,6 +7,7 @@ import {
   LoaderCircle,
 } from 'lucide-react';
 import { API_BASE } from '../../../shared/api/base.js';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import {
   getLlmProvider,
@@ -327,7 +328,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
                 : (config.oauth_configured ? `Reconnect ${provider.label}` : `Connect ${provider.label}`)}
             </Button>
             {oauthStartError ? (
-              <div className="settings-inline-error" role="alert">{oauthStartError}</div>
+              <ErrorState variant="inline" detail={oauthStartError} />
             ) : null}
             {!oauthStartError && oauthFlowPending ? (
               <div className="settings-oauth-message" role="status" aria-live="polite">
@@ -359,7 +360,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
         <FieldRow label="Default model"><ModelSelectorTrigger disabled={disabled} className="w-full"><ModelSelectorValue showEffort={false} /></ModelSelectorTrigger></FieldRow>
         <ModelSelectorContent searchable className="settings-model-options"><ModelSelectorSearch aria-label="Search models" /><ModelSelectorList /></ModelSelectorContent>
         <FieldRow label="Model ID"><Input value={config.model || ''} onChange={event => update({ model: event.target.value })} disabled={disabled} placeholder={provider.defaultModel || 'Enter a model ID'} /></FieldRow>
-        {modelCatalogError && <div className="settings-inline-error" role="alert">{modelCatalogError}</div>}
+        {modelCatalogError && <ErrorState variant="inline" detail={modelCatalogError} />}
         {selectedId !== 'vision' && selectedId !== 'embedding' && <ModelSelectorEffort label="Reasoning effort" className="settings-model-effort" />}
       </ModelSelectorRoot>
     </div>

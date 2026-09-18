@@ -14,13 +14,20 @@
 //
 // 等人快照是唯一例外：它按 conversation_id / task_id 匹配，命中且该任务没有收工 =>
 // 在等人。任务未知（列表里还没有这份任务）时信快照——后端说 agent 正等人，那就是在等人。
+//
+// 行的右侧只有一个状态坑位（见 resolveConversationStatusMark）：同一时刻只展示一条最新状态。
+// 之前「在跑 / 在等人」和「结束还没看过」各占一个坑位、各亮各的，同一行会同时亮两盏灯、
+// 在行尾叠在一起——用户看到的就是「状态怎么互相矛盾」。
 
+import { terminalTaskNoticeStatus } from '../../tasks/model/task-completion-notices.js';
 import { isTaskLive, isTaskSettled } from './conversation-status.js';
 
 export const RUN_STATE_IDLE = 'idle';
 export const RUN_STATE_RUNNING = 'running';
 export const RUN_STATE_WAITING_INPUT = 'waiting_input';
 export const RUN_STATE_APPROVAL = 'approval';
+// 坑位里放的是「结束还没看过」的终态点（done / failed / cancelled）；RUN_STATE_* 只覆盖「现在」。
+export const STATUS_MARK_TERMINAL = 'terminal';
 
 const EMPTY_RESULT = Object.freeze({ state: RUN_STATE_IDLE, taskId: '' });
 
@@ -124,4 +131,17 @@ export function resolveConversationRunState({
     return { state: RUN_STATE_RUNNING, taskId: taskIdOf(task) };
   }
   return EMPTY_RESULT;
+}
+
+/**
+ * 会话行那个坑位里放什么——同一时刻只有一条最新状态：
+ *   1. 现在还在跑 / 在等人 / 在等审批 => 放它（「现在」压过「过去」）；
+ *   2. 否则，最近一次结束、用户还没看过的终态 => 放终态点（done / failed / cancelled）；
+ *   3. 都没有 => 熄灯（null）。
+ * 终态串的归一化复用 task-completion-notices 那一份，不在这里再列一遍状态串。
+ */
+export function resolveConversationStatusMark({ runState = '', terminalStatus = '' } = {}) {
+  if (isRunStateLive(runState)) return { kind: runState, status: '' };
+  const status = terminalTaskNoticeStatus(terminalStatus);
+  return status ? { kind: STATUS_MARK_TERMINAL, status } : null;
 }

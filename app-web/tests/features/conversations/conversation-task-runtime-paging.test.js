@@ -58,6 +58,8 @@ function createActivationHarness() {
     buildTaskRuntimeRecord: () => ({}),
     chatImageFallbacksByTaskIdFromMessages: () => new Map(),
     clearDraftConversationState: () => {},
+    applyContextUsage: () => {},
+    contextUsageFromConversationDetail: () => ({}),
     conversationIdRef,
     draftConversationRef: { current: null },
     estimateContextUsageFromConversationDetail: () => ({}),
@@ -69,9 +71,9 @@ function createActivationHarness() {
     isConversationActivationCurrent: () => true,
     isTaskActuallyActive,
     isTerminalTaskStatus,
+    latestContextUsageFromTasks: () => ({}),
     loadStoredContextUsage: () => ({}),
     mergeChatImageRefs,
-    mergeContextUsage: () => ({}),
     mutateRuntime: (convId, mutator) => {
       let runtime = runtimes.get(convId);
       if (!runtime) {
@@ -88,7 +90,6 @@ function createActivationHarness() {
     },
     saveStoredContextUsage: () => {},
     setComposerAttachment: () => {},
-    setContextUsage: () => {},
     setConversationAttachments: () => {},
     setConversationId: () => {},
     setLocalWorkspace: () => {},

@@ -1,4 +1,15 @@
 // Presentation only: never read/upload the target or rewrite the task text.
+//
+// 判定不查盘（没有 stat，后缀只是提示），只看形状，分两条入口：
+// - 显式路径（`/`、`~/`、`./`、`../`、盘符、UNC）：形状无歧义，段里带中文/空格照收；
+// - 相对路径：段名必须都是纯路径字符，且末段像文件（带非纯数字后缀或白名单文件名）。
+//   分支名（`release/20260917`）、版本号（`v1.2/3`）、中文短语（`明天/后天`）以及夹在
+//   中文句子里的整行（`那就把修复分支合并到release/20260917`）都不再变成 FOLDER
+//   卡片——认不出来的东西原样留在正文里，绝不把用户的话从气泡里抠走。
+const FILE_NAME_WHITELIST = /^(?:readme|license|makefile|dockerfile|gemfile|procfile|\.env|\.gitignore|\.npmrc)$/i;
+// 相对路径的每一段都必须像路径名；中文句子里的斜杠 token 才不会被整行吞掉。
+const PLAIN_PATH_SEGMENT = /^[A-Za-z0-9._@+-]+$/;
+
 export function localPathReference(value) {
   let path = String(value || '').trim();
   if (/^!?\[.*\]\(/.test(path)) return null;
@@ -15,13 +26,16 @@ export function localPathReference(value) {
   const relativePath = /^[^\s/:\\]+(?:[/\\][^\s/:\\]+)+$/.test(path);
   if ((!explicitPath && !relativePath) || /[\r\n\t<>|`]/.test(path) || path.includes(String.fromCharCode(0))) return null;
   const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '');
-  const name = normalized.split('/').at(-1);
+  const segments = normalized.split('/');
+  const name = segments.at(-1);
   if (!name || name === '.' || name === '..' || name === '~' || /^[a-z]:$/i.test(name)) return null;
   const extension = name.match(/^.+\.([a-z0-9]{1,10})$/i)?.[1];
   const directory = /[/\\]$/.test(path);
-  const file = !directory && Boolean(extension || /^(?:readme|license|makefile|dockerfile|gemfile|procfile|\.env|\.gitignore|\.npmrc)$/i.test(name));
-  // ponytail: without stat(), suffixes are hints, not verified filesystem types.
-  // Extensionless paths use the requested FOLDER presentation; no directory is read.
+  // 纯数字的「后缀」是版本号（`release/1.2`）而不是文件类型。
+  const fileLike = Boolean((extension && !/^[0-9]+$/.test(extension)) || FILE_NAME_WHITELIST.test(name));
+  // 相对路径只在「段边界清晰 + 末段像文件」时才算引用；显式路径不做这层限制。
+  if (!explicitPath && !(fileLike && segments.every((segment) => PLAIN_PATH_SEGMENT.test(segment)))) return null;
+  const file = !directory && fileLike;
   return { path, name, kind: file ? 'file' : 'directory', kindLabel: file ? (extension?.toUpperCase() || 'FILE') : 'FOLDER' };
 }
 

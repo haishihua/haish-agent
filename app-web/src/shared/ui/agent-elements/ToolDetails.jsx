@@ -1,4 +1,5 @@
 import React from 'react';
+import { ErrorState } from './ErrorState.jsx';
 import { TerminalBlock } from './terminal-block.tsx';
 import { CodeDiff } from './code-diff.tsx';
 import './elements.css';
@@ -18,7 +19,7 @@ export function TerminalDetail({ view }) {
 }
 
 export function DiffDetail({ view }) {
-  if (view.failed) return <div role="status" className="haish-approval-error">{view.body}</div>;
+  if (view.failed) return <ErrorState variant="inline" detail={view.body} />;
   const lines = String(view.body || '').split('\n').map((text) => {
     const kind = text.startsWith('+') && !text.startsWith('+++') ? 'added'
       : text.startsWith('-') && !text.startsWith('---') ? 'removed' : 'context';

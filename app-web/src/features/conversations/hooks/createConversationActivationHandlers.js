@@ -5,9 +5,11 @@ export function createConversationActivationHandlers(ctx) {
     API_BASE,
     activeRuntimeTargetConvId,
     apiFetch,
+    applyContextUsage,
     buildTaskRuntimeRecord,
     chatImageFallbacksByTaskIdFromMessages,
     clearDraftConversationState,
+    contextUsageFromConversationDetail,
     conversationIdRef,
     draftConversationRef,
     estimateContextUsageFromConversationDetail,
@@ -19,15 +21,15 @@ export function createConversationActivationHandlers(ctx) {
     isConversationActivationCurrent,
     isTaskActuallyActive,
     isTerminalTaskStatus,
+    latestContextUsageFromTasks,
     loadStoredContextUsage,
     mergeChatImageRefs,
-    mergeContextUsage,
+    modeLocationRef,
     mutateRuntime,
     pendingCreatedDetailRef,
     restoreTaskRuntimes,
-    saveStoredContextUsage,
+    runtimesRef,
     setComposerAttachment,
-    setContextUsage,
     setConversationAttachments,
     setConversationId,
     setLocalWorkspace,
@@ -96,9 +98,23 @@ export function createConversationActivationHandlers(ctx) {
     conversationIdRef.current = nextConversationId;
     setConversationId(nextConversationId);
     setStoredConversationId(nextConversationId);
-    const storedContextUsage = loadStoredContextUsage(nextConversationId);
-    setContextUsage(storedContextUsage);
-    saveStoredContextUsage(storedContextUsage);
+    // 先用本地记的读数把表盘点亮（没读数就是空表盘），详情到达后再按采样时刻仲裁。
+    applyContextUsage(loadStoredContextUsage(nextConversationId), {
+      ownerConversationId: nextConversationId,
+    });
+    // 运行时已经就绪的会话不会再拉详情（conversationRuntimeIsCurrent 直接返回 null），
+    // 这时表盘只剩本地缓存这一份来源：缓存被判无效（旧版本的估算条目）或这台机器
+    // 从没记过这条会话时，表盘就停在 0k。工作区快照里本来就带着服务端的实测值
+    // （任务快照 + 会话级落盘值），先拿它把表盘描上，不等下一轮实时采样。
+    const summaryConversation = findConversationById(workspaceState, nextConversationId);
+    applyContextUsage(
+      latestContextUsageFromTasks(summaryConversation?.tasks, nextConversationId),
+      { ownerConversationId: nextConversationId },
+    );
+    applyContextUsage(
+      contextUsageFromConversationDetail(summaryConversation, nextConversationId),
+      { ownerConversationId: nextConversationId },
+    );
 
     const project = workspaceState.projects.find((item) => item.id === projectId)
       || findProjectByConversationId(workspaceState, nextConversationId);
@@ -114,8 +130,7 @@ export function createConversationActivationHandlers(ctx) {
       return;
     }
 
-    const conversation = findConversationById(workspaceState, nextConversationId);
-    const summaryTasks = (Array.isArray(conversation?.tasks) ? conversation.tasks : [])
+    const summaryTasks = (Array.isArray(summaryConversation?.tasks) ? summaryConversation.tasks : [])
       .map(runtimeTaskFromConversationTask)
       .filter(Boolean);
     const taskEntries = summaryTasks
@@ -180,14 +195,27 @@ export function createConversationActivationHandlers(ctx) {
       viewModeRef.current = restoredMode;
       setViewMode(restoredMode);
     }
-    const nextContextUsage = mergeContextUsage(
-      loadStoredContextUsage(restoredConversationId),
-      estimateContextUsageFromConversationDetail(detail)
-    );
+    // 表盘：本地记的上一次读数 → 服务端任务记录里的实测快照 → 会话级落盘值
+    // （没有采样时刻，只在前面都没读数时当兜底，fork 继承就是这条路）→ 历史估算。
+    // 四份都交给表盘仲裁：实测压过估算、按采样时刻取新，空候选不会改动现有读数。
     setConversationId(restoredConversationId);
     setStoredConversationId(restoredConversationId);
-    setContextUsage(nextContextUsage);
-    saveStoredContextUsage(nextContextUsage);
+    applyContextUsage(
+      loadStoredContextUsage(restoredConversationId),
+      { ownerConversationId: restoredConversationId },
+    );
+    applyContextUsage(
+      latestContextUsageFromTasks(detail.tasks, restoredConversationId),
+      { ownerConversationId: restoredConversationId },
+    );
+    applyContextUsage(
+      contextUsageFromConversationDetail(detail, restoredConversationId),
+      { ownerConversationId: restoredConversationId },
+    );
+    applyContextUsage(
+      estimateContextUsageFromConversationDetail(detail),
+      { ownerConversationId: restoredConversationId },
+    );
     applyConversationSnapshot(detail);
     setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
 
@@ -276,9 +304,81 @@ export function createConversationActivationHandlers(ctx) {
       signal,
     }, { json: false });
     if (!detailResponse.ok) {
-      throw new Error(`conversation restore failed: ${detailResponse.status}`);
+      // 状态码要跟着错误一起走：调用方按 404 分流（那是「记录已经没了」，不是故障）。
+      const error = new Error(`conversation restore failed: ${detailResponse.status}`);
+      error.status = detailResponse.status;
+      throw error;
     }
     return detailResponse.json();
+  }
+
+  // 服务端已经确认不存在的会话（404）。恢复链是从同一份过期的工作区快照里挑下一个
+  // 目标的，所以把这些墓碑记下来：两条已删会话才不会互相指着对方来回弹
+  // （404 → 换目标 → 404 → …），链一定收敛到活着的会话或空白对话。
+  const missingConversationIds = new Set();
+
+  // 服务端说这个会话不存在了（404）：把本地那一行抹掉，顺手清干净所有还指着它的
+  // 记忆（运行时、模式定位、落盘的选中 id），并挑一个能接手的会话交给调用方。
+  //
+  // 现场就是空草稿被清掉那次：切走时前端删了它、列表要等下一次轮询才刷新，于是
+  // 点那行会拿到 404。这里补上「服务端已经删了、本地还留着」的窗口，让 404 变成一次
+  // 静默的换目标，而不是用户眼前的一条报错。
+  //
+  // 只做本地收敛，不发请求：删除是幂等的，重复触发没有副作用。
+  //
+  // snapshot：调用方手上有更新的工作区快照时用它（启动恢复就是这样——ctx 里的
+  // workspaceState 还停在挂载那一刻，项目列表都还没进来）。
+  function dropMissingConversation(conversationId, { projectId = null, snapshot = null } = {}) {
+    if (!conversationId) return null;
+    missingConversationIds.add(conversationId);
+    const state = snapshot || workspaceState;
+    const ownerProject = (projectId
+      ? state.projects.find((project) => project.id === projectId)
+      : null)
+      || findProjectByConversationId(state, conversationId)
+      || null;
+    const wasSelected = conversationIdRef.current === conversationId
+      || (state.activeConversationId || null) === conversationId;
+    const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
+    const candidates = (ownerProject?.conversations || [])
+      .filter((conversation) => !missingConversationIds.has(conversation.id));
+    // 同模式的会话优先：用户就在这个模式下，换过去不必再切视图。
+    const fallback = candidates.find((conversation) => conversation.executionMode === executionMode)
+      || candidates[0]
+      || null;
+
+    runtimesRef.current.delete(conversationId);
+    const locations = modeLocationRef.current;
+    for (const mode of Object.keys(locations)) {
+      if (locations[mode]?.conversationId === conversationId) locations[mode] = null;
+    }
+    setWorkspaceState((state) => {
+      const projects = state.projects.map((project) => (
+        project.conversations.some((conversation) => conversation.id === conversationId)
+          ? {
+              ...project,
+              conversations: project.conversations.filter(
+                (conversation) => conversation.id !== conversationId,
+              ),
+            }
+          : project
+      ));
+      return {
+        ...state,
+        projects,
+        activeConversationId: state.activeConversationId === conversationId
+          ? null
+          : state.activeConversationId,
+      };
+    });
+    // 落盘的选中 id 指着它的话一并清掉；调用方接手新会话时会重新写入。
+    if (wasSelected) setStoredConversationId(null);
+
+    return {
+      projectId: ownerProject?.id || projectId || null,
+      fallbackConversationId: fallback?.id || null,
+      wasSelected,
+    };
   }
 
   function ensureTaskForEvent(event, targetConvId = null) {
@@ -398,6 +498,7 @@ export function createConversationActivationHandlers(ctx) {
     activateConversationShell,
     activateConversationDetail,
     fetchConversationDetail,
+    dropMissingConversation,
     ensureTaskForEvent,
     updateTaskById,
     getTaskById,

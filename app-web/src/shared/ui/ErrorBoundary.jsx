@@ -1,7 +1,12 @@
 import React from 'react';
+import { ErrorState } from './agent-elements/ErrorState.jsx';
 
 /**
- * Lightweight error boundary so a single panel crash does not blank the whole desktop UI.
+ * Last-resort boundary so a single panel crash does not blank the whole desktop UI.
+ * Renders the shared ErrorState (the same red card a failed chat turn uses) full-screen,
+ * keeps the raw stack one click away, and keeps the stale-bundle reload detection: a
+ * window that still points at chunks a rebuild has removed says "Reload app" instead of
+ * "Try again".
  */
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -22,43 +27,15 @@ export class ErrorBoundary extends React.Component {
     if (!error) return this.props.children;
     const needsReload = /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk [\w-]+ failed/i.test(String(error?.message || error));
     return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100vh',
-          background: '#05060b',
-          color: '#daddef',
-          fontFamily: 'ui-monospace, monospace',
-          padding: 24,
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 720,
-            padding: '24px 28px',
-            border: '1px solid rgba(239,191,100,0.28)',
-            background: '#10131d',
-          }}
-        >
-          <div style={{ color: '#efbf64', fontSize: 16, marginBottom: 12 }}>
-            {this.props.title || 'UI ERROR'}
-          </div>
-          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-            {String(error?.stack || error?.message || error)}
-          </pre>
-          <button
-            type="button"
-            style={{
-              marginTop: 16,
-              padding: '8px 14px',
-              background: '#1a2133',
-              color: '#efbf64',
-              border: '1px solid rgba(239,191,100,0.35)',
-              cursor: 'pointer',
-            }}
-            onClick={() => {
+      <div className="aui-error-screen">
+        <div className="aui-error-screen-inner">
+          <ErrorState
+            className="aui-error-screen-card"
+            title={this.props.title || 'UI ERROR'}
+            detail={String(error?.message || error)}
+            retryLabel={needsReload ? 'Reload app' : 'Try again'}
+            retryHint={needsReload ? 'Reload to fetch the current bundle' : 'Re-render the app shell'}
+            onRetry={() => {
               if (needsReload) {
                 window.location.reload();
                 return;
@@ -66,9 +43,11 @@ export class ErrorBoundary extends React.Component {
               this.setState({ error: null });
               this.props.onReset?.();
             }}
-          >
-            {needsReload ? 'Reload app' : 'Try again'}
-          </button>
+          />
+          <details className="aui-error-screen-stack">
+            <summary>Technical details</summary>
+            <pre>{String(error?.stack || error?.message || error)}</pre>
+          </details>
         </div>
       </div>
     );

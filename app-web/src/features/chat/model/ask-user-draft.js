@@ -21,12 +21,22 @@ export function readDraft(drafts, questionId) {
   return { values: [...draftValues(draft)], text: draftText(draft) };
 }
 
-/** 勾选/取消一个默认选项：只动 values，已写下的备注保留。 */
+/**
+ * 勾选/取消一个默认选项：只动 values，已写下的备注保留。
+ *
+ * 两种题都是可取消的开关——用户看到的就是方框勾选，再点一次必须能取消：
+ * - 多选：点一次加一项，再点摘掉那一项；
+ * - 单选：点没选中的项 = 换成它，点已选中的项 = 取消（回到「还没决定」，不是纹丝不动）。
+ */
 export function toggleDraftSelection(draft, label, multiple = false) {
   const values = draftValues(draft);
-  const nextValues = multiple
-    ? (values.includes(label) ? values.filter((value) => value !== label) : [...values, label])
-    : [label];
+  if (multiple) {
+    const nextValues = values.includes(label)
+      ? values.filter((value) => value !== label)
+      : [...values, label];
+    return { values: nextValues, text: draftText(draft) };
+  }
+  const nextValues = values.includes(label) ? [] : [label];
   return { values: nextValues, text: draftText(draft) };
 }
 

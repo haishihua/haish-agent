@@ -9,6 +9,7 @@ export function createComposerHandlers(ctx) {
     ensureServerConversationForActiveDraft,
     getRuntime,
     isDraftConversationId,
+    markDraftConversationKept,
     mutateRuntime,
     setComposerAttachment,
     setRuntimeFetchController,
@@ -79,6 +80,10 @@ export function createComposerHandlers(ctx) {
       }
     }
     if (!file || !targetConversationId || String(targetConversationId).startsWith('draft-')) return;
+    // 选文件 = 这条会话已经有用户的真实内容：解析成功、失败都算，切走时不能被当成空壳
+    // 回收（见 createDraftConversationHandlers 的 markDraftConversationKept）。先落标记
+    // 再发请求，上传被取消 / 报错也不会把这条会话弄丢。
+    markDraftConversationKept?.(targetConversationId);
     const uploadController = new AbortController();
     mutateRuntime(targetConversationId, (rt) => {
       rt.abortRequested = false;

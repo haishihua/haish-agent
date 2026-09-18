@@ -67,11 +67,11 @@ import {
 } from '../workflow/model/workflow-catalog.js';
 import {
   createEmptyContextUsage,
-  configureContextTotalTokens,
+  createContextUsageTracker,
   loadStoredContextUsage,
-  saveStoredContextUsage,
+  contextUsageFromConversationDetail,
   estimateContextUsageFromConversationDetail,
-  mergeContextUsage,
+  latestContextUsageFromTasks,
   normalizeContextUsage,
   } from '../chat/model/context-usage.js';
 import {
@@ -166,6 +166,7 @@ import { createDraftConversationHandlers } from '../conversations/hooks/createDr
 import { usePerConversationDraft } from '../chat/hooks/usePerConversationDraft.js';
 import { useConversationBootstrap } from '../conversations/hooks/useConversationBootstrap.js';
 import { saveLastLocation } from '../conversations/model/last-location.js';
+import { conversationHasSentMessage, sentTaskSummaries } from '../conversations/model/agent-binding.js';
 import { useConversationListPolling } from '../conversations/hooks/useConversationListPolling.js';
 import { useTaskRuntimePolling } from '../tasks/hooks/useTaskRuntimePolling.js';
 
@@ -227,6 +228,9 @@ export function AppShell() {
   const [conversationError, setConversationError] = useState('');
   const [, setConversationAttachments] = useState([]);
   const [contextUsage, setContextUsage] = useState(() => createEmptyContextUsage(null));
+  // 表盘读数的仲裁基准放在 ref 里：同一次事件里可能连着写几次（任务 + 会话级），
+  // 后台会话的轮询也要先跟已落盘的值比一次，state 闭包里读不到最新的那份。
+  const contextUsageTrackerRef = useRef(null);
   const [localWorkspace, setLocalWorkspace] = useState({ path: null, label: null });
   const [composerAttachment, setComposerAttachment] = useState(null);
   const [uploadState, setUploadState] = useState({ active: false, fileName: '' });
@@ -309,9 +313,29 @@ export function AppShell() {
   // still write to *its* runtime (not the one currently shown). Acts as an
   // implicit dynamic context — set on flush enter, cleared on flush exit.
   const streamTargetConvIdRef = useRef(null);
+  const contextUsageTracker = contextUsageTrackerRef.current || (
+    contextUsageTrackerRef.current = createContextUsageTracker({
+      getActiveConversationId: () => conversationIdRef.current,
+      onChange: (usage) => setContextUsage(usage),
+    })
+  );
 
   function updateSettingsConnectionStatus(updater) {
     setSettingsConnectionStatus((prev) => (typeof updater === 'function' ? updater(prev) : updater));
+  }
+
+  /**
+   * 表盘唯一写入入口（实时流 / 任务轮询 / 恢复分页 / 会话激活 / fork 都从这里进）。
+   * 仲裁与落盘都在 createContextUsageTracker：当前显示的会话改 state + 落盘，别的
+   * 会话（后台轮询 / 恢复）只落盘，切回去时直接复用同一份读数。
+   */
+  function applyContextUsage(candidate, options) {
+    return contextUsageTracker.apply(candidate, options);
+  }
+
+  // 新建/切到空白会话时换一块空表盘（没人跑过任务就没有读数，也不写存储）。
+  function resetContextUsage(conversationIdValue = null) {
+    return contextUsageTracker.reset(conversationIdValue);
   }
 
   useEffect(() => {
@@ -324,19 +348,9 @@ export function AppShell() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
-        const contextWindowTokens = configureContextTotalTokens(
-          data?.runtime?.context_window_tokens,
-        );
-        if (contextWindowTokens > 0) {
-          setContextUsage((usage) => {
-            const next = normalizeContextUsage({
-              ...usage,
-              totalTokens: contextWindowTokens,
-            }, usage?.conversationId || null);
-            saveStoredContextUsage(next);
-            return next;
-          });
-        }
+        const contextWindowTokens = Number(data?.runtime?.context_window_tokens) || 0;
+        // 分母变了只换分母（分子仍是上一次实测值）；估算值不落盘。
+        if (contextWindowTokens > 0) contextUsageTrackerRef.current?.setTotalTokens(contextWindowTokens);
         const catalog = agentCatalogFromProfiles(data);
         if (catalog.options.length > 0) setAgentCatalog(catalog);
       })
@@ -590,6 +604,7 @@ export function AppShell() {
     clearDraftConversationState,
     openDraftConversation,
     ensureServerConversationForActiveDraft,
+    markDraftConversationKept,
     materializeDraftConversationForSend,
     fetchTaskRuntimeDetail,
     fetchTaskRuntimeBatch,
@@ -614,7 +629,6 @@ export function AppShell() {
     conversationIdRef,
     createConversationInProject: (...args) => createConversationInProject(...args),
     createDefaultProject,
-    createEmptyContextUsage,
     createEmptyTaskRuntimeState,
     detachActiveRunFromCurrentConversation: (...args) => activationApiRef.current.detachActiveRunFromCurrentConversation?.(...args),
     draftConversationIdsRef,
@@ -629,9 +643,9 @@ export function AppShell() {
     normalizeRuntimeEvents,
     pendingCreatedDetailRef,
     rekeyChatDraft,
+    resetContextUsage,
     runtimesRef,
     setComposerAttachment,
-    setContextUsage,
     setConversationAttachments,
     setConversationError,
     setConversationId,
@@ -726,6 +740,7 @@ export function AppShell() {
     activateConversationShell,
     activateConversationDetail,
     fetchConversationDetail,
+    dropMissingConversation,
     ensureTaskForEvent,
     updateTaskById,
     getTaskById,
@@ -733,9 +748,11 @@ export function AppShell() {
     API_BASE,
     activeRuntimeTargetConvId,
     apiFetch,
+    applyContextUsage,
     buildTaskRuntimeRecord,
     chatImageFallbacksByTaskIdFromMessages,
     clearDraftConversationState,
+    contextUsageFromConversationDetail,
     conversationIdRef,
     draftConversationRef,
     estimateContextUsageFromConversationDetail,
@@ -747,15 +764,15 @@ export function AppShell() {
     isConversationActivationCurrent,
     isTaskActuallyActive,
     isTerminalTaskStatus,
+    latestContextUsageFromTasks,
     loadStoredContextUsage,
     mergeChatImageRefs,
-    mergeContextUsage,
+    modeLocationRef,
     mutateRuntime,
     pendingCreatedDetailRef,
     restoreTaskRuntimes,
-    saveStoredContextUsage,
+    runtimesRef,
     setComposerAttachment,
-    setContextUsage,
     setConversationAttachments,
     setConversationId,
     setLocalWorkspace,
@@ -781,6 +798,7 @@ export function AppShell() {
     activateConversationShell,
     activateConversationDetail,
     fetchConversationDetail,
+    dropMissingConversation,
     ensureTaskForEvent,
     updateTaskById,
     getTaskById,
@@ -897,6 +915,7 @@ export function AppShell() {
     ensureServerConversationForActiveDraft,
     getRuntime,
     isDraftConversationId,
+    markDraftConversationKept,
     mutateRuntime,
     setComposerAttachment,
     setRuntimeFetchController,
@@ -918,6 +937,7 @@ export function AppShell() {
     appendAnswerDelta,
     appendChatProgressText,
     applyConversationSnapshot,
+    applyContextUsage,
     batchRuntimeMutations,
     applyTerminalTaskState,
     apiFetch,
@@ -944,9 +964,7 @@ export function AppShell() {
     // Late-bound: defined by createDeployHandlers later in the render body.
     removeConversationTaskFromWorkspace: (...args) => deployApiRef.current.removeConversationTaskFromWorkspace?.(...args),
     resolveProviderMeta,
-    saveStoredContextUsage,
     setComposerAttachment,
-    setContextUsage,
     setRuntimeActiveTaskId,
     setRuntimeAnswerBuffer,
     setRuntimeBusy,
@@ -967,6 +985,7 @@ export function AppShell() {
 
   const {
     handleSelectConversation,
+    handleConversationRemoved,
     handleSelectProject,
     handleToggleProject,
     handleToggleConversationTasks,
@@ -1010,6 +1029,7 @@ export function AppShell() {
     conversationIdRef,
     createDefaultProject,
     draftConversationRef,
+    dropMissingConversation,
     fetchConversationDetail,
     findConversationById,
     findProjectByConversationId,
@@ -1032,16 +1052,8 @@ export function AppShell() {
     workspaceState,
     workspaceStateWithConversationDetail,
   });
-  directorySelectionApiRef.current.handleActiveConversationRemoved = async ({
-    projectId,
-    conversationId: fallbackConversationId,
-  }) => {
-    if (fallbackConversationId) {
-      await handleSelectConversation(projectId, fallbackConversationId);
-    } else if (projectId) {
-      openDraftConversation(projectId);
-    }
-  };
+  // 列表轮询发现当前会话消失：和处理恢复 404 的是同一条路（换目标或开空白对话）。
+  directorySelectionApiRef.current.handleActiveConversationRemoved = handleConversationRemoved;
   useConversationListPolling({
     activeConversationExecutionMode: findConversationById(workspaceState, conversationId)?.executionMode || null,
     conversationIdRef,
@@ -1266,6 +1278,7 @@ export function AppShell() {
     conversationId,
     conversationIdRef,
     currentConversationActive,
+    applyContextUsage,
     fetchTaskRuntimeDetail,
     fetchTaskRuntimeBatch,
     getRuntime,
@@ -1561,9 +1574,12 @@ export function AppShell() {
       const pendingError = String(taskRuntimeState.pendingTask.error || '').trim();
       // Empty user-cancelled pending turns are rolled back; skip rendering shells.
       if (!(pendingStatus === 'cancelled' && !pendingError && !taskHasAssistantStreamContent(taskRuntimeState.pendingTask))) {
+        // 服务端还没接下这一笔（见 conversations/model/agent-binding.js）：标记出来，
+        // agent 锁不把它当「发过消息」。它照旧留在时间线上等重发。
         rows.push({
           id: `${taskRuntimeState.pendingTask.id || 'pending'}-user`,
           role: 'user',
+          unaccepted: true,
           text: stripInjectedSkillInstruction(taskRuntimeState.pendingTask.displayText ?? taskRuntimeState.pendingTask.title),
           annotations: taskRuntimeState.pendingTask.annotations || [],
           status: pendingStatus,
@@ -1599,12 +1615,16 @@ export function AppShell() {
   const lockedAgentId = currentConversation?.agentId
     || currentConversation?.tasks?.find((task) => task?.requestedAgentId)?.requestedAgentId
     || '';
-  const hasUserMessages = chatMessages.some((message) => message.role === 'user');
-  const agentLockedReason = lockedAgentId || hasUserMessages
-    ? 'Cannot change agent for this conversation.'
-    : '';
+  // 锁的判据只有一份（见 conversations/model/agent-binding.js）：发过消息就锁，
+  // 只是传过文件（解析文档）不算。还只在本机的那一笔（本地 pending：排队 / 失败 /
+  // 取消）同样不算——服务端一个字都没收到：会话行上的乐观写入要被 sentTaskSummaries
+  // 摘掉，时间线上它那一行用户气泡带 unaccepted 标记。
+  const agentSelectionLocked = conversationHasSentMessage({
+    tasks: sentTaskSummaries(currentConversation?.tasks, taskRuntimeState.pendingTask),
+    hasUserTurn: chatMessages.some((message) => message.role === 'user' && !message.unaccepted),
+  });
+  const agentLockedReason = agentSelectionLocked ? 'Cannot change agent for this conversation.' : '';
   const submitPending = Boolean(queuedDeploy);
-  const agentSelectionLocked = Boolean(lockedAgentId || hasUserMessages);
 
   const composerDisabled = uploadState.active
     || settingsMode

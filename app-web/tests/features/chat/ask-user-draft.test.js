@@ -89,6 +89,33 @@ test('multiple picks toggle independently and single picks replace', () => {
   assert.deepEqual(draft.values, ['A']);
 });
 
+test('clicking the picked single-choice option again clears it (the square control is a switch)', () => {
+  // 用户点名的现场：单选问题看着是方框勾选，第二次点却纹丝不动。
+  let draft = toggleDraftSelection(undefined, '保持现状（默认）');
+  assert.deepEqual(draft.values, ['保持现状（默认）']);
+
+  draft = toggleDraftSelection(draft, '保持现状（默认）');
+  assert.deepEqual(draft, { values: [], text: '' });
+  // 取消 = 回到「还没决定」，不是交一条空选择。
+  assert.equal(buildAnswer(IDENTITY, draft), null);
+  assert.equal(allQuestionsAnswered([IDENTITY], { identity_kind: draft }), false);
+
+  // 取消之后再点回来照样能选上；换一项仍是替换，不叠加。
+  draft = toggleDraftSelection(draft, '保持现状（默认）');
+  assert.deepEqual(draft.values, ['保持现状（默认）']);
+  assert.deepEqual(toggleDraftSelection(draft, '个人身份').values, ['个人身份']);
+
+  // 备注只跟文字走：取消勾选不删已写下的字，取消后整题退回 freeform。
+  let noted = writeDraftText(toggleDraftSelection(undefined, '个人身份'), '钟梦熠');
+  noted = toggleDraftSelection(noted, '个人身份');
+  assert.deepEqual(noted, { values: [], text: '钟梦熠' });
+  assert.deepEqual(buildAnswer(IDENTITY, noted), {
+    question_id: 'identity_kind',
+    kind: 'freeform',
+    text: '钟梦熠',
+  });
+});
+
 test('every draft helper returns a fresh draft instead of mutating in place', () => {
   const empty = readDraft({}, 'identity_kind');
   const picked = toggleDraftSelection(empty, '个人身份');

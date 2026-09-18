@@ -621,12 +621,3 @@
   padding: 2px 4px;
   font-family: inherit;
 }
-.haish-approval-error {
-  font-size: 12px;
-  color: #fb7185;
-  padding: 8px 12px;
-  background: rgba(224, 71, 106, 0.08);
-  border: 1px solid rgba(224, 71, 106, 0.32);
-  border-radius: 4px;
-  font-family: inherit;
-}

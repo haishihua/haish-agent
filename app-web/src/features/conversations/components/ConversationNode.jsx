@@ -7,6 +7,7 @@ import {
   RUN_STATE_RUNNING,
   RUN_STATE_WAITING_INPUT,
   isRunStateWaiting,
+  resolveConversationStatusMark,
   taskIdOf,
 } from '../model/conversation-run-state.js';
 import { useConversationRunState } from '../hooks/useConversationRunState.js';
@@ -119,13 +120,19 @@ export function ConversationNode({
   const visibleTasks = tasks.slice(-(visibleLimit + extraVisible)).reverse();
   const hiddenCount = Math.max(0, tasks.length - visibleTasks.length);
   const showTaskList = showTaskRecords && conversation.expanded && tasks.length > 0;
-  // 状态灯只有一份判据（model/conversation-run-state.js）：在跑 = 蓝灯、等用户动手 =
-  // 黄灯、任务落地终态 = 熄灯。这里不再自己算「有没有 running 任务」。
+  // 状态灯只有一份判据（model/conversation-run-state.js）：在跑 = 蓝灯、等用户动手 = 黄灯、
+  // 任务落地终态 = 熄灯。这里不再自己算「有没有 running 任务」。
   const runState = useConversationRunState({
     conversationId: conversation.id,
     tasks: conversation.tasks,
   });
-  const waitIndicator = WAIT_INDICATORS[runState.state];
+  // 行尾只有一个状态坑位：在等人 / 在跑 / 未读终态三选一，同一时刻只渲染一条最新状态
+  // （判据同上）。以前两个来源各占一个坑位、同时亮，两个图标会叠在一起。
+  const statusMark = resolveConversationStatusMark({
+    runState: runState.state,
+    terminalStatus,
+  });
+  const waitIndicator = statusMark ? WAIT_INDICATORS[statusMark.kind] : null;
   const WaitGlyph = waitIndicator?.Glyph;
   // 任务卡的状态串来自任务拷贝（可能还在轮询路上），而「在等人」实时快照说了算：
   // 同一份快照命中的那张卡立刻换黄灯图标，不必等下一次轮询把 workflowRun 追上来。
@@ -191,9 +198,6 @@ export function ConversationNode({
         onDragEnd={handleDragEnd}
       >
         <ConversationMarqueeTitle name={conversation.name || ''} />
-        {terminalStatus ? (
-          <span className={`conversation-terminal-notice chat-timeline-status status-${terminalStatus}`} aria-hidden="true" />
-        ) : null}
         <span className="conversation-actions">
           <PortalTooltip text={isPinned ? 'Unpin conversation' : 'Pin conversation'} position="above">
             <button
@@ -210,14 +214,17 @@ export function ConversationNode({
           </PortalTooltip>
           <ConversationAction label="Delete conversation" icon="trash" onClick={() => onRequestDeleteConversation(project, conversation)} />
         </span>
+        {/* 状态坑位只有一个：在跑 / 在等人 / 未读终态，判据在 model/conversation-run-state.js */}
         {WaitGlyph ? (
           <span className={`conversation-running-indicator ${waitIndicator.className}`} role="status" aria-label={waitIndicator.label}>
             <WaitGlyph />
           </span>
-        ) : runState.state === RUN_STATE_RUNNING ? (
+        ) : statusMark?.kind === RUN_STATE_RUNNING ? (
           <span className="conversation-running-indicator" role="status" aria-label="Task running">
             <span className="ico ico-loading" aria-hidden="true" />
           </span>
+        ) : statusMark?.status ? (
+          <span className={`conversation-terminal-notice chat-timeline-status status-${statusMark.status}`} aria-hidden="true" />
         ) : null}
       </div>
 

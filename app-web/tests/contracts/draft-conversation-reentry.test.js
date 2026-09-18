@@ -39,11 +39,21 @@ test('the unsent text stays keyed by conversation id', () => {
   );
 });
 
-test('a discarded draft returns its text to the draft id', () => {
+test('a discarded draft returns its text to the draft id — unless a file keeps it alive', () => {
   assert.match(
     handlers,
-    /if \(draft\?\.localDraftId && draft\.localDraftId !== draft\.id\) \{\s*rekeyChatDraft\?\.\(draft\.id, draft\.localDraftId\);\s*\}/,
-    'a server-created draft must hand its text back before the conversation is deleted',
+    /if \(!keepServerConversation && draft\?\.localDraftId && draft\.localDraftId !== draft\.id\) \{\s*rekeyChatDraft\?\.\(draft\.id, draft\.localDraftId\);\s*\}/,
+    'a server-created draft must hand its text back before the empty shell is deleted',
+  );
+  assert.match(
+    handlers,
+    /if \(!keepServerConversation && pendingServerId/,
+    'a conversation that already took a document must survive the switch',
+  );
+  assert.match(
+    handlers,
+    /if \(keepServerConversation\) \{\s*forgetDraftConversationId\(draftConversationIdsRef\.current, draft\?\.projectId\);\s*\}/,
+    'the kept conversation owns text and attachment, so the next "+" starts on a fresh shell',
   );
   assert.match(
     handlers,

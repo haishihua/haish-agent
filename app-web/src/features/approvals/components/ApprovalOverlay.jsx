@@ -1,4 +1,5 @@
 import { ApprovalSurface } from '../../../shared/ui/agent-elements/ApprovalSurface.jsx';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
@@ -416,7 +417,7 @@ export function ToolApprovalCard({ request, embedded = false }) {
 
   return (
     <div className={`haish-approval-slot${embedded ? ' is-embedded' : ''}`}>
-      {error ? <div className="haish-approval-error">{error}</div> : null}
+      {error ? <ErrorState variant="inline" detail={error} /> : null}
       <ApprovalCard
         request={request}
         busy={busy}
@@ -509,7 +510,7 @@ export function ApprovalInline() {
     <div className="chat-message-row agent haish-approval-row">
       <div className="chat-bubble">
         <div className="haish-approval-slot">
-          {error ? <div className="haish-approval-error">{error}</div> : null}
+          {error ? <ErrorState variant="inline" detail={error} /> : null}
           <ApprovalCard
             request={current}
             busy={!!busy[current.request_id]}
@@ -609,7 +610,7 @@ export function WorkflowApprovalInline({
           </span>
         </div>
         <div className="haish-approval-slot">
-          {error ? <div className="haish-approval-error">{error}</div> : null}
+          {error ? <ErrorState variant="inline" detail={error} /> : null}
           <WorkflowApprovalCard
             key={displayRequest.request_id}
             request={displayRequest}

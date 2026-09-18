@@ -1,4 +1,15 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, net, protocol, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  nativeImage,
+  net,
+  powerSaveBlocker,
+  protocol,
+  shell,
+} from 'electron';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { proxyResponse } from './proxy-response.js';
@@ -34,6 +45,7 @@ import {
   stopRemoteAdapter,
   writeRemoteSettings,
 } from './local-remote.js';
+import { createTaskSleepGuard } from './task-sleep-guard.js';
 import { readToolScreenshot } from './tool-screenshot.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -76,6 +88,18 @@ const realtimeCommandWaiters = new Map<string, CommandWaiter>();
 const realtimeTaskOwners = new Map<string, number>();
 const realtimeApprovalSubscribers = new Set<number>();
 
+// 有任务流在跑（realtimeTaskOwners 非空）就不让机器进入系统休眠：任务跑在本机
+// Python 运行时里，睡着会把运行时和上游模型流一起挂起。只拦系统休眠，屏幕照常
+// 熄灭、锁屏照常发生，也不挡用户手动睡眠；最后一条任务流结束就放开。
+const taskSleepGuard = createTaskSleepGuard({
+  start: () => powerSaveBlocker.start('prevent-app-suspension'),
+  stop: (blockerId) => powerSaveBlocker.stop(blockerId),
+});
+
+function syncTaskSleep(): void {
+  taskSleepGuard.sync(realtimeTaskOwners.size);
+}
+
 function realtimeSocketUrl(baseUrl: string): string {
   const url = new URL('/api/events/ws', baseUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -100,6 +124,7 @@ function failRealtimeConnection(detail = 'Local runtime connection closed.'): vo
     });
   }
   realtimeTaskOwners.clear();
+  syncTaskSleep();
 }
 
 function scheduleRealtimeReconnect(): void {
@@ -130,7 +155,10 @@ function handleRealtimeMessage(event: MessageEvent): void {
   if (message.type === 'task.event' || message.type === 'task.error' || message.type === 'task.end') {
     const ownerId = realtimeTaskOwners.get(requestId);
     if (ownerId) sendToWebContents(ownerId, 'runtime:task-message', message);
-    if (message.type === 'task.end') realtimeTaskOwners.delete(requestId);
+    if (message.type === 'task.end') {
+      realtimeTaskOwners.delete(requestId);
+      syncTaskSleep();
+    }
     return;
   }
   if (message.type === 'approval.event') {
@@ -480,11 +508,17 @@ ipcMain.handle('runtime:command', async (event, command: RealtimeMessage) => {
   const sender = new URL(event.senderFrame?.url || 'about:blank');
   if (sender.protocol !== 'haish:' || sender.hostname !== 'app') throw new Error('Untrusted runtime command');
   const requestId = String(command?.request_id || '');
-  if (command?.type === 'task.start') realtimeTaskOwners.set(requestId, event.sender.id);
+  if (command?.type === 'task.start') {
+    realtimeTaskOwners.set(requestId, event.sender.id);
+    syncTaskSleep();
+  }
   try {
     return await sendRealtimeCommand(command);
   } catch (error) {
-    if (command?.type === 'task.start') realtimeTaskOwners.delete(requestId);
+    if (command?.type === 'task.start') {
+      realtimeTaskOwners.delete(requestId);
+      syncTaskSleep();
+    }
     throw error;
   }
 });

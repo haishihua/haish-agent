@@ -1,6 +1,7 @@
 import React from 'react';
 import { AnimateDialog } from '../../../shared/ui/AnimateDialog.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { PortalTooltip, closeAllPortalTooltips } from '../../../shared/ui/PortalTooltip.jsx';
 import { normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
 import { getTaskPillMeta } from '../../tasks/model/task-pill.js';
@@ -154,7 +155,7 @@ export function ConversationDialog({ dialog, onCancel }) {
             }}
           />
         ) : null}
-        {error ? <p className="haish-dialog-error" role="alert">{error}</p> : null}
+        {error ? <ErrorState variant="inline" detail={error} /> : null}
         <div className="haish-dialog-actions">
           <button ref={cancelRef} type="button" disabled={busy} onClick={onCancel}>Cancel</button>
           <button type="submit" className="primary" disabled={confirmDisabled}>

@@ -48,5 +48,4 @@
     border-color: #8795ad;
     box-shadow: 0 0 0 2px rgba(135, 149, 173, .1);
 }
-.haish-dialog-error { margin: 12px 0 0; color: #ff9caa; overflow-wrap: anywhere; }
 .haish-dialog-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

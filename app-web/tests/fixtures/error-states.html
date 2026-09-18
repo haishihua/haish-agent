@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Error states</title>
+<style>
+  body { margin: 0; padding: 24px; background: #05060b; }
+  #root { width: min(760px, 94vw); }
+  .fixture-stack { display: grid; gap: 26px; width: min(760px, 94vw); }
+  .fixture-label { margin: 0 0 8px; color: #8d97b3; font: 12px/1.4 system-ui; }
+  /* 审批卡 / 设置面板那种有宽度的容器：inline 卡必须铺满它。 */
+  .fixture-container { width: 420px; padding: 12px; border: 1px solid #232a3d; border-radius: 10px; background: #0b0e17; }
+  /* The crash screen is full-viewport in the app; inside this page it sits in a frame. */
+  .fixture-frame { height: 420px; overflow: hidden; border: 1px solid #232a3d; border-radius: 12px; }
+  .fixture-frame .aui-error-screen { min-height: 100%; }
+  #checks { margin: 28px 0 0; font-size: 11px; line-height: 1.7; white-space: pre-wrap; color: #9fd8a4; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<h1>Error states</h1>
+<p>生产 ErrorState / ErrorBoundary：失败提示只有一套 UI。聊天失败轮是 block 红卡（胶囊 Retry），设置与对话框是更紧凑的 inline 变体（没有重试入口就不出现按钮），崩溃屏是同一张卡的全屏版 + 折叠的技术细节；陈旧分片错误给出的按钮是 “Reload app”，普通崩溃是 “Try again”。</p>
+<div id="root"></div>
+<pre id="checks" role="status">Running checks…</pre>
+<script type="module" src="./error-states.jsx"></script>
+</html>

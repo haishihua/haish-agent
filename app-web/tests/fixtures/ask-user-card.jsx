@@ -9,11 +9,13 @@ import '../../styles/approvals.css';
 
 // 提问卡（生产 AskUserInlineForm + 生产 approvalStore + 生产 PortalTooltip）。
 //
-// 两处被用户点名的问题在这里钉死：
+// 三处被用户点名的问题在这里钉死：
 //  1. 输入框提示语：以前是表单味的 "Extra details (optional)…"，现在必须说清
 //     「可以加备注，也可以自己写答案」；
 //  2. 题目翻页：以前是 18px 无边框的 ‹ › 字形 + 暗灰 "1 / 4"，现在是 26px 描边圆
-//     按钮 + "Question 1 of 2" + 悬停说明，点一下真的切到下一题。
+//     按钮 + "Question 1 of 2" + 悬停说明，点一下真的切到下一题；
+//  3. 方框勾选是开关：单选项点过之后要能再点一下取消（取消后重新点回来照样能选上，
+//     取消也不删已写下的备注）。
 // 顺带走完整条链路：选选项 + 备注 → 下一题手写答案 → 提交，后端收到的是
 // 「一题一条答案」的唯一形状（selection + note / freeform）。
 
@@ -195,10 +197,46 @@ async function runChecks() {
   click(previousArrow());
   await settle();
   const firstFieldset = visibleQuestion();
-  firstFieldset.querySelectorAll('input[type="radio"]')[1].click();
-  typeInto(textareaOf(firstFieldset), '偏好单测覆盖');
+  const pickRadios = () => [...firstFieldset.querySelectorAll('input[type="radio"]')];
+  const pickedLabels = () => [...firstFieldset.querySelectorAll('.haish-user-input-option')]
+    .filter((option) => option.querySelector('input')?.checked)
+    .map((option) => option.querySelector('strong')?.textContent || '');
+  const submitBtn = () => document.querySelector('.haish-approval-btn-once');
+
+  pickRadios()[1].click();
   await settle();
   check('picking an option marks it selected', Boolean(firstFieldset.querySelector('.haish-user-input-option.is-selected')), firstFieldset.querySelector('.haish-user-input-option.is-selected')?.textContent || 'none');
+  check('the square control follows the pick', JSON.stringify(pickedLabels()) === JSON.stringify(['真实开发任务']), pickedLabels().join('|'));
+
+  // 用户点名的现场：单选选项看着是方框勾选，点第二次必须能取消。
+  pickRadios()[1].click();
+  await settle();
+  check('clicking the picked option again clears it', pickedLabels().length === 0 && !firstFieldset.querySelector('.haish-user-input-option.is-selected'), `picked=${pickedLabels().join('|')}`);
+  check('clearing the pick gates submit again', submitBtn()?.disabled === true, `disabled=${submitBtn()?.disabled}`);
+
+  // 开关要一直能用：清掉再点回来能选上；换一项是替换不是叠加。
+  pickRadios()[1].click();
+  await settle();
+  pickRadios()[0].click();
+  await settle();
+  check('single-choice picks replace each other instead of stacking', JSON.stringify(pickedLabels()) === JSON.stringify(['继续视觉与工具验收']), pickedLabels().join('|'));
+  // 整行都能点（透明原生控件盖在选项上，label 也会把点击转给控件）：从选项那条点也要能取消。
+  firstFieldset.querySelectorAll('.haish-user-input-option')[0].click();
+  await settle();
+  check('the toggle keeps working after switching options', pickedLabels().length === 0, pickedLabels().join('|'));
+
+  // 备注只跟文字走：选中 + 备注 → 取消勾选不删已写下的字，字还在就还能单独交。
+  pickRadios()[1].click();
+  await settle();
+  typeInto(textareaOf(firstFieldset), '偏好单测覆盖');
+  await settle();
+  pickRadios()[1].click();
+  await settle();
+  check('clearing the pick keeps the typed note', pickedLabels().length === 0 && textareaOf(firstFieldset)?.value === '偏好单测覆盖', `picked=${pickedLabels().join('|')} note=${textareaOf(firstFieldset)?.value || ''}`);
+  check('a note alone still counts as an answer', submitBtn()?.disabled === false, `disabled=${submitBtn()?.disabled}`);
+  pickRadios()[1].click();
+  await settle();
+  check('re-picking restores the selection answer', JSON.stringify(pickedLabels()) === JSON.stringify(['真实开发任务']), pickedLabels().join('|'));
 
   click(nextArrow());
   await settle();

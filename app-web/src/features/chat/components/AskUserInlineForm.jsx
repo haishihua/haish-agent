@@ -1,4 +1,5 @@
 import { ApprovalSurface } from '../../../shared/ui/agent-elements/ApprovalSurface.jsx';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import React from 'react';
 import { approvalStore } from '../../approvals/model/approval-store.js';
@@ -108,7 +109,7 @@ export function AskUserInlineForm({
       <div className="haish-approval-header"><span className="haish-approval-title">Questions</span></div>
       <div className="haish-approval-body">
         {request.context ? <div className="haish-approval-intent">{request.context}</div> : null}
-        {error ? <div className="haish-approval-error">{error}</div> : null}
+        {error ? <ErrorState variant="inline" detail={error} /> : null}
         <div className="haish-user-input-questions">
           {questions.map((question, index) => {
             const options = Array.isArray(question.options) ? question.options : [];
@@ -132,6 +133,12 @@ export function AskUserInlineForm({
                             type={question.multiple ? 'checkbox' : 'radio'}
                             name={`ask-user-${request.request_id}-${question.id}`}
                             checked={checked}
+                            // 再点一次已选中的单选选项 = 取消：这次点击值没变，浏览器和 React
+                            // 都不会发 change，取消只能在 click 上补一刀。没选中的点击不在这里
+                            // 处理，交给 onChange（多选的全部情况也走那条）。
+                            onClick={() => {
+                              if (!question.multiple && checked) toggleSelection(question, label);
+                            }}
                             onChange={() => toggleSelection(question, label)}
                           />
                           <span className="haish-user-input-check" aria-hidden="true" />

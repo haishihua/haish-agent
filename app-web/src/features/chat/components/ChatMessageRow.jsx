@@ -214,7 +214,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
             </div>
           ) : null}
           </div>
-          {actionError ? <div role="alert" className="message-action-error">{actionError}</div> : null}
+          {actionError ? <ErrorState variant="inline" detail={actionError} /> : null}
         </div>
       {(messageClock || copyText || onRetry || onFork || onEdit) && !editing ? (
         <div className="chat-message-actions">

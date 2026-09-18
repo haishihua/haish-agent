@@ -106,6 +106,36 @@ test('path presentation derives a basename and type hint without modifying the s
   assert.equal(localPathReference('src/components/Button.jsx').kindLabel, 'JSX');
 });
 
+test('branch names, versions and prose with a slash stay body text instead of becoming FOLDER cards', () => {
+  // 截图里的原话：整句没有空格、只带一个斜杠，旧判定把整行当成相对路径 → 只剩一张
+  // 写着 `20260917 / FOLDER` 的卡片、气泡正文被抠空。这类形状现在不再是引用。
+  const reported = '那就把修复分支合并到release/20260917';
+  assert.equal(localPathReference(reported), null);
+  assert.deepEqual(splitPathReferenceDraft(reported), { text: reported, references: [] });
+  for (const value of [
+    'release/20260917', 'feature/requirement-21555', 'pipeline/stage2', 'v1.2/3', 'release/1.2',
+    '.worktrees/release-20260917', '明天/后天', '修复release/20260917分支',
+    '帮我看看src/a.py', '看下app-web/src/features/chat/model/chat-timeline.js',
+    '那就把修复分支合并到release/20260917。',
+  ]) {
+    // 两层判定必须同口径：模型说不是引用，气泡就一个字都不能搬走。
+    assert.equal(localPathReference(value), null, value);
+    assert.deepEqual(splitPathReferenceDraft(value), { text: value, references: [] }, value);
+  }
+});
+
+test('relative cards still appear for plain path segments that end in a file name', () => {
+  for (const [value, kindLabel] of [
+    ['src/main/main.ts', 'TS'],
+    ['app-web/tests/fixtures/ask-user-card.jsx', 'JSX'],
+    ['docs/makefile', 'FILE'],
+    ['scripts/build.sh', 'SH'],
+  ]) {
+    assert.equal(localPathReference(value).kindLabel, kindLabel, value);
+    assert.deepEqual(splitPathReferenceDraft(value), { text: '', references: [value] }, value);
+  }
+});
+
 test('mixed text, multiple references, quotes, whitespace and unicode round-trip exactly', () => {
   const source = `分析一下这个项目：\r\n${PROJECT_PATH}\r\n\r\n参考这份文档\n"${DOCUMENT_PATH}"\n结尾不变`;
   const parts = splitPathReferences(source);

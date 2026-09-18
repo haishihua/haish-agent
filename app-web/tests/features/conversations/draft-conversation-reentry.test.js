@@ -46,7 +46,6 @@ function createHarness() {
       };
     },
     createDefaultProject: () => ({ id: 'project-1' }),
-    createEmptyContextUsage: () => ({ usedTokens: 0, totalTokens: 0, ratio: 0 }),
     createEmptyTaskRuntimeState: () => ({
       activeTaskId: null,
       pendingTask: null,
@@ -72,7 +71,9 @@ function createHarness() {
     },
     runtimesRef: { current: new Map() },
     setComposerAttachment: () => {},
-    setContextUsage: () => {},
+    resetContextUsage: () => {},
+    applyContextUsage: () => {},
+    latestContextUsageFromTasks: () => ({}),
     setConversationAttachments: () => {},
     setConversationError: () => {},
     setConversationId: (value) => { state.conversationId = value; },

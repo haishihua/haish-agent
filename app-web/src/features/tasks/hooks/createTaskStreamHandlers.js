@@ -71,11 +71,11 @@ export function createTaskStreamHandlers(ctx) {
     appendAnswerDelta,
     appendChatProgressText,
     applyConversationSnapshot,
+    applyContextUsage,
     applyTerminalTaskState,
     batchRuntimeMutations,
     chatFinalizedTaskIdsRef,
     conversationId,
-    conversationIdRef,
     ensureTaskForEvent,
     eventDeltaText,
     generateHexId,
@@ -93,9 +93,7 @@ export function createTaskStreamHandlers(ctx) {
     removeConversationTaskFromWorkspace,
     runTaskStream = (command, onEvent) => window.haish.runTaskStream(command, onEvent),
     resolveProviderMeta,
-    saveStoredContextUsage,
     setComposerAttachment,
-    setContextUsage,
     setRuntimeActiveTaskId,
     setRuntimeAnswerBuffer,
     setRuntimeBusy,
@@ -182,10 +180,9 @@ export function createTaskStreamHandlers(ctx) {
     appendTaskEvent(taskId, event);
     const nextContextUsage = contextUsageFromRuntimeEvent(event, ownerConvId || conversationId);
     if (nextContextUsage) {
-      if (!ownerConvId || ownerConvId === conversationIdRef.current) {
-        setContextUsage(nextContextUsage);
-      }
-      saveStoredContextUsage(nextContextUsage);
+      // 走表盘唯一写入入口：当前会话改表盘 + 落盘，后台会话只落盘。哪个会话算
+      // “当前”由表盘自己判断（它手上就是最新的 conversationIdRef），这里不重复判一次。
+      applyContextUsage(nextContextUsage, { ownerConversationId: ownerConvId || conversationId });
     }
     const loopIndex = Math.max(1, event.loop_index || 1);
     if (isChatOriginTask(taskId, ownerConvId)) {

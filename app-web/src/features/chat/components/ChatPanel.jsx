@@ -390,7 +390,7 @@ export function ChatPanel({
   const totalTokens = Math.max(0, Math.round(Number(contextUsage?.totalTokens) || 0));
   const contextRatio = Math.max(0, Math.min(1, Number(contextUsage?.ratio) || (totalTokens > 0 ? usedTokens / totalTokens : 0)));
   const visibleContextRatio = usedTokens > 0 ? Math.max(contextRatio, 0.01) : 0;
-  const contextTooltip = `${formatContextUsageLabel(usedTokens, totalTokens)}${contextUsage?.overLimit ? ' · Over limit' : ''}`;
+  const contextTooltip = `${formatContextUsageLabel(usedTokens, totalTokens, { estimated: Boolean(contextUsage?.estimated) })}${contextUsage?.overLimit ? ' · Over limit' : ''}`;
   const contextSector = contextSectorPath(visibleContextRatio);
   const runConfigReadOnly = running || submitPending;
   const runConfigDisabled = !runConfigReadOnly && (disabled || submitPending);

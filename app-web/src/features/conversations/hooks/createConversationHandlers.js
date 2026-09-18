@@ -22,6 +22,7 @@ export function createConversationHandlers(ctx) {
     conversationIdRef,
     createDefaultProject,
     draftConversationRef,
+    dropMissingConversation,
     fetchConversationDetail,
     findConversationById,
     findProjectByConversationId,
@@ -118,13 +119,45 @@ export function createConversationHandlers(ctx) {
       return detail;
     } catch (error) {
       if (controller.signal.aborted || error?.name === 'AbortError') return null;
-      if (isConversationActivationCurrent(activationSeq)) throw error;
-      return null;
+      if (!isConversationActivationCurrent(activationSeq)) return null;
+      // 404 = 这条记录已经不存在了，是数据不是故障：抹掉它并静默换一个能用的会话，
+      // 不要把「会话已删除」当成错误提示弹给用户。
+      if (error?.status === 404) {
+        await recoverMissingConversation(projectId, targetConversationId);
+        return null;
+      }
+      throw error;
     } finally {
       if (conversationDetailAbortRef.current === controller) {
         conversationDetailAbortRef.current = null;
       }
     }
+  }
+
+  // 会话没了（列表轮询发现当前会话消失，或恢复时拿到 404）：换一个能接手的，没有就
+  // 开一个空白对话。「点了一行已删会话」和「正在看的会话被删掉」走的是同一条路。
+  async function handleConversationRemoved({ projectId = null, conversationId: fallbackConversationId = null } = {}) {
+    if (fallbackConversationId) {
+      await handleSelectConversation(projectId, fallbackConversationId);
+      return;
+    }
+    if (projectId) openDraftConversation(projectId);
+  }
+
+  // 会话在服务端已经没了：本地抹掉它；如果它正是当前选中的会话，就静默换一个能用的
+  // （同项目优先，没有别的会话就开一个空白对话）。全程不弹错误提示。
+  async function recoverMissingConversation(projectId, missingConversationId) {
+    const recovery = dropMissingConversation(missingConversationId, { projectId });
+    if (!recovery?.wasSelected || !recovery.projectId) return null;
+    try {
+      await handleConversationRemoved({
+        projectId: recovery.projectId,
+        conversationId: recovery.fallbackConversationId,
+      });
+    } catch (error) {
+      console.warn('conversation fallback after a missing conversation failed', error);
+    }
+    return recovery;
   }
 
   async function handleSelectConversation(projectId, nextConversationId) {
@@ -838,6 +871,7 @@ export function createConversationHandlers(ctx) {
 
   return {
     handleSelectConversation,
+    handleConversationRemoved,
     handleSelectProject,
     handleToggleProject,
     handleToggleConversationTasks,

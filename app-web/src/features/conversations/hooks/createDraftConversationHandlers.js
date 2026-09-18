@@ -11,6 +11,7 @@ export function createDraftConversationHandlers(ctx) {
     DEFAULT_SESSION_NAME,
     applyConversationSnapshot,
     apiFetch,
+    applyContextUsage,
     buildApiHeaders,
     chatFinalizedTaskIdsRef,
     conversationActivationSeqRef,
@@ -19,7 +20,6 @@ export function createDraftConversationHandlers(ctx) {
     conversationIdRef,
     createConversationInProject,
     createDefaultProject,
-    createEmptyContextUsage,
     createEmptyTaskRuntimeState,
     detachActiveRunFromCurrentConversation,
     draftConversationIdsRef,
@@ -29,14 +29,15 @@ export function createDraftConversationHandlers(ctx) {
     getRuntime,
     isDefaultConversationName,
     isTaskActuallyActive,
+    latestContextUsageFromTasks,
     mutateRuntime,
     normalizeWorkspaceOrdering,
     normalizeRuntimeEvents,
     pendingCreatedDetailRef,
     rekeyChatDraft,
+    resetContextUsage,
     runtimesRef,
     setComposerAttachment,
-    setContextUsage,
     setConversationAttachments,
     setConversationError,
     setConversationId,
@@ -74,28 +75,45 @@ export function createDraftConversationHandlers(ctx) {
     );
   }
 
+  // 传过文件之后这个草稿就是用户的真实内容了——解析成功、失败都算：文件已经落在服务端
+  // （成功的还会留下附件与导入记录），把它当空壳回收等于连用户的东西一起扔掉。
+  // 标记之后有两件事跟着变：切走不再删这条会话；已经打好的字留在它自己的输入框里，
+  // 下次打开这条会话还能接着发（而不是退回 "+" 那个空壳）。
+  function markDraftConversationKept(conversationId) {
+    const draft = draftConversationRef.current;
+    if (!draft || (conversationId && draft.id !== conversationId)) return;
+    draft.keepServerConversation = true;
+  }
+
   function clearDraftConversationState({ clearComposer = true } = {}) {
     const draft = draftConversationRef.current;
     const pendingDetail = pendingCreatedDetailRef.current;
+    const keepServerConversation = Boolean(draft?.keepServerConversation);
     if (draft?.id) {
       runtimesRef.current.delete(draft.id);
     }
-    // A draft that already forced a server create (image / document upload)
-    // holds its unsent text under the server id. Put it back on the remembered
-    // draft id so re-opening the blank chat restores what the user typed.
-    if (draft?.localDraftId && draft.localDraftId !== draft.id) {
+    // A draft that already forced a server create (document upload) holds its
+    // unsent text under the server id. Put it back on the remembered draft id so
+    // re-opening the blank chat restores what the user typed — unless the draft
+    // itself stays as a real conversation (see markDraftConversationKept), in
+    // which case the text belongs to that conversation.
+    if (!keepServerConversation && draft?.localDraftId && draft.localDraftId !== draft.id) {
       rekeyChatDraft?.(draft.id, draft.localDraftId);
     }
-    // If a draft already forced a server create (e.g. image upload) but the user
-    // never sent a message, drop that empty server conversation so it cannot
-    // reappear after a later workspace refresh.
+    // If a draft already forced a server create but the user never sent a message
+    // and never attached a file, drop that empty shell so it cannot reappear
+    // after a later workspace refresh. 传过文件的会话不删（见上）。
     const pendingServerId = pendingDetail?.conversation_id
       || (draft?.serverCreated ? draft.id : null);
-    if (pendingServerId && !String(pendingServerId).startsWith('draft-')) {
+    if (!keepServerConversation && pendingServerId && !String(pendingServerId).startsWith('draft-')) {
       apiFetch(`${API_BASE}/api/conversations/${encodeURIComponent(pendingServerId)}`, {
         method: 'DELETE',
       }).catch(() => {});
       runtimesRef.current.delete(pendingServerId);
+    }
+    // 会话留下了，"新建会话" 就得换一个新壳：文字和附件都归那条真会话。
+    if (keepServerConversation) {
+      forgetDraftConversationId(draftConversationIdsRef.current, draft?.projectId);
     }
     draftConversationRef.current = null;
     pendingCreatedDetailRef.current = null;
@@ -155,8 +173,8 @@ export function createDraftConversationHandlers(ctx) {
       path: project.workspacePath || window.haish?.homePath || null,
       label: project.workspaceLabel || project.name || null,
     });
-    const emptyUsage = createEmptyContextUsage(null);
-    setContextUsage(emptyUsage);
+    // 新会话没有读数：换一块空表盘（不写存储，历史会话的读数不受影响）。
+    resetContextUsage();
     setComposerAttachment(null);
     setUploadState({ active: false, fileName: '' });
     setConversationError('');
@@ -392,6 +410,15 @@ export function createDraftConversationHandlers(ctx) {
       }
       return { ...state, activeTaskId, tasksById };
     }, targetConversationId);
+    // 表盘：恢复路径拿回来的任务快照就是服务端权威读数（值 + 采样时刻），直接喂给
+    // 唯一写入入口——当前会话改表盘、后台会话只落盘，切回去时用的是同一份。
+    applyContextUsage(
+      latestContextUsageFromTasks(
+        details.map((detail) => detail.normalizedTask),
+        targetConversationId,
+      ),
+      { ownerConversationId: targetConversationId },
+    );
     return details.map(({ normalizedTask }) => normalizedTask);
   }
 
@@ -423,6 +450,11 @@ export function createDraftConversationHandlers(ctx) {
         },
       };
     }, targetConversationId);
+    // 同上：任务轮询/单任务恢复也把实测快照喂给表盘（没有读数时不会覆盖现有值）。
+    applyContextUsage(
+      latestContextUsageFromTasks([normalizedTask], targetConversationId),
+      { ownerConversationId: targetConversationId },
+    );
     return normalizedTask;
   }
 
@@ -581,6 +613,7 @@ export function createDraftConversationHandlers(ctx) {
     clearDraftConversationState,
     openDraftConversation,
     ensureServerConversationForActiveDraft,
+    markDraftConversationKept,
     materializeDraftConversationForSend,
     fetchTaskRuntimeDetail,
     fetchTaskRuntimeBatch,

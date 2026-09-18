@@ -11,7 +11,6 @@ export function createDeployHandlers(ctx) {
     APP_DEFAULT_AGENT_OPTIONS,
     applyTerminalTaskState,
     cancelActiveConversationTask,
-    cancelActiveTask,
     queueTaskInput,
     chatFinalizedTaskIdsRef,
     conversationDetailToWorkspaceConversation,
@@ -93,38 +92,45 @@ export function createDeployHandlers(ctx) {
     // Stop targets the currently-shown conversation only — other backgrounded
     // conversations continue running. All ref/state reads scope to its runtime.
     const targetConvId = conversationIdRef.current;
-    const targetRuntime = targetConvId ? getRuntime(targetConvId) : null;
-    if (!targetConvId || !targetRuntime) {
+    if (!targetConvId) {
       return hadQueuedDeploy ? String(queuedRequest?.text || '') : '';
     }
-    const currentTaskState = targetRuntime.taskRuntimeState;
-    let taskId = targetRuntime.activeTaskId
-      || currentTaskState.activeTaskId
+    const targetRuntime = getRuntime(targetConvId);
+    const currentTaskState = targetRuntime?.taskRuntimeState || null;
+    let taskId = targetRuntime?.activeTaskId
+      || currentTaskState?.activeTaskId
       || null;
-    if (!taskId) {
+    if (!taskId && currentTaskState) {
       const tasksById = currentTaskState.tasksById || {};
       const candidates = Object.values(tasksById).filter((task) => isTaskActuallyActive(task));
       candidates.sort((a, b) => taskUpdatedTimestamp(b) - taskUpdatedTimestamp(a));
       const fallback = candidates[0];
       if (fallback?.taskId) taskId = fallback.taskId;
     }
-    const runId = targetRuntime.activeRunId;
-    const controllerToAbort = targetRuntime.fetchController;
-    const runtimeBusy = targetRuntime.busy;
-    const pendingTask = currentTaskState.pendingTask || null;
-    const activeTask = taskId ? (currentTaskState.tasksById?.[taskId] || null) : null;
+    const runId = targetRuntime?.activeRunId || null;
+    const controllerToAbort = targetRuntime?.fetchController || null;
+    const runtimeBusy = Boolean(targetRuntime?.busy);
+    const pendingTask = currentTaskState?.pendingTask || null;
+    const activeTask = taskId ? (currentTaskState?.tasksById?.[taskId] || null) : null;
     const restoreText = String(
       activeTask?.title
       || pendingTask?.title
       || queuedRequest?.text
       || ''
     ).trim();
-    const hasActiveRun = runtimeBusy || taskId || pendingTask || controllerToAbort || hadQueuedDeploy;
-    if (!hasActiveRun) return '';
+    // Local bookkeeping only controls what this window rolls back below — it
+    // never controls whether the stop request is sent.
+    const hasLocalBookkeeping = runtimeBusy
+      || taskId
+      || pendingTask
+      || controllerToAbort
+      || hadQueuedDeploy;
     // Mark abort BEFORE any async cancel / abort side effects so in-flight
     // NDJSON flushes and late applyRuntimeEvent calls cannot recreate the turn.
-    targetRuntime.abortRequested = true;
-    if (runId) targetRuntime.cancelledRunIds.add(runId);
+    if (targetRuntime) {
+      targetRuntime.abortRequested = true;
+      if (runId) targetRuntime.cancelledRunIds.add(runId);
+    }
     // Block any in-flight / late SSE from re-materializing this turn.
     if (taskId) {
       userCancelledTaskIdsRef.current.add(taskId);
@@ -140,27 +146,31 @@ export function createDeployHandlers(ctx) {
     }
     // Also mark every currently-active task in this conversation, so a pending
     // local draft that later resolves to a server task_id cannot reappear.
-    Object.values(currentTaskState.tasksById || {}).forEach((task) => {
+    Object.values(currentTaskState?.tasksById || {}).forEach((task) => {
       if (!isTaskActuallyActive(task)) return;
       const key = task?.taskId || task?.task_id || task?.id;
       if (!key) return;
       userCancelledTaskIdsRef.current.add(key);
       chatFinalizedTaskIdsRef.current.add(key);
     });
-    if (taskId) {
-      cancelActiveTask(taskId)
-        .then(async (response) => {
-          if (!response.ok) throw new Error(`cancel failed (${response.status})`);
-          const result = await response.json().catch(() => ({}));
-          if (!result.cancelled) throw new Error('task cancel was not acknowledged');
+    // The server is the sole authority on what is running: always ask it to
+    // cancel this conversation's active task and let the server resolve which
+    // task that is. A missing local runtime entry must never suppress the
+    // request — the server may still be running a task this window never
+    // tracked. Draft conversations have no server-side record yet, so skip.
+    const isDraftTarget = Boolean(
+      draftConversationRef.current && draftConversationRef.current.id === targetConvId
+    );
+    if (!isDraftTarget) {
+      cancelActiveConversationTask(targetConvId)
+        .then((response) => {
+          if (response && !response.ok) {
+            console.error('conversation cancel failed', response.status);
+          }
         })
         .catch((error) => {
-          console.error('cancel failed', error);
+          console.error('conversation cancel failed', error);
         });
-    } else {
-      cancelActiveConversationTask(targetConvId).catch((error) => {
-        console.error('conversation cancel failed', error);
-      });
     }
     controllerToAbort?.abort?.();
     if (taskId) {
@@ -185,18 +195,22 @@ export function createDeployHandlers(ctx) {
     } else {
       // Queued deploy only — nothing rendered yet; just restore composer text.
     }
-    mutateRuntime(targetConvId, (rt) => {
-      // Keep abortRequested=true until the next executeQuest starts a fresh run.
-      rt.abortRequested = true;
-      if (runId) rt.cancelledRunIds.add(runId);
-      rt.activeTaskId = null;
-      rt.activeRunId = null;
-      rt.fetchController = null;
-      rt.answerBuffer = '';
-      rt.busy = false;
-    });
-    // Keep sidebar task list in sync after a hard rollback/cancel.
-    flushRuntimeTasksToWorkspace(targetConvId);
+    if (targetRuntime) {
+      mutateRuntime(targetConvId, (rt) => {
+        // Keep abortRequested=true until the next executeQuest starts a fresh run.
+        rt.abortRequested = true;
+        if (runId) rt.cancelledRunIds.add(runId);
+        rt.activeTaskId = null;
+        rt.activeRunId = null;
+        rt.fetchController = null;
+        rt.answerBuffer = '';
+        rt.busy = false;
+      });
+      // Only mirror the local snapshot when this window actually rolled back
+      // its own bookkeeping; a plain server-side stop (empty local runtime)
+      // must not overwrite the server-owned task list with an empty one.
+      if (hasLocalBookkeeping) flushRuntimeTasksToWorkspace(targetConvId);
+    }
     return taskId ? '' : restoreText;
   }
 
@@ -290,6 +304,10 @@ export function createDeployHandlers(ctx) {
         },
       };
     }, targetConversationId);
+    // 这一笔根本没到服务端（建会话 / 传图失败）：本地也别留这条影子任务。它挂在会话行上
+    // 就是一条服务端没有的「已发消息」（侧栏会显示、还会被写进本地存档），而这一笔的
+    // 生命周期只在运行时里（重发 / 编辑仍走时间线上那一行）。
+    if (pendingKey) removeConversationTaskFromWorkspace(targetConversationId, pendingKey);
   }
 
   function canStartDeployForConversation(targetConversationId = null) {

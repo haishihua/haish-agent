@@ -96,11 +96,37 @@ export function useConversationBootstrap({
         const activeSummary = conversations.find(
           (item) => item.conversation_id === nextState.activeConversationId,
         ) || chatConversations[0] || conversations[0];
+        // 记住的那个会话在服务端已经没了（例如上次留下的空草稿被清掉）：抹掉它、
+        // 换一个还能用的，别把 404 变成启动错误页。
+        const fallbackDetailAfterMissing = async (missingConversationId) => {
+          // nextState 就是刚拼好的工作区快照：dropMissingConversation 手里的 ctx 快照
+          // 还停在挂载前，用它挑不出能接手的会话（只会白白新建一个空白对话）。
+          const recovery = activationApi.dropMissingConversation?.(missingConversationId, {
+            snapshot: nextState,
+          }) || {};
+          if (recovery.fallbackConversationId) {
+            return activationApi.fetchConversationDetail(recovery.fallbackConversationId);
+          }
+          // 一个能用的会话都没有：开一个空白对话，和首次启动的兜底一致。
+          return isCurrent()
+            ? createConversationWithRetry(
+                { title: DEFAULT_SESSION_NAME, execution_mode: 'chat' },
+                isCurrent,
+              )
+            : null;
+        };
         if (activeSummary) {
-          const detail = Array.isArray(activeSummary.messages)
-            ? activeSummary
-            : await activationApi.fetchConversationDetail(activeSummary.conversation_id);
-          await activationApi.activateConversationDetail(detail);
+          try {
+            const detail = Array.isArray(activeSummary.messages)
+              ? activeSummary
+              : await activationApi.fetchConversationDetail(activeSummary.conversation_id);
+            await activationApi.activateConversationDetail(detail);
+          } catch (activationError) {
+            if (activationError?.status !== 404) throw activationError;
+            const fallbackDetail = await fallbackDetailAfterMissing(activeSummary.conversation_id);
+            if (!fallbackDetail?.conversation_id) throw activationError;
+            await activationApi.activateConversationDetail(fallbackDetail);
+          }
         }
         setConversationReady(true);
       } catch (error) {

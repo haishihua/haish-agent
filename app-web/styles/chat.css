@@ -677,14 +677,13 @@
 }
 
 .chat-message-row.agent .message-shell.failed .message-speech-body { padding: 0; border: 0; background: transparent; }
-.message-action-error { color: #ffb8c5; margin-top: 8px; font: 12px/1.5 var(--conversation-font); overflow-wrap: anywhere; }
+/* 失败卡跟着气泡正文：保留旧版错误文字的那点间距，两行不贴在一起。 */
+.message-shell > .aui-error-state.is-inline { margin-top: 8px; }
 .chat-bubble-copy.message-turn-action { width: 24px; height: 24px; border-radius: 50%; }
 .message-turn-action:hover { background: rgba(138, 166, 209, 0.12); }
-.message-turn-action:focus-visible, .message-edit-composer textarea:focus-visible,
-.message-edit-composer button:focus-visible {
+.message-turn-action:focus-visible {
     outline: 2px solid var(--gold); outline-offset: 2px;
 }
-.message-edit-composer button:disabled,
 .chat-bubble-copy:disabled { opacity: .5; cursor: default; }
 
 .ico-copy-message {
@@ -1073,20 +1072,6 @@
     border: 2px solid transparent;
 }
 
-/* ============ iMessage-style mini chat (embedded inside tool body) ============ */
-.chat-imsg {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, ui-sans-serif, sans-serif;
-    font-feature-settings: 'kern' 1, 'liga' 1;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
-    min-width: 0;
-}
-
 .chat-timeline-tool-children {
     display: flex;
     flex-direction: column;
@@ -1298,29 +1283,6 @@
     stroke: #101725;
 }
 
-/* Folded "verb-counted" run of consecutive tool calls. The head reuses
- * .chat-timeline-tool-head; this block only adds the small count pill and
- * the expanded children list. */
-
-.chat-timeline-tool-group-count {
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: rgba(138, 166, 209, 0.16);
-    color: rgba(174, 185, 211, 0.92);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.4px;
-}
-
-.chat-timeline-tool-group-body {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-top: 4px;
-    padding-left: 12px;
-    border-left: 1px solid rgba(138, 166, 209, 0.18);
-}
-
 .chat-timeline-activity {
     display: inline-flex;
     align-items: center;
@@ -1436,8 +1398,6 @@
     color: rgba(239, 191, 100, 0.9);
     background: rgba(20, 28, 48, 0.4);
 }
-
-/* legacy class kept in case anywhere else references it. New code uses .chat-timeline-chevron */
 
 .chat-bubble-text {
     max-width: 100%;
@@ -2450,7 +2410,6 @@
 
     .chat-timeline-status.status-running,
     .chat-timeline-retry-icon,
-    .chat-timeline-spark,
     .chat-timeline-text.streaming::after,
     .chat-bubble-text.streaming .chat-stream-text::after {
         animation: none;

@@ -4,6 +4,7 @@ import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../../shared/ui/settings-elements/ui/dialog.tsx';
 import { FileUpload, FileUploadDropzone, FileUploadTrigger, FileUploadList, FileUploadItem, FileUploadItemPreview, FileUploadItemMetadata, FileUploadItemDelete } from '../../../shared/ui/settings-elements/dice-ui/file-upload.tsx';
 import { parseSkillPackage, SKILL_PACKAGE_MAX_SIZE, validateSkillPackageFile } from '../model/skill-package.js';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 
 export function SkillUpload({ installedSkills, onInstall, onClose }) {
   const [files, setFiles] = useState([]);
@@ -44,7 +45,7 @@ export function SkillUpload({ installedSkills, onInstall, onClose }) {
       </FileUpload>
       {reading && <div className="skill-reading" role="status"><LoaderCircle size={15} className="spin" />Reading package…</div>}
       {skill && <div className="skill-package-result" role="status"><Sparkles size={20} /><div><strong>{skill.name}</strong><p>{skill.description}</p></div><Check size={16} /></div>}
-      {error && <p className="form-error" role="alert">{error}</p>}
+      {error && <ErrorState variant="inline" detail={error} />}
       <DialogFooter><Button variant="ghost" size="sm" onClick={onClose} disabled={installing}>Cancel</Button><Button size="sm" disabled={!skill || reading || installing || Boolean(error)} onClick={async () => { setInstalling(true); try { if (await onInstall(skill, files[0]) !== false) onClose(); } catch (failure) { setError(String(failure?.message || failure)); } finally { setInstalling(false); } }}>{installing ? 'Installing…' : 'Install'}</Button></DialogFooter>
     </DialogContent>
   </Dialog>;

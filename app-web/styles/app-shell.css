@@ -966,23 +966,12 @@
 .settings-skills-toolbar,
 .settings-provider-list,
 .settings-skill-list,
-.settings-inline-error,
 .settings-inline-success {
     grid-column: 1 / -1;
 }
 
 .settings-provider-toolbar {
     padding: 0;
-}
-
-.settings-inline-error {
-    padding: 10px 12px;
-    border: 1px solid rgba(255, 110, 122, 0.18);
-    border-radius: 10px;
-    background: rgba(255, 110, 122, 0.08);
-    color: #ff9aa3;
-    font-size: 12px;
-    line-height: 1.4;
 }
 
 .settings-inline-success {

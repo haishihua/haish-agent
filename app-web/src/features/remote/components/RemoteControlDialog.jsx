@@ -4,6 +4,7 @@ import {
   CheckCircle2, Clock3, LockKeyhole, MoreVertical, RefreshCw, Settings2, Smartphone, TriangleAlert, Unplug, X,
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 
 function formatLastSeen(timestamp) {
   const seconds = Math.max(0, Math.round(Date.now() / 1000 - Number(timestamp || 0)));
@@ -349,7 +350,7 @@ export function RemoteControlDialog({ onClose }) {
                 />
               </label>
             </div>
-            {settingsError ? <p className="remote-settings-error" role="alert">{settingsError}</p> : null}
+            {settingsError ? <ErrorState variant="inline" detail={settingsError} /> : null}
             <div className="remote-settings-actions">
               {settings ? (
                 <button type="button" onClick={() => setSettingsOpen(false)} disabled={savingSettings}>

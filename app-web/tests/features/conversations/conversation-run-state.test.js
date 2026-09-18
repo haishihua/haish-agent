@@ -8,8 +8,10 @@ import {
   RUN_STATE_IDLE,
   RUN_STATE_RUNNING,
   RUN_STATE_WAITING_INPUT,
+  STATUS_MARK_TERMINAL,
   isRunStateLive,
   resolveConversationRunState,
+  resolveConversationStatusMark,
   resolveConversationWaitState,
   settledTaskIds,
 } from '../../../src/features/conversations/model/conversation-run-state.js';
@@ -232,23 +234,59 @@ test('the state hook reads the two live snapshots without extra requests', () =>
 
 test('the conversation row renders the three states from the single judge', () => {
   assert.match(nodeSource, /const runState = useConversationRunState\(\{/);
-  assert.match(nodeSource, /const waitIndicator = WAIT_INDICATORS\[runState\.state\];/);
+  assert.match(nodeSource, /const waitIndicator = statusMark \? WAIT_INDICATORS\[statusMark\.kind\] : null;/);
   assert.match(nodeSource, /\{WaitGlyph \? \(/);
   assert.match(nodeSource, /className=\{`conversation-running-indicator \$\{waitIndicator\.className\}`\}/);
   assert.match(nodeSource, /role="status" aria-label=\{waitIndicator\.label\}>/);
   // 原来的「在跑」蓝色转圈保持不动，只是退到第二优先。
   assert.match(
     nodeSource,
-    /: runState\.state === RUN_STATE_RUNNING \? \(\n\s+<span className="conversation-running-indicator" role="status" aria-label="Task running">\n\s+<span className="ico ico-loading" aria-hidden="true" \/>/,
+    /: statusMark\?\.kind === RUN_STATE_RUNNING \? \(\n\s+<span className="conversation-running-indicator" role="status" aria-label="Task running">\n\s+<span className="ico ico-loading" aria-hidden="true" \/>/,
   );
   assert.doesNotMatch(nodeSource, /conversationHasRunningTask|useConversationActivity/);
   assert.doesNotMatch(modelSource, /workflowTaskDisplayStatus|conversationTaskWaitActivity/);
 });
 
+test('the row keeps a single status slot: the newest state wins', () => {
+  // 用户截图上的现场：「远端优化」那行的绿点（结束还没看过）压在琥珀色问号气泡
+  // （等你回答）上——两个来源各占一个坑位、各亮各的。一行只该有一条最新状态。
+  assert.deepEqual(
+    resolveConversationStatusMark({ runState: RUN_STATE_WAITING_INPUT, terminalStatus: 'done' }),
+    { kind: RUN_STATE_WAITING_INPUT, status: '' },
+    'a task still waiting on the user outranks an older unread completion',
+  );
+  assert.deepEqual(
+    resolveConversationStatusMark({ runState: RUN_STATE_RUNNING, terminalStatus: 'failed' }),
+    { kind: RUN_STATE_RUNNING, status: '' },
+  );
+  assert.deepEqual(
+    resolveConversationStatusMark({ runState: RUN_STATE_APPROVAL, terminalStatus: 'cancelled' }),
+    { kind: RUN_STATE_APPROVAL, status: '' },
+  );
+  assert.deepEqual(
+    resolveConversationStatusMark({ runState: RUN_STATE_IDLE, terminalStatus: 'done' }),
+    { kind: STATUS_MARK_TERMINAL, status: 'done' },
+  );
+  assert.deepEqual(
+    resolveConversationStatusMark({ runState: RUN_STATE_IDLE, terminalStatus: 'completed' }),
+    { kind: STATUS_MARK_TERMINAL, status: 'done' },
+    'terminal aliases normalize through the shared notice judge',
+  );
+  assert.equal(resolveConversationStatusMark({ runState: RUN_STATE_IDLE }), null);
+  assert.equal(resolveConversationStatusMark({}), null);
+  // 组件里两盏灯必须互斥：终态点只挂在同一个分支链的最后一段，没有第二条点亮路径。
+  assert.match(nodeSource, /const statusMark = resolveConversationStatusMark\(\{\n\s+runState: runState\.state,\n\s+terminalStatus,\n\s+\}\);/);
+  assert.match(
+    nodeSource,
+    /: statusMark\?\.status \? \(\n\s+<span className=\{`conversation-terminal-notice chat-timeline-status status-\$\{statusMark\.status\}`\} aria-hidden="true" \/>/,
+  );
+  assert.doesNotMatch(nodeSource, /\{terminalStatus \? \(/, 'the unread dot must not light up on its own');
+});
+
 test('the row table speaks the run-state vocabulary the model exports', () => {
   assert.match(
     nodeSource,
-    /import \{\n\s+RUN_STATE_APPROVAL,\n\s+RUN_STATE_RUNNING,\n\s+RUN_STATE_WAITING_INPUT,\n\s+isRunStateWaiting,\n\s+taskIdOf,\n\} from '\.\.\/model\/conversation-run-state\.js';/,
+    /import \{\n\s+RUN_STATE_APPROVAL,\n\s+RUN_STATE_RUNNING,\n\s+RUN_STATE_WAITING_INPUT,\n\s+isRunStateWaiting,\n\s+resolveConversationStatusMark,\n\s+taskIdOf,\n\} from '\.\.\/model\/conversation-run-state\.js';/,
   );
   assert.match(nodeSource, /\[RUN_STATE_WAITING_INPUT\]: \{\n\s+className: 'waiting-input',\n\s+label: 'Waiting for your answer',\n\s+Glyph: WaitingInputGlyph,/);
   assert.match(nodeSource, /\[RUN_STATE_APPROVAL\]: \{\n\s+className: 'awaiting-approval',\n\s+label: 'Awaiting approval',\n\s+Glyph: ApprovalGlyph,/);

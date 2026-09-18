@@ -141,7 +141,6 @@
   .settings-skill-errors ul { display: flex; flex-direction: column; gap: 12px; margin: 8px 0 0; padding: 12px; list-style: none; max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
   .settings-skill-errors li { overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
   .settings-skill-errors li > span { color: var(--muted-foreground); font-size: 11px; }
-  .settings-inline-error, .form-error { color: #df98a0; background: transparent; border: 0; padding: 0; font-size: 12px; line-height: 1.6; margin-top: 12px; }
   .settings-inline-success { color: #8fb5a3; background: transparent; border: 0; padding: 0; font-size: 12px; line-height: 1.6; margin-top: 12px; }
   .settings-delete-dialog { width: 420px; max-width: 420px; padding: 24px; }
   .settings-delete-dialog [data-slot="alert-dialog-header"] { text-align: left; place-items: start; }

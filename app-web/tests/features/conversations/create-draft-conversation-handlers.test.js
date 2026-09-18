@@ -19,6 +19,9 @@ function createRuntimeRestoreHarness(responsePromise) {
     taskDetailToRuntimeTask: (task) => task,
     taskRuntimeEventCacheRef: { current: new Map() },
     taskRuntimeFetchesRef: { current: new Map() },
+    // 表盘读数的两个入口（本文件只关心恢复/落库行为，喂进来的实测值直接丢掉）。
+    applyContextUsage: () => {},
+    latestContextUsageFromTasks: () => ({}),
     updateTaskRuntimeState: (updater, targetConversationId) => {
       updates.push({ updater, targetConversationId });
     },
@@ -113,6 +116,9 @@ test('conversation restore fetches all task runtimes in one request', async () =
     taskDetailToRuntimeTask: (task) => ({ taskId: task.task_id, status: task.status }),
     taskRuntimeEventCacheRef: { current: new Map() },
     taskRuntimeFetchesRef: { current: new Map() },
+    // 表盘读数的两个入口（本文件只关心恢复/落库行为，喂进来的实测值直接丢掉）。
+    applyContextUsage: () => {},
+    latestContextUsageFromTasks: () => ({}),
     updateTaskRuntimeState: (updater) => { runtimeState = updater(runtimeState); },
   });
 
@@ -180,6 +186,9 @@ test('concurrent task polls share one request and restore a missing task into ta
     taskDetailToRuntimeTask: (task) => ({ taskId: task.task_id, status: task.status }),
     taskRuntimeEventCacheRef: { current: new Map() },
     taskRuntimeFetchesRef: { current: new Map() },
+    // 表盘读数的两个入口（本文件只关心恢复/落库行为，喂进来的实测值直接丢掉）。
+    applyContextUsage: () => {},
+    latestContextUsageFromTasks: () => ({}),
     updateTaskRuntimeState: (updater) => { runtimeState = updater(runtimeState); },
   });
 
@@ -231,6 +240,9 @@ test('terminal task polling releases the active task', async () => {
     taskDetailToRuntimeTask: (task) => ({ taskId: task.task_id, status: task.status }),
     taskRuntimeEventCacheRef: { current: new Map() },
     taskRuntimeFetchesRef: { current: new Map() },
+    // 表盘读数的两个入口（本文件只关心恢复/落库行为，喂进来的实测值直接丢掉）。
+    applyContextUsage: () => {},
+    latestContextUsageFromTasks: () => ({}),
     updateTaskRuntimeState: (updater) => { runtimeState = updater(runtimeState); },
   });
 

@@ -38,6 +38,9 @@ test('ask_user form is declarative and never mounted by the legacy overlay', () 
 test('ask_user option state stays inside the main React tree with square controls', () => {
   assert.match(formSource, /const \[drafts, setDrafts\] = React\.useState\(\{\}\);/);
   assert.match(formSource, /onChange=\{\(\) => toggleSelection\(question, label\)\}/);
+  // 再点一次已选中的单选选项必须能取消：原生 radio 这次不发 change（值没变），
+  // 所以取消补在 click 上；没选中的点击不在那里重复处理（多选全走 onChange）。
+  assert.match(formSource, /if \(!question\.multiple && checked\) toggleSelection\(question, label\);/);
   assert.match(formSource, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);|className="haish-user-input-options"/);
   assert.match(formSource, /className="haish-user-input-native-control"/);
   assert.match(formSource, /className="haish-user-input-check"/);

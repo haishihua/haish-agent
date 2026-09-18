@@ -6,4 +6,7 @@
 import 'lxgw-wenkai-screen-webfont/lxgwwenkaiscreen.css';
 import '../styles.css';
 
+// Before ./app.jsx on purpose: the stale-chunk listener has to exist before React
+// requests the first lazy chunk.
+import './shared/lib/preload-recovery.js';
 import './app.jsx';

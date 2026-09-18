@@ -13,6 +13,7 @@ import {
 } from '../../workflow/model/workflow-catalog.js';
 import { closeAllPortalTooltips } from '../../../shared/ui/PortalTooltip.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import {
   configItemsForSection,
   createGenericRecord,
@@ -533,7 +534,7 @@ export function SettingsPage({
     </main>
     <div data-settings-portal="" />
     <SettingsSheet open={ordinaryEditorOpen} title={panelSelectedItem?.title || listTitle} onClose={() => { if (!panelBusy) cancelEditor(); }}>
-      {ordinaryEditorOpen && <><div className="settings-editor-scroll">{editorBody(panelSection, panelSelectedId, panelMode)}{panelConnectionStatus?.message && <p className={`settings-inline-${panelConnectionStatus.state === 'error' ? 'error' : 'success'}`} role="status">{panelConnectionStatus.message}</p>}{panelError && <p className="settings-inline-error" role="alert">{panelError}</p>}</div><SheetFooter><div>{(panelUsesLlmTest || panelIsConnectionSection) && <Button size="sm" variant="outline" onClick={testSelectedProvider} disabled={Boolean(panelBusy) || panelConnectionTesting}>{panelBusy === 'test' || panelConnectionTesting ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button size="sm" variant="ghost" disabled={Boolean(panelBusy)} onClick={cancelEditor}>{panelCanSave ? 'Cancel' : 'Close'}</Button>{panelCanSave && <Button size="sm" onClick={saveAndClose} disabled={Boolean(panelBusy)}>{panelBusy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></>}
+      {ordinaryEditorOpen && <><div className="settings-editor-scroll">{editorBody(panelSection, panelSelectedId, panelMode)}{panelConnectionStatus?.message && (panelConnectionStatus.state === 'error' ? <ErrorState variant="inline" detail={panelConnectionStatus.message} /> : <p className="settings-inline-success" role="status">{panelConnectionStatus.message}</p>)}{panelError && <ErrorState variant="inline" detail={panelError} />}</div><SheetFooter><div>{(panelUsesLlmTest || panelIsConnectionSection) && <Button size="sm" variant="outline" onClick={testSelectedProvider} disabled={Boolean(panelBusy) || panelConnectionTesting}>{panelBusy === 'test' || panelConnectionTesting ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button size="sm" variant="ghost" disabled={Boolean(panelBusy)} onClick={cancelEditor}>{panelCanSave ? 'Cancel' : 'Close'}</Button>{panelCanSave && <Button size="sm" onClick={saveAndClose} disabled={Boolean(panelBusy)}>{panelBusy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></>}
     </SettingsSheet>
     <SettingsDeleteDialog target={deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={target => performDelete(target.section, target.id)} />
   </div>;

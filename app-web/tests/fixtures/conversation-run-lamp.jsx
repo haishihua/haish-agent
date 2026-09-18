@@ -5,13 +5,17 @@ import { ConversationNode } from '../../src/features/conversations/components/Co
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import { approvalStore } from '../../src/features/approvals/model/approval-store.js';
 import '../../styles/base.css';
+// 终态点的大小/颜色在 chat.css 的 .chat-timeline-status 里（应用里也是这样加载的，
+// 且必须排在 panels.css 前面，否则 .status-cancelled 的覆盖关系就和应用不一致了）。
+import '../../styles/chat.css';
 import '../../styles/panels.css';
 
 // 会话行状态灯（生产 ConversationNode + 生产 useConversationRunState + 生产 approvalStore）。
 //
 // 判据只有一份（conversations/model/conversation-run-state.js）：任务未落终态 = 在跑；
 // 后端实时快照里有未回答提问 / 未决审批 = 在等人；任务落地终态 = 熄灯——即使快照里
-// 还留着那条旧账。
+// 还留着那条旧账。行尾那个坑位同一时刻只放一条最新状态：「结束还没看过」的终态点和
+// 「在等人」的琥珀灯互斥，不会同时出现（也不会叠在一起）。
 //
 // 事件用 window.haish.onApprovalEvent 的替身推进（approvalStore 就是这么接后端的），
 // 每一步都断言真实 DOM：类名、aria-label、琥珀色、金色 glyph 尺寸、不吃点击。
@@ -80,7 +84,7 @@ const isQuestionBubble = (glyph) => /(^|\s)lucide-message-circle-question/.test(
 let root = null;
 let mountNode = null;
 
-function render(tasks, conversation = CONVERSATION) {
+function render(tasks, conversation = CONVERSATION, terminalStatus = '') {
   flushSync(() => {
     root.render(
       <AppTooltipProvider>
@@ -90,6 +94,7 @@ function render(tasks, conversation = CONVERSATION) {
             conversation={{ ...conversation, tasks }}
             active={false}
             nodeRef={null}
+            terminalStatus={terminalStatus}
             onSelectConversation={() => {}}
             onRequestDeleteConversation={() => {}}
           />
@@ -220,6 +225,52 @@ async function runChecks() {
       && !waitingCard?.querySelector('.conversation-task-status-icon.waiting-input'),
     `card=${waitingCard?.className || 'missing'}`,
   );
+  // 用户截图上的现场：「远端优化」那行同时亮着「结束还没看过」的绿点和「等你回答」的
+  // 琥珀色问号气泡（两个来源各占一个坑位，还叠在一起）。行尾只有一个坑位：谁最新只显示谁。
+  const rowMarks = () => document.querySelectorAll(
+    '.conversation-row .conversation-running-indicator, .conversation-row .conversation-terminal-notice',
+  );
+  const terminalDot = () => document.querySelector('.conversation-terminal-notice');
+  const terminalDotBox = () => {
+    if (!terminalDot()) return null;
+    const rect = terminalDot().getBoundingClientRect();
+    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+  };
+  const terminalDotColor = () => (terminalDot() ? getComputedStyle(terminalDot()).backgroundColor : '');
+
+  render(TASKS.landed, CONVERSATION, 'done');
+  await frame();
+  check(
+    'an unread completion is the only mark on the row',
+    Boolean(terminalDot()?.classList.contains('status-done')) && rowMarks().length === 1,
+    `marks=${rowMarks().length} dot=${terminalDot()?.className || 'none'}`,
+  );
+  check(
+    'the unread dot is drawn as the 7px completion dot, in the shared completion green',
+    JSON.stringify(terminalDotBox()) === JSON.stringify({ width: 7, height: 7 })
+      && terminalDotColor() === 'rgb(54, 211, 159)',
+    `box=${JSON.stringify(terminalDotBox())} color=${terminalDotColor()}`,
+  );
+
+  // 还有任务在等回答 + 上一次完成没看过：只留「现在」那条，终态点让位。
+  emit({ type: 'input_requested', request_id: 'req-f', conversation_id: 'conv-lamp', task_id: 'task-lamp' });
+  render(TASKS.running, CONVERSATION, 'done');
+  await frame();
+  check(
+    'a live turn replaces the unread dot instead of stacking on top of it',
+    lampHasClass('waiting-input') && rowMarks().length === 1 && !terminalDot(),
+    `marks=${rowMarks().length} classes=${lamp()?.className || ''}`,
+  );
+
+  emit({ type: 'input_resolved', request_id: 'req-f' });
+  render(TASKS.landed, CONVERSATION, 'done');
+  await frame();
+  check(
+    'a finished turn hands the slot back to the unread dot',
+    rowMarks().length === 1 && Boolean(terminalDot()?.classList.contains('status-done')) && lamp() === null,
+    `marks=${rowMarks().length} dot=${terminalDot()?.className || 'none'} lamp=${lamp()?.className || 'none'}`,
+  );
+
   check('no page error was raised while driving the lamp', window.__pageErrors.length === 0, window.__pageErrors.join(' | '));
   return results;
 }

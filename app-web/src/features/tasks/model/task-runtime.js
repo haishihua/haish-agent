@@ -334,6 +334,10 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = []) {
       model: task.model || null,
     } : null,
     answerText: task.answer_text || '',
+    // 服务端实测的上下文输入量快照（值 + 采样时刻）：表盘读数的权威来源之一，
+    // 归一任务时必须带过去，否则轮询/恢复回来的任务看不到读数。
+    contextUsedTokens: task.context_used_tokens ?? null,
+    contextUsedTokensAt: task.context_used_tokens_at || null,
     chatStreamText: '',
     toolCalls: [],
     eventLog: [],

@@ -7,6 +7,7 @@ import {
 } from '../../conversations/model/workspace-state.js';
 import { isPendingTaskId, taskSummaryToRuntimeTask } from '../model/task-runtime.js';
 import { terminalTaskNoticeStatus } from '../model/task-completion-notices.js';
+import { latestContextUsageFromTasks } from '../../chat/model/context-usage.js';
 import { startPolling } from '../../../shared/lib/polling.js';
 
 function latestActiveTaskId(tasks) {
@@ -22,6 +23,7 @@ export function useTaskRuntimePolling({
   conversationId,
   conversationIdRef,
   currentConversationActive,
+  applyContextUsage,
   fetchTaskRuntimeDetail,
   fetchTaskRuntimeBatch,
   getRuntime,
@@ -155,6 +157,12 @@ export function useTaskRuntimePolling({
           if (terminalTaskNoticeStatus(detail.normalizedTask)) {
             notifyTaskComplete(targetConversationId, detail.normalizedTask.task_id, detail.normalizedTask);
           }
+          // 后台会话的表盘读数：只落盘（当前显示的会话不走这条路），切回去时
+          // 由激活路径直接复用同一份值。
+          applyContextUsage(
+            latestContextUsageFromTasks([detail.normalizedTask], targetConversationId),
+            { ownerConversationId: targetConversationId },
+          );
         }
       }
       if (failed) throw new Error('Background polling incomplete');

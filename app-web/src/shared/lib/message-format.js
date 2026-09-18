@@ -7,8 +7,9 @@ function formatContextTokens(value) {
   return `${Math.round(thousands)}k`;
 }
 
-export function formatContextUsageLabel(usedTokens, totalTokens) {
-  return `Context: ${formatContextTokens(usedTokens)} / ${formatContextTokens(totalTokens)}`;
+export function formatContextUsageLabel(usedTokens, totalTokens, { estimated = false } = {}) {
+  // 历史估算（按正文长度猜的）加 ~ 前缀：它不是 provider 实测值。
+  return `Context: ${estimated ? '~' : ''}${formatContextTokens(usedTokens)} / ${formatContextTokens(totalTokens)}`;
 }
 
 export function formatElapsedDuration(start, end) {

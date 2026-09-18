@@ -721,12 +721,6 @@
   box-shadow: 0 0 0 3px rgba(105, 200, 246, 0.12);
 }
 
-.remote-settings-error {
-  color: #ffbdc7;
-  font-size: 12.5px;
-  line-height: 1.45;
-}
-
 .remote-settings-actions {
   display: flex;
   justify-content: flex-end;
