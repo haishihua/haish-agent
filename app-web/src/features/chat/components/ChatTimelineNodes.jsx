@@ -617,30 +617,6 @@ function ChatTimelineMetaNode({ item }) {
   );
 }
 
-function ChatTimelineThinkingNode({ item }) {
-  const [open, setOpen] = React.useState(false);
-  const text = String(item.text || '');
-  const hasText = text.trim().length > 0;
-  const charCount = text.length;
-  return (
-    <div className={`chat-timeline-thinking status-${item.status || 'done'} ${item.streaming ? 'streaming' : ''}`}>
-      <button
-        type="button"
-        className="chat-timeline-thinking-head"
-        onClick={() => hasText && setOpen((value) => !value)}
-        aria-expanded={open}
-        disabled={!hasText}
-      >
-        <span className={`chat-timeline-status status-${item.status || 'done'}`} aria-hidden="true" />
-        <span className="ico ico-thinking" aria-label="Thinking" role="img" />
-        {hasText ? <span className="chat-timeline-thinking-count">{charCount} chars</span> : null}
-        <ChatTimelineChevron open={open} />
-      </button>
-      {open && hasText ? <div className="chat-timeline-thinking-body">{text}</div> : null}
-    </div>
-  );
-}
-
 export function ChatTimelineUserInputNode({ item, onPreviewImage }) {
   const text = String(item.text || '').trim();
   const images = Array.isArray(item.images) ? item.images : [];
@@ -736,9 +712,8 @@ export function ChatAgentTimeline({
             />
           );
         }
-        if (item.kind === 'thinking') {
-          return <ChatTimelineThinkingNode key={item.id} item={item} />;
-        }
+        // 时间轴里的 thinking 条目照旧生成（活动状态判据要读它），但步骤区不再渲染：
+        // 老式的「Thinking · N chars」胶囊已删除，这里没有分支，直接落到 return null。
         if (item.kind === 'user_input') {
           return <ChatTimelineUserInputNode key={item.id} item={item} onPreviewImage={onPreviewImage} />;
         }

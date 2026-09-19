@@ -19,6 +19,7 @@
 - `contracts/reduced-motion-source.test.js` 锁住“reduced-motion 判据只有一份”：`prefers-reduced-motion: reduce` 查询串在 `app-web/src` 里只许出现在 `shared/lib/reduced-motion.js`，orb 看门狗、输入框彩虹环、标题金属字、企鹅手势都 import 同一个 `prefersReducedMotion()`（每次现读，不缓存）。
 - `features/conversations/project-rename.test.js` 锁住“项目改名”（双击项目行，跟会话行同一个手势）：只 `PATCH /api/projects/<id>`（body 只有 `name`），两端空白先 trim、空名一个请求都不发，服务端报错时侧边栏名字保持原样，名字回写以服务端落定的值为准（系统项目不会凭空长出 `workspaceLabel`），并盯住手势的接线：双击只由项目行认领，折叠图标与动作按钮不算。
 - `features/conversations/list-preview.test.js` 锁住侧边栏预览分页：默认 5 行、每点一次 “Show more” 再加 5 行，条数只有一份来源（`conversations/model/list-preview.js` 的 `PREVIEW_PAGE_SIZE`），隐藏列表（折叠项目 / 收起面板）后重新打开必须回到默认预览，不许恢复上次展开的状态。
+- `contracts/appshell-ctx-wiring.test.js` 锁住 AppShell 的 ctx 装配：工厂从 ctx 解构出的键（没带默认值的）必须在对应调用点全部递进去——少一个不会编译报错、也不会让行为测试变红，只会在跑到那行时炸成 `x is not a function`（`createDraftConversationHandlers` 曾漏递 `applyContextUsage` / `latestContextUsageFromTasks`，向上翻页恢复更早轮次记录整条路停在 TypeError 上，聊天里只剩 “Could not load earlier steps. Retry loading steps”）。
 
 ## 浏览器 DOM 回归
 
@@ -30,6 +31,7 @@
 | [message-annotations.html](fixtures/message-annotations.html) | 选区引用、UTF-16 偏移、跨 Markdown 选取和重新定位 |
 | [annotation-numbering.html](fixtures/annotation-numbering.html) | 注释编号在整个会话内累加：跨轮次、草稿与已发送引用共用同一序号 |
 | [chat-streaming-regression.html](fixtures/chat-streaming-regression.html) | 生产 ChatPanel 的历史消息缓存、最新分支/重试/编辑参数；批注增量处理、滚动布局、DOM 替换及清理；历史步骤连续翻页、搜索、失败重试与切换会话 |
+| [day-separator.html](fixtures/day-separator.html) | 生产 ChatPanel + 真实时间戳：会话详情的日期头只在消息自己的 `created_at` 跨天处出现（首条消息也有头，列表从历史中间打开时同样成立），头在当天第一条消息前面、同一天共享一条；追加同一天的消息不新增头，跨到新的一天立刻多一条；每条消息自己的时间仍留在悬停浮标（`.chat-bubble-clock`）上，日期头里没有时间；`#checks[data-result]` 输出逐项 PASS / FAIL |
 | [tool-cards.html](fixtures/tool-cards.html) | 生产工具卡片、分组、详情、流式状态、终态收尾和子 Agent 交互 |
 | [app-toast.html](fixtures/app-toast.html) | 生产 AppToast：向量徽标、三种状态配色、未知 kind 回退与 `image-rendering` 回归 |
 | [send-beam.html](fixtures/send-beam.html) | 生产 MetalActionEffect：彩虹环在“输入框有内容或任务运行中”点亮，空闲隐藏图层但不重挂外壳 |

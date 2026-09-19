@@ -149,18 +149,103 @@ export function nextProviderDraft(providerId, previous = {}) {
   };
 }
 
+// Vision providers are a list because the runtime only ever runs one VLM: the
+// chat model is preferred, and otherwise the single enabled provider serves
+// the request. A draft entry stays disabled until the user flips its switch.
+export function normalizeVisionProvider(entry, index = 0) {
+  const source = entry && typeof entry === 'object' ? entry : {};
+  const provider = normalizeLlmProviderId(source.provider);
+  const authMode = String(source.auth_mode || '').trim().toLowerCase().replace(/-/g, '_');
+  return {
+    ...source,
+    id: String(source.id || '').trim() || `vision-${index + 1}`,
+    enabled: source.enabled === true,
+    provider,
+    auth_mode: authMode || (provider === 'ollama' ? 'none' : 'api_key'),
+    custom_provider: String(source.custom_provider || '').trim(),
+    name: String(source.name || source.custom_provider || '').trim(),
+    model: String(source.model || '').trim(),
+    base_url: String(source.base_url || '').trim(),
+    model_options: Array.isArray(source.model_options) ? source.model_options : [],
+  };
+}
+
+// Accepts the canonical {mode, providers} shape plus the legacy single-object
+// draft (`{enabled, provider, model, ...}`) so stored drafts keep their VLM.
+export function normalizeVisionDraft(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  let rows;
+  if (Array.isArray(source.providers)) {
+    rows = source.providers;
+  } else if (source.provider) {
+    // Legacy single-object draft: the list-level keys move to the draft, not
+    // into the migrated provider entry.
+    const legacy = { ...source };
+    delete legacy.mode;
+    delete legacy.enabled;
+    delete legacy.providers;
+    rows = [legacy];
+  } else {
+    rows = [];
+  }
+  const providers = [];
+  let active = false;
+  const legacyRows = !Array.isArray(source.providers);
+  rows.forEach((row, index) => {
+    const hasFlag = Boolean(row) && typeof row === 'object' && row.enabled !== undefined;
+    // 旧单对象草稿没写 enabled 时按“有 provider 即启用”迁移；列表里的新条目默认关闭。
+    const requested = hasFlag ? row.enabled === true : (legacyRows && Boolean(row?.provider));
+    const entry = normalizeVisionProvider(row, index);
+    const enabled = requested && !active;
+    active = active || enabled;
+    providers.push({ ...entry, enabled });
+  });
+  return {
+    mode: String(source.mode || 'auto').trim() || 'auto',
+    providers,
+  };
+}
+
+export function createVisionProviderDraft() {
+  return {
+    id: `vision-${Date.now()}`,
+    enabled: false,
+    provider: 'custom',
+    auth_mode: 'api_key',
+    custom_provider: '',
+    name: '',
+    model: '',
+    api_key: '',
+    base_url: '',
+    model_options: [],
+    oauth_auth_url: '',
+    oauth_code: '',
+    oauth_state: '',
+    oauth_verifier: '',
+    oauth_configured: false,
+  };
+}
+
+// Enabling one provider releases the others; disabling leaves the rest alone.
+export function setVisionProviderEnabled(vision, entryId, enabled) {
+  const source = vision && typeof vision === 'object' ? vision : {};
+  const providers = (Array.isArray(source.providers) ? source.providers : []).map((item) => {
+    if (item.id === entryId) return { ...item, enabled: enabled === true };
+    return enabled === true ? { ...item, enabled: false } : item;
+  });
+  return {
+    ...source,
+    mode: String(source.mode || 'auto').trim() || 'auto',
+    providers,
+  };
+}
+
 function createDefaultLlmSettings() {
   return {
     chat: {},
     vision: {
-      enabled: false,
       mode: 'auto',
-      provider: 'custom',
-      auth_mode: 'api_key',
-      custom_provider: '',
-      model: '',
-      api_key: '',
-      base_url: '',
+      providers: [],
     },
     embedding: {
       enabled: false,
@@ -193,7 +278,7 @@ export function loadLlmSettingsDraft() {
     const stored = JSON.parse(raw);
     const draft = {
       chat: normalizeLlmModelConfig({ ...fallback.chat, ...(stored?.chat || {}) }),
-      vision: { ...fallback.vision, ...(stored?.vision || {}) },
+      vision: normalizeVisionDraft(stored?.vision),
       embedding: { ...fallback.embedding, ...(stored?.embedding || {}) },
       profiles: Array.isArray(stored?.profiles) ? stored.profiles : [],
     };
@@ -208,6 +293,7 @@ export function applyLlmSettingsPayloadToDraft(previous, payload) {
   const hasBackendConfig = Boolean(
     payload.chat?.provider
     || payload.vision?.provider
+    || Array.isArray(payload.vision?.providers)
     || payload.embedding?.provider
     || (Array.isArray(payload.profiles) && payload.profiles.length > 0),
   );
@@ -215,7 +301,7 @@ export function applyLlmSettingsPayloadToDraft(previous, payload) {
   const fallback = createDefaultLlmSettings();
   return {
     chat: normalizeLlmModelConfig({ ...fallback.chat, ...(payload.chat || {}) }),
-    vision: { ...fallback.vision, ...(payload.vision || {}) },
+    vision: normalizeVisionDraft(payload.vision),
     embedding: { ...fallback.embedding, ...(payload.embedding || {}) },
     profiles: Array.isArray(payload.profiles)
       ? payload.profiles.map((profile) => normalizeLlmModelConfig(profile))

@@ -311,6 +311,41 @@
     line-height: 1.6;
 }
 
+/* 会话详情里的日期分隔（assistant-ui day-separator 元素的「rule + label + rule」）：
+   只在消息自己的时间戳跨天处出现，两边细线向内渐隐，日期字用等宽体跟悬停浮标同族。 */
+.chat-day-separator {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    align-self: stretch;
+    margin: 4px 0 -3px;
+    color: rgba(142, 154, 184, 0.74);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    line-height: 1;
+}
+
+.chat-day-separator::before,
+.chat-day-separator::after {
+    content: '';
+    flex: 1 1 0;
+    height: 1px;
+}
+
+.chat-day-separator::before {
+    background: linear-gradient(to right, transparent, rgba(138, 166, 209, 0.22));
+}
+
+.chat-day-separator::after {
+    background: linear-gradient(to left, transparent, rgba(138, 166, 209, 0.22));
+}
+
+.chat-day-separator-label {
+    flex: 0 0 auto;
+}
+
 .chat-message-row {
     display: flex;
     flex-direction: column;
@@ -801,45 +836,6 @@
     font-size: 12px;
 }
 
-.chat-timeline-thinking {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    color: rgba(156, 169, 196, 0.72);
-}
-
-.chat-timeline-thinking-head {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    width: fit-content;
-    max-width: 100%;
-    padding: 3px 8px;
-    background: rgba(12, 18, 30, 0.34);
-    border: 1px solid rgba(138, 166, 209, 0.14);
-    border-radius: 6px;
-    color: rgba(156, 169, 196, 0.78);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    cursor: pointer;
-    text-align: left;
-}
-
-.chat-timeline-thinking-head:disabled {
-    cursor: default;
-    opacity: 0.72;
-}
-
-.chat-timeline-thinking-head:hover:not(:disabled) {
-    color: rgba(206, 216, 236, 0.88);
-    border-color: rgba(138, 166, 209, 0.24);
-    background: rgba(18, 26, 42, 0.44);
-}
-
-.chat-timeline-thinking-count {
-    color: rgba(142, 154, 184, 0.72);
-}
-
 /* 复用的折叠箭头——内联 SVG，stroke=currentColor 跟着这里的 color 走（金色）。
    不受 body 上 image-rendering:pixelated 的全局影响。 */
 .chat-timeline-chevron {
@@ -855,19 +851,6 @@
 
 .chat-timeline-chevron:hover {
     opacity: 1;
-}
-
-.chat-timeline-thinking-body {
-    margin-left: 18px;
-    padding: 8px 10px;
-    border-left: 1px solid rgba(138, 166, 209, 0.18);
-    background: rgba(9, 14, 24, 0.28);
-    color: rgba(174, 185, 211, 0.72);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
 }
 
 /* 运行时用户纠偏/打断指令（user_input 时间轴条目）：位置仍嵌在被纠偏的 assistant

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Day separator</title>
+<style>
+  body { margin: 20px; background: #15171b; color: #eee; font: 15px system-ui; }
+  #checks { white-space: pre-wrap; color: #9fd8a4; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+  #root .chat-workspace { height: 620px; }
+</style>
+<h1>Day separator</h1>
+<p>生产 ChatPanel + 真实时间戳：日期头只在相邻消息跨天处出现，头在当天第一条消息前面，同一天共享一条；每条消息自己的时间仍留在它的悬停浮标上。</p>
+<pre id="checks" role="status">Running checks…</pre>
+<div id="root"></div>
+<script type="module" src="./day-separator.jsx"></script>
+</html>

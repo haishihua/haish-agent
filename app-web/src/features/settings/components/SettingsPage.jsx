@@ -20,6 +20,7 @@ import {
   createLlmProfile,
   connectionBadgeMeta,
 } from '../model/settings-payload.js';
+import { createVisionProviderDraft } from '../model/llm-settings.js';
 import {
   SettingsTooltipIconButton,
   ConnectionBrandIcon,
@@ -66,6 +67,7 @@ export function SettingsPage({
   onSave,
   onSaveTools,
   onDeleteLlmProvider,
+  onToggleLlmProvider,
   onTogglePresetAgent,
   onCreateCustomAgent,
   onSaveCustomAgent,
@@ -89,6 +91,8 @@ export function SettingsPage({
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [panelBusy, setPanelBusy] = useState('');
   const [panelError, setPanelError] = useState('');
+  // 开关点按立即保存（与 Skills 一致），保存期间其它行开关暂不可点。
+  const [llmToggleBusy, setLlmToggleBusy] = useState('');
   const [expandedSettingsSections, setExpandedSettingsSections] = useState(() => new Set([activeSection]));
   const sectionMeta = settingsSectionMeta(activeSection) || SETTINGS_SECTIONS[0];
   const subtabs = SETTINGS_SUBTABS[activeSection] || [];
@@ -127,6 +131,14 @@ export function SettingsPage({
     });
   }, [activeSection]);
   const selectItem = (id) => onSelectionChange((prev) => ({ ...prev, [selectionKey]: id }));
+  const toggleLlmProvider = async (entryId, enabled) => {
+    setLlmToggleBusy(entryId);
+    try {
+      return await onToggleLlmProvider?.(entryId, enabled);
+    } finally {
+      setLlmToggleBusy('');
+    }
+  };
   const selectListItem = (id) => {
     cancelEditor();
     selectItem(id);
@@ -140,8 +152,16 @@ export function SettingsPage({
   const discardNewEditor = (draft = editingSettings) => {
     if (!draft || draft.mode !== 'new') return;
     if (draft.section === 'llm') {
-      if (draft.id === 'vision') {
-        onLlmDraftChange((prev) => ({ ...prev, vision: { ...prev.vision, enabled: false } }));
+      // Vision 是多条 provider 列表：取消新建时按 id 移除这一条。
+      const isVisionDraft = (llmDraft.vision?.providers || []).some((item) => item.id === draft.id);
+      if (isVisionDraft) {
+        onLlmDraftChange((prev) => ({
+          ...prev,
+          vision: {
+            ...prev.vision,
+            providers: (prev.vision?.providers || []).filter((item) => item.id !== draft.id),
+          },
+        }));
       } else if (draft.id === 'embedding') {
         onLlmDraftChange((prev) => ({ ...prev, embedding: { ...prev.embedding, enabled: false } }));
       } else {
@@ -150,7 +170,14 @@ export function SettingsPage({
           profiles: (prev.profiles || []).filter((profile) => profile.id !== draft.id),
         }));
       }
-      if (selectionBySection.llmConfig === draft.id) selectItem('chat');
+      if (selectionBySection.llmConfig === draft.id) {
+        if (isVisionDraft) {
+          const fallback = (llmDraft.vision?.providers || []).find((item) => item.id !== draft.id);
+          selectItem(fallback?.id || '');
+        } else {
+          selectItem('chat');
+        }
+      }
       return;
     }
     // Embedding 现在挂在 Context 分组下：草稿作废时只要关回去，不动 llm 草稿的其它入口。
@@ -238,28 +265,16 @@ export function SettingsPage({
     }
     if (activeSection === 'llm') {
       if (activeSubtab === 'vision') {
+        const provider = createVisionProviderDraft();
         onLlmDraftChange((prev) => ({
           ...prev,
           vision: {
-            enabled: true,
-            mode: 'auto',
-            provider: 'custom',
-            auth_mode: 'api_key',
-            custom_provider: '',
-            name: '',
-            model: '',
-            api_key: '',
-            api_key_configured: false,
-            base_url: '',
-            model_options: [],
-            oauth_auth_url: '',
-            oauth_code: '',
-            oauth_state: '',
-            oauth_verifier: '',
+            ...prev.vision,
+            providers: [...(prev.vision?.providers || []), provider],
           },
         }));
-        onSelectionChange((prev) => ({ ...prev, llm: 'vision', llmConfig: 'vision' }));
-        openEditor('llm', 'vision', 'new');
+        onSelectionChange((prev) => ({ ...prev, llm: 'vision', llmConfig: provider.id }));
+        openEditor('llm', provider.id, 'new');
         return;
       }
       if (activeSubtab === 'embedding') {
@@ -388,6 +403,8 @@ export function SettingsPage({
           onDraftChange={onLlmDraftChange}
           readOnly={readOnly}
           refreshModels={mode !== 'detail'}
+          onToggleVisionProvider={toggleLlmProvider}
+          toggleBusy={Boolean(llmToggleBusy)}
         />
       ) : (
         <div className="settings-empty">Click Add to create a configuration.</div>
@@ -529,7 +546,7 @@ export function SettingsPage({
           <SettingsSearch label={activeSection === 'llm' ? 'Search providers or models' : `Search ${listTitle.toLowerCase()}`} value={settingsSearch} onChange={setSettingsSearch} />
           {activeSection === 'llm' && addButton}
         </div>}
-        <ItemGroup className="settings-list-modern">{filteredItems.map(item => <SettingsRow key={item.id} title={item.title} description={item.summary} readOnly={item.readonly} selected={editingSettings?.id === item.id} icon={activeSection === 'llm' || activeSection === 'embedding' ? <ProviderIcon provider={item.provider} name={item.title} /> : activeSection === 'agent' ? <AgentListIcon item={item} /> : activeSection === 'workflow' ? <WorkflowListIcon item={item} /> : <ConnectionBrandIcon itemId={item.id} title={item.title} />} onOpen={() => { if (panelBusy) return; selectListItem(item.id); openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit'); }} enabled={item.enabled} onToggle={item.canToggle ? enabled => (activeSection === 'agent' ? onTogglePresetAgent : onTogglePresetWorkflow)?.(item.id, enabled) : undefined} busy={Boolean(panelBusy)} onDelete={item.canDelete || item.custom ? () => requestDelete(activeSection, item.id) : undefined} status={activeSection === 'memory' ? connectionBadgeMeta(settingsConnectionStatus?.[activeSection]?.[item.id] || storedMemoryConnectionStatus(records, activeSection, item.id)) : undefined} />)}{!filteredItems.length && <div className="settings-empty">{settingsSearch ? 'No matching configuration.' : 'No configuration yet.'}</div>}</ItemGroup>
+        <ItemGroup className="settings-list-modern">{filteredItems.map(item => <SettingsRow key={item.id} title={item.title} description={item.summary} readOnly={item.readonly} selected={editingSettings?.id === item.id} icon={activeSection === 'llm' || activeSection === 'embedding' ? <ProviderIcon provider={item.provider} name={item.title} /> : activeSection === 'agent' ? <AgentListIcon item={item} /> : activeSection === 'workflow' ? <WorkflowListIcon item={item} /> : <ConnectionBrandIcon itemId={item.id} title={item.title} />} onOpen={() => { if (panelBusy) return; selectListItem(item.id); openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit'); }} enabled={item.enabled} onToggle={item.canToggle ? enabled => (activeSection === 'agent' ? onTogglePresetAgent : activeSection === 'workflow' ? onTogglePresetWorkflow : toggleLlmProvider)?.(item.id, enabled) : undefined} busy={Boolean(panelBusy) || Boolean(llmToggleBusy)} onDelete={item.canDelete || item.custom ? () => requestDelete(activeSection, item.id) : undefined} status={activeSection === 'memory' ? connectionBadgeMeta(settingsConnectionStatus?.[activeSection]?.[item.id] || storedMemoryConnectionStatus(records, activeSection, item.id)) : undefined} />)}{!filteredItems.length && <div className="settings-empty">{settingsSearch ? 'No matching configuration.' : 'No configuration yet.'}</div>}</ItemGroup>
       </div> : editorBody(activeSection, selectedId, 'edit')}
     </main>
     <div data-settings-portal="" />

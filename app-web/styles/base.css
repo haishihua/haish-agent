@@ -304,13 +304,6 @@ svg {
     height: 19px;
 }
 
-.ico-thinking {
-    -webkit-mask-image: url("../assets/ui/icons/thinking.png");
-    mask-image: url("../assets/ui/icons/thinking.png");
-    width: 14px;
-    height: 14px;
-}
-
 .ico-tool {
     -webkit-mask-image: url("../assets/ui/icons/tool.png");
     mask-image: url("../assets/ui/icons/tool.png");

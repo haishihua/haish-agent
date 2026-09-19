@@ -1,3 +1,5 @@
+import { setVisionProviderEnabled } from '../model/llm-settings.js';
+
 export function skillAllowPayload(value) {
   return value === null ? null : (Array.isArray(value) ? value : []);
 }
@@ -142,6 +144,36 @@ export function createSettingsHandlers(ctx) {
       const payload = await response.json();
       setLlmSettingsDraft((prev) => applyLlmSettingsPayloadToDraft(prev, payload));
       showToast('success', 'provider deleted');
+      return true;
+    } catch (error) {
+      showToast('error', String(error?.message || error));
+      return false;
+    }
+  }
+
+  async function handleToggleLlmProvider(entryId, enabled) {
+    const id = String(entryId || '').trim();
+    const providers = llmSettingsDraft?.vision?.providers || [];
+    if (!id || !providers.some((item) => item.id === id)) return false;
+    // 服务端同样会收敛成“至多一条启用”；本地先收敛，避免界面短暂出现两条开启。
+    const nextDraft = {
+      ...llmSettingsDraft,
+      vision: setVisionProviderEnabled(llmSettingsDraft?.vision, id, enabled === true),
+    };
+    try {
+      window.localStorage?.setItem(LLM_SETTINGS_STORAGE_KEY, JSON.stringify(nextDraft));
+      const response = await apiFetch(`${API_BASE}/api/settings/llm`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextDraft),
+      }, { json: false });
+      if (!response.ok) {
+        const message = await parseResponseMessage(response, `vision provider update failed: ${response.status}`);
+        throw new Error(message);
+      }
+      const payload = await response.json();
+      setLlmSettingsDraft((prev) => applyLlmSettingsPayloadToDraft(prev, payload));
+      showToast('success', enabled ? 'vision provider enabled' : 'vision provider disabled');
       return true;
     } catch (error) {
       showToast('error', String(error?.message || error));
@@ -384,7 +416,8 @@ export function createSettingsHandlers(ctx) {
   async function handleTestLlmConfig(selectedId) {
     const config = getSelectedLlmConfig(llmSettingsDraft, selectedId);
     if (!config?.provider) return;
-    const providerType = selectedId === 'embedding' ? 'embedding' : selectedId === 'vision' ? 'vision' : 'chat';
+    const isVisionProvider = (llmSettingsDraft?.vision?.providers || []).some((item) => item.id === selectedId);
+    const providerType = selectedId === 'embedding' ? 'embedding' : isVisionProvider ? 'vision' : 'chat';
     try {
       const response = await apiFetch(`${API_BASE}/api/llm/test`, {
         method: 'POST',
@@ -555,6 +588,7 @@ export function createSettingsHandlers(ctx) {
     handleSaveSettingsDraft,
     handleSaveToolsSettingsDraft,
     handleDeleteLlmProvider,
+    handleToggleLlmProvider,
     applyAgentSettingsPayload,
     fetchAgentSettingsPayload,
     handleTogglePresetAgent,

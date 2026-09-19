@@ -27,17 +27,17 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
     return runtimeProviderLabel(config);
   };
   if (activeSubtab === 'vision') {
-    return draft.vision.enabled ? [
-      {
-        id: 'vision',
-        title: titleForConfig(draft.vision),
-        provider: draft.vision.provider,
-        kind: 'Vision Provider',
-        summary: draft.vision.model || 'not set',
-        protected: true,
-        canDelete: true,
-      },
-    ] : [];
+    return (draft.vision?.providers || []).map((provider) => ({
+      id: provider.id,
+      title: titleForConfig(provider),
+      provider: provider.provider,
+      kind: 'Vision Provider',
+      summary: provider.model || 'not set',
+      protected: true,
+      canDelete: true,
+      canToggle: true,
+      enabled: provider.enabled === true,
+    }));
   }
   if (activeSubtab === 'embedding') {
     return draft.embedding?.enabled ? [
@@ -303,7 +303,8 @@ export function buildMemorySettingsPayload(records) {
 }
 
 export function getSelectedLlmConfig(draft, selectedId) {
-  if (selectedId === 'vision') return draft.vision;
+  const visionProvider = (draft?.vision?.providers || []).find((item) => item.id === selectedId);
+  if (visionProvider) return visionProvider;
   if (selectedId === 'embedding') return draft.embedding;
   if (selectedId === 'chat') return draft.chat;
   return (draft.profiles || []).find((profile) => profile.id === selectedId) || draft.chat;
@@ -312,8 +313,18 @@ export function getSelectedLlmConfig(draft, selectedId) {
 export function updateSelectedLlmConfig(onDraftChange, selectedId, patch) {
   onDraftChange((prev) => {
     if (selectedId === 'chat') return { ...prev, chat: { ...prev.chat, ...patch } };
-    if (selectedId === 'vision') return { ...prev, vision: { ...prev.vision, ...patch } };
     if (selectedId === 'embedding') return { ...prev, embedding: { ...prev.embedding, ...patch } };
+    if ((prev.vision?.providers || []).some((item) => item.id === selectedId)) {
+      return {
+        ...prev,
+        vision: {
+          ...prev.vision,
+          providers: prev.vision.providers.map((item) => (
+            item.id === selectedId ? { ...item, ...patch } : item
+          )),
+        },
+      };
+    }
     return {
       ...prev,
       profiles: (prev.profiles || []).map((profile) => (

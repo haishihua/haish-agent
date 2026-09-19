@@ -31,6 +31,8 @@ import {
   ChatMessageRow,
   ImagePreviewOverlay,
 } from './ChatMessageRow.jsx';
+import { ChatDaySeparator } from './DaySeparator.jsx';
+import { withDaySeparators } from '../model/day-separators.js';
 import { ScrollToBottomButton } from '../../../shared/ui/ScrollToBottomButton.jsx';
 import { LexicalComposerInput } from './LexicalComposerInput.jsx';
 import { ComposerBorderBeam, MetalActionEffect } from '../../../shared/ui/MotionEffects.jsx';
@@ -97,6 +99,9 @@ export function ChatPanel({
   const annotationDrafts = React.useMemo(() => visibleAnnotationDrafts(annotationSnapshots, annotationMessages), [annotationSnapshots, annotationMessages]);
   // Conversation-scoped: a marker, its composer draft and the sent quote share one number.
   const annotationNumbers = React.useMemo(() => numberAnnotations(annotationMessages, annotationDrafts), [annotationMessages, annotationDrafts]);
+  // 会话详情里的日期头：只在消息自身的 created_at 跨天处出现（见 model/day-separators.js）。
+  // 只给渲染用——批注、↑ 历史回填、「最后一轮才能重试/编辑」这些判据继续拿原样的 messages。
+  const listRows = React.useMemo(() => withDaySeparators(messages), [messages]);
   const [annotationNotice, setAnnotationNotice] = React.useState('');
   const [pathNotice, setPathNotice] = React.useState('');
   const annotationUiRef = React.useRef(null);
@@ -532,23 +537,27 @@ export function ChatPanel({
               <div className="chat-empty-title">What's on your mind?</div>
               <div className="chat-empty-copy">Drop a task, a question, or a loose idea. I'll take it from there.</div>
             </div>
-          ) : messages.map((message) => (
+          ) : listRows.map((row) => (
+            row.kind === 'day' ? (
+              <ChatDaySeparator key={row.id} label={row.label} />
+            ) : (
             <ChatMessageRow
-              key={message.id}
-              message={message}
+              key={row.id}
+              message={row}
               forceTraceOpen={searchActive}
               annotationNumbers={annotationNumbers}
               onPreviewImage={openImagePreview}
               onAnnotationJump={jumpToAnnotation}
               actionsDisabled={running || submitPending}
-              onFork={message.role === 'agent' && message.status === 'done' && message.messageId
+              onFork={row.role === 'agent' && row.status === 'done' && row.messageId
                 ? forkMessage : null}
-              onEdit={message.role === 'user' && message.status === 'cancelled' && message.taskId === messages.at(-1)?.taskId
+              onEdit={row.role === 'user' && row.status === 'cancelled' && row.taskId === messages.at(-1)?.taskId
                 ? editMessage : null}
-              onRetry={message.role === 'agent' && message.status === 'failed' && message.taskId && message.taskId === messages.at(-1)?.taskId
+              onRetry={row.role === 'agent' && row.status === 'failed' && row.taskId && row.taskId === messages.at(-1)?.taskId
                 ? retryMessage
                 : null}
             />
+            )
           ))}
           <ApprovalInline />
         </div>

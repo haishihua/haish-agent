@@ -621,6 +621,7 @@ export function AppShell() {
     // Late-bound: activation / runtime factories below.
     applyConversationSnapshot: (...args) => activationApiRef.current.applyConversationSnapshot?.(...args),
     apiFetch,
+    applyContextUsage,
     buildApiHeaders,
     chatFinalizedTaskIdsRef,
     conversationActivationSeqRef,
@@ -638,6 +639,7 @@ export function AppShell() {
     getRuntime: (...args) => runtimeApiRef.current.getRuntime?.(...args),
     isDefaultConversationName,
     isTaskActuallyActive,
+    latestContextUsageFromTasks,
     mutateRuntime: (...args) => runtimeApiRef.current.mutateRuntime?.(...args),
     normalizeWorkspaceOrdering,
     normalizeRuntimeEvents,
@@ -835,6 +837,7 @@ export function AppShell() {
     handleSaveSettingsDraft,
     handleSaveToolsSettingsDraft,
     handleDeleteLlmProvider,
+    handleToggleLlmProvider,
     applyAgentSettingsPayload,
     fetchAgentSettingsPayload,
     handleTogglePresetAgent,
@@ -1682,6 +1685,7 @@ export function AppShell() {
             onSave={handleSaveSettingsDraft}
             onSaveTools={handleSaveToolsSettingsDraft}
             onDeleteLlmProvider={handleDeleteLlmProvider}
+            onToggleLlmProvider={handleToggleLlmProvider}
             onTogglePresetAgent={handleTogglePresetAgent}
             onCreateCustomAgent={handleCreateCustomAgent}
             onSaveCustomAgent={handleSaveCustomAgent}
