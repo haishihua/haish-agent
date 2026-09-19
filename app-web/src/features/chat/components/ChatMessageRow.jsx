@@ -75,7 +75,8 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
   const showTimelineExpanded = hasTraceDisclosure && (traceForcedOpen || traceExpanded);
   const showTimelineToggle = hasTraceDisclosure && !traceForcedOpen;
   // Older turns load their execution record only once they are scrolled into
-  // view, so name the missing steps instead of leaving the turn looking empty.
+  // view; the row keeps `data-trace-pending` so ChatPanel can page the missing
+  // slices in, and the wait is no longer announced with a line of copy.
   const tracePending = isAgent && message.traceHydrated === false && !message.streaming;
   const isUser = message.role === 'user';
   // 这一轮用的是哪个 agent（会话选定后锁定，所以整段对话同一个名字）。
@@ -194,9 +195,6 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
               taskId={message.taskId || ''}
               onPreviewImage={onPreviewImage}
             />
-          ) : null}
-          {tracePending ? (
-            <div className="chat-trace-pending" role="status">Steps load when you scroll up.</div>
           ) : null}
           {editing ? (
             <EditMessage value={draft} onValueChange={setDraft} busy={actionBusy} disabled={actionsDisabled}

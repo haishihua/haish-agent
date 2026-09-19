@@ -177,12 +177,6 @@
     letter-spacing: 0.01em;
 }
 
-/* Marks a turn whose execution record has not been loaded yet. */
-.chat-trace-pending {
-    color: var(--dim-2);
-    font: 12px var(--conversation-font);
-}
-
 .chat-earlier-tasks button {
     border: 0;
     background: transparent;
