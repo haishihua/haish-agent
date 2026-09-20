@@ -10,6 +10,7 @@ const formSource = fs.readFileSync(new URL('../../src/features/chat/components/A
 const draftModelSource = fs.readFileSync(new URL('../../src/features/chat/model/ask-user-draft.js', import.meta.url), 'utf8');
 const timelineBuilderSource = fs.readFileSync(new URL('../../src/features/chat/model/chat-timeline.js', import.meta.url), 'utf8');
 const chatPanelSource = fs.readFileSync(new URL('../../src/features/chat/components/ChatPanel.jsx', import.meta.url), 'utf8');
+const composerSource = fs.readFileSync(new URL('../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
 const streamHandlersSource = fs.readFileSync(
   new URL('../../src/features/tasks/hooks/createTaskStreamHandlers.js', import.meta.url),
   'utf8',
@@ -116,7 +117,7 @@ test('ask_user remains a top-level timeline item instead of entering a tool grou
 });
 
 test('conversation switching does not silently discard sends while model options reload', () => {
-  assert.match(chatPanelSource, /const sendModelId =/);
-  assert.match(chatPanelSource, /currentProvider\?\.defaultModelId/);
-  assert.doesNotMatch(chatPanelSource, /if \(modelLoading \|\| !activeModelOptions\.some/);
+  assert.match(composerSource, /const sendModelId =/);
+  assert.match(composerSource, /currentProvider\?\.defaultModelId/);
+  assert.doesNotMatch(composerSource, /if \(modelLoading \|\| !activeModelOptions\.some/);
 });

@@ -43,6 +43,21 @@
     inset: 0 0 154px;
 }
 
+/* 工作流运行时的输入框就是聊天那一套（features/chat/components/ChatComposer.jsx）：
+   这里只把它停靠在画布底部，外观一律不动——不再维护第二套输入框样式。 */
+.workflow-composer-dock {
+    position: absolute;
+    left: var(--task-panel-edge-x);
+    right: var(--task-panel-edge-x);
+    bottom: 10px;
+    z-index: 60;
+}
+
+/* 停靠位置由 dock 决定，聊天那边给输入框留的左右/底部外边距在这里必须让位。 */
+.workflow-composer-dock .chat-composer {
+    margin: 0;
+}
+
 .workflow-run-title {
     position: absolute;
     top: 18px;

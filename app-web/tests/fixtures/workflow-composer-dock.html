@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workflow composer dock</title>
+<style>
+  body { margin: 20px; background: #0d1018; color: #eee; font: 15px system-ui; }
+  #checks { white-space: pre-wrap; color: #9fd8a4; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+  .stage-slot { height: 720px; margin-bottom: 24px; }
+</style>
+<h1>Workflow composer dock</h1>
+<p>工作流运行时的输入框回归页：底部停靠的是聊天那一个 ChatComposer，工作流不再有自己的一套。</p>
+<pre id="checks" role="status">Running checks…</pre>
+<div id="stage-a" class="stage-slot"></div>
+<div id="stage-b" class="stage-slot"></div>
+<script type="module" src="./workflow-composer-dock.jsx"></script>
+</html>

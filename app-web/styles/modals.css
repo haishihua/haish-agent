@@ -378,7 +378,7 @@
         grid-template-columns: 240px minmax(320px, 1fr) 240px;
     }
 
-    .task-delegation {
+    .workflow-composer-dock {
         left: 14px;
         right: 14px;
         bottom: 14px;
@@ -388,11 +388,6 @@
 @media (max-width: 1024px) {
     .app-body {
         grid-template-columns: 220px minmax(320px, 1fr) 220px;
-    }
-
-    .task-delegation textarea {
-        height: 22px;
-        min-height: 22px;
     }
 
     .topbar-title {

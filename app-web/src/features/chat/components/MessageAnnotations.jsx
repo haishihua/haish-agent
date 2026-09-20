@@ -1,7 +1,7 @@
 import React from 'react';
 import { autoUpdate, flip, FloatingFocusManager, FloatingPortal, inline, offset, shift, useDismiss, useFloating, useInteractions } from '@floating-ui/react';
 import { QuoteBlock, SelectionToolbar } from '../../../shared/ui/agent-elements/Quote.jsx';
-import { annotationError, annotationRange, annotationText, captureAnnotationSelection, findAnnotationRange } from '../model/message-annotations.js';
+import { annotationError, annotationRange, annotationRectFitsRow, annotationText, captureAnnotationSelection, findAnnotationRange } from '../model/message-annotations.js';
 import { scrollToConversationMatch } from '../model/conversation-search.js';
 import './message-annotations.css';
 
@@ -110,6 +110,13 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
         for (const { item, index, key, range } of located) {
           const rect = [...range.getClientRects()].at(-1);
           if (!rect || rect.bottom < viewport.top + 20 || rect.top > viewport.bottom - 20) continue;
+          // A row skipped by content-visibility keeps its placeholder box while the
+          // text inside it still answers with coordinates from an unpainted layout —
+          // drawing those lands the marker on an unrelated message. Keep the rect
+          // only when it sits inside the row that owns the quote.
+          const node = range.startContainer;
+          const rowRect = (node.nodeType === 1 ? node : node.parentElement)?.closest('.chat-message-row')?.getBoundingClientRect();
+          if (!annotationRectFitsRow(rect, rowRect)) continue;
           let top = rect.top - 12;
           // Marker is position:fixed; keep its viewport coordinates tied to the
           // current range rect after every scroll/layout refresh.
@@ -161,6 +168,10 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
     resize.observe(container);
     // Layout can move when Markdown images or fonts finish loading.
     container.addEventListener('load', refresh, true);
+    // Rows skipped by content-visibility only report real coordinates once the
+    // browser renders them again; that flip fires a dedicated, non-bubbling event
+    // (captured here), so re-measure right after it.
+    container.addEventListener('contentvisibilityautostatechange', refresh, true);
     document.fonts?.addEventListener('loadingdone', refresh);
     window.addEventListener('scroll', refresh, true);
     window.visualViewport?.addEventListener('scroll', refresh);
@@ -170,6 +181,7 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
     return () => {
       observer.disconnect(); resize.disconnect(); cancelAnimationFrame(frame);
       container.removeEventListener('load', refresh, true);
+      container.removeEventListener('contentvisibilityautostatechange', refresh, true);
       document.fonts?.removeEventListener('loadingdone', refresh);
       window.removeEventListener('scroll', refresh, true);
       window.visualViewport?.removeEventListener('scroll', refresh);

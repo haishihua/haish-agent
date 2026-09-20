@@ -15,7 +15,7 @@ import {
 import { TopBar } from './components/TopBar.jsx';
 import { ConversationsPanel } from '../conversations/components/ConversationsPanel.jsx';
 import { ChatPanel } from '../chat/components/ChatPanel.jsx';
-import { TaskDelegation } from '../tasks/components/TaskDelegation.jsx';
+import { ChatComposer } from '../chat/components/ChatComposer.jsx';
 import { BottomNav, TabPlaceholder } from './components/Shell.jsx';
 import { AppToast } from './components/AppToast.jsx';
 import {
@@ -1816,7 +1816,32 @@ export function AppShell() {
                         showToast('error', String(error?.message || error));
                       });
                     }}
-                    composer={<TaskDelegation onDeploy={handleDeploy} onStop={handleStop} onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }} onClearFile={handleAttachmentClear} onSelectionChange={setSelectedWorkflowId} onRunConfigChange={handleBotRunConfigChange} attachment={composerAttachment} uploading={uploadState.active} running={currentConversationRunning} disabled={composerDisabled} submitPending={submitPending} contextUsage={contextUsage} workspacePath={localWorkspace.path} homePath={window.haish?.homePath || ''} activeTaskText={activeTaskText} providerOptions={llmProviderOptions} agentOptions={workflowOptions} defaultAgentId={defaultWorkflowId} agentLoading={workflowLoading} agentLocked={false} agentLockedReason="" lockedAgentId="" selectionStorageKey={botRunConfigStorageKey} draft={chatDraft} onDraftChange={setChatDraft} />}
+                    composer={<ChatComposer
+                      scopeId={draftConversationRef.current?.composerScopeId || conversationId}
+                      draft={chatDraft}
+                      onDraftChange={setChatDraft}
+                      onSend={handleDeploy}
+                      onStop={handleStop}
+                      activeTaskText={activeTaskText}
+                      running={currentConversationRunning}
+                      disabled={composerDisabled}
+                      submitPending={submitPending}
+                      idlePlaceholder="Describe the task you want to delegate..."
+                      disabledPlaceholder="Agents are currently busy executing..."
+                      allowRuntimeInput={false}
+                      attachment={composerAttachment}
+                      uploading={uploadState.active}
+                      onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }}
+                      onClearFile={handleAttachmentClear}
+                      providerOptions={llmProviderOptions}
+                      agentOptions={workflowOptions}
+                      defaultAgentId={defaultWorkflowId}
+                      agentLoading={workflowLoading}
+                      selectionStorageKey={botRunConfigStorageKey}
+                      onAgentChange={setSelectedWorkflowId}
+                      onRunConfigChange={handleBotRunConfigChange}
+                      contextUsage={contextUsage}
+                    />}
                   />
 	              </div>
             )}

@@ -26,7 +26,7 @@ const appShellSource = fs.readFileSync(
   'utf8',
 );
 const chatPanelSource = fs.readFileSync(new URL('../../src/features/chat/components/ChatPanel.jsx', import.meta.url), 'utf8');
-const taskDelegationSource = fs.readFileSync(new URL('../../src/features/tasks/components/TaskDelegation.jsx', import.meta.url), 'utf8');
+const composerSource = fs.readFileSync(new URL('../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
 const modelPickersSource = fs.readFileSync(new URL('../../src/features/chat/components/ModelPickers.jsx', import.meta.url), 'utf8');
 const motionEffectsSource = fs.readFileSync(new URL('../../src/shared/ui/MotionEffects.jsx', import.meta.url), 'utf8');
 const chatStyles = fs.readFileSync(new URL('../../styles/chat.css', import.meta.url), 'utf8');
@@ -153,8 +153,8 @@ test('skill composer filters slash input and prefixes the submitted prompt', () 
 });
 
 test('selected skill renders as an inline Lexical token inside the composer', () => {
-  assert.match(chatPanelSource, /setSelectedSkillName\(skill\.name\)/);
-  assert.match(chatPanelSource, /<LexicalComposerInput/);
+  assert.match(composerSource, /setSelectedSkillName\(skill\.name\)/);
+  assert.match(composerSource, /<LexicalComposerInput/);
   const lexicalInputSource = fs.readFileSync(new URL('../../src/features/chat/components/LexicalComposerInput.jsx', import.meta.url), 'utf8');
   assert.match(lexicalInputSource, /class SkillTokenNode extends DecoratorNode/);
   assert.match(lexicalInputSource, /data-skill-token=/);
@@ -163,12 +163,12 @@ test('selected skill renders as an inline Lexical token inside the composer', ()
   assert.match(chatStyles, /\.chat-skill-token\s*\{/);
   assert.doesNotMatch(chatStyles, /--skill-chip-indent/);
   assert.match(
-    chatPanelSource,
+    composerSource,
     /function selectSkill\(skill, event\)[\s\S]*skillSelectionPendingRef\.current = !prompt\.trim\(\)[\s\S]*setDraft\(composePathReferenceDraft\(prompt, composerContent\.references\)\)/,
   );
-  assert.match(chatPanelSource, /matchingAgentSkills\(composerContent\.text, currentAgentSkills\)/);
-  assert.match(chatPanelSource, /extractAgentSkillInvocation\(composerContent\.text, currentAgentSkills\)/);
-  assert.match(chatPanelSource, /async function submit\(e\)[\s\S]*if \(skillSelectionPendingRef\.current\) return/);
+  assert.match(composerSource, /matchingAgentSkills\(composerContent\.text, resolvedSkills\)/);
+  assert.match(composerSource, /extractAgentSkillInvocation\(composerContent\.text, resolvedSkills\)/);
+  assert.match(composerSource, /async function submit\(e\)[\s\S]*if \(skillSelectionPendingRef\.current\) return/);
 });
 
 test('run configuration progressively reveals thinking before agent and model settings', () => {
@@ -196,8 +196,9 @@ test('send and stop actions share the chromatic metal circle effect', () => {
   assert.match(motionEffectsSource, /variant="circle"[\s\S]*preset="chromatic"[\s\S]*theme="dark"/);
   assert.match(motionEffectsSource, /strength=\{1\}/);
   assert.doesNotMatch(motionEffectsSource, /children\.props\.disabled/);
-  assert.match(chatPanelSource, /<MetalActionEffect active=\{sendBeamActive\}>[\s\S]*chat-send-icon/);
-  assert.match(taskDelegationSource, /<MetalActionEffect active=\{sendBeamActive\}>[\s\S]*chat-send-icon/);
+  assert.match(composerSource, /<MetalActionEffect active=\{sendBeamActive\}>[\s\S]*chat-send-icon/);
+  // 发送/停止按钮只有输入框那一份（聊天详情不再自己画一个）。
+  assert.doesNotMatch(chatPanelSource, /chat-send-icon/);
 });
 
 // The ring is a state signal: it runs while this conversation has work in
@@ -208,14 +209,10 @@ test('the metal ring tracks in-flight work and typed payload instead of staying 
   assert.match(motionEffectsSource, /active = true, \.\.\.props \}, ref\)/);
   assert.match(motionEffectsSource, /`chat-send-metal \$\{active \? 'is-active' : 'is-idle'\}/);
   assert.match(motionEffectsSource, /paused=\{prefersReducedMotion\(\) \|\| !active\}/);
-  for (const source of [chatPanelSource, taskDelegationSource]) {
-    assert.match(source, /const sendBeamActive = running \|\| submitPending \|\| hasComposerPayload;/);
-    assert.doesNotMatch(source, /<MetalActionEffect>/);
-  }
-  // Each composer derives that payload from its own box: chat also counts
-  // attached images and annotation drafts, delegation is text-only.
-  assert.match(chatPanelSource, /const hasComposerPayload = Boolean\(draft\.trim\(\) \|\| composerImages\.length > 0 \|\| annotationDrafts\.length\)/);
-  assert.match(taskDelegationSource, /const hasComposerPayload = Boolean\(v\.trim\(\)\)/);
+  assert.match(composerSource, /const sendBeamActive = running \|\| submitPending \|\| hasComposerPayload;/);
+  assert.doesNotMatch(composerSource, /<MetalActionEffect>/);
+  // 同一个输入框也对聊天独有的内容计数：贴图与批注草稿都算「有东西可发」。
+  assert.match(composerSource, /const hasComposerPayload = Boolean\(draft\.trim\(\) \|\| composerImages\.length > 0 \|\| pendingCommentCount\)/);
   // Unmounting the shell would swap the button surface mid-press, so the idle
   // state hides the shader layers instead and keeps the shell mounted.
   assert.match(chatStyles, /\.chat-send-metal\.is-idle \.metal-fx-canvas[\s\S]*opacity: 0;/);
@@ -232,8 +229,7 @@ test('composer border animation only runs during interaction, input, or a task r
   assert.match(motionEffectsSource, /addEventListener\('pointerenter', engage\)/);
   assert.doesNotMatch(motionEffectsSource, /addEventListener\('focusin', engage\)/);
   assert.match(motionEffectsSource, /active=\{\(Boolean\(active\) \|\| interacting\)/);
-  assert.match(chatPanelSource, /<ComposerBorderBeam active=\{running \|\| submitPending \|\| hasComposerPayload\}/);
-  assert.match(taskDelegationSource, /<ComposerBorderBeam active=\{running \|\| submitPending \|\| hasComposerPayload\}/);
+  assert.match(composerSource, /<ComposerBorderBeam active=\{running \|\| submitPending \|\| hasComposerPayload\}/);
 });
 
 test('workflow catalog exposes the human approval gate and its decision contract', () => {

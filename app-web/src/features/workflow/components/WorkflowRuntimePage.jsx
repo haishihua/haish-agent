@@ -655,8 +655,8 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
       <div className="workflow-run-empty">
         <AppIcon name="git-branch" size={28} />
         <strong>Select a Workflow</strong>
-        <span>Choose a Workflow in Task Delegation to preview and run it.</span>
-        {composer}
+        <span>Pick a Workflow below to preview and run it.</span>
+        <div className="workflow-composer-dock">{composer}</div>
       </div>
     );
   }
@@ -703,7 +703,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
           <Controls showInteractive={false} position="top-right" />
           <FitWorkflow workflowKey={workflowKey} detailOpen={Boolean(selectedNode)} layoutKey={layoutKey} />
         </ReactFlow>
-        {composer}
+        <div className="workflow-composer-dock">{composer}</div>
       </main>
       {selectedNode ? (
         <NodeDetail

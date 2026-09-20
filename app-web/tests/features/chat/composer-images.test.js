@@ -48,10 +48,14 @@ test('image files upload on send into the captured conversation before task exec
 
 test('composer uses scoped image storage and native Lexical undo history', () => {
   const panel = fs.readFileSync(new URL('../../../src/features/chat/components/ChatPanel.jsx', import.meta.url), 'utf8');
+  const composer = fs.readFileSync(new URL('../../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
   const editor = fs.readFileSync(new URL('../../../src/features/chat/components/LexicalComposerInput.jsx', import.meta.url), 'utf8');
-  assert.match(panel, /imageStore\.get\(composerScopeId\)/);
-  assert.match(panel, /imageStore\.set\(composerScopeId, next\)/);
-  assert.doesNotMatch(panel, /onUploadImage/);
-  assert.match(panel, /key=\{composerScopeId\}/);
+  assert.match(composer, /imageStoreRef\.get\(scopeId\)/);
+  assert.match(composer, /imageStoreRef\.set\(scopeId, next\)/);
+  assert.doesNotMatch(composer, /onUploadImage/);
+  assert.match(composer, /key=\{scopeId\}/);
+  // 图片存储只有一份：ChatPanel 只把 imageStore 递进去，自己不再持有一份拷贝。
+  assert.doesNotMatch(panel, /imageStoreRef|composerImages/);
+  assert.match(panel, /imageStore=\{imageDrafts\}/);
   assert.match(editor, /<HistoryPlugin\s*\/>/);
 });

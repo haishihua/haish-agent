@@ -16,7 +16,7 @@ import { contextSectorPath } from '../../src/shared/lib/context-usage-ring.js';
 const chatStyles = readFileSync(new URL('../../styles/chat.css', import.meta.url), 'utf8');
 const delegationStyles = readFileSync(new URL('../../styles/delegation.css', import.meta.url), 'utf8');
 const chatPanel = readFileSync(new URL('../../src/features/chat/components/ChatPanel.jsx', import.meta.url), 'utf8');
-const taskDelegation = readFileSync(new URL('../../src/features/tasks/components/TaskDelegation.jsx', import.meta.url), 'utf8');
+const composer = readFileSync(new URL('../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
 
 const withoutComments = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '');
 const rule = (source, selector) => {
@@ -46,15 +46,16 @@ test('the context meter sector is a vector path, not a conic gradient', () => {
     /fill:\s*#ef5b5b/,
     'over-limit keeps painting the sector red',
   );
-  assert.match(rule(chatStyles, '.chat-composer .context-usage-icon-sector'), /\.task-delegation \.context-usage-icon-sector/, 'the delegation composer shares the same rule');
+  // 只剩一套输入框：代理卡片已经删了，聊天详情也不再自己画一个。
+  assert.doesNotMatch(withoutComments(chatStyles), /\.task-delegation/, 'the delegation card is gone from chat.css');
+  assert.doesNotMatch(withoutComments(delegationStyles), /\.task-delegation/, 'the delegation card is gone from delegation.css');
+  assert.doesNotMatch(chatPanel, /context-usage-icon-sector/, 'ChatPanel no longer draws its own meter');
 });
 
-test('both composers draw the sector from the shared path helper', () => {
-  for (const [name, source] of [['ChatPanel', chatPanel], ['TaskDelegation', taskDelegation]]) {
-    assert.match(source, /import \{ contextSectorPath \} from '\.\.\/\.\.\/\.\.\/shared\/lib\/context-usage-ring\.js'/, `${name} imports the shared helper`);
-    assert.match(source, /const contextSector = contextSectorPath\(visibleContextRatio\)/, `${name} derives the path from the visible ratio`);
-    assert.match(source, /<path className="context-usage-icon-sector" d=\{contextSector\} \/>/, `${name} renders the sector path`);
-  }
+test('the composer draws the sector from the shared path helper', () => {
+  assert.match(composer, /import \{ contextSectorPath \} from '\.\.\/\.\.\/\.\.\/shared\/lib\/context-usage-ring\.js'/);
+  assert.match(composer, /const contextSector = contextSectorPath\(visibleContextRatio\)/);
+  assert.match(composer, /<path className="context-usage-icon-sector" d=\{contextSector\} \/>/);
 });
 
 test('sector geometry covers the progress from 12 o\'clock clockwise', () => {

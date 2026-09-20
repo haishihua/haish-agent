@@ -165,6 +165,17 @@ export function findAnnotationRange(container, item) {
   return annotationRange(annotationText(source), item);
 }
 
+export function annotationRectFitsRow(rect, rowRect) {
+  // content-visibility: auto keeps a placeholder box for skipped rows, but the
+  // contents inside them can still report geometry from an unpainted layout, so
+  // those coordinates may point at a different message. Keep only rects that sit
+  // inside the row box that owns the quote; without a row box (unexpected DOM)
+  // the previous behaviour is kept rather than hiding every marker.
+  if (!rect) return false;
+  if (!rowRect) return true;
+  return rect.top >= rowRect.top - 2 && rect.bottom <= rowRect.bottom + 2;
+}
+
 // Several quotes in one answer can share a single DOM text traversal.
 export function annotationRange({ text, nodes }, item) {
   const match = locateAnnotation(text, item);

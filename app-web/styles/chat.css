@@ -1602,9 +1602,7 @@
     color: currentColor;
 }
 
-.chat-composer-attachments,
-.chat-message-files,
-.task-delegation .td-attachments {
+.chat-composer-attachments, .chat-message-files {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
@@ -1618,10 +1616,6 @@
 .chat-message-files {
     min-width: 0;
     justify-content: flex-end;
-}
-
-.task-delegation .td-attachments {
-    margin-bottom: 10px;
 }
 
 .composer-file-chip {
@@ -2101,8 +2095,7 @@
     transform: rotate(225deg) translateY(-2px);
 }
 
-.chat-composer .model-picker-loading,
-.task-delegation .model-picker-loading {
+.chat-composer .model-picker-loading {
     flex-shrink: 0;
     width: 13px;
     height: 13px;
@@ -2236,8 +2229,7 @@
     color: rgba(255, 255, 255, 0.48);
 }
 
-.chat-composer .context-usage-icon-ring,
-.task-delegation .context-usage-icon-ring {
+.chat-composer .context-usage-icon-ring {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -2245,18 +2237,15 @@
     overflow: visible;
 }
 
-.chat-composer .context-usage-icon-sector,
-.task-delegation .context-usage-icon-sector {
+.chat-composer .context-usage-icon-sector {
     fill: #fff;
 }
 
-.chat-composer .context-usage-btn.over-limit .context-usage-icon,
-.task-delegation .context-usage-btn.over-limit .context-usage-icon {
+.chat-composer .context-usage-btn.over-limit .context-usage-icon {
     color: #ef5b5b;
 }
 
-.chat-composer .context-usage-btn.over-limit .context-usage-icon-sector,
-.task-delegation .context-usage-btn.over-limit .context-usage-icon-sector {
+.chat-composer .context-usage-btn.over-limit .context-usage-icon-sector {
     fill: #ef5b5b;
 }
 

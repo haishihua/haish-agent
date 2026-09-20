@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { annotationError, createAnnotationMessageSelector, locateAnnotation, numberAnnotations, readAnnotationDraft, visibleAnnotationDrafts, withoutAcknowledgedAnnotations, writeAnnotationDraft } from '../../../src/features/chat/model/message-annotations.js';
+import { annotationError, annotationRectFitsRow, createAnnotationMessageSelector, locateAnnotation, numberAnnotations, readAnnotationDraft, visibleAnnotationDrafts, withoutAcknowledgedAnnotations, writeAnnotationDraft } from '../../../src/features/chat/model/message-annotations.js';
 
 const quote = { id: 'q1', source_message_id: 'a1', text: 'gray', comment: 'Use #282828', start: 5, end: 9, prefix: 'dark ', suffix: ' background' };
 
@@ -189,6 +189,25 @@ test('annotation projection invalidates on acknowledgement, rejection, edits, or
   assert.equal(select([{ ...second, annotations: [{ ...quote, id: 'q2' }] }, { ...user }]), after);
 });
 
+test('a marker rect is only trusted inside the row that owns the quote', () => {
+  // A row skipped by content-visibility answers with its placeholder box (240px)
+  // while the text inside reports the unpainted layout (thousands of pixels away).
+  const row = { top: -4000, bottom: 240 };
+  assert.equal(annotationRectFitsRow({ top: 100, bottom: 118 }, row), true);
+  assert.equal(annotationRectFitsRow({ top: 4093.9, bottom: 4113.9 }, row), false, 'skipped-row coordinates must never place a marker');
+  assert.equal(annotationRectFitsRow({ top: 222, bottom: 242 }, row), true, 'the last line of the row still fits with sub-pixel slack');
+  assert.equal(annotationRectFitsRow(null, row), false);
+  assert.equal(annotationRectFitsRow({ top: 0, bottom: 10 }, null), true, 'an unexpected DOM keeps the legacy behaviour instead of hiding every marker');
+});
+
+test('markers re-measure when a row resumes rendering and never draw outside their row', () => {
+  const source = readFileSync(new URL('../../../src/features/chat/components/MessageAnnotations.jsx', import.meta.url), 'utf8');
+  assert.match(source, /annotationRectFitsRow\(rect, rowRect\)/, 'marker placement must reject rects outside their row');
+  assert.match(source, /closest\('\.chat-message-row'\)/, 'the row box is the element content-visibility skips');
+  assert.match(source, /addEventListener\('contentvisibilityautostatechange', refresh, true\)/, 'a row resuming rendering must re-measure');
+  assert.match(source, /removeEventListener\('contentvisibilityautostatechange', refresh, true\)/, 'the listener must be removed with the others');
+});
+
 test('runtime projections retain annotations and genuinely empty message text', async () => {
   globalThis.window = { HAISH_API_BASE: '' };
   const { buildTaskRuntimeRecord, taskSummaryToRuntimeTask } = await import('../../../src/features/tasks/model/task-runtime.js');
@@ -246,6 +265,10 @@ test('saving a comment hands focus back to the composer', () => {
   assert.ok(focus, 'ChatPanel must own the composer focus helper');
   // Focus synchronously (the focus manager only restores when focus did not move)
   // and once more on the next frame in case it was restored first.
-  assert.match(focus[1], /inputRef\.current\?\.focusAtEnd\?\.\(\)/);
-  assert.match(focus[1], /requestAnimationFrame\(\(\) => inputRef\.current\?\.focusAtEnd\?\.\(\)\)/);
+  assert.match(focus[1], /composerInputRef\.current\?\.focusAtEnd\?\.\(\)/);
+  assert.match(focus[1], /requestAnimationFrame\(\(\) => composerInputRef\.current\?\.focusAtEnd\?\.\(\)\)/);
+  // 输入框组件自己带着外部 ref：不然重点焦只能落在细节组件里一个看不见的节点上。
+  const composer = readFileSync(new URL('../../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
+  assert.match(composer, /inputRef: inputRefProp,/);
+  assert.match(composer, /const inputRef = inputRefProp \|\| localInputRef;/);
 });
