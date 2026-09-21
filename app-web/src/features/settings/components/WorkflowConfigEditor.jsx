@@ -36,7 +36,13 @@ import {
 } from '../../agents/model/agent-settings.js';
 import {
   layoutRuntimeWorkflow,
+  workflowArrangementPositions,
 } from '../../workflow/model/runtime-workflow-layout.js';
+import {
+  clearWorkflowLayout,
+  saveWorkflowLayout,
+  savedWorkflowLayout,
+} from '../../workflow/model/workflow-layout-store.js';
 import { useWorkflowCanvasWidth } from '../../workflow/hooks/useWorkflowCanvasWidth.js';
 import {
   FieldRow,
@@ -55,9 +61,12 @@ import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import {
   WORKFLOW_BRANCH_META,
   WORKFLOW_BRANCHES,
+  WorkflowCanvasEdge,
   WorkflowFlowNode,
   workflowEdgeAppearance,
+  workflowFeedbackTargetIds,
   workflowNodeMeta,
+  workflowNodePorts,
 } from '../../workflow/components/WorkflowFlowNode.jsx';
 
 const { useState, useEffect, useRef } = React;
@@ -86,6 +95,8 @@ function WorkflowCanvasFitView({ workflowKey }) {
 function WorkflowDropCanvas({
   nodes,
   workflowKey,
+  layoutRevision,
+  canvasNodesRef,
   onNodesChange,
   onNodeDragStart,
   onNodeDragStop,
@@ -100,20 +111,28 @@ function WorkflowDropCanvas({
   const isNodeDraggingRef = useRef(false);
   const draggedNodePositionsRef = useRef(new Map());
   const previousWorkflowKeyRef = useRef(workflowKey);
+  const previousLayoutRevisionRef = useRef(layoutRevision);
   const isWorkflowNodeDrag = (event) => (
     Array.from(event.dataTransfer?.types || []).includes(WORKFLOW_NODE_DRAG_TYPE)
   );
 
   useEffect(() => {
-    const resetPositions = previousWorkflowKeyRef.current !== workflowKey;
+    if (canvasNodesRef) canvasNodesRef.current = canvasNodes;
+  }, [canvasNodes, canvasNodesRef]);
+
+  useEffect(() => {
+    // 换工作流、或排布被存下/重置（layoutRevision 变）：画布不再记着上次拖到哪，回到传进来的位置。
+    const resetPositions = previousWorkflowKeyRef.current !== workflowKey
+      || previousLayoutRevisionRef.current !== layoutRevision;
     if (resetPositions) draggedNodePositionsRef.current.clear();
     previousWorkflowKeyRef.current = workflowKey;
+    previousLayoutRevisionRef.current = layoutRevision;
     if (isNodeDraggingRef.current) return;
     setCanvasNodes(nodes.map((node) => {
       const draggedPosition = draggedNodePositionsRef.current.get(node.id);
       return draggedPosition ? { ...node, position: draggedPosition } : node;
     }));
-  }, [nodes, setCanvasNodes, workflowKey]);
+  }, [layoutRevision, nodes, setCanvasNodes, workflowKey]);
 
   useEffect(() => {
     if (!draggedNodeType) setDropPreview(null);
@@ -201,6 +220,7 @@ function WorkflowDropCanvas({
 }
 
 const WORKFLOW_REACT_FLOW_NODE_TYPES = { workflowNode: WorkflowFlowNode };
+const WORKFLOW_REACT_FLOW_EDGE_TYPES = { workflowEdge: WorkflowCanvasEdge };
 
 function canConnectWorkflowNodes(source, target) {
   return Boolean(source && target && source.id !== target.id && source.type !== 'output' && target.type !== 'start');
@@ -246,11 +266,25 @@ export function WorkflowConfigEditor({
   const [nodePanelWidth, setNodePanelWidth] = useState(340);
   const [draggedNodeType, setDraggedNodeType] = useState('');
   const [isCanvasDropTarget, setIsCanvasDropTarget] = useState(false);
+  // 系统预设拖出来的排布存在本机（workflow-layout-store）：revision 变了就让画布重读一遍，
+  // savedPulse 只负责那句会自己消失的「Layout saved」。
+  const [layoutRevision, setLayoutRevision] = useState(0);
+  const [layoutSavedPulse, setLayoutSavedPulse] = useState(0);
   const canvasRef = useRef(null);
+  const canvasNodesRef = useRef([]);
   const nodePanelResizeRef = useRef(null);
   const canvasWidth = useWorkflowCanvasWidth(canvasRef, selectedId);
   const hasWorkflow = Boolean(workflow);
   const workflowNodeIds = workflow?.nodes.map((node) => node.id).join('\n') || '';
+  const workflowId = String(workflow?.workflow_id || '').trim();
+  // 直接读本机那一份：开销就是一次小 JSON 解析，拖动的重渲染走的是画布自己的内部状态，不经过这里。
+  const savedLayout = savedWorkflowLayout(workflowId);
+
+  useEffect(() => {
+    if (!layoutSavedPulse) return undefined;
+    const timer = window.setTimeout(() => setLayoutSavedPulse(0), 1800);
+    return () => window.clearTimeout(timer);
+  }, [layoutSavedPulse]);
 
   useEffect(() => {
     if (!hasWorkflow) {
@@ -296,65 +330,104 @@ export function WorkflowConfigEditor({
   const ReactFlowCanvas = flow.ReactFlow;
   const Background = flow.Background;
   const Controls = flow.Controls;
-  const layout = layoutRuntimeWorkflow(nodes, edges, canvasWidth);
-  const feedbackTargetIds = new Set(
-    edges.flatMap((edge) => (
-      layout.meta.get(String(edge.from))?.kind === 'secondary'
-      && layout.meta.get(String(edge.to))?.kind === 'primary'
-        ? [String(edge.to)]
-        : []
-    )),
-  );
+  const layout = layoutRuntimeWorkflow(nodes, edges);
+  // 排布的唯一来源：本机存的排布（系统预设走这里，见 onCanvasNodeDragStop）+ 定义里保存的位置
+  // （可编辑工作流走这里，见 arrangedNodes）。
+  const arrangement = workflowArrangementPositions(workflow);
+  // 系统预设：内容不能改（isEditable 为 false），但排布可以自由拖——工具条只给它留「说明 +
+  // 已保存 + 重置排布」，没有保存按钮：放手即存，运行页读的就是这一份。
+  const showLayoutTools = !readOnly && !workflow.custom;
+  // 节点端口（含 loop 的 retry 出口）与回环端口都只有一份判断：两页都从这两个函数取，
+  // 不再各写一套（过去配置页把 retry 画在节点顶部、运行页画在左侧，同一条边两页形状不同）。
+  const feedbackTargetIds = workflowFeedbackTargetIds(edges, layout.meta);
   const reactNodes = nodes.map((node) => ({
     id: node.id,
     type: 'workflowNode',
-    position: layout.positions.get(String(node.id)) || node.position || { x: 0, y: 0 },
+    position: arrangement.get(String(node.id)) || layout.positions.get(String(node.id)) || { x: 0, y: 0 },
     data: {
       workflowNode: node,
       agentOptions,
       agentIconName: node.type === 'agent'
         ? agentIconNameForAgentId(node.agent_id, agentOptions)
         : undefined,
-      sourcePosition: layout.meta.get(String(node.id))?.kind === 'secondary'
-        ? (layout.meta.get(String(node.id))?.direction === 'right' ? Position.Left : Position.Right)
-        : (layout.meta.get(String(node.id))?.direction === 'left' ? Position.Left : Position.Right),
-      targetPosition: layout.meta.get(String(node.id))?.kind === 'secondary'
-        ? Position.Top
-        : (layout.meta.get(String(node.id))?.direction === 'left' ? Position.Right : Position.Left),
       feedbackTarget: feedbackTargetIds.has(String(node.id)),
-      branchSourcePositions: layout.meta.get(String(node.id))?.kind === 'secondary' && node.type === 'loop'
-        ? { retry: Position.Top }
-        : undefined,
+      ...workflowNodePorts(node, layout.meta.get(String(node.id))),
     },
     selected: node.id === selectedNodeId,
+    // 配置页里永远能拖（拖动 = 改图）：可编辑工作流把整张排布写回定义（保存后同步到运行页）；
+    // 系统预设的内容不能改，但排布拖完就存在本机（workflow-layout-store），运行页读同一份。
     draggable: true,
   }));
   const reactEdges = edges.map((edge) => {
     const edgeId = workflowEdgeId(edge);
     const isSelected = edgeId === selectedEdgeId;
-    const sourceLayout = layout.meta.get(String(edge.from));
-    const targetLayout = layout.meta.get(String(edge.to));
-    const curved = sourceLayout?.row !== targetLayout?.row
-      || sourceLayout?.kind === 'secondary'
-      || targetLayout?.kind === 'secondary';
-    const reworkEdge = sourceLayout?.kind !== targetLayout?.kind;
-    const feedback = sourceLayout?.kind === 'secondary' && targetLayout?.kind === 'primary';
-    const appearance = workflowEdgeAppearance(edge, { active: isSelected });
+    const appearance = workflowEdgeAppearance(edge, {
+      active: isSelected,
+      sourceLayout: layout.meta.get(String(edge.from)),
+      targetLayout: layout.meta.get(String(edge.to)),
+    });
     return {
       id: edgeId,
       source: edge.from,
       target: edge.to,
       ...appearance,
-      targetHandle: feedback ? 'runtime-feedback' : undefined,
-      type: curved ? 'smoothstep' : appearance.type,
-      pathOptions: curved
-        ? { borderRadius: 18, offset: reworkEdge ? 0 : 28 }
-        : appearance.pathOptions,
-      zIndex: 0,
       selected: isSelected,
-      animated: isSelected,
     };
   });
+  /**
+   * 把画布上当前看到的排布写进工作流定义：拖动节点、新增节点后调用，保存后运行页读的就是
+   * 这份位置（workflowArrangementPositions）。overrides 是新拖出的位置（优先于画布上旧的）。
+   */
+  const arrangedNodes = (overrides = new Map()) => {
+    const displayed = new Map(
+      (canvasNodesRef.current || []).map((node) => [String(node.id), node.position]),
+    );
+    return nodes.map((node) => {
+      const id = String(node.id);
+      const candidate = [overrides.get(id), displayed.get(id), arrangement.get(id)]
+        .find((value) => Number.isFinite(Number(value?.x)) && Number.isFinite(Number(value?.y)));
+      if (!candidate) return node;
+      const position = { x: Math.round(Number(candidate.x)), y: Math.round(Number(candidate.y)) };
+      if (node.position?.x === position.x && node.position?.y === position.y) return node;
+      return { ...node, position };
+    });
+  };
+  // 存排布时取整张画布（不是只存拖过的那一个节点）：画布上看到什么样，运行页就读到什么。
+  const capturedLayoutPositions = (overrides = new Map()) => {
+    const displayed = new Map(
+      (canvasNodesRef.current || []).map((node) => [String(node.id), node.position]),
+    );
+    const positions = {};
+    for (const node of nodes) {
+      const id = String(node.id);
+      const candidate = [overrides.get(id), displayed.get(id), arrangement.get(id), layout.positions.get(id)]
+        .find((value) => Number.isFinite(Number(value?.x)) && Number.isFinite(Number(value?.y)));
+      if (!candidate) continue;
+      positions[id] = { x: Math.round(Number(candidate.x)), y: Math.round(Number(candidate.y)) };
+    }
+    return positions;
+  };
+  const onCanvasNodeDragStop = (_, node, draggedNodes) => {
+    const overrides = new Map(
+      [node, ...(draggedNodes || [])].map((item) => [String(item.id), item.position]),
+    );
+    if (isEditable) {
+      const nextNodes = arrangedNodes(overrides);
+      if (nextNodes.some((item, index) => item !== nodes[index])) updateWorkflow({ nodes: nextNodes });
+      return;
+    }
+    if (readOnly || workflow.custom) return;
+    // 系统预设：拖完就存（本机就是这样一份），不需要第二个「保存」动作。
+    const stored = saveWorkflowLayout(workflow.workflow_id, capturedLayoutPositions(overrides));
+    setLayoutRevision((value) => value + 1);
+    // 存不下（隐私模式等）就不报「已保存」：宁可不说话，也不说假话。
+    if (stored) setLayoutSavedPulse((value) => value + 1);
+  };
+  const resetWorkflowLayout = () => {
+    if (!workflowId) return;
+    clearWorkflowLayout(workflowId);
+    setLayoutRevision((value) => value + 1);
+  };
   const onReactFlowNodesChange = (changes) => {
     if (!isEditable) return;
     const removeIds = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id));
@@ -444,7 +517,12 @@ export function WorkflowConfigEditor({
     const placed = dropPosition
       ? placeDroppedWorkflowNode(nodes, newNode, dropPosition)
       : placeAddedWorkflowNode(nodes, newNode);
-    updateWorkflow({ nodes: placed.nodes });
+    // 新节点落在算好的位置；其余节点连现有排布一起写进定义（否则运行页只认得新节点那一个）。
+    const placedPositions = new Map(
+      placed.nodes.map((item) => [String(item.id), item.position]),
+    );
+    const placedNode = placed.nodes.find((item) => String(item.id) === id) || { ...newNode, position: placed.position };
+    updateWorkflow({ nodes: [...arrangedNodes(placedPositions), placedNode] });
     setSelectedNodeId(id);
     setSelectedEdgeId('');
   };
@@ -883,7 +961,7 @@ export function WorkflowConfigEditor({
       style={showNodePanel ? { '--workflow-node-panel-width': `${clampedNodePanelWidth}px` } : undefined}
     >
       <div className="workflow-builder">
-        {isEditable || canSave ? (
+        {isEditable || canSave || showLayoutTools ? (
           <div className="workflow-toolbar">
             <div className="workflow-toolbar-actions">
               {isEditable ? (
@@ -917,11 +995,29 @@ export function WorkflowConfigEditor({
                     );
                   })}
                 </div>
+              ) : showLayoutTools ? (
+                <div className="workflow-layout-note">
+                  <strong>Layout</strong>
+                  <span>Drag nodes to rearrange · saves automatically</span>
+                </div>
               ) : null}
             </div>
             {canSave ? (
               <div className="workflow-toolbar-end">
                 <SettingsTooltipIconButton label="Save" icon="save" iconSize={20} onClick={onSave} />
+              </div>
+            ) : null}
+            {showLayoutTools ? (
+              <div className="workflow-toolbar-end workflow-layout-tools">
+                <span className={`workflow-layout-status${layoutSavedPulse ? ' is-visible' : ''}`} role="status">
+                  {layoutSavedPulse ? 'Layout saved' : ''}
+                </span>
+                <SettingsTooltipIconButton
+                  label="Reset layout"
+                  icon="retry"
+                  onClick={resetWorkflowLayout}
+                  disabled={!savedLayout.size}
+                />
               </div>
             ) : null}
           </div>
@@ -931,12 +1027,16 @@ export function WorkflowConfigEditor({
             <ReactFlowProvider>
               <WorkflowDropCanvas
                 workflowKey={`${workflow.workflow_id}:${workflow.version || ''}`}
+                layoutRevision={layoutRevision}
                 nodes={reactNodes}
                 edges={reactEdges}
                 nodeTypes={WORKFLOW_REACT_FLOW_NODE_TYPES}
+                edgeTypes={WORKFLOW_REACT_FLOW_EDGE_TYPES}
+                canvasNodesRef={canvasNodesRef}
                 draggedNodeType={draggedNodeType}
                 onDropNode={addNode}
                 onDropTargetChange={setIsCanvasDropTarget}
+                onNodeDragStop={onCanvasNodeDragStop}
                 onNodeClick={(_, node) => {
                   setSelectedNodeId(node.id);
                   setSelectedEdgeId('');

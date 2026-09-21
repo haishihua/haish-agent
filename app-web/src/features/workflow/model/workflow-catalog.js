@@ -24,6 +24,8 @@ export function normalizeWorkflowNode(node, fallback = {}) {
   delete data.type;
   const fallbackPosition = fallback.position && typeof fallback.position === 'object' ? fallback.position : {};
   const position = data.position && typeof data.position === 'object' ? data.position : fallbackPosition;
+  const positionX = Number(position.x);
+  const positionY = Number(position.y);
   return {
     ...fallback,
     ...data,
@@ -32,10 +34,11 @@ export function normalizeWorkflowNode(node, fallback = {}) {
     // Keep empty labels as-is; `||` would bounce "" back to the previous name
     // and make Backspace/Delete look broken in the detail panel.
     label: String(data.label ?? fallback.label ?? typeLabelForWorkflowNode(type)),
-    position: {
-      x: Number.isFinite(Number(position.x)) ? Number(position.x) : Number(fallbackPosition.x || 0),
-      y: Number.isFinite(Number(position.y)) ? Number(position.y) : Number(fallbackPosition.y || 0),
-    },
+    // 没写过的节点不要凭空补一个 (0,0)：那是「没排过」而不是「排到原点」。配置页一旦拖过
+    // 节点就会把整张图的排布写进来（见 workflowArrangementPositions）。
+    ...(Number.isFinite(positionX) && Number.isFinite(positionY)
+      ? { position: { x: positionX, y: positionY } }
+      : {}),
   };
 }
 

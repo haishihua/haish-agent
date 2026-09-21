@@ -1,37 +1,114 @@
-/* Remote Control dialog — phone pairing, paired devices, server settings. */
+/* Remote Control dialog — phone pairing, paired devices, server settings.
+
+   Restraint rules for this surface:
+   - one panel surface, no decorative gradients, no glows, no inset hairlines;
+   - one hairline per divider (header, column split, footer), nothing more;
+   - one accent (--gold) reserved for the single primary action; red only for real
+     failure and destructive intent; everything else is a neutral step of the same
+     ink ramp, surfaced through the local --rc-* tokens below;
+   - no pill chrome, no icon chips, no hover-revealed affordances.
+
+   Motion: modal enter 200ms ease-out (scale 0.97 + fade, never scale(0)),
+   exit 140ms — faster than the enter, per the "asymmetric enter/exit" rule.
+   Every control answers a press with scale(0.97). Hover styling lives in a single
+   pointer-device block so touch hardware never latches a hover state. */
 .remote-control-backdrop {
+  --rc-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --rc-line: rgba(159, 184, 226, 0.14);
+  --rc-line-soft: rgba(159, 184, 226, 0.08);
+  --rc-hover: rgba(255, 255, 255, 0.05);
+  --rc-text: #eef1f8;
+  --rc-text-dim: #9aa4b8;
+  --rc-text-mute: #79839a;
+
   position: fixed;
   z-index: 10000;
   inset: 0;
   display: grid;
   padding: 32px;
   place-items: center;
-  background: rgba(1, 3, 8, 0.78);
-  backdrop-filter: blur(14px) saturate(108%);
-  -webkit-backdrop-filter: blur(14px) saturate(108%);
+  background: rgba(2, 4, 9, 0.72);
+  backdrop-filter: blur(10px) saturate(105%);
+  -webkit-backdrop-filter: blur(10px) saturate(105%);
+  animation: remote-backdrop-in 160ms var(--rc-ease-out) both;
+}
+
+.remote-control-backdrop.closing {
+  animation: remote-backdrop-out 140ms ease-out both;
+}
+
+.remote-control-backdrop.closing .remote-control-dialog {
+  animation: remote-dialog-out 140ms ease-out both;
+}
+
+@keyframes remote-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes remote-backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes remote-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes remote-dialog-out {
+  to {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+
+@keyframes remote-confirm-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes remote-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .remote-control-dialog {
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  width: min(880px, calc(100vw - 64px));
-  height: auto;
-  min-height: min(520px, calc(100vh - 64px));
-  max-height: min(660px, calc(100vh - 64px));
+  width: min(720px, calc(100vw - 64px));
+  min-height: min(440px, calc(100vh - 64px));
+  max-height: min(620px, calc(100vh - 64px));
   overflow: hidden;
-  border: 1px solid rgba(159, 184, 226, 0.2);
-  border-radius: 20px;
-  background:
-    radial-gradient(circle at 12% -12%, rgba(105, 200, 246, 0.09), transparent 42%),
-    radial-gradient(circle at 92% -4%, rgba(239, 191, 100, 0.06), transparent 32%),
-    linear-gradient(158deg, rgba(19, 25, 38, 0.99), rgba(8, 11, 19, 0.99));
-  box-shadow:
-    0 30px 90px rgba(0, 0, 0, 0.6),
-    inset 0 1px rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--rc-line);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #141a29, #0e121c);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
   color: var(--ink);
+  /* 文本字体跟应用正文（聊天、其它对话框）一致：--conversation-font，不另起一套
+     系统 UI 字体，否则对话框和它能打开的那一面看起来不像同一个产品。 */
   font-family: var(--conversation-font);
   image-rendering: auto;
+  animation: remote-dialog-in 200ms var(--rc-ease-out) both;
 }
 
 .remote-control-dialog h2,
@@ -42,166 +119,134 @@
 
 .remote-control-dialog h2,
 .remote-control-dialog h3 {
-  font-family: var(--auth-display-font);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .remote-control-dialog button {
   font-family: inherit;
   cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 160ms var(--rc-ease-out);
 }
 
 .remote-control-dialog button:disabled {
   cursor: default;
+  opacity: 0.5;
+}
+
+/* Press feedback: the interface confirms it heard the user. */
+.remote-control-dialog button:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .remote-control-dialog button:focus-visible,
 .remote-control-dialog input:focus-visible {
-  border-color: rgba(105, 200, 246, 0.55);
+  border-color: rgba(105, 200, 246, 0.5);
   box-shadow: 0 0 0 3px rgba(105, 200, 246, 0.14);
 }
 
 /* Header --------------------------------------------------------------- */
 .remote-control-header {
   display: flex;
-  min-height: 84px;
-  padding: 18px 26px;
+  min-height: 62px;
+  padding: 14px 20px;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  border-bottom: 1px solid rgba(159, 184, 226, 0.1);
-}
-
-.remote-control-heading {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 14px;
-}
-
-.remote-control-heading-icon {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
-  place-items: center;
-  border: 1px solid rgba(105, 200, 246, 0.2);
-  border-radius: 13px;
-  background: linear-gradient(150deg, rgba(105, 200, 246, 0.17), rgba(105, 200, 246, 0.04));
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.07);
-  color: #7fb6ff;
-}
-
-.remote-control-heading-icon svg {
-  width: 22px;
-  height: 22px;
-  stroke-width: 1.8;
+  gap: 16px;
+  border-bottom: 1px solid var(--rc-line-soft);
 }
 
 .remote-control-header h2 {
-  color: #f2f4fa;
-  font-size: 21px;
-  line-height: 1.15;
+  color: var(--rc-text);
+  font-size: 16px;
+  font-weight: 600;
 }
 
-.remote-control-header p {
-  margin-top: 4px;
-  color: #8d97ad;
-  font-size: 12.5px;
-  line-height: 1.4;
+.remote-control-heading {
+  display: grid;
+  min-width: 0;
 }
 
 .remote-control-close {
   display: grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
   padding: 0;
   place-items: center;
-  border: 1px solid rgba(159, 184, 226, 0.14);
-  border-radius: 11px;
-  background: rgba(26, 34, 49, 0.5);
-  color: #a8b1c4;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rc-text-mute);
 }
 
 .remote-control-close svg {
-  width: 19px;
-  height: 19px;
-  stroke-width: 1.9;
-}
-
-.remote-control-close:hover {
-  border-color: rgba(255, 110, 122, 0.32);
-  background: rgba(196, 58, 72, 0.13);
-  color: #ffb2ba;
+  width: 17px;
+  height: 17px;
+  stroke-width: 2;
 }
 
 /* Content columns ------------------------------------------------------- */
 .remote-control-content {
   display: grid;
   min-height: 0;
-  grid-template-columns: minmax(300px, 43%) minmax(0, 1fr);
+  grid-template-columns: minmax(264px, 38%) minmax(0, 1fr);
 }
 
 .remote-pairing-panel,
 .remote-devices-panel {
   min-width: 0;
   min-height: 0;
-  padding: 22px 26px;
+  padding: 20px;
 }
 
 .remote-pairing-panel {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  border-right: 1px solid rgba(159, 184, 226, 0.08);
+  border-right: 1px solid var(--rc-line-soft);
 }
 
 .remote-section-heading {
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
 .remote-section-heading h3,
 .remote-devices-heading h3 {
-  color: #e9ecf4;
-  font-size: 15.5px;
-  line-height: 1.2;
+  color: #e6eaf3;
+  font-size: 13.5px;
+  font-weight: 600;
 }
 
-.remote-section-heading p {
-  margin-top: 5px;
-  color: #828da3;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-/* Pairing --------------------------------------------------------------- */
+/* Access notice ---------------------------------------------------------
+   Silent while remote access works; when it cannot, one plain row states it.
+   Only a real failure earns a tinted surface. */
 .remote-access-notice {
   display: grid;
-  margin-top: 14px;
-  padding: 10px 12px;
-  grid-template-columns: 26px minmax(0, 1fr) auto;
+  margin-bottom: 14px;
+  padding: 9px 10px;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  border: 1px solid rgba(239, 191, 100, 0.2);
-  border-radius: 12px;
-  background: rgba(239, 191, 100, 0.07);
+  gap: 9px;
+  border-radius: 10px;
 }
 
 .remote-access-notice-icon {
   display: grid;
-  width: 26px;
-  height: 26px;
   place-items: center;
-  border-radius: 8px;
-  background: rgba(239, 191, 100, 0.13);
-  color: var(--gold);
+  color: var(--rc-text-mute);
 }
 
 .remote-access-notice-icon svg {
   width: 15px;
   height: 15px;
+}
+
+.remote-access-notice.pending .remote-access-notice-icon svg {
+  animation: remote-spin 900ms linear infinite;
 }
 
 .remote-access-notice-text {
@@ -210,16 +255,16 @@
 
 .remote-access-notice-text strong {
   display: block;
-  color: #edcc90;
+  color: var(--rc-text);
   font-size: 12.5px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .remote-access-notice-detail {
   display: -webkit-box;
-  margin-top: 3px;
+  margin-top: 2px;
   overflow: hidden;
-  color: #98a3b8;
+  color: var(--rc-text-dim);
   font-size: 12px;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -227,33 +272,11 @@
   -webkit-line-clamp: 3;
 }
 
-.remote-access-notice button {
-  min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid rgba(239, 191, 100, 0.28);
-  border-radius: 9px;
-  background: rgba(239, 191, 100, 0.1);
-  color: var(--gold);
-  font-size: 12.5px;
-  font-weight: 650;
-}
-
-.remote-access-notice button:hover {
-  border-color: rgba(239, 191, 100, 0.5);
-  background: rgba(239, 191, 100, 0.18);
-}
-
-.remote-access-notice button:disabled {
-  opacity: 0.55;
-}
-
 .remote-access-notice.error {
-  border-color: rgba(255, 110, 122, 0.22);
-  background: rgba(196, 58, 72, 0.1);
+  background: rgba(224, 71, 106, 0.09);
 }
 
 .remote-access-notice.error .remote-access-notice-icon {
-  background: rgba(255, 110, 122, 0.13);
   color: #ff8b98;
 }
 
@@ -261,44 +284,31 @@
   color: #ffb3bd;
 }
 
-.remote-access-notice.error button {
-  border-color: rgba(255, 130, 141, 0.3);
-  background: rgba(215, 65, 79, 0.14);
-  color: #ffb7be;
-}
-
-.remote-access-notice.error button:hover {
-  border-color: rgba(255, 140, 150, 0.5);
-  background: rgba(215, 65, 79, 0.22);
-}
-
+/* Pairing --------------------------------------------------------------- */
 .remote-qr-frame {
   position: relative;
   display: grid;
-  width: min(216px, 100%);
+  width: min(196px, 100%);
   aspect-ratio: 1;
   height: auto;
-  margin: auto auto 12px;
+  margin: auto auto 14px;
   padding: 10px;
   overflow: hidden;
   place-items: center;
-  border-radius: 18px;
+  border-radius: 14px;
   background: #fff;
-  box-shadow:
-    0 18px 42px rgba(0, 0, 0, 0.42),
-    0 0 0 1px rgba(105, 200, 246, 0.22),
-    0 0 44px rgba(105, 200, 246, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .remote-qr-frame img {
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 9px;
+  border-radius: 8px;
 }
 
 .remote-qr-frame.expired img {
-  opacity: 0.1;
+  opacity: 0.12;
   filter: grayscale(1);
 }
 
@@ -306,378 +316,307 @@
   position: absolute;
   inset: 0;
   display: grid;
-  padding: 26px;
+  padding: 20px;
   place-content: center;
   justify-items: center;
-  gap: 9px;
-  border-radius: 18px;
-  background: rgba(11, 15, 23, 0.96);
+  gap: 8px;
+  border-radius: 14px;
+  background: rgba(10, 14, 22, 0.95);
   color: #d9deea;
   font-size: 12px;
   text-align: center;
 }
 
 .remote-qr-state.error {
-  color: #ffbdc7;
+  color: #ffb3bd;
 }
 
 .remote-qr-state strong {
   font-size: 13px;
+  font-weight: 600;
 }
 
 .remote-qr-state span {
   max-width: 27ch;
-  color: #9aa5ba;
+  color: var(--rc-text-dim);
   line-height: 1.5;
 }
 
 .remote-qr-state button {
-  min-height: 36px;
-  padding: 0 14px;
-  border: 1px solid rgba(239, 191, 100, 0.3);
-  border-radius: 10px;
-  background: rgba(239, 191, 100, 0.12);
-  color: var(--gold);
-  font-size: 12.5px;
-  font-weight: 650;
+  margin-top: 4px;
 }
 
-.remote-qr-state button:hover {
-  border-color: rgba(239, 191, 100, 0.5);
-  background: rgba(239, 191, 100, 0.18);
-}
-
+/* Expiry + refresh share one quiet line: the code's lifetime is information,
+   the refresh is a text action — neither needs a control frame. */
 .remote-pairing-meta {
   display: flex;
-  min-height: 28px;
+  min-height: 30px;
+  margin-bottom: auto;
   align-items: center;
   justify-content: center;
-  color: #818ca1;
-  font-size: 12.5px;
+  gap: 14px;
+  color: var(--rc-text-mute);
+  font-size: 12px;
 }
 
 .remote-pairing-expiry {
   display: inline-flex;
-  padding: 5px 11px;
   align-items: center;
-  gap: 7px;
-  border: 1px solid rgba(159, 184, 226, 0.14);
-  border-radius: 999px;
-  background: rgba(16, 22, 34, 0.6);
-  color: #9aa5ba;
+  gap: 6px;
+  color: inherit;
   white-space: nowrap;
 }
 
-.remote-pairing-expiry.urgent {
-  border-color: rgba(239, 191, 100, 0.3);
-  background: rgba(239, 191, 100, 0.1);
-  color: #f0c884;
+.remote-pairing-expiry svg {
+  width: 14px;
+  height: 14px;
 }
 
-.remote-pairing-expiry svg {
-  width: 15px;
-  height: 15px;
+.remote-pairing-expiry.urgent {
+  color: var(--gold);
 }
 
 .remote-refresh-button {
-  display: flex;
-  width: 100%;
-  min-height: 42px;
-  margin-top: 12px;
-  margin-bottom: auto;
+  display: inline-flex;
+  min-height: 30px;
+  padding: 0 8px;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid rgba(159, 184, 226, 0.16);
-  border-radius: 12px;
-  background: rgba(26, 34, 49, 0.55);
-  color: #cbd2df;
-  font-size: 13.5px;
-  font-weight: 650;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
-}
-
-.remote-refresh-button:hover:not(:disabled) {
-  border-color: rgba(105, 200, 246, 0.38);
-  background: rgba(105, 200, 246, 0.09);
-  color: #9cc4ff;
+  gap: 7px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rc-text-dim);
+  font-size: 12.5px;
+  font-weight: 500;
 }
 
 .remote-refresh-button svg {
-  width: 18px;
-  height: 18px;
-}
-
-.remote-refresh-button:disabled {
-  opacity: 0.5;
+  width: 14px;
+  height: 14px;
 }
 
 /* Paired devices -------------------------------------------------------- */
 .remote-devices-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   overflow-y: auto;
 }
 
 .remote-devices-heading {
   display: flex;
-  min-height: 24px;
+  min-height: 20px;
   align-items: center;
-  gap: 9px;
+  gap: 7px;
 }
 
 .remote-devices-count {
-  display: inline-grid;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 7px;
-  place-items: center;
-  border: 1px solid rgba(159, 184, 226, 0.16);
-  border-radius: 999px;
-  background: rgba(26, 34, 49, 0.6);
-  color: #9aa5ba;
-  font-size: 11.5px;
-  font-weight: 650;
+  color: var(--rc-text-mute);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .remote-device-list {
   display: grid;
   flex: 1;
   align-content: start;
-  gap: 9px;
+  gap: 2px;
 }
 
 .remote-device-notice {
   display: flex;
-  min-height: 40px;
-  padding: 9px 12px;
   align-items: center;
-  gap: 9px;
-  border: 1px solid rgba(98, 204, 114, 0.24);
-  border-radius: 11px;
-  background: rgba(56, 151, 81, 0.11);
-  color: #a8e7b2;
+  gap: 8px;
+  color: var(--green);
   font-size: 12.5px;
 }
 
 .remote-device-notice.error {
-  border-color: rgba(255, 110, 122, 0.28);
-  background: rgba(196, 58, 72, 0.11);
-  color: #ffb2ba;
+  color: #ff9fab;
 }
 
 .remote-device-notice svg {
-  width: 17px;
-  height: 17px;
-  flex: 0 0 17px;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
 }
 
+/* List rows, not cards: a row is a name, when it was last seen, and one
+   action. No border, no status dot the user cannot act on. */
 .remote-device-row {
   display: grid;
-  min-height: 66px;
-  padding: 11px 12px;
-  grid-template-columns: 36px minmax(0, 1fr) 8px 36px;
+  min-height: 52px;
+  padding: 8px 10px;
+  grid-template-columns: minmax(0, 1fr) 30px;
   align-items: center;
-  gap: 11px;
-  border: 1px solid rgba(159, 184, 226, 0.13);
-  border-radius: 13px;
-  background: rgba(6, 9, 16, 0.36);
-  transition: border-color 120ms ease, background 120ms ease;
-}
-
-.remote-device-row:hover {
-  border-color: rgba(159, 184, 226, 0.24);
-  background: rgba(20, 27, 41, 0.5);
-}
-
-.remote-device-icon {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
+  gap: 10px;
   border-radius: 10px;
-  background: rgba(105, 200, 246, 0.09);
-  color: #7fb6ff;
-}
-
-.remote-device-icon svg,
-.remote-device-empty svg {
-  width: 19px;
-  height: 19px;
+  transition: background-color 140ms ease;
 }
 
 .remote-device-row > div {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: 3px;
 }
 
 .remote-device-row strong {
   overflow: hidden;
-  color: #edf0f7;
-  font-size: 14px;
-  font-weight: 650;
+  color: var(--rc-text);
+  font-size: 13px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .remote-device-row span {
-  color: #7e899f;
+  color: var(--rc-text-mute);
   font-size: 11.5px;
 }
 
 .remote-device-row button {
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   place-items: center;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  border: 0;
+  border-radius: 8px;
   background: transparent;
-  color: #8d98ad;
-  opacity: 0.5;
-  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
-}
-
-.remote-device-row:hover button,
-.remote-device-row button:focus-visible {
-  opacity: 1;
-}
-
-.remote-device-row button:hover {
-  border-color: rgba(159, 184, 226, 0.18);
-  background: rgba(159, 184, 226, 0.09);
-  color: #ffe0e4;
+  color: var(--rc-text-mute);
 }
 
 .remote-device-row button svg {
-  width: 21px;
-  height: 21px;
-}
-
-.remote-device-online {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #62cc72;
-  box-shadow: 0 0 10px rgba(98, 204, 114, 0.32);
+  width: 17px;
+  height: 17px;
 }
 
 .remote-device-empty {
   display: grid;
-  min-height: 190px;
-  padding: 24px;
+  min-height: 170px;
+  padding: 20px;
   place-content: center;
   justify-items: center;
-  gap: 8px;
-  border: 1px dashed rgba(159, 184, 226, 0.15);
-  border-radius: 16px;
-  color: #727e94;
+  gap: 7px;
+  color: var(--rc-text-mute);
   text-align: center;
 }
 
 .remote-device-empty svg {
-  margin-bottom: 2px;
-  color: #7d8798;
+  width: 20px;
+  height: 20px;
+  opacity: 0.7;
 }
 
 .remote-device-empty strong {
-  color: #cdd3e0;
+  color: #cfd5e2;
   font-size: 13px;
-}
-
-.remote-device-empty span {
-  max-width: 30ch;
-  font-size: 11.5px;
-  line-height: 1.5;
+  font-weight: 600;
 }
 
 /* Footer ---------------------------------------------------------------- */
 .remote-security-note {
   display: flex;
-  min-height: 54px;
-  padding: 0 26px;
+  min-height: 46px;
+  padding: 0 20px;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-top: 1px solid rgba(159, 184, 226, 0.1);
-  background: rgba(12, 17, 27, 0.5);
-  color: #8d97ad;
-  font-size: 12.5px;
+  border-top: 1px solid var(--rc-line-soft);
+  color: var(--rc-text-mute);
+  font-size: 12px;
 }
 
 .remote-note-text {
   display: inline-flex;
   min-width: 0;
   align-items: center;
-  gap: 9px;
+  gap: 7px;
 }
 
 .remote-note-text svg {
-  width: 17px;
-  height: 17px;
-  flex: 0 0 17px;
-  color: #72aaff;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
 }
 
 .remote-settings-link {
   display: inline-flex;
-  min-height: 32px;
+  min-height: 30px;
   flex: 0 0 auto;
-  padding: 0 11px;
+  padding: 0 8px;
   align-items: center;
-  gap: 7px;
-  border: 1px solid rgba(159, 184, 226, 0.16);
-  border-radius: 9px;
-  background: rgba(26, 34, 49, 0.5);
-  color: #aab3c6;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rc-text-dim);
   font-size: 12.5px;
-  font-weight: 600;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
 }
 
 .remote-settings-link svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
 }
 
-.remote-settings-link:hover {
-  border-color: rgba(105, 200, 246, 0.38);
-  background: rgba(105, 200, 246, 0.09);
-  color: #9cc4ff;
+/* Button vocabulary -----------------------------------------------------
+   Three roles only: quiet (default), primary (gold, one per view), danger. */
+.remote-access-notice button,
+.remote-qr-state button,
+.remote-settings-actions button,
+.remote-confirm-actions button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--rc-line);
+  border-radius: 9px;
+  background: transparent;
+  color: #c7cede;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.remote-settings-actions button.primary {
+  border-color: transparent;
+  background: var(--gold);
+  color: #0b101a;
+  font-weight: 600;
+}
+
+.remote-confirm-actions button.danger {
+  border-color: rgba(255, 110, 122, 0.32);
+  background: rgba(224, 71, 106, 0.16);
+  color: #ff9fab;
 }
 
 /* Server settings view -------------------------------------------------- */
 .remote-settings-panel {
   display: flex;
   width: 100%;
-  max-width: 620px;
+  max-width: 600px;
   margin: 0 auto;
-  padding: 24px 26px;
+  padding: 20px;
   flex-direction: column;
   justify-content: center;
-  gap: 16px;
+  gap: 14px;
   overflow-y: auto;
 }
 
 .remote-settings-heading h3 {
-  color: #eef1f8;
-  font-size: 16px;
+  color: var(--rc-text);
+  font-size: 15px;
 }
 
 .remote-settings-heading p {
-  margin-top: 6px;
-  color: #8d97ad;
-  font-size: 12.5px;
+  margin-top: 5px;
+  color: var(--rc-text-dim);
+  font-size: 12px;
   line-height: 1.55;
 }
 
 .remote-settings-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px 14px;
+  gap: 10px 12px;
 }
 
 .remote-settings-grid label {
@@ -691,25 +630,27 @@
 }
 
 .remote-settings-grid label > span {
-  color: #8b95aa;
+  color: var(--rc-text-mute);
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .remote-settings-grid input {
   width: 100%;
-  min-height: 40px;
-  padding: 0 12px;
-  border: 1px solid rgba(159, 184, 226, 0.17);
-  border-radius: 10px;
-  background: rgba(8, 12, 20, 0.75);
-  color: #e8ebf3;
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--rc-line);
+  border-radius: 9px;
+  background: rgba(6, 9, 16, 0.6);
+  color: var(--rc-text);
   font: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   outline: none;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .remote-settings-grid input::placeholder {
@@ -717,48 +658,14 @@
 }
 
 .remote-settings-grid input:focus {
-  border-color: rgba(105, 200, 246, 0.5);
+  border-color: rgba(105, 200, 246, 0.45);
   box-shadow: 0 0 0 3px rgba(105, 200, 246, 0.12);
 }
 
 .remote-settings-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-}
-
-.remote-settings-actions button {
-  min-height: 40px;
-  padding: 0 18px;
-  border: 1px solid rgba(159, 184, 226, 0.16);
-  border-radius: 10px;
-  background: rgba(26, 34, 49, 0.55);
-  color: #cbd2df;
-  font-size: 13px;
-  font-weight: 650;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
-}
-
-.remote-settings-actions button:hover:not(:disabled) {
-  border-color: rgba(159, 184, 226, 0.34);
-  background: rgba(159, 184, 226, 0.1);
-  color: #e2e7f1;
-}
-
-.remote-settings-actions button.primary {
-  border-color: rgba(239, 191, 100, 0.34);
-  background: linear-gradient(180deg, rgba(239, 191, 100, 0.22), rgba(239, 191, 100, 0.12));
-  color: #f4cd83;
-}
-
-.remote-settings-actions button.primary:hover:not(:disabled) {
-  border-color: rgba(239, 191, 100, 0.54);
-  background: linear-gradient(180deg, rgba(239, 191, 100, 0.3), rgba(239, 191, 100, 0.18));
-  color: #ffdb96;
-}
-
-.remote-settings-actions button:disabled {
-  opacity: 0.55;
+  gap: 8px;
 }
 
 /* Revoke confirmation ---------------------------------------------------- */
@@ -769,84 +676,84 @@
   display: grid;
   padding: 24px;
   place-items: center;
-  background: rgba(2, 5, 10, 0.66);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  background: rgba(2, 5, 10, 0.6);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
 
 .remote-confirm-dialog {
   width: min(360px, 100%);
-  padding: 24px;
-  border: 1px solid rgba(255, 110, 122, 0.25);
-  border-radius: 16px;
-  background: linear-gradient(180deg, #121827, #0b101b);
-  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.52);
-  text-align: center;
-}
-
-.remote-confirm-icon {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  margin: 0 auto 14px;
-  place-items: center;
-  border-radius: 13px;
-  background: rgba(255, 110, 122, 0.1);
-  color: #ff7c88;
-}
-
-.remote-confirm-icon svg {
-  width: 22px;
-  height: 22px;
+  padding: 20px;
+  border: 1px solid var(--rc-line);
+  border-radius: 14px;
+  background: #151a28;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+  animation: remote-confirm-in 160ms var(--rc-ease-out) both;
 }
 
 .remote-confirm-dialog h3 {
-  color: #f3f5fa;
-  font-size: 17px;
-}
-
-.remote-confirm-dialog p {
-  margin-top: 10px;
-  color: #98a3b8;
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.remote-confirm-actions {
-  display: grid;
-  margin-top: 20px;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.remote-confirm-actions button {
-  min-height: 42px;
-  border: 1px solid rgba(159, 184, 226, 0.16);
-  border-radius: 10px;
-  background: rgba(159, 184, 226, 0.06);
-  color: #d5dbe8;
-  font-size: 13px;
+  color: var(--rc-text);
+  font-size: 15px;
   font-weight: 600;
 }
 
-.remote-confirm-actions button:hover {
-  border-color: rgba(159, 184, 226, 0.32);
-  background: rgba(159, 184, 226, 0.1);
+.remote-confirm-dialog p {
+  margin-top: 7px;
+  color: var(--rc-text-dim);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
-.remote-confirm-actions button.danger {
-  border-color: rgba(255, 110, 122, 0.38);
-  background: rgba(215, 65, 79, 0.18);
-  color: #ffadb5;
+.remote-confirm-actions {
+  display: flex;
+  margin-top: 16px;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
-.remote-confirm-actions button.danger:hover {
-  border-color: rgba(255, 130, 141, 0.58);
-  background: rgba(215, 65, 79, 0.26);
-}
+/* Pointer-only hover states --------------------------------------------- */
+@media (hover: hover) and (pointer: fine) {
+  .remote-control-close:hover {
+    background: var(--rc-hover);
+    color: var(--rc-text);
+  }
 
-.remote-confirm-actions button:disabled {
-  opacity: 0.5;
+  .remote-access-notice button:hover:not(:disabled),
+  .remote-qr-state button:hover:not(:disabled),
+  .remote-settings-actions button:hover:not(:disabled),
+  .remote-confirm-actions button:hover:not(:disabled) {
+    border-color: rgba(159, 184, 226, 0.3);
+    background: var(--rc-hover);
+    color: var(--rc-text);
+  }
+
+  .remote-settings-actions button.primary:hover:not(:disabled) {
+    border-color: transparent;
+    background: #ffd36f;
+    color: #0b101a;
+  }
+
+  .remote-confirm-actions button.danger:hover:not(:disabled) {
+    border-color: rgba(255, 130, 141, 0.5);
+    background: rgba(224, 71, 106, 0.24);
+    color: #ffb7bf;
+  }
+
+  .remote-refresh-button:hover:not(:disabled),
+  .remote-settings-link:hover {
+    background: var(--rc-hover);
+    color: var(--rc-text);
+  }
+
+  .remote-device-row:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .remote-device-row button:hover,
+  .remote-device-row button:focus-visible {
+    background: var(--rc-hover);
+    color: var(--rc-text);
+  }
 }
 
 @media (max-width: 860px) {
@@ -874,7 +781,7 @@
   .remote-pairing-panel {
     overflow: visible;
     border-right: 0;
-    border-bottom: 1px solid rgba(159, 184, 226, 0.1);
+    border-bottom: 1px solid var(--rc-line-soft);
   }
 
   .remote-devices-panel {
@@ -886,14 +793,29 @@
   .remote-devices-panel,
   .remote-settings-panel,
   .remote-security-note {
-    padding-left: 22px;
-    padding-right: 22px;
+    padding-left: 18px;
+    padding-right: 18px;
   }
 }
 
+/* Reduced motion keeps the feedback, drops the movement. */
 @media (prefers-reduced-motion: reduce) {
-  .remote-control-backdrop {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+  .remote-control-backdrop,
+  .remote-control-dialog,
+  .remote-confirm-dialog {
+    animation: none;
+  }
+
+  .remote-control-backdrop.closing,
+  .remote-control-backdrop.closing .remote-control-dialog {
+    animation: remote-backdrop-out 120ms ease-out both;
+  }
+
+  .remote-access-notice.pending .remote-access-notice-icon svg {
+    animation: none;
+  }
+
+  .remote-control-dialog button:active:not(:disabled) {
+    transform: none;
   }
 }

@@ -260,6 +260,8 @@ export function AppShell() {
     agent: 'agent-default',
     workflow: '',
   }));
+  // 一次性请求：让设置页直接打开某个编辑器（运行页标题点击 → 工作流配置），设置页消费完就清空。
+  const [pendingSettingsEditor, setPendingSettingsEditor] = useState(null);
   const [skillActionBusy, setSkillActionBusy] = useState('');
   const conversationIdRef = useRef(null);
   const ownerIdRef = useRef('');
@@ -1314,6 +1316,15 @@ export function AppShell() {
       ? currentTask.workflowSnapshot
       : selected;
   }, [currentTask, defaultWorkflowId, selectedWorkflowId, workflowSettingsDraft]);
+  // 运行页只读——想改图就回配置页：标题点一下 = 打开设置页里这个工作流的编辑器（和列表点击同一条路）。
+  const openWorkflowConfig = React.useCallback((workflowId) => {
+    const id = String(workflowId || '').trim();
+    if (!id) return;
+    setSettingsMode(true);
+    setSettingsSection('workflow');
+    setSettingsSelection((prev) => ({ ...prev, workflow: id }));
+    setPendingSettingsEditor({ section: 'workflow', id, mode: 'edit' });
+  }, []);
   const currentWorkflowTask = currentTask?.executionMode === 'bot' ? currentTask : null;
   async function handleSelectWorkflowTask(projectId, targetConversationId, task) {
     const taskId = task?.taskId || task?.task_id || task?.id;
@@ -1703,6 +1714,8 @@ export function AppShell() {
             onToggleSkill={handleToggleSkill}
             onUninstallSkill={handleUninstallSkill}
             skillActionBusy={skillActionBusy}
+            openEditorRequest={pendingSettingsEditor}
+            onOpenEditorRequestConsumed={() => setPendingSettingsEditor(null)}
           />
           </React.Suspense>
         ) : activeTab === 'dashboard' ? (
@@ -1808,6 +1821,7 @@ export function AppShell() {
                     workflow={selectedWorkflow}
                     task={currentWorkflowTask}
                     agentOptions={agentOptions}
+                    onOpenConfig={openWorkflowConfig}
                     onRetry={(nodeId) => {
                       if (!currentWorkflowTask) return;
                       setViewedWorkflowTask(null);

@@ -1,9 +1,14 @@
+import { savedWorkflowLayout } from './workflow-layout-store.js';
+
 const NODE_WIDTH = 214;
 const COLUMN_GAP = 24;
 const CANVAS_PADDING_X = 48;
 const CANVAS_TOP = 96;
 const ROW_GAP = 192;
 const BRANCH_OFFSET_Y = 96;
+// 主链最多排几列（超出折成蛇形行）。是常数、绝不按画布宽度算：同一张图在配置页和运行页
+// 必须排出同一个形状（两边画布宽度不一样，按宽度算列数会排成 4+2 vs 3+3 两张图）。
+const LAYOUT_MAX_COLUMNS = 4;
 
 const BRANCH_PRIORITY = {
   true: 1,
@@ -13,6 +18,26 @@ const BRANCH_PRIORITY = {
   exhausted: 4,
   retry: 5,
 };
+
+/**
+ * 画布排布的唯一来源（两页共用）：先放本机存的排布（workflow-layout-store——系统预设的排布只能
+ * 存这里，core 里它没有保存路径），可编辑（custom）工作流再用定义里的 `nodes[].position` 覆盖
+ * （那是它的保存处）。都没存过就落到 layoutRuntimeWorkflow 算出的排布。
+ */
+export function workflowArrangementPositions(workflow) {
+  const positions = new Map();
+  if (!workflow) return positions;
+  for (const [nodeId, position] of savedWorkflowLayout(workflow.workflow_id || workflow.id)) {
+    positions.set(String(nodeId), position);
+  }
+  if (workflow.system) return positions;
+  for (const node of workflow.nodes || []) {
+    const x = Number(node?.position?.x);
+    const y = Number(node?.position?.y);
+    if (Number.isFinite(x) && Number.isFinite(y)) positions.set(String(node.id), { x, y });
+  }
+  return positions;
+}
 
 export function workflowApprovalDecisionStatus(node, result) {
   if (node?.type !== 'human_approval') return '';
@@ -158,8 +183,8 @@ function closestFreeColumn(occupied, preferred, columns) {
   return preferred;
 }
 
-/** Runtime-only layout: keep the primary route readable and wrap overflow into snake rows. */
-export function layoutRuntimeWorkflow(nodes = [], edges = [], viewportWidth = 1200) {
+/** 配置页与运行页共用的画布排布：主链优先，溢出折成蛇形行；列数是常数，两页永远是同一张图。 */
+export function layoutRuntimeWorkflow(nodes = [], edges = []) {
   const list = (Array.isArray(nodes) ? nodes : []).filter((node) => node?.id);
   const nodeById = new Map(list.map((node) => [String(node.id), node]));
   const edgeList = (Array.isArray(edges) ? edges : [])
@@ -189,15 +214,11 @@ export function layoutRuntimeWorkflow(nodes = [], edges = [], viewportWidth = 12
     cursor = next?.target || '';
   }
 
-  const width = Number.isFinite(Number(viewportWidth)) ? Number(viewportWidth) : 1200;
   // Reserve enough room for content-sized nodes; long titles are capped by CSS.
   const columnWidth = Math.max(NODE_WIDTH, ...list.map((node) => Math.min(320,
     80 + Array.from(String(node.label || '')).reduce((sum, char) => sum + (char.codePointAt(0) > 255 ? 14 : 9), 0),
   )));
-  const columns = Math.max(2, Math.min(
-    Math.max(primaryIds.length, 2),
-    Math.floor((Math.max(width, 480) - (CANVAS_PADDING_X * 2) + COLUMN_GAP) / (columnWidth + COLUMN_GAP)),
-  ));
+  const columns = Math.max(2, Math.min(Math.max(primaryIds.length, 2), LAYOUT_MAX_COLUMNS));
   const xForColumn = (column) => CANVAS_PADDING_X + (column * (columnWidth + COLUMN_GAP));
   const positions = new Map();
   const meta = new Map();

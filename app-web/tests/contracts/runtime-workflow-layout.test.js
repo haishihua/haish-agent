@@ -24,6 +24,10 @@ const flowNodeSource = fs.readFileSync(
   new URL('../../src/features/workflow/components/WorkflowFlowNode.jsx', import.meta.url),
   'utf8',
 );
+const layoutSource = fs.readFileSync(
+  new URL('../../src/features/workflow/model/runtime-workflow-layout.js', import.meta.url),
+  'utf8',
+);
 const chatMessageSource = fs.readFileSync(
   new URL('../../src/features/chat/components/ChatMessageRow.jsx', import.meta.url),
   'utf8',
@@ -75,9 +79,11 @@ test('runtime workflow layout wraps the primary route and keeps rejection work b
     { from: 'seven', to: 'output' },
   ];
 
-  const layout = layoutRuntimeWorkflow(nodes, edges, 1200);
+  const layout = layoutRuntimeWorkflow(nodes, edges);
 
+  // 列数是常数：同一张图在配置页和运行页排出同一个形状（这里 9 个主链节点 → 4+4+1）。
   assert.equal(layout.columns, 4);
+  assert.equal(layout.rowCount, 3);
   assert.deepEqual(layout.positions.get('start'), { x: 48, y: 96 });
   assert.deepEqual(layout.positions.get('three'), { x: 762, y: 96 });
   assert.deepEqual(layout.positions.get('four'), { x: 762, y: 288 });
@@ -88,27 +94,79 @@ test('runtime workflow layout wraps the primary route and keeps rejection work b
   assert.equal(layout.meta.get('rework').kind, 'secondary');
 });
 
+test('both pages arrange the same graph identically, no matter the pane width', () => {
+  // 列数曾经按各自画布宽度算：配置页排成 4+2、运行页排成 3+3——同一张图两张形状。现在列数是
+  // 常数（LAYOUT_MAX_COLUMNS），排布函数连宽度参数都没有了，两页只有一个调用形状。
+  assert.match(layoutSource, /const LAYOUT_MAX_COLUMNS = 4;/);
+  assert.doesNotMatch(layoutSource, /viewportWidth/);
+  assert.match(editorSource, /layoutRuntimeWorkflow\(nodes, edges\)/);
+  assert.match(runtimeSource, /layoutRuntimeWorkflow\(workflow\?\.nodes, workflow\?\.edges\)/);
+
+  // 照抄系统预设 Goal Loop 的形状（core/workflow/model.py 的 goal_loop_workflow）：判定过了走
+  // End，没过回 Worker，超限才落到 End——用户截图里就是这张图。
+  const nodes = [
+    { id: 'start', type: 'start', label: 'Start', position: { x: 40, y: 100 } },
+    { id: 'goal_worker', type: 'agent', label: 'Worker', position: { x: 320, y: 100 } },
+    { id: 'goal_verifier', type: 'agent', label: 'Verifier', position: { x: 600, y: 100 } },
+    { id: 'goal_gate', type: 'condition', label: 'Verdict', position: { x: 440, y: 460 } },
+    { id: 'goal_loop', type: 'loop', label: 'Retry', max_loops: 3, position: { x: 500, y: 280 } },
+    { id: 'output', type: 'output', label: 'End', position: { x: 40, y: 420 } },
+  ];
+  const edges = [
+    { from: 'start', to: 'goal_worker' },
+    { from: 'goal_worker', to: 'goal_verifier' },
+    { from: 'goal_verifier', to: 'goal_gate' },
+    { from: 'goal_gate', to: 'output' },
+    { from: 'goal_gate', to: 'goal_loop' },
+    { from: 'goal_loop', to: 'goal_worker', branch: 'retry' },
+    { from: 'goal_loop', to: 'output', branch: 'exhausted' },
+  ];
+
+  const layout = layoutRuntimeWorkflow(nodes, edges);
+  assert.equal(layout.columns, 4);
+  assert.equal(layout.rowCount, 2);
+  assert.equal(layout.positions.size, nodes.length);
+  assert.deepEqual(layout.positions.get('start'), { x: 48, y: 96 });
+  assert.deepEqual(layout.positions.get('goal_worker'), { x: 286, y: 96 });
+  assert.deepEqual(layout.positions.get('goal_verifier'), { x: 524, y: 96 });
+  assert.deepEqual(layout.positions.get('goal_gate'), { x: 762, y: 96 });
+  assert.deepEqual(layout.positions.get('output'), { x: 762, y: 288 });
+  // 回环节点挂在判定下方（分支位），不是另起一条主链。
+  assert.deepEqual(layout.positions.get('goal_loop'), { x: 524, y: 192 });
+  assert.equal(layout.meta.get('goal_loop').kind, 'secondary');
+});
+
 test('runtime feedback edges keep routed ports and align every rework edge on one baseline', () => {
-  assert.match(runtimeSource, /targetHandle: feedback \? 'runtime-feedback'/);
-  assert.match(runtimeSource, /type: 'smoothstep'/);
-  assert.match(runtimeSource, /const reworkEdge = sourceLayout\?\.kind !== targetLayout\?\.kind/);
-  assert.match(runtimeSource, /borderRadius: 28, offset: reworkEdge \? 0 : 28/);
-  assert.doesNotMatch(runtimeSource, /type: curved \? 'default'/);
+  // 两页的边共用同一份外观（WorkflowFlowNode.workflowEdgeAppearance + WorkflowCanvasEdge）：
+  // 端口、圆角/基线和颜色/线宽都只在这里定义一次。
+  assert.match(flowNodeSource, /targetHandle: feedback \? 'runtime-feedback'/);
+  assert.match(flowNodeSource, /type: 'workflowEdge',/);
+  assert.match(flowNodeSource, /const reworkEdge = sourceLayout\?\.kind !== targetLayout\?\.kind/);
+  assert.match(flowNodeSource, /borderRadius: curved \? 28 : 10,/);
+  assert.match(flowNodeSource, /offset: curved \? \(reworkEdge \? 0 : 28\) : \(edge\?\.branch === 'retry' \? 0 : 20\),/);
+  // 平时中性、正在走运行蓝：颜色只在这一份里给（配置页选中和运行页 flowing 同一条线）。
+  assert.match(flowNodeSource, /stroke: active\n\s+\? 'rgba\(105, 200, 246, 0\.9\)'/);
+  assert.match(flowNodeSource, /strokeWidth: active \? 2 : 1\.5,/);
 });
 
 test('workflow editor reuses the runtime snake layout and routed ports', () => {
-  assert.match(editorSource, /layoutRuntimeWorkflow\(nodes, edges, canvasWidth\)/);
-  assert.match(editorSource, /position: layout\.positions\.get/);
-  assert.match(editorSource, /targetHandle: feedback \? 'runtime-feedback'/);
+  // 排布是两页共用的一份，连宽度参数都没有（列数常数）：配置页不再按自己的画布宽度重排。
+  assert.match(editorSource, /layoutRuntimeWorkflow\(nodes, edges\)/);
+  assert.doesNotMatch(editorSource, /layoutRuntimeWorkflow\([^)]*canvasWidth/);
+  assert.match(editorSource, /position: arrangement\.get\(String\(node\.id\)\) \|\| layout\.positions\.get/);
+  assert.match(editorSource, /workflowEdgeAppearance\(edge, \{\s*active: isSelected,/);
+  // 配置页自己永远能拖（可编辑的写回定义）；只有运行页锁死不可拖。
   assert.doesNotMatch(editorSource, /nodesDraggable=\{false\}/);
+  assert.match(editorSource, /\n\s*nodesDraggable\n/);
 });
 
-test('runtime and editor keep edges attached while nodes are dragged', () => {
+test('the editor keeps edges attached while nodes are dragged and the runtime stays read-only', () => {
   assert.match(runtimeSource, /useNodesState\(layoutNodes\)/);
   assert.match(runtimeSource, /onNodesChange=\{onNodesChange\}/);
-  assert.doesNotMatch(runtimeSource, /nodesDraggable=\{false\}/);
+  // 改图（拖排布）只在配置页发生：运行页不可拖，也不写回位置。
+  assert.match(runtimeSource, /nodesDraggable=\{false\}/);
+  assert.doesNotMatch(runtimeSource, /onNodeDragStop/);
   assert.match(editorSource, /useNodesState\(nodes\)/);
-  assert.match(runtimeSource, /draggedNodePositionsRef\.current\.get\(node\.id\)/);
   assert.match(editorSource, /draggedNodePositionsRef\.current\.get\(node\.id\)/);
   assert.doesNotMatch(editorSource, /currentById/);
 });
@@ -150,7 +208,8 @@ test('runtime details use executed node data and real workflow transitions', () 
   assert.match(runtimeSource, /DETAIL_NODE_TYPES = new Set\(\['agent', 'llm', 'tool', 'human_approval'\]\)/);
   assert.match(runtimeSource, /executedNodeIds\.has\(String\(node\.id\)\)/);
   assert.doesNotMatch(runtimeSource, /detailText\(node\.input \|\| node\.prompt/);
-  assert.match(runtimeSource, /className: active \? 'is-flowing'/);
+  // 流动/已走过的边都由共用的 workflowEdgeAppearance 给（配置页选中的边用同一套）。
+  assert.match(runtimeSource, /workflowEdgeAppearance\(edge, \{\s*active,/);
   assert.match(runtimeSource, /const active = latestSelected/);
   assert.doesNotMatch(runtimeSource, /const active = targetStatus === 'running'/);
   assert.match(runtimeSource, /normalizedTaskStatus === 'cancelled'/);

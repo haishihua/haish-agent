@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workflow node parity (editor vs runtime)</title>
+<style>
+  html, body { margin: 0; background: #0a0f18; color: #e7ecf6; font: 13px system-ui; }
+  h1 { font-size: 14px; margin: 10px 12px 6px; }
+  .panes { display: flex; gap: 12px; padding: 0 12px; align-items: flex-start; }
+  .panes section { background: #0d1420; border: 1px solid rgba(176, 206, 255, 0.14); border-radius: 10px; overflow: hidden; }
+  .panes h2 { margin: 0; padding: 6px 10px; font: 600 12px/1.4 ui-monospace, monospace; color: #9fb2cc; border-bottom: 1px solid rgba(176, 206, 255, 0.1); }
+  .pane { width: 610px; height: 560px; }
+  #checks { margin: 12px; padding: 10px; background: #0b0e14; color: #9fd8a4; white-space: pre-wrap; font: 11px/1.5 ui-monospace, monospace; border-radius: 8px; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<h1>Workflow node parity — editor pane vs runtime pane</h1>
+<div class="panes">
+  <section><h2>配置页（编辑画布）</h2><div id="pane-config" class="pane workflow-canvas"></div></section>
+  <section><h2>运行页（运行画布）</h2><div id="pane-runtime" class="pane workflow-run-canvas workflow-canvas"></div></section>
+</div>
+<pre id="checks" role="status">Running…</pre>
+<script type="module" src="./workflow-node-parity.jsx"></script>
+</html>

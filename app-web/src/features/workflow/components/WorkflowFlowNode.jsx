@@ -1,5 +1,5 @@
 import React from 'react';
-import { Handle, MarkerType, Position } from '@xyflow/react';
+import { BaseEdge, Handle, Position, getSmoothStepPath } from '@xyflow/react';
 import { agentIconNameForAgentId } from '../../agents/model/agent-settings.js';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 
@@ -26,64 +26,151 @@ export const WORKFLOW_BRANCHES = {
 };
 
 export const WORKFLOW_BRANCH_META = {
-  true: { label: 'True', tone: 'positive' },
-  false: { label: 'False', tone: 'muted' },
-  approved: { label: 'Approved', tone: 'positive' },
-  rejected: { label: 'Rejected', tone: 'negative' },
-  retry: { label: 'Retry', tone: 'warning' },
-  exhausted: { label: 'Exhausted', tone: 'negative' },
+  true: { label: 'True' },
+  false: { label: 'False' },
+  approved: { label: 'Approved' },
+  rejected: { label: 'Rejected' },
+  retry: { label: 'Retry' },
+  exhausted: { label: 'Exhausted' },
 };
 
 export function workflowNodeMeta(nodeType) {
   return WORKFLOW_NODE_META[nodeType] || { icon: 'box' };
 }
 
-export function workflowEdgeAppearance(edge, { active = false } = {}) {
-  const branchTone = WORKFLOW_BRANCH_META[edge?.branch]?.tone;
-  const branchColor = branchTone === 'positive'
-    ? 'rgba(120, 218, 139, 0.42)'
-    : branchTone === 'negative'
-      ? 'rgba(238, 122, 145, 0.42)'
-      : branchTone === 'warning'
-        ? 'rgba(238, 182, 96, 0.46)'
-        : edge?.branch
-          ? 'rgba(176, 196, 220, 0.3)'
-          : 'rgba(185, 196, 216, 0.26)';
+// 画布上的边只有这一套外观（配置页与运行页共用）：平时是一条细的中性线，正在走的那条
+// （.is-flowing）换成运行蓝、加粗到 2px、外圈一层软光，另有一道亮斑沿线在跑（动效在
+// app-shell.css）；已经走过的（.is-traversed）比未走的亮一档。不画文字标签、不画箭头，
+// 也不给整条线打虚线。配置页选中的边就是把同一套外观的 flowing 状态打开，不另配一套。
+export function workflowEdgeAppearance(edge, {
+  active = false,
+  traversed = false,
+  sourceLayout,
+  targetLayout,
+} = {}) {
+  const curved = sourceLayout?.row !== targetLayout?.row
+    || sourceLayout?.kind === 'secondary'
+    || targetLayout?.kind === 'secondary';
+  const reworkEdge = sourceLayout?.kind !== targetLayout?.kind;
+  const feedback = sourceLayout?.kind === 'secondary' && targetLayout?.kind === 'primary';
   return {
     sourceHandle: edge?.branch || undefined,
-    type: edge?.branch ? 'smoothstep' : 'straight',
-    pathOptions: edge?.branch ? { borderRadius: 10, offset: edge.branch === 'retry' ? 0 : 20 } : undefined,
-    label: WORKFLOW_BRANCH_META[edge?.branch]?.label,
-    labelStyle: edge?.branch
-      ? {
-        fill: branchTone === 'positive'
-          ? 'rgba(144, 226, 158, 0.92)'
-          : branchTone === 'negative'
-            ? 'rgba(250, 170, 189, 0.92)'
-            : branchTone === 'warning'
-              ? 'rgba(246, 202, 132, 0.94)'
-              : 'rgba(205, 215, 232, 0.68)',
-        fontSize: 10,
-        fontWeight: 700,
-        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
-      }
-      : undefined,
-    labelBgStyle: edge?.branch ? { fill: 'rgba(9, 14, 24, 0.92)' } : undefined,
-    labelBgPadding: edge?.branch ? [5, 3] : undefined,
-    labelBgBorderRadius: edge?.branch ? 5 : undefined,
+    targetHandle: feedback ? 'runtime-feedback' : undefined,
+    type: 'workflowEdge',
+    data: {
+      active,
+      traversed,
+      borderRadius: curved ? 28 : 10,
+      offset: curved ? (reworkEdge ? 0 : 28) : (edge?.branch === 'retry' ? 0 : 20),
+    },
     interactionWidth: 28,
-    zIndex: edge?.branch ? 2 : 0,
+    className: active ? 'is-flowing' : (traversed ? 'is-traversed' : ''),
     style: {
-      stroke: active ? 'rgba(105, 200, 246, 0.58)' : branchColor,
-      strokeWidth: active ? 1.8 : 1.5,
+      stroke: active
+        ? 'rgba(105, 200, 246, 0.9)'
+        : (traversed ? 'rgba(129, 166, 159, 0.5)' : 'rgba(169, 187, 211, 0.32)'),
+      strokeWidth: active ? 2 : 1.5,
     },
-    markerEnd: {
-      type: MarkerType.ArrowClosed,
-      width: 14,
-      height: 14,
-      color: active ? 'rgba(105, 200, 246, 0.64)' : branchColor,
-    },
+    zIndex: active ? 1 : 0,
   };
+}
+
+/**
+ * 节点端口（两页共用的唯一一份）：主链按行走向给左右出入端口；副链（返工）节点输入统一走顶部、
+ * 出口跟节点自己那一侧；loop 的 retry 出口永远和它自己的出端口同侧。配置页和运行页都必须调这里
+ * ——两边各写一份就会悄悄长歪（配置页曾把 retry 画在节点顶部、运行页画在左侧，同一条边在两页
+ * 形状不同，看起来就是「边的端点两个都不一样」）。
+ */
+export function workflowNodePorts(node, layoutMeta) {
+  const direction = layoutMeta?.direction || 'right';
+  const secondary = layoutMeta?.kind === 'secondary';
+  const sourcePosition = secondary
+    ? (direction === 'right' ? Position.Left : Position.Right)
+    : (direction === 'right' ? Position.Right : Position.Left);
+  return {
+    sourcePosition,
+    targetPosition: secondary
+      ? Position.Top
+      : (direction === 'right' ? Position.Left : Position.Right),
+    branchSourcePositions: secondary && node?.type === 'loop' ? { retry: sourcePosition } : undefined,
+  };
+}
+
+/** 次级节点回到主链的那条边落在主节点底部的回环端口（两页共用同一份判断）。 */
+export function workflowFeedbackTargetIds(edges, layoutMeta) {
+  const targets = new Set();
+  for (const edge of Array.isArray(edges) ? edges : []) {
+    const source = String(edge?.from || edge?.source || '');
+    const target = String(edge?.to || edge?.target || '');
+    if (layoutMeta?.get(source)?.kind === 'secondary' && layoutMeta?.get(target)?.kind === 'primary') {
+      targets.add(target);
+    }
+  }
+  return targets;
+}
+
+/**
+ * 两页共用的边渲染器：中性细线上再叠「正在走」的软光和沿线亮斑。两页注册的是同一个组件，
+ * 配置页选中的边与运行页当前走的那条边走的就是这份代码，只有状态不同、没有第二套画法。
+ */
+export function WorkflowCanvasEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  data,
+  style,
+  interactionWidth,
+}) {
+  const active = Boolean(data?.active);
+  const [path] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition: sourcePosition || Position.Right,
+    targetPosition: targetPosition || Position.Left,
+    borderRadius: Number(data?.borderRadius ?? 20),
+    offset: Number(data?.offset ?? 20),
+  });
+  const stroke = style?.stroke || 'rgba(169, 187, 211, 0.32)';
+  return (
+    <>
+      {active ? (
+        <path
+          className="workflow-edge-halo"
+          d={path}
+          fill="none"
+          stroke={stroke}
+          strokeWidth={7}
+          strokeOpacity={0.16}
+          strokeLinecap="round"
+          style={{ pointerEvents: 'none' }}
+        />
+      ) : null}
+      <BaseEdge
+        id={id}
+        path={path}
+        interactionWidth={interactionWidth}
+        style={{ ...style, strokeLinecap: 'round' }}
+      />
+      {active ? (
+        <path
+          className="workflow-edge-spark"
+          d={path}
+          fill="none"
+          stroke="#eaf4ff"
+          strokeWidth={2}
+          strokeOpacity={0.72}
+          strokeLinecap="round"
+          style={{ pointerEvents: 'none' }}
+        />
+      ) : null}
+    </>
+  );
 }
 
 export function WorkflowFlowNode({ data, selected, sourcePosition, targetPosition }) {

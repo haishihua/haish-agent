@@ -3,7 +3,6 @@ import { workflowControlEvents } from '../model/workflow-control-events.js';
 import {
   Background,
   Controls,
-  Position,
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
@@ -18,6 +17,7 @@ import {
   layoutRuntimeWorkflow,
   mergeWorkflowNodeAttempts,
   workflowApprovalDecisionStatus,
+  workflowArrangementPositions,
   workflowNodeOutcomesFromEvents,
   workflowResultForAttempt,
   workflowToolCallsForAttempt,
@@ -34,8 +34,11 @@ import { ChatTimelineChevron } from '../../chat/components/ChatTimelineNodes.jsx
 import { ScrollToBottomButton } from '../../../shared/ui/ScrollToBottomButton.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import {
+  WorkflowCanvasEdge,
   WorkflowFlowNode,
   workflowEdgeAppearance,
+  workflowFeedbackTargetIds,
+  workflowNodePorts,
 } from './WorkflowFlowNode.jsx';
 
 const NODE_ICON = {
@@ -120,6 +123,7 @@ function nodeStatus(
 }
 
 const NODE_TYPES = { workflowNode: WorkflowFlowNode };
+const EDGE_TYPES = { workflowEdge: WorkflowCanvasEdge };
 
 function FitWorkflow({ workflowKey, detailOpen, layoutKey }) {
   const { fitView } = useReactFlow();
@@ -428,7 +432,7 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
   );
 }
 
-function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }) {
+function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], onOpenConfig = null }) {
   const controlEvents = workflowControlEvents(task?.eventLog);
   const [selectedNodeId, setSelectedNodeId] = React.useState('');
   const previousSelectionRef = React.useRef({ nodeId: '', status: 'pending' });
@@ -455,10 +459,14 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
     [run, workflow],
   );
   const workflowKey = `${displayWorkflowId}:${workflow?.version || ''}`;
+  // 排布与画布宽度无关（列数是常数）：同一张图在配置页和运行页永远排出同一个形状。
   const layout = React.useMemo(
-    () => layoutRuntimeWorkflow(workflow?.nodes, workflow?.edges, canvasWidth),
-    [canvasWidth, workflow?.edges, workflow?.nodes],
+    () => layoutRuntimeWorkflow(workflow?.nodes, workflow?.edges),
+    [workflow?.edges, workflow?.nodes],
   );
+  // 排布只从配置页保存的位置来（见 workflowArrangementPositions）；这里是只读视图，
+  // 节点不可拖：改图一律在配置页做，运行页只负责显示。
+  const arrangement = React.useMemo(() => workflowArrangementPositions(workflow), [workflow]);
   const layoutKey = `${layout.columns}:${layout.rowCount}:${canvasWidth}`;
   const executedNodeIds = React.useMemo(() => new Set([
     ...Object.keys(run?.nodes || {}),
@@ -472,15 +480,11 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
     && DETAIL_NODE_TYPES.has(node.type)
     && executedNodeIds.has(String(node.id))
   ), [executedNodeIds]);
-  const feedbackTargetIds = React.useMemo(() => new Set(
-    (workflow?.edges || []).flatMap((edge) => {
-      const source = String(edge.from || edge.source || '');
-      const target = String(edge.to || edge.target || '');
-      return layout.meta.get(source)?.kind === 'secondary' && layout.meta.get(target)?.kind === 'primary'
-        ? [target]
-        : [];
-    }),
-  ), [layout, workflow?.edges]);
+  // 回环端口（次级→主链那条边的落点）只有一份判断，和配置页调同一个函数。
+  const feedbackTargetIds = React.useMemo(
+    () => workflowFeedbackTargetIds(workflow?.edges, layout.meta),
+    [layout, workflow?.edges],
+  );
 
   React.useEffect(() => setSelectedNodeId(''), [workflowKey]);
 
@@ -488,51 +492,27 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
     const status = nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds);
     const id = String(node.id);
     const layoutMeta = layout.meta.get(id);
-    const direction = layoutMeta?.direction || 'right';
-    const secondary = layoutMeta?.kind === 'secondary';
     const runtimeDetailAvailable = canOpenNodeDetail(node);
     return {
       // ponytail: reuse the editor node renderer; runtime only supplies status/config data.
       id,
       type: 'workflowNode',
-      position: layout.positions.get(id) || node.position || { x: 0, y: 0 },
+      position: arrangement.get(id) || layout.positions.get(id) || { x: 0, y: 0 },
       data: {
         workflowNode: node,
         agentOptions,
         runtimeStatus: status,
         runtimeStatusLabel: STATUS_COPY[status],
         runtimeDetailAvailable,
-        sourcePosition: secondary
-          ? (direction === 'right' ? Position.Left : Position.Right)
-          : (direction === 'right' ? Position.Right : Position.Left),
-        targetPosition: secondary
-          ? Position.Top
-          : (direction === 'right' ? Position.Left : Position.Right),
         feedbackTarget: feedbackTargetIds.has(id),
-        branchSourcePositions: secondary && node.type === 'loop'
-          ? { retry: direction === 'right' ? Position.Left : Position.Right }
-          : undefined,
+        // 端口（含 loop 的 retry 出口）只有一份来源：两页都从 workflowNodePorts 取。
+        ...workflowNodePorts(node, layoutMeta),
       },
-      draggable: true,
       connectable: false,
     };
-  }), [activeEventNodeIds, agentOptions, canOpenNodeDetail, eventNodeOutcomes, feedbackTargetIds, layout, run, task?.status, traversedLoopNodeIds, workflow?.nodes]);
+  }), [activeEventNodeIds, agentOptions, arrangement, canOpenNodeDetail, eventNodeOutcomes, feedbackTargetIds, layout, run, task?.status, traversedLoopNodeIds, workflow?.nodes]);
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes);
-  const isNodeDraggingRef = React.useRef(false);
-  const draggedNodePositionsRef = React.useRef(new Map());
-  const previousWorkflowKeyRef = React.useRef(workflowKey);
-  const previousLayoutKeyRef = React.useRef(layoutKey);
-  React.useEffect(() => {
-    const resetPositions = previousWorkflowKeyRef.current !== workflowKey || previousLayoutKeyRef.current !== layoutKey;
-    if (resetPositions) draggedNodePositionsRef.current.clear();
-    previousWorkflowKeyRef.current = workflowKey;
-    previousLayoutKeyRef.current = layoutKey;
-    if (isNodeDraggingRef.current) return;
-    setNodes(layoutNodes.map((node) => {
-      const draggedPosition = draggedNodePositionsRef.current.get(node.id);
-      return draggedPosition ? { ...node, position: draggedPosition } : node;
-    }));
-  }, [layoutKey, layoutNodes, setNodes, workflowKey]);
+  React.useEffect(() => { setNodes(layoutNodes); }, [layoutNodes, setNodes]);
   const nodeById = React.useMemo(() => new Map((workflow?.nodes || []).map((node) => [String(node.id), node])), [workflow?.nodes]);
   const statusById = React.useMemo(
     () => new Map((workflow?.nodes || []).map((node) => [String(node.id), nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)])),
@@ -564,33 +544,19 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
       && targetStatus !== 'failed'
       && targetStatus !== 'cancelled';
     const traversed = traversedEdgeKeys.has(`${source}->${target}`);
-    const sourceLayout = layout.meta.get(source);
-    const targetLayout = layout.meta.get(target);
-    const curved = sourceLayout?.row !== targetLayout?.row
-      || sourceLayout?.kind === 'secondary'
-      || targetLayout?.kind === 'secondary';
-    const reworkEdge = sourceLayout?.kind !== targetLayout?.kind;
-    const feedback = sourceLayout?.kind === 'secondary' && targetLayout?.kind === 'primary';
-    const appearance = workflowEdgeAppearance(edge, { active });
+    const appearance = workflowEdgeAppearance(edge, {
+      active,
+      traversed,
+      sourceLayout: layout.meta.get(source),
+      targetLayout: layout.meta.get(target),
+    });
     return {
       id: `${source}-${target}-${edge.branch || index}`,
       source,
       target,
       ...appearance,
-      hidden: nodeById.get(source)?.type === 'loop' && nodeById.get(target)?.type === 'output',
-      markerEnd: undefined,
-      style: { ...appearance.style, stroke: 'rgba(169, 187, 211, 0.32)', strokeWidth: 1.4 },
-      label: undefined,
-      targetHandle: feedback ? 'runtime-feedback' : undefined,
-      type: 'smoothstep',
-      pathOptions: curved
-        ? { borderRadius: 28, offset: reworkEdge ? 0 : 28 }
-        : appearance.pathOptions,
-      zIndex: 0,
-      animated: active,
-      className: active ? 'is-flowing' : (traversed ? 'is-traversed' : ''),
     };
-  }), [latestTransition, layout, nodeById, statusById, traversedEdgeKeys, workflow?.edges]);
+  }), [latestTransition, layout, statusById, traversedEdgeKeys, workflow?.edges]);
   const selectedNodeCandidate = selectedNodeId ? nodeById.get(selectedNodeId) || null : null;
   const selectedNode = canOpenNodeDetail(selectedNodeCandidate) ? selectedNodeCandidate : null;
   // 节点详情的回复按节点配置的 agent 署名（catalog 与节点图标同一份）。
@@ -661,6 +627,19 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
     );
   }
 
+  // 标题区（工作流名 + 运行状态）。运行页是只读的——想改图就回配置页——所以整块是一个按钮：
+  // 点了把这个工作流的 id 交给上层（AppShell 打开设置页里同一个编辑器）。没有 handler 时是纯文本。
+  const titleLabel = workflow.display_name || displayWorkflowId || 'Workflow';
+  const runStatusCopy = run
+    ? (STATUS_COPY[displayRunStatus] || run.status || displayRunStatus)
+    : 'Ready to run';
+  const titleBody = (
+    <>
+      <strong className={displayRunStatus === 'running' ? 'is-running' : ''}>{titleLabel}</strong>
+      <span className={`workflow-run-status is-${displayRunStatus || 'idle'}`}>{runStatusCopy}</span>
+    </>
+  );
+
   return (
     <div
       ref={layoutRef}
@@ -668,27 +647,28 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [] }
       style={selectedNode ? { '--workflow-detail-width': `${detailWidth}px` } : undefined}
     >
       <main ref={canvasRef} className="workflow-run-canvas workflow-canvas" aria-label="Workflow execution graph">
-        <div className="workflow-run-title">
-          <strong className={displayRunStatus === 'running' ? 'is-running' : ''}>
-            {workflow.display_name || displayWorkflowId || 'Workflow'}
-          </strong>
-          {displayRunStatus !== 'running' ? (
-            <span>{run ? (STATUS_COPY[displayRunStatus] || run.status) : 'Ready to run'}</span>
-          ) : null}
-        </div>
+        {onOpenConfig ? (
+          <button
+            type="button"
+            className="workflow-run-title is-interactive"
+            onClick={() => onOpenConfig(displayWorkflowId)}
+            title="Open workflow settings"
+            aria-label={`${titleLabel} · ${runStatusCopy} · Open workflow settings`}
+          >
+            {titleBody}
+          </button>
+        ) : (
+          <div className="workflow-run-title">{titleBody}</div>
+        )}
         <ReactFlow
           nodes={nodes}
           edges={edges}
           nodeTypes={NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
           onNodesChange={onNodesChange}
-          onNodeDragStart={() => { isNodeDraggingRef.current = true; }}
-          onNodeDragStop={(_, node) => {
-            draggedNodePositionsRef.current.set(node.id, node.position);
-            isNodeDraggingRef.current = false;
-          }}
           minZoom={0.3}
           maxZoom={1.4}
-          nodesDraggable
+          nodesDraggable={false}
           nodesConnectable={false}
           deleteKeyCode={null}
           fitView

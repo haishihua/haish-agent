@@ -27,10 +27,10 @@ test('workflow nodes keep explicit branch ports and align retry routing independ
   assert.match(flowNodeSource, /<Handle type="target" position=\{resolvedTargetPosition\} \/>/);
   assert.match(flowNodeSource, /branchSourcePositions\[branch\] \|\| \(index === 0 \? resolvedSourcePosition : Position\.Bottom\)/);
   assert.doesNotMatch(flowNodeSource, /workflow-condition-target-handle/);
-  assert.match(editorSource, /targetHandle: feedback \? 'runtime-feedback'/);
+  assert.match(flowNodeSource, /targetHandle: feedback \? 'runtime-feedback'/);
   assert.match(flowNodeSource, /branchHandleStyles\[branch\] \|\| \(index === 1 \? \{ left: '50%' \} : undefined\)/);
-  assert.match(editorSource, /const reworkEdge = sourceLayout\?\.kind !== targetLayout\?\.kind/);
-  assert.match(editorSource, /borderRadius: 18, offset: reworkEdge \? 0 : 28/);
+  assert.match(flowNodeSource, /const reworkEdge = sourceLayout\?\.kind !== targetLayout\?\.kind/);
+  assert.match(flowNodeSource, /borderRadius: curved \? 28 : 10,/);
   assert.doesNotMatch(editorSource, /calc\(100% - 18px\)/);
 });
 

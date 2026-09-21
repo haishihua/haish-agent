@@ -42,7 +42,7 @@ import { SheetFooter } from '../../../shared/ui/settings-elements/ui/sheet.tsx';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../../../shared/ui/settings-elements/ui/collapsible.tsx';
 import '../settings.css';
 
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 
 // Qdrant 上次连接测试的结果跟着已保存的配置存在后端；本轮还没测过时按它显示。
 function storedMemoryConnectionStatus(records, section, itemId) {
@@ -85,6 +85,8 @@ export function SettingsPage({
   onToggleSkill,
   onUninstallSkill,
   skillActionBusy,
+  openEditorRequest = null,
+  onOpenEditorRequestConsumed,
 }) {
   const [editingSettings, setEditingSettings] = useState(null);
   const [settingsSearch, setSettingsSearch] = useState('');
@@ -94,6 +96,18 @@ export function SettingsPage({
   // 开关点按立即保存（与 Skills 一致），保存期间其它行开关暂不可点。
   const [llmToggleBusy, setLlmToggleBusy] = useState('');
   const [expandedSettingsSections, setExpandedSettingsSections] = useState(() => new Set([activeSection]));
+  // 从运行页「点标题 → 配置页」跳过来时：直接把那个工作流的编辑器打开（和列表里点一行走同一个
+  // setEditingSettings 入口）；消费完把请求交回上层清掉，之后关掉抽屉不会被重新打开。
+  const lastOpenRequestRef = useRef(null);
+  useEffect(() => {
+    const request = openEditorRequest;
+    if (!request?.id || lastOpenRequestRef.current === request) return;
+    lastOpenRequestRef.current = request;
+    setExpandedSettingsSections((prev) => new Set([...prev, request.section]));
+    setEditingSettings({ section: request.section, id: request.id, mode: request.mode || 'edit' });
+    setPanelError('');
+    onOpenEditorRequestConsumed?.();
+  }, [onOpenEditorRequestConsumed, openEditorRequest]);
   const sectionMeta = settingsSectionMeta(activeSection) || SETTINGS_SECTIONS[0];
   const subtabs = SETTINGS_SUBTABS[activeSection] || [];
   const activeSubtab = subtabs.some((item) => item.id === selectionBySection[activeSection])

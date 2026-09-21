@@ -1,17 +1,28 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  CheckCircle2, Clock3, LockKeyhole, MoreVertical, RefreshCw, Settings2, Smartphone, TriangleAlert, Unplug, X,
+  CheckCircle2,
+  Clock3,
+  LoaderCircle,
+  LockKeyhole,
+  MoreVertical,
+  RefreshCw,
+  Settings2,
+  Smartphone,
+  TriangleAlert,
+  X,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
+import { prefersReducedMotion } from '../../../shared/lib/reduced-motion.js';
 
 function formatLastSeen(timestamp) {
   const seconds = Math.max(0, Math.round(Date.now() / 1000 - Number(timestamp || 0)));
   if (seconds < 60) return 'Just now';
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
   if (seconds < 86_400) return `${Math.floor(seconds / 3600)} hr ago`;
-  return `${Math.floor(seconds / 86_400)} days ago`;
+  const days = Math.floor(seconds / 86_400);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
 function settingsToDraft(settings) {
@@ -54,7 +65,23 @@ export function RemoteControlDialog({ onClose }) {
   const [deviceToRevoke, setDeviceToRevoke] = useState(null);
   const [revoking, setRevoking] = useState(false);
   const [failureSince, setFailureSince] = useState(0);
+  const [closing, setClosing] = useState(false);
   const knownDeviceIdsRef = useRef(null);
+  const closeTimerRef = useRef(0);
+
+  // Closing is a transition, not a jump cut: the panel fades out in 140ms (the
+  // entrance takes 200ms) before it unmounts. Reduced motion skips straight out.
+  const requestClose = useCallback(() => {
+    if (closing) return;
+    if (prefersReducedMotion()) {
+      onClose();
+      return;
+    }
+    setClosing(true);
+    closeTimerRef.current = window.setTimeout(onClose, 140);
+  }, [closing, onClose]);
+
+  useEffect(() => () => window.clearTimeout(closeTimerRef.current), []);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -70,9 +97,7 @@ export function RemoteControlDialog({ onClose }) {
     if (!nextDevices) return;
     const nextIds = new Set(nextDevices.map((device) => device.device_id));
     const knownIds = knownDeviceIdsRef.current;
-    const newlyPaired = knownIds
-      ? nextDevices.find((device) => !knownIds.has(device.device_id))
-      : null;
+    const newlyPaired = knownIds ? nextDevices.find((device) => !knownIds.has(device.device_id)) : null;
     knownDeviceIdsRef.current = nextIds;
     setDevices(nextDevices);
     if (newlyPaired) {
@@ -109,8 +134,8 @@ export function RemoteControlDialog({ onClose }) {
   const notConfigured = settingsLoaded && !settings;
   const tunnel = adapterState?.tunnel || null;
   const adapterFailed = adapterState?.status === 'failed';
-  const tunnelFailed = Boolean(settings) && !adapterFailed
-    && Boolean(tunnel) && !tunnel.running && Boolean(tunnel.last_error);
+  const tunnelFailed =
+    Boolean(settings) && !adapterFailed && Boolean(tunnel) && !tunnel.running && Boolean(tunnel.last_error);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,11 +191,11 @@ export function RemoteControlDialog({ onClose }) {
       if (event.key !== 'Escape') return;
       if (deviceToRevoke) setDeviceToRevoke(null);
       else if (settingsOpen && settings) setSettingsOpen(false);
-      else onClose();
+      else requestClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [deviceToRevoke, onClose, settings, settingsOpen]);
+  }, [deviceToRevoke, requestClose, settings, settingsOpen]);
 
   useEffect(() => {
     if (!deviceNotice) return undefined;
@@ -234,8 +259,12 @@ export function RemoteControlDialog({ onClose }) {
   // Users never configure the local service themselves, so the panel stays quiet
   // while everything works and only speaks up when the phone cannot reach this Mac.
   const failureStuck = failureSince > 0 && Date.now() - failureSince >= FAILURE_GRACE_MS;
-  const connecting = Boolean(settings) && !adapterFailed && !tunnelFailed
-    && Boolean(adapterState) && (adapterState.status === 'starting' || (tunnel ? !tunnel.running : false));
+  const connecting =
+    Boolean(settings) &&
+    !adapterFailed &&
+    !tunnelFailed &&
+    Boolean(adapterState) &&
+    (adapterState.status === 'starting' || (tunnel ? !tunnel.running : false));
   let accessNotice = null;
   if (adapterFailed && failureStuck) {
     // Haish restarts the remote service on its own; the raw exit reason stays in
@@ -265,7 +294,11 @@ export function RemoteControlDialog({ onClose }) {
   }
 
   return createPortal(
-    <div className="remote-control-backdrop" role="presentation" onMouseDown={onClose}>
+    <div
+      className={`remote-control-backdrop${closing ? ' closing' : ''}`}
+      role="presentation"
+      onMouseDown={requestClose}
+    >
       <section
         className="remote-control-dialog"
         role="dialog"
@@ -275,15 +308,14 @@ export function RemoteControlDialog({ onClose }) {
       >
         <header className="remote-control-header">
           <div className="remote-control-heading">
-            <span className="remote-control-heading-icon" aria-hidden="true">
-              <Smartphone />
-            </span>
-            <div>
-              <h2 id="remote-control-title">Remote Control</h2>
-              <p>Control this Mac from your phone.</p>
-            </div>
+            <h2 id="remote-control-title">Remote Control</h2>
           </div>
-          <button type="button" className="remote-control-close" aria-label="Close Remote Control" onClick={onClose}>
+          <button
+            type="button"
+            className="remote-control-close"
+            aria-label="Close Remote Control"
+            onClick={requestClose}
+          >
             <X aria-hidden="true" />
           </button>
         </header>
@@ -292,10 +324,7 @@ export function RemoteControlDialog({ onClose }) {
           <form className="remote-settings-panel" onSubmit={saveSettings}>
             <div className="remote-settings-heading">
               <h3>Remote server</h3>
-              <p>
-                Publish this Mac through your frps server. The token stays on this computer and is
-                never shared with a phone.
-              </p>
+              <p>Publish this Mac through your frps server. The token stays on this Mac.</p>
             </div>
             <div className="remote-settings-grid">
               <label className="wide">
@@ -366,10 +395,7 @@ export function RemoteControlDialog({ onClose }) {
           <div className="remote-control-content">
             <section className="remote-pairing-panel" aria-label="Phone pairing">
               <div className="remote-section-heading">
-                <div>
-                  <h3>Scan with Haish mobile</h3>
-                  <p>Open Haish on your phone and scan this code.</p>
-                </div>
+                <h3>Scan with Haish mobile</h3>
               </div>
               {accessNotice ? (
                 <div
@@ -378,7 +404,7 @@ export function RemoteControlDialog({ onClose }) {
                   title={accessNotice.raw || undefined}
                 >
                   <span className="remote-access-notice-icon" aria-hidden="true">
-                    <TriangleAlert />
+                    {accessNotice.tone === 'error' ? <TriangleAlert /> : <LoaderCircle />}
                   </span>
                   <div className="remote-access-notice-text">
                     <strong>{accessNotice.title}</strong>
@@ -398,7 +424,9 @@ export function RemoteControlDialog({ onClose }) {
                   <div className="remote-qr-state">
                     <strong>Set up the remote server</strong>
                     <span>Enter the server address and token to publish this Mac.</span>
-                    <button type="button" onClick={openSettings}>Configure</button>
+                    <button type="button" onClick={openSettings}>
+                      Configure
+                    </button>
                   </div>
                 ) : null}
                 {!busy && !notConfigured && error ? (
@@ -427,15 +455,15 @@ export function RemoteControlDialog({ onClose }) {
                         ? 'Not configured'
                         : 'Waiting for service'}
                 </span>
+                <button
+                  type="button"
+                  className="remote-refresh-button"
+                  onClick={startPairing}
+                  disabled={busy || notConfigured}
+                >
+                  <RefreshCw aria-hidden="true" /> Refresh QR
+                </button>
               </div>
-              <button
-                type="button"
-                className="remote-refresh-button"
-                onClick={startPairing}
-                disabled={busy || notConfigured}
-              >
-                <RefreshCw aria-hidden="true" /> Refresh QR
-              </button>
             </section>
 
             <section className="remote-devices-panel" aria-labelledby="remote-devices-title">
@@ -445,7 +473,11 @@ export function RemoteControlDialog({ onClose }) {
               </div>
               {deviceNotice ? (
                 <div className={`remote-device-notice ${deviceNotice.kind}`} role="status">
-                  <CheckCircle2 aria-hidden="true" />
+                  {deviceNotice.kind === 'error' ? (
+                    <TriangleAlert aria-hidden="true" />
+                  ) : (
+                    <CheckCircle2 aria-hidden="true" />
+                  )}
                   <span>{deviceNotice.text}</span>
                 </div>
               ) : null}
@@ -453,14 +485,10 @@ export function RemoteControlDialog({ onClose }) {
                 {devices.length ? (
                   devices.map((device) => (
                     <article className="remote-device-row" key={device.device_id}>
-                      <span className="remote-device-icon">
-                        <Smartphone aria-hidden="true" />
-                      </span>
                       <div>
                         <strong>{device.name}</strong>
                         <span>Last seen {formatLastSeen(device.last_seen_at)}</span>
                       </div>
-                      <span className="remote-device-online" aria-label="Paired device" />
                       <button
                         type="button"
                         onClick={() => setDeviceToRevoke(device)}
@@ -475,7 +503,6 @@ export function RemoteControlDialog({ onClose }) {
                   <div className="remote-device-empty">
                     <Smartphone aria-hidden="true" />
                     <strong>No paired phones yet</strong>
-                    <span>Your phone appears here after scanning the QR code.</span>
                   </div>
                 )}
               </div>
@@ -486,7 +513,7 @@ export function RemoteControlDialog({ onClose }) {
         <footer className="remote-security-note">
           <span className="remote-note-text">
             <LockKeyhole aria-hidden="true" />
-            Only paired devices can access this Mac.
+            Paired devices only.
           </span>
           {settings && !settingsOpen ? (
             <button type="button" className="remote-settings-link" onClick={openSettings}>
@@ -506,16 +533,18 @@ export function RemoteControlDialog({ onClose }) {
               aria-describedby="remote-revoke-message"
               onMouseDown={(event) => event.stopPropagation()}
             >
-              <span className="remote-confirm-icon" aria-hidden="true"><Unplug /></span>
               <h3 id="remote-revoke-title">Remove remote access?</h3>
-              <p id="remote-revoke-message">
-                {deviceToRevoke.name} will need to scan the QR code again to reconnect.
-              </p>
+              <p id="remote-revoke-message">{deviceToRevoke.name} will need to scan the QR code again to reconnect.</p>
               <div className="remote-confirm-actions">
                 <button type="button" onClick={() => setDeviceToRevoke(null)} disabled={revoking} autoFocus>
                   Cancel
                 </button>
-                <button type="button" className="danger" onClick={() => revokeDevice(deviceToRevoke)} disabled={revoking}>
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => revokeDevice(deviceToRevoke)}
+                  disabled={revoking}
+                >
                   {revoking ? 'Removing…' : 'Remove access'}
                 </button>
               </div>
