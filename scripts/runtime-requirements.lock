@@ -38,6 +38,7 @@ numpy==2.5.2
 openai==3.2.0
 opentelemetry-api==1.44.0
 packaging==26.3
+pillow==12.2.0
 portalocker==3.2.0
 protobuf==7.36.0
 pycparser==3.0
