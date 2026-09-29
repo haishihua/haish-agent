@@ -2,6 +2,7 @@ import React from 'react';
 import { cjk } from '@streamdown/cjk';
 import { defaultRehypePlugins, Streamdown } from 'streamdown';
 import { remarkHardBreaks } from '../lib/remark-hard-breaks.js';
+import { MarkdownBlockCode } from './deferred-code-block.jsx';
 import '../../../styles/markdown.css';
 
 let codePluginPromise;
@@ -21,6 +22,10 @@ const MARKDOWN_REHYPE_PLUGINS = [
   }],
 ];
 const LINK_SAFETY = { enabled: false };
+// 代码块按视口渲染（见 deferred-code-block.jsx）：挂载时只铺等高的纯文本占位，
+// 块接近视口才挂真正的代码块——高亮插件是在那里的 useEffect 里按块跑 shiki 的。
+// 常量身份也重要：Streamdown 的 memo 会按引用比 components。
+const MARKDOWN_COMPONENTS = { pre: MarkdownBlockCode };
 
 function safeMarkdownUrl(url, key) {
   const value = String(url || '').trim();
@@ -87,7 +92,12 @@ export function Markdown({ source, streaming = false, hardBreaks = false }) {
         remarkPlugins={remarkPlugins}
         rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
         plugins={plugins}
+        components={MARKDOWN_COMPONENTS}
         codeBlockMaxHeight={320}
+        // 表格不给高度上限（上游默认 300px）：答案里的表就是正文的一部分，被限高后会变成
+        // 一个自带滚动条的盒子——macOS 的浮层滚动条平时不显示，用户看到的是「表格缺了几行」，
+        // 只能靠滚轮去找。整张表照常渲染，纵向滚动交给聊天消息列表。
+        tableMaxHeight={0}
         controls
         linkSafety={LINK_SAFETY}
         urlTransform={safeMarkdownUrl}

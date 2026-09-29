@@ -367,6 +367,13 @@ test('both the row indicator and the task card share the same wait glyphs', () =
   assert.match(glyphRule[1], /fill:\s*none/);
   assert.match(panelStyles, /\.conversation-task-status-icon \.conversation-status-glyph\s*\{[^}]*width:\s*17px/);
   assert.match(panelStyles, /\.conversation-running-indicator \.conversation-status-glyph\s*\{[^}]*width:\s*15px/);
+  // 同一个坑位的蓝圈和黄灯一样大：18px（.ico-loading 的通用尺寸，输入框那边还在用）
+  // 在 13px 的标题旁边显得杵，行内这一处覆盖成 15px。
+  const spinnerRule = panelStyles.match(/\n\.conversation-running-indicator \.ico-loading\s*\{([^}]*)\}/);
+  assert.ok(spinnerRule, 'the row spinner needs its own size rule');
+  assert.match(spinnerRule[1], /width:\s*15px/);
+  assert.match(spinnerRule[1], /height:\s*15px/);
+  assert.match(spinnerRule[1], /animation:\s*live-loading-spin/);
 });
 
 test('the task card reads the live wait snapshot instead of waiting for the poll', () => {

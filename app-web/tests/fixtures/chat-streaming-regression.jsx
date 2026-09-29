@@ -58,7 +58,7 @@ async function checkRows() {
     render(<ChatPanel conversationId="streaming-regression" messages={[...history, ...comments, latest]} running={latest.streaming}
       providerOptions={[{ id: 'fixture', provider: 'fixture', defaultModelId: model, modelOptions: [model] }]}
       onForkMessage={(message) => { calls.push(['fork', committedVersion, message.id]); return true; }}
-      onRetryTask={(taskId) => { calls.push(['retry', committedVersion, taskId]); return true; }}
+      onRetryTask={(taskId, runConfig) => { calls.push(['retry', committedVersion, taskId, runConfig]); return true; }}
       onEditMessage={(taskId, text, config) => { calls.push(['edit', committedVersion, taskId, text, config]); return true; }} />);
   };
   draw();
@@ -94,7 +94,8 @@ async function checkRows() {
   await tick();
   [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Retry').click();
   await tick();
-  check(JSON.stringify(calls.at(-1)) === JSON.stringify(['retry', version, 'live-task']), 'Retry still routes to the latest failed task');
+  check(calls.at(-1)?.[0] === 'retry' && calls.at(-1)[1] === version && calls.at(-1)[2] === 'live-task'
+    && calls.at(-1)[3]?.modelId === model, 'Retry routes to the latest failed task with the latest model');
 
   latest = { ...latest, role: 'user', status: 'cancelled', text: 'Edit this instruction' };
   draw();

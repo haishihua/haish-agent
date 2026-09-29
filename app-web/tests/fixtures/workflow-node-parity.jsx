@@ -7,12 +7,14 @@
 //
 // 断言（全部通过 = 两页确实是一套）：
 //   1. 同名同类型节点：配置页与运行页（完成态）的高度/图标底色/图标字色/标题颜色逐项一致；
-//   2. 中性卡片描边一致；选中态只有一层高亮（描边亮成类型色 + 柔光，不再套外圈/贴边环）；
-//      把手两页同一份中性色、同一个尺寸；
+//   2. 卡片默认描边 = 自己类型色（1.5px、78%）+ 一圈 20px 的淡 glow（默认不亮）；选中/悬停只有
+//      一层高亮（描边亮成 accent + 30px 柔光，不再套外圈/贴边环）；
 //   3. 运行页没跑到的节点直接穿配置页那套（不再另配灰皮肤），跑过/在跑才由状态色覆盖；
-//   4. 连接点（把手）两页同一套：一颗 6px 中性小圆点，平时都收起（悬停/选中该节点才露出来，
-//      过去配置页常显 12px、运行页 6px 收起，两页「边的端点」看起来是两套）。
+//   4. 连接点（把手）两页同一套：一颗 9px 实心发光小圆点，颜色跟节点主题色（Start 绿 / Agent
+//      蓝 / Condition 紫 / Loop 青 / End 紫，运行页在跑/等人用状态色），悬停/选中变大一点（11px）；
+//      过去配置页常显 12px 中性点、运行页 6px 收起，两页「边的端点」看起来是两套。
 import React from 'react';
+import 'lxgw-wenkai-screen-webfont/lxgwwenkaiscreen.css';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { Background, ReactFlow, ReactFlowProvider } from '@xyflow/react';
@@ -107,7 +109,7 @@ function mountPane(rootId, nodes) {
     <ReactFlowProvider>
       <ReactFlow nodes={nodes} edges={[]} nodeTypes={NODE_TYPES} nodesConnectable={false} deleteKeyCode={null}
         minZoom={0.3} maxZoom={1.4} proOptions={{ hideAttribution: true }}>
-        <Background gap={22} size={1.2} color="rgba(176, 206, 255, 0.07)" />
+        <Background gap={22} size={1.1} color="rgba(150, 184, 240, 0.06)" />
       </ReactFlow>
     </ReactFlowProvider>,
   );
@@ -149,15 +151,21 @@ function measurePane(selector) {
     out[el.dataset.id] = {
       classes: node.className.trim().split(/\s+/).filter((name) => name !== 'workflow-flow-node').join(' '),
       height: round(node.getBoundingClientRect().height),
+      width: round(node.getBoundingClientRect().width),
+      font: style.fontFamily,
+      background: style.backgroundImage,
+      iconWidth: iconStyle.width,
+      subtitle: node.querySelector('small')?.textContent,
       border: style.borderTopColor,
       outline: `${style.outlineWidth} ${style.outlineStyle} ${style.outlineColor} @${style.outlineOffset}`,
       boxShadow: style.boxShadow,
-      iconBg: iconStyle.backgroundColor,
+      iconBg: iconStyle.backgroundImage,
       iconColor: iconStyle.color,
       iconRadius: iconStyle.borderTopLeftRadius,
       labelColor: getComputedStyle(label).color,
       handle: handle ? `${round(handle.getBoundingClientRect().width)}px, opacity ${getComputedStyle(handle).opacity}` : 'none',
       handleColor: handle ? getComputedStyle(handle).backgroundColor : 'none',
+      handleGlow: handle ? getComputedStyle(handle).boxShadow : 'none',
       halo: after.content === '""' && after.animationName !== 'none' ? `yes (${after.animationName})` : 'none',
     };
   }
@@ -184,7 +192,12 @@ function measurePane(selector) {
       const c = cfg[`cfg-${node.id}`];
       const r = rt[`rt-${node.id}`];
       if (!c || !r) { check(false, `${node.id}: 两页都渲染`); continue; }
-      check(c.height === 72 && r.height === 72, `${node.id}: 高度都是 72px（${c.height}/${r.height}）`);
+      check(c.height === 64 && r.height === 64, `${node.id}: 高度都是 64px（${c.height}/${r.height}）`);
+      check(c.width === r.width && c.width >= 160, `${node.id}: 两页卡片宽度一致且不再挤窄`);
+      check(c.font === r.font && c.font.includes('LXGW WenKai Screen'), `${node.id}: 两页使用应用统一正文字体`);
+      check(c.background === r.background, `${node.id}: 两页卡片背景一致`);
+      check(c.iconWidth === '36px' && r.iconWidth === '36px', `${node.id}: 两页同一大图标块`);
+      check(c.subtitle === r.subtitle, `${node.id}: 两页副标题一致`);
       check(c.iconBg === r.iconBg, `${node.id}: 图标底色一致（${c.iconBg}）`);
       check(c.iconColor === r.iconColor, `${node.id}: 图标字色一致（${c.iconColor}）`);
       check(c.labelColor === r.labelColor, `${node.id}: 标题颜色一致（${c.labelColor}）`);
@@ -199,35 +212,57 @@ function measurePane(selector) {
       `选中态高亮只有一层描边 + 柔光（${cfg['cfg-condition'].boxShadow}）`,
     );
     check(
-      cfg['cfg-condition'].border === resolveProp('borderTopColor', 'color-mix(in srgb, #9299ff 62%, transparent)'),
-      `选中态描边就是节点类型色（${cfg['cfg-condition'].border}）`,
+      cfg['cfg-condition'].border === resolveProp('borderTopColor', 'color-mix(in srgb, #b570ff 96%, transparent)'),
+      `选中态描边就是节点主题色（${cfg['cfg-condition'].border}）`,
     );
     check(cfg['cfg-agent'].border === rt['rt-demo-pending'].border,
       `中性卡片描边一致（配置 ${cfg['cfg-agent'].border} / 运行未运行 ${rt['rt-demo-pending'].border}）`);
+    // 默认态描边 = 类型色（1.5px、78%），外面只有一圈很淡的 20px glow；选中态才亮到 30px。
+    check(
+      cfg['cfg-agent'].border === resolveProp('borderTopColor', '#389dff'),
+      `默认描边是清晰的类型色（${cfg['cfg-agent'].border}）`,
+    );
+    check(
+      cfg['cfg-agent'].boxShadow.includes('0px 0px 24px') && cfg['cfg-condition'].boxShadow.includes('0px 0px 30px'),
+      `默认只一圈很淡的 glow、选中更亮（${cfg['cfg-agent'].boxShadow} / ${cfg['cfg-condition'].boxShadow}）`,
+    );
 
     log('—— 运行页状态皮肤（叠在统一底样上）——');
     const pending = rt['rt-demo-pending'];
     const running = rt['rt-demo-running'];
     check(pending.iconBg === cfg['cfg-agent'].iconBg, `未运行节点就穿配置页那套（图标底色 ${pending.iconBg}）`);
     check(pending.iconColor === cfg['cfg-agent'].iconColor, `未运行节点图标字色与配置页一致（${pending.iconColor}）`);
-    check(pending.border !== rt['rt-agent'].border, `未运行与已完成可分辨（描边 ${pending.border} vs ${rt['rt-agent'].border}）`);
-    check(running.iconColor === resolveProp('color', '#76b9fa'), `运行中节点运行蓝（${running.iconColor}）`);
+    check(pending.border === rt['rt-agent'].border, `已完成不再压暗共享 UI（描边 ${pending.border} / ${rt['rt-agent'].border}）`);
+    check(running.iconColor === resolveProp('color', 'color-mix(in srgb, #76b9fa 58%, #d4ffff)'),
+      `运行中节点图标字色是运行蓝那一档（${running.iconColor}）`);
     check(running.border === resolveProp('borderColor', '#76b9fa'), `运行中节点描边运行蓝（${running.border}）`);
     check(running.halo.startsWith('yes'), `运行中节点有呼吸圈（${running.halo}）`);
 
     log('—— 连接点（把手）：两页同一套 ——');
-    // 过去配置页 12px 常显、运行页 6px 收起，两页「边的端点」是两套；现在两页都是同一颗中性
-    // 小圆点、同样收起（悬停或选中该节点才露出来，规则在 app-shell.css 里只写了一份）。
-    check(cfg['cfg-agent'].handle.startsWith('6px') && cfg['cfg-agent'].handle.endsWith('0'),
-      `配置页把手平时收起（${cfg['cfg-agent'].handle}）`);
-    check(rt['rt-agent'].handle.startsWith('6px') && rt['rt-agent'].handle.endsWith('0'),
-      `运行页把手同一尺寸、同样收起（${rt['rt-agent'].handle}）`);
+    // 过去配置页 12px 常显、运行页 6px 收起，两页「边的端点」是两套；现在两页都是同一颗实心
+    // 小圆点、颜色跟节点主题色、外面一圈暗色细边 + glow（规则只在 app-shell.css 里写一份）。
+    check(cfg['cfg-agent'].handle.startsWith('9px') && cfg['cfg-agent'].handle.endsWith('1'),
+      `配置页把手是一颗实心小圆点（${cfg['cfg-agent'].handle}）`);
+    check(rt['rt-agent'].handle.startsWith('9px') && rt['rt-agent'].handle.endsWith('1'),
+      `运行页把手同一尺寸、同样实心（${rt['rt-agent'].handle}）`);
     check(cfg['cfg-agent'].handle === rt['rt-agent'].handle,
       `两页把手尺寸/透明度一致（${cfg['cfg-agent'].handle} / ${rt['rt-agent'].handle}）`);
-    check(cfg['cfg-agent'].handleColor === resolveProp('backgroundColor', 'rgba(169, 187, 211, 0.9)'),
-      `把手是中性色、不再是金色（${cfg['cfg-agent'].handleColor}）`);
+    check(cfg['cfg-agent'].handleColor === resolveProp('backgroundColor', '#389dff'),
+      `把手是节点主题色、不再是中性灰/金色（${cfg['cfg-agent'].handleColor}）`);
     check(cfg['cfg-agent'].handleColor === rt['rt-agent'].handleColor,
       `两页把手同色（${rt['rt-agent'].handleColor}）`);
+    // 每种类型都有自己的 accent（Start 绿 / Condition 紫 / Loop 青 / End 紫；Agent 蓝），把手
+    // 跟类型色一致——两页都是同一份颜色表。
+    const TYPE_ACCENTS = { start: '#24dd98', agent: '#389dff', condition: '#b570ff', loop: '#35deec', output: '#bf79ff' };
+    for (const [type, accent] of Object.entries(TYPE_ACCENTS)) {
+      const item = cfg[`cfg-${type}`];
+      check(item?.handleColor === resolveProp('backgroundColor', accent),
+        `${type}: 把手跟着类型色（${item?.handleColor}）`);
+      check(rt[`rt-${type}`]?.handleColor === resolveProp('backgroundColor', accent),
+        `${type}: 运行页同一类型色（${rt[`rt-${type}`]?.handleColor}）`);
+    }
+    check(cfg['cfg-agent'].handleGlow.includes('inset') && cfg['cfg-agent'].handleGlow.includes('10px'),
+      `把手无黑色粗环，保留内高光与柔光（${cfg['cfg-agent'].handleGlow}）`);
 
     check(window.__pageErrors.length === 0, `页面无报错（${window.__pageErrors.join(' | ') || 'none'}）`);
     report.dataset.result = failures.length ? 'FAIL' : 'PASS';

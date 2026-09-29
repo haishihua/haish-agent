@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Markdown tables show their content instead of scrolling inside a fixed box</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      background: #0a0f18;
+      color: #e7ecf6;
+      font: 13px system-ui;
+    }
+    h1 {
+      font-size: 14px;
+      margin: 10px 12px 6px;
+    }
+    /* styles/base.css 给应用外壳设了 `html, body { overflow: hidden; height: 100% }`，
+       夹具页要能滚到底看报告，这里显式放开（几何断言只读测量值，不受影响）。 */
+    html,
+    body {
+      overflow: auto !important;
+      height: auto !important;
+    }
+    /* 宽窗口：气泡的固定宽度上限（助手 960px）会先于消息列宽生效，表格因此被挤成竖排。 */
+    #root {
+      padding: 0 12px;
+      width: 1400px;
+    }
+    #checks {
+      margin: 12px;
+      padding: 10px;
+      background: #0b0e14;
+      color: #9fd8a4;
+      white-space: pre-wrap;
+      font:
+        11px/1.5 ui-monospace,
+        monospace;
+      border-radius: 8px;
+    }
+    #checks[data-result='FAIL'] {
+      color: #ff8b9d;
+    }
+  </style>
+  <h1>Markdown tables — 表格按内容排版：不固定宽度、不固定高度、不横向滚动</h1>
+  <div id="root"></div>
+  <pre id="checks" role="status">Running checks…</pre>
+  <script type="module" src="./markdown-table-layout.jsx"></script>
+</html>

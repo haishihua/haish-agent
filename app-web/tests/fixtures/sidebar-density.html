@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sidebar list density (row rhythm, one title column, fade-out tails)</title>
+<style>
+  html, body { margin: 0; background: #0a0f18; color: #e7ecf6; font: 13px system-ui; }
+  h1 { font-size: 14px; margin: 10px 12px 6px; }
+  #root { padding: 0 12px; }
+  #checks { margin: 12px; padding: 10px; background: #0b0e14; color: #9fd8a4; white-space: pre-wrap; font: 11px/1.5 ui-monospace, monospace; border-radius: 8px; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<h1>会话列表密度 + 标题列 — 留白 / 项目标题与会话标题对齐 / 长标题末尾渐隐（真实 ConversationsPanel + panels.css）</h1>
+<div id="root"></div>
+<pre id="checks" role="status">Running checks…</pre>
+<script type="module" src="./sidebar-density.jsx"></script>
+</html>

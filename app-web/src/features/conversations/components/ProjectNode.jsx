@@ -215,6 +215,7 @@ export function ProjectNode({
                 active={isActiveProject && taskId === activeTaskId}
                 terminalNotice={taskTerminalNotices?.[taskId] || ''}
                 onSelect={() => onSelectTask?.(project.id, conversationId, task)}
+                onOpenReport={onOpenTaskReport}
                 showStatusIcon={false}
                 actions={(
                   <span className="conversation-actions">

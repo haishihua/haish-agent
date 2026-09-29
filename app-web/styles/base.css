@@ -310,6 +310,13 @@ svg {
     height: 14px;
 }
 
+.ico-computer-use {
+    -webkit-mask-image: url("../assets/ui/icons/computer-use.svg");
+    mask-image: url("../assets/ui/icons/computer-use.svg");
+    width: 15px;
+    height: 15px;
+}
+
 .ico-skill {
     -webkit-mask-image: url("../assets/ui/icons/skill.png");
     mask-image: url("../assets/ui/icons/skill.png");

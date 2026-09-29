@@ -11,6 +11,7 @@ import {
 } from '../../agents/model/agent-settings.js';
 import { FieldRow, SettingsMenuSelect, SettingsToggleRow } from './SettingsPrimitives.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
+import { mcpToolSelected, toggleMcpToolSelection } from '../model/mcp-tool-selection.js';
 
 export function AgentConfigEditor({ selectedId, settings, onSettingsChange, readOnly = false }) {
   const normalized = normalizeAgentSettings(settings);
@@ -88,8 +89,6 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
       : (Array.isArray(current.skill_policy?.allow) ? current.skill_policy.allow : []),
   );
   const mcpServers = Array.isArray(normalized.mcp_servers) ? normalized.mcp_servers : [];
-  const allowedMcpServers = new Set(Array.isArray(current.mcp_policy?.allow_servers) ? current.mcp_policy.allow_servers : []);
-  const allowedMcpTools = new Set(Array.isArray(current.mcp_policy?.allow_tools) ? current.mcp_policy.allow_tools : []);
   const toggleSkill = (skillId) => {
     const next = new Set(allowedSkills);
     if (next.has(skillId)) next.delete(skillId);
@@ -99,18 +98,10 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
   const updateMcpPolicy = (patch) => update({
     mcp_policy: { ...(current.mcp_policy || {}), ...patch },
   });
-  const toggleMcpServer = (serverName) => {
-    const next = new Set(allowedMcpServers);
-    if (next.has(serverName)) next.delete(serverName);
-    else next.add(serverName);
-    updateMcpPolicy({ allow_servers: [...next] });
-  };
-  const toggleMcpTool = (serverName, toolName) => {
-    const key = `${serverName}.${toolName}`;
-    const next = new Set(allowedMcpTools);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    updateMcpPolicy({ allow_tools: [...next] });
+  // MCP 工具逐个勾选：服务器那行只是分组标题，没有「整台服务器」的开关。
+  // 老档案里若还留着整台放行，读的时候工具照旧全亮，动一下就自动落成逐条。
+  const toggleMcpTool = (server, toolName) => {
+    updateMcpPolicy(toggleMcpToolSelection(current.mcp_policy, server, toolName));
   };
 
   return (
@@ -147,25 +138,28 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
       {!readOnly ? (
         <FieldRow label="MCP tools">
           <div className="settings-check-grid">
-            {mcpServers.map((server) => (
-              <div key={server.name} className="settings-check-group">
-                <label className="settings-check-row">
-                  <Checkbox checked={allowedMcpServers.has(server.name)} onCheckedChange={() => toggleMcpServer(server.name)} disabled={readOnly} />
-                  <span className="settings-check-label">{server.name} · all tools</span>
-                  {server.error && <ErrorState variant="inline" detail={server.error} />}
-                </label>
-                {(server.tools || []).map((tool) => (
-                  <label className="settings-check-row" key={`${server.name}.${tool.name}`}>
-                    <Checkbox
-                      checked={allowedMcpServers.has(server.name) || allowedMcpTools.has(`${server.name}.${tool.name}`)}
-                      onCheckedChange={() => toggleMcpTool(server.name, tool.name)}
-                      disabled={readOnly || allowedMcpServers.has(server.name)}
-                    />
-                    <span className="settings-check-label">{tool.name}</span>
-                  </label>
-                ))}
-              </div>
-            ))}
+            {mcpServers.map((server) => {
+              const tools = Array.isArray(server.tools) ? server.tools : [];
+              return (
+                <div key={server.name} className="settings-check-group">
+                  <div className="settings-check-row">
+                    <span className="settings-check-label">{server.name}</span>
+                    {server.error && <ErrorState variant="inline" detail={server.error} />}
+                  </div>
+                  {tools.map((tool) => (
+                    <label className="settings-check-row" key={`${server.name}.${tool.name}`}>
+                      <Checkbox
+                        checked={mcpToolSelected(current.mcp_policy, server, tool.name)}
+                        onCheckedChange={() => toggleMcpTool(server, tool.name)}
+                        disabled={readOnly}
+                      />
+                      <span className="settings-check-label">{tool.name}</span>
+                    </label>
+                  ))}
+                  {!tools.length && !server.error ? <small>No tools reported yet.</small> : null}
+                </div>
+              );
+            })}
             {!mcpServers.length ? <small>No configured MCP servers.</small> : null}
           </div>
         </FieldRow>

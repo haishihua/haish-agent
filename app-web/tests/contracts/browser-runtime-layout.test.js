@@ -6,16 +6,14 @@ const overlaySource = fs.readFileSync(new URL('../../src/features/approvals/comp
 const timelineSource = fs.readFileSync(new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url), 'utf8');
 const approvalStyles = fs.readFileSync(new URL('../../styles/approvals.css', import.meta.url), 'utf8');
 
-test('browser runtime request renders inside the browser_use tool node, not as a separate dialog', () => {
-  assert.ok(
-    timelineSource.includes(
-      "import { BrowserRuntimeCard, selectBrowserRuntimeRequest, useBrowserRuntimeRequests } from '../../approvals/components/ApprovalOverlay.jsx';",
-    ),
-  );
-  assert.ok(timelineSource.includes('selectBrowserRuntimeRequest(pendingBrowserRuntime, {'));
+test('browser runtime request uses the shared runtime card inside the browser_use tool node', () => {
+  assert.ok(timelineSource.includes('RuntimeApprovalCard,'));
+  assert.ok(timelineSource.includes('selectRuntimeRequest,'));
+  assert.ok(timelineSource.includes('useRuntimeRequests,'));
+  assert.ok(timelineSource.includes('selectRuntimeRequest(pendingRuntime, {'));
   assert.ok(timelineSource.includes('toolName: item.toolName,'));
   assert.ok(timelineSource.includes('status,'));
-  assert.ok(timelineSource.includes('<BrowserRuntimeCard request={browserRuntimeRequest} embedded />'));
+  assert.ok(timelineSource.includes('<RuntimeApprovalCard request={runtimeRequest} embedded />'));
 });
 
 test('browser_use tool node gets its own browser icon instead of the generic default', () => {
@@ -25,32 +23,32 @@ test('browser_use tool node gets its own browser icon instead of the generic def
   assert.ok(timelineSource.includes("return 'ico-browser';"));
 });
 
-test('selection tolerates backend call-id remapping via scope fallback', () => {
-  assert.ok(overlaySource.includes('export function selectBrowserRuntimeRequest('));
+test('shared runtime selection tolerates backend call-id remapping via scope fallback', () => {
+  assert.ok(overlaySource.includes('export function selectRuntimeRequest('));
   // Primary anchor: exact tool_call_id match.
   assert.ok(overlaySource.includes('request.tool_call_id && request.tool_call_id === callId'));
-  // Remapped call-id streams: attach only to an ACTIVE browser_use node
+  // Remapped call-id streams attach only to an active matching Runtime tool
   // when exactly one request is pending in the conversation/task scope.
-  assert.ok(overlaySource.includes("String(toolName || '').toLowerCase() !== 'browser_use'"));
+  assert.ok(overlaySource.includes("if (normalized === 'browser_use') return isBrowserRuntimeRequest(request);"));
   assert.ok(overlaySource.includes('request.conversation_id === conversationId'));
   assert.ok(overlaySource.includes('request.task_id === taskId'));
   assert.ok(overlaySource.includes("const isActive = status === 'pending' || status === 'running';"));
   assert.ok(overlaySource.includes('if (!isActive || scoped.length !== 1) return null;'));
 });
 
-test('BrowserRuntimeCard claims its request so ApprovalInline skips the standalone row', () => {
-  assert.ok(overlaySource.includes('export function useBrowserRuntimeRequests(active = true)'));
-  assert.match(timelineSource, /useBrowserRuntimeRequests\(isBrowserUse\)/);
-  assert.ok(overlaySource.includes('export function BrowserRuntimeCard({ request, embedded = false })'));
+test('RuntimeApprovalCard claims its request so ApprovalInline skips the standalone row', () => {
+  assert.ok(overlaySource.includes('export function useRuntimeRequests(conversationId, active = true)'));
+  assert.match(timelineSource, /useRuntimeRequests\(conversationId, isRuntimeTool\)/);
+  assert.ok(overlaySource.includes('export function RuntimeApprovalCard({ request, embedded = false })'));
   // Exclusive claim: only the first mounted card wins and actually renders.
-  assert.ok(overlaySource.includes('const won = approvalStore.claimBrowserRuntime(request.request_id);'));
+  assert.ok(overlaySource.includes('const won = approvalStore.claimRuntime(request.request_id);'));
   assert.ok(overlaySource.includes('setActive(won);'));
-  assert.ok(overlaySource.includes('if (won) approvalStore.unclaimBrowserRuntime(request.request_id);'));
+  assert.ok(overlaySource.includes('if (won) approvalStore.unclaimRuntime(request.request_id);'));
   assert.ok(overlaySource.includes('if (!active) return null;'));
   // Unclaimed browser-runtime requests still fall back to the standalone row.
   assert.ok(
     overlaySource.includes(
-      '&& !approvalStore.isBrowserRuntimeClaimed(request.request_id)',
+      '&& !approvalStore.isRuntimeClaimed(request.request_id)',
     ),
   );
 });
@@ -79,7 +77,7 @@ test('browser runtime card no longer shows a redundant Runtime action row', () =
   // the browser-runtime card reuses the generic ApprovalCard (which shows the
   // shell command for regular approvals). The Install Browser Runtime button
   // already conveys the action, so the block is gated behind !browserRuntime.
-  assert.ok(overlaySource.includes('{!browserRuntime ? ('));
+  assert.ok(overlaySource.includes('{!runtimeRequest ? ('));
   assert.ok(overlaySource.includes("request.tool_name === 'exec_command' ? 'Command (runs in terminal)' : 'Requested operation'"));
   assert.ok(overlaySource.includes("request.raw_command || '(empty)'"));
   assert.ok(!overlaySource.includes("'Runtime action'"));
@@ -91,9 +89,9 @@ test('deny is not the default-focused button and sits after the primary action',
   assert.ok(!overlaySource.includes('autoFocus'));
   // Deny is rendered after the primary action (Install Browser Runtime for
   // browser-runtime requests, Allow Once for regular approvals).
-  const installMatch = overlaySource.match(/Install Browser Runtime\s*<\/button>/);
-  const denyMatch = overlaySource.match(/Deny\s*<\/button>/);
-  assert.ok(installMatch, 'Install Browser Runtime button exists');
-  assert.ok(denyMatch, 'Deny button exists');
-  assert.ok(installMatch.index < denyMatch.index, 'primary action renders before Deny');
+  const installIndex = overlaySource.indexOf('Install Browser Runtime');
+  const denyIndex = overlaySource.indexOf("{replacingRuntime ? 'Keep Current Version' : 'Deny'}");
+  assert.notEqual(installIndex, -1, 'Install Browser Runtime button label exists');
+  assert.notEqual(denyIndex, -1, 'runtime decline button exists');
+  assert.ok(installIndex < denyIndex, 'primary action renders before Deny');
 });

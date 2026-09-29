@@ -2,12 +2,12 @@ import React from 'react';
 import {
   ReactFlow,
   Background,
-  Controls,
   Position,
   ReactFlowProvider,
   applyEdgeChanges,
   useReactFlow,
   useNodesState,
+  ViewportPortal,
 } from '@xyflow/react';
 import {
   normalizeWorkflowNode,
@@ -43,6 +43,10 @@ import {
   saveWorkflowLayout,
   savedWorkflowLayout,
 } from '../../workflow/model/workflow-layout-store.js';
+import { workflowSnapPosition, workflowRouteHandles, workflowRouteKey, workflowReconnectRoute, workflowUsedSideHandles } from '../../workflow/model/workflow-canvas-editing.js';
+import { useWorkflowCanvasPreferences } from '../../workflow/hooks/useWorkflowCanvasPreferences.js';
+import { saveWorkflowCanvasPreferences, workflowFitOptions } from '../../workflow/model/workflow-canvas-preferences.js';
+import { WorkflowCanvasControls } from '../../workflow/components/WorkflowCanvasControls.jsx';
 import { useWorkflowCanvasWidth } from '../../workflow/hooks/useWorkflowCanvasWidth.js';
 import {
   FieldRow,
@@ -56,13 +60,17 @@ import {
   WorkflowSchemaList,
   WorkflowOutputContract,
 } from './WorkflowFormControls.jsx';
+import { WorkflowAgentDetails } from './WorkflowAgentDetails.jsx';
+import { WorkflowNodeHeading, WorkflowDetailSection, WorkflowDetailSelect } from './WorkflowNodeDetails.jsx';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import {
+  WORKFLOW_FIT_OPTIONS,
   WORKFLOW_BRANCH_META,
   WORKFLOW_BRANCHES,
   WorkflowCanvasEdge,
   WorkflowFlowNode,
+  workflowNodeAccent,
   workflowEdgeAppearance,
   workflowFeedbackTargetIds,
   workflowNodeMeta,
@@ -73,7 +81,6 @@ const { useState, useEffect, useRef } = React;
 const ReactFlowNS = {
   ReactFlow,
   Background,
-  Controls,
   Position,
   ReactFlowProvider,
   applyEdgeChanges,
@@ -81,14 +88,14 @@ const ReactFlowNS = {
 };
 const WORKFLOW_NODE_DRAG_TYPE = 'application/x-haish-workflow-node';
 
-function WorkflowCanvasFitView({ workflowKey }) {
+function WorkflowCanvasFitView({ workflowKey, workflowId }) {
   const { fitView } = useReactFlow();
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      fitView({ padding: 0.18, minZoom: 0.45, maxZoom: 1.15, duration: 220 });
+      fitView({ ...workflowFitOptions(workflowId, WORKFLOW_FIT_OPTIONS), duration: 220 });
     }, 40);
     return () => window.clearTimeout(timer);
-  }, [fitView, workflowKey]);
+  }, [fitView, workflowKey, workflowId]);
   return null;
 }
 
@@ -103,9 +110,13 @@ function WorkflowDropCanvas({
   draggedNodeType,
   onDropNode,
   onDropTargetChange,
+  children,
   ...props
 }) {
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getNodes, getInternalNode, getZoom } = useReactFlow();
+  const [snapPreview, setSnapPreview] = useState(null);
+  const snapFor = (node, event, draggedNodes) => event.altKey || draggedNodes?.length > 1 ? null
+    : workflowSnapPosition(node, getNodes(), props.edges, { zoom: getZoom(), internalNode: getInternalNode });
   const [canvasNodes, setCanvasNodes, onCanvasNodesChange] = useNodesState(nodes);
   const [dropPreview, setDropPreview] = useState(null);
   const isNodeDraggingRef = useRef(false);
@@ -173,10 +184,19 @@ function WorkflowDropCanvas({
         isNodeDraggingRef.current = true;
         onNodeDragStart?.(event, node, draggedNodes);
       }}
+      onNodeDrag={(event, node, draggedNodes) => {
+        setSnapPreview(snapFor(node, event, draggedNodes));
+      }}
       onNodeDragStop={(event, node, draggedNodes) => {
-        draggedNodePositionsRef.current.set(node.id, node.position);
+        const snap = snapFor(node, event, draggedNodes);
+        const landed = { ...node, position: snap?.position || node.position };
+        const landedNodes = (draggedNodes || [node]).map((item) => item.id === node.id ? landed : item);
+        for (const item of landedNodes) draggedNodePositionsRef.current.set(item.id, item.position);
+        draggedNodePositionsRef.current.set(node.id, landed.position);
+        setCanvasNodes((current) => current.map((item) => item.id === node.id ? { ...item, position: landed.position } : item));
+        setSnapPreview(null);
         isNodeDraggingRef.current = false;
-        onNodeDragStop?.(event, node, draggedNodes);
+        onNodeDragStop?.(event, landed, landedNodes);
       }}
       onDragEnter={(event) => {
         if (!isWorkflowNodeDrag(event)) return;
@@ -215,7 +235,19 @@ function WorkflowDropCanvas({
         setDropPreview(null);
         onDropNode(nodeType, screenToFlowPosition({ x: event.clientX, y: event.clientY }));
       }}
-    />
+    >
+      {children}
+      {snapPreview?.guides.length ? (
+        <ViewportPortal>
+          <svg className="workflow-snap-guides" aria-hidden="true">
+            <rect x={snapPreview.position.x} y={snapPreview.position.y} width={snapPreview.width} height={snapPreview.height} rx={14} />
+            {snapPreview.guides.map((guide) => <line key={guide.axis}
+              x1={guide.axis === 'x' ? guide.value : guide.start} y1={guide.axis === 'y' ? guide.value : guide.start}
+              x2={guide.axis === 'x' ? guide.value : guide.end} y2={guide.axis === 'y' ? guide.value : guide.end} />)}
+          </svg>
+        </ViewportPortal>
+      ) : null}
+    </ReactFlow>
   );
 }
 
@@ -269,6 +301,10 @@ export function WorkflowConfigEditor({
   // 系统预设拖出来的排布存在本机（workflow-layout-store）：revision 变了就让画布重读一遍，
   // savedPulse 只负责那句会自己消失的「Layout saved」。
   const [layoutRevision, setLayoutRevision] = useState(0);
+  const canvasPreferences = useWorkflowCanvasPreferences(selectedId);
+  const routes = canvasPreferences.routes || {};
+  const [reconnecting, setReconnecting] = useState(null);
+  const reconnectingRef = useRef(null);
   const [layoutSavedPulse, setLayoutSavedPulse] = useState(0);
   const canvasRef = useRef(null);
   const canvasNodesRef = useRef([]);
@@ -329,7 +365,6 @@ export function WorkflowConfigEditor({
   const flow = ReactFlowNS;
   const ReactFlowCanvas = flow.ReactFlow;
   const Background = flow.Background;
-  const Controls = flow.Controls;
   const layout = layoutRuntimeWorkflow(nodes, edges);
   // 排布的唯一来源：本机存的排布（系统预设走这里，见 onCanvasNodeDragStop）+ 定义里保存的位置
   // （可编辑工作流走这里，见 arrangedNodes）。
@@ -351,6 +386,8 @@ export function WorkflowConfigEditor({
         ? agentIconNameForAgentId(node.agent_id, agentOptions)
         : undefined,
       feedbackTarget: feedbackTargetIds.has(String(node.id)),
+      usedSideHandles: workflowUsedSideHandles(node.id, edges, routes),
+      reconnectType: reconnecting?.nodeId === node.id ? reconnecting.type : '',
       ...workflowNodePorts(node, layout.meta.get(String(node.id))),
     },
     selected: node.id === selectedNodeId,
@@ -358,6 +395,9 @@ export function WorkflowConfigEditor({
     // 系统预设的内容不能改，但排布拖完就存在本机（workflow-layout-store），运行页读同一份。
     draggable: true,
   }));
+  // 边要按「两边是什么节点」选角色与颜色：角色看目标类型（收尾那条走源类型色 → End 紫的渐变），
+  // 颜色是源类型色 → 目标类型色的渐变，所以两端的类型都跟着传进去。
+  const nodeTypeById = new Map(nodes.map((node) => [String(node.id), node.type || '']));
   const reactEdges = edges.map((edge) => {
     const edgeId = workflowEdgeId(edge);
     const isSelected = edgeId === selectedEdgeId;
@@ -365,12 +405,18 @@ export function WorkflowConfigEditor({
       active: isSelected,
       sourceLayout: layout.meta.get(String(edge.from)),
       targetLayout: layout.meta.get(String(edge.to)),
+      sourceType: nodeTypeById.get(String(edge.from)) || '',
+      sourceNode: nodes.find((node) => String(node.id) === String(edge.from)),
+      targetType: nodeTypeById.get(String(edge.to)) || '',
     });
     return {
       id: edgeId,
       source: edge.from,
       target: edge.to,
       ...appearance,
+      ...workflowRouteHandles(edge, routes),
+      data: { ...appearance.data, routeKey: workflowRouteKey(edge) },
+      reconnectable: !readOnly,
       selected: isSelected,
     };
   });
@@ -423,9 +469,18 @@ export function WorkflowConfigEditor({
     // 存不下（隐私模式等）就不报「已保存」：宁可不说话，也不说假话。
     if (stored) setLayoutSavedPulse((value) => value + 1);
   };
+  const reconnectRoute = (edge, connection) => workflowReconnectRoute(edge, connection, reconnectingRef.current?.type, routes[edge?.data?.routeKey]);
+  const onReconnect = (edge, connection) => {
+    if (readOnly) return;
+    const route = reconnectRoute(edge, connection);
+    if (!route) return;
+    const stored = saveWorkflowCanvasPreferences(workflow.workflow_id, { routes: { ...routes, [edge.data.routeKey]: route } });
+    if (stored) setLayoutSavedPulse((value) => value + 1);
+  };
   const resetWorkflowLayout = () => {
     if (!workflowId) return;
     clearWorkflowLayout(workflowId);
+    saveWorkflowCanvasPreferences(workflowId, { routes: {} });
     setLayoutRevision((value) => value + 1);
   };
   const onReactFlowNodesChange = (changes) => {
@@ -447,18 +502,12 @@ export function WorkflowConfigEditor({
     const updated = flow.applyEdgeChanges(changes, reactEdges);
     if (selectedEdgeId && !updated.some((edge) => edge.id === selectedEdgeId)) setSelectedEdgeId('');
     updateWorkflow({
-      edges: updated
-        .filter((edge) => edge.source && edge.target)
-        .map((edge) => ({
-          from: edge.source,
-          to: edge.target,
-          ...(WORKFLOW_BRANCH_META[edge.sourceHandle]
-            ? { branch: edge.sourceHandle }
-            : {}),
-        })),
+      // Visual handle ids are not execution branches. Preserve original definitions on removal.
+      edges: edges.filter((edge) => updated.some((item) => item.id === workflowEdgeId(edge))),
     });
   };
   const onReactFlowConnect = (connection) => {
+    if (connection?.sourceHandle?.startsWith('visual-') || connection?.targetHandle?.startsWith('visual-')) return;
     if (!isEditable || !connection?.source || !connection?.target || connection.source === connection.target) return;
     const source = nodes.find((node) => node.id === connection.source);
     const target = nodes.find((node) => node.id === connection.target);
@@ -541,13 +590,6 @@ export function WorkflowConfigEditor({
     updateWorkflow({ edges: edges.filter((edge) => workflowEdgeId(edge) !== edgeId) });
     setSelectedEdgeId('');
   };
-  const deleteSelection = () => {
-    if (selectedEdge) {
-      deleteEdge(selectedEdgeId);
-      return;
-    }
-    if (selectedNode) deleteNode(selectedNode.id);
-  };
 
   const renderNodeFields = () => {
     if (!selectedNode) return null;
@@ -558,6 +600,7 @@ export function WorkflowConfigEditor({
             title="Inputs"
             fields={workflowSchemaFields(selectedNode.input_schema || workflow.input_schema)}
           />
+          <WorkflowOutputContract node={selectedNode} />
         </>
       );
     }
@@ -580,44 +623,9 @@ export function WorkflowConfigEditor({
       </WorkflowParameterEditor>
     );
     if (selectedNode.type === 'agent') {
-      const input = selectedNode.input ?? selectedNode.input_mapping?.message ?? '{{input.message}}';
-      return (
-        <>
-          <FieldRow label="agent">
-            <SettingsMenuSelect
-              className="workflow-menu-select"
-              value={selectedNode.agent_id || agentOptions[0]?.id || 'preset.general'}
-              options={agentOptions.map((item) => ({ id: item.id, label: item.label }))}
-              onChange={(agent_id) => updateNode(selectedNode.id, { agent_id })}
-              disabled={!isEditable}
-            />
-          </FieldRow>
-          <FieldRow label="prompt" hint="Static instructions only. Dynamic variables belong in Input so the agent prefix stays cacheable.">
-            <textarea
-              value={selectedNode.prompt || ''}
-              disabled={!isEditable}
-              rows={5}
-              placeholder="Stable instructions for this agent node"
-              onChange={(event) => updateNode(selectedNode.id, { prompt: event.target.value })}
-            />
-          </FieldRow>
-          {renderInputParameters('input', input, (
-            <WorkflowTemplateTextarea
-              title="Input"
-              hint="Dynamic user message sent after the cached agent prefix."
-              value={workflowTemplateWithParameterAliases(input, parameterEntries)}
-              disabled={!isEditable}
-              rows={5}
-              showVariables={false}
-              embedded
-              onChange={(value) => updateNode(selectedNode.id, {
-                input: workflowTemplateWithParameterAliases(value, parameterEntries),
-              })}
-            />
-          ))}
-          <WorkflowOutputContract node={selectedNode} />
-        </>
-      );
+      return <WorkflowAgentDetails key={selectedNode.id} node={selectedNode} agentOptions={agentOptions}
+        variables={availableVariables} disabled={!isEditable}
+        onChange={(patch) => updateNode(selectedNode.id, patch)} />;
     }
     if (selectedNode.type === 'llm') {
       const prompt = selectedNode.prompt || '{{input.message}}';
@@ -703,6 +711,7 @@ export function WorkflowConfigEditor({
               })}
             />
           ))}
+          <WorkflowOutputContract node={selectedNode} />
         </>
       );
     }
@@ -712,6 +721,8 @@ export function WorkflowConfigEditor({
         : {};
       return (
         <>
+          <WorkflowDetailSection title="Inputs" icon="layers">
+          <div className="workflow-detail-fields">
           <FieldRow label="title" hint="Short heading shown in the approval card.">
             <input
               value={approvalInput.title || ''}
@@ -744,6 +755,8 @@ export function WorkflowConfigEditor({
               })}
             />
           </FieldRow>
+          </div>
+          </WorkflowDetailSection>
           <WorkflowOutputContract node={selectedNode} />
         </>
       );
@@ -752,9 +765,9 @@ export function WorkflowConfigEditor({
       const unlimited = selectedNode.max_loops === null;
       return (
         <>
-          <FieldRow label="rerun limit" hint="Choose Unlimited to keep retrying until the workflow succeeds or is stopped manually.">
-            <SettingsMenuSelect
-              className="workflow-menu-select"
+          <WorkflowDetailSection title="Retry policy" icon="workflow-loop">
+          <div className="workflow-detail-fields workflow-retry-policy">
+            <WorkflowDetailSelect label="Rerun limit" icon="retry"
               value={unlimited ? 'unlimited' : 'limited'}
               options={[
                 { id: 'limited', label: 'Limited' },
@@ -765,10 +778,15 @@ export function WorkflowConfigEditor({
                 max_loops: value === 'unlimited' ? null : 3,
               })}
             />
-          </FieldRow>
           {!unlimited ? (
-            <FieldRow label="maximum reruns" hint="After this many retries, the next entry follows Exhausted to End and fails the workflow.">
-              <input
+            <div className="workflow-detail-select settings-field">
+              <label className="workflow-detail-select-label" htmlFor={`workflow-max-reruns-${selectedNode.id}`}>
+                <AppIcon name="database" size={16} /><span className="workflow-detail-select-text">Maximum reruns</span>
+              </label>
+              <div className="workflow-detail-select-value">
+              {!isEditable ? <span className="workflow-detail-select-static">{selectedNode.max_loops || 3}</span> : <input
+                id={`workflow-max-reruns-${selectedNode.id}`}
+                aria-describedby={`workflow-retry-hint-${selectedNode.id}`}
                 type="number"
                 min="1"
                 step="1"
@@ -778,8 +796,15 @@ export function WorkflowConfigEditor({
                   max_loops: Math.max(1, Number.parseInt(event.target.value || '1', 10)),
                 })}
               />
-            </FieldRow>
+              }
+              </div>
+            </div>
           ) : null}
+          <p className="workflow-detail-hint" id={`workflow-retry-hint-${selectedNode.id}`}>
+            {unlimited ? 'Retry until successful or stopped manually.' : 'When the limit is reached, follow Exhausted to End and fail the workflow.'}
+          </p>
+          </div>
+          </WorkflowDetailSection>
           <WorkflowOutputContract node={selectedNode} />
         </>
       );
@@ -790,9 +815,7 @@ export function WorkflowConfigEditor({
       const updateOutputEntries = (entries) => updateNode(selectedNode.id, buildWorkflowOutputPatch(entries));
       return (
         <>
-          <FieldRow label="response type">
-            <SettingsMenuSelect
-              className="workflow-menu-select"
+            <WorkflowDetailSelect label="Response type" icon="format"
               value={outputMode}
               options={[
                 { id: 'text', label: 'Text' },
@@ -811,11 +834,10 @@ export function WorkflowConfigEditor({
               }}
               disabled={!isEditable}
             />
-          </FieldRow>
           {outputMode === 'json_object' ? (
-            <div className="workflow-output-mapping">
-              <div className="workflow-output-mapping-head">
-                <span>output</span>
+            <div className="workflow-output-mapping workflow-detail-mapping">
+              <div className="workflow-output-mapping-head workflow-agent-section-head">
+                <AppIcon name="git-branch" size={17} /><strong>Outputs</strong>
                 {isEditable ? (
                   <button
                     type="button"
@@ -825,7 +847,7 @@ export function WorkflowConfigEditor({
                       { key: `field_${outputEntries.length + 1}`, value: '', type: 'string' },
                     ])}
                   >
-                    + field
+                    <AppIcon name="plus" size={14} />Add Field
                   </button>
                 ) : null}
               </div>
@@ -837,9 +859,10 @@ export function WorkflowConfigEditor({
                   <span className="workflow-output-mapping-action-col" aria-hidden="true" />
                 </div>
                 {outputEntries.map((entry, index) => (
-                  <div className="workflow-output-mapping-row" key={`${entry.key}:${index}`}>
+                  <div className="workflow-output-mapping-row" key={index}>
                     <input
                       className="workflow-output-mapping-name"
+                      aria-label="Output field name"
                       value={entry.key}
                       disabled={!isEditable}
                       placeholder="field name"
@@ -893,7 +916,7 @@ export function WorkflowConfigEditor({
                         aria-label={`delete ${entry.key || 'field'}`}
                         onClick={() => updateOutputEntries(outputEntries.filter((_, itemIndex) => itemIndex !== index))}
                       >
-                        ×
+                        <AppIcon name="delete" size={14} />
                       </button>
                     ) : (
                       <span className="workflow-output-mapping-action-col" aria-hidden="true" />
@@ -903,15 +926,17 @@ export function WorkflowConfigEditor({
               </div>
             </div>
           ) : (
-            <FieldRow label="final text">
+            <WorkflowDetailSection title="Outputs" icon="git-branch">
               <WorkflowTemplateTextarea
+                title="Final text"
+                unframed
                 value={selectedNode.output || '{{input.message}}'}
                 variables={availableVariables}
                 disabled={!isEditable}
                 rows={6}
                 onChange={(output) => updateNode(selectedNode.id, { output_mode: 'text', output })}
               />
-            </FieldRow>
+            </WorkflowDetailSection>
           )}
         </>
       );
@@ -919,7 +944,7 @@ export function WorkflowConfigEditor({
     return null;
   };
 
-  const showNodePanel = Boolean(selectedNode || selectedEdge);
+  const showNodePanel = Boolean(selectedNode);
   const clampedNodePanelWidth = Math.max(280, Math.min(720, Math.round(nodePanelWidth || 340)));
 
   const startNodePanelResize = (event) => {
@@ -961,7 +986,9 @@ export function WorkflowConfigEditor({
       style={showNodePanel ? { '--workflow-node-panel-width': `${clampedNodePanelWidth}px` } : undefined}
     >
       <div className="workflow-builder">
-        {isEditable || canSave || showLayoutTools ? (
+        {/* 工具条只在“能改内容”或“能保存”时才需要：系统预设（只读但排布可拖）没有它——
+            那行 Layout 说明整块删掉，排布反馈挂画布右上角。 */}
+        {isEditable || canSave ? (
           <div className="workflow-toolbar">
             <div className="workflow-toolbar-actions">
               {isEditable ? (
@@ -995,29 +1022,15 @@ export function WorkflowConfigEditor({
                     );
                   })}
                 </div>
-              ) : showLayoutTools ? (
-                <div className="workflow-layout-note">
-                  <strong>Layout</strong>
-                  <span>Drag nodes to rearrange · saves automatically</span>
-                </div>
+              ) : null}
+              {isEditable && selectedEdge ? (
+                <SettingsTooltipIconButton label="Delete connection" icon="delete" danger iconSize={18}
+                  onClick={() => deleteEdge(selectedEdgeId)} />
               ) : null}
             </div>
             {canSave ? (
               <div className="workflow-toolbar-end">
                 <SettingsTooltipIconButton label="Save" icon="save" iconSize={20} onClick={onSave} />
-              </div>
-            ) : null}
-            {showLayoutTools ? (
-              <div className="workflow-toolbar-end workflow-layout-tools">
-                <span className={`workflow-layout-status${layoutSavedPulse ? ' is-visible' : ''}`} role="status">
-                  {layoutSavedPulse ? 'Layout saved' : ''}
-                </span>
-                <SettingsTooltipIconButton
-                  label="Reset layout"
-                  icon="retry"
-                  onClick={resetWorkflowLayout}
-                  disabled={!savedLayout.size}
-                />
               </div>
             ) : null}
           </div>
@@ -1052,18 +1065,31 @@ export function WorkflowConfigEditor({
                 onNodesChange={onReactFlowNodesChange}
                 onEdgesChange={onReactFlowEdgesChange}
                 onConnect={onReactFlowConnect}
+                onReconnectStart={(_, edge, anchoredType) => {
+                  const type = anchoredType === 'source' ? 'target' : 'source';
+                  reconnectingRef.current = { edge, type, nodeId: edge[type] };
+                  setReconnecting(reconnectingRef.current);
+                }}
+                onReconnect={onReconnect}
+                onReconnectEnd={() => { reconnectingRef.current = null; setReconnecting(null); }}
+                isValidConnection={(connection) => reconnecting ? Boolean(reconnectRoute(reconnecting.edge, connection))
+                  : isEditable && !connection.sourceHandle?.startsWith('visual-') && !connection.targetHandle?.startsWith('visual-')}
+                edgesReconnectable={!readOnly}
+                reconnectRadius={14}
                 nodesDraggable
-                nodesConnectable={isEditable}
+                nodesConnectable={isEditable || Boolean(reconnecting)}
                 edgesFocusable={isEditable}
                 elementsSelectable
                 deleteKeyCode={null}
                 connectionRadius={46}
                 fitView
-                fitViewOptions={{ padding: 0.2, minZoom: 0.35, maxZoom: 1.15 }}
+                fitViewOptions={workflowFitOptions(workflow.workflow_id, WORKFLOW_FIT_OPTIONS)}
+                onMoveEnd={(event, viewport) => {
+                  if (event) saveWorkflowCanvasPreferences(workflow.workflow_id, { zoom: viewport.zoom });
+                }}
                 minZoom={0.3}
                 maxZoom={1.4}
-                snapToGrid
-                snapGrid={[20, 20]}
+                snapToGrid={false}
                 connectionLineType="straight"
                 defaultEdgeOptions={{
                   type: 'straight',
@@ -1071,18 +1097,27 @@ export function WorkflowConfigEditor({
                 }}
                 proOptions={{ hideAttribution: true }}
               >
-                {Background ? <Background gap={22} size={1.2} color="rgba(176, 206, 255, 0.07)" /> : null}
-                {Controls ? <Controls showInteractive={false} position="top-right" /> : null}
-                <WorkflowCanvasFitView workflowKey={`${workflow.workflow_id}:${layout.columns}:${layout.rowCount}:${canvasWidth}`} />
+                {Background ? <Background gap={30} size={1.2} color="rgba(150, 184, 240, 0.07)" /> : null}
+                <WorkflowCanvasControls workflowId={workflow.workflow_id}
+                  onResetLayout={showLayoutTools ? resetWorkflowLayout : undefined}
+                  resetLayoutDisabled={!savedLayout.size && !Object.keys(routes).length} />
+                <WorkflowCanvasFitView workflowId={workflow.workflow_id} workflowKey={`${workflow.workflow_id}:${layout.columns}:${layout.rowCount}:${canvasWidth}`} />
               </WorkflowDropCanvas>
             </ReactFlowProvider>
           ) : (
             <div className="settings-empty">React Flow failed to load.</div>
           )}
+          {/* 排布存下来了：拖完在画布右上角闪一下（缩放控件左边），不吃指针。 */}
+          {showLayoutTools ? (
+            <span className={`workflow-layout-status${layoutSavedPulse ? ' is-visible' : ''}`} role="status">
+              {layoutSavedPulse ? 'Layout saved' : ''}
+            </span>
+          ) : null}
         </div>
       </div>
       {showNodePanel ? (
-        <div className="workflow-node-panel">
+        <div className="workflow-node-panel workflow-agent-detail workflow-node-detail"
+          style={{ '--workflow-detail-accent': workflowNodeAccent(selectedNode.type) }}>
           <div
             className="workflow-node-panel-resizer"
             role="separator"
@@ -1094,14 +1129,7 @@ export function WorkflowConfigEditor({
             onPointerDown={startNodePanelResize}
           />
           <div className="workflow-node-panel-head">
-            <div className="workflow-node-panel-title">
-              <span>{selectedEdge ? 'Connection' : 'Node'}</span>
-              <strong>
-                {selectedEdge
-                  ? `${selectedEdge.from}${selectedEdge.branch ? ` · ${selectedEdge.branch}` : ''} -> ${selectedEdge.to}`
-                  : (selectedNode?.label || selectedNode?.id || 'None')}
-              </strong>
-            </div>
+            <WorkflowNodeHeading node={selectedNode} agentOptions={agentOptions} />
             {isEditable && selectedNode && !['start', 'output'].includes(selectedNode.type) ? (
               <SettingsTooltipIconButton
                 label="Delete"
@@ -1112,42 +1140,9 @@ export function WorkflowConfigEditor({
                 onClick={() => deleteNode(selectedNode.id)}
               />
             ) : null}
-            {isEditable && selectedEdge ? (
-              <SettingsTooltipIconButton
-                label="Delete"
-                icon="delete"
-                danger
-                iconSize={18}
-                className="workflow-node-panel-delete"
-                onClick={deleteSelection}
-              />
-            ) : null}
+
           </div>
-          {selectedEdge ? (
-            <div className="workflow-node-help">
-              Connection: {selectedEdge.from}
-              {selectedEdge.branch ? ` · ${selectedEdge.branch}` : ''}
-              {' -> '}{selectedEdge.to}
-            </div>
-          ) : (
-            <>
-              <FieldRow label="label">
-                <input
-                  value={selectedNode.label ?? ''}
-                  onChange={(event) => updateNode(selectedNode.id, { label: event.target.value })}
-                  onKeyDown={(event) => {
-                    // Keep text editing keys inside the field; do not let canvas
-                    // selection shortcuts swallow Backspace / Delete.
-                    if (event.key === 'Backspace' || event.key === 'Delete') {
-                      event.stopPropagation();
-                    }
-                  }}
-                  disabled={!isEditable}
-                />
-              </FieldRow>
-              {renderNodeFields()}
-            </>
-          )}
+          {renderNodeFields()}
         </div>
       ) : null}
     </div>

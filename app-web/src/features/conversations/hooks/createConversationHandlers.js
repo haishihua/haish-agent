@@ -1,4 +1,5 @@
-import { finalWorkflowResultText } from '../../tasks/model/runtime-events.js';
+import { taskFinalOutputText } from '../../tasks/model/runtime-events.js';
+import { createQuestAck } from '../../tasks/model/quest-ack.js';
 
 export function createConversationHandlers(ctx) {
   const {
@@ -806,7 +807,7 @@ export function createConversationHandlers(ctx) {
     const workflowNodes = Object.entries(task?.workflowRun?.nodes || {}).map(([nodeId, node]) => (
       `${node?.success === false ? '✕' : '✓'} ${nodeId}: ${node?.summary || node?.error || node?.status || ''}`
     ));
-    const result = finalWorkflowResultText(
+    const result = taskFinalOutputText(
       task,
       task?.answerText || workflowNodes.join('\n') || task?.error || '',
     );
@@ -835,12 +836,17 @@ export function createConversationHandlers(ctx) {
     if ((task?.userMessageId || task?.user_message_id) && executeQuest) {
       if (!canStartDeployForConversation(targetConversationId)) throw new Error('Conversation is still loading. Your changes have not been sent.');
       const source = getRuntime(targetConversationId)?.taskRuntimeState?.tasksById?.[task.taskId || task.task_id || task.id] || task;
-      return executeQuest(source, targetConversationId, {
+      // 编辑 / 重跑和输入框发送同一套语义：请求被接下就算发出去了。时间线上那一行的
+      // 编辑框立刻收工、这一轮立刻以运行态渲染（新的 attempt 同时顶掉 source turn，
+      // 见 chat/model/task-attempts.js）；只有启动前被拦下的失败回到调用方。
+      const ack = createQuestAck();
+      return ack.follow(executeQuest(source, targetConversationId, {
         attempt: editedMessage == null ? 'rerun' : 'edit',
         message: editedMessage,
-        runConfig: editedMessage == null ? null : runConfig,
+        runConfig: runConfig || null,
         requestId: crypto.randomUUID(),
-      });
+        onAccepted: ack.accept,
+      }), (error) => showToast('error', String(error?.message || error)));
     }
     if (targetConversationId !== conversationIdRef.current) {
       await loadAndActivateConversation({
@@ -858,11 +864,11 @@ export function createConversationHandlers(ctx) {
     const request = buildDeployRequest(
       task?.title || '',
       task?.attachment || null,
-      task?.requestedModelId || '',
-      task?.requestedReasoningEffort || 'high',
+      runConfig?.modelId || task?.requestedModelId || '',
+      runConfig?.reasoningEffort || task?.requestedReasoningEffort || 'high',
       task?.imageAttachments || [],
       selectionId,
-      task?.requestedProvider || '',
+      runConfig?.provider || task?.requestedProvider || '',
     );
     request.targetConversationId = targetConversationId;
     if (canStartDeployForConversation(targetConversationId)) startDeploy(request, targetConversationId);

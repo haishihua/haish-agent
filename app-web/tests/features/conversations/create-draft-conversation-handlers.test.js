@@ -148,6 +148,8 @@ test('draft materialization rejects a server conversation from another project',
         name: 'New Conversation',
       },
     },
+    draftFirstSendRef: { current: null },
+    draftServerCreateRef: { current: null },
     pendingCreatedDetailRef: {
       current: {
         conversation_id: 'server-conversation',

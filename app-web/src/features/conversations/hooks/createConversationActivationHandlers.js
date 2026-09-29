@@ -388,8 +388,14 @@ export function createConversationActivationHandlers(ctx) {
     if (eventConversationId && ownerConvId && eventConversationId !== ownerConvId) {
       return null;
     }
-    const ownerRuntime = getRuntime(ownerConvId);
-    if (!ownerRuntime) throw new Error(`conversation runtime is missing: ${ownerConvId}`);
+    // runtime 条目可能已经先被回收（切会话 / 404 收敛 / 删除前清理）：事件还指着这个
+    // 会话时补一块，别让一条本地簿记缺失把这一轮流打断。
+    let ownerRuntime = getRuntime(ownerConvId);
+    if (!ownerRuntime) {
+      console.warn(`runtime event for ${ownerConvId} arrived after its runtime was dropped; recreating it`);
+      ownerRuntime = getRuntime(ownerConvId, { create: true });
+      if (!ownerRuntime) return null;
+    }
     // After Stop, the current run is aborted until the next executeQuest resets it.
     // Do not re-materialize tasks from late NDJSON events after a run is terminal.
     if (ownerRuntime?.abortRequested) {

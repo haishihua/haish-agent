@@ -3,7 +3,7 @@ import { AnimateDialog } from '../../../shared/ui/AnimateDialog.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { PortalTooltip, closeAllPortalTooltips } from '../../../shared/ui/PortalTooltip.jsx';
-import { normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
+import { isTerminalTaskStatus, normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
 import { getTaskPillMeta } from '../../tasks/model/task-pill.js';
 import { TaskStatusIcon } from './ConversationIcons.jsx';
 import { workflowTaskDisplayStatus } from '../model/conversation-status.js';
@@ -24,13 +24,17 @@ export function TaskRecordCompact({
   // workflowRun.status 要等下一次轮询才追上来，图标会晚几秒才变黄。
   const status = normalizeTaskStatus(liveWaitState || workflowTaskDisplayStatus(task));
   const pill = getTaskPillMeta(status, stage);
-  const hasReport = (status === 'done' && !!String(task.answerText || '').trim())
-    || (task.executionMode === 'bot' && !!task.workflowRun)
-    || ((status === 'failed' || status === 'cancelled') && !!String(task.error || '').trim());
+  // 报告入口：收工且真有产出（bot 运行 / 回答文本 / 错误）才出现；跑着的任务没有结果，
+  // 聊天模式的回答留在气泡里（样式层 .app-body.chat-mode 会隐掉这枚按钮）。
+  const hasReport = isTerminalTaskStatus(status)
+    && ((status === 'done' && !!String(task.answerText || '').trim())
+      || (task.executionMode === 'bot' && !!task.workflowRun)
+      || ((status === 'failed' || status === 'cancelled') && !!String(task.error || '').trim()))
+    && (onOpenReport || !actions);
   const canRetry = status === 'failed' || status === 'cancelled';
   return (
     <div
-      className={`conversation-task-card ${pill.className}${active ? ' active' : ''}${terminalNotice ? ' has-terminal-notice' : ''}${onSelect ? ' selectable' : ''}${actions ? ' has-actions' : ''}`}
+      className={`conversation-task-card ${pill.className}${active ? ' active' : ''}${terminalNotice ? ' has-terminal-notice' : ''}${onSelect ? ' selectable' : ''}${actions ? ' has-actions' : ''}${hasReport ? ' has-report' : ''}`}
       role={onSelect ? 'button' : undefined}
       tabIndex={onSelect ? 0 : undefined}
       onClick={() => onSelect?.(task)}
@@ -45,7 +49,10 @@ export function TaskRecordCompact({
             <div className="conversation-task-title">{task.title || 'Untitled task'}</div>
           </PortalTooltip>
         </div>
-        {actions || (hasReport && (
+        {terminalNotice ? (
+          <span className={`conversation-task-terminal-notice chat-timeline-status status-${terminalNotice}`} aria-hidden="true" />
+        ) : null}
+        {hasReport ? (
           <PortalTooltip text="View report" position="above">
             <button
               type="button"
@@ -56,10 +63,8 @@ export function TaskRecordCompact({
               <span className="ico ico-report" aria-hidden="true" />
             </button>
           </PortalTooltip>
-        ))}
-        {terminalNotice ? (
-          <span className={`conversation-task-terminal-notice chat-timeline-status status-${terminalNotice}`} aria-hidden="true" />
         ) : null}
+        {actions}
         {!showStatusIcon && ['running', 'queued', 'approval', 'waiting_input'].includes(status)
           ? <TaskStatusIcon statusClass={pill.className} />
           : null}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyToolsSettingsPayloadToRecords, applyMemorySettingsPayloadToRecords, buildMemorySettingsPayload } from '../../../src/features/settings/model/settings-payload.js';
+import { applyToolsSettingsPayloadToRecords, applyMemorySettingsPayloadToRecords, buildMemorySettingsPayload, buildToolsSettingsPayload } from '../../../src/features/settings/model/settings-payload.js';
 import { SETTINGS_RECORDS_STORAGE_KEY, createDefaultSettingsRecords, loadSettingsRecordsDraft } from '../../../src/features/settings/model/settings-records.js';
 import { createSettingsHandlers } from '../../../src/features/settings/hooks/createSettingsHandlers.js';
 
@@ -53,6 +53,32 @@ test('a stored draft that still lists knowledge records ignores that section', (
   assert.equal(records.memory.length, 1);
   assert.equal(records.memory[0].id, 'memory-qdrant');
   assert.equal(records.memory[0].qdrant.url, '');
+});
+
+test('Jev 已下线：默认记录与工具设置载荷里都不再有它', () => {
+  const defaults = createDefaultSettingsRecords();
+  assert.deepEqual(defaults.tools.map(record => record.id), ['tools-mcp', 'tools-skills', 'tools-web']);
+
+  const payload = buildToolsSettingsPayload(defaults);
+  assert.equal('jev' in payload, false);
+  assert.deepEqual(Object.keys(payload).sort(), ['mcp', 'skills', 'web_search']);
+});
+
+test('老草稿里还留着的 Jev 记录在装载时被丢掉（连带已存的密钥）', (t) => {
+  const previousWindow = globalThis.window;
+  globalThis.window = {
+    localStorage: {
+      getItem: (key) => (key === SETTINGS_RECORDS_STORAGE_KEY
+        ? JSON.stringify({ tools: [{ id: 'tools-jev', name: 'Jev', jev: { api_key: 'jev-secret', api_key_configured: true } }] })
+        : null),
+    },
+  };
+  t.after(() => { globalThis.window = previousWindow; });
+
+  const records = loadSettingsRecordsDraft();
+
+  assert.equal(records.tools.some(record => record.id === 'tools-jev'), false);
+  assert.equal(JSON.stringify(records).includes('jev-secret'), false);
 });
 
 test('failed settings saves return false so the editor keeps its draft open', async t => {

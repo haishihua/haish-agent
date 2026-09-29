@@ -6,6 +6,7 @@ export function createConversationRuntime(ctx) {
     notifyTaskComplete,
     runtimesRef,
     setBusy,
+    setShellSeeded,
     setWorkspaceState,
     setTaskRuntimeState,
     setToast,
@@ -81,6 +82,10 @@ export function createConversationRuntime(ctx) {
     cacheTaskImageAttachments(rt.taskRuntimeState);
     setTaskRuntimeState(rt.taskRuntimeState);
     setBusy(rt.busy);
+    // 「这一份时间线还是工作区快照搭的」也是显示状态：会话刚打开时时间线只有标题和
+    // 状态，正文还没水合（整段会话的占位判据见 chat/model/conversation-loading.js）。必须
+    // 跟着 taskRuntimeState 一起投影，否则渲染层只能去读 runtime 本体。
+    setShellSeeded(Boolean(rt.shellSeeded));
   }
 
   function activeRuntimeTargetConvId(explicit) {

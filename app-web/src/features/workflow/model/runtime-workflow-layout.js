@@ -4,8 +4,13 @@ const NODE_WIDTH = 214;
 const COLUMN_GAP = 24;
 const CANVAS_PADDING_X = 48;
 const CANVAS_TOP = 96;
-const ROW_GAP = 192;
-const BRANCH_OFFSET_Y = 96;
+// 主链行之间的行距（内容尺寸卡片 72px + 40px 空隙）。
+const CLEAN_ROW_GAP = 112;
+// 回环节点（次级链）挂在它的锚点行下面这么远：96 → 192px，让「判定 → Retry」的回路在
+// 判定和 Retry 之间有一整段纵向空间，能走「先直线、再大圆弧」的台阶路，而不是贴着卡片硬折。
+const BRANCH_OFFSET_Y = 192;
+// 挂过回环节点的那两行之间要留出回环节点自己的高度（192 + 72）再加和上面一样的 24px 空隙。
+const BRANCH_ROW_GAP = BRANCH_OFFSET_Y + 72 + 24;
 // 主链最多排几列（超出折成蛇形行）。是常数、绝不按画布宽度算：同一张图在配置页和运行页
 // 必须排出同一个形状（两边画布宽度不一样，按宽度算列数会排成 4+2 vs 3+3 两张图）。
 const LAYOUT_MAX_COLUMNS = 4;
@@ -210,7 +215,12 @@ export function layoutRuntimeWorkflow(nodes = [], edges = []) {
     primarySet.add(cursor);
     const next = [...(outgoing.get(cursor) || [])]
       .filter((edge) => !primarySet.has(edge.target))
-      .sort((a, b) => edgePriority(a) - edgePriority(b) || nodeX(nodeById.get(a.target)) - nodeX(nodeById.get(b.target)))[0];
+      // A cases/default gate has unlabelled edges. Keep its loop target off the main chain,
+      // just like an explicit false/retry branch; never depend on persisted x coordinates.
+      .sort((a, b) => {
+        const priority = (edge) => nodeById.get(edge.target)?.type === 'loop' ? 5 : edgePriority(edge);
+        return priority(a) - priority(b) || nodeX(nodeById.get(a.target)) - nodeX(nodeById.get(b.target));
+      })[0];
     cursor = next?.target || '';
   }
 
@@ -228,7 +238,7 @@ export function layoutRuntimeWorkflow(nodes = [], edges = []) {
     const offset = order % columns;
     const direction = row % 2 === 0 ? 'right' : 'left';
     const column = direction === 'right' ? offset : columns - 1 - offset;
-    positions.set(id, { x: xForColumn(column), y: CANVAS_TOP + (row * ROW_GAP) });
+    positions.set(id, { x: xForColumn(column), y: CANVAS_TOP + (row * CLEAN_ROW_GAP) });
     meta.set(id, { kind: 'primary', order, row, column, direction });
   });
 
@@ -250,7 +260,7 @@ export function layoutRuntimeWorkflow(nodes = [], edges = []) {
     const branchX = node.type === 'loop' && column === anchor.column && retryTarget?.row === anchor.row
       ? (xForColumn(column) + xForColumn(retryTarget.column)) / 2
       : xForColumn(column);
-    positions.set(id, { x: branchX, y: CANVAS_TOP + (anchor.row * ROW_GAP) + BRANCH_OFFSET_Y });
+    positions.set(id, { x: branchX, y: CANVAS_TOP + (anchor.row * CLEAN_ROW_GAP) + BRANCH_OFFSET_Y });
     meta.set(id, {
       kind: 'secondary',
       order: anchor.order + 0.5,
@@ -264,7 +274,7 @@ export function layoutRuntimeWorkflow(nodes = [], edges = []) {
   const rowCount = Math.max(1, Math.ceil(primaryIds.length / columns));
   const rowOffsets = [CANVAS_TOP];
   for (let row = 1; row < rowCount; row += 1) {
-    rowOffsets[row] = rowOffsets[row - 1] + (occupiedByRow.has(row - 1) ? ROW_GAP : 112);
+    rowOffsets[row] = rowOffsets[row - 1] + (occupiedByRow.has(row - 1) ? BRANCH_ROW_GAP : CLEAN_ROW_GAP);
   }
   for (const [id, position] of positions) {
     const nodeMeta = meta.get(id);

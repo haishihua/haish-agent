@@ -29,6 +29,9 @@ const api: HaishDesktopApi = {
   getRemoteSettings: () => ipcRenderer.invoke('remote-control:get-settings') as Promise<RemoteSettings | null>,
   saveRemoteSettings: (settings: RemoteSettings) =>
     ipcRenderer.invoke('remote-control:save-settings', settings) as Promise<RemoteAdapterState>,
+  getConversationReads: () => ipcRenderer.invoke('conversation-reads:get') as Promise<Record<string, number>>,
+  markConversationRead: (conversationId: string, seenAtMs = Date.now()) =>
+    ipcRenderer.invoke('conversation-reads:mark', conversationId, seenAtMs) as Promise<number>,
   notifyTaskComplete: () => ipcRenderer.invoke('dock:notify-task-complete') as Promise<boolean>,
   setTaskCompletionBadgeCount: (count: number) => ipcRenderer.invoke('dock:set-task-badge', count) as Promise<number>,
   getWindowState: () => ipcRenderer.invoke('window:state') as Promise<WindowVisualState>,

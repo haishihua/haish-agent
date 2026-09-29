@@ -24,6 +24,24 @@ export function useConversationListPolling({
     let controller = null;
     let previousPayload = '';
 
+    // "当前会话不在列表里"可能只是这份快照拍在它建好之前（刚创建的会话、正在恢复
+    // 的路由）：先向服务端确认，只有真 404 才把它判死。凭一次过期快照就换目标会把
+    // 在途发送的 runtime 一并清掉，而它其实还在。
+    const conversationIsMissingOnServer = async (conversationIdValue, signal) => {
+      try {
+        const response = await apiFetch(
+          `${API_BASE}/api/conversations/${encodeURIComponent(conversationIdValue)}`,
+          { method: 'GET', signal },
+          { json: false },
+        );
+        return response.status === 404;
+      } catch (error) {
+        if (error?.name === 'AbortError') throw error;
+        // 网络抖动不下结论：等下一轮，宁可晚一点收敛也不能误删在途会话。
+        return false;
+      }
+    };
+
     const refresh = async () => {
       if (stopped || inFlight) return;
       inFlight = true;
@@ -45,18 +63,25 @@ export function useConversationListPolling({
           )
         ));
         const signature = JSON.stringify(projects);
-        if (signature !== previousPayload) setWorkspaceState((state) => replaceWorkspaceModeFromProjects(
-          executionMode,
-          projects,
-          state,
-          draftConversationRef.current,
-        ));
-        previousPayload = signature;
-        if (
+        const removalPending = Boolean(
           currentConversationId
           && activeConversationExecutionMode === executionMode
           && !currentConversationExists
-        ) {
+        );
+        const missingConfirmed = removalPending
+          ? await conversationIsMissingOnServer(currentConversationId, controller.signal)
+          : false;
+        if (stopped) return;
+        if (signature !== previousPayload && (!removalPending || missingConfirmed)) {
+          setWorkspaceState((state) => replaceWorkspaceModeFromProjects(
+            executionMode,
+            projects,
+            state,
+            draftConversationRef.current,
+          ));
+          previousPayload = signature;
+        }
+        if (missingConfirmed) {
           const fallbackProject = projects.find((project) => (project.conversations || []).length > 0)
             || projects[0]
             || null;

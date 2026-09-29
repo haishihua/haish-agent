@@ -47,8 +47,23 @@ test('a discarded draft returns its text to the draft id — unless a file keeps
   );
   assert.match(
     handlers,
-    /if \(!keepServerConversation && pendingServerId/,
+    /if \(!keepServerConversation && !sendInFlight && pendingServerId/,
     'a conversation that already took a document must survive the switch',
+  );
+  assert.match(
+    handlers,
+    /const sendInFlight = draftConversationHasSendInFlight\(draft\?\.id\);\s*if \(draft\?\.id && !sendInFlight\) \{\s*runtimesRef\.current\.delete\(draft\.id\);\s*\}/,
+    'a first send in flight must keep its runtime: deleting it is what made the send fail',
+  );
+  assert.match(
+    handlers,
+    /const realRuntime = getRuntime\(realId, \{ create: true \}\);\s*if \(previousRuntime && realRuntime\) Object\.assign\(realRuntime, previousRuntime\);/,
+    'the handoff must rebuild the real conversation runtime when the draft runtime is gone',
+  );
+  assert.match(
+    handlers,
+    /if \(inFlight\?\.draftId === draft\.id\) return inFlight\.request;/,
+    'concurrent first sends must share one server conversation',
   );
   assert.match(
     handlers,

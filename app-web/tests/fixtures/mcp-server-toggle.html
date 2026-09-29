@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MCP servers — 每行一颗开关（就是 skill 行那一颗），点一下开/关</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      background: #070b12;
+      color: #e7ecf6;
+      font: 13px system-ui;
+    }
+    h1 {
+      font-size: 14px;
+      margin: 10px 12px 4px;
+    }
+    p {
+      margin: 0 12px 10px;
+      color: #93a0b4;
+      font-size: 12px;
+    }
+    /* 真实设置壳：@scope (.settings-theme) 里的规则只在这个根下面生效。 */
+    #root .settings-page {
+      padding: 12px;
+    }
+    #checks {
+      margin: 0 12px 16px;
+      padding: 10px;
+      background: #0b0e14;
+      color: #9fd8a4;
+      white-space: pre-wrap;
+      font:
+        11px/1.5 ui-monospace,
+        monospace;
+      border-radius: 8px;
+    }
+    #checks[data-result='FAIL'] {
+      color: #ff8b9d;
+    }
+  </style>
+  <h1>MCP servers — Status 列里的开关 = skill 行那一颗</h1>
+  <p>
+    生产 ToolsConfigEditor + 真实 settings.css：每台 server 一个共享 Switch（不再自造电源图标），点一下改这一台的
+    <code>enabled</code> 并整份保存（和输入框的 Save 同一条路）；请求在飞时开关锁住。
+  </p>
+  <pre id="checks" role="status">Running checks…</pre>
+  <div id="root"></div>
+  <script type="module" src="./mcp-server-toggle.jsx"></script>
+</html>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { collapseFullTaskAttempts } from '../chat/model/task-attempts.js';
+import { conversationContentLoading } from '../chat/model/conversation-loading.js';
 import { assistantNameForTask } from '../chat/model/assistant-name.js';
 import { BoundedCache } from '../../shared/lib/bounded-cache.js';
 import { evictInactiveRuntimes, releaseWorkspaceRuntimeDetails } from '../conversations/model/runtime-cache.js';
@@ -16,6 +17,7 @@ import { TopBar } from './components/TopBar.jsx';
 import { ConversationsPanel } from '../conversations/components/ConversationsPanel.jsx';
 import { ChatPanel } from '../chat/components/ChatPanel.jsx';
 import { ChatComposer } from '../chat/components/ChatComposer.jsx';
+import { storedRunConfigRequest } from '../chat/hooks/useRunConfig.js';
 import { BottomNav, TabPlaceholder } from './components/Shell.jsx';
 import { AppToast } from './components/AppToast.jsx';
 import {
@@ -136,9 +138,11 @@ import {
 import {
   addTaskCompletionNotice,
   clearConversationCompletionNotices,
+  clearReadTaskCompletionNotices,
   clearTaskCompletionNotice,
   conversationNoticesFromTasks,
   loadTaskCompletionNotices,
+  mergeConversationReadCursors,
   saveTaskCompletionNotices,
   taskCompletionNoticeKey,
   taskNoticesByTaskId,
@@ -221,6 +225,10 @@ export function AppShell() {
   const projectReorderVersionRef = useRef(0);
   const modeLocationRef = useRef({ chat: null, workflow: null });
   const [busy, setBusy] = useState(false);
+  // 「当前显示的这份时间线还是工作区快照搭的」——由运行时投影过来（见
+  // createConversationRuntime 的 syncDisplayedRuntime）。会话刚打开时快照只有标题和
+  // 状态，助手正文还没水合，时间线用加载动画占位。
+  const [shellSeeded, setShellSeeded] = useState(false);
   const [hollow, setHollow] = useState(null);
   const [conversationId, setConversationId] = useState(null);
   const [ownerId, setOwnerId] = useState('');
@@ -273,6 +281,7 @@ export function AppShell() {
   const taskRuntimeEventCacheRef = useRef(new BoundedCache(32));
   const taskRuntimeFetchesRef = useRef(new Map());
   const completionReportedTaskIdsRef = useRef(new Set());
+  const conversationReadCursorsRef = useRef({});
   const runtimeApiRef = useRef({});
   const activationApiRef = useRef({});
   const deployApiRef = useRef({});
@@ -297,6 +306,10 @@ export function AppShell() {
   // Server conversation created for a draft (e.g. image/file upload) but not yet
   // revealed in the sidebar because the user still has not sent a message.
   const pendingCreatedDetailRef = useRef(null);
+  // 草稿的建会话 / 首条发送只允许一条在途记录：重复提交不能各建一条服务端会话，
+  // 也不能把首条消息的 runtime 交接弄丢（见 createDraftConversationHandlers）。
+  const draftServerCreateRef = useRef(null);
+  const draftFirstSendRef = useRef(null);
   // Per-conversation runtime store. This is the single source of truth for
   // live task state; React state only projects the currently displayed entry.
   const runtimesRef = useRef(new Map());
@@ -509,6 +522,17 @@ export function AppShell() {
   const defaultAgentId = agentCatalog?.defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
   const runConfigStorageKey = buildRunConfigStorageKey(ownerId, 'chat', conversationId);
   const botRunConfigStorageKey = runConfigStorageKey ? `${runConfigStorageKey}.bot` : '';
+  // 侧边栏的「Run again」没有输入框，用这个会话上次真正选过的模型配置；取不到就沿用
+  // 来源 Task 的原请求参数。
+  const sidebarRetryRunConfig = (task) => {
+    const targetConversationId = task?.conversationId || task?.conversation_id;
+    const baseKey = buildRunConfigStorageKey(ownerId, 'chat', targetConversationId);
+    if (!baseKey) return null;
+    return storedRunConfigRequest(
+      task?.executionMode === 'bot' ? `${baseKey}.bot` : baseKey,
+      llmProviderOptions,
+    );
+  };
   const handleBotRunConfigChange = React.useCallback((config) => {
     botRunConfigRef.current = config;
   }, []);
@@ -585,19 +609,78 @@ export function AppShell() {
     const key = taskCompletionNoticeKey(targetConversationId, taskId);
     if (!key || !status || completionReportedTaskIdsRef.current.has(key)) return;
     completionReportedTaskIdsRef.current.add(key);
+    const settledAt = taskUpdatedTimestamp(taskOrStatus) || Date.now();
     const viewedNow = document.hasFocus() && conversationIdRef.current === targetConversationId;
-    if (viewedNow) return;
+    const alreadyViewed = Number(conversationReadCursorsRef.current[targetConversationId] || 0) >= settledAt;
+    if (viewedNow) {
+      markConversationTaskCompletionsViewed(targetConversationId);
+      return;
+    }
+    if (alreadyViewed) return;
     setTaskCompletionNotices((current) => addTaskCompletionNotice(current, {
       conversationId: targetConversationId,
       taskId,
       status,
+      settledAt,
     }));
     window.haish?.notifyTaskComplete?.().catch(() => undefined);
   }
 
-  function markConversationTaskCompletionsViewed(targetConversationId) {
+  const applySharedConversationReads = React.useCallback((reads) => {
+    if (!reads || typeof reads !== 'object') return;
+    conversationReadCursorsRef.current = mergeConversationReadCursors(
+      conversationReadCursorsRef.current,
+      reads,
+    );
+    setTaskCompletionNotices((current) => clearReadTaskCompletionNotices(
+      current,
+      conversationReadCursorsRef.current,
+    ));
+  }, []);
+
+  const refreshSharedConversationReads = React.useCallback(() => (
+    window.haish?.getConversationReads?.()
+      .then(applySharedConversationReads)
+      .catch(() => undefined)
+  ), [applySharedConversationReads]);
+
+  const markConversationTaskCompletionsViewed = React.useCallback((targetConversationId) => {
+    if (!targetConversationId) return;
     setTaskCompletionNotices((current) => clearConversationCompletionNotices(current, targetConversationId));
-  }
+    const seenAtMs = Date.now();
+    conversationReadCursorsRef.current = {
+      ...conversationReadCursorsRef.current,
+      [targetConversationId]: seenAtMs,
+    };
+    window.haish?.markConversationRead?.(targetConversationId, seenAtMs)
+      .then((canonicalSeenAt) => {
+        conversationReadCursorsRef.current = mergeConversationReadCursors(
+          conversationReadCursorsRef.current,
+          { [targetConversationId]: canonicalSeenAt },
+        );
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!ownerId) return undefined;
+    conversationReadCursorsRef.current = {};
+    refreshSharedConversationReads();
+    const timer = window.setInterval(refreshSharedConversationReads, 3000);
+    return () => window.clearInterval(timer);
+  }, [ownerId, refreshSharedConversationReads]);
+
+  useEffect(() => {
+    if (
+      !ownerId
+      || activeTab !== 'dashboard'
+      || viewMode !== 'chat'
+      || !windowFocused
+      || !conversationId
+      || String(conversationId).startsWith('draft-')
+    ) return;
+    markConversationTaskCompletionsViewed(conversationId);
+  }, [activeTab, conversationId, markConversationTaskCompletionsViewed, ownerId, viewMode, windowFocused]);
 
   const {
     invalidateConversationActivation,
@@ -607,6 +690,8 @@ export function AppShell() {
     openDraftConversation,
     ensureServerConversationForActiveDraft,
     markDraftConversationKept,
+    isDraftFirstSendInFlight,
+    markDraftFirstSendInFlight,
     materializeDraftConversationForSend,
     fetchTaskRuntimeDetail,
     fetchTaskRuntimeBatch,
@@ -636,6 +721,8 @@ export function AppShell() {
     detachActiveRunFromCurrentConversation: (...args) => activationApiRef.current.detachActiveRunFromCurrentConversation?.(...args),
     draftConversationIdsRef,
     draftConversationRef,
+    draftFirstSendRef,
+    draftServerCreateRef,
     flushRuntimeTasksToWorkspace: (...args) => runtimeApiRef.current.flushRuntimeTasksToWorkspace?.(...args),
     generateHexId,
     getRuntime: (...args) => runtimeApiRef.current.getRuntime?.(...args),
@@ -714,6 +801,7 @@ export function AppShell() {
     notifyTaskComplete,
     runtimesRef,
     setBusy,
+    setShellSeeded,
     setToast,
     setWorkspaceState,
     setTaskRuntimeState,
@@ -1118,7 +1206,9 @@ export function AppShell() {
     flushRuntimeTasksToWorkspace,
     getRuntime,
     isDefaultConversationName,
+    isDraftFirstSendInFlight,
     isTaskActuallyActive,
+    markDraftFirstSendInFlight,
     materializeDraftConversationForSend,
     mutateRuntime,
     normalizeWorkflowSettings,
@@ -1492,9 +1582,20 @@ export function AppShell() {
     const rows = [];
     // 助手气泡上的名字跟着会话选定的 agent 走（见 chat/model/assistant-name.js）。
     const agentNameFor = (task) => assistantNameForTask(task, currentConversation, agentOptions);
-    const orderedTasks = collapseFullTaskAttempts(taskRuntimeState.taskOrder
-      .map((taskId) => taskRuntimeState.tasksById[taskId])
-      .filter(Boolean));
+    // 本地还没被服务端接下的那一轮（pending，见 conversations/model/agent-binding.js）
+    // 在时间线上照旧渲染；被它顶掉的那一轮必须在同一刻让位。编辑 / 重发刚被接下时旧行
+    // 还留在上面（编辑框正悬在那一行上），新的运行态却在下面另起一轮——看起来就是输入框
+    // 错位。空壳（本地取消、服务端一个字都没收到）不渲染，也不顶掉任何一轮。
+    const pendingTurn = taskRuntimeState.pendingTask;
+    const pendingStatus = pendingTurn ? normalizeTaskStatus(pendingTurn.status) : '';
+    const pendingError = String(pendingTurn?.error || '').trim();
+    const pendingTurnVisible = Boolean(pendingTurn
+      && !taskRuntimeState.activeTaskId
+      && !(pendingStatus === 'cancelled' && !pendingError && !taskHasAssistantStreamContent(pendingTurn)));
+    const orderedTasks = collapseFullTaskAttempts(
+      taskRuntimeState.taskOrder.map((taskId) => taskRuntimeState.tasksById[taskId]).filter(Boolean),
+      pendingTurnVisible ? pendingTurn : null,
+    );
     const settled = settledRuntimeTaskIds;
     const rowCache = chatMessageRowsCacheRef.current;
     for (const task of orderedTasks) {
@@ -1583,49 +1684,51 @@ export function AppShell() {
       rowCache.set(task, { rows: taskRows, live, agentName });
       rows.push(...taskRows);
     }
-    if (taskRuntimeState.pendingTask && !taskRuntimeState.activeTaskId) {
-      const pendingStatus = normalizeTaskStatus(taskRuntimeState.pendingTask.status);
-      const pendingError = String(taskRuntimeState.pendingTask.error || '').trim();
-      // Empty user-cancelled pending turns are rolled back; skip rendering shells.
-      if (!(pendingStatus === 'cancelled' && !pendingError && !taskHasAssistantStreamContent(taskRuntimeState.pendingTask))) {
-        // 服务端还没接下这一笔（见 conversations/model/agent-binding.js）：标记出来，
-        // agent 锁不把它当「发过消息」。它照旧留在时间线上等重发。
+    if (pendingTurnVisible) {
+      // 服务端还没接下这一笔（见 conversations/model/agent-binding.js）：标记出来，
+      // agent 锁不把它当「发过消息」。它照旧留在时间线上等重发。
+      rows.push({
+        id: `${pendingTurn.id || 'pending'}-user`,
+        role: 'user',
+        unaccepted: true,
+        text: stripInjectedSkillInstruction(pendingTurn.displayText ?? pendingTurn.title),
+        annotations: pendingTurn.annotations || [],
+        status: pendingStatus,
+        createdAt: pendingTurn.createdAt,
+        completedAt: pendingTurn.completedAt,
+        images: Array.isArray(pendingTurn.imageAttachments) ? pendingTurn.imageAttachments : [],
+      });
+      if (pendingError || pendingStatus === 'failed' || pendingStatus === 'cancelled' || pendingStatus === 'running' || pendingStatus === 'queued') {
+        const pendingStreaming = isTaskLive(pendingTurn)
+          && !settled.has(String(pendingTurn.taskId || pendingTurn.id || ''));
         rows.push({
-          id: `${taskRuntimeState.pendingTask.id || 'pending'}-user`,
-          role: 'user',
-          unaccepted: true,
-          text: stripInjectedSkillInstruction(taskRuntimeState.pendingTask.displayText ?? taskRuntimeState.pendingTask.title),
-          annotations: taskRuntimeState.pendingTask.annotations || [],
+          id: `${pendingTurn.id || 'pending'}-agent`,
+          taskId: pendingTurn.id || '',
+          conversationId,
+          role: 'agent',
+          agentName: agentNameFor(pendingTurn),
+          text: pendingStreaming ? '' : (pendingStatus === 'cancelled' ? '' : pendingError),
+          progressLines: [],
+          traceTimeline: [],
           status: pendingStatus,
-          createdAt: taskRuntimeState.pendingTask.createdAt,
-          completedAt: taskRuntimeState.pendingTask.completedAt,
-          images: Array.isArray(taskRuntimeState.pendingTask.imageAttachments)
-            ? taskRuntimeState.pendingTask.imageAttachments
-            : [],
+          streaming: pendingStreaming,
+          createdAt: pendingTurn.createdAt,
+          completedAt: pendingTurn.completedAt,
+          firstTokenAt: taskFirstStreamTimestamp(pendingTurn),
         });
-        if (pendingError || pendingStatus === 'failed' || pendingStatus === 'cancelled' || pendingStatus === 'running' || pendingStatus === 'queued') {
-          const pendingStreaming = isTaskLive(taskRuntimeState.pendingTask)
-            && !settled.has(String(taskRuntimeState.pendingTask.taskId || taskRuntimeState.pendingTask.id || ''));
-          rows.push({
-            id: `${taskRuntimeState.pendingTask.id || 'pending'}-agent`,
-            taskId: taskRuntimeState.pendingTask.id || '',
-            conversationId,
-            role: 'agent',
-            agentName: agentNameFor(taskRuntimeState.pendingTask),
-            text: pendingStreaming ? '' : (pendingStatus === 'cancelled' ? '' : pendingError),
-            progressLines: [],
-            traceTimeline: [],
-            status: pendingStatus,
-            streaming: pendingStreaming,
-            createdAt: taskRuntimeState.pendingTask.createdAt,
-            completedAt: taskRuntimeState.pendingTask.completedAt,
-            firstTokenAt: taskFirstStreamTimestamp(taskRuntimeState.pendingTask),
-          });
-        }
       }
     }
     return rows;
   }, [agentOptions, conversationId, currentConversation, settledRuntimeTaskIds, taskRuntimeState]);
+  // 会话正文还在路上：这份时间线是工作区快照搭的（只有标题和状态），会话详情和任务运行
+  // 记录都还没回来。这属于「整段会话在加载」，所以由会话面板在正中间整块占位（见
+  // chat/components/ChatPanel.jsx 的 loading），而不是在每一轮助手气泡里各转一个圈。
+  const conversationLoading = conversationContentLoading({
+    shellSeeded,
+    rowCount: chatMessages.length,
+    draft: Boolean(draftConversationRef.current),
+    error: conversationError,
+  });
   const lockedAgentId = currentConversation?.agentId
     || currentConversation?.tasks?.find((task) => task?.requestedAgentId)?.requestedAgentId
     || '';
@@ -1767,7 +1870,7 @@ export function AppShell() {
               onReorderConversations={handleReorderConversations}
               onReorderProjects={handleReorderProjects}
               onOpenTaskReport={handleOpenTaskReport}
-              onRetryTask={handleRetryTask}
+              onRetryTask={(task) => handleRetryTask(task, null, sidebarRetryRunConfig(task))}
             />
             {viewMode === 'chat' ? (
               <div className="app-chat-stage">
@@ -1778,6 +1881,7 @@ export function AppShell() {
 	                    onLoadEarlierTasks={loadEarlierTaskRuntimes}
 	                    composerScopeId={draftConversationRef.current?.composerScopeId || conversationId}
 	                    messages={chatMessages}
+	                    loading={conversationLoading}
 	                    running={currentConversationRunning}
 	                    disabled={composerDisabled}
 	                    submitPending={submitPending}
@@ -1804,12 +1908,14 @@ export function AppShell() {
 	                    onDraftChange={setChatDraft}
                     onForkMessage={handleForkMessage}
                     onEditMessage={(taskId, text, runConfig) => handleRetryTask(getTaskById(taskId, conversationId), text, runConfig)}
-                    onRetryTask={(taskId) => {
+                    onRetryTask={(taskId, runConfig) => {
                       const pendingTask = taskRuntimeState.pendingTask;
                       const pendingTaskId = pendingTask?.taskId || pendingTask?.id;
                       return handleRetryTask(
                         getTaskById(taskId, conversationId)
                         || (pendingTaskId === taskId ? pendingTask : null),
+                        null,
+                        runConfig,
                       );
                     }}
 		                  />

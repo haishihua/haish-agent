@@ -5,8 +5,16 @@
     min-height: 0;
     /* 面板统一的左右留白：消息列表的内边距和输入框的外边距共用这一个值。内联编辑框
        占满消息区域（见 shared/ui/agent-elements/edit-message.css），因此只要两者同
-       源，编辑框和输入框就永远等宽；改这里等于同时改两个。 */
-    --chat-gutter: 28px;
+       源，编辑框和输入框就永远等宽；改这里等于同时改两个。
+       28 → 16 → 10px：侧栏收窄后聊天区（消息 + 输入框）一路往左贴——面板左缘到正文
+       的距离 29 → 17 → 11px，正好落在左栏会话行那条 11px 文字列上（.conversation-row
+       的左内边距），右边距同源一起收，正文右缘仍落在输入框外框上（滚动条占位照扣）。
+       10px 是这条滚动条还占位时的下限：右内边距 = gutter − 10px，不能是负数；再往下
+       收就得先把 --chat-scrollbar-width 一起收窄。 */
+    --chat-gutter: 10px;
+    /* 消息列表那条常显滚动条的宽度（见 .chat-message-list 的 scrollbar-gutter 与
+       右内边距、以及会话内查找的命中条）：正文右缘要扣掉它才和输入框右缘对齐。 */
+    --chat-scrollbar-width: 10px;
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto;
     border: 1px solid rgba(176, 206, 255, 0.16);
@@ -67,8 +75,8 @@
 .haish-conversation-search-panel .haish-search-field:focus-within { border-color: #7798bd; }
 .haish-search-leading-icon { flex-shrink: 0; }
 .haish-search-count { flex-shrink: 0; white-space: nowrap; font: 12px var(--conversation-font); }
-.conversations-body, .chat-message-list { scrollbar-width: none; }
-.conversations-body::-webkit-scrollbar, .chat-message-list::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.conversations-body { scrollbar-width: none; }
+.conversations-body::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .haish-conversation-search-panel p, .haish-search-match-preview { margin: 0; padding: 12px 14px; border: 0; border-radius: 14px; background: #292929; color: #acbbce; font: 13px/1.5 var(--conversation-font); overflow-wrap: anywhere; text-align: left; }
 .haish-search-match-preview { cursor: pointer; }
 .haish-search-match-preview:hover { background: #3a3a3a; }
@@ -77,7 +85,7 @@
 .chat-message-list.is-searching .chat-message-row { content-visibility: visible; }
 ::highlight(conversation-matches) { background-color: #efbf64; color: #241b0e; }
 ::highlight(conversation-active-match) { background-color: #ff9f32; color: #241b0e; }
-.haish-search-hit-track { position: absolute; right: 2px; top: 12px; bottom: 12px; width: 10px; border-radius: 5px; background: rgba(166, 181, 202, 0.08); }
+.haish-search-hit-track { position: absolute; right: calc(var(--chat-scrollbar-width, 10px) + 2px); top: 12px; bottom: 12px; width: 10px; border-radius: 5px; background: rgba(166, 181, 202, 0.08); }
 .haish-search-hit-marker { position: absolute; left: 0; width: 100%; height: 8px; padding: 0; transform: translateY(-50%); border: 0; background: transparent; cursor: pointer; }
 .haish-search-hit-marker::before { content: ''; position: absolute; left: 2px; right: 2px; top: 2px; height: 4px; border-radius: 2px; background: rgba(239, 191, 100, 0.55); }
 .haish-search-hit-marker.is-active { z-index: 1; }
@@ -145,7 +153,7 @@
 
 .chat-message-list {
     min-height: 0;
-    padding: 24px var(--chat-gutter, 28px);
+    padding: 24px var(--chat-gutter, 10px);
     overflow-y: auto;
     overflow-x: hidden;
     display: flex;
@@ -155,13 +163,51 @@
     radial-gradient(circle at 18% 6%, rgba(77, 141, 246, 0.08), transparent 30%);
 }
 
-.chat-message-list::-webkit-scrollbar {
-    width: 6px;
+/* 会话详情（工作流详情面板也在用 .chat-message-list，但它没有 .chat-message-region）：
+   滚动条常驻占位（scrollbar-gutter: stable，短会话也不跳），右内边距再把这 10px 扣回去
+   （gutter 收到 10px 时正好扣成 0），正文右缘（含右对齐的用户气泡）才和下方输入框外框
+   右缘对齐——--chat-gutter 的约定。 */
+.chat-message-region > .chat-message-list {
+    padding: 24px calc(var(--chat-gutter, 10px) - var(--chat-scrollbar-width, 10px)) 24px var(--chat-gutter, 10px);
+    scrollbar-gutter: stable;
 }
 
-.chat-message-list::-webkit-scrollbar-thumb {
-    background: var(--line-2);
-    border-radius: 3px;
+/* 会话详情的滚动条：常显、可直接拖，滑块长度按「视口/内容」比例由浏览器算（内容越长
+   滑块越短，自适应）。::-webkit-scrollbar 一旦被样式化，macOS 上就不再走那个滚动时才
+   现身、又会自己淡出的浮层滚动条——这正是「滚动的时候要能看到、能拖」的判据。
+   只作用在会话详情：工作流详情那条列表有自己的细滚动条（workflow-runtime.css 里
+   scrollbar-width/color 一旦不是 auto，::-webkit-scrollbar 在这条上本来也不会生效）。 */
+.chat-message-region > .chat-message-list::-webkit-scrollbar {
+    width: var(--chat-scrollbar-width, 10px);
+}
+
+.chat-message-region > .chat-message-list::-webkit-scrollbar-track,
+.chat-message-region > .chat-message-list::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+.chat-message-region > .chat-message-list::-webkit-scrollbar-thumb {
+    /* 滑块长度由浏览器按「视口/内容」比例算（内容越长越短、会话越短越长），这里只兜一个
+       下限，会话再长也还抓得住——和工具卡片详情那条滚动条（tool-elements.css）同一套。 */
+    min-height: 28px;
+    border: 2px solid transparent;
+    border-radius: 99px;
+    /* 带兜底值：只引 chat.css 的页（部分夹具）里 --line-2 不存在，
+       不带兜底会让整条 background 失效、滑块透明——占位在、却看不见。 */
+    background: var(--line-2, #3a4463);
+    background-clip: padding-box;
+}
+
+.chat-message-region > .chat-message-list::-webkit-scrollbar-thumb:active {
+    background: rgba(159, 177, 205, 0.6);
+    background-clip: padding-box;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .chat-message-region > .chat-message-list::-webkit-scrollbar-thumb:hover {
+        background: rgba(159, 177, 205, 0.45);
+        background-clip: padding-box;
+    }
 }
 
 /* Hint that the conversation holds older turns whose execution records load
@@ -183,6 +229,65 @@
     color: var(--gold);
     font: inherit;
     cursor: pointer;
+}
+
+/* 首屏只渲染最近若干行（窗口见 features/chat/model/chat-row-window.js）：这行既是提示，
+   也是给键盘用户的补页入口。 */
+.chat-earlier-rows {
+    align-self: center;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+    color: var(--dim);
+    font: 12px var(--conversation-font);
+    letter-spacing: 0.01em;
+}
+
+.chat-earlier-rows button {
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    transition: color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .chat-earlier-rows button:hover {
+        color: var(--ink);
+    }
+}
+
+.chat-earlier-rows button:active {
+    color: var(--ink);
+}
+
+.chat-earlier-rows button:focus-visible {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 32%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-earlier-rows button { transition: none; }
+}
+
+/* 一个会话的行组（见 ChatPanel 的 keptGroup）：离开的会话那组带着 hidden 留在原地，
+   DOM 与已解析的正文都还在，切回来直接复用。可见时必须和窗口化之前完全同形：
+   列表是 flex 列 + 15px 间距，组内照抄同一套；隐藏时真正不占位。 */
+.chat-row-group {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    min-width: 0;
+}
+
+.chat-row-group[hidden] {
+    display: none;
 }
 
 .chat-empty {
@@ -456,6 +561,15 @@
     max-width: min(960px, 82%);
     background: linear-gradient(180deg, rgb(28, 37, 54), rgb(18, 25, 39));
     border-color: rgba(138, 166, 209, 0.28);
+}
+
+/* 带表格的消息不套用气泡的固定宽度上限（用户 680 / 助手 960）：表格是二维内容，被
+   压进固定宽度后列宽不再反映内容——长路径折成两行，列多的表还要横向滚动才看得全。
+   放宽到整条消息列宽，表格仍然待在气泡里；真的比列宽还宽时，才由表格自己的横向
+   滚动兜底（见 styles/markdown.css 的表格规则）。 */
+.chat-message-row .chat-bubble:has([data-streamdown="table-wrapper"]),
+.chat-message-row.agent .chat-bubble:has([data-streamdown="table-wrapper"]) {
+    max-width: 100%;
 }
 
 .chat-bubble.failed {
@@ -1391,9 +1505,18 @@
     word-break: break-word;
 }
 
+/* 会话刚打开、正文还没到时的占位（判据见 features/chat/model/conversation-loading.js）：
+   整段会话在消息区正中间用一颗和设置页同源的 assistant-ui Elements Loader（点阵在上、
+   label 在下）占位，行等正文到了再一次性铺开。`margin: auto` 让它在消息列的剩余空间里
+   居中（水平 + 垂直），Loader 自身的形状 / 字体 / 节奏不动。 */
+.chat-conversation-loading {
+    margin: auto;
+    padding: 24px 0;
+}
+
 .chat-composer {
     position: relative;
-    margin: 0 var(--chat-gutter, 28px) 16px;
+    margin: 0 var(--chat-gutter, 10px) 16px;
     min-height: 100px;
     display: grid;
     grid-template-columns: minmax(0, 1fr);

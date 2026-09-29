@@ -5,12 +5,10 @@ import { createDeployHandlers } from '../../../src/features/tasks/hooks/createDe
 
 globalThis.window = {};
 const { createPendingTaskDraft } = await import('../../../src/features/tasks/model/task-runtime.js');
-const { createConversationHandlers } = await import('../../../src/features/conversations/hooks/createConversationHandlers.js');
 
-test('retry after image upload failure uploads again and starts the same conversation', async () => {
+test('image upload failure is model-visible but does not trigger frontend recovery', async () => {
   const conversationId = 'existing-conversation';
   const imageFile = new File(['image'], 'test.png', { type: 'image/png' });
-  const uploadedImage = { image_id: 'uploaded-image', path: 'test.png', mime: 'image/png' };
   const runtime = { taskRuntimeState: { tasksById: {}, taskOrder: [], pendingTask: null } };
   const uploads = [];
   const executions = [];
@@ -33,7 +31,7 @@ test('retry after image upload failure uploads again and starts the same convers
     uploadChatImage: async (file, _signal, target) => {
       uploads.push({ file, target });
       if (uploads.length === 1) throw new Error('Image upload failed');
-      return uploadedImage;
+      return { image_id: 'uploaded-image', path: 'test.png', mime: 'image/png' };
     },
     executeQuest: async (task, target) => { executions.push({ task, target }); },
     showToast: noop,
@@ -44,24 +42,16 @@ test('retry after image upload failure uploads again and starts the same convers
   ], 'agent', 'provider');
   deploy.startDeploy(request, conversationId);
   await setImmediate();
-  const failedTask = runtime.taskRuntimeState.pendingTask;
-  assert.equal(failedTask.status, 'failed');
+  const continuedTask = runtime.taskRuntimeState.pendingTask;
+  assert.equal(continuedTask.status, 'queued');
   assert.equal(runtime.busy, false);
-  assert.equal(executions.length, 0);
-
-  const { handleRetryTask } = createConversationHandlers({
-    ...context,
-    buildDeployRequest: deploy.buildDeployRequest,
-    canStartDeployForConversation: deploy.canStartDeployForConversation,
-    startDeploy: deploy.startDeploy,
-    setViewMode: noop,
-  });
-  await handleRetryTask(failedTask);
-  await setImmediate();
-  assert.equal(uploads.length, 2, 'retry must upload the retained file again');
-  assert.ok(uploads.every(({ file, target }) => file === imageFile && target === conversationId));
+  assert.equal(uploads.length, 1);
+  assert.equal(uploads[0].file, imageFile);
+  assert.equal(uploads[0].target, conversationId);
   assert.equal(executions.length, 1);
   assert.equal(executions[0].target, conversationId);
   assert.equal(executions[0].task.conversationId, conversationId);
-  assert.deepEqual(executions[0].task.imageAttachments, [{ ...uploadedImage, previewUrl: 'blob:test' }]);
+  assert.deepEqual(executions[0].task.imageAttachments, []);
+  assert.match(executions[0].task.requestText, /image could not be uploaded: test\.png/);
+  assert.match(executions[0].task.requestText, /No pixels were sent/);
 });

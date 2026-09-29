@@ -202,6 +202,28 @@ export function resolveRunConfigSelection(storageKey, providerOptions, agentOpti
   };
 }
 
+/**
+ * 该会话（或该模式）真正存过的选择 → 可直接发给后端的 run config。
+ *
+ * 与 `resolveRunConfigSelection` 的区别：这里不做「回落到第一个 provider / owner 最近
+ * 一次选择」的兜底——侧边栏重跑没有输入框，只有用户确实在这个会话里选过才带覆盖，
+ * 否则返回 null，让调用方沿用来源 Task 的原请求参数。
+ */
+export function storedRunConfigRequest(storageKey, providerOptions) {
+  const stored = safeReadRunConfigSelection(storageKey);
+  if (!stored?.providerId || !stored.modelId) return null;
+  const provider = (providerOptions || []).find((item) => item.id === stored.providerId);
+  const request = String(provider?.requestProvider || provider?.provider || '').trim();
+  if (!request) return null;
+  return {
+    provider: request,
+    modelId: stored.modelId,
+    reasoningEffort: REASONING_EFFORT_OPTIONS.some((item) => item.id === stored.reasoningEffort)
+      ? stored.reasoningEffort
+      : DEFAULT_REASONING_EFFORT,
+  };
+}
+
 export function usePersistentRunConfig({ selectionStorageKey, providerOptions, agentOptions, defaultAgentId }) {
   const [selection, setSelection] = React.useState(() => resolveRunConfigSelection(
     selectionStorageKey,

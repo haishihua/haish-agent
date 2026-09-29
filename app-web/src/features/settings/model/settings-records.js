@@ -31,6 +31,8 @@ export const QDRANT_DISTANCE_OPTIONS = [
   { id: 'dot', label: 'Dot' },
 ];
 const LEGACY_DEFAULT_QDRANT_COLLECTION = 'haish_rag_default';
+// 后端已移除、前端跟着下线的工具记录：老草稿里可能还留着，装载时丢掉。
+const RETIRED_TOOLS_RECORD_IDS = new Set(['tools-jev']);
 export const WEB_SEARCH_PROVIDER_OPTIONS = [
   { id: 'tavily', label: 'Tavily', keyLabel: 'Tavily API Key' },
   { id: 'serpapi', label: 'SerpApi', keyLabel: 'SerpApi API Key' },
@@ -107,12 +109,12 @@ export function loadSettingsRecordsDraft() {
     if (!raw) return fallback;
     const stored = JSON.parse(raw);
     return Object.fromEntries(
-      Object.entries(fallback).map(([section, records]) => [
-        section,
-        section === 'memory'
-          ? mergeKnownDefaultRecords(records, stored?.[section])
-          : mergeDefaultRecords(records, stored?.[section]),
-      ]),
+      Object.entries(fallback).map(([section, records]) => {
+        if (section === 'memory') return [section, mergeKnownDefaultRecords(records, stored?.[section])];
+        const merged = mergeDefaultRecords(records, stored?.[section]);
+        // 已下线的记录（Tools → Jev）不进草稿：老草稿里存过的密钥也跟着一起丢掉。
+        return [section, section === 'tools' ? merged.filter((record) => !RETIRED_TOOLS_RECORD_IDS.has(record?.id)) : merged];
+      }),
     );
   } catch {
     return fallback;

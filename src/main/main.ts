@@ -566,6 +566,24 @@ ipcMain.handle('remote-control:save-settings', async (_event, settings: RemoteSe
   const saved = writeRemoteSettings(app.getPath('userData'), settings);
   return restartRemoteAdapter(runtimePaths(), saved);
 });
+ipcMain.handle('conversation-reads:get', async (): Promise<Record<string, number>> => {
+  const payload = await remoteAdapterJson<{ seen_at?: Record<string, number> }>('/remote/conversation-reads');
+  return payload.seen_at || {};
+});
+ipcMain.handle('conversation-reads:mark', async (_event, conversationId: string, seenAtMs: number): Promise<number> => {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(conversationId)) throw new Error('Invalid conversation ID.');
+  const timestamp = Math.round(Number(seenAtMs));
+  if (!Number.isSafeInteger(timestamp) || timestamp <= 0) throw new Error('Invalid conversation read timestamp.');
+  const payload = await remoteAdapterJson<{ seen_at_ms: number }>(
+    `/remote/conversation-reads/${encodeURIComponent(conversationId)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seen_at_ms: timestamp }),
+    },
+  );
+  return payload.seen_at_ms;
+});
 ipcMain.handle('dock:notify-task-complete', (event): boolean => {
   return requestDockAttention(BrowserWindow.fromWebContents(event.sender));
 });

@@ -138,40 +138,77 @@
   .haish-job-progress-track > span { transition: none; }
 }
 
+/* 更新入口（有新版本 / 还能重试安装）：页脚里唯一的按钮，边框 + 底色 */
 .app-update-button {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
     width: 100%;
-    padding: 9px 10px;
+    height: 34px;
+    padding: 0 10px;
     border-radius: 8px;
     border: 1px solid rgba(176, 206, 255, 0.12);
     background: rgba(12, 18, 30, 0.55);
     color: rgba(220, 230, 248, 0.88);
-    font: 600 12px/1.2 ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    /* 字体跟应用正文（--conversation-font）同一套：这行跟它的悬浮说明、左栏列表是同一个字体。
+       过去这里单写过一套系统字体栈，悬停时说明和状态行摆在一起就是「两个字体」。 */
+    font: 500 12px/1.2 var(--conversation-font);
+    /* 版本号（v0.0.23）在两种形态间切换时数字不跳 */
+    font-variant-numeric: tabular-nums;
     cursor: pointer;
+    transition: background-color 150ms ease-out, border-color 150ms ease-out,
+        color 150ms ease-out, transform 120ms ease-out;
 }
 
-.app-update-button:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.05);
+.app-update-button > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.app-update-button:disabled {
-    opacity: 0.62;
+/* 弱提示（已是最新 / 开发版 / 还没查过）：盒子还在（跟入口按钮同一圈边框），只是没有底色、
+   字也压暗——它是状态，不是按钮；文字在页脚里居中（贴左边会被看成一枚没做完的按钮）。
+   和上面的按钮同一个高度，来回切换时上面的对话列表不跳。 */
+.app-update-button.is-quiet {
+    justify-content: center;
+    gap: 7px;
+    background: transparent;
+    color: rgba(195, 205, 225, 0.62);
+    font-weight: 500;
     cursor: default;
 }
 
-.app-update-button.is-ready {
-    color: rgba(122, 214, 170, 0.96);
+.app-update-button.is-quiet[data-actionable='true'] {
+    cursor: pointer;
+}
+
+.app-update-button[aria-disabled='true'] {
+    cursor: default;
+}
+
+.app-update-button[data-actionable='true']:active {
+    transform: scale(0.985);
+}
+
+.app-update-button:focus-visible {
+    box-shadow: 0 0 0 1px rgba(105, 200, 246, 0.55);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .app-update-button:not(.is-quiet):hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .app-update-button.is-quiet[data-actionable='true']:hover {
+        background: rgba(255, 255, 255, 0.04);
+        color: rgba(220, 230, 248, 0.86);
+    }
 }
 
 .app-update-button.is-error {
     color: rgba(255, 160, 140, 0.96);
-}
-
-.app-update-button.is-muted {
-    color: rgba(195, 205, 225, 0.72);
 }
 
 .update-icon {
@@ -181,6 +218,14 @@
     display: block;
     opacity: 0.92;
     transform-origin: center;
+}
+
+/* 弱提示行里只有「Checking…」会带一颗小转圈，比按钮上的图标小一号 */
+.app-update-button.is-quiet .update-icon {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    opacity: 0.8;
 }
 
 .update-icon.is-loading {
@@ -197,6 +242,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .app-update-button {
+        transition: none;
+    }
+
     .update-icon.is-loading {
         animation: none;
     }
@@ -205,12 +254,18 @@
 .app-body {
     position: relative;
     display: grid;
-    /* 左栏（Conversation 面板）整体收窄 28px：让面板右边框落在
-       会话高亮框右边界的位置（高亮右边界到面板右缘的距离），聊天主界面随之变大 */
-    grid-template-columns: clamp(252px, calc(18vw - 28px), 332px) minmax(320px, 1fr) clamp(340px, 21vw, 420px);
+    /* 左栏（Conversation 面板）：先收窄 28px 让面板右边框落在会话高亮框右边界的位置，
+       再分两步整体收窄（252 → 238 → 210）：表头同步贴左（左内边距 11px → 3px）、
+       右内边距 18 → 8、组间距 18 → 8，图标底板与两个按钮 34 → 30px，
+       表头一整行最少只要 ~209px——210px 时表头仍然一行放得下
+       （浏览器夹具 sidebar-density.html 有「210px 表头不溢出」的断言）。 */
+    grid-template-columns: clamp(210px, calc(18vw - 78px), 300px) minmax(320px, 1fr) clamp(340px, 21vw, 420px);
     min-height: 0;
     overflow: hidden;
-    gap: 8px;
+    /* 面板之间只留一条发丝缝（2px）：不是 0（两块面板的边框会贴成一条线、像一块板），
+       也不是原来的 8px（那条宽缝太显眼）。缝里露出的是 .app-body 自己的底（比两侧面板
+       都暗），正好当那条分隔线用。正文左缘到左栏边框 = 2（缝）+ 1（边框）+ --chat-gutter。 */
+    gap: 2px;
     padding: 4px 8px 10px;
 }
 
@@ -962,6 +1017,7 @@
 }
 
 .settings-tools-form .settings-field,
+.settings-tool-form-actions,
 .settings-tool-status,
 .settings-skills-toolbar,
 .settings-provider-list,
@@ -972,6 +1028,13 @@
 
 .settings-provider-toolbar {
     padding: 0;
+}
+
+.settings-tool-form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
 }
 
 .settings-inline-success {
@@ -1112,6 +1175,7 @@
     overflow: hidden;
 }
 
+/* 工具条只在“能改内容 / 能保存”时才渲染（系统预设没有）：没有它时画布直接占满整格。 */
 .workflow-builder:not(:has(.workflow-toolbar)) {
     grid-template-rows: minmax(0, 1fr);
 }
@@ -1124,13 +1188,6 @@
     justify-content: space-between;
     gap: 14px;
     border-bottom: 1px solid rgba(176, 206, 255, 0.1);
-}
-
-.workflow-toolbar strong {
-    display: block;
-    color: rgba(246, 248, 255, 0.95);
-    font-size: 14px;
-    font-weight: 750;
 }
 
 .workflow-toolbar span {
@@ -1345,34 +1402,47 @@
 }
 
 /* 系统预设的排布工具：内容不能改，但节点可以自由拖——放手即存（排布存在本机），运行页读同一份。
-   左边是说明，右边是「Layout saved」和重置排布；状态占固定宽度，出现/消失不推挤按钮。 */
-.workflow-layout-note {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-
-.workflow-layout-tools {
-    gap: 10px;
-}
-
-.workflow-toolbar .workflow-layout-status {
+   以前这里是工具条右端的一条「Layout saved」；工具条上那行 Layout 说明删掉后
+   工具条整条收掉了，反馈改挂画布右上角——缩在缩放控件左边，只淡入淡出、不吃指针。 */
+.workflow-canvas > .workflow-layout-status {
+    position: absolute;
+    top: 22px;
+    right: 56px;
+    z-index: 6;
+    display: block;
     min-width: 78px;
-    margin-top: 0;
+    pointer-events: none;
+    color: rgba(195, 205, 225, 0.58);
+    font-size: 11px;
+    font-weight: 650;
     text-align: right;
+    white-space: nowrap;
     opacity: 0;
     transition: opacity 160ms ease-out;
 }
 
-.workflow-toolbar .workflow-layout-status.is-visible {
+.workflow-canvas > .workflow-layout-status.is-visible {
     opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .workflow-toolbar .workflow-layout-status {
+    .workflow-canvas > .workflow-layout-status {
         transition: none;
     }
+}
+
+.settings-workflow-form,
+.workflow-canvas {
+    /* Shared palette for canvas nodes, edges and node details. */
+    --workflow-canvas-font: var(--conversation-font);
+    --workflow-accent-start: #24dd98;
+    --workflow-accent-agent: #389dff;
+    --workflow-accent-llm: #9299ff;
+    --workflow-accent-tool: #65d4ba;
+    --workflow-accent-condition: #b570ff;
+    --workflow-accent-human_approval: #b494ff;
+    --workflow-accent-loop: #35deec;
+    --workflow-accent-output: #bf79ff;
 }
 
 .workflow-canvas {
@@ -1380,8 +1450,12 @@
     min-height: 0;
     position: relative;
     overflow: hidden;
+    /* 画布底板：深蓝黑（#07101c → #091321）+ 两团极淡的 radial（左上蓝、右下紫），
+       只给空间感、不抢节点；上面的 dot grid 由页面里的 <Background> 画。 */
     background:
-        linear-gradient(180deg, rgba(10, 16, 26, 0.18), rgba(8, 12, 20, 0.08));
+        radial-gradient(ellipse at 15% 35%, rgba(22, 87, 92, 0.055), transparent 52%),
+        radial-gradient(ellipse at 85% 70%, rgba(84, 49, 136, 0.045), transparent 52%),
+        linear-gradient(180deg, #0a1119, #0b121b);
 }
 
 .workflow-canvas::after {
@@ -1412,22 +1486,44 @@
     background-color: transparent;
 }
 
-/* 边的外观只有这一套（配置页 + 运行页）：平时是一条中性细线（颜色/线宽由
-   WorkflowFlowNode.workflowEdgeAppearance 给，两页同一份），「正在走」的那条换成运行蓝、
-   加粗，外圈软光 + 沿线流动的亮斑（下面几条规则）。不画标签、不画箭头、不打虚线。 */
+/* 边的外观只有这一套（配置页 + 运行页）：角色配色（主流程/支路/回环/收尾）与线宽/虚线由
+   WorkflowFlowNode.workflowEdgeAppearance 给，两页同一份；画法只有 WorkflowCanvasEdge 一份——
+   core line + 外层很淡的 glow（同一条 path、更粗更淡、只 blur 它自己），核心线永远清晰；
+   「正在走」的那条再多一道沿线流动的亮斑。小箭头只出现在回路/支路，标签同样只在回路/支路。 */
 .workflow-canvas .react-flow__edge .react-flow__edge-path {
     stroke-linecap: round;
     stroke-linejoin: round;
-    transition: stroke-width 140ms ease, stroke-opacity 140ms ease;
+    transition: stroke 140ms ease, stroke-width 140ms ease, stroke-opacity 140ms ease;
 }
 
-.workflow-canvas .react-flow__edge.is-flowing .react-flow__edge-path {
-    filter: drop-shadow(0 0 3px rgba(140, 200, 255, 0.32));
+/* 外层 glow：5px 的模糊只作用在这一层上，所以核心线不会被糊掉。 */
+.workflow-canvas .workflow-edge-glow {
+    filter: blur(3px);
+    transition: stroke-opacity 160ms ease;
 }
 
 .workflow-canvas .workflow-edge-spark {
     stroke-dasharray: 24 220;
     animation: workflow-edge-spark 1.6s linear infinite;
+}
+
+/* 回路/支路上的标签：一枚小 pill（深蓝灰底、1px 半透明描边、轻微阴影），摆在 path 中点那块
+   空白处；不吃鼠标事件（点它仍然等于点那条边）。 */
+.workflow-canvas .workflow-edge-label {
+    position: absolute;
+    z-index: 1;
+    padding: 5px 12px;
+    border: 1px solid rgba(118, 141, 222, 0.38);
+    border-radius: 999px;
+    background: rgba(18, 26, 44, 0.96);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    color: #b9c9f2;
+    font-family: var(--workflow-canvas-font);
+    font-size: 11.5px;
+    font-weight: 400;
+    line-height: 1.35;
+    white-space: nowrap;
+    pointer-events: none;
 }
 
 @keyframes workflow-edge-spark {
@@ -1436,19 +1532,20 @@
 
 @media (prefers-reduced-motion: reduce) {
     .workflow-canvas .react-flow__edge.animated path,
-    .workflow-canvas .react-flow__edge.is-flowing .react-flow__edge-path,
     .workflow-canvas .workflow-edge-spark {
         animation: none;
     }
 
-    .workflow-flow-node .react-flow__handle {
+    .workflow-flow-node .react-flow__handle,
+    .workflow-canvas .workflow-edge-glow {
         transition: none;
     }
 }
 
 .workflow-canvas .react-flow__connection-path {
-    stroke: rgba(105, 200, 246, 0.5);
-    stroke-width: 1.5;
+    stroke: rgba(105, 200, 246, 0.55);
+    stroke-width: 1.6;
+    stroke-dasharray: 6 6;
 }
 
 .workflow-canvas .react-flow__controls {
@@ -1470,12 +1567,26 @@
     color: rgba(235, 240, 252, 0.88);
 }
 
-.workflow-canvas .react-flow__controls-button:hover {
-    background: rgba(176, 206, 255, 0.12);
+@media (hover: hover) and (pointer: fine) {
+    .workflow-canvas .react-flow__controls-button:not(:disabled):hover {
+        background: rgba(176, 206, 255, 0.12);
+    }
+}
+
+.workflow-canvas .react-flow__controls-button:not(:disabled):active {
+    background: rgba(176, 206, 255, 0.2);
+}
+
+.workflow-canvas .react-flow__controls-button:focus-visible {
+    box-shadow: inset 0 0 0 2px rgba(105, 200, 246, 0.7);
 }
 
 .workflow-canvas .react-flow__controls-button svg {
     fill: currentColor;
+}
+
+.workflow-canvas .workflow-controls-reset svg {
+    fill: none;
 }
 
 .workflow-canvas .react-flow__minimap {
@@ -1498,51 +1609,57 @@
 }
 
 .workflow-flow-node {
-    font-family: var(--conversation-font);
+    font-family: var(--workflow-canvas-font);
     width: max-content;
-    min-width: 128px;
-    max-width: 320px;
+    min-width: 160px;
+    max-width: 288px;
     box-sizing: border-box;
-    height: 72px;
-    --node-type-accent: #68aeff;
+    height: 64px;
+    --node-type-accent: var(--workflow-accent-agent);
+    /* 卡片自己的主题色：配置页 = 类型色；运行页由 status-* 覆盖。描边/柔光/连接点/底渐变都读这一个，
+       所以运行页的节点连把手一起换成状态色，两页共用同一份规则。 */
+    --node-accent: var(--node-type-accent);
     position: relative;
     display: grid;
     grid-template-columns: 36px minmax(0, 1fr);
     align-items: center;
     gap: 12px;
-    padding: 12px 14px;
-    border: 1px solid rgba(176, 206, 255, 0.2);
-    border-radius: 16px;
+    padding: 10px 14px;
+    /* 深色半透明底 + 蓝黑渐变（左上角带一点主题色），1.5px 主题色描边 + 一圈很轻的外光：
+       默认状态不刺眼，hover/选中再加强。 */
+    border: 1.5px solid var(--node-accent);
+    border-radius: 14px;
     background:
-        linear-gradient(180deg, rgba(24, 34, 52, 0.96), rgba(12, 18, 30, 0.96));
+        radial-gradient(100% 180% at 0% 0%, color-mix(in srgb, var(--node-accent) 10%, transparent), transparent 70%),
+        linear-gradient(180deg, color-mix(in srgb, var(--node-accent) 18%, #0b1220), color-mix(in srgb, var(--node-accent) 7%, #090f19));
     color: rgba(235, 240, 252, 0.92);
     text-align: left;
     box-shadow:
-        0 14px 28px rgba(0, 0, 0, 0.24),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        0 8px 20px rgba(0, 0, 0, 0.24),
+        0 0 24px color-mix(in srgb, var(--node-accent) 14%, transparent),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
     transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
-/* 节点类型色只有这一份：配置页的图标和运行页的完成态都从这里取色。 */
-.workflow-flow-node.agent { --node-type-accent: #68aeff; }
-.workflow-flow-node.start { --node-type-accent: #55d6a0; }
-.workflow-flow-node.llm { --node-type-accent: #9299ff; }
-.workflow-flow-node.tool { --node-type-accent: #65d4ba; }
-.workflow-flow-node.condition { --node-type-accent: #9299ff; }
-.workflow-flow-node.human_approval { --node-type-accent: #b494ff; }
-.workflow-flow-node.loop { --node-type-accent: #56cbd4; }
-.workflow-flow-node.output { --node-type-accent: #bf90f5; }
+/* 节点类型色只有这一份：配置页的描边/图标和运行页的完成态都从这里取色，
+   连线渐变（WorkflowFlowNode.workflowEdgeAppearance）也引用同一批变量。 */
+.workflow-flow-node.agent { --node-type-accent: var(--workflow-accent-agent); }
+.workflow-flow-node.start { --node-type-accent: var(--workflow-accent-start); }
+.workflow-flow-node.llm { --node-type-accent: var(--workflow-accent-llm); }
+.workflow-flow-node.tool { --node-type-accent: var(--workflow-accent-tool); }
+.workflow-flow-node.condition { --node-type-accent: var(--workflow-accent-condition); }
+.workflow-flow-node.human_approval { --node-type-accent: var(--workflow-accent-human_approval); }
+.workflow-flow-node.loop { --node-type-accent: var(--workflow-accent-loop); }
+.workflow-flow-node.output { --node-type-accent: var(--workflow-accent-output); }
 
-/* 悬停/选中不再一律黄光：用节点自己的类型色（运行页有状态色的节点仍由状态色优先）。
-   高亮只有一层——卡片自己的描边换成类型色 + 一圈柔光；不再往外贴第二道边（过去的
-   0 0 0 1px 贴边环 + #aebdd3 外圈叠在描边上，看起来就是「两个框还要再套一层白框」）。 */
-.workflow-flow-node:hover,
+/* 悬停/选中用节点自己的主题色（运行页有状态色的节点仍由状态色优先），只加强这一层：
+   描边亮成 accent + 一圈更明显的柔光；默认态保持克制。 */
 .workflow-flow-node.active {
-    border-color: color-mix(in srgb, var(--node-type-accent) 62%, transparent);
+    border-color: color-mix(in srgb, var(--node-accent) 96%, transparent);
     box-shadow:
-        0 16px 34px rgba(0, 0, 0, 0.3),
-        0 0 18px color-mix(in srgb, var(--node-type-accent) 14%, transparent),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        0 16px 36px rgba(0, 0, 0, 0.36),
+        0 0 30px color-mix(in srgb, var(--node-accent) 38%, transparent),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .workflow-flow-node .workflow-flow-node-copy {
@@ -1552,7 +1669,7 @@
 .workflow-flow-node-copy small {
     font-size: 11px;
     line-height: 1.2;
-    color: #929fb5;
+    color: color-mix(in srgb, var(--node-accent) 38%, #b7c5e5);
     font-weight: 400;
 }
 
@@ -1575,10 +1692,11 @@
     justify-content: center;
     border-radius: 10px;
     border: 0;
-    background: color-mix(in srgb, var(--node-type-accent) 22%, transparent);
-    color: var(--node-type-accent);
+    background: linear-gradient(145deg, color-mix(in srgb, var(--node-accent) 54%, #102454), color-mix(in srgb, var(--node-accent) 36%, #102454));
+    color: color-mix(in srgb, var(--node-accent) 58%, #d4ffff);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
     flex: 0 0 auto;
-    transition: color 180ms ease, background 180ms ease;
+    transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
 
 .workflow-flow-node-copy {
@@ -1591,7 +1709,7 @@
     overflow: hidden;
     color: rgba(246, 248, 255, 0.96);
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1604,27 +1722,90 @@
     stroke-width: 0;
 }
 
-/* 连接点（把手）只有一套外观，配置页与运行页长得一模一样：一颗中性小圆点，平时收起，悬停/
-   选中该节点（或正在拉线）时才露出来；位置用 React Flow 默认（骑在卡片边上），不按节点类型/
-   分支上色。过去配置页常显 12px 大圆点、运行页 6px 收起，「边的端点」两页看起来就是两套。 */
+/* 连接点（把手）只有一套外观，配置页与运行页长得一模一样：一颗实心小圆点，颜色跟节点主题色
+   （--node-accent：配置页是类型色，运行页是状态色），外面一圈暗色细边 + 一点 glow；
+   悬停/选中该节点（或正在拉线）时稍微放大、光更强。位置用 React Flow 默认（骑在卡片边上）。 */
 .workflow-flow-node .react-flow__handle {
-    width: 6px;
-    height: 6px;
+    width: 9px;
+    height: 9px;
     min-width: 0;
     min-height: 0;
     border: 0;
-    background: rgba(169, 187, 211, 0.9);
-    box-shadow: none;
-    opacity: 0;
-    transition: opacity 160ms ease;
+    background: var(--node-accent);
+    box-shadow:
+        inset 0 0 0 1px rgba(220, 255, 255, 0.22),
+        0 0 10px color-mix(in srgb, var(--node-accent) 48%, transparent);
+    opacity: 1;
+    transition: width 160ms ease, height 160ms ease, box-shadow 160ms ease;
 }
 
-.workflow-flow-node:hover .react-flow__handle,
 .workflow-flow-node.active .react-flow__handle,
 .workflow-flow-node .react-flow__handle.connectingfrom,
 .workflow-flow-node .react-flow__handle.connectingto,
 .workflow-flow-node .react-flow__handle.clickconnecting {
+    width: 11px;
+    height: 11px;
+    box-shadow:
+        inset 0 0 0 1px rgba(220, 255, 255, 0.35),
+        0 0 16px color-mix(in srgb, var(--node-accent) 70%, transparent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .workflow-flow-node:hover {
+        border-color: color-mix(in srgb, var(--node-accent) 80%, white);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28), 0 0 28px color-mix(in srgb, var(--node-accent) 24%, transparent);
+    }
+}
+
+.workflow-canvas .react-flow__node-workflowNode:focus-visible .workflow-flow-node {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-accent) 30%, transparent);
+}
+
+.workflow-flow-node:active {
+    border-color: #d5efff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .workflow-flow-node,
+    .workflow-flow-node-icon,
+    .workflow-canvas .react-flow__edge .react-flow__edge-path {
+        transition: none;
+    }
+}
+
+.workflow-snap-guides {
+    position: absolute;
+    inset: 0;
+    width: 1px;
+    height: 1px;
+    overflow: visible;
+    pointer-events: none;
+}
+
+.workflow-snap-guides rect,
+.workflow-snap-guides line {
+    stroke: #91ceff;
+    stroke-width: 1;
+    stroke-dasharray: 5 4;
+    vector-effect: non-scaling-stroke;
+    fill: none;
+}
+
+.workflow-snap-guides rect { fill: rgba(104, 174, 255, 0.08); }
+
+.workflow-flow-node .workflow-side-handle {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.workflow-flow-node .workflow-side-handle.is-used { opacity: 1; }
+.workflow-flow-node.is-reconnecting .react-flow__handle:not(.workflow-side-handle) { pointer-events: none; }
+.workflow-flow-node .workflow-side-handle.is-available {
     opacity: 1;
+    pointer-events: auto;
+    width: 13px;
+    height: 13px;
+    box-shadow: 0 0 0 4px rgba(145, 206, 255, 0.22);
 }
 
 .workflow-node {
@@ -2524,6 +2705,17 @@
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* Workflow UI shares the application reading font, including native controls and
+   nested detail components. Override legacy font shorthands only in these surfaces;
+   runtime rendered code blocks keep their own code typography. */
+:is(.workflow-workbench, .settings-workflow-form, .workflow-run-layout) {
+    font-family: var(--conversation-font);
+}
+:is(.workflow-workbench, .settings-workflow-form, .workflow-run-layout)
+:is(button, input, textarea, select, label, span, strong, small, p, h1, h2, h3, h4, summary, .model-picker-menu, .workflow-layout-note):not(pre *, code *) {
+    font-family: var(--conversation-font) !important;
 }
 
 /* Settings typography: use the conversation reading font for navigation

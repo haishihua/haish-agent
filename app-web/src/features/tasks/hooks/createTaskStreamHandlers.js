@@ -826,6 +826,10 @@ export function createTaskStreamHandlers(ctx) {
 
     const controller = new AbortController();
     setRuntimeFetchController(controller, runConversationId);
+    // 校验收下、状态摆好、请求就要出手：这就是「发出去了」的确认点。全量重发
+    // （编辑 / 重跑）的调用方（时间线上那一行的编辑框）靠它立刻收工，不再等整段流；
+    // 运行过程中的失败由任务行与错误提示负责（见 tasks/model/quest-ack.js）。
+    streamRequest?.onAccepted?.();
     const waitForActiveTaskRelease = () => new Promise((resolve, reject) => {
       if (controller.signal.aborted) {
         reject(new DOMException('Aborted', 'AbortError'));

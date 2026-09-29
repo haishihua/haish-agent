@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MCP tools picker — 逐个工具勾选，没有「· all tools」那一行</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      background: #070b12;
+      color: #e7ecf6;
+      font: 13px system-ui;
+    }
+    h1 {
+      font-size: 14px;
+      margin: 10px 12px 4px;
+    }
+    p {
+      margin: 0 12px 10px;
+      color: #93a0b4;
+      font-size: 12px;
+    }
+    /* 真实设置壳：@scope (.settings-theme) 里的规则只在这个根下面生效。 */
+    #root .settings-page {
+      padding: 12px;
+    }
+    #root .settings-field-modern {
+      max-width: 520px;
+    }
+    #checks {
+      margin: 0 12px 16px;
+      padding: 10px;
+      background: #0b0e14;
+      color: #9fd8a4;
+      white-space: pre-wrap;
+      font:
+        11px/1.5 ui-monospace,
+        monospace;
+      border-radius: 8px;
+    }
+    #checks[data-result='FAIL'] {
+      color: #ff8b9d;
+    }
+  </style>
+  <h1>MCP tools — 服务器只作分组标题，工具逐个勾</h1>
+  <p>
+    生产 AgentConfigEditor + 真实 settings.css：列表里不再有「server · all
+    tools」开关；老档案留下的整台放行读的时候工具全亮，一动就落成逐条。
+  </p>
+  <pre id="checks" role="status">Running checks…</pre>
+  <div id="root"></div>
+  <script type="module" src="./mcp-tool-picker.jsx"></script>
+</html>

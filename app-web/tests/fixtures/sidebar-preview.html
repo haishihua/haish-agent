@@ -19,6 +19,7 @@
   window.addEventListener('unhandledrejection', (event) => { window.__pageErrors.push('rejection: ' + String(event.reason)); });
 </script>
 <p>生产 ConversationsPanel + ProjectNode + ConversationNode：8 个会话、其中第一个展开着 8 张任务卡。默认都只放 5 行，每点一次 “Show more” 再加 5 行，再点（“Show less”）收回默认预览；会话行与任务卡两份展开互不影响。</p>
+<p>任务标签页那份面板（workflowTaskMode）还挂了搜索框：搜任务、连预览藏起来的那些也搜得到，Enter / 点行都能跳到那只任务，搜索框右上角的 × 清空。检查分两段跑：<code>window.__sidebarPreviewChecks()</code> 验分页，<code>window.__sidebarTaskSearchChecks()</code> 验任务搜索。</p>
 <div id="root"></div>
 <pre id="checks" role="status">Running checks…</pre>
 <script type="module" src="./sidebar-preview.jsx"></script>

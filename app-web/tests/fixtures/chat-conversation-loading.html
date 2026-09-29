@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opening a conversation loads as one centered placeholder</title>
+<style>
+  html, body { margin: 0; background: #0a0f18; color: #e7ecf6; font: 13px system-ui; }
+  h1 { font-size: 14px; margin: 10px 12px 6px; }
+  #root { padding: 0 12px; }
+  #root .chat-workspace { height: 560px; }
+  #checks { margin: 12px; padding: 10px; background: #0b0e14; color: #9fd8a4; white-space: pre-wrap; font: 11px/1.5 ui-monospace, monospace; border-radius: 8px; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<h1>会话打开时的加载占位 — 整段会话在正中间一颗 Loader，正文到了才铺开行（真实 ChatPanel + chat.css）</h1>
+<div id="root"></div>
+<pre id="checks" role="status">Running checks…</pre>
+<script type="module" src="./chat-conversation-loading.jsx"></script>
+</html>

@@ -177,19 +177,12 @@
 .workflow-run-canvas .workflow-flow-node.status-failed,
 .workflow-run-canvas .workflow-flow-node.status-rejected { --node-accent: #ee7a91; }
 
-.workflow-run-canvas .workflow-flow-node.is-runtime .workflow-flow-node-icon {
-    background: color-mix(in srgb, var(--node-accent) 22%, transparent);
-    color: var(--node-accent);
-}
+/* 卡片的图标块（底色/发光）也只在 app-shell.css 里写一份——它读的就是 --node-accent，
+   运行页把 --node-accent 换成状态色即可，不再另写一套底色/字色。 */
 
-.workflow-run-canvas .workflow-flow-node.is-runtime.status-cancelled .workflow-flow-node-icon {
-    background: color-mix(in srgb, var(--node-accent) 18%, transparent);
-    color: var(--node-accent);
-}
-
-/* 连接点的外观不在这里改写：尺寸/颜色/「悬停或选中才露出来」只在 app-shell.css 里写一份，
-   两页共用——运行页再写一份就会和配置页长得不一样（过去运行页 6px 收起、配置页 12px 常显，
-   两页「边的端点」是两套）。 */
+/* 连接点的外观不在这里改写：尺寸/颜色（实心小圆点、跟着节点主题色）/发光只在 app-shell.css
+   里写一份，两页共用——运行页再写一份就会和配置页长得不一样（过去运行页 6px 收起、配置页
+   12px 常显，两页「边的端点」是两套）。 */
 
 .workflow-run-canvas .workflow-flow-node.is-runtime.has-runtime-detail {
     cursor: pointer;
@@ -201,8 +194,12 @@
 
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-running {
     border-color: var(--node-accent);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--node-accent) 12%, #182234), #101824);
-    box-shadow: 0 0 18px color-mix(in srgb, var(--node-accent) 16%, transparent);
+    background:
+        radial-gradient(120% 160% at 0% 0%, color-mix(in srgb, var(--node-accent) 24%, transparent), transparent 60%),
+        linear-gradient(180deg, color-mix(in srgb, var(--node-accent) 18%, rgba(16, 24, 40, 0.9)), rgba(9, 14, 25, 0.92));
+    box-shadow:
+        0 14px 30px rgba(0, 0, 0, 0.34),
+        0 0 28px color-mix(in srgb, var(--node-accent) 34%, transparent);
 }
 
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-approval,
@@ -223,15 +220,20 @@
 
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-done,
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-approved {
-    border-color: color-mix(in srgb, var(--node-accent) 60%, #293648);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--node-accent) 9%, #182234), #101824);
+    /* 完成态不再压暗整张卡；与配置页共用类型色、底色和描边。 */
+    border-color: var(--node-accent);
 }
 
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-failed,
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-rejected,
 .workflow-run-canvas .workflow-flow-node.is-runtime.status-cancelled {
     border-color: var(--node-accent);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--node-accent) 10%, #182234), #101824);
+    background:
+        radial-gradient(120% 160% at 0% 0%, color-mix(in srgb, var(--node-accent) 20%, transparent), transparent 60%),
+        linear-gradient(180deg, color-mix(in srgb, var(--node-accent) 16%, rgba(16, 24, 40, 0.9)), rgba(9, 14, 25, 0.92));
+    box-shadow:
+        0 14px 30px rgba(0, 0, 0, 0.34),
+        0 0 26px color-mix(in srgb, var(--node-accent) 30%, transparent);
 }
 
 .workflow-detail-panel {

@@ -51,8 +51,18 @@ test('the editor and the composer share one gutter, so they are always the same 
   // The value lives on the panel; the message list padding and the composer margin
   // both read it, so they cannot drift apart (they used to be 28px vs 22px).
   assert.match(chatStyles, /\.chat-workspace\s*\{[^}]*--chat-gutter:\s*\d+px/, 'the panel must declare the shared gutter');
-  assert.match(chatStyles, /\.chat-message-list\s*\{[^}]*padding:\s*24px var\(--chat-gutter, 28px\)/, 'the message list must use the shared gutter');
-  assert.match(chatStyles, /\.chat-composer\s*\{[^}]*margin:\s*0 var\(--chat-gutter, 28px\) 16px/, 'the composer must use the shared gutter');
+  // The list reserves a scrollbar strip on the right (scrollbar-gutter: stable), so the chat
+  // pane's box padding is the gutter minus that strip: the text still ends on the shared
+  // gutter, which is what keeps the editor (fills the row) and the composer (margin = gutter)
+  // equal. The base rule stays on the plain gutter for the workflow detail list (it does not
+  // reserve a strip and keeps its own padding).
+  assert.match(chatStyles, /\.chat-message-list\s*\{[^}]*padding:\s*24px var\(--chat-gutter, 10px\);/, 'the message list must use the shared gutter');
+  assert.match(
+    chatStyles,
+    /\.chat-message-region > \.chat-message-list\s*\{[^}]*padding:\s*24px calc\(var\(--chat-gutter, 10px\) - var\(--chat-scrollbar-width, 10px\)\) 24px var\(--chat-gutter, 10px\);/,
+    'the chat pane deducts the scrollbar strip it reserves, so the text still ends on the gutter',
+  );
+  assert.match(chatStyles, /\.chat-composer\s*\{[^}]*margin:\s*0 var\(--chat-gutter, 10px\) 16px/, 'the composer must use the shared gutter');
   // Proof that a second container exists and does not follow the chat gutters: that
   // is exactly why the editor must never be widened arithmetically.
   assert.match(

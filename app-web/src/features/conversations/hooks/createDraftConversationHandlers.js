@@ -24,6 +24,8 @@ export function createDraftConversationHandlers(ctx) {
     detachActiveRunFromCurrentConversation,
     draftConversationIdsRef,
     draftConversationRef,
+    draftFirstSendRef,
+    draftServerCreateRef,
     flushRuntimeTasksToWorkspace,
     generateHexId,
     getRuntime,
@@ -85,11 +87,42 @@ export function createDraftConversationHandlers(ctx) {
     draft.keepServerConversation = true;
   }
 
+  // 草稿上已经挂着一笔还没落地的首条发送（staged pendingTask / 正在跑 / 已经开了流）。
+  // 这时候 runtime 和空壳会话都不能回收：materialize 出来的真会话要认领这份 runtime，
+  // 回收掉首条消息就会撞上 "conversation runtime is missing"。
+  function draftConversationHasSendInFlight(conversationIdValue) {
+    if (!conversationIdValue) return false;
+    const runtime = runtimesRef.current.get(conversationIdValue);
+    if (!runtime) return false;
+    return Boolean(
+      runtime.taskRuntimeState?.pendingTask
+      || runtime.busy
+      || runtime.activeRunId,
+    );
+  }
+
+  // 首条发送的占用标记（一次只认一个草稿）：handleDeploy 用它挡住"第一条还在建
+  // 会话时又发第二条"，materialize 收尾（成功或失败）后释放。
+  function markDraftFirstSendInFlight(conversationIdValue) {
+    if (conversationIdValue) draftFirstSendRef.current = conversationIdValue;
+  }
+
+  function clearDraftFirstSendInFlight(conversationIdValue) {
+    if (!conversationIdValue || draftFirstSendRef.current === conversationIdValue) {
+      draftFirstSendRef.current = null;
+    }
+  }
+
+  function isDraftFirstSendInFlight(conversationIdValue) {
+    return Boolean(conversationIdValue && draftFirstSendRef.current === conversationIdValue);
+  }
+
   function clearDraftConversationState({ clearComposer = true } = {}) {
     const draft = draftConversationRef.current;
     const pendingDetail = pendingCreatedDetailRef.current;
     const keepServerConversation = Boolean(draft?.keepServerConversation);
-    if (draft?.id) {
+    const sendInFlight = draftConversationHasSendInFlight(draft?.id);
+    if (draft?.id && !sendInFlight) {
       runtimesRef.current.delete(draft.id);
     }
     // A draft that already forced a server create (document upload) holds its
@@ -105,7 +138,7 @@ export function createDraftConversationHandlers(ctx) {
     // after a later workspace refresh. 传过文件的会话不删（见上）。
     const pendingServerId = pendingDetail?.conversation_id
       || (draft?.serverCreated ? draft.id : null);
-    if (!keepServerConversation && pendingServerId && !String(pendingServerId).startsWith('draft-')) {
+    if (!keepServerConversation && !sendInFlight && pendingServerId && !String(pendingServerId).startsWith('draft-')) {
       apiFetch(`${API_BASE}/api/conversations/${encodeURIComponent(pendingServerId)}`, {
         method: 'DELETE',
       }).catch(() => {});
@@ -139,11 +172,14 @@ export function createDraftConversationHandlers(ctx) {
       detachActiveRunFromCurrentConversation();
     }
     // Drop any previous unsent draft so repeated "+" clicks do not leak runtimes.
-    if (previousDraftId) {
+    // 首条消息在途时例外：那一笔还要把这份 runtime 交给服务端真会话。
+    if (previousDraftId && !draftConversationHasSendInFlight(previousDraftId)) {
       runtimesRef.current.delete(previousDraftId);
     }
     draftConversationRef.current = null;
     pendingCreatedDetailRef.current = null;
+    // 新开一张空白对话：上一笔首条发送的占用标记到此为止。
+    draftFirstSendRef.current = null;
 
     // Stable per project: leaving the draft and opening a new conversation again
     // must land on the same id, or the unsent text stored under it is orphaned.
@@ -215,6 +251,13 @@ export function createDraftConversationHandlers(ctx) {
       return pendingCreatedDetailRef.current;
     }
 
+    // 同一个草稿只允许一次建会话：连按发送 / 选完文件立刻发送 / 排队重发可能同时
+    // 进来，第二次必须等第一次的结果。各建一条的话，多出来的那条没有 runtime
+    // （交接只会发生在这一条上），首条消息就会撞 "conversation runtime is missing"，
+    // 服务端还会多一条空会话。
+    const inFlight = draftServerCreateRef.current;
+    if (inFlight?.draftId === draft.id) return inFlight.request;
+
     // Already switched onto a real conversation id that belongs to this draft.
     if (conversationIdRef.current && conversationIdRef.current !== draft.id) {
       return null;
@@ -226,34 +269,48 @@ export function createDraftConversationHandlers(ctx) {
         workspacePath: draft.workspacePath,
         workspaceLabel: draft.workspaceLabel,
       };
-    const detail = await createConversationInProject(
-      project,
-      title || draft.name || DEFAULT_SESSION_NAME,
-      draft.executionMode || (viewModeRef.current === 'chat' ? 'chat' : 'bot'),
-    );
-    pendingCreatedDetailRef.current = detail;
+    const request = (async () => {
+      const detail = await createConversationInProject(
+        project,
+        title || draft.name || DEFAULT_SESSION_NAME,
+        draft.executionMode || (viewModeRef.current === 'chat' ? 'chat' : 'bot'),
+      );
+      pendingCreatedDetailRef.current = detail;
 
-    const previousDraftId = draft.id;
-    const realId = detail.conversation_id;
-    const previousRuntime = getRuntime(previousDraftId);
-    if (previousRuntime) {
-      runtimesRef.current.set(realId, previousRuntime);
-      runtimesRef.current.delete(previousDraftId);
+      const previousDraftId = draft.id;
+      const realId = detail.conversation_id;
+      // 交接是"补齐"而不是"搬走"：草稿 runtime 可能已经先被回收（切会话 / 再点 + /
+      // 404 收敛 / 上一次建会话的迟到回调），只在存在时搬会让真会话永远没有 runtime，
+      // 首条消息必然失败。真会话没有就补一块空的，有就整份接过来。
+      const previousRuntime = getRuntime(previousDraftId);
+      if (previousDraftId !== realId) {
+        const realRuntime = getRuntime(realId, { create: true });
+        if (previousRuntime && realRuntime) Object.assign(realRuntime, previousRuntime);
+        runtimesRef.current.delete(previousDraftId);
+      }
+
+      draftConversationRef.current = {
+        ...draft,
+        id: realId,
+        localDraftId: previousDraftId,
+        serverCreated: true,
+      };
+      rekeyChatDraft?.(previousDraftId, realId);
+      conversationIdRef.current = realId;
+      setConversationId(realId);
+      // Still withhold from storage/sidebar until the first user message is sent.
+      setStoredConversationId(null);
+      applyConversationSnapshot(detail);
+      return detail;
+    })();
+    draftServerCreateRef.current = { draftId: draft.id, request };
+    try {
+      return await request;
+    } finally {
+      if (draftServerCreateRef.current?.request === request) {
+        draftServerCreateRef.current = null;
+      }
     }
-
-    draftConversationRef.current = {
-      ...draft,
-      id: realId,
-      localDraftId: previousDraftId,
-      serverCreated: true,
-    };
-    rekeyChatDraft?.(previousDraftId, realId);
-    conversationIdRef.current = realId;
-    setConversationId(realId);
-    // Still withhold from storage/sidebar until the first user message is sent.
-    setStoredConversationId(null);
-    applyConversationSnapshot(detail);
-    return detail;
   }
 
   async function materializeDraftConversationForSend(request) {
@@ -262,42 +319,48 @@ export function createDraftConversationHandlers(ctx) {
       const existingId = conversationIdRef.current || conversationId || null;
       return existingId ? { id: existingId, detail: null } : null;
     }
-
-    const nextTitle = titleFromTaskText(request?.displayText || request?.text || '') || draft.name || DEFAULT_SESSION_NAME;
-    let detail = pendingCreatedDetailRef.current;
-    if (!detail?.conversation_id) {
-      detail = await ensureServerConversationForActiveDraft({ title: nextTitle });
-    } else if (nextTitle && isDefaultConversationName(detail.title || detail.label || draft.name)) {
-      try {
-        const renamed = await updateConversationTitle(detail.conversation_id, nextTitle);
-        if (renamed) detail = renamed;
-      } catch (error) {
-        console.warn('draft conversation title update skipped:', error);
+    // 这一笔发送已经接下、还没落地（同步设上，handleDeploy 靠它挡住第二次提交）。
+    draftFirstSendRef.current = draft.id;
+    try {
+      const nextTitle = titleFromTaskText(request?.displayText || request?.text || '') || draft.name || DEFAULT_SESSION_NAME;
+      let detail = pendingCreatedDetailRef.current;
+      if (!detail?.conversation_id) {
+        detail = await ensureServerConversationForActiveDraft({ title: nextTitle });
+      } else if (nextTitle && isDefaultConversationName(detail.title || detail.label || draft.name)) {
+        try {
+          const renamed = await updateConversationTitle(detail.conversation_id, nextTitle);
+          if (renamed) detail = renamed;
+        } catch (error) {
+          console.warn('draft conversation title update skipped:', error);
+        }
       }
-    }
-    if (!detail?.conversation_id) {
-      throw new Error('conversation create failed');
-    }
-    if (detail.project_id !== draft.projectId) {
-      throw new Error('draft conversation project mismatch');
-    }
+      if (!detail?.conversation_id) {
+        throw new Error('conversation create failed');
+      }
+      if (detail.project_id !== draft.projectId) {
+        throw new Error('draft conversation project mismatch');
+      }
 
-    const realId = detail.conversation_id;
-    const previousDraftId = draft.id;
-    // The draft is real now: the next "new conversation" in this project starts
-    // from a fresh id (and a fresh, empty composer).
-    forgetDraftConversationId(draftConversationIdsRef.current, draft.projectId);
-    setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
-    setStoredConversationId(realId);
-    rekeyChatDraft?.(previousDraftId, realId);
-    conversationIdRef.current = realId;
-    setConversationId(realId);
-    applyConversationSnapshot(detail);
-    draftConversationRef.current = null;
-    pendingCreatedDetailRef.current = null;
-    // Return detail so startDeploy can seed the list entry even if React has not
-    // flushed the setWorkspaceState above yet.
-    return { id: realId, detail };
+      const realId = detail.conversation_id;
+      const previousDraftId = draft.id;
+      // The draft is real now: the next "new conversation" in this project starts
+      // from a fresh id (and a fresh, empty composer).
+      forgetDraftConversationId(draftConversationIdsRef.current, draft.projectId);
+      setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
+      setStoredConversationId(realId);
+      rekeyChatDraft?.(previousDraftId, realId);
+      conversationIdRef.current = realId;
+      setConversationId(realId);
+      applyConversationSnapshot(detail);
+      draftConversationRef.current = null;
+      pendingCreatedDetailRef.current = null;
+      // Return detail so startDeploy can seed the list entry even if React has not
+      // flushed the setWorkspaceState above yet.
+      return { id: realId, detail };
+    } finally {
+      // 落地或失败都释放：第二次提交从这一刻起回到正常路径。
+      clearDraftFirstSendInFlight(draft.id);
+    }
   }
 
   async function fetchTaskRuntimeDetail(taskId) {
@@ -614,6 +677,9 @@ export function createDraftConversationHandlers(ctx) {
     openDraftConversation,
     ensureServerConversationForActiveDraft,
     markDraftConversationKept,
+    markDraftFirstSendInFlight,
+    clearDraftFirstSendInFlight,
+    isDraftFirstSendInFlight,
     materializeDraftConversationForSend,
     fetchTaskRuntimeDetail,
     fetchTaskRuntimeBatch,

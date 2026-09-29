@@ -28,7 +28,9 @@ export function createDeployHandlers(ctx) {
     flushRuntimeTasksToWorkspace,
     getRuntime,
     isDefaultConversationName,
+    isDraftFirstSendInFlight,
     isTaskActuallyActive,
+    markDraftFirstSendInFlight,
     materializeDraftConversationForSend,
     mutateRuntime,
     normalizeWorkflowSettings,
@@ -247,6 +249,37 @@ export function createDeployHandlers(ctx) {
     };
   }
 
+  function imageFailureNotice(image, error) {
+    const name = image?.file?.name || image?.path || image?.image_id || 'image';
+    return `[image could not be uploaded: ${name} — ${String(error?.message || error)}. No pixels were sent; continue with the remaining images and task.]`;
+  }
+
+  async function uploadImagesBestEffort(images, targetConversationId, signal) {
+    const uploaded = [];
+    const failures = [];
+    for (const image of images) {
+      if (signal?.aborted) return { uploaded, failures, aborted: true };
+      if (!image.file) {
+        uploaded.push(image);
+        continue;
+      }
+      try {
+        const result = await uploadChatImage(image.file, signal, targetConversationId);
+        if (!result?.image_id || !result?.path) throw new Error('Image upload response is incomplete.');
+        uploaded.push({
+          image_id: result.image_id,
+          path: result.path,
+          mime: result.mime,
+          previewUrl: image.previewUrl,
+        });
+      } catch (error) {
+        if (signal?.aborted || error?.name === 'AbortError') return { uploaded, failures, aborted: true };
+        failures.push(imageFailureNotice(image, error));
+      }
+    }
+    return { uploaded, failures, aborted: false };
+  }
+
   function preparePendingTask(request) {
     if (request.pendingTask) return request.pendingTask;
     const pendingTask = createPendingTaskDraft(
@@ -332,8 +365,15 @@ export function createDeployHandlers(ctx) {
     const nextConversationTitle = titleFromTaskText(request.displayText || text);
     const currentConversation = findConversationById(workspaceState, deployConvId)
       || (seedDetail ? conversationDetailToWorkspaceConversation(seedDetail) : null);
-    const runtime = getRuntime(deployConvId);
-    if (!runtime) throw new Error(`conversation runtime is missing: ${deployConvId}`);
+    // 本地簿记缺失不该让用户的消息变成一条 toast：真会话的 runtime 被回收时补一块
+    // 空的继续发（服务端才是权威方），只留一条控制台线索。真正的启动失败仍走下面
+    // launch().catch 的失败分支。
+    let runtime = getRuntime(deployConvId);
+    if (!runtime) {
+      console.warn(`conversation runtime was missing for ${deployConvId}; recreating local runtime`);
+      runtime = getRuntime(deployConvId, { create: true });
+    }
+    if (!runtime) throw new Error(`conversation runtime is unavailable: ${deployConvId}`);
     const deployTaskState = runtime.taskRuntimeState;
     const activeTaskIdBeforeDeploy = runtime.activeTaskId
       || deployTaskState.activeTaskId
@@ -386,24 +426,19 @@ export function createDeployHandlers(ctx) {
         setRuntimeBusy(true, deployConvId);
         setRuntimeFetchController(controller, deployConvId);
         try {
-          const uploaded = [];
-          for (const image of request.imageAttachments) {
-            if (controller.signal.aborted) return;
-            const result = image.file ? await uploadChatImage(image.file, controller.signal, deployConvId) : image;
-            if (!result?.image_id || !result?.path) throw new Error('Image upload response is incomplete.');
-            uploaded.push({ image_id: result.image_id, path: result.path, mime: result.mime, previewUrl: image.previewUrl });
+          const uploadResult = await uploadImagesBestEffort(
+            request.imageAttachments,
+            deployConvId,
+            controller.signal,
+          );
+          if (uploadResult.aborted) return;
+          request.imageAttachments = uploadResult.uploaded;
+          pendingTask.imageAttachments = uploadResult.uploaded;
+          if (uploadResult.failures.length) {
+            request.text = [request.text, ...uploadResult.failures].filter(Boolean).join('\n\n');
+            pendingTask.requestText = request.text;
           }
-          if (controller.signal.aborted) return;
-          request.imageAttachments = uploaded;
-          pendingTask.imageAttachments = uploaded;
           updateTaskRuntimeState((state) => ({ ...state, pendingTask: { ...pendingTask } }), deployConvId);
-        } catch (error) {
-          if (!controller.signal.aborted) {
-            request.runtimeConversationId = deployConvId;
-            failPendingDeploy(request, error);
-            showToast('error', String(error?.message || error));
-          }
-          return;
         } finally {
           const runtime = getRuntime(deployConvId);
           if (runtime?.fetchController === controller) {
@@ -501,15 +536,16 @@ export function createDeployHandlers(ctx) {
         showToast('error', 'Runtime instructions do not support document attachments.');
         return false;
       }
-      return Promise.all(request.imageAttachments.map(async (image) => {
-        if (!image.file) return image;
-        const uploaded = await uploadChatImage(image.file, undefined, activeId);
-        if (!uploaded?.image_id || !uploaded?.path) throw new Error('Image upload response is incomplete.');
-        return { image_id: uploaded.image_id, path: uploaded.path, mime: uploaded.mime, previewUrl: image.previewUrl };
-      }))
-        .then((images) => {
-          request.imageAttachments = images;
-          return queueTaskInput(runningTaskId, text, request.imageAttachments, request.displayText);
+      return uploadImagesBestEffort(request.imageAttachments, activeId)
+        .then((uploadResult) => {
+          request.imageAttachments = uploadResult.uploaded;
+          request.text = [request.text, ...uploadResult.failures].filter(Boolean).join('\n\n');
+          return queueTaskInput(
+            runningTaskId,
+            request.text,
+            request.imageAttachments,
+            request.displayText,
+          );
         })
         .then(() => true)
         .catch((error) => {
@@ -521,6 +557,13 @@ export function createDeployHandlers(ctx) {
     // sidebar record, then continue the normal deploy path.
     if (draftConversationRef.current) {
       const draftConversationId = draftConversationRef.current.id;
+      // 第一条消息还在建会话 / 还没落地：这一笔既没有服务端 task 可以 steer，也不能
+      // 另开一条会话、抢走 runtime。返回 false 让输入框留下文字，等这一笔落地。
+      if (isDraftFirstSendInFlight(draftConversationId)) {
+        showToast('info', 'The previous message is still being sent. Try again in a moment.');
+        return false;
+      }
+      markDraftFirstSendInFlight(draftConversationId);
       stagePendingDeploy(request, draftConversationId);
       if (!canStartDeployForConversation(request.targetConversationId)) {
         setQueuedDeploy(request);

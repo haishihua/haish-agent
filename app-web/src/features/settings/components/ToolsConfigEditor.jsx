@@ -4,11 +4,13 @@ import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import { DEFAULT_MCP_CONFIG_JSON, MCP_CONFIG_TEMPLATE_JSON, WEB_SEARCH_PROVIDER_OPTIONS } from '../model/settings-records.js';
 import { parseJsonSafe, isEmptyMcpConfigDraft, normalizeWebSearchDraft } from '../model/settings-payload.js';
+import { mcpServerEnabled, setMcpServerEnabled } from '../model/mcp-server-toggle.js';
 import { WEB_SEARCH_BRAND_LOGOS } from './settings-ui.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { SecretKeyField, FieldRow, SettingsRow, SettingsSearch, SettingsSheet, SettingsDeleteDialog, SettingsToggleRow } from './SettingsPrimitives.jsx';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import { Item, ItemGroup } from '../../../shared/ui/settings-elements/ui/item.tsx';
+import { Switch } from '../../../shared/ui/settings-elements/ui/switch.tsx';
 import { Textarea } from '../../../shared/ui/settings-elements/ui/textarea.tsx';
 import { BrandLogoIcon } from './settings-ui.jsx';
 import { SheetFooter } from '../../../shared/ui/settings-elements/ui/sheet.tsx';
@@ -38,8 +40,21 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
       if (!response.ok) throw new Error(await parseResponseMessage(response, `MCP validation failed (${response.status})`));
       update({ mcp_error: '', mcp_status: 'MCP config is valid.' });
     };
+    // 开关（就是 skill 行那一颗共享 Switch）= 改这一台的 enabled 再整份保存
+    // （core 会把 mcp.json 落盘并重载 hub），和下面输入框的 Save 走同一条路；
+    // 读回来的配置就是服务端真正落盘的那份。
+    const toggleServer = (name, enabled) => run(`server:${name}`, async () => {
+      if (!parsed.ok) throw new Error(parsed.error);
+      if (!onSaveTools) throw new Error('Saving MCP settings is not available from here.');
+      const mcp_json = JSON.stringify(setMcpServerEnabled(parsed.value, name, enabled), null, 2);
+      const saved = await onSaveTools(patchedRecords({ mcp_json, mcp_error: '', mcp_status: '' }), enabled ? `${name} enabled` : `${name} disabled`);
+      if (saved === false) throw new Error(`MCP server ${name} was not updated.`);
+    });
     return <div className="settings-content-modern"><div className="settings-page-heading"><h1>MCP servers</h1></div><div className="mcp-workspace">
-      {servers.length > 0 && <div className="mcp-servers-surface"><div className="mcp-server-columns" aria-hidden="true"><span /><span>Server</span><span>Transport</span><span>Status</span></div><ItemGroup className="mcp-server-list">{servers.map(([name, server]) => <Item key={name} className="mcp-server-row"><Server size={16} /><span className="mcp-server-name">{name}</span><span className="mcp-server-transport">{typeof server?.transport === 'string' ? server.transport : 'stdio'}</span><span className={`mcp-server-status ${server?.enabled === false ? 'is-disabled' : ''}`}><span className="mcp-status-dot" />{server?.enabled === false ? 'Disabled' : 'Enabled'}</span></Item>)}</ItemGroup></div>}
+      {servers.length > 0 && <div className="mcp-servers-surface"><div className="mcp-server-columns" aria-hidden="true"><span /><span>Server</span><span>Transport</span><span>Status</span></div><ItemGroup className="mcp-server-list">{servers.map(([name, server]) => {
+        const enabled = mcpServerEnabled(server);
+        return <Item key={name} className="mcp-server-row"><Server size={16} /><span className="mcp-server-name">{name}</span><span className="mcp-server-transport">{typeof server?.transport === 'string' ? server.transport : 'stdio'}</span><span className="mcp-server-state"><span className={`mcp-server-status ${enabled ? '' : 'is-disabled'}`}><span className="mcp-status-dot" />{enabled ? 'Enabled' : 'Disabled'}</span><Switch className="mcp-server-switch" aria-label={`${enabled ? 'Disable' : 'Enable'} MCP server ${name}`} checked={enabled} onCheckedChange={next => toggleServer(name, next)} disabled={Boolean(busy)} /></span></Item>;
+      })}</ItemGroup></div>}
       <div className="mcp-code-surface"><div className="mcp-code-toolbar"><div className="mcp-file-label"><FileJson2 size={16} /><strong>mcp.json</strong><span>{servers.length} {servers.length === 1 ? 'server' : 'servers'}</span></div><div className="mcp-editor-actions">
         <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => { if (!isEmptyMcpConfigDraft(json)) { setError('Template can only fill an empty MCP config.'); return; } setError(''); update({ mcp_json: MCP_CONFIG_TEMPLATE_JSON, mcp_error: '', mcp_status: '' }); }}>Template</Button>
         <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => { if (!parsed.ok) { setError(parsed.error); return; } setError(''); update({ mcp_json: JSON.stringify(parsed.value, null, 2), mcp_error: '', mcp_status: '' }); }}>Format</Button>
@@ -81,7 +96,7 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
       {selectedSkill && <div className="skill-details"><p>{selectedSkill.description}</p>{(selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path) && <dl><dt>Location</dt><dd>{selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path}</dd></dl>}<SettingsToggleRow label="Enable skill" checked={selectedSkill.enabled !== false} disabled={Boolean(skillActionBusy)} onCheckedChange={enabled => onToggleSkill(selectedSkill.name, enabled)} /></div>}
       {provider && <FieldRow label={`${provider.label} API key`}><SecretKeyField value={providerDraft.api_key || ''} configured={providerDraft.api_key_configured} onChange={event => patchProvider({ api_key: event.target.value })} disabled={Boolean(busy)} /></FieldRow>}
       {error && <ErrorState variant="inline" detail={error} />}
-    </div><SheetFooter><div>{provider && <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('test', async () => { if (await onSaveTools?.(patchedRecords({ web_search: web }), '') !== false) await onTestWebProvider?.(provider.id, providerDraft.api_key || ''); })}>{busy === 'test' ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button variant="ghost" size="sm" disabled={Boolean(busy)} onClick={() => setEditing(null)}>{skillsPane ? 'Close' : 'Cancel'}</Button>{provider && <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', saveProvider)}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></SettingsSheet>
+    </div><SheetFooter><div>{provider && <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('test', () => onTestWebProvider?.(provider.id, providerDraft.api_key || ''))}>{busy === 'test' ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button variant="ghost" size="sm" disabled={Boolean(busy)} onClick={() => setEditing(null)}>{skillsPane ? 'Close' : 'Cancel'}</Button>{provider && <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', saveProvider)}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></SettingsSheet>
     {installing && <SkillUpload installedSkills={skills} onClose={() => setInstalling(false)} onInstall={(_skill, file) => onInstallSkill(file)} />}
     <SettingsDeleteDialog target={deleting} label="Uninstall skill" onClose={() => setDeleting(null)} onConfirm={async target => { const success = await onUninstallSkill(target.title); if (success !== false && selectedSkill?.name === target.title) setEditing(null); return success; }} />
   </div>;

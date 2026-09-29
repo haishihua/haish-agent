@@ -33,5 +33,7 @@ test('the day separator is styled as two fading rules around a mono label', () =
 
 test('only the render list gains rows; annotations and last-turn gating keep the raw messages', () => {
   assert.match(chatPanel, /selectAnnotationMessages\(messages, conversationId\)/);
-  assert.match(chatPanel, /row\.taskId === messages\.at\(-1\)\?\.taskId/);
+  // 最后一轮的判据仍然来自原始 messages，只是随行组快照一起下发。
+  assert.match(chatPanel, /lastTaskId: messages\.at\(-1\)\?\.taskId,/);
+  assert.match(chatPanel, /row\.taskId === group\.lastTaskId/);
 });

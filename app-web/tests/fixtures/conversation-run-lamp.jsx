@@ -61,6 +61,13 @@ const glyphBox = () => {
   return { width: Math.round(rect.width), height: Math.round(rect.height) };
 };
 
+// 蓝圈的尺寸量 computed style：元素在转圈，getBoundingClientRect 给的是旋转方框的外接矩形
+// （15px 的方框转到 45° 会读到 ~21px），逐帧数会抖。
+const spinnerSize = () => {
+  const icon = lamp()?.querySelector('.ico-loading');
+  return icon ? parseFloat(getComputedStyle(icon).width) : null;
+};
+
 const cardByTitle = (title) => [...document.querySelectorAll('.conversation-task-card')]
   .find((card) => card.querySelector('.conversation-task-title')?.textContent === title) || null;
 const cardGlyphBox = (card) => {
@@ -149,6 +156,11 @@ async function runChecks() {
   emit({ type: 'input_resolved', request_id: 'req-a' });
   await frame();
   check('answering the question flips straight back to the blue spinner', Boolean(lamp()?.querySelector('.ico-loading')) && !lampHasClass('waiting-input'), `classes=${lamp()?.className || ''}`);
+  check(
+    'the blue spinner is drawn at the row size, matching the amber glyph in the same slot',
+    spinnerSize() === 15,
+    `spinner=${spinnerSize()}px glyph=15px`,
+  );
 
   emit({ type: 'approval_requested', request_id: 'req-b', conversation_id: 'conv-lamp', task_id: 'task-lamp', tool_name: 'exec_command' });
   await frame();

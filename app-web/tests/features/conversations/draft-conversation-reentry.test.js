@@ -55,6 +55,8 @@ function createHarness() {
     detachActiveRunFromCurrentConversation: () => {},
     draftConversationIdsRef: { current: new Map() },
     draftConversationRef: { current: null },
+    draftFirstSendRef: { current: null },
+    draftServerCreateRef: { current: null },
     flushRuntimeTasksToWorkspace: () => {},
     generateHexId: () => `hex${++hexCount}`,
     getRuntime: () => null,

@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import {
   addTaskCompletionNotice,
   clearConversationCompletionNotices,
+  clearReadTaskCompletionNotices,
   clearTaskCompletionNotice,
   conversationNoticesFromTasks,
   loadTaskCompletionNotices,
+  mergeConversationReadCursors,
   saveTaskCompletionNotices,
   taskNoticesByTaskId,
   terminalTaskNoticeStatus,
@@ -43,6 +45,33 @@ test('viewing one of two unread tasks decrements the badge from two to one', () 
   assert.equal(Object.keys(notices).length, 1);
   assert.equal(notices['conv-a:task-2'].status, 'failed');
   assert.deepEqual(taskNoticesByTaskId(notices), { 'task-2': 'failed' });
+});
+
+test('shared read cursors merge monotonically', () => {
+  const current = { 'conv-a': 2000 };
+  assert.equal(mergeConversationReadCursors(current, { 'conv-a': 1000 }), current);
+  assert.deepEqual(mergeConversationReadCursors(current, {
+    'conv-a': 3000,
+    'conv-b': 1500,
+    broken: Number.NaN,
+  }), { 'conv-a': 3000, 'conv-b': 1500 });
+});
+
+test('shared read cursors clear only notices that had already settled', () => {
+  let notices = {};
+  notices = addTaskCompletionNotice(notices, {
+    conversationId: 'conv-a', taskId: 'task-old', status: 'done', settledAt: 1000,
+  });
+  notices = addTaskCompletionNotice(notices, {
+    conversationId: 'conv-a', taskId: 'task-new', status: 'done', settledAt: 3000,
+  });
+  notices = addTaskCompletionNotice(notices, {
+    conversationId: 'conv-b', taskId: 'task-other', status: 'failed', settledAt: 1000,
+  });
+
+  const remaining = clearReadTaskCompletionNotices(notices, { 'conv-a': 2000 });
+  assert.deepEqual(Object.keys(remaining).sort(), ['conv-a:task-new', 'conv-b:task-other']);
+  assert.equal(clearReadTaskCompletionNotices(remaining, { 'conv-a': 1500 }), remaining);
 });
 
 test('only terminal outcomes create notices', () => {

@@ -21,7 +21,7 @@ test('every assistant row carries the agent that ran that turn', () => {
   assert.match(shellSource, /import \{ assistantNameForTask \} from '\.\.\/chat\/model\/assistant-name\.js';/);
   assert.match(shellSource, /const agentNameFor = \(task\) => assistantNameForTask\(task, currentConversation, agentOptions\);/);
   assert.match(shellSource, /^\s+agentName,$/m);
-  assert.match(shellSource, /agentName: agentNameFor\(taskRuntimeState\.pendingTask\),/);
+  assert.match(shellSource, /agentName: agentNameFor\(pendingTurn\),/);
   // catalog 异步到达时名字会变，缓存不能只比 live。
   assert.match(shellSource, /if \(cachedRows && cachedRows\.live === live && cachedRows\.agentName === agentName\) \{/);
   assert.match(shellSource, /rowCache\.set\(task, \{ rows: taskRows, live, agentName \}\);/);

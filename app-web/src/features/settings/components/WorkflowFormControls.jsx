@@ -5,7 +5,10 @@ import {
   workflowTemplateVariablePath,
   sanitizeWorkflowTemplateValue,
   workflowTokenRangeAt,
+  workflowVariableTypeForValue,
 } from '../../workflow/model/workflow-catalog.js';
+import { WorkflowDetailFields, workflowDetailFieldIcon } from './WorkflowNodeDetails.jsx';
+import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import {
   SettingsMenuSelect,
@@ -14,7 +17,7 @@ import {
 const { useRef } = React;
 
 function WorkflowVariablePicker({ variables, onInsert, disabled = false, hint = '' }) {
-  if (!variables.length) return null;
+  if (disabled || !variables?.length) return null;
   const options = variables.map((item) => ({
     id: item.path,
     label: item.label || item.path,
@@ -82,6 +85,7 @@ export function WorkflowTemplateTextarea({
   title = '',
   hint = '',
   embedded = false,
+  unframed = false,
 }) {
   const text = String(sanitizeWorkflowTemplateValue(value ?? ''));
   const textareaRef = useRef(null);
@@ -117,6 +121,7 @@ export function WorkflowTemplateTextarea({
     <>
       <textarea
         ref={textareaRef}
+        aria-label={title || undefined}
         className={className}
         value={text}
         onChange={(event) => onChange(event.target.value)}
@@ -135,6 +140,7 @@ export function WorkflowTemplateTextarea({
       ) : null}
     </>
   );
+  if (unframed) return <div className="workflow-input-panel-body workflow-template-unframed">{body}</div>;
   if (!panelTitle) return body;
   return (
     <div className={`workflow-io-panel workflow-input-panel${embedded ? ' is-embedded' : ''}`}>
@@ -174,11 +180,13 @@ export function WorkflowParameterEditor({
     onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
   return (
-    <div className="workflow-parameter-panel">
+    <div className="workflow-parameter-panel workflow-agent-inputs">
       <div className="workflow-parameter-head">
         <div>
           <PortalTooltip text="Give upstream data short names for this node." position="above" multiline>
-            <strong className="settings-field-label has-hint" tabIndex={0}>Input parameters</strong>
+            <strong className="settings-field-label has-hint" tabIndex={0}>
+              <AppIcon name="layers" size={17} />Inputs
+            </strong>
           </PortalTooltip>
         </div>
         {!disabled ? (
@@ -194,7 +202,7 @@ export function WorkflowParameterEditor({
               },
             ])}
           >
-            + parameter
+            <AppIcon name="plus" size={14} />Add Input
           </button>
         ) : null}
       </div>
@@ -202,16 +210,23 @@ export function WorkflowParameterEditor({
         <div className="workflow-parameter-list">
           {rows.map((row) => (
             <div className="workflow-parameter-row" key={row.id}>
+              <span className="workflow-agent-row-icon"><AppIcon name={workflowDetailFieldIcon({ type: workflowVariableTypeForValue(row.value, variables) })} size={18} /></span>
+              <div className="workflow-detail-field-heading workflow-parameter-heading">
               <input
                 className="workflow-parameter-name"
                 value={row.name}
                 disabled={disabled}
                 aria-label="Parameter name"
                 placeholder="arg1"
+                style={{ width: `${Math.max(4, row.name.length + 1)}ch` }}
                 onChange={(event) => updateRow(row.id, {
                   name: sanitizeParameterName(event.target.value),
                 })}
               />
+              <span className={`workflow-io-type is-${workflowVariableTypeForValue(row.value, variables)}`}>
+                {workflowVariableTypeForValue(row.value, variables)}
+              </span>
+              </div>
               <WorkflowVariableSelect
                 value={row.value}
                 variables={variables}
@@ -225,159 +240,28 @@ export function WorkflowParameterEditor({
                   aria-label={`Delete parameter ${row.name || ''}`.trim()}
                   onClick={() => onChange(rows.filter((item) => item.id !== row.id))}
                 >
-                  ×
+                  <AppIcon name="delete" size={14} />
                 </button>
               ) : null}
             </div>
           ))}
         </div>
-      ) : (
-        <div className="workflow-parameter-empty">No parameters yet.</div>
-      )}
+      ) : null}
       {children}
     </div>
   );
 }
 
-const WORKFLOW_OUTPUT_GROUP_META = {
-  result: {
-    id: 'result',
-    label: 'Result',
-    hint: 'Main values to pass into later nodes.',
-  },
-  status: {
-    id: 'status',
-    label: 'Status',
-    hint: 'Whether the node finished and why.',
-  },
-  debug: {
-    id: 'debug',
-    label: 'Debug',
-    hint: 'Extra details for inspection and troubleshooting.',
-  },
-};
-
-const WORKFLOW_OUTPUT_GROUP_ORDER = ['result', 'status', 'debug'];
-
-function workflowOutputGroupId(field) {
-  const group = String(field?.group || '').trim().toLowerCase();
-  if (WORKFLOW_OUTPUT_GROUP_META[group]) return group;
-  const id = String(field?.id || '').trim().toLowerCase();
-  if (['status', 'success', 'error', 'finish_reason'].includes(id)) return 'status';
-  if (['metadata', 'trace', 'usage', 'raw'].includes(id)) return 'debug';
-  return 'result';
-}
-
-function workflowFieldTypeLabel(type) {
-  const value = String(type || 'any').trim().toLowerCase();
-  if (value === 'boolean') return 'bool';
-  if (value === 'object') return 'object';
-  if (value === 'array') return 'array';
-  if (value === 'string') return 'string';
-  if (value === 'number') return 'number';
-  return value || 'any';
-}
-
-function WorkflowIoFieldLabel({ label, description = '' }) {
-  const text = String(label || '').trim() || 'Field';
-  const tip = String(description || '').trim();
-  const labelNode = (
-    <span className="workflow-io-item-label" tabIndex={tip ? 0 : undefined}>
-      {text}
-    </span>
-  );
-  if (!tip) return labelNode;
-  return (
-    <PortalTooltip text={tip} position="above" multiline>
-      {labelNode}
-    </PortalTooltip>
-  );
-}
-
 export function WorkflowSchemaList({ title, fields }) {
-  if (!fields.length) return null;
-  const caption = String(title || 'Fields');
-  return (
-    <div className="workflow-io-panel">
-      <div className="workflow-io-panel-head">
-        <div className="workflow-io-panel-copy">
-          <strong>{caption}</strong>
-        </div>
-        <span className="workflow-io-count">{fields.length}</span>
-      </div>
-      <div className="workflow-io-list" aria-label={caption}>
-        {fields.map((field, index) => {
-          const key = field.id || field.key || field.label || field.path || `field_${index + 1}`;
-          const label = field.label || key;
-          const type = workflowFieldTypeLabel(field.type);
-          const description = field.description || (field.required ? 'Required input.' : 'Optional input.');
-          return (
-            <div className="workflow-io-item" key={field.path || field.id || key}>
-              <div className="workflow-io-item-top">
-                <div className="workflow-io-item-title">
-                  <WorkflowIoFieldLabel label={label} description={description} />
-                  <span className={`workflow-io-type is-${type}`}>{type}</span>
-                  {field.required ? <span className="workflow-io-required">required</span> : null}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+  return <WorkflowDetailFields title={title || 'Inputs'} fields={fields} />;
 }
 
 export function WorkflowOutputContract({ node }) {
   const fields = workflowOutputFields(node).map((field) => ({
     ...field,
     path: `nodes.${node.id}.${field.id}`,
-    group: workflowOutputGroupId(field),
   }));
   if (!fields.length) return null;
 
-  const groups = WORKFLOW_OUTPUT_GROUP_ORDER
-    .map((groupId) => ({
-      ...WORKFLOW_OUTPUT_GROUP_META[groupId],
-      fields: fields.filter((field) => field.group === groupId),
-    }))
-    .filter((group) => group.fields.length);
-
-  return (
-    <div className="workflow-io-panel workflow-output-contract">
-      <div className="workflow-io-panel-head">
-        <div className="workflow-io-panel-copy">
-          <strong>Output</strong>
-        </div>
-        <span className="workflow-io-count">{fields.length}</span>
-      </div>
-      <div className="workflow-output-groups">
-        {groups.map((group) => (
-          <section className="workflow-output-group" key={group.id} data-group={group.id}>
-            <div className="workflow-output-group-head">
-              <span>{group.label}</span>
-            </div>
-            <div className="workflow-io-list">
-              {group.fields.map((field) => {
-                const type = workflowFieldTypeLabel(field.type);
-                return (
-                  <div className="workflow-io-item" key={field.path || field.id}>
-                    <div className="workflow-io-item-top">
-                      <div className="workflow-io-item-title">
-                        <WorkflowIoFieldLabel
-                          label={field.label || field.id}
-                          description={field.description || ''}
-                        />
-                        <span className={`workflow-io-type is-${type}`}>{type}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
-    </div>
-  );
+  return <WorkflowDetailFields title="Outputs" icon="git-branch" fields={fields} className="workflow-agent-outputs" />;
 }

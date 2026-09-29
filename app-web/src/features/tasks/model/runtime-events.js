@@ -85,6 +85,67 @@ export function finalWorkflowResultText(task, fallback = '') {
   return toDisplayText(fallback || task?.answerText || task?.error).trim();
 }
 
+// 机器给机器看的产出不该进报告：条件节点的分支匹配串（`matched:DONE->output` 这类
+// 控制标记）与结构化 JSON（Verifier 的 verdict 契约）都跳过。
+function looksLikeMachineText(value) {
+  const text = String(value || '').trim();
+  if (!text) return true;
+  if (text.startsWith('matched:')) return true;
+  if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+    try {
+      JSON.parse(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+// End（output）节点这只的产出：新的 Goal Loop End 直接输出 Worker 报告文本（value 是
+// 字符串，实时事件先落在 summary）；老快照的 End 是结构化对象，读不出字符串就返回空，
+// 由 taskFinalOutputText 继续找人话。
+export function taskRunOutputText(task) {
+  const snapshotNodes = Array.isArray(task?.workflowSnapshot?.nodes) ? task.workflowSnapshot.nodes : [];
+  const endNode = snapshotNodes.find((node) => String(node?.type || '') === 'output');
+  const node = task?.workflowRun?.nodes?.[String(endNode?.id || 'output')];
+  if (!node) return '';
+  if (typeof node.value === 'string') return node.value.trim();
+  if (node.value != null) return '';
+  return toDisplayText(node.summary).trim();
+}
+
+// 从后往前最后一个「人话」节点摘要：Goal Loop 老快照的 End 映射的是 Verifier 的
+// verdict JSON，真正要看的报告在 Worker 节点上——这里跳过控制节点（start / output /
+// condition）与机器串，把 Worker 那份报告捞出来。
+function lastHumanNodeText(task) {
+  const nodeTypes = new Map(
+    (task?.workflowSnapshot?.nodes || []).map((node) => [String(node?.id || ''), String(node?.type || '')]),
+  );
+  const nodeResult = Object.entries(task?.workflowRun?.nodes || {})
+    .reverse()
+    .find(([nodeId, node]) => {
+      const nodeType = nodeTypes.get(nodeId) || (nodeId === 'start' || nodeId === 'output' ? nodeId : '');
+      if (['start', 'output', 'condition'].includes(nodeType)) return false;
+      const text = toDisplayText(node?.summary ?? node?.text ?? node?.output).trim();
+      return Boolean(text) && !looksLikeMachineText(text);
+    });
+  if (!nodeResult) return '';
+  const node = nodeResult[1];
+  return toDisplayText(node?.summary ?? node?.text ?? node?.output).trim();
+}
+
+// 任务报告 = End 的人话输出；取不到再从后往前找最后一个有人话的节点；都没有才回落到
+// 旧口径（最后一个非控制节点的摘要）。顺序不能反——反了 Goal Loop 的报告入口就会把
+// Gate 的 `matched:…` 或者 Verifier 的 verdict JSON 摊给用户看。
+export function taskFinalOutputText(task, fallback = '') {
+  const endText = taskRunOutputText(task);
+  if (endText && !looksLikeMachineText(endText)) return endText;
+  return lastHumanNodeText(task)
+    || endText
+    || finalWorkflowResultText(task, fallback);
+}
+
 export function skillDisplayName(event) {
   if (event?.skill_name) return `${event.skill_name} skill`;
   if (event?.skill_path) {

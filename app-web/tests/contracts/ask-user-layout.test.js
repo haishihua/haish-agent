@@ -29,7 +29,7 @@ test('ask_user form is declarative and never mounted by the legacy overlay', () 
   assert.match(timelineSource, /const status = item\.status \|\| 'pending';/);
   assert.doesNotMatch(timelineSource, /isAskUser && askUserActive \? 'running'/);
   assert.match(chatPanelSource, /import \{ ApprovalInline \} from '\.\.\/\.\.\/approvals\/components\/ApprovalOverlay\.jsx';/);
-  assert.match(chatPanelSource, /<ApprovalInline \/>/);
+  assert.match(chatPanelSource, /<ApprovalInline conversationId=\{conversationId\} \/>/);
   assert.doesNotMatch(timelineSource, /className="ask-user-form-slot"/);
   assert.doesNotMatch(overlaySource, /input_requested|input_resolved|pending_user_inputs/);
   assert.doesNotMatch(overlaySource, /ask-user-form-slot|isUserInputRequest|UserInputCard/);

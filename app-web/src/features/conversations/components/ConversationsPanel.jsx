@@ -264,7 +264,14 @@ export function ConversationsPanel({
         ) : null}
       </div>
       <div className="side-panel-body conversations-body" ref={scrollBodyRef} hidden={collapsed}>
-        {!workflowTaskMode && <ThreadSearch projects={workspaceState.projects} onSelect={selectConversationAndClearNotice} />}
+        {/* 两个标签页都有搜索框：会话模式搜会话、任务模式搜任务——同一只组件、同一套
+            样式与键盘操作，选中后分别跳对应会话 / 对应任务。 */}
+        <ThreadSearch
+          projects={workspaceState.projects}
+          mode={workflowTaskMode ? 'tasks' : 'conversations'}
+          onSelect={selectConversationAndClearNotice}
+          onSelectTask={onSelectTask}
+        />
         {workspaceState.projects.map((project) => (
           <ProjectNode
             key={project.id}

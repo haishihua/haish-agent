@@ -115,6 +115,9 @@ export type HaishDesktopApi = {
   getRemoteStatus: () => Promise<RemoteAdapterState>;
   getRemoteSettings: () => Promise<RemoteSettings | null>;
   saveRemoteSettings: (settings: RemoteSettings) => Promise<RemoteAdapterState>;
+  /** Canonical conversation read cursors shared by desktop and paired remote clients. */
+  getConversationReads: () => Promise<Record<string, number>>;
+  markConversationRead: (conversationId: string, seenAtMs?: number) => Promise<number>;
   /** Start macOS's native Dock attention animation when Haish is not active. */
   notifyTaskComplete: () => Promise<boolean>;
   /** Display the absolute number of completed-but-unviewed tasks in the Dock. */
@@ -139,7 +142,7 @@ export type HaishDesktopApi = {
   runTaskStream: (command: RealtimeTaskCommand, onEvent: (event: Record<string, unknown>) => void) => Promise<void>;
   onApprovalEvent: (callback: (event: Record<string, unknown>) => void) => () => void;
   resolveApproval: (
-    approvalKind: 'tool' | 'workflow' | 'user_input' | 'browser_runtime',
+    approvalKind: 'tool' | 'workflow' | 'user_input' | 'browser_runtime' | 'computer_runtime',
     approvalId: string,
     payload: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;

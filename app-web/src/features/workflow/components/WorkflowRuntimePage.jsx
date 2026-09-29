@@ -2,7 +2,6 @@ import React from 'react';
 import { workflowControlEvents } from '../model/workflow-control-events.js';
 import {
   Background,
-  Controls,
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
@@ -32,10 +31,15 @@ import {
 import { ChatMessageRow } from '../../chat/components/ChatMessageRow.jsx';
 import { ChatTimelineChevron } from '../../chat/components/ChatTimelineNodes.jsx';
 import { ScrollToBottomButton } from '../../../shared/ui/ScrollToBottomButton.jsx';
+import { workflowRouteHandles, workflowUsedSideHandles } from '../model/workflow-canvas-editing.js';
+import { useWorkflowCanvasPreferences } from '../hooks/useWorkflowCanvasPreferences.js';
+import { workflowFitOptions, saveWorkflowCanvasPreferences } from '../model/workflow-canvas-preferences.js';
+import { WorkflowCanvasControls } from './WorkflowCanvasControls.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import {
   WorkflowCanvasEdge,
   WorkflowFlowNode,
+  WORKFLOW_FIT_OPTIONS,
   workflowEdgeAppearance,
   workflowFeedbackTargetIds,
   workflowNodePorts,
@@ -129,7 +133,7 @@ function FitWorkflow({ workflowKey, detailOpen, layoutKey }) {
   const { fitView } = useReactFlow();
   React.useEffect(() => {
     const timer = window.setTimeout(() => {
-      fitView({ padding: 0.12, minZoom: 0.45, maxZoom: 1.15, duration: 220 });
+      fitView({ ...workflowFitOptions(workflowKey.split(':')[0], WORKFLOW_FIT_OPTIONS), duration: 220 });
     }, 40);
     return () => window.clearTimeout(timer);
   }, [detailOpen, fitView, layoutKey, workflowKey]);
@@ -466,6 +470,8 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
   );
   // 排布只从配置页保存的位置来（见 workflowArrangementPositions）；这里是只读视图，
   // 节点不可拖：改图一律在配置页做，运行页只负责显示。
+  const canvasPreferences = useWorkflowCanvasPreferences(workflow?.workflow_id || workflow?.id);
+  const routes = React.useMemo(() => canvasPreferences.routes || {}, [canvasPreferences.routes]);
   const arrangement = React.useMemo(() => workflowArrangementPositions(workflow), [workflow]);
   const layoutKey = `${layout.columns}:${layout.rowCount}:${canvasWidth}`;
   const executedNodeIds = React.useMemo(() => new Set([
@@ -505,12 +511,13 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
         runtimeStatusLabel: STATUS_COPY[status],
         runtimeDetailAvailable,
         feedbackTarget: feedbackTargetIds.has(id),
+        usedSideHandles: workflowUsedSideHandles(id, workflow?.edges, routes),
         // 端口（含 loop 的 retry 出口）只有一份来源：两页都从 workflowNodePorts 取。
         ...workflowNodePorts(node, layoutMeta),
       },
       connectable: false,
     };
-  }), [activeEventNodeIds, agentOptions, arrangement, canOpenNodeDetail, eventNodeOutcomes, feedbackTargetIds, layout, run, task?.status, traversedLoopNodeIds, workflow?.nodes]);
+  }), [activeEventNodeIds, agentOptions, arrangement, canOpenNodeDetail, eventNodeOutcomes, feedbackTargetIds, layout, run, task?.status, traversedLoopNodeIds, workflow?.nodes, workflow?.edges, routes]);
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes);
   React.useEffect(() => { setNodes(layoutNodes); }, [layoutNodes, setNodes]);
   const nodeById = React.useMemo(() => new Map((workflow?.nodes || []).map((node) => [String(node.id), node])), [workflow?.nodes]);
@@ -549,14 +556,20 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
       traversed,
       sourceLayout: layout.meta.get(source),
       targetLayout: layout.meta.get(target),
+      // 两端的类型都要传：角色（进 output 那条走「收尾」）看目标类型，
+      // 颜色渐变看源类型色 → 目标类型色。
+      sourceType: nodeById.get(source)?.type || '',
+      sourceNode: nodeById.get(source),
+      targetType: nodeById.get(target)?.type || '',
     });
     return {
       id: `${source}-${target}-${edge.branch || index}`,
       source,
       target,
       ...appearance,
+      ...workflowRouteHandles(edge, routes),
     };
-  }), [latestTransition, layout, statusById, traversedEdgeKeys, workflow?.edges]);
+  }), [routes, latestTransition, layout, nodeById, statusById, traversedEdgeKeys, workflow?.edges]);
   const selectedNodeCandidate = selectedNodeId ? nodeById.get(selectedNodeId) || null : null;
   const selectedNode = canOpenNodeDetail(selectedNodeCandidate) ? selectedNodeCandidate : null;
   // 节点详情的回复按节点配置的 agent 署名（catalog 与节点图标同一份）。
@@ -672,6 +685,10 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
           nodesConnectable={false}
           deleteKeyCode={null}
           fitView
+          fitViewOptions={workflowFitOptions(workflow?.workflow_id || workflow?.id, WORKFLOW_FIT_OPTIONS)}
+          onMoveEnd={(event, viewport) => {
+            if (event) saveWorkflowCanvasPreferences(workflow?.workflow_id || workflow?.id, { zoom: viewport.zoom });
+          }}
           onNodeClick={(_, flowNode) => {
             const node = nodeById.get(flowNode.id);
             setSelectedNodeId(canOpenNodeDetail(node) ? flowNode.id : '');
@@ -679,8 +696,8 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
           onPaneClick={() => setSelectedNodeId('')}
           proOptions={{ hideAttribution: true }}
         >
-          <Background gap={22} size={1.2} color="rgba(176, 206, 255, 0.07)" />
-          <Controls showInteractive={false} position="top-right" />
+          <Background gap={30} size={1.2} color="rgba(150, 184, 240, 0.07)" />
+          <WorkflowCanvasControls workflowId={workflow?.workflow_id || workflow?.id} />
           <FitWorkflow workflowKey={workflowKey} detailOpen={Boolean(selectedNode)} layoutKey={layoutKey} />
         </ReactFlow>
         <div className="workflow-composer-dock">{composer}</div>

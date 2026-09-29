@@ -108,15 +108,21 @@
 
 /* ============ Conversations (left panel) ============ */
 .conversations-panel .side-panel-head {
-    gap: 18px;
-    padding-left: 11px;
+    /* 图标贴左：Conversation 图标（.conversation-brand-icon）跟列表里项目行的 folder
+       图标共用同一条左缘（3px），整块表头跟着左移；右侧内边距与组间距再收一档
+       （18 → 8 / 18 → 8），加上图标底板与两个按钮 34 → 30px，表头一整行最少只要
+       ~209px，面板自身的下限因此能继续往下走（app-shell 左栏 clamp）。
+       右边距 8px 同时跟会话行悬停按钮（.conversation-actions 的 right: 8px）对齐。 */
+    gap: 8px;
+    padding-left: 3px;
+    padding-right: 8px;
 }
 
 .conversation-head-primary,
 .conversation-head-actions {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 .conversation-head-actions button[aria-label="Add project"] {
@@ -124,13 +130,16 @@
 }
 
 .sidebar-toggle-icon {
-    width: 28px;
-    height: 28px;
+    /* 图标尺寸写死：以前靠 34px 按钮的剩余内宽（默认 6px 内边距 → 22px）压出来，
+       按钮收到 30px 后会被压到 18px，图标就会比「Add project」小一圈。 */
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
     display: block;
 }
 
 .conversation-head-action.conversation-panel-toggle {
-    width: 34px;
+    width: 30px;
 }
 
 .sidebar-toggle-icon-panel {
@@ -177,8 +186,8 @@
     display: grid;
     place-items: center;
     flex-shrink: 0;
-    width: 34px;
-    height: 34px;
+    width: 30px;
+    height: 30px;
     border-radius: 10px;
     background: #1c1c1e;
     color: #f4f4f5;
@@ -190,8 +199,9 @@
 }
 
 .conversation-head-action {
-    width: 34px;
+    width: 30px;
     height: 34px;
+    padding: 0;
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -215,7 +225,13 @@
 .conversations-body {
     /* 右 padding 归零：会话行/高亮背景直接延伸到面板右缘（滚动条处），
        与收窄后的面板右边框对齐，避免高亮框右侧残留多余空隙 */
-    padding: 10px 0 14px;
+    /* 侧栏只有一条文字竖线：项目标题与会话标题共用同一个左缘。列宽 = 图标缩进
+       3px + folder 15px + 图标与标题之间的留白 10px = 28px（会话侧同样落在 28px：
+       子列表 17px + 会话行 11px）。标题太长时在这条线的右端渐隐
+       （--sidebar-title-fade），不再画「…」。 */
+    --sidebar-text-indent: 28px;
+    --sidebar-title-fade: 12px;
+    padding: 8px 0 10px;
 }
 
 /* Apple-style 侧栏：用留白与层级，不画框 */
@@ -223,7 +239,7 @@
     border: 0;
     border-radius: 0;
     background: transparent;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
     box-shadow: none;
 }
 
@@ -254,15 +270,25 @@
 .project-row,
 .conversation-row {
     position: relative;
-    min-height: 42px;
+    /* 行高 = 32px（13px 标题 + 上下 5px 内边距）：会话标题之间、「会话 → 项目」
+       之间、「项目 → 项目」之间的留白都来自这一份，密度由它一个地方说了算。 */
+    min-height: 32px;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 9px 11px;
+    padding: 5px 11px;
     color: #c6d0e8;
     cursor: pointer;
     user-select: none;
     transition: background .14s, color .14s;
+}
+
+/* 上下各收 3px，项目行和会话行就一样是 32px，两行之间的缝只来自各自的 5px 内边距。
+   左内边距 = 文字列（28px）：项目标题正好落在会话标题那条竖线上，
+   折叠图标挪进这段留白（见 .project-icon-toggle），不再把标题往右推。 */
+.project-row {
+    padding-block: 3px;
+    padding-left: var(--sidebar-text-indent, 28px);
 }
 
 .project-row:hover,
@@ -276,18 +302,31 @@
 }
 
 .project-icon-toggle {
-    width: 26px;
-    height: 26px;
+    /* 图标不占标题的位置：退到文字列左侧的留白里，按钮宽度 = 文字列缩进，
+       点按范围仍是整段留白。图标贴左边 3px、缩到 15px，右边剩下的 10px
+       就是 folder 与标题之间那道留白（图标不居中，居中会把这道缝吃掉）。 */
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: var(--sidebar-text-indent, 28px);
+    height: 24px;
     border: 0;
     border-radius: 0;
-    padding: 0;
+    padding: 0 0 0 3px;
     background: transparent;
     color: #cbd5ee;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     flex: 0 0 auto;
     cursor: pointer;
+}
+
+.project-icon-toggle .ico-folder,
+.project-icon-toggle .ico-folder-open {
+    width: 15px;
+    height: 15px;
 }
 
 .project-icon-toggle:hover {
@@ -299,7 +338,6 @@
     min-width: 0;
     flex: 1;
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--conversation-font);
     letter-spacing: 0.01em;
@@ -320,8 +358,16 @@
 .conversation-name-static {
     display: block;
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* 标题太长不画「…」，改成右端一小段渐隐：末尾的笔画若隐若现地淡出。
+   mask 只挂在真正的文字块上（项目名 / 会话标题），容器右内边距仍留给行尾按钮。 */
+.project-name,
+.conversation-name-static {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--sidebar-title-fade, 12px)), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--sidebar-title-fade, 12px)), transparent);
+    text-overflow: clip;
 }
 
 /* 项目悬停提示：名称 + 路径 + 创建时间（Finder 风格） */
@@ -436,7 +482,12 @@
     transition: opacity .14s;
 }
 
+/* 蓝圈的尺寸跟这个坑位里的黄灯 glyph 对齐（上面那条 15px）：同一个位置的两个状态
+   一样大，行里其余图标也是 15px（folder / pin / trash），13px 的标题旁边不会再杵一个
+   18px（.ico-loading 的通用尺寸，输入框那边的上传档位还在用，这里只覆盖行内这一处）。 */
 .conversation-running-indicator .ico-loading {
+    width: 15px;
+    height: 15px;
     animation: live-loading-spin 1s linear infinite;
 }
 
@@ -511,7 +562,9 @@
     /* 右 padding 为 0：会话行（含 hover/active 高亮背景）右边界
        与面板右缘对齐；配合 app-shell 中左栏收窄 28px，
        面板右边框正好落在原高亮框右边界的位置 */
-    padding: 0 0 0 10px;
+    /* 左 17px + 会话行自己的 11px = 28px 的文字列，与项目标题落在同一条竖线
+       （算法见 .conversations-body 的 --sidebar-text-indent）。 */
+    padding: 0 0 0 17px;
     display: flex;
     flex-direction: column;
     gap: 0;
@@ -656,6 +709,16 @@
     padding-right: 40px;
 }
 
+/* 报告入口常驻卡片尾（24px 宽）：悬停操作组整组右移让位、标题再多让 4px——
+   两枚按钮不许叠在一起（过去叠着，点不到）。 */
+.conversation-task-card.has-report .conversation-actions {
+    right: 36px;
+}
+
+.conversation-task-card.has-actions.has-report .conversation-task-copy {
+    padding-right: 44px;
+}
+
 .conversation-task-terminal-notice {
     flex: 0 0 auto;
     margin-left: auto;
@@ -792,7 +855,7 @@
 }
 
 .conversation-show-more {
-    min-height: 28px;
+    min-height: 26px;
     border: 0;
     border-radius: 6px;
     background: transparent;
@@ -812,10 +875,6 @@
 .conversation-show-more:hover {
     color: var(--gold);
     background: rgba(239, 191, 100, 0.06);
-}
-
-.conversation-show-more {
-    min-height: 30px;
 }
 
 /* ============ Live Feed (right panel) ============ */

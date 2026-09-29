@@ -26,6 +26,8 @@ function createHarness({ uploadStatus = 200 } = {}) {
   const conversationIdRef = { current: null };
   const draftConversationRef = { current: null };
   const draftConversationIdsRef = { current: new Map() };
+  const draftFirstSendRef = { current: null };
+  const draftServerCreateRef = { current: null };
   const apiFetch = async (url, options = {}) => {
     const path = String(url);
     if (options.method === 'DELETE') {
@@ -94,6 +96,8 @@ function createHarness({ uploadStatus = 200 } = {}) {
     detachActiveRunFromCurrentConversation: () => {},
     draftConversationIdsRef,
     draftConversationRef,
+    draftFirstSendRef,
+    draftServerCreateRef,
     flushRuntimeTasksToWorkspace: () => {},
     generateHexId: () => `hex${++hexCount}`,
     getRuntime: () => null,

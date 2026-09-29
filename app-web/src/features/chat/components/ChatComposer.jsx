@@ -31,8 +31,7 @@ import { ComposerBorderBeam, MetalActionEffect } from '../../../shared/ui/Motion
  *   （工作流不传，就没有技能菜单、没有 ↑ 历史、没有批注）；
  * - `allowRuntimeInput`：聊天在跑的时候可以把新输入当纠偏指令发出去，工作流不发（只给 Stop）。
  */
-const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
-const CHAT_IMAGE_MAX_COUNT = 4;
+const CHAT_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
 const CHAT_IMAGE_ACCEPTED_MIME = new Set([
   'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
 ]);
@@ -180,27 +179,28 @@ export function ChatComposer({
 
   function attachImageFile(file) {
     if (!file) return;
+    const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     if (!CHAT_IMAGE_ACCEPTED_MIME.has((file.type || '').toLowerCase())) {
-      console.warn('Unsupported image type', file.type);
-      return;
-    }
-    if (file.size > CHAT_IMAGE_MAX_BYTES) {
-      const rejected = {
-        id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      setComposerImages((prev) => [...prev, {
+        id,
         file,
         previewUrl: '',
         uploading: false,
-        error: `File too large (>${Math.round(CHAT_IMAGE_MAX_BYTES / 1024 / 1024)}MB)`,
-      };
-      setComposerImages((prev) => [...prev, rejected]);
+        error: 'Unsupported image type. Use PNG, JPEG, WebP, or GIF.',
+      }]);
       return;
     }
-    if ((imageStoreRef.get(scopeId)?.length || 0) >= CHAT_IMAGE_MAX_COUNT) {
-      console.warn(`Image limit reached (${CHAT_IMAGE_MAX_COUNT})`);
+    if (file.size > CHAT_IMAGE_MAX_BYTES) {
+      setComposerImages((prev) => [...prev, {
+        id,
+        file,
+        previewUrl: '',
+        uploading: false,
+        error: `File too large (>${Math.round(CHAT_IMAGE_MAX_BYTES / 1024 / 1024)} MiB)`,
+      }]);
       return;
     }
 
-    const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const previewUrl = URL.createObjectURL(file);
     setComposerImages((prev) => [...prev, { id, file, previewUrl, uploading: false }]);
   }
@@ -270,17 +270,15 @@ export function ChatComposer({
   }
 
   const imagesUploading = composerImages.some((img) => img.uploading);
-  const readyImages = imageStore
-    ? composerImages
-        .filter((img) => (img.file || img.imageId) && !img.error)
-        .map((img) => ({
-          image_id: img.imageId,
-          file: img.file,
-          path: img.path,
-          mime: img.mime,
-          previewUrl: img.previewUrl || null,
-        }))
-    : [];
+  const readyImages = composerImages
+    .filter((img) => (img.file || img.imageId) && !img.error)
+    .map((img) => ({
+      image_id: img.imageId,
+      file: img.file,
+      path: img.path,
+      mime: img.mime,
+      previewUrl: img.previewUrl || null,
+    }));
   const hasComposerPayload = Boolean(draft.trim() || composerImages.length > 0 || pendingCommentCount);
   const canSubmitPayload = Boolean((draft.trim() || readyImages.length > 0 || pendingCommentCount) && !imagesUploading && !(running && pendingCommentCount));
 
@@ -343,11 +341,12 @@ export function ChatComposer({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [running, submitPending, stopAndRestore]);
 
+  // 一次被接受的发送会消耗掉输入框里的整份载荷——纠偏指令也一样：它带着同一份图片草稿
+  // 进了运行中的任务，图片如果留在这里，就是「同一张图还躺在输入框里等下一次误发」。
+  // 只丢 store 里的条目、不 revoke blob URL：刚发出的那条消息的缩略图还要靠它。
   const clearComposerAfterSend = () => {
-    if (currentComposerScopeRef.current !== scopeId) {
-      setComposerImages([]);
-      return;
-    }
+    setComposerImages([]);
+    if (currentComposerScopeRef.current !== scopeId) return;
     onSent?.();
     setDraft('');
     setSelectedSkillName('');
@@ -392,8 +391,6 @@ export function ChatComposer({
     if (accepted === false) return;
     clearComposerAfterSend();
     onClearFile?.();
-    // Keep blob URLs alive for the sent message's thumbnails across switches.
-    setComposerImages([]);
   }
 
   function clearFile(e) {

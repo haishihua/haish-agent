@@ -29,8 +29,10 @@ test('workflow nodes keep explicit branch ports and align retry routing independ
   assert.doesNotMatch(flowNodeSource, /workflow-condition-target-handle/);
   assert.match(flowNodeSource, /targetHandle: feedback \? 'runtime-feedback'/);
   assert.match(flowNodeSource, /branchHandleStyles\[branch\] \|\| \(index === 1 \? \{ left: '50%' \} : undefined\)/);
-  assert.match(flowNodeSource, /const reworkEdge = sourceLayout\?\.kind !== targetLayout\?\.kind/);
-  assert.match(flowNodeSource, /borderRadius: curved \? 28 : 10,/);
+  assert.doesNotMatch(flowNodeSource, /getSmoothStepPath/);
+  // 路由几何只有一份（model/workflow-edge-path.js）：大圆角、端口先走直线、转弯半径 32px。
+  assert.match(flowNodeSource, /import \{ workflowEdgePath \} from '\.\.\/model\/workflow-edge-path\.js';/);
+  assert.match(flowNodeSource, /const \{ path, labelX, labelY \} = workflowEdgePath\(\{/);
   assert.doesNotMatch(editorSource, /calc\(100% - 18px\)/);
 });
 

@@ -25,8 +25,42 @@ test('runtime input accepts image-only payloads without a queued toast', () => {
   assert.match(composerSource, /running && allowRuntimeInput && hasComposerPayload/);
   // 聊天详情只负责摆消息：输入框自己的状态和发送判定不能又抄一份。
   assert.doesNotMatch(chatPanelSource, /readyImages|hasComposerPayload|sendBeamActive/);
-  assert.match(deploySource, /queueTaskInput\(runningTaskId, text, request\.imageAttachments, request\.displayText\)/);
+  assert.match(deploySource, /queueTaskInput\([\s\S]*?runningTaskId,[\s\S]*?request\.text,[\s\S]*?request\.imageAttachments,[\s\S]*?request\.displayText/);
+  assert.match(deploySource, /uploadImagesBestEffort\(request\.imageAttachments, activeId\)/);
   assert.doesNotMatch(deploySource, /Instruction queued\./);
+});
+
+test('an accepted steering send consumes the composer image drafts', () => {
+  // 纠偏发送把输入框里的图片带进运行中的任务（readyImages → queueTaskInput）。发送被接受
+  // 之后图片必须跟正文一起离开输入框：旧代码里 running 分支只调 clearComposerAfterSend，
+  // 而这个出口只清正文，图片草稿留在 store 里继续渲染 → 截图里「图片还在输入框留了一份」。
+  assert.match(
+    composerSource,
+    /const clearComposerAfterSend = \(\) => \{\n\s+setComposerImages\(\[\]\);/,
+    '清空出口的第一件事就是丢掉图片草稿',
+  );
+  // 两条发送路径共用这一个出口，谁都不许再自己清一遍图片。
+  assert.equal((composerSource.match(/setComposerImages\(\[\]\)/g) || []).length, 1, '图片草稿的清空只有一份实现');
+  assert.match(composerSource, /if \(accepted !== false\) clearComposerAfterSend\(\);/);
+  assert.match(composerSource, /clearComposerAfterSend\(\);\n\s+onClearFile\?\.\(\);/);
+  // 清空只丢 store 里的条目：刚发出的那条消息的缩略图还要用同一个 blob URL，不能 revoke。
+  const clearStart = composerSource.indexOf('const clearComposerAfterSend');
+  assert.ok(clearStart > 0, 'clearComposerAfterSend 还在');
+  assert.doesNotMatch(composerSource.slice(clearStart, clearStart + 400), /revokeObjectURL/);
+});
+
+test('the steering image fixture drives the real composer', () => {
+  const fixtureHtml = fs.readFileSync(new URL('../fixtures/composer-steering-image.html', import.meta.url), 'utf8');
+  const fixtureModule = fs.readFileSync(new URL('../fixtures/composer-steering-image.jsx', import.meta.url), 'utf8');
+  assert.match(fixtureHtml, /src="\.\/composer-steering-image\.jsx"/);
+  assert.match(
+    fixtureModule,
+    /import \{ ChatComposer \} from '\.\.\/\.\.\/src\/features\/chat\/components\/ChatComposer\.jsx'/,
+  );
+  assert.match(fixtureModule, /import '\.\.\/\.\.\/styles\/chat\.css'/);
+  // 纠偏按钮 + chip 选择器：夹具量的是真实渲染出来的输入框。
+  assert.match(fixtureModule, /submitButton\('Add instruction'\)/);
+  assert.match(fixtureModule, /querySelectorAll\('\.chat-composer-image-chip'\)/);
 });
 
 test('runtime input images remain visible when the applied event replaces the queued state', () => {

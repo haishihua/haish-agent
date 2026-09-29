@@ -138,3 +138,93 @@ test('retries and edits replace the source turn without removing independent wor
   assert.deepEqual(collapseFullTaskAttempts(tasks).map((task) => task.taskId), ['edited', 'node']);
   assert.equal(tasks.length, 4);
 });
+
+test('an accepted edit is on screen as the running turn before the server names it', async () => {
+  const source = sourceTurn();
+  const harness = createAttemptHarness(source, { hold: true });
+  const handlers = createConversationHandlers({
+    executeQuest: harness.executeQuest,
+    canStartDeployForConversation: () => true,
+    getRuntime: () => harness.runtime,
+  });
+  let acknowledged = false;
+  const edit = handlers.handleRetryTask(source, 'Revised message', {}).then((accepted) => {
+    acknowledged = true;
+    return accepted;
+  });
+  for (let turn = 0; turn < 16; turn += 1) await Promise.resolve();
+  // 请求已发出去、这一轮已以运行态渲染出来，但整段流还挂在那里没跑完。
+  assert.equal(harness.requests.length, 1);
+  assert.equal(acknowledged, true, '编辑框必须在服务端接下这一笔时就收工，不能等整段流跑完');
+  assert.equal(await edit, true);
+  const state = harness.runtime.taskRuntimeState;
+  assert.equal(state.pendingTask.status, 'running');
+  assert.equal(state.pendingTask.displayText, 'Revised message');
+  assert.equal(state.pendingTask.sourceTaskId, source.taskId);
+  // 旧的取消态（行里那支编辑框）让位给新的运行态：同一个位置不留两轮。
+  const projected = collapseFullTaskAttempts(state.taskOrder.map((id) => state.tasksById[id]), state.pendingTask);
+  assert.deepEqual(projected.map((task) => task.taskId), []);
+  harness.release();
+  for (let turn = 0; turn < 60; turn += 1) await Promise.resolve();
+  const settled = harness.runtime.taskRuntimeState;
+  assert.equal(settled.pendingTask, null);
+  assert.deepEqual(
+    collapseFullTaskAttempts(settled.taskOrder.map((id) => settled.tasksById[id]), settled.pendingTask)
+      .map((task) => task.taskId),
+    ['confirmed-attempt'],
+  );
+});
+
+test('a run that dies after it was taken still closes the editor and reports the reason', async () => {
+  const source = sourceTurn();
+  const harness = createAttemptHarness(source, { reject: true });
+  const toasts = [];
+  const handlers = createConversationHandlers({
+    executeQuest: harness.executeQuest,
+    canStartDeployForConversation: () => true,
+    getRuntime: () => harness.runtime,
+    showToast: (kind, message) => toasts.push([kind, message]),
+  });
+  assert.equal(await handlers.handleRetryTask(source, 'Keep my draft', {}), true);
+  for (let turn = 0; turn < 40 && toasts.length === 0; turn += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.equal(toasts.length, 1, '接下之后的失败由提示条说出来，不再阻塞编辑框');
+  assert.match(toasts[0][1], /not been sent/);
+  const state = harness.runtime.taskRuntimeState;
+  assert.deepEqual(state.taskOrder, [source.taskId], '回滚把原来那一轮放回时间线');
+  assert.equal(state.pendingTask, null);
+});
+
+test('an edit blocked before the server takes it keeps the editor and its draft', async () => {
+  const source = sourceTurn();
+  const harness = createAttemptHarness(source);
+  harness.runtime.busy = true;
+  harness.runtime.activeRunId = 'current-run';
+  const handlers = createConversationHandlers({
+    executeQuest: harness.executeQuest,
+    canStartDeployForConversation: () => true,
+    getRuntime: () => harness.runtime,
+    showToast: () => {},
+  });
+  await assert.rejects(handlers.handleRetryTask(source, 'Keep my draft', {}), /finish or stop/);
+  assert.equal(harness.requests.length, 0, '被拦下的发送一个字都没发出去');
+});
+
+test('a pending turn only replaces the attempt it actually succeeds', () => {
+  const tasks = [
+    { taskId: 'cancelled' },
+    { taskId: 'node', sourceTaskId: 'cancelled', rerunFromNodeId: 'node-1' },
+  ];
+  const pending = { id: 'pending-attempt', taskId: 'pending-attempt', status: 'running', sourceTaskId: 'cancelled' };
+  assert.deepEqual(collapseFullTaskAttempts(tasks, pending).map((task) => task.taskId), ['node']);
+  // 普通发送的 pending 没有 source：不顶掉任何一轮。
+  assert.deepEqual(collapseFullTaskAttempts(tasks, { id: 'local-draft', status: 'queued' }).map((task) => task.taskId), ['cancelled', 'node']);
+  // workflow 节点重跑不是全量重发：不参与顶替。
+  assert.deepEqual(
+    collapseFullTaskAttempts(tasks, { id: 'node-run', sourceTaskId: 'cancelled', rerunFromNodeId: 'node-1' })
+      .map((task) => task.taskId),
+    ['cancelled', 'node'],
+  );
+  assert.deepEqual(collapseFullTaskAttempts(tasks).map((task) => task.taskId), ['cancelled', 'node']);
+});

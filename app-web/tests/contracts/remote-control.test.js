@@ -10,6 +10,7 @@ const dialogSource = fs.readFileSync(
 const preloadSource = fs.readFileSync(new URL('../../../src/preload/preload.ts', import.meta.url), 'utf8');
 const mainSource = fs.readFileSync(new URL('../../../src/main/main.ts', import.meta.url), 'utf8');
 const localRemoteSource = fs.readFileSync(new URL('../../../src/main/local-remote.ts', import.meta.url), 'utf8');
+const appShellSource = fs.readFileSync(new URL('../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
 
 test('desktop remote control is opened from the first top-bar action', () => {
   assert.match(topBarSource, /className="topbar-actions"[\s\S]*aria-label="Remote Control"/);
@@ -23,11 +24,21 @@ test('remote control uses the desktop bridge for QR pairing and device access', 
   assert.match(preloadSource, /remote-control:start-pairing/);
   assert.match(preloadSource, /remote-control:list-devices/);
   assert.match(preloadSource, /remote-control:revoke-device/);
+  assert.match(preloadSource, /conversation-reads:get/);
+  assert.match(preloadSource, /conversation-reads:mark/);
+  assert.match(mainSource, /\/remote\/conversation-reads/);
   // The desktop app hosts the adapter: the origin lives in local-remote.ts and
   // main.ts must reach the adapter through ensureRemoteAdapter().
   assert.match(localRemoteSource, /REMOTE_ADAPTER_PORT = 8766/);
   assert.match(localRemoteSource, /\/remote\/status/);
   assert.match(mainSource, /remoteAdapterOrigin\(\)/);
+});
+
+test('desktop publishes and consumes canonical conversation reads', () => {
+  assert.match(appShellSource, /getConversationReads/);
+  assert.match(appShellSource, /markConversationRead/);
+  assert.match(appShellSource, /clearReadTaskCompletionNotices/);
+  assert.match(appShellSource, /alreadyViewed/);
 });
 
 test('remote control configures and surfaces the hosted adapter', () => {

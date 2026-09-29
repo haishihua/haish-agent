@@ -86,10 +86,11 @@ test('runtime workflow layout wraps the primary route and keeps rejection work b
   assert.equal(layout.rowCount, 3);
   assert.deepEqual(layout.positions.get('start'), { x: 48, y: 96 });
   assert.deepEqual(layout.positions.get('three'), { x: 762, y: 96 });
-  assert.deepEqual(layout.positions.get('four'), { x: 762, y: 288 });
-  assert.deepEqual(layout.positions.get('seven'), { x: 48, y: 288 });
-  assert.deepEqual(layout.positions.get('rework'), { x: 405, y: 192 });
-  assert.equal(layout.positions.get('output').y, 400);
+  assert.deepEqual(layout.positions.get('four'), { x: 762, y: 384 });
+  assert.deepEqual(layout.positions.get('seven'), { x: 48, y: 384 });
+  // 回环节点挂在锚点行下面 192px（判定与 Retry 之间留出回路走线的空间）。
+  assert.deepEqual(layout.positions.get('rework'), { x: 405, y: 288 });
+  assert.equal(layout.positions.get('output').y, 496);
   assert.equal(layout.meta.get('four').direction, 'left');
   assert.equal(layout.meta.get('rework').kind, 'secondary');
 });
@@ -97,7 +98,10 @@ test('runtime workflow layout wraps the primary route and keeps rejection work b
 test('both pages arrange the same graph identically, no matter the pane width', () => {
   // 列数曾经按各自画布宽度算：配置页排成 4+2、运行页排成 3+3——同一张图两张形状。现在列数是
   // 常数（LAYOUT_MAX_COLUMNS），排布函数连宽度参数都没有了，两页只有一个调用形状。
+  // 主链行距/挂回环那一行的间距、以及回环节点挂多深，都是排布这一份里的常数。
   assert.match(layoutSource, /const LAYOUT_MAX_COLUMNS = 4;/);
+  assert.match(layoutSource, /const BRANCH_OFFSET_Y = 192;/);
+  assert.match(layoutSource, /const BRANCH_ROW_GAP = BRANCH_OFFSET_Y \+ 72 \+ 24;/);
   assert.doesNotMatch(layoutSource, /viewportWidth/);
   assert.match(editorSource, /layoutRuntimeWorkflow\(nodes, edges\)/);
   assert.match(runtimeSource, /layoutRuntimeWorkflow\(workflow\?\.nodes, workflow\?\.edges\)/);
@@ -130,23 +134,46 @@ test('both pages arrange the same graph identically, no matter the pane width', 
   assert.deepEqual(layout.positions.get('goal_worker'), { x: 286, y: 96 });
   assert.deepEqual(layout.positions.get('goal_verifier'), { x: 524, y: 96 });
   assert.deepEqual(layout.positions.get('goal_gate'), { x: 762, y: 96 });
-  assert.deepEqual(layout.positions.get('output'), { x: 762, y: 288 });
-  // 回环节点挂在判定下方（分支位），不是另起一条主链。
-  assert.deepEqual(layout.positions.get('goal_loop'), { x: 524, y: 192 });
+  assert.deepEqual(layout.positions.get('output'), { x: 762, y: 384 });
+  // 回环节点挂在判定下方（分支位），不是另起一条主链；挂得深一点，回路才走得开。
+  assert.deepEqual(layout.positions.get('goal_loop'), { x: 524, y: 288 });
   assert.equal(layout.meta.get('goal_loop').kind, 'secondary');
 });
 
+test('cases/default gates keep Retry secondary regardless of edge order or stored coordinates', () => {
+  const nodes = [
+    { id: 'start', type: 'start' }, { id: 'worker', type: 'agent' },
+    { id: 'gate', type: 'condition', cases: [{ name: 'DONE', to: 'end' }], default: 'retry' },
+    { id: 'retry', type: 'loop', position: { x: 0, y: 0 } },
+    { id: 'end', type: 'output', position: { x: 1000, y: 0 } },
+  ];
+  const edges = [{ from: 'start', to: 'worker' }, { from: 'worker', to: 'gate' },
+    { from: 'gate', to: 'retry' }, { from: 'gate', to: 'end' },
+    { from: 'retry', to: 'worker', branch: 'retry' }];
+  const layout = layoutRuntimeWorkflow(nodes, edges);
+  assert.equal(layout.meta.get('retry').kind, 'secondary');
+  assert.equal(layout.meta.get('end').kind, 'primary');
+  assert.equal(layout.meta.get('retry').direction, 'right');
+  assert.deepEqual([...layout.positions], [...layoutRuntimeWorkflow(nodes, [...edges].reverse()).positions]);
+});
+
 test('runtime feedback edges keep routed ports and align every rework edge on one baseline', () => {
-  // 两页的边共用同一份外观（WorkflowFlowNode.workflowEdgeAppearance + WorkflowCanvasEdge）：
-  // 端口、圆角/基线和颜色/线宽都只在这里定义一次。
+  // 两页的边共用同一份外观（WorkflowFlowNode.workflowEdgeAppearance）与同一份几何
+  // （model/workflow-edge-path.js）：端口、圆角半径/直线引导、角色配色（虚线/箭头/标签）都只定义一次。
   assert.match(flowNodeSource, /targetHandle: feedback \? 'runtime-feedback'/);
   assert.match(flowNodeSource, /type: 'workflowEdge',/);
-  assert.match(flowNodeSource, /const reworkEdge = sourceLayout\?\.kind !== targetLayout\?\.kind/);
-  assert.match(flowNodeSource, /borderRadius: curved \? 28 : 10,/);
-  assert.match(flowNodeSource, /offset: curved \? \(reworkEdge \? 0 : 28\) : \(edge\?\.branch === 'retry' \? 0 : 20\),/);
-  // 平时中性、正在走运行蓝：颜色只在这一份里给（配置页选中和运行页 flowing 同一条线）。
-  assert.match(flowNodeSource, /stroke: active\n\s+\? 'rgba\(105, 200, 246, 0\.9\)'/);
-  assert.match(flowNodeSource, /strokeWidth: active \? 2 : 1\.5,/);
+  // React Flow 自带的折线路由（小圆角 + 绕中线）整个换掉：大圆角 smooth step 走专属那一份。
+  assert.doesNotMatch(flowNodeSource, /getSmoothStepPath/);
+  assert.doesNotMatch(flowNodeSource, /borderRadius:|offset:/);
+  assert.match(flowNodeSource, /import \{ workflowEdgePath \} from '\.\.\/model\/workflow-edge-path\.js';/);
+  // 主流程是一条很安静的 2px 实线（颜色由外观层给的源→目标渐变决定）；正在走的那条才换成
+  // 运行蓝、加粗到 2.4px。颜色/加粗只在这一份里给（配置页选中和运行页 flowing 同一条线）。
+  assert.match(flowNodeSource, /const ACTIVE_EDGE_STROKE = 'rgba\(105, 200, 246, 0\.9\)';/);
+  assert.match(flowNodeSource, /const coreWidth = active \? Number\(style\?\.strokeWidth \|\| 2\) \+ 0\.4 : style\?\.strokeWidth;/);
+  // 虚线（10/7 均匀间距）与 7px 小三角只留给回环/支路/收尾：主流程不画标签、不画箭头。
+  assert.match(flowNodeSource, /loopback: \{ stroke: 'rgba\(104, 220, 240, 0\.95\)', strokeWidth: 2, dash: '10 7', arrow: true \},/);
+  assert.match(flowNodeSource, /const circuit = role === 'detour' \|\| role === 'loopback';/);
+  assert.match(flowNodeSource, /label: circuit && branch/);
 });
 
 test('workflow editor reuses the runtime snake layout and routed ports', () => {

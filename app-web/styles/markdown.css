@@ -95,6 +95,23 @@
     th, td {
         padding: 6px 12px;
     }
+
+    /* 表格单元格保持整词宽度（正文和里面的行内代码都算）。上面正文用的
+       `word-break: break-all` 会连同 `.haish-markdown` 的 `overflow-wrap: anywhere`
+       一起把单元格的最小宽度压到一个字符：列宽不再反映内容——`app-web/src/.../conversation-loading.js`
+       这种路径会从中间断成两行，只写实现名的列（pi / opencode / codex / Hermes）更会被
+       压成一列字母（表格是 `w-full`、列宽由内容分配，长中文列分完之后留给短英文列的空间
+       远不足一个单词）。这里让列的最小宽度回到「一个完整单词」，只有真的放不下时才用
+       `break-word` 断开。`overflow-wrap` 必须显式写回来——`anywhere` 同样参与 min-content
+       计算，继承过来的话列还是能被压扁；行内代码还带着自己那条 `break-all`，所以它也要
+       单独列进来（两列的最小宽度都回到完整 token / 单词）。 */
+    [data-streamdown="table-header-cell"],
+    [data-streamdown="table-cell"],
+    [data-streamdown="table-header-cell"] [data-streamdown="inline-code"],
+    [data-streamdown="table-cell"] [data-streamdown="inline-code"] {
+        word-break: normal;
+        overflow-wrap: break-word;
+    }
 }
 
 @scope (.haish-markdown) {

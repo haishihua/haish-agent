@@ -3,9 +3,11 @@ import { createTaskStreamHandlers } from '../../src/features/tasks/hooks/createT
 import { createConversationActivationHandlers } from '../../src/features/conversations/hooks/createConversationActivationHandlers.js';
 import { buildTaskRuntimeRecord } from '../../src/features/tasks/model/task-runtime.js';
 
-export function createAttemptHarness(source, { reject = false } = {}) {
+export function createAttemptHarness(source, { reject = false, hold = false } = {}) {
   // reject=true：每次都 409（模拟“上一轮永远没收尾”）；reject=N：前 N 次 409。
+  // hold=true：请求发出后把流挂住，直到 release()——用来观察“已被接下、还没跑完”那一档。
   let remainingRejections = reject === true ? Number.POSITIVE_INFINITY : (Number.isFinite(reject) ? reject : 0);
+  const releases = [];
   const runtime = {
     busy: false, activeRunId: null, activeTaskId: null, fetchController: null,
     cancelledRunIds: new Set(),
@@ -46,6 +48,7 @@ export function createAttemptHarness(source, { reject = false } = {}) {
       const request = command.payload;
       requests.push({ operation: command.operation, body: request });
       snapshots.push({ ...runtime.taskRuntimeState.pendingTask });
+      if (hold) await new Promise((resolve) => releases.push(resolve));
       if (remainingRejections > 0) {
         remainingRejections -= 1;
         throw Object.assign(new Error('Conversation already has an active task.'), { status: 409 });
@@ -61,5 +64,11 @@ export function createAttemptHarness(source, { reject = false } = {}) {
   };
   const activation = createConversationActivationHandlers(context);
   const handlers = createTaskStreamHandlers({ ...context, ...activation });
-  return { ...handlers, runtime, requests, snapshots };
+  return {
+    ...handlers,
+    runtime,
+    requests,
+    snapshots,
+    release: () => { for (const resolve of releases.splice(0)) resolve(); },
+  };
 }

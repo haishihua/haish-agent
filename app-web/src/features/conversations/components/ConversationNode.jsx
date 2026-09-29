@@ -44,9 +44,9 @@ function ConversationMarqueeTitle({ name }) {
     let raf = 0;
     let timer = 0;
     const measure = () => {
-      // 测量始终渲染的 .conversation-name-static：它自带 overflow:hidden +
-      // ellipsis，其自身 scrollWidth 恒等于完整文本宽度（元素自身的溢出内容
-      // 会计入自己的 scrollWidth）。不能量容器——容器在激活态下子元素各自
+      // 测量始终渲染的 .conversation-name-static：它自带 overflow:hidden（长标题
+      // 末尾渐隐靠 mask），其自身 scrollWidth 恒等于完整文本宽度（元素自身的溢出
+      // 内容会计入自己的 scrollWidth）。不能量容器——容器在激活态下子元素各自
       // 裁剪/隐藏溢出，scrollWidth 会塌缩回 clientWidth，导致误判为不溢出、
       // marquee 状态被反复复位，轮播永远不触发。
       const staticEl = el.querySelector('.conversation-name-static');

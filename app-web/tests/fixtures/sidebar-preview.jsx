@@ -195,6 +195,131 @@ async function runChecks() {
   return results;
 }
 
+// ——— 任务标签页的搜索框：跟会话标签页是同一只 ThreadSearch，搜的是任务、选中跳任务 ———
+// 这一段在分页那一段跑完之后才挂第二只面板：分页的断言是全局查询，多一只面板会串味。
+
+const taskSearchResults = [];
+const taskCheck = (name, pass, detail = '') => taskSearchResults.push({ name: `task search: ${name}`, pass: Boolean(pass), detail: String(detail) });
+
+const taskSearchMount = () => document.querySelector('[data-task-search]');
+const fieldOf = (node) => node?.querySelector('.haish-search-field');
+const resultsOf = (node) => node?.querySelector('.haish-thread-search-results');
+const resultLabels = (node) => [...(resultsOf(node)?.querySelectorAll('button') || [])]
+  .map((button) => button.textContent.trim());
+const groupLabels = (node) => [...(resultsOf(node)?.querySelectorAll('small') || [])]
+  .map((small) => small.textContent.trim());
+
+// React 的受控输入：得走原生 setter 再派发 input 事件，onChange 才会真的跑。
+const setValue = (input, value) => {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  flushSync(() => {
+    setter.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+};
+
+const pressKey = (input, key) => {
+  flushSync(() => { input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })); });
+};
+
+async function runTaskSearchChecks() {
+  const mountNode = document.createElement('div');
+  mountNode.className = 'app-shell';
+  mountNode.dataset.taskSearch = 'true';
+  document.getElementById('root').appendChild(mountNode);
+  const root = createRoot(mountNode);
+  const calls = [];
+
+  flushSync(() => {
+    root.render(
+      <AppTooltipProvider>
+        <div className="conversations-panel" style={{ position: 'relative', width: 320, height: 760, padding: 12 }}>
+          <ConversationsPanel
+            workspaceState={WORKSPACE}
+            workflowTaskMode
+            onSelectProject={() => {}}
+            onToggleProject={() => {}}
+            onSelectConversation={() => {}}
+            onSelectTask={(projectId, conversationId, selectedTask) => {
+              calls.push([projectId, conversationId, selectedTask?.taskId]);
+            }}
+            onAddConversation={() => {}}
+            onRemoveProject={() => {}}
+            onDeleteConversation={() => {}}
+            onRenameConversation={() => {}}
+            onRenameProject={() => {}}
+            onPinConversation={() => {}}
+            onPinProject={() => {}}
+          />
+        </div>
+      </AppTooltipProvider>,
+    );
+  });
+  await sleep(150);
+
+  const node = taskSearchMount();
+  const input = fieldOf(node)?.querySelector('input');
+  const conversationInput = document.querySelector('.haish-search-field input');
+
+  taskCheck(
+    'the Task tab carries the same search field as the Conversation tab',
+    Boolean(node?.querySelector('.side-panel-head')?.textContent.includes('Task'))
+      && input?.getAttribute('aria-label') === 'Search tasks'
+      && input?.placeholder === 'Search tasks'
+      && conversationInput?.getAttribute('aria-label') === 'Search conversations',
+    `task=${input?.getAttribute('aria-label')} conversation=${conversationInput?.getAttribute('aria-label')}`,
+  );
+
+  // 任务列表默认只排 5 行（任务 8…4），任务 1 被预览藏着——搜索得能搜到它。
+  setValue(input, '任务 1');
+  await sleep(40);
+  taskCheck(
+    'typing finds a task the five-row preview hides',
+    JSON.stringify(resultLabels(node)) === JSON.stringify(['任务 1'])
+      && groupLabels(node).includes('haish-agent'),
+    `results=${JSON.stringify(resultLabels(node))} groups=${JSON.stringify(groupLabels(node))}`,
+  );
+
+  pressKey(input, 'Enter');
+  await sleep(40);
+  taskCheck(
+    "Enter opens the first match as that conversation's task",
+    JSON.stringify(calls.at(-1)) === JSON.stringify(['project-preview', 'conv-1', 'task-1']) && input.value === '',
+    `calls=${JSON.stringify(calls)} value=${input.value}`,
+  );
+
+  setValue(input, '任务 7');
+  await sleep(40);
+  press(resultsOf(node)?.querySelector('button'));
+  await sleep(40);
+  taskCheck(
+    'clicking a result opens that task',
+    JSON.stringify(calls.at(-1)) === JSON.stringify(['project-preview', 'conv-1', 'task-7']),
+    `calls=${JSON.stringify(calls)}`,
+  );
+
+  setValue(input, '没有这样的任务');
+  await sleep(40);
+  taskCheck(
+    'a query that matches nothing says so',
+    resultsOf(node)?.querySelector('p')?.textContent === 'No matching tasks',
+    resultsOf(node)?.textContent?.slice(0, 60) || 'missing',
+  );
+
+  setValue(input, '任务 5');
+  await sleep(40);
+  press(fieldOf(node)?.querySelector('[aria-label="Clear task search"]'));
+  await sleep(40);
+  taskCheck(
+    'the clear button empties the task search',
+    input.value === '' && !resultsOf(node),
+    `value=${input.value} results=${Boolean(resultsOf(node))}`,
+  );
+
+  taskCheck('no page error was raised while searching tasks', window.__pageErrors.length === 0, window.__pageErrors.join(' | '));
+  return taskSearchResults;
+}
+
 let checksPromise = null;
 function start() {
   if (!checksPromise) checksPromise = runChecks();
@@ -210,11 +335,20 @@ const report = (list) => {
   return { failed: failed.length, total: list.length, results: list };
 };
 
+let taskChecksPromise = null;
+function startTaskChecks() {
+  if (!taskChecksPromise) taskChecksPromise = runTaskSearchChecks();
+  return taskChecksPromise;
+}
+
 window.__sidebarPreviewChecks = async () => report(await start());
+window.__sidebarTaskSearchChecks = async () => report(await startTaskChecks());
 window.__sidebarPreviewAutoRun = () => {
-  start().then(report).catch((error) => {
-    report([{ name: 'fixture crashed', pass: false, detail: String(error?.stack || error) }]);
-  });
+  start()
+    .then((paging) => startTaskChecks().then((search) => report([...paging, ...search])))
+    .catch((error) => {
+      report([{ name: 'fixture crashed', pass: false, detail: String(error?.stack || error) }]);
+    });
 };
 
 window.__sidebarPreviewAutoRun();

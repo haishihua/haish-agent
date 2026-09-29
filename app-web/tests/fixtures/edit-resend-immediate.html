@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edit + resend: the editor closes the moment the send is taken</title>
+<style>
+  html, body { margin: 0; background: #0a0f18; color: #e7ecf6; font: 13px system-ui; }
+  h1 { font-size: 14px; margin: 10px 12px 6px; }
+  #root { padding: 0 12px; }
+  #root .chat-workspace { height: 520px; }
+  #checks { margin: 12px; padding: 10px; background: #0b0e14; color: #9fd8a4; white-space: pre-wrap; font: 11px/1.5 ui-monospace, monospace; border-radius: 8px; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<h1>编辑消息重发 — 按 Send 后编辑框立刻消失，那一轮直接进运行态（真实 handleRetryTask + 真实 ChatPanel）</h1>
+<div id="root"></div>
+<pre id="checks" role="status">Running checks…</pre>
+<script type="module" src="./edit-resend-immediate.jsx"></script>
+</html>

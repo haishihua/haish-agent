@@ -1,6 +1,14 @@
 /* Utilities and resets are limited to the new Settings surfaces. The workflow editor is excluded. */
 @reference "tailwindcss/theme.css";
 @custom-variant dark (&:where(.dark, .dark *));
+/* hover: 只在真的有鼠标的设备上生效——触屏点一下就会命中 hover，是误报（Emil 规则的 touch 门禁）。 */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
 @theme inline {
   --color-background: var(--settings-background);
   --color-foreground: var(--settings-foreground);
@@ -39,6 +47,7 @@
   --popover: var(--settings-popover); --primary: var(--settings-primary); --secondary: var(--settings-secondary);
   --muted-foreground: var(--settings-muted); --border: var(--settings-border); --ring: var(--settings-ring);
   --control: #191b1f; --control-border: #3c4048; --surface: #1e2126; --editor-width: 390px;
+  --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
   --spacing: .25rem; color: var(--foreground); font-family: var(--conversation-font, 'LXGW WenKai Screen', sans-serif);
 }
 .settings-page.settings-modern { position: relative; display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 0; height: 100%; padding: 0; overflow: hidden; }
@@ -82,7 +91,9 @@
   .settings-search-modern [data-slot="input"] { min-width: 0; width: 100%; border: 0; background: transparent; outline: none; box-shadow: none; padding: 0; }
   .settings-list-modern { display: flex; flex-direction: column; padding: 3px 5px; border: 1px solid #ffffff10; border-radius: 10px; background: var(--surface); }
   .settings-row-modern { display: flex; align-items: center; padding: 0; gap: 0; flex-wrap: nowrap; border: 0; border-radius: 6px; }
-  .settings-row-modern:hover { background: #ffffff05; }
+  @media (hover: hover) and (pointer: fine) {
+    .settings-row-modern:hover { background: #ffffff05; }
+  }
   .settings-row-modern.is-selected { background: #1c2f52; }
   .settings-row-main { display: flex; align-items: center; justify-content: flex-start; flex: 1; min-width: 0; height: auto; min-height: 63px; padding: 12px; gap: 12px; background: transparent; text-align: left; white-space: normal; }
   .settings-row-main [data-slot="item-content"] { min-width: 0; gap: 4px; }
@@ -92,7 +103,10 @@
   .settings-row-main [data-slot="item-media"] { display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; align-self: center; transform: none; color: #99abc8; }
   .settings-row-modern [data-slot="item-actions"] { display: flex; align-items: center; gap: 10px; padding-right: 7px; flex-shrink: 0; }
   .settings-row-chevron { color: #8995a8; opacity: 0; }
-  .settings-row-modern:hover .settings-row-chevron, .settings-row-modern.is-selected .settings-row-chevron { opacity: 1; }
+  @media (hover: hover) and (pointer: fine) {
+    .settings-row-modern:hover .settings-row-chevron { opacity: 1; }
+  }
+  .settings-row-modern.is-selected .settings-row-chevron { opacity: 1; }
   .settings-row-status { display: flex; align-items: center; gap: 5px; white-space: nowrap; color: #a0a6b1; font-size: 11px; }
   .settings-row-status.success { color: #91b5a7; }
   .settings-row-status.error { color: #df98a0; }
@@ -108,7 +122,7 @@
   [data-slot="field-label"] { font-size: 12px; font-weight: 500; }
   [data-slot="field-description"] { font-size: 11px; line-height: 1.6; color: var(--muted-foreground); }
   [data-slot="input"], [data-slot="select-trigger"], [data-slot="model-selector-trigger"], [data-slot="textarea"] { border: 1px solid var(--control-border); background: var(--control); color: var(--foreground); border-radius: 6px; box-shadow: none; outline: none; padding: 8px 12px; height: 36px; }
-  [data-slot="input"]:focus-visible, [data-slot="select-trigger"]:focus-visible, [data-slot="model-selector-trigger"]:focus-visible, [data-slot="textarea"]:focus-visible { border-color: var(--ring); outline: none; box-shadow: none; }
+  [data-slot="input"]:focus-visible, [data-slot="select-trigger"]:focus-visible, [data-slot="model-selector-trigger"]:focus-visible, [data-slot="textarea"]:focus-visible { border-color: var(--ring); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent); }
   [data-slot="textarea"] { min-height: 100px; height: auto; resize: vertical; line-height: 1.8; }
   [data-slot="input"]:disabled, [data-slot="textarea"]:disabled { color: #a3a9b4; background: #1c1e23; }
   .settings-secret-modern { position: relative; }
@@ -165,6 +179,10 @@
 .mcp-server-status { justify-self: start; display: inline-flex; align-items: center; gap: 7px; padding: 0; border: 0; border-radius: 0; background: transparent; color: #acc7b8; font-size: 12px; font-weight: 400; line-height: 20px; }
 .mcp-server-status.is-disabled { color: #a0a6b1; }
 .mcp-status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+/* Status 列：左边是状态（点 + 文字），右边是 skill 行那一颗共享 Switch（Switch 组件自带颜色/尺寸/焦点环/
+   动效，这里不另写一套图标按钮）。这里只把它稳住：文字再长也不许把它挤瘦。 */
+.mcp-server-state { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.mcp-server-switch { flex: 0 0 auto; }
 .mcp-code-surface { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #181a1e; }
 .mcp-code-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 24px; min-height: 56px; padding: 12px 16px; border-bottom: 1px solid #ffffff0c; background: #292c32; }
 .mcp-file-label { display: flex; align-items: center; gap: 12px; min-width: 0; height: 32px; font-size: 12px; line-height: 20px; }
@@ -174,7 +192,9 @@
 .mcp-editor-actions { display: flex; align-items: center; gap: 8px; }
 .mcp-editor-actions [data-slot="button"] { width: 84px; height: 32px; padding: 0 12px; font-size: 12px; line-height: 20px; box-shadow: none; }
 .mcp-editor-actions [data-variant="outline"] { border-color: #4a4e57; background: #30343b; color: #d3d7df; }
-.mcp-editor-actions [data-variant="outline"]:hover { background: #3b4048; }
+@media (hover: hover) and (pointer: fine) {
+  .mcp-editor-actions [data-variant="outline"]:hover { background: #3b4048; }
+}
 .mcp-json { field-sizing: fixed; width: 100%; height: clamp(220px, calc(100dvh - 390px), 420px); min-height: 220px; resize: vertical; padding: 16px; background: transparent; border: 0; border-radius: 0; box-shadow: none; font: inherit; font-size: 12px; line-height: 1.85; tab-size: 2; }
 .mcp-json:focus-visible { outline: none; box-shadow: none; }
 .mcp-code-surface:focus-within { border-color: var(--ring); }
@@ -185,7 +205,9 @@
 .skill-upload-dialog [data-slot="dialog-footer"] { flex-direction: row; justify-content: flex-end; gap: 8px; }
 .skill-upload-dialog [data-slot="dialog-close"]:focus-visible { box-shadow: none; outline: 1px solid var(--ring); outline-offset: 4px; }
 .skill-dropzone { min-height: 212px; padding: 24px; gap: 8px; border: 1px dashed #555b66; background: var(--control); border-radius: 10px; cursor: pointer; }
-.skill-dropzone:hover { background: #1e2127; border-color: #778394; }
+@media (hover: hover) and (pointer: fine) {
+  .skill-dropzone:hover { background: #1e2127; border-color: #778394; }
+}
 .skill-dropzone:focus-visible, .skill-dropzone[data-dragging] { border-color: var(--ring); background: #202a39; }
 .skill-dropzone-icon { display: grid; place-items: center; width: 46px; height: 46px; border: 1px solid #414650; border-radius: 12px; background: #2b2f36; color: #b7c5db; margin-bottom: 6px; }
 .skill-dropzone strong { font-size: 14px; font-weight: 500; }
@@ -207,4 +229,17 @@
 .skill-details dt { font-size: 11px; color: var(--muted-foreground); margin-bottom: 8px; }
 .skill-details dd { margin: 0; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
 
+}
+
+/* 设置区按钮的触感（Emil 规则）：按下要有即时反馈；过渡只列真正会变的属性（不写 transition: all），
+   曲线用更强的自定义 ease-out；reduced-motion 退回瞬时。 */
+@scope (.settings-theme) to (.settings-legacy-workflow) {
+  [data-slot="button"] {
+    transition: color 150ms var(--ease-snappy), background-color 150ms var(--ease-snappy), border-color 150ms var(--ease-snappy), box-shadow 150ms var(--ease-snappy), opacity 150ms var(--ease-snappy), scale 160ms var(--ease-snappy);
+  }
+  [data-slot="button"]:not(:disabled):active { scale: 0.97; }
+  @media (prefers-reduced-motion: reduce) {
+    [data-slot="button"] { transition: none; }
+    [data-slot="button"]:not(:disabled):active { scale: none; }
+  }
 }

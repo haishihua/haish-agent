@@ -14,7 +14,11 @@ import { IncrementalText } from '../../../shared/ui/IncrementalText.jsx';
 import { AskUserInlineForm } from './AskUserInlineForm.jsx';
 import { selectActiveAskUserItemId } from '../model/pending-user-input.js';
 import { CATEGORY_ICON_CLASS } from '../model/run-catalog.js';
-import { BrowserRuntimeCard, selectBrowserRuntimeRequest, useBrowserRuntimeRequests } from '../../approvals/components/ApprovalOverlay.jsx';
+import {
+  RuntimeApprovalCard,
+  selectRuntimeRequest,
+  useRuntimeRequests,
+} from '../../approvals/components/ApprovalOverlay.jsx';
 import { buildSubAgentTimelineItems, buildToolView } from '../model/tool-view.js';
 import { resolveAgentActivity } from '../model/chat-timeline.js';
 import { useConversationWaitState } from '../../conversations/hooks/useConversationRunState.js';
@@ -42,6 +46,9 @@ export function resolveToolIconClass(toolName, defaultClass) {
   }
   if (name === 'browser_use' || name === 'browser') {
     return 'ico-browser';
+  }
+  if (name === 'computer_use') {
+    return 'ico-computer-use';
   }
   if (name === 'exec_command' || name === 'write_stdin') {
     return 'ico-terminal';
@@ -467,14 +474,13 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
   React.useEffect(() => setOpen(false), [conversationId, taskId, item.id]);
   const fallbackLines = view.mode === 'read' ? [] : [item.inputSummary, item.outputSummary].filter(Boolean).slice(0, 2);
   const hasChildren = Array.isArray(item.children) && item.children.length > 0;
-  const isBrowserUse = String(item.toolName || '').toLowerCase() === 'browser_use';
-  // Browser-runtime install requests render inline inside the browser_use
-  // tool call that triggered them, instead of opening a separate chat row /
-  // dialog. Matching tolerates the backend's opaque call-id remapping,
-  // so unanchored requests attach to the active browser_use node when the
-  // scope is unambiguous; everything else stays in the standalone slot.
-  const pendingBrowserRuntime = useBrowserRuntimeRequests(isBrowserUse);
-  const browserRuntimeRequest = selectBrowserRuntimeRequest(pendingBrowserRuntime, {
+  const normalizedToolName = String(item.toolName || '').toLowerCase();
+  const isRuntimeTool = normalizedToolName === 'browser_use' || normalizedToolName === 'computer_use';
+  // Browser and Computer share the same inline Runtime approval placement.
+  // Exact call ids win; remapped workflow ids fall back to one active request
+  // of the matching Runtime kind in this conversation/task.
+  const pendingRuntime = useRuntimeRequests(conversationId, isRuntimeTool);
+  const runtimeRequest = selectRuntimeRequest(pendingRuntime, {
     toolName: item.toolName,
     callId: item.callId,
     status,
@@ -541,7 +547,7 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
           active={askUserActive}
         />
       ) : null}
-      {browserRuntimeRequest ? <BrowserRuntimeCard request={browserRuntimeRequest} embedded /> : null}
+      {runtimeRequest ? <RuntimeApprovalCard request={runtimeRequest} embedded /> : null}
       {approvalRequest ? <ToolApprovalCard request={approvalRequest} embedded /> : null}
     </div>
   );
@@ -560,8 +566,16 @@ function ChatTimelineToolGroup({
   React.useEffect(() => setOpen(false), [conversationId, taskId, item.id]);
   const status = item.status || 'done';
   const tools = Array.isArray(item.tools) ? item.tools : [];
+  const runtimeRequests = useRuntimeRequests(conversationId, true);
   const needsApproval = tools.some((tool) => approvals.has(tool.id));
-  const expanded = open || needsApproval;
+  const needsRuntimeApproval = tools.some((tool) => Boolean(selectRuntimeRequest(runtimeRequests, {
+    toolName: tool.toolName,
+    callId: tool.callId,
+    status: tool.status || 'pending',
+    conversationId,
+    taskId,
+  })));
+  const expanded = open || needsApproval || needsRuntimeApproval;
   const summary = item.summary || `used ${tools.length} tools`;
 
   return (
@@ -666,7 +680,7 @@ export function ChatAgentTimeline({
   onPreviewImage,
 }) {
   const safeItems = React.useMemo(() => Array.isArray(items) ? items : [], [items]);
-  const approvalRequests = useToolApprovalRequests();
+  const approvalRequests = useToolApprovalRequests(conversationId);
   const toolApprovals = React.useMemo(() => placeToolApprovals(safeItems, approvalRequests, taskId, conversationId), [safeItems, approvalRequests, taskId, conversationId]);
   const todos = Array.isArray(latestTodos) && latestTodos.length > 0 ? latestTodos : null;
   const retrying = safeItems.some((item) => item.metaType === 'llm_retry' && item.status === 'running');

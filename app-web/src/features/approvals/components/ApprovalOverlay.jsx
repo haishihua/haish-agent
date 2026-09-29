@@ -8,19 +8,47 @@ import { normalizeWorkflowApprovalMarkdown } from '../../workflow/model/workflow
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { copyTextToClipboard } from '../../../shared/lib/clipboard.js';
 import { formatMessageClock } from '../../../shared/lib/message-format.js';
-import { postApprovalDecision, postBrowserRuntimeDecision, postWorkflowApprovalDecision } from '../api/approvals.js';
-import { approvalStore, isBrowserRuntimeRequest, isWorkflowApprovalRequest } from '../model/approval-store.js';
+import {
+  postApprovalDecision,
+  postBrowserRuntimeDecision,
+  postComputerRuntimeDecision,
+  postWorkflowApprovalDecision,
+} from '../api/approvals.js';
+import {
+  approvalStore,
+  isBrowserRuntimeRequest,
+  isComputerRuntimeRequest,
+  isRuntimeRequest,
+  isWorkflowApprovalRequest,
+  requestBelongsToConversation,
+  selectConversationApprovalRequests,
+} from '../model/approval-store.js';
 
 const { useState, useEffect, useCallback } = React;
 
-function browserRuntimeSummary(request) {
-  const dependency = request?.diagnostic?.dependency || request?.error?.diagnostic?.dependency || 'browser runtime';
+function runtimeDependency(request, fallback) {
+  return request?.diagnostic?.dependency || request?.error?.diagnostic?.dependency || fallback;
+}
+
+function runtimeOperation(request) {
+  return request?.remediation?.operation === 'replace' ? 'replace' : 'install';
+}
+
+function runtimeSummary(request) {
+  const replacing = runtimeOperation(request) === 'replace';
+  if (isComputerRuntimeRequest(request)) {
+    return replacing
+      ? 'The shared Computer Runtime is incompatible. Replace it with the required version to continue.'
+      : 'Computer runtime is missing. Install it to continue.';
+  }
+  if (replacing) return 'The Browser Runtime is incompatible. Replace it with the required version to continue.';
+  const dependency = runtimeDependency(request, 'browser runtime');
   if (String(dependency).includes('chromium')) return 'Browser runtime is missing. Install it to continue.';
   return 'Browser runtime dependency is missing. Install it to continue.';
 }
 
 function requestPreview(request) {
-  if (isBrowserRuntimeRequest(request)) return browserRuntimeSummary(request);
+  if (isRuntimeRequest(request)) return runtimeSummary(request);
   if (isWorkflowApprovalRequest(request)) return String(request.summaryText || request.title || '');
   return request.raw_command || '';
 }
@@ -57,17 +85,27 @@ const RISK_TEXT = {
 
 function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, embedded = false }) {
   const browserRuntime = isBrowserRuntimeRequest(request);
+  const computerRuntime = isComputerRuntimeRequest(request);
+  const runtimeRequest = browserRuntime || computerRuntime;
   const busyDecision = busy === true ? 'working' : String(busy || '');
   const isBusy = Boolean(busyDecision);
   const showAlways = request.allow_always !== false;
   const riskText = RISK_TEXT[request.risk_code] || request.risk_code || 'Unclassified risk';
-  const title = browserRuntime ? 'Browser Runtime Required' : 'Approval Required';
+  const replacingRuntime = runtimeRequest && runtimeOperation(request) === 'replace';
+  const title = computerRuntime
+    ? (replacingRuntime ? 'Computer Runtime Replacement Required' : 'Computer Runtime Required')
+    : browserRuntime
+      ? (replacingRuntime ? 'Browser Runtime Replacement Required' : 'Browser Runtime Required')
+      : 'Approval Required';
   const preview = requestPreview(request);
   const installs = Array.isArray(request.remediation?.installs) ? request.remediation.installs.join(', ') : '';
-  const busyText = browserRuntime
+  const runtimeLabel = computerRuntime ? 'computer' : 'browser';
+  const busyText = runtimeRequest
     ? busyDecision === 'deny'
-      ? 'Declining browser runtime installation...'
-      : 'Installing browser runtime...'
+      ? `Keeping the current ${runtimeLabel} runtime...`
+      : replacingRuntime
+        ? `Replacing ${runtimeLabel} runtime...`
+        : `Installing ${runtimeLabel} runtime...`
     : busyDecision === 'deny'
       ? 'Denying request...'
       : busyDecision === 'allow_always'
@@ -85,7 +123,12 @@ function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, e
       {!embedded ? (
         <button type="button" className="haish-approval-header" onClick={onToggleCollapsed} aria-expanded={!collapsed}>
           <span className={`haish-approval-status ${isBusy ? 'is-busy' : ''}`} aria-hidden="true" />
-          <ShieldCheck size={16} aria-hidden="true" />
+          {runtimeRequest ? (
+            <span
+              className={`ico ${computerRuntime ? 'ico-computer-use' : 'ico-browser'}`}
+              aria-hidden="true"
+            />
+          ) : <ShieldCheck size={16} aria-hidden="true" />}
           <span className="haish-approval-title">{title}</span>
           {collapsed ? (
             <PortalTooltip text={preview} position="above" multiline>
@@ -122,13 +165,13 @@ function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, e
 
       {!collapsed || embedded ? (
         <div className="haish-approval-body">
-          {browserRuntime ? (
-            <div className="haish-approval-intent">{browserRuntimeSummary(request)}</div>
+          {runtimeRequest ? (
+            <div className="haish-approval-intent">{runtimeSummary(request)}</div>
           ) : request.intent_summary ? (
             <div className="haish-approval-intent">{request.intent_summary}</div>
           ) : null}
 
-          {!browserRuntime ? (
+          {!runtimeRequest ? (
             <>
               <div className="haish-approval-cmd-label">
                 <span>{request.tool_name === 'exec_command' ? 'Command (runs in terminal)' : 'Requested operation'}</span>
@@ -144,14 +187,31 @@ function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, e
                 <span className="haish-approval-meta-val">{request.workspace_path}</span>
               </div>
             ) : null}
-            {browserRuntime ? (
+            {runtimeRequest ? (
               <>
                 <div className="haish-approval-meta-row">
-                  <span className="haish-approval-meta-key">Missing</span>
+                  <span className="haish-approval-meta-key">{replacingRuntime ? 'Runtime' : 'Missing'}</span>
                   <span className="haish-approval-meta-val haish-approval-risk-val">
-                    {request?.diagnostic?.dependency || request?.error?.diagnostic?.dependency || 'browser runtime'}
+                    {runtimeDependency(request, computerRuntime ? 'cua-driver' : 'browser runtime')}
                   </span>
                 </div>
+                {replacingRuntime ? (
+                  <>
+                    <div className="haish-approval-meta-row">
+                      <span className="haish-approval-meta-key">Installed</span>
+                      <span className="haish-approval-meta-val">{request.remediation?.installed_version || request.diagnostic?.installed_version || 'Unknown'}</span>
+                    </div>
+                    <div className="haish-approval-meta-row">
+                      <span className="haish-approval-meta-key">Required</span>
+                      <span className="haish-approval-meta-val">{request.remediation?.required_version || request.diagnostic?.required_version || 'Unknown'}</span>
+                    </div>
+                    {computerRuntime ? (
+                      <div className="haish-approval-killswitch">
+                        This replaces the shared Cua Driver app used by other sessions on this Mac.
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
                 {installs ? (
                   <div className="haish-approval-meta-row">
                     <span className="haish-approval-meta-key">Installs</span>
@@ -165,7 +225,7 @@ function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, e
                 <span className="haish-approval-meta-val haish-approval-risk-val">{riskText}</span>
               </div>
             )}
-            {!browserRuntime && !showAlways ? (
+            {!runtimeRequest && !showAlways ? (
               <div className="haish-approval-killswitch">
                 This is a failsafe-level operation. It can only be allowed once and cannot be permanently approved.
               </div>
@@ -180,13 +240,15 @@ function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, e
               </div>
             ) : (
               <>
-                {browserRuntime ? (
+                {runtimeRequest ? (
                   <button
                     type="button"
                     className="haish-approval-btn haish-approval-btn-once"
                     onClick={() => onDecide('install')}
                   >
-                    Install Browser Runtime
+                    {replacingRuntime
+                      ? 'Replace and Continue'
+                      : computerRuntime ? 'Install Computer Runtime' : 'Install Browser Runtime'}
                   </button>
                 ) : (
                   <>
@@ -219,7 +281,7 @@ function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, e
                   className="haish-approval-btn haish-approval-btn-deny"
                   onClick={() => onDecide('deny')}
                 >
-                  Deny
+                  {replacingRuntime ? 'Keep Current Version' : 'Deny'}
                 </button>
               </>
             )}
@@ -317,41 +379,41 @@ function WorkflowApprovalCard({ request, busy, onDecide, collapsed, onToggleColl
 }
 
 // ---------------------------------------------------------------------------
-// Browser-runtime requests render inline inside the triggering browser_use
-// tool node (see ChatTimelineToolNode) instead of opening a separate chat
-// row / dialog. While a BrowserRuntimeCard is mounted it "claims" its
-// request in the store so ApprovalInline skips it; requests that could not
-// attach to a visible tool node stay in the standalone slot as fallback.
+// Browser and Computer Runtime requests share one placement and card path.
+// They render inside the triggering tool node whenever that node is present;
+// ApprovalInline remains only as a fallback for missing/ambiguous timeline
+// nodes. A mounted RuntimeApprovalCard claims its request to prevent duplicate
+// standalone rendering.
 // ---------------------------------------------------------------------------
 
-export function useBrowserRuntimeRequests(active = true) {
+export function useRuntimeRequests(conversationId, active = true) {
   const [requests, setRequests] = useState([]);
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active || !conversationId) return undefined;
     return approvalStore.subscribe((next) => {
-      setRequests(next.filter(isBrowserRuntimeRequest));
+      setRequests(selectConversationApprovalRequests(next, conversationId).filter(isRuntimeRequest));
     });
-  }, [active]);
-  return requests;
+  }, [active, conversationId]);
+  return active && conversationId ? requests : [];
 }
 
-// Pick the browser-runtime request that belongs to a given browser_use tool
-// node, if any. The backend task stream remaps call ids into opaque "workflow"
-// ids (task call ids in the runtime), so the request's raw tool_call_id only
-// matches the timeline call id when no remapping happened. Matching order:
-//  1. exact tool_call_id === callId (primary anchor, non-remapped streams)
-//  2. scope fallback: the node is an ACTIVE browser_use call (pending/running
-//     — i.e. the blocked call awaiting the install confirmation) and exactly
-//     one browser-runtime request is pending in this conversation/task.
-// Requests that cannot be attributed stay unclaimed and render in the
-// standalone ApprovalInline slot.
-export function selectBrowserRuntimeRequest(
+function runtimeRequestMatchesTool(request, toolName) {
+  const normalized = String(toolName || '').toLowerCase();
+  if (normalized === 'browser_use') return isBrowserRuntimeRequest(request);
+  if (normalized === 'computer_use') return isComputerRuntimeRequest(request);
+  return false;
+}
+
+// The backend may remap tool call ids in workflow streams. Prefer an exact id;
+// otherwise attach only one request from the same conversation/task to an
+// active tool of the matching Runtime kind.
+export function selectRuntimeRequest(
   requests,
   { toolName = '', callId = '', status = '', conversationId = '', taskId = '' } = {},
 ) {
-  if (String(toolName || '').toLowerCase() !== 'browser_use') return null;
   const scoped = (Array.isArray(requests) ? requests : []).filter(
     (request) =>
+      runtimeRequestMatchesTool(request, toolName) &&
       (!request.conversation_id || !conversationId || request.conversation_id === conversationId) &&
       (!request.task_id || !taskId || request.task_id === taskId),
   );
@@ -365,16 +427,21 @@ export function selectBrowserRuntimeRequest(
   return scoped[0];
 }
 
-export function BrowserRuntimeCard({ request, embedded = false }) {
+export function RuntimeApprovalCard({ request, embedded = false }) {
   return <ToolApprovalCard request={request} embedded={embedded} />;
 }
 
-export function useToolApprovalRequests() {
+export function useToolApprovalRequests(conversationId) {
   const [requests, setRequests] = useState([]);
-  useEffect(() => approvalStore.subscribe((next) => {
-    setRequests(next.filter((request) => !isBrowserRuntimeRequest(request) && !isWorkflowApprovalRequest(request)));
-  }), []);
-  return requests;
+  useEffect(() => {
+    if (!conversationId) return undefined;
+    return approvalStore.subscribe((next) => {
+      setRequests(selectConversationApprovalRequests(next, conversationId).filter(
+        (request) => !isRuntimeRequest(request) && !isWorkflowApprovalRequest(request),
+      ));
+    });
+  }, [conversationId]);
+  return conversationId ? requests : [];
 }
 
 export function ToolApprovalCard({ request, embedded = false }) {
@@ -389,10 +456,10 @@ export function ToolApprovalCard({ request, embedded = false }) {
   // released so the request falls back to the standalone slot if its tool
   // node is no longer on screen.
   React.useLayoutEffect(() => {
-    const won = approvalStore.claimBrowserRuntime(request.request_id);
+    const won = approvalStore.claimRuntime(request.request_id);
     setActive(won);
     return () => {
-      if (won) approvalStore.unclaimBrowserRuntime(request.request_id);
+      if (won) approvalStore.unclaimRuntime(request.request_id);
     };
   }, [request.request_id]);
 
@@ -402,6 +469,7 @@ export function ToolApprovalCard({ request, embedded = false }) {
       setBusy(decision);
       try {
         if (isBrowserRuntimeRequest(request)) await postBrowserRuntimeDecision(request, decision);
+        else if (isComputerRuntimeRequest(request)) await postComputerRuntimeDecision(request, decision);
         else await postApprovalDecision(request.request_id, decision);
         // Optimistic removal: store will also drop it once the stream confirms.
         approvalStore.remove(request.request_id);
@@ -430,11 +498,13 @@ export function ToolApprovalCard({ request, embedded = false }) {
   );
 }
 
-export function ApprovalInline() {
+export function ApprovalInline({ conversationId }) {
   const [pending, setPending] = useState([]);
   const [busy, setBusy] = useState({});
   const [error, setError] = useState('');
   const [collapsedRids, setCollapsedRids] = useState({});
+
+  useEffect(() => setError(''), [conversationId]);
 
   // Subscribe to the singleton approval store. The store owns the
   // The application-level realtime bridge owns the socket; this component only renders its events. No new
@@ -474,6 +544,8 @@ export function ApprovalInline() {
     try {
       if (isBrowserRuntimeRequest(request)) {
         await postBrowserRuntimeDecision(request, decision);
+      } else if (isComputerRuntimeRequest(request)) {
+        await postComputerRuntimeDecision(request, decision);
       } else {
         await postApprovalDecision(request.request_id, decision);
       }
@@ -493,13 +565,13 @@ export function ApprovalInline() {
     setCollapsedRids((prev) => ({ ...prev, [requestId]: !prev[requestId] }));
   }, []);
 
-  // Browser-runtime requests are rendered inside their browser_use tool node
-  // (BrowserRuntimeCard claims them while the node is on screen). Only keep
-  // Workflow approvals belong to WorkflowApprovalInline. This shared chat
-  // slot only renders regular approvals and unclaimed browser-runtime requests.
+  // Runtime requests are rendered inside their triggering tool nodes when
+  // possible. Workflow approvals belong to WorkflowApprovalInline. This
+  // shared slot renders regular approvals and unclaimed runtime requests.
   const renderable = pending.filter(
-    (request) => !isWorkflowApprovalRequest(request)
-      && !approvalStore.isBrowserRuntimeClaimed(request.request_id),
+    (request) => requestBelongsToConversation(request, conversationId)
+      && !isWorkflowApprovalRequest(request)
+      && !approvalStore.isRuntimeClaimed(request.request_id),
   );
   if (!renderable.length) return null;
 
