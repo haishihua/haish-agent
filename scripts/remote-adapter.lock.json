@@ -1,11 +1,11 @@
 {
   "repository": "haishihua/haish-agent-remote",
-  "tag": "adapter-v0.2.2",
+  "tag": "adapter-v0.2.3",
   "assets": [
     {
       "name": "haish-remote-adapter-macos-arm64",
       "target": "haish-remote-adapter",
-      "sha256": "afb3f426bed500b9e43bce5c1a80ef6b395f9f2dd69311806f7fb43837282237",
+      "sha256": "d53dde93e12d3ae3d36517f6e11efe8b5155b2d600ad0ec782fb15021b20cb38",
       "executable": true
     },
     {
