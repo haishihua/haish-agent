@@ -1,0 +1,105 @@
+name: Release macOS
+
+# Manual macOS release build on a GitHub-hosted runner.
+#
+# Why CI: the app icon is an Icon Composer bundle (build/Haish.icon) that needs
+# full Xcode 26+ (actool) to compile, and scripts/release-mac.mjs hard-gates on
+# that. The `macos-26` runner label maps to the arm64 image with Xcode 26, which
+# matches the published Haish-<version>-arm64.* artifacts. No Developer ID
+# certificate exists here either, so the unsigned channel is used.
+#
+# One-time setup:
+#   * Repository secret HAISH_PAT - a fine-grained personal access token with
+#     read-only "Contents" permission on the private repositories
+#       - haishihua/haish-agent-core    (Python runtime source)
+#       - haishihua/haish-agent-remote  (remote adapter release assets)
+#     The release itself is published with the workflow's own GITHUB_TOKEN.
+#   * Commit the target version in package.json before dispatching.
+#
+# Publish or replace: scripts/release-mac.mjs creates the release for the
+# package.json version, or replaces its assets when the release already exists.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-macos
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish unsigned arm64 build
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      # The runtime is built from a checkout of the private core repository,
+      # cloned into ./core-runtime by the checkout step below.
+      HAISH_RUNTIME_SOURCE: ${{ github.workspace }}/core-runtime
+      # Keep electron-builder from probing the keychain for identities.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Check out the app
+        uses: actions/checkout@v5
+
+      - name: Show the toolchain
+        run: |
+          uname -m
+          sw_vers
+          xcode-select -p
+          xcodebuild -version
+          xcrun actool --version
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Verify the macOS icon toolchain
+        run: npm run check:mac-icon
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check out the private runtime source
+        uses: actions/checkout@v5
+        with:
+          repository: haishihua/haish-agent-core
+          ref: master
+          path: core-runtime
+          token: ${{ secrets.HAISH_PAT }}
+
+      - name: Fetch the pinned remote adapter
+        env:
+          GH_TOKEN: ${{ secrets.HAISH_PAT }}
+        run: npm run fetch:remote-adapter
+
+      - name: Build and publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run release:mac:unsigned
+
+      - name: Summarize the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          {
+            echo "## Haish ${version} — macOS arm64, unsigned"
+            echo
+            gh release view "v${version}" --json url,isDraft,isPrerelease,assets \
+              --jq '"URL: \(.url)\nDraft: \(.isDraft)  Prerelease: \(.isPrerelease)\n" + (.assets | map("- \(.name) — \(.size) bytes") | join("\n"))'
+            echo
+            echo "### latest-mac.yml"
+            echo '```yaml'
+            cat release/latest-mac.yml
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
