@@ -1432,6 +1432,7 @@
 }
 
 .settings-workflow-form,
+.workflow-run-layout,
 .workflow-canvas {
     /* Shared palette for canvas nodes, edges and node details. */
     --workflow-canvas-font: var(--conversation-font);

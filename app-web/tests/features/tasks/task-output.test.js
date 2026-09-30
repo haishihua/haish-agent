@@ -98,12 +98,22 @@ const panelsCss = fs.readFileSync(
   new URL('../../../styles/panels.css', import.meta.url),
   'utf8',
 );
+const appIconSource = fs.readFileSync(
+  new URL('../../../src/shared/ui/AppIcon.jsx', import.meta.url),
+  'utf8',
+);
 
 test('报告入口只在收工且真有产出的任务卡尾部出现，聊天模式仍隐掉', () => {
   assert.match(taskCardsSource, /isTerminalTaskStatus\(status\)/, 'the entry is gated on settled tasks');
   assert.match(taskCardsSource, /hasReport \? ' has-report' : ''/);
   assert.match(taskCardsSource, /aria-label="View report"/);
-  assert.match(taskCardsSource, /ico-report/);
+  // 图标走共享矢量图标表里的 report（FileText）：旧 report.png 是「剪贴板 + 图表 +
+  // 两个勾」，缩到 16px 细节糊成一团；矢量描边 15px 下才看得清，也和旁边同一颗
+  // 按钮皮里的 retry 图标同一档（AppIcon，见 contracts/llm-retry-timeline.test.js）。
+  assert.match(taskCardsSource, /<AppIcon name="report" size=\{15\} \/>/);
+  assert.doesNotMatch(taskCardsSource, /ico-report/);
+  assert.match(appIconSource, /report: FileText/);
+  assert.match(appIconSource, /^ {2}FileText,$/m);
   assert.match(panelsCss, /\.app-body\.chat-mode \.conversation-report-btn\s*\{[^}]*display:\s*none/);
 });
 
@@ -120,7 +130,11 @@ test('报告内容只有一个出口：handleOpenTaskReport 用 taskFinalOutputT
 
 test('报告入口和悬停操作不叠在一起（has-report 给入口让位）', () => {
   assert.match(panelsCss, /\.conversation-task-card\.has-report \.conversation-actions\s*\{[^}]*right:\s*36px/);
-  assert.match(panelsCss, /\.conversation-task-card\.has-actions\.has-report \.conversation-task-copy\s*\{[^}]*padding-right:\s*44px/);
+  // 标题留白 44 → 24px（跟无报告那一档 40 → 20px 一起收，任务标题多显示 20px）：
+  // 报告按钮 24px + 组间距 10px + 留白 24px = 标题框右端离行右缘 69px，
+  // 仍在悬停删除按钮（离行右缘 36 → 61px）左侧留 8px。
+  assert.match(panelsCss, /\.conversation-task-card\.has-actions\.has-report \.conversation-task-copy\s*\{[^}]*padding-right:\s*24px/);
+  assert.doesNotMatch(panelsCss, /\.conversation-task-card\.has-actions\.has-report \.conversation-task-copy\s*\{[^}]*padding-right:\s*44px/);
 });
 
 test('收工不自动弹报告（结果只从报告入口进）', () => {

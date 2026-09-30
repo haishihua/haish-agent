@@ -16,8 +16,9 @@
 // 反向断言（revert）：把改前的 42px 行高 / 9px 内边距 / 6px 外边距 / 30px Show more
 // 注回去，一屏里完整可见的项目行必须变少；把 26px 图标按钮和 ellipsis 注回去，
 // 项目标题被推离文字列、渐隐消失；把 21px 文字列与居中的图标注回去，
-// 图标与标题之间那道缝被吃掉；把表头旧内边距（11 / 18 / 18）注回去，
-// 图标离开左缘、210px 下溢出——说明这几条是真的在被测。
+// 图标与标题之间那道缝被吃掉；把 40px 标题留白注回去，静态框右端退回行尾那条空带；
+// 把表头旧内边距（11 / 18 / 18）与旧图标尺寸（18 / 22px）注回去，
+// 图标离开左缘、两枚 icon 大一号、210px 下溢出——说明这几条是真的在被测。
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
@@ -235,6 +236,30 @@ async function runChecks() {
   wrapper.style.width = '288px';
   await sleep(60);
 
+  // 行尾留白：标题静态框（.conversation-name-static）右端到行右缘只剩 31px
+  // （= 行内边距 11px + 标题留白 20px）——行尾常驻的转圈（最左到 26px）与终态
+  // 圆点（27px）都落在这条线的右边，长标题因此比改前（51px）多显示 20px。
+  const firstRow = conversationRows(0)[0];
+  const rowRight = round(firstRow.getBoundingClientRect().right);
+  const staticRight = round(firstRow.querySelector('.conversation-name-static').getBoundingClientRect().right);
+  const tail = round(rowRight - staticRight);
+  check(
+    'the conversation title box ends 31px before the row edge (the old 40px reserve is gone)',
+    tail >= 29 && tail <= 33,
+    `tail=${tail} rowRight=${rowRight} titleRight=${staticRight}`,
+  );
+
+  // 表头两枚 icon 一起减重：folder-plus 18 → 15px、折叠图标 22 → 18px（墨迹 ≈15px），
+  // 跟列表行 15px 的 folder 同一条视觉重量；两个按钮的命中区（30px）不动。
+  const headFolderGlyph = head.querySelector('.conversation-head-action .ico-folder-plus-circle').getBoundingClientRect();
+  const headToggleIcon = head.querySelector('.sidebar-toggle-icon').getBoundingClientRect();
+  check(
+    'the two header icons shrink one step (Add project 18 → 15px, collapse 22 → 18px)',
+    round(headFolderGlyph.width) === 15 && round(headFolderGlyph.height) === 15
+      && round(headToggleIcon.width) === 18 && round(headToggleIcon.height) === 18,
+    `folder=${round(headFolderGlyph.width)}x${round(headFolderGlyph.height)} toggle=${round(headToggleIcon.width)}x${round(headToggleIcon.height)}`,
+  );
+
   // 标题太长：末尾渐隐（mask 最后一段是全透明的黑），不再画「…」。
   const longTitle = titleNodes()[0];
   const longMask = maskOf(longTitle);
@@ -290,8 +315,9 @@ const report = (list) => {
   return { failed: failed.length, total: list.length, results: list };
 };
 
-// revert：改前的「26px 按钮 + 18px 图标 + ellipsis」注回去，项目标题应被推离文字列、
-// 渐隐 mask 应消失（这两条反向断言证明上面量的是真的生效中的规则）。
+// revert：改前的「26px 按钮 + 18px 图标 + ellipsis + 40px 标题留白」注回去，项目标题
+// 应被推离文字列、渐隐 mask 应消失、静态框右端退回行尾那条空带（这三条反向断言
+// 证明上面量的是真的生效中的规则）。
 async function revertTitleChecks() {
   const style = document.createElement('style');
   style.textContent = `
@@ -299,11 +325,17 @@ async function revertTitleChecks() {
     .project-icon-toggle { position: static !important; width: 26px !important; height: 26px !important; transform: none !important; }
     .project-icon-toggle .ico-folder, .project-icon-toggle .ico-folder-open { width: 18px !important; height: 18px !important; }
     .project-name, .conversation-name-static { -webkit-mask-image: none !important; mask-image: none !important; text-overflow: ellipsis !important; }
+    .conversation-name { padding-right: 40px !important; }
   `;
   document.head.appendChild(style);
   await sleep(200);
   const reverted = titleColumn();
   const longTitle = titleNodes()[0];
+  const revertedFirstRow = conversationRows(0)[0];
+  const revertedTail = round(
+    revertedFirstRow.getBoundingClientRect().right
+    - revertedFirstRow.querySelector('.conversation-name-static').getBoundingClientRect().right,
+  );
   return [
     {
       name: 'revert: the 26px icon button pushes the project title off the text column',
@@ -316,6 +348,12 @@ async function revertTitleChecks() {
       // maskOf 把 mask-image 与 -webkit-mask-image 拼在一起，两边都是 none 时是 "none none"。
       pass: /^none( none)?$/.test(maskOf(longTitle)) && getComputedStyle(longTitle).textOverflow === 'ellipsis',
       detail: `mask=${maskOf(longTitle)} textOverflow=${getComputedStyle(longTitle).textOverflow}`,
+    },
+    {
+      name: 'revert: the old 40px tail reserve pulls the title box back to the empty band',
+      // 20 → 40px 后，静态框右端离行右缘回到 51px（= 行内边距 11 + 留白 40）。
+      pass: revertedTail >= 45,
+      detail: `tail=${revertedTail}`,
     },
   ];
 }
@@ -348,13 +386,15 @@ async function revertGapChecks() {
   ];
 }
 
-// revert：把表头的旧值（左内边距 11px / 右内边距 18px / 组间距 18px）注回去，
-// Conversation 图标应离开列表那条左缘，且 210px 面板下应放不下（溢出）——
-// 证明「图标贴左」与「210px 表头一行放得下」两条都是当前规则在撑着。
+// revert：把表头的旧值（左内边距 11px / 右内边距 18px / 组间距 18px）与旧图标尺寸
+// （folder-plus 18px、折叠图标 22px）注回去，Conversation 图标应离开列表那条左缘、
+// 两枚 icon 大一号，且 210px 面板下应放不下（溢出）——证明这几条都是当前规则在撑着。
 async function revertHeadChecks() {
   const style = document.createElement('style');
   style.textContent = `
     .conversations-panel .side-panel-head { padding-left: 11px !important; padding-right: 18px !important; gap: 18px !important; }
+    .conversation-head-action .ico-folder-plus-circle { width: 18px !important; height: 18px !important; }
+    .sidebar-toggle-icon { width: 22px !important; height: 22px !important; }
   `;
   document.head.appendChild(style);
   const wrapper = document.getElementById('root').firstElementChild;
@@ -364,6 +404,8 @@ async function revertHeadChecks() {
   const brandIcon = head.querySelector('.conversation-brand-icon').getBoundingClientRect();
   const glyph = iconNode().getBoundingClientRect();
   const overflow = head.scrollWidth - head.clientWidth;
+  const revertedFolder = head.querySelector('.conversation-head-action .ico-folder-plus-circle').getBoundingClientRect();
+  const revertedToggle = head.querySelector('.sidebar-toggle-icon').getBoundingClientRect();
   wrapper.style.width = '288px';
   return [
     {
@@ -375,6 +417,11 @@ async function revertHeadChecks() {
       name: 'revert: with the old header insets a 210px sidebar overflows',
       pass: overflow > 0,
       detail: `overflow=${overflow}`,
+    },
+    {
+      name: 'revert: the old 18px / 22px header icons come back a size bigger',
+      pass: round(revertedFolder.width) === 18 && round(revertedToggle.width) === 22,
+      detail: `folder=${round(revertedFolder.width)} toggle=${round(revertedToggle.width)}`,
     },
   ];
 }

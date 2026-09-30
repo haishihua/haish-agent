@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowUp, BookOpen, CornerDownLeft, Square } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
+import { ContextTaskChip } from '../../../shared/ui/ContextTaskChip.jsx';
 import { firstPastedDocument } from '../model/document-paste.js';
 import { composePathReferenceDraft, splitPathReferenceDraft, transferredLocalPaths } from '../model/path-references.js';
 import {
@@ -57,6 +58,8 @@ export function ChatComposer({
   pendingCommentCount = 0,
   beforeInput = null,
   attachment,
+  contextTask,
+  onClearContextTask,
   uploading = false,
   onSelectFile,
   onClearFile,
@@ -456,8 +459,11 @@ export function ChatComposer({
           ref={inputRef}
           value={draft}
           selectedSkill={selectedSkill}
-          attachments={(composerImages.length > 0 || attachment) && (
+          attachments={(composerImages.length > 0 || attachment || contextTask) && (
             <>
+              {contextTask && (
+                <ContextTaskChip task={contextTask} onClear={onClearContextTask} disabled={disabled} />
+              )}
               {attachment && (
                 <AttachmentFileChip attachment={attachment} uploading={uploading} onClear={clearFile} />
               )}

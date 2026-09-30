@@ -1766,6 +1766,17 @@
     text-align: left;
 }
 
+/* 来源任务标签：和文件附件芯片同一套皮（宽度按标题撑一点），图标染成任务色 */
+.composer-file-chip.is-context-task {
+    width: auto;
+    max-width: min(320px, 100%);
+    flex: 0 1 auto;
+}
+
+.composer-file-chip.is-context-task .composer-file-icon {
+    color: #9ecbff;
+}
+
 .composer-file-chip:focus-visible,
 .composer-file-remove:focus-visible {
     outline: 2px solid var(--ink);

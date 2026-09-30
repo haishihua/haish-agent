@@ -804,6 +804,7 @@ export function createConversationHandlers(ctx) {
     const restoredMode = task?.executionMode === 'bot' ? 'workflow' : 'chat';
     viewModeRef.current = restoredMode;
     setViewMode(restoredMode);
+    const taskId = task?.taskId || task?.task_id || task?.id || null;
     const workflowNodes = Object.entries(task?.workflowRun?.nodes || {}).map(([nodeId, node]) => (
       `${node?.success === false ? '✕' : '✓'} ${nodeId}: ${node?.summary || node?.error || node?.status || ''}`
     ));
@@ -815,7 +816,16 @@ export function createConversationHandlers(ctx) {
     setHollow({
       title: task?.title || 'Final Report',
       result,
-      taskId: task?.taskId || task?.id || null,
+      taskId,
+      // 只有工作流任务能「以这份产出为上下文开新任务」：对话框底部的按钮靠它出现，
+      // 点下去把这枚引用挂到输入框的标签上（只带引用，报告正文由服务端现取）。
+      contextSource: task?.executionMode === 'bot' && taskId
+        ? {
+          taskId,
+          title: task?.title || '',
+          conversationId: task?.conversationId || task?.conversation_id || null,
+        }
+        : null,
     });
   }
 

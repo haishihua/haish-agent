@@ -7,6 +7,36 @@
     @import "tailwindcss/utilities.css" layer(utilities) source(none);
 }
 
+/* 全屏出口的「根」节点要单独补骨架：streamdown 把 mermaid / 表格的全屏层
+   createPortal 到 document.body，而 @scope 只命中「根的子树」——根节点自己不在
+   scope 里。于是 portal 根上那串 Tailwind 工具类（`fixed inset-0 z-50 flex …`）
+   一条都落不到，弹层以静态流落在 body 末尾（应用里 body 正好一屏高、overflow
+   hidden，弹层整个在视口下方且透明）：点「全屏」看上去毫无反应。根不在 scope 内
+   这件事没法用 scope 修，这里把根需要的骨架显式写回来（子节点仍在 scope 里、
+   照常吃 utilities）。 */
+[data-streamdown="mermaid-fullscreen"],
+[data-streamdown="table-fullscreen"] {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+}
+
+/* mermaid 根：`flex items-center justify-center bg-background/95 backdrop-blur-sm` */
+[data-streamdown="mermaid-fullscreen"] {
+    align-items: center;
+    justify-content: center;
+    background: #10131df2;
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+}
+
+/* 表格根：`flex flex-col bg-background`（内层自己 flex-1 + overflow-auto 滚表格） */
+[data-streamdown="table-fullscreen"] {
+    flex-direction: column;
+    background: #10131d;
+}
+
 @source "../../node_modules/streamdown/dist/*.js";
 @source "../../node_modules/@streamdown/code/dist/*.js";
 @source "../../node_modules/@streamdown/mermaid/dist/*.js";
@@ -192,14 +222,19 @@
         padding-block: 0;
     }
 
-    /* Anchor actions to their own block, not the conversation's scroll viewport. */
+    /* streamdown 给 actions 外面那层 wrapper 默认 `sticky top-2 z-10 -mt-10`：块
+       滚到视口顶时，整条 actions 会离开自己的块、粘在滚动容器顶上（顶栏下沿），
+       看上去像顶栏多出来一排按钮，还会随滚动在顶栏底下滑动。撤回 sticky——让它
+       留在块里、随块滚走；这一行再靠等量负 margin 压回 header 那行
+       （header 26px + 行距 4px = 30px），块高不变、按钮照旧靠右，观感与之前一致。 */
     [data-streamdown="code-block"] > div:has(> [data-streamdown="code-block-actions"]),
     [data-streamdown="mermaid-block"] > div:has(> [data-streamdown="mermaid-block-actions"]) {
-        position: absolute;
-        top: 6px;
-        right: 6px;
+        position: static;
+        top: auto;
+        right: auto;
+        z-index: auto;
         height: 26px;
-        margin-top: 0;
+        margin-top: -30px;
     }
 
     :scope > div > :first-child {

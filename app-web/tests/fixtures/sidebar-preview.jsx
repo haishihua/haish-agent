@@ -29,6 +29,35 @@ const task = (index) => ({
   completedAt: 1758000000000 + index,
 });
 
+// Task 标签页的任务行跟展开会话下的任务卡是同一只 TaskRecordCompact（.conversation-task-title）：
+// 这里在第二个会话（只在 Task 标签页里看得到）挂三条刻意超宽的标题，各带一个标记——
+// 一条在跑（行尾多一枚 18px 的状态图标）、一条已取消（行尾没有常驻元素，量最干净的留白）、
+// 一条已完成且带报告入口（行尾多一枚 24px 的常驻按钮）：用来量「标题框右端 → 行右缘」
+// 这三种不同的静态留白与末尾渐隐。
+const LONG_TASK_RUNNING = '分析失败Trace提升Agent能力以及一条很长很长到必须收尾的运行任务';
+const LONG_TASK_CANCELLED = '分析失败Trace提升Agent能力以及一条很长很长到必须收尾的取消任务';
+const LONG_TASK_DONE = '分析失败Trace提升Agent能力以及一条很长很长到必须收尾的已成任务';
+const longTask = (taskId, title, updatedAt, extra) => ({
+  taskId,
+  conversationId: 'conv-2',
+  title,
+  executionMode: 'chat',
+  createdAt: updatedAt,
+  updatedAt,
+  ...extra,
+});
+// 三条长任务的时间戳比 conv-1 的「任务 N」都新：Task 标签页按更新时间倒排，它们排在最前。
+const LONG_TASKS = [
+  longTask('task-long-running', LONG_TASK_RUNNING, 1758000009003, { status: 'running', stage: 'running' }),
+  longTask('task-long-cancelled', LONG_TASK_CANCELLED, 1758000009002, { status: 'cancelled', stage: 'cancelled' }),
+  longTask('task-long-done', LONG_TASK_DONE, 1758000009001, {
+    status: 'done',
+    stage: 'done',
+    answerText: '长标题任务的结果',
+    completedAt: 1758000009001,
+  }),
+];
+
 const conversation = (index) => ({
   id: `conv-${index}`,
   name: `会话 ${index}`,
@@ -37,7 +66,9 @@ const conversation = (index) => ({
   expanded: index === 1,
   pinned: false,
   sortOrder: index,
-  tasks: index === 1 ? Array.from({ length: TASKS }, (_, i) => task(i + 1)) : [],
+  tasks: index === 1
+    ? Array.from({ length: TASKS }, (_, i) => task(i + 1))
+    : (index === 2 ? LONG_TASKS : []),
 });
 
 const PROJECT = {
@@ -243,6 +274,8 @@ async function runTaskSearchChecks() {
             onSelectTask={(projectId, conversationId, selectedTask) => {
               calls.push([projectId, conversationId, selectedTask?.taskId]);
             }}
+            // 报告入口：完成任务的行尾常驻那枚 24px 按钮（没有它就不长 has-report）。
+            onOpenTaskReport={() => {}}
             onAddConversation={() => {}}
             onRemoveProject={() => {}}
             onDeleteConversation={() => {}}
@@ -320,6 +353,110 @@ async function runTaskSearchChecks() {
   return taskSearchResults;
 }
 
+// ——— 任务行（Task 标签页 / 展开会话下的任务卡）的标题留白与渐隐 ———
+// 上一条搜索先把这面 Task 面板挂好了，这里直接量它的任务行：任务标题跟会话标题
+// 同一套——太长不画「…」而是右端渐隐，静态留白收到 20px（带报告入口那一档 24px）。
+
+const taskRowResults = [];
+const rowCheck = (name, pass, detail = '') => taskRowResults.push({ name: `task row: ${name}`, pass: Boolean(pass), detail: String(detail) });
+const round = (value) => Math.round(value * 10) / 10;
+const maskOf = (element) => {
+  const style = getComputedStyle(element);
+  return `${style.maskImage || ''} ${style.webkitMaskImage || ''}`.trim();
+};
+
+const taskRowCards = () => [...(taskSearchMount()?.querySelectorAll('.conversation-task-card') || [])];
+const titleOf = (card) => card.querySelector('.conversation-task-title');
+const longTaskCard = (marker) => taskRowCards().find((card) => (titleOf(card)?.textContent || '').includes(marker));
+const runningCard = () => longTaskCard('运行任务');
+const settledCard = () => longTaskCard('取消任务');
+const reportCard = () => longTaskCard('已成任务');
+// 标题框右端 → 行右缘：静态留白（行内边距 11 + 容器留白 + 行尾常驻元素）量出来的就是这条。
+const tailOf = (card) => round(card.getBoundingClientRect().right - titleOf(card).getBoundingClientRect().right);
+
+async function runTaskRowChecks() {
+  await sleep(60);
+  const running = runningCard();
+  const settled = settledCard();
+  const report = reportCard();
+  const runningTitle = running ? titleOf(running) : null;
+  const runningMask = runningTitle ? maskOf(runningTitle) : '';
+  const shortCard = taskRowCards().find((card) => (titleOf(card)?.textContent || '') === '任务 8');
+  rowCheck(
+    'the task title fades out at the tail instead of an ellipsis',
+    Boolean(runningTitle)
+      && runningTitle.scrollWidth > runningTitle.clientWidth + 1
+      && /linear-gradient/.test(runningMask)
+      && /rgba\(0, 0, 0, 0\)/.test(runningMask)
+      && getComputedStyle(runningTitle).textOverflow === 'clip',
+    `overflow=${runningTitle ? runningTitle.scrollWidth - runningTitle.clientWidth : -1}px mask=${runningMask}`,
+  );
+  rowCheck(
+    'the long task title box ends 31px before the row edge (the old 40px reserve is gone)',
+    Boolean(settled) && Math.abs(tailOf(settled) - 31) < 0.5,
+    `tail=${settled ? tailOf(settled) : -1}`,
+  );
+  rowCheck(
+    'a running task leaves room for its tail status glyph (31px + 18px icon + 10px gap)',
+    Boolean(running) && Math.abs(tailOf(running) - 59) < 0.5,
+    `tail=${running ? tailOf(running) : -1}`,
+  );
+  rowCheck(
+    'the task row with a report button keeps its title 69px off the row edge',
+    Boolean(report) && Math.abs(tailOf(report) - 69) < 0.5,
+    `tail=${report ? tailOf(report) : -1} report=${Boolean(report?.querySelector('.conversation-report-btn'))}`,
+  );
+  // 报告入口的图标是共享矢量图标表里的 report（lucide FileText）：旧 report.png 在 16px
+  // 下细节糊成一团。按钮皮（24px）与描边颜色（currentColor）不变。
+  const reportBtn = report ? report.querySelector('.conversation-report-btn') : null;
+  const reportIcon = reportBtn ? reportBtn.querySelector('svg.app-icon') : null;
+  const iconBox = reportIcon ? reportIcon.getBoundingClientRect() : null;
+  rowCheck(
+    'the report entry draws the shared 15px vector icon inside its 24px button',
+    Boolean(reportIcon)
+      && !reportBtn.querySelector('.ico-report')
+      && Math.abs(iconBox.width - 15) < 0.5
+      && Math.abs(iconBox.height - 15) < 0.5
+      && Math.abs(reportBtn.getBoundingClientRect().width - 24) < 0.5
+      && getComputedStyle(reportIcon).stroke === getComputedStyle(reportBtn).color,
+    `icon=${iconBox ? `${round(iconBox.width)}x${round(iconBox.height)}` : 'none'} stroke=${reportIcon ? getComputedStyle(reportIcon).stroke : ''} button=${reportBtn ? round(reportBtn.getBoundingClientRect().width) : -1}`,
+  );
+  rowCheck(
+    'a short task title keeps its full text (the fade only bites on overflow)',
+    Boolean(shortCard) && titleOf(shortCard).scrollWidth <= titleOf(shortCard).clientWidth + 1,
+    `overflow=${shortCard ? titleOf(shortCard).scrollWidth - titleOf(shortCard).clientWidth : -1}px`,
+  );
+  return taskRowResults;
+}
+
+// revert：把改前的「40px / 44px 标题留白 + ellipsis」注回去，标题框右端应退回行尾那条
+// 空带（51px / 89px）、mask 变 none——证明上面量的是真的生效中的规则。
+async function revertTaskRowChecks() {
+  const style = document.createElement('style');
+  style.textContent = `
+    .conversation-task-card.has-actions .conversation-task-copy { padding-right: 40px !important; }
+    .conversation-task-card.has-actions.has-report .conversation-task-copy { padding-right: 44px !important; }
+    .conversation-task-title { -webkit-mask-image: none !important; mask-image: none !important; text-overflow: ellipsis !important; }
+  `;
+  document.head.appendChild(style);
+  await sleep(200);
+  const settled = settledCard();
+  const report = reportCard();
+  const revertedTitle = settled ? titleOf(settled) : null;
+  return [
+    {
+      name: 'revert: the old 40px / 44px task reserves pull the titles back to the empty band',
+      pass: Boolean(settled) && Boolean(report) && tailOf(settled) >= 45 && tailOf(report) >= 83,
+      detail: `tail=${settled ? tailOf(settled) : -1} reportTail=${report ? tailOf(report) : -1}`,
+    },
+    {
+      name: 'revert: the task titles go back to an ellipsis with no fade mask',
+      pass: Boolean(revertedTitle) && /^none( none)?$/.test(maskOf(revertedTitle)) && getComputedStyle(revertedTitle).textOverflow === 'ellipsis',
+      detail: `mask=${revertedTitle ? maskOf(revertedTitle) : ''} textOverflow=${revertedTitle ? getComputedStyle(revertedTitle).textOverflow : ''}`,
+    },
+  ];
+}
+
 let checksPromise = null;
 function start() {
   if (!checksPromise) checksPromise = runChecks();
@@ -341,11 +478,20 @@ function startTaskChecks() {
   return taskChecksPromise;
 }
 
+// 任务行的留白/渐隐量在前一条挂好的那面 Task 面板上，所以先等搜索那一段挂完。
+let taskRowChecksPromise = null;
+function startTaskRowChecks() {
+  if (!taskRowChecksPromise) taskRowChecksPromise = startTaskChecks().then(() => runTaskRowChecks());
+  return taskRowChecksPromise;
+}
+
 window.__sidebarPreviewChecks = async () => report(await start());
 window.__sidebarTaskSearchChecks = async () => report(await startTaskChecks());
+window.__sidebarTaskRowChecks = async () => report(await startTaskRowChecks());
+window.__sidebarTaskRowRevertChecks = async () => report(await revertTaskRowChecks());
 window.__sidebarPreviewAutoRun = () => {
   start()
-    .then((paging) => startTaskChecks().then((search) => report([...paging, ...search])))
+    .then((paging) => startTaskChecks().then((search) => startTaskRowChecks().then((rows) => report([...paging, ...search, ...rows]))))
     .catch((error) => {
       report([{ name: 'fixture crashed', pass: false, detail: String(error?.stack || error) }]);
     });

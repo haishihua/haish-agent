@@ -12,7 +12,9 @@ import {
   Code2,
   Copy,
   Database,
+  Download,
   Eye,
+  FileText,
   FlaskConical,
   FolderPlus,
   GitBranch,
@@ -62,6 +64,7 @@ const ICONS = {
   configure: PenLine,
   database: Database,
   delete: Trash2,
+  download: Download,
   eye: Eye,
   'flask-conical': FlaskConical,
   'folder-plus': FolderPlus,
@@ -76,6 +79,9 @@ const ICONS = {
   'pause-circle': PauseCircle,
   play: Play,
   plus: Plus,
+  // 报告入口的图标：15px 下要还认得出。旧 report.png（剪贴板 + 图表 + 两个勾）在这个
+  // 尺寸全糊成一团，换成矢量描边的一页纸。
+  report: FileText,
   retry: RefreshCw,
   save: Save,
   search: Search,

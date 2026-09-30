@@ -44,9 +44,25 @@ test('an edited-and-resent message keeps its line structure in the user row', ()
 
 test('Markdown wires the plugin only for hard-break callers', () => {
   assert.match(markdown, /import \{ remarkHardBreaks \} from '\.\.\/lib\/remark-hard-breaks\.js';/);
+  // The lists are module constants (Streamdown memos by reference), so the lock
+  // moves to the lists themselves: remarkHardBreaks may only appear in the
+  // hard-break one, and the ternary must pick between the two constants.
   assert.match(
     markdown,
-    /hardBreaks \? \[remarkHardBreaks\] : undefined/,
+    /const HARD_BREAK_REMARK_PLUGINS = \[\.\.\.STREAMDOWN_REMARK_PLUGINS, remarkHardBreaks, remarkJsonBlock\];/,
+    'the hard-break plugin belongs to the hard-break caller list only',
+  );
+  // 两个列表都以 streamdown 默认那套（gfm / codeMeta）打头（见 markdown-remark-plugins 契约）；
+  // 助手那份里不许出现 remarkHardBreaks。
+  const assistantList = markdown.match(/const REMARK_PLUGINS = \[[^\]]*\];/)?.[0] ?? '';
+  assert.doesNotMatch(
+    assistantList,
+    /remarkHardBreaks/,
+    'assistant answers must not get the hard-break plugin',
+  );
+  assert.match(
+    markdown,
+    /hardBreaks \? HARD_BREAK_REMARK_PLUGINS : REMARK_PLUGINS/,
     'the plugin list must stay opt-in per caller',
   );
   assert.match(markdown, /remarkPlugins=\{remarkPlugins\}/, 'Streamdown must receive the remark plugin list');

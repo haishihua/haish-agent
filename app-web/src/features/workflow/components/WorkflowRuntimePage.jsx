@@ -1,4 +1,5 @@
 import React from 'react';
+import { agentIconNameForAgentId } from '../../agents/model/agent-settings.js';
 import { workflowControlEvents } from '../model/workflow-control-events.js';
 import {
   Background,
@@ -6,6 +7,7 @@ import {
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
+  useStore,
 } from '@xyflow/react';
 import { WorkflowApprovalInline } from '../../approvals/components/ApprovalOverlay.jsx';
 import { buildChatTimeline } from '../../chat/model/chat-timeline.js';
@@ -43,6 +45,7 @@ import {
   workflowEdgeAppearance,
   workflowFeedbackTargetIds,
   workflowNodePorts,
+  workflowNodeAccent,
 } from './WorkflowFlowNode.jsx';
 
 const NODE_ICON = {
@@ -138,6 +141,30 @@ function FitWorkflow({ workflowKey, detailOpen, layoutKey }) {
     return () => window.clearTimeout(timer);
   }, [detailOpen, fitView, layoutKey, workflowKey]);
   return null;
+}
+
+// Screen-space link follows pan/zoom and the measured node, without changing graph topology.
+function RuntimeSelectionLink({ nodeId }) {
+  const node = useStore((state) => state.nodeLookup.get(nodeId));
+  const transform = useStore((state) => state.transform);
+  const width = useStore((state) => state.width);
+  const height = useStore((state) => state.height);
+  const uid = React.useId().replace(/:/g, '');
+  if (!node?.measured?.width || !width) return null;
+  const [tx, ty, zoom] = transform;
+  const position = node.internals.positionAbsolute;
+  const x = (position.x + node.measured.width) * zoom + tx;
+  const y = (position.y + (node.measured.height || 64) / 2) * zoom + ty;
+  if (x < 0 || x > width || y < 0 || y > height) return null;
+  const endY = 64;
+  const bend = x + (width - x) * 0.55;
+  return (
+    <svg className="workflow-selection-link" width="100%" height="100%" aria-hidden="true">
+      <defs><linearGradient id={uid} x1="0" x2="1"><stop stopColor="var(--workflow-detail-accent)" stopOpacity="0.12" /><stop offset="1" stopColor="var(--workflow-detail-accent)" stopOpacity="0.38" /></linearGradient></defs>
+      <path d={`M ${x} ${y} C ${bend} ${y}, ${width - 40} ${endY + 20}, ${width} ${endY - 16} L ${width} ${endY + 16} C ${width - 40} ${endY + 36}, ${bend} ${y + 8}, ${x} ${y} Z`} fill={`url(#${uid})`} />
+      <path d={`M ${x} ${y} C ${bend} ${y}, ${width - 40} ${endY + 20}, ${width} ${endY}`} fill="none" stroke="var(--workflow-detail-accent)" strokeOpacity="0.65" />
+    </svg>
+  );
 }
 
 function eventNodeId(event) {
@@ -319,7 +346,7 @@ function NodeConversation({ node, task, attempt, result, status, running, showAp
   );
 }
 
-function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, onRetry, agentName = '' }) {
+function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, onRetry, agentName = '', agentOptions = [] }) {
   const detailBodyRef = React.useRef(null);
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const attempts = React.useMemo(() => nodeAttempts(task, node.id), [node.id, task]);
@@ -364,7 +391,7 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
   };
 
   return (
-    <aside className="workflow-detail-panel" aria-label={`${node.label || node.id} execution details`}>
+    <aside className={`workflow-detail-panel is-${status}`} data-node-id={node.id} aria-label={`${node.label || node.id} execution details`}>
       <div
         className="workflow-detail-resizer"
         role="separator"
@@ -389,11 +416,11 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
       />
       <header className="workflow-detail-head">
         <span className="workflow-detail-icon" aria-hidden="true">
-          <AppIcon name={NODE_ICON[node.type] || 'box'} size={20} />
+          <AppIcon name={node.type === 'agent' ? agentIconNameForAgentId(node.agent_id, agentOptions) : NODE_ICON[node.type] || 'box'} size={26} />
         </span>
         <span className="workflow-detail-heading">
           <strong>{node.label || typeLabelForWorkflowNode(node.type)}</strong>
-          <span>{typeLabelForWorkflowNode(node.type)} · {STATUS_COPY[status] || status}</span>
+          <span className="workflow-detail-subtitle"><i className={`workflow-detail-status-dot is-${status}`} aria-hidden="true" />{typeLabelForWorkflowNode(node.type)} · {STATUS_COPY[status] || status}</span>
         </span>
         <button type="button" className="workflow-detail-close" onClick={onClose} aria-label="Close node details">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
@@ -423,7 +450,9 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
               {historicalAttempts.map((attempt, index) => renderAttempt(attempt, index, false))}
             </details>
           ) : null}
-          {latestAttempt ? renderAttempt(latestAttempt, visibleAttempts.length - 1, true) : null}
+          {latestAttempt ? renderAttempt(latestAttempt, visibleAttempts.length - 1, true) : (
+            <div className="workflow-detail-empty" role="status">{status === 'running' ? 'Waiting for this node’s first event…' : 'No execution content recorded for this node.'}</div>
+          )}
         </div>
         <ScrollToBottomButton
           scrollRef={detailBodyRef}
@@ -441,7 +470,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
   const [selectedNodeId, setSelectedNodeId] = React.useState('');
   const previousSelectionRef = React.useRef({ nodeId: '', status: 'pending' });
   const followApprovalBranchRef = React.useRef('');
-  const [detailWidth, setDetailWidth] = React.useState(460);
+  const [detailWidth, setDetailWidth] = React.useState(520);
   const layoutRef = React.useRef(null);
   const canvasRef = React.useRef(null);
   const canvasWidth = useWorkflowCanvasWidth(canvasRef);
@@ -476,11 +505,12 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
   const layoutKey = `${layout.columns}:${layout.rowCount}:${canvasWidth}`;
   const executedNodeIds = React.useMemo(() => new Set([
     ...Object.keys(run?.nodes || {}),
+    ...(run?.current_node_id ? [String(run.current_node_id)] : []),
     ...controlEvents
       .filter((event) => event.type === 'workflow_node_started')
       .map((event) => eventNodeId(event))
       .filter(Boolean),
-  ]), [run?.nodes, controlEvents]);
+  ]), [run?.nodes, run?.current_node_id, controlEvents]);
   const canOpenNodeDetail = React.useCallback((node) => (
     Boolean(node)
     && DETAIL_NODE_TYPES.has(node.type)
@@ -492,7 +522,11 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
     [layout, workflow?.edges],
   );
 
-  React.useEffect(() => setSelectedNodeId(''), [workflowKey]);
+  React.useEffect(() => {
+    setSelectedNodeId('');
+    followApprovalBranchRef.current = '';
+    previousSelectionRef.current = { nodeId: '', status: 'pending' };
+  }, [workflowKey, task?.taskId]);
 
   const layoutNodes = React.useMemo(() => (workflow?.nodes || []).map((node) => {
     const status = nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds);
@@ -570,6 +604,11 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
       ...workflowRouteHandles(edge, routes),
     };
   }), [routes, latestTransition, layout, nodeById, statusById, traversedEdgeKeys, workflow?.edges]);
+  // React Flow's transient selection must not diverge from the detail panel on stream updates/close.
+  const displayNodes = React.useMemo(() => nodes.map((node) => ({
+    ...node,
+    selected: node.id === selectedNodeId && node.data.runtimeDetailAvailable,
+  })), [nodes, selectedNodeId]);
   const selectedNodeCandidate = selectedNodeId ? nodeById.get(selectedNodeId) || null : null;
   const selectedNode = canOpenNodeDetail(selectedNodeCandidate) ? selectedNodeCandidate : null;
   // 节点详情的回复按节点配置的 agent 署名（catalog 与节点图标同一份）。
@@ -657,7 +696,10 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
     <div
       ref={layoutRef}
       className={`workflow-run-layout ${selectedNode ? 'has-detail' : ''}`}
-      style={selectedNode ? { '--workflow-detail-width': `${detailWidth}px` } : undefined}
+      style={selectedNode ? {
+        '--workflow-detail-width': `${detailWidth}px`,
+        '--workflow-detail-accent': workflowNodeAccent(selectedNode.type),
+      } : undefined}
     >
       <main ref={canvasRef} className="workflow-run-canvas workflow-canvas" aria-label="Workflow execution graph">
         {onOpenConfig ? (
@@ -674,7 +716,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
           <div className="workflow-run-title">{titleBody}</div>
         )}
         <ReactFlow
-          nodes={nodes}
+          nodes={displayNodes}
           edges={edges}
           nodeTypes={NODE_TYPES}
           edgeTypes={EDGE_TYPES}
@@ -696,6 +738,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
           onPaneClick={() => setSelectedNodeId('')}
           proOptions={{ hideAttribution: true }}
         >
+          {selectedNode ? <RuntimeSelectionLink nodeId={selectedNodeId} /> : null}
           <Background gap={30} size={1.2} color="rgba(150, 184, 240, 0.07)" />
           <WorkflowCanvasControls workflowId={workflow?.workflow_id || workflow?.id} />
           <FitWorkflow workflowKey={workflowKey} detailOpen={Boolean(selectedNode)} layoutKey={layoutKey} />
@@ -704,6 +747,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
       </main>
       {selectedNode ? (
         <NodeDetail
+          key={`${task?.taskId || ''}:${selectedNode.id}`}
           node={selectedNode}
           task={task}
           run={run}
@@ -713,6 +757,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
           onResizeBy={resizeDetailBy}
           onRetry={task ? onRetry : null}
           agentName={selectedNodeAgentName}
+          agentOptions={agentOptions}
         />
       ) : null}
     </div>

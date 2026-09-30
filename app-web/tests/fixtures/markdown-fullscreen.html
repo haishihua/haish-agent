@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>markdown fullscreen — 代码块 / 表格的「全屏」按钮点下去真的铺满视口</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0f18; color: #e7ecf6; font: 13px system-ui; }
+  /* 页面做成和 app 一样：body 正好一屏高 + overflow hidden——
+     弹层要是丢掉 fixed，就会整个落到这一屏下面（用户看到的就是「没反应」）。 */
+  #root { height: 100%; }
+  .fullscreen-fixture { height: 100%; display: flex; flex-direction: column; }
+  .fullscreen-fixture header { flex: 0 0 auto; padding: 8px 12px 6px; font-size: 13px; }
+  .fullscreen-fixture #stage { flex: 1 1 auto; min-height: 0; padding: 0 12px; overflow: hidden; }
+  .fullscreen-fixture #stage .chat-message-list { height: 100%; }
+  .fullscreen-fixture #checks {
+    flex: 0 0 auto; margin: 6px 12px 10px; max-height: 190px; overflow: auto; padding: 10px;
+    background: #0b0e14; color: #9fd8a4; white-space: pre-wrap;
+    font: 11px/1.5 ui-monospace, monospace; border-radius: 8px;
+  }
+  .fullscreen-fixture #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<div id="root"></div>
+<script type="module" src="./markdown-fullscreen.jsx"></script>
+</html>

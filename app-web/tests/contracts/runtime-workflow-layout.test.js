@@ -202,8 +202,19 @@ test('node execution details can be resized without hiding the workflow', () => 
   assert.match(runtimeSource, /className="workflow-detail-resizer"/);
   assert.match(runtimeSource, /setPointerCapture\(event\.pointerId\)/);
   assert.match(runtimeSource, /'--workflow-detail-width'/);
-  assert.match(runtimeStyles, /var\(--workflow-detail-width, 460px\)/);
+  assert.match(runtimeStyles, /var\(--workflow-detail-width, 520px\)/);
   assert.match(runtimeStyles, /calc\(100% - 360px\)/);
+});
+
+test('runtime selection and detail share one type accent and clear together', () => {
+  assert.match(runtimeSource, /selected: node.id === selectedNodeId && node.data.runtimeDetailAvailable/);
+  assert.match(runtimeSource, /nodes=\{displayNodes\}/);
+  assert.match(runtimeSource, /'--workflow-detail-accent': workflowNodeAccent\(selectedNode.type\)/);
+  assert.match(runtimeSource, /key=\{`\$\{task\?\.taskId \|\| ''\}:\$\{selectedNode.id\}`\}/);
+  assert.match(runtimeSource, /RuntimeSelectionLink nodeId=\{selectedNodeId\}/);
+  assert.match(runtimeStyles, /\.workflow-selection-link \{[^}]*pointer-events: none/);
+  assert.doesNotMatch(runtimeStyles, /239, 191, 100/);
+  assert.match(runtimeStyles, /\.workflow-detail-status-dot\.is-running \{ animation: none; \}/);
 });
 
 test('assistant messages keep the original penguin icon', () => {

@@ -90,7 +90,7 @@ test('node card geometry, icon tile and the single-layer selection highlight are
 });
 
 test('runtime keeps only its status skin and collapsed handles on top of the shared set', () => {
-  assert.match(runtimeStyles, /\.status-running \{ --node-accent: #76b9fa; \}/);
+  assert.match(runtimeStyles, /\.status-running \{ --node-accent: var\(--node-type-accent\); \}/);
   assert.match(
     runtimeStyles,
     /\.workflow-flow-node\.status-done,\n\.workflow-run-canvas \.workflow-flow-node\.status-approved \{ --node-accent: var\(--node-type-accent\); \}/,

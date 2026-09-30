@@ -193,21 +193,8 @@
     content: none;
 }
 
-.iv-label {
-    margin-bottom: 6px;
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.5);
-    -webkit-font-smoothing: antialiased;
-}
-
-.iv-label::before {
-    content: none;
-}
-
+/* 标题行只有任务标题：过去上面还压一行 `TASK OUTPUT` 小标签，同一个对话框在两处复用
+   （任务报告 / 会话启动失败），那行小标签在后者还会把启动错误标成任务产出，所以整条删掉。 */
 .iv-title {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
     font-size: 22px;
@@ -248,13 +235,15 @@
 }
 
 /* Action buttons */
-/* 底部按钮区改为 sheet footer，参考 macOS 标准对话框：右下方贴边，分隔线 */
+/* 底部按钮区改为 sheet footer，参考 macOS 标准对话框：右下方贴边，分隔线。
+   三个动作（关闭 / 以此为上下文开新任务 / 导出）都只有图标，文案在 title 与 aria-label
+   上，所以按钮是 30px 方块，不再各写一颗文字按钮。 */
 .iv-actions {
     position: static;
     display: flex;
     justify-content: flex-end;
-    gap: 10px;
-    padding: 14px 20px;
+    gap: 8px;
+    padding: 13px 20px;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     background: rgba(0, 0, 0, 0.18);
     -webkit-backdrop-filter: blur(8px);
@@ -264,17 +253,16 @@
 }
 
 .iv-btn {
-    min-height: 30px;
-    padding: 5px 18px;
-    border-radius: 7px;
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    letter-spacing: 0;
-    text-transform: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
     border: 0;
+    border-radius: 7px;
     cursor: pointer;
-    transition: background .14s ease, box-shadow .14s ease, color .14s ease;
+    transition: background .14s ease, box-shadow .14s ease, color .14s ease, transform .1s ease;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     -webkit-font-smoothing: antialiased;
@@ -287,9 +275,11 @@
     box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.06);
 }
 
-.iv-btn-close:hover {
-    background: rgba(255, 255, 255, 0.16);
-    color: #ffffff;
+/* 「以这份产出为上下文开新任务」：和 Close 同一档的次要按钮，靠图标区分 */
+.iv-btn-context {
+    background: rgba(255, 255, 255, 0.10);
+    color: rgba(255, 255, 255, 0.9);
+    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.06);
 }
 
 /* Primary：Apple 系统蓝填充按钮 */
@@ -300,17 +290,31 @@
     0 1px 2px rgba(0, 0, 0, 0.18);
 }
 
-.iv-btn-export:hover {
-    background: #1f8eff;
+/* 悬停只在真的有指针的机器上生效（触屏点一下不该留下 hover 态） */
+@media (hover: hover) and (pointer: fine) {
+    .iv-btn-close:hover,
+    .iv-btn-context:hover {
+        background: rgba(255, 255, 255, 0.16);
+        color: #ffffff;
+    }
+
+    .iv-btn-export:hover {
+        background: #1f8eff;
+    }
 }
 
 .iv-btn:active {
-    transform: translateY(0.5px);
+    transform: scale(0.96);
 }
 
+/* app 全局写了 `:focus-visible { outline: none !important }`，焦点环只能走 box-shadow */
 .iv-btn:focus-visible {
-    outline: 2px solid rgba(10, 132, 255, 0.55);
-    outline-offset: 2px;
+    box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.55);
+}
+
+.iv-btn-export:focus-visible {
+    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12),
+    0 0 0 2px rgba(10, 132, 255, 0.55);
 }
 
 @keyframes iv-actions-in {
@@ -321,6 +325,17 @@
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .iv-actions {
+        opacity: 1;
+        animation: none;
+    }
+
+    .iv-btn {
+        transition: none;
     }
 }
 
@@ -360,16 +375,6 @@
 
     .iv-body-scroll {
         max-height: 100%;
-    }
-
-    .iv-actions {
-        right: 18px;
-        bottom: 18px;
-        flex-direction: column;
-    }
-
-    .iv-btn {
-        width: 100%;
     }
 }
 

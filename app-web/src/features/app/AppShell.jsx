@@ -230,6 +230,8 @@ export function AppShell() {
   // 状态，助手正文还没水合，时间线用加载动画占位。
   const [shellSeeded, setShellSeeded] = useState(false);
   const [hollow, setHollow] = useState(null);
+  // 报告对话框的「以此为上下文开新任务」挂在这里，输入框上那枚标签带进下一条 deploy。
+  const [contextTask, setContextTask] = useState(null);
   const [conversationId, setConversationId] = useState(null);
   const [ownerId, setOwnerId] = useState('');
   const [conversationReady, setConversationReady] = useState(false);
@@ -1196,6 +1198,8 @@ export function AppShell() {
     conversationIdRef,
     conversationReady,
     conversationSelectionPending,
+    contextTask,
+    clearContextTask: () => setContextTask(null),
     createEmptyTaskRuntimeState,
     createPendingTaskDraft,
     defaultAgentId,
@@ -1950,6 +1954,8 @@ export function AppShell() {
                       disabledPlaceholder="Agents are currently busy executing..."
                       allowRuntimeInput={false}
                       attachment={composerAttachment}
+                      contextTask={contextTask}
+                      onClearContextTask={() => setContextTask(null)}
                       uploading={uploadState.active}
                       onSelectFile={(file, selectedWorkflowId) => { handleAttachmentSelect(file, selectedWorkflowId, 'bot').catch((error) => console.error('attachment upload failed', error)); }}
                       onClearFile={handleAttachmentClear}
@@ -1978,7 +1984,10 @@ export function AppShell() {
 
       {toast && <AppToast kind={toast.kind} message={toast.message} />}
 
-      <ResultDialog open={!!hollow} title={hollow?.title} result={hollow?.result} onClose={() => setHollow(null)} />
+      <ResultDialog open={!!hollow} title={hollow?.title} result={hollow?.result} onClose={() => setHollow(null)}
+        onUseAsContext={hollow?.contextSource
+          ? () => { setContextTask(hollow.contextSource); setHollow(null); }
+          : undefined} />
     </div>
   );
 }

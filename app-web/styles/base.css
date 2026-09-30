@@ -263,13 +263,6 @@ svg {
     height: 18px;
 }
 
-.ico-report {
-    -webkit-mask-image: url("../assets/ui/icons/report.png");
-    mask-image: url("../assets/ui/icons/report.png");
-    width: 16px;
-    height: 16px;
-}
-
 .ico-color-palette {
     -webkit-mask-image: none;
     mask-image: none;

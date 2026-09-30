@@ -5,6 +5,7 @@ import fs from 'node:fs';
 const panelsCss = fs.readFileSync(new URL('../../styles/panels.css', import.meta.url), 'utf8');
 const appShellCss = fs.readFileSync(new URL('../../styles/app-shell.css', import.meta.url), 'utf8');
 const fixtureSource = fs.readFileSync(new URL('../fixtures/sidebar-density.jsx', import.meta.url), 'utf8');
+const previewFixture = fs.readFileSync(new URL('../fixtures/sidebar-preview.jsx', import.meta.url), 'utf8');
 const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
 
 function cssBlock(source, selector) {
@@ -81,15 +82,21 @@ test('the sidebar header hugs the left edge and the left column got narrower', (
   assert.match(head, /padding-left: 3px;/);
   assert.match(head, /padding-right: 8px;/);
   assert.doesNotMatch(head, /padding-left: 11px;/);
-  // 底板与按钮同步收到 30px；折叠图标 22px 写死（按钮的内宽不再能把它压小），
+  // 底板与按钮同步收到 30px；折叠图标尺寸写死（按钮的内宽不再能把它压小），
   // 底部留白从按钮自己的 padding 里出，避免按钮宽度再变时图标跟着缩水。
+  // 表头两枚 icon 再各减一档：folder-plus 18 → 15px、折叠图标 22 → 18px（墨迹 ≈15px），
+  // 跟列表行 15px 的 folder 同一条视觉重量；命中区（30px）不动。
   assert.match(cssBlock(panelsCss, '\n.conversation-brand-icon {'), /width: 30px;/);
   assert.match(cssBlock(panelsCss, '\n.conversation-head-action {'), /width: 30px;/);
   assert.match(cssBlock(panelsCss, '\n.conversation-head-action {'), /padding: 0;/);
   assert.match(cssBlock(panelsCss, '\n.conversation-head-action.conversation-panel-toggle {'), /width: 30px;/);
   const toggleIcon = cssBlock(panelsCss, '\n.sidebar-toggle-icon {');
-  assert.match(toggleIcon, /width: 22px;/);
+  assert.match(toggleIcon, /width: 18px;/);
+  assert.doesNotMatch(toggleIcon, /width: 22px;/);
   assert.match(toggleIcon, /flex: 0 0 auto;/);
+  const headFolderIcon = cssBlock(panelsCss, '\n.conversation-head-action .ico-folder-plus-circle {');
+  assert.match(headFolderIcon, /width: 15px;/);
+  assert.doesNotMatch(headFolderIcon, /width: 18px;/);
   assert.match(appShellCss, /grid-template-columns: clamp\(210px, calc\(18vw - 78px\), 300px\) minmax\(320px, 1fr\) clamp\(340px, 21vw, 420px\);/);
   assert.doesNotMatch(appShellCss, /clamp\(252px, calc\(18vw - 28px\), 332px\)/);
   assert.doesNotMatch(appShellCss, /clamp\(238px, calc\(18vw - 50px\), 312px\)/);
@@ -99,10 +106,61 @@ test('the sidebar header hugs the left edge and the left column got narrower', (
   assert.match(fixtureSource, /a 210px-wide sidebar \(the new floor\) still fits the whole header in one row/);
   assert.match(fixtureSource, /head\.scrollWidth <= head\.clientWidth/);
   assert.match(fixtureSource, /actionWidths\.every\(\(width\) => width === 30\)/);
+  assert.match(fixtureSource, /the two header icons shrink one step/);
+  assert.match(fixtureSource, /round\(headFolderGlyph\.width\) === 15 && round\(headFolderGlyph\.height\) === 15/);
   assert.match(fixtureSource, /window\.__sidebarHeadRevertChecks = async \(\) => report\(await revertHeadChecks\(\)\);/);
   assert.match(fixtureSource, /brandIcon\.left - glyph\.left >= 6/);
   assert.match(fixtureSource, /pass: overflow > 0,/);
+  assert.match(fixtureSource, /revert: the old 18px \/ 22px header icons come back a size bigger/);
   assert.match(readme, /__sidebarHeadRevertChecks/);
+});
+
+test('the conversation titles reach into the row tail (the static reserve shrank)', () => {
+  // 行尾常驻最左的标记是终态圆点（7px、right 20px → 到行右缘 27px）；标题静态留白
+  // 40 → 20px 后，静态框右端落在行右缘前 31px（= 行内边距 11 + 留白 20），
+  // 长标题比改前多显示 20px，行尾那条空带随之收窄——悬停按钮仍靠自带渐变底盖文字尾巴。
+  const nameRules = panelsCss.match(/\.conversation-name \{[^}]*\}/g) || [];
+  const reserveRule = nameRules.find((block) => /padding-right/.test(block));
+  assert.ok(reserveRule, 'the tail-reserve rule on .conversation-name exists');
+  assert.match(reserveRule, /padding-right: 20px;/);
+  assert.doesNotMatch(reserveRule, /padding-right: 40px;/);
+  // 夹具侧：真的量「静态框右端 → 行右缘」= 31px + 反向断言（注回 40px 后回到 51px）。
+  assert.match(fixtureSource, /the conversation title box ends 31px before the row edge \(the old 40px reserve is gone\)/);
+  assert.match(fixtureSource, /round\(rowRight - staticRight\)/);
+  assert.match(fixtureSource, /revert: the old 40px tail reserve pulls the title box back to the empty band/);
+  assert.match(fixtureSource, /revertedTail >= 45/);
+});
+
+test('the task rows wear the same title treatment as the conversation rows', () => {
+  // 任务行（Task 标签页的任务行与展开会话下的任务卡共用 .conversation-task-title）：
+  // 太长不画「…」，右端 12px 渐隐（共用 --sidebar-title-fade）+ text-overflow: clip；
+  // 静态留白 40 → 20px（带报告入口那一档 44 → 24px）——标题框右端从行右缘前 51px
+  // 收到 31px（报告行 89 → 69px），比改前多显示 20px，悬停删除按钮仍靠自带渐变底盖文字尾巴。
+  const taskCopy = cssBlock(panelsCss, '\n.conversation-task-card.has-actions .conversation-task-copy {');
+  assert.match(taskCopy, /padding-right: 20px;/);
+  assert.doesNotMatch(taskCopy, /padding-right: 40px;/);
+  const reportCopy = cssBlock(panelsCss, '\n.conversation-task-card.has-actions.has-report .conversation-task-copy {');
+  assert.match(reportCopy, /padding-right: 24px;/);
+  assert.doesNotMatch(reportCopy, /padding-right: 44px;/);
+  const taskTitle = cssBlock(panelsCss, '\n.conversation-task-title {');
+  assert.match(taskTitle, /mask-image: linear-gradient\(to right, #000 calc\(100% - var\(--sidebar-title-fade, 12px\)\), transparent\);/);
+  assert.match(taskTitle, /text-overflow: clip;/);
+  assert.doesNotMatch(taskTitle, /text-overflow: ellipsis;/);
+  // 夹具侧（sidebar-preview 的 Task 面板）：三条长标题（在跑 / 已取消 / 已完成带报告）+ 一条短标题
+  // 真量尾巴（59 / 31 / 69px），另加反向断言（注回 40 / 44px 与 ellipsis 后尾巴退回空带、mask 消失）。
+  assert.match(previewFixture, /the task title fades out at the tail instead of an ellipsis/);
+  assert.match(previewFixture, /the long task title box ends 31px before the row edge \(the old 40px reserve is gone\)/);
+  assert.match(previewFixture, /Math\.abs\(tailOf\(settled\) - 31\) < 0\.5/);
+  assert.match(previewFixture, /a running task leaves room for its tail status glyph \(31px \+ 18px icon \+ 10px gap\)/);
+  assert.match(previewFixture, /Math\.abs\(tailOf\(running\) - 59\) < 0\.5/);
+  assert.match(previewFixture, /the task row with a report button keeps its title 69px off the row edge/);
+  assert.match(previewFixture, /Math\.abs\(tailOf\(report\) - 69\) < 0\.5/);
+  assert.match(previewFixture, /a short task title keeps its full text \(the fade only bites on overflow\)/);
+  assert.match(previewFixture, /window\.__sidebarTaskRowChecks = async \(\) => report\(await startTaskRowChecks\(\)\);/);
+  assert.match(previewFixture, /window\.__sidebarTaskRowRevertChecks = async \(\) => report\(await revertTaskRowChecks\(\)\);/);
+  assert.match(previewFixture, /tailOf\(settled\) >= 45 && tailOf\(report\) >= 83/);
+  assert.match(previewFixture, /revert: the task titles go back to an ellipsis with no fade mask/);
+  assert.match(readme, /__sidebarTaskRowChecks/);
 });
 
 test('the browser fixture measures the rhythm and how many projects fit', () => {

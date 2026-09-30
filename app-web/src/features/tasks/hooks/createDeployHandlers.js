@@ -19,6 +19,8 @@ export function createDeployHandlers(ctx) {
     conversationIdRef,
     conversationReady,
     conversationSelectionPending,
+    contextTask,
+    clearContextTask,
     createPendingTaskDraft,
     defaultAgentId,
     defaultWorkflowId,
@@ -233,6 +235,15 @@ export function createDeployHandlers(ctx) {
       text,
       displayText: String(displayText || text || '').trim(),
       annotations: annotations.map((item) => ({ ...item })),
+      // 「以任务产出为上下文」：只带引用（task_id / title / conversation_id），报告正文
+      // 由服务端在起跑时取；没挂上下文就是空数组。
+      contextTasks: contextTask
+        ? [{
+          taskId: contextTask.taskId || contextTask.task_id || '',
+          title: contextTask.title || '',
+          conversationId: contextTask.conversationId || contextTask.conversation_id || null,
+        }].filter((item) => item.taskId)
+        : [],
       attachment,
       modelId,
       reasoningEffort,
@@ -289,6 +300,7 @@ export function createDeployHandlers(ctx) {
     );
     pendingTask.requestText = request.text;
     pendingTask.annotations = request.annotations;
+    pendingTask.contextTasks = Array.isArray(request.contextTasks) ? request.contextTasks : [];
     pendingTask.displayText = request.displayText;
     pendingTask.requestedModelId = request.modelId || '';
     pendingTask.requestedAgentId = request.executionMode === 'chat'
@@ -385,6 +397,8 @@ export function createDeployHandlers(ctx) {
       && (currentConversation.tasks || []).length === 0
     );
     setComposerAttachment(null);
+    // 上下文标签和附件一样：任务真的发出去了才消（失败时 pendingTask 自己会标红）。
+    if (request.contextTasks?.length) clearContextTask?.();
     setWorkspaceState((state) => {
       let nextState = state;
       // First message on a just-materialized draft may race the previous

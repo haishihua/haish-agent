@@ -207,9 +207,10 @@ function measurePane(selector) {
     check(cfg['cfg-condition'].outline === rt['rt-condition'].outline && cfg['cfg-condition'].outline.includes(' none'),
       `选中态没有多余外圈（${cfg['cfg-condition'].outline}）`);
     check(
-      cfg['cfg-condition'].boxShadow === rt['rt-condition'].boxShadow
-        && !cfg['cfg-condition'].boxShadow.includes('0px 0px 0px 1px'),
-      `选中态高亮只有一层描边 + 柔光（${cfg['cfg-condition'].boxShadow}）`,
+      !rt['rt-condition'].boxShadow.includes('0px 0px 0px 1px')
+        && !cfg['cfg-condition'].boxShadow.includes('0px 0px 0px 1px')
+        && rt['rt-condition'].boxShadow.includes('0px 0px 24px'),
+      `运行态选中使用更亮类型色柔光，不叠加外框（${rt['rt-condition'].boxShadow}）`,
     );
     check(
       cfg['cfg-condition'].border === resolveProp('borderTopColor', 'color-mix(in srgb, #b570ff 96%, transparent)'),
@@ -233,9 +234,9 @@ function measurePane(selector) {
     check(pending.iconBg === cfg['cfg-agent'].iconBg, `未运行节点就穿配置页那套（图标底色 ${pending.iconBg}）`);
     check(pending.iconColor === cfg['cfg-agent'].iconColor, `未运行节点图标字色与配置页一致（${pending.iconColor}）`);
     check(pending.border === rt['rt-agent'].border, `已完成不再压暗共享 UI（描边 ${pending.border} / ${rt['rt-agent'].border}）`);
-    check(running.iconColor === resolveProp('color', 'color-mix(in srgb, #76b9fa 58%, #d4ffff)'),
-      `运行中节点图标字色是运行蓝那一档（${running.iconColor}）`);
-    check(running.border === resolveProp('borderColor', '#76b9fa'), `运行中节点描边运行蓝（${running.border}）`);
+    check(running.iconColor === cfg['cfg-agent'].iconColor,
+      `运行中节点图标保留类型色（${running.iconColor}）`);
+    check(running.border === cfg['cfg-agent'].border, `运行中节点描边保留类型色（${running.border}）`);
     check(running.halo.startsWith('yes'), `运行中节点有呼吸圈（${running.halo}）`);
 
     log('—— 连接点（把手）：两页同一套 ——');

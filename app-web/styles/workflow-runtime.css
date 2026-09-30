@@ -28,7 +28,7 @@
 .workflow-run-layout.has-detail {
     grid-template-columns:
         minmax(360px, 1fr)
-        min(var(--workflow-detail-width, 460px), calc(100% - 360px));
+        min(var(--workflow-detail-width, 520px), calc(100% - 360px));
 }
 
 .workflow-run-canvas {
@@ -161,24 +161,23 @@
 .workflow-run-status.is-rejected { color: #ee7a91; }
 .workflow-run-status.is-cancelled { color: #efc75e; }
 
-/* 卡片外观（尺寸、描边、类型色）都在 app-shell.css 的 .workflow-flow-node 里，这里只留运行态：
-   没跑到的节点就穿配置页那套外观（--node-accent = --node-type-accent），跑过/在跑才由 status-* 覆盖。 */
+/* 卡片外观（尺寸、描边、类型色）都在 app-shell.css 的 .workflow-flow-node 里。
+   运行时保留节点身份色，用光圈、选中柔光和独立状态点表达执行状态。 */
 .workflow-run-canvas .workflow-flow-node.is-runtime {
     cursor: default;
     --node-accent: var(--node-type-accent);
 }
 
-.workflow-run-canvas .workflow-flow-node.status-running { --node-accent: #76b9fa; }
+.workflow-run-canvas .workflow-flow-node.status-running { --node-accent: var(--node-type-accent); }
 .workflow-run-canvas .workflow-flow-node.status-done,
 .workflow-run-canvas .workflow-flow-node.status-approved { --node-accent: var(--node-type-accent); }
 .workflow-run-canvas .workflow-flow-node.status-approval,
-.workflow-run-canvas .workflow-flow-node.status-waiting_input { --node-accent: #b494ff; }
-.workflow-run-canvas .workflow-flow-node.status-cancelled { --node-accent: #efc75e; }
+.workflow-run-canvas .workflow-flow-node.status-waiting_input { --node-accent: var(--node-type-accent); }
+.workflow-run-canvas .workflow-flow-node.status-cancelled { --node-accent: var(--node-type-accent); }
 .workflow-run-canvas .workflow-flow-node.status-failed,
-.workflow-run-canvas .workflow-flow-node.status-rejected { --node-accent: #ee7a91; }
+.workflow-run-canvas .workflow-flow-node.status-rejected { --node-accent: var(--node-type-accent); }
 
-/* 卡片的图标块（底色/发光）也只在 app-shell.css 里写一份——它读的就是 --node-accent，
-   运行页把 --node-accent 换成状态色即可，不再另写一套底色/字色。 */
+/* 图标块继续复用画布的类型色，不因运行/失败状态而丢失节点身份。 */
 
 /* 连接点的外观不在这里改写：尺寸/颜色（实心小圆点、跟着节点主题色）/发光只在 app-shell.css
    里写一份，两页共用——运行页再写一份就会和配置页长得不一样（过去运行页 6px 收起、配置页
@@ -236,15 +235,34 @@
         0 0 26px color-mix(in srgb, var(--node-accent) 30%, transparent);
 }
 
+.workflow-selection-link { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.workflow-run-canvas .workflow-flow-node.is-runtime.active {
+    border-color: color-mix(in srgb, var(--node-type-accent) 65%, white);
+    box-shadow: 0 0 24px color-mix(in srgb, var(--node-type-accent) 50%, transparent), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.workflow-run-canvas .workflow-flow-node.is-runtime:is(.status-running, .status-failed, .status-rejected, .status-cancelled, .status-waiting_input, .status-approval)::before {
+    content: ''; position: absolute; top: 8px; right: 8px; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--node-type-accent);
+    box-shadow: 0 0 8px var(--node-type-accent);
+}
+
+.workflow-run-canvas .workflow-flow-node.is-runtime:is(.status-failed, .status-rejected)::before { background: #ee7a91; box-shadow: 0 0 8px #ee7a91; }
+.workflow-run-canvas .workflow-flow-node.is-runtime.status-cancelled::before { background: #efc75e; box-shadow: 0 0 8px #efc75e; }
+.workflow-run-canvas .workflow-flow-node.is-runtime:is(.status-waiting_input, .status-approval)::before { background: #b494ff; box-shadow: 0 0 8px #b494ff; }
+
 .workflow-detail-panel {
     position: relative;
     min-width: 0;
     min-height: 0;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    border-left: 1px solid rgba(139, 165, 205, 0.2);
-    background: linear-gradient(180deg, rgba(18, 27, 43, 0.98), rgba(9, 15, 26, 0.99));
-    box-shadow: -18px 0 38px rgba(0, 0, 0, 0.2);
+    --runtime-detail-border: color-mix(in srgb, var(--workflow-detail-accent) 32%, transparent);
+    z-index: 6;
+    margin: 6px 6px 6px 0;
+    border: 1px solid var(--runtime-detail-border);
+    border-radius: 22px;
+    background: radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--workflow-detail-accent) 15%, transparent), transparent 52%), linear-gradient(160deg, #0e1828, #090f19);
+    box-shadow: -10px 0 32px color-mix(in srgb, var(--workflow-detail-accent) 12%, transparent), inset 1px 0 0 color-mix(in srgb, var(--workflow-detail-accent) 25%, transparent);
     animation: workflow-detail-enter 180ms ease-out both;
     font-family: inherit;
 }
@@ -267,41 +285,43 @@
 .workflow-detail-resizer::after {
     content: "";
     position: absolute;
-    top: 0;
-    bottom: 0;
+    top: calc(50% - 18px);
+    height: 36px;
     left: 5px;
-    width: 1px;
-    background: rgba(139, 165, 205, 0.2);
-    transition: background-color 120ms ease, box-shadow 120ms ease, width 120ms ease;
+    width: 2px;
+    border-radius: 2px;
+    background: transparent;
+    transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 
-.workflow-detail-resizer:hover::after,
 .workflow-detail-resizer:focus-visible::after {
-    width: 2px;
-    background: rgba(121, 188, 255, 0.88);
-    box-shadow: 0 0 10px rgba(121, 188, 255, 0.45);
+    width: 2px; background: var(--workflow-detail-accent); box-shadow: 0 0 10px var(--workflow-detail-accent);
+}
+@media (hover: hover) and (pointer: fine) {
+    .workflow-detail-resizer:hover::after { background: var(--workflow-detail-accent); box-shadow: 0 0 10px var(--workflow-detail-accent); }
 }
 
 .workflow-detail-head {
-    min-height: 72px;
+    min-height: 88px;
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr) 44px;
+    grid-template-columns: 48px minmax(0, 1fr) 44px;
     align-items: center;
     gap: 11px;
     padding: 12px 14px 12px 18px;
-    border-bottom: 1px solid rgba(139, 165, 205, 0.14);
+    border-bottom: 1px solid var(--runtime-detail-border);
 }
 
 .workflow-detail-icon {
-    width: 38px;
-    height: 38px;
+    width: 48px;
+    height: 48px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border-radius: 10px;
-    color: #efbf64;
-    background: rgba(239, 191, 100, 0.1);
-    border: 1px solid rgba(239, 191, 100, 0.16);
+    color: color-mix(in srgb, var(--workflow-detail-accent) 58%, #d4ffff);
+    background: linear-gradient(145deg, color-mix(in srgb, var(--workflow-detail-accent) 54%, #102454), color-mix(in srgb, var(--workflow-detail-accent) 36%, #102454));
+    border: 1px solid var(--runtime-detail-border);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--workflow-detail-accent) 15%, transparent);
 }
 
 .workflow-detail-heading {
@@ -314,16 +334,22 @@
 .workflow-detail-heading strong {
     overflow: hidden;
     color: rgba(241, 246, 255, 0.96);
-    font-size: 15px;
-    font-weight: 760;
+    font-size: 18px;
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .workflow-detail-heading span {
     color: rgba(171, 188, 216, 0.7);
-    font-size: 11px;
+    font-size: 12px;
 }
+.workflow-detail-subtitle { display: flex; align-items: center; gap: 6px; }
+.workflow-detail-status-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--workflow-detail-accent); box-shadow: 0 0 8px currentColor; color: var(--workflow-detail-accent); }
+.workflow-detail-status-dot:is(.is-done, .is-approved) { background: #55d6a0; color: #55d6a0; }
+.workflow-detail-status-dot:is(.is-failed, .is-rejected) { background: #ee7a91; color: #ee7a91; }
+.workflow-detail-status-dot.is-cancelled { background: #efc75e; color: #efc75e; }
+.workflow-detail-status-dot.is-running { animation: workflow-status-pulse 1.6s ease-in-out infinite; }
 
 .workflow-detail-close {
     width: 44px;
@@ -338,12 +364,10 @@
     cursor: pointer;
 }
 
-.workflow-detail-close:hover,
-.workflow-detail-close:focus-visible {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.06);
-    outline: 2px solid rgba(121, 188, 255, 0.5);
-    outline-offset: -2px;
+.workflow-detail-close:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--runtime-detail-border); }
+.workflow-detail-close:active { background: color-mix(in srgb, var(--workflow-detail-accent) 20%, transparent); transform: scale(0.96); }
+@media (hover: hover) and (pointer: fine) {
+    .workflow-detail-close:hover { color: white; background: color-mix(in srgb, var(--workflow-detail-accent) 10%, transparent); }
 }
 
 .workflow-detail-close svg {
@@ -363,6 +387,13 @@
     scrollbar-width: thin;
     scrollbar-color: rgba(128, 151, 190, 0.3) transparent;
 }
+
+.workflow-detail-empty { padding: 20px 12px; color: #99abc3; font-size: 13px; }
+/* Keep shared chat alignment (You on the right) and the original gold assistant avatar. */
+.workflow-detail-body .chat-message-row { width: 100%; min-width: 0; }
+.workflow-detail-body .chat-message-row.agent .chat-bubble { width: 100%; max-width: none; }
+.workflow-detail-body .chat-message-row.user .message-speech-body { border-radius: 12px; border-color: var(--runtime-detail-border); background: color-mix(in srgb, var(--workflow-detail-accent) 12%, #111c2c); }
+.workflow-detail-body .chat-message-row.agent .message-speech-body { border-radius: 12px; background: color-mix(in srgb, var(--workflow-detail-accent) 4%, #131d2b); }
 
 /* Workflow-specific approval card typography. */
 .workflow-detail-body .haish-approval-slot {
@@ -394,13 +425,13 @@
     margin-bottom: 0;
 }
 
-.workflow-detail-history-summary:hover {
-    color: #dce3f4;
+@media (hover: hover) and (pointer: fine) {
+    .workflow-detail-history-summary:hover { color: #dce3f4; }
 }
 
 .workflow-detail-history-summary:focus-visible {
-    outline: 1px solid rgba(148, 172, 209, 0.66);
-    outline-offset: 3px;
+    outline: none;
+    box-shadow: 0 0 0 2px var(--runtime-detail-border);
     border-radius: 2px;
 }
 
@@ -455,10 +486,10 @@
     gap: 10px;
     margin-bottom: 14px;
     padding: 11px 12px;
-    border: 1px solid rgba(239, 191, 100, 0.32);
+    border: 1px solid var(--runtime-detail-border);
     border-radius: 11px;
-    color: #efbf64;
-    background: linear-gradient(135deg, rgba(151, 104, 28, 0.18), rgba(34, 49, 72, 0.36));
+    color: var(--workflow-detail-accent);
+    background: color-mix(in srgb, var(--workflow-detail-accent) 10%, #0e1828);
     box-shadow: inset 0 1px rgba(255, 255, 255, 0.03);
 }
 
@@ -468,7 +499,7 @@
     padding: 7px;
     box-sizing: border-box;
     border-radius: 9px;
-    background: rgba(239, 191, 100, 0.1);
+    background: color-mix(in srgb, var(--workflow-detail-accent) 10%, transparent);
 }
 
 .workflow-detail-waiting > span {
@@ -478,7 +509,7 @@
 }
 
 .workflow-detail-waiting strong {
-    color: rgba(249, 226, 181, 0.98);
+    color: #dce6f5;
     font-size: 12px;
 }
 
@@ -552,9 +583,11 @@
     .workflow-run-status.is-running::before {
         animation: none;
     }
+    .workflow-detail-status-dot.is-running { animation: none; }
 }
 
 @media (max-width: 900px) {
+    .workflow-selection-link { display: none; }
     .workflow-detail-panel {
         position: absolute;
         top: 0;

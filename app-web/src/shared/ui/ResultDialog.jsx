@@ -1,4 +1,5 @@
 import React from 'react';
+import { AppIcon } from './AppIcon.jsx';
 import { Markdown } from './Markdown.jsx';
 
 function exportReport(title, markdown) {
@@ -18,7 +19,10 @@ function exportReport(title, markdown) {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export function ResultDialog({ open, title, result, onClose }) {
+// 报告对话框：标题行就是任务标题本身（不再有 TASK OUTPUT 那行小标签），动作是底栏三枚
+// 图标按钮 —— 关闭 / 以这份产出为上下文开新任务（只在调用方给出 onUseAsContext 时出现，
+// 目前只有收工的工作流任务）/ 导出 Markdown；文案走进 title 与 aria-label，按钮本身只有图标。
+export function ResultDialog({ open, title, result, onClose, onUseAsContext }) {
   if (!open) return null;
 
   return (
@@ -27,7 +31,6 @@ export function ResultDialog({ open, title, result, onClose }) {
         <div className="iv-modal">
           <section className="iv-header">
             <div className="iv-header-inner">
-              <div className="iv-label">Task Output</div>
               <div className="iv-title">{title || ''}</div>
             </div>
           </section>
@@ -39,13 +42,34 @@ export function ResultDialog({ open, title, result, onClose }) {
             </div>
           </section>
           <div className="iv-actions">
-            <button type="button" className="iv-btn iv-btn-close" onClick={onClose}>Close</button>
+            <button
+              type="button"
+              className="iv-btn iv-btn-close"
+              title="Close"
+              aria-label="Close report"
+              onClick={onClose}
+            >
+              <AppIcon name="close" size={15} />
+            </button>
+            {onUseAsContext ? (
+              <button
+                type="button"
+                className="iv-btn iv-btn-context"
+                title="Use as context for a new task"
+                aria-label="Use this task as context for a new task"
+                onClick={onUseAsContext}
+              >
+                <AppIcon name="layers" size={15} />
+              </button>
+            ) : null}
             <button
               type="button"
               className="iv-btn iv-btn-export"
+              title="Export as Markdown"
+              aria-label="Export report as Markdown"
               onClick={() => exportReport(title, result)}
             >
-              Export
+              <AppIcon name="download" size={15} />
             </button>
           </div>
         </div>

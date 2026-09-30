@@ -860,6 +860,11 @@ export function createTaskStreamHandlers(ctx) {
     } : {
       message: pendingTask.requestText ?? pendingTask.title,
       annotations: pendingTask.annotations || [],
+      // 「以任务产出为上下文」：只传任务引用，报告正文由服务端在起跑时取
+      // （没挂上下文就是空数组）。
+      context_tasks: (Array.isArray(pendingTask.contextTasks) ? pendingTask.contextTasks : [])
+        .map((item) => ({ task_id: item.taskId || item.task_id || '' }))
+        .filter((item) => item.task_id),
       attachments: pendingTask.attachment ? [{
         name: pendingTask.attachment.name,
         size: pendingTask.attachment.size,

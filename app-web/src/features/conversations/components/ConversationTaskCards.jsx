@@ -60,7 +60,7 @@ export function TaskRecordCompact({
               aria-label="View report"
               onClick={(event) => { event.stopPropagation(); onOpenReport?.(task); }}
             >
-              <span className="ico ico-report" aria-hidden="true" />
+              <AppIcon name="report" size={15} />
             </button>
           </PortalTooltip>
         ) : null}

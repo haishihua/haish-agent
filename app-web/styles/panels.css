@@ -130,11 +130,12 @@
 }
 
 .sidebar-toggle-icon {
-    /* 图标尺寸写死：以前靠 34px 按钮的剩余内宽（默认 6px 内边距 → 22px）压出来，
-       按钮收到 30px 后会被压到 18px，图标就会比「Add project」小一圈。 */
+    /* 图标尺寸写死，不靠按钮的内宽压出来（那样按钮一改宽度图标就跟着缩水）。
+       22 → 18px：与同行「Add project」的 folder-plus（18 → 15px）一起减重，
+       墨迹从 ≈18px 收到 ≈15px，跟列表行里 15px 的 folder 同一条视觉重量。 */
     flex: 0 0 auto;
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
     display: block;
 }
 
@@ -214,8 +215,10 @@
 }
 
 .conversation-head-action .ico-folder-plus-circle {
-    width: 18px;
-    height: 18px;
+    /* 表头两枚 icon 一起减重：18 → 15px，跟列表行里 15px 的 folder 同一重量；
+       按钮的命中区（30 × 34px）不动。 */
+    width: 15px;
+    height: 15px;
 }
 
 .conversation-head-action:hover {
@@ -351,8 +354,10 @@
 .conversation-name {
     font-size: 13px;
     font-weight: 400;
-    /* 为行尾 loading 图标与悬停操作按钮（固定/删除）预留空间，标题文字不会压到按钮 */
-    padding-right: 40px;
+    /* 行尾常驻的只有两个标记：在跑的转圈（15px、right 11px → 最左到行右缘 26px）与
+       终态圆点（7px、right 20px → 27px）。悬停操作按钮自带渐变底、盖住文字尾巴，
+       不占静态留白；留白 40 → 20px，长标题因此多显示 20px（行尾那条空带随之收窄）。 */
+    padding-right: 20px;
 }
 
 .conversation-name-static {
@@ -706,17 +711,21 @@
 }
 
 .conversation-task-card.has-actions .conversation-task-copy {
-    padding-right: 40px;
+    /* 行尾常驻的只有报告入口（24px，has-report 才有）；悬停的删除按钮自带渐变底、
+       盖住文字尾巴，不占静态留白。留白 40 → 20px，任务标题因此多显示 20px——
+       与会话标题同一档：标题框右端落在行右缘前 31px（行内边距 11 + 20）。 */
+    padding-right: 20px;
 }
 
 /* 报告入口常驻卡片尾（24px 宽）：悬停操作组整组右移让位、标题再多让 4px——
-   两枚按钮不许叠在一起（过去叠着，点不到）。 */
+   两枚按钮不许叠在一起（过去叠着，点不到）。标题留白跟着静态留白一起收
+   （44 → 24px）：标题框右端落在行右缘前 69px，离悬停按钮还有 8px。 */
 .conversation-task-card.has-report .conversation-actions {
     right: 36px;
 }
 
 .conversation-task-card.has-actions.has-report .conversation-task-copy {
-    padding-right: 44px;
+    padding-right: 24px;
 }
 
 .conversation-task-terminal-notice {
@@ -823,7 +832,11 @@
     font-weight: 400;
     color: #e7ecfa;
     overflow: hidden;
-    text-overflow: ellipsis;
+    /* 任务标题跟会话标题同一套：太长不画「…」，右端一小段渐隐（mask 只挂在
+       文字块上，容器右内边距仍留给行尾按钮），渐隐宽度共用 --sidebar-title-fade。 */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--sidebar-title-fade, 12px)), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--sidebar-title-fade, 12px)), transparent);
+    text-overflow: clip;
     white-space: nowrap;
     line-height: 1.35;
 }

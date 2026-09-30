@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>markdown bare JSON — workflow 节点吐出来的裸 JSON 要变成 json 代码块</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0f18; color: #e7ecf6; font: 13px system-ui; }
+  #root { height: 100%; }
+  .json-fixture { height: 100%; display: flex; flex-direction: column; }
+  .json-fixture header { flex: 0 0 auto; padding: 8px 12px 6px; font-size: 13px; }
+  .json-fixture #stage { flex: 1 1 auto; min-height: 0; padding: 0 12px; overflow: auto; }
+  .json-fixture #checks {
+    flex: 0 0 auto; margin: 6px 12px 10px; max-height: 190px; overflow: auto; padding: 10px;
+    background: #0b0e14; color: #9fd8a4; white-space: pre-wrap;
+    font: 11px/1.5 ui-monospace, monospace; border-radius: 8px;
+  }
+  .json-fixture #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<div id="root"></div>
+<script type="module" src="./markdown-json-answer.jsx"></script>
+</html>
