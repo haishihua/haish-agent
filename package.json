@@ -1,6 +1,6 @@
 {
   "name": "haish-agent",
-  "version": "0.0.23",
+  "version": "0.0.24",
   "private": true,
   "description": "Haish desktop app with a local agent runtime.",
   "main": "dist-electron/main/main.js",
@@ -83,7 +83,12 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "electronLanguages": ["en", "en_GB", "zh_CN", "zh_TW"],
+      "electronLanguages": [
+        "en",
+        "en_GB",
+        "zh_CN",
+        "zh_TW"
+      ],
       "icon": "build/Haish.icon",
       "hardenedRuntime": true,
       "entitlements": "entitlements/entitlements.mac.plist",
