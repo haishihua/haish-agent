@@ -47,7 +47,7 @@ test('empty-state penguins stay out until dismissed and cards never swap', () =>
   assert.doesNotMatch(greetingOriginal, /opacity:\s*0|visibility:\s*hidden/);
   assert.match(cards, /src=\{card\.plate\}/);
   for (const name of ['relax', 'sleepy', 'hug']) {
-    assert.ok(cards.includes(`import ${name}Plate from '../../../../assets/ui/empty-state/penguin-${name}-plate.png'`));
+    assert.ok(cards.includes(`import ${name}Plate from '../../../../assets/ui/empty-state/penguin-${name}-plate.webp'`));
   }
   assert.match(cards, /window\.setTimeout\(\(\) => activate\(card\), 180\)/);
   assert.match(cards, /onPointerLeave=\{cancel\}/);

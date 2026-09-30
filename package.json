@@ -18,10 +18,11 @@
     "build:runtime": "node scripts/build-runtime.mjs",
     "start": "electron .",
     "fetch:remote-adapter": "node scripts/fetch-remote-adapter.mjs",
-    "pack:mac": "npm run fetch:remote-adapter && npm run build:release && npm run build:runtime && electron-builder --mac dir",
-    "dist:mac": "npm run fetch:remote-adapter && npm run build:release && npm run build:runtime && electron-builder --mac dmg zip",
+    "check:mac-icon": "node scripts/check-macos-icon.mjs",
+    "pack:mac": "npm run check:mac-icon && npm run fetch:remote-adapter && npm run build:release && npm run build:runtime && electron-builder --mac dir",
+    "dist:mac": "npm run check:mac-icon && npm run fetch:remote-adapter && npm run build:release && npm run build:runtime && electron-builder --mac dmg zip",
     "check:mac-release": "node scripts/check-mac-release.mjs",
-    "dist:mac:release": "npm run check:mac-release && npm run fetch:remote-adapter && npm run build:release && npm run build:runtime && electron-builder --mac dmg zip --config.forceCodeSigning=true",
+    "dist:mac:release": "npm run check:mac-icon && npm run check:mac-release && npm run fetch:remote-adapter && npm run build:release && npm run build:runtime && electron-builder --mac dmg zip --config.forceCodeSigning=true",
     "release:mac": "node scripts/release-mac.mjs",
     "release:mac:unsigned": "node scripts/release-mac.mjs --unsigned",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
@@ -37,6 +38,7 @@
     "productName": "Haish",
     "artifactName": "Haish-${version}-${arch}.${ext}",
     "asar": false,
+    "afterPack": "scripts/verify-macos-icon-after-pack.mjs",
     "directories": {
       "output": "release"
     },
@@ -48,7 +50,6 @@
           "**/*"
         ]
       },
-      "build/icon.png",
       "dist-electron/**/*",
       "package.json"
     ],
@@ -82,7 +83,8 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "build/icon.icns",
+      "electronLanguages": ["en", "en_GB", "zh_CN", "zh_TW"],
+      "icon": "build/Haish.icon",
       "hardenedRuntime": true,
       "entitlements": "entitlements/entitlements.mac.plist",
       "entitlementsInherit": "entitlements/entitlements.mac.inherit.plist",

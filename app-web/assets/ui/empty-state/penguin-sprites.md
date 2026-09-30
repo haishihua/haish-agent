@@ -1,6 +1,8 @@
 # Penguin hover prototype assets
 
-Shipped files: `penguin-<name>-smooth.png` (character), `penguin-<name>-plate.png` (paper background) and `penguin-<name>-card.png` (untouched original card), where `<name>` is one of `relax`, `sleepy`, `hug`.
+Shipped files: lossless `penguin-<name>-smooth.webp` (character), `penguin-<name>-plate.webp` (paper background) and `penguin-<name>-card.webp` (original card pixels), where `<name>` is one of `relax`, `sleepy`, `hug`. The PNG originals remain as source artwork and are not shipped.
+
+Generate new copies with `python scripts/optimize-ui-images.py` using Pillow with WebP support; verify existing copies with `--check`. Generation refuses to overwrite existing outputs. All nine copies preserve dimensions and every RGBA pixel, including the green matte used by the SVG filter. The shared Dock / renderer logo deliberately remains PNG because Electron nativeImage does not decode WebP.
 
 Earlier intermediate cutouts (`penguin-<name>-sprite.png`) were deleted on 2026-09-14 to save 5.9 MB. They were never part of the built bundle; recover them from git history if the artwork ever needs revisiting (`git show 8d2aaed:app-web/assets/ui/empty-state/penguin-hug-sprite.png`). Their prompt is kept below for provenance.
 

@@ -66,7 +66,10 @@ const webRoot = () => {
   }
   throw new Error('app-web/dist/index.html is missing; run npm run build:web');
 };
-const appIconPngPath = () => path.join(app.getAppPath(), 'build', 'icon.png');
+// Share the original PNG with the renderer; nativeImage does not decode WebP.
+const appIconPngPath = () => path.join(
+  app.getAppPath(), 'app-web', app.isPackaged ? 'dist' : '.', 'assets', 'ui', 'penguin_logo_user.png',
+);
 const devMode = process.env.HAISH_DEV_MODE === '1' || !app.isPackaged;
 const runtimePaths = () => ({
   userDataPath: app.getPath('userData'),
@@ -346,6 +349,10 @@ function publishWindowVisualState(window: BrowserWindow): void {
 
 function applyDockIcon(): void {
   if (process.platform !== 'darwin' || !app.dock) return;
+  // Packaged apps use the bundle's asset catalog / ICNS fallback. Setting a
+  // static PNG here would replace macOS's automatic icon appearance selection.
+  // Unpackaged Electron still needs our PNG instead of the Electron logo.
+  if (app.isPackaged) return;
   app.dock.setIcon(appIconPngPath());
 }
 

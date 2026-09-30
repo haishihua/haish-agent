@@ -8,9 +8,9 @@ import tailwindcss from '@tailwindcss/vite';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appWebRoot = path.resolve(__dirname, 'app-web');
 const runtimeAssetPaths = [
-  'ui/empty-state/penguin-hug-card.png',
-  'ui/empty-state/penguin-relax-card.png',
-  'ui/empty-state/penguin-sleepy-card.png',
+  'ui/empty-state/penguin-hug-card.webp',
+  'ui/empty-state/penguin-relax-card.webp',
+  'ui/empty-state/penguin-sleepy-card.webp',
   'ui/icons/ask-for-help.png',
   'ui/icons/cyber-security.png',
   'ui/icons/generative.png',

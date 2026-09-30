@@ -240,9 +240,36 @@ export function setVisionProviderEnabled(vision, entryId, enabled) {
   };
 }
 
+export function normalizeCompactDraft(value) {
+  const sources = (Array.isArray(value?.providers) ? value.providers : []).filter(row => row && typeof row === 'object' && row.provider);
+  const normalized = normalizeVisionDraft({ providers: sources });
+  return { providers: normalized.providers.map((row, index) => ({
+    ...row,
+    id: sources[index]?.id || `compact-${index + 1}`,
+    reasoning_effort: row.reasoning_effort || 'high',
+    thinking: row.thinking || 'auto',
+  })) };
+}
+
+// Secrets are submitted to the backend credential store, never persisted in
+// the ordinary local draft cache (including unsaved Compact credentials).
+export function llmDraftForStorage(draft) {
+  return JSON.stringify(draft, (key, value) => ['api_key', 'oauth_code', 'oauth_verifier', 'oauth_state'].includes(key) ? undefined : value);
+}
+
+export function createCompactProviderDraft() {
+  return { ...createVisionProviderDraft(), id: `compact-${Date.now()}`, reasoning_effort: 'high', thinking: 'auto' };
+}
+
+// Compact shares Chat's generic effort choices; adapters own wire mapping.
+export function compactThinkingOptions() {
+  return { modes: ['auto'], efforts: SETTINGS_REASONING_OPTIONS.map(item => item.id) };
+}
+
 function createDefaultLlmSettings() {
   return {
     chat: {},
+    compact: { providers: [] },
     vision: {
       mode: 'auto',
       providers: [],
@@ -279,6 +306,7 @@ export function loadLlmSettingsDraft() {
     const draft = {
       chat: normalizeLlmModelConfig({ ...fallback.chat, ...(stored?.chat || {}) }),
       vision: normalizeVisionDraft(stored?.vision),
+      compact: normalizeCompactDraft(stored?.compact),
       embedding: { ...fallback.embedding, ...(stored?.embedding || {}) },
       profiles: Array.isArray(stored?.profiles) ? stored.profiles : [],
     };
@@ -294,6 +322,7 @@ export function applyLlmSettingsPayloadToDraft(previous, payload) {
     payload.chat?.provider
     || payload.vision?.provider
     || Array.isArray(payload.vision?.providers)
+    || Array.isArray(payload.compact?.providers)
     || payload.embedding?.provider
     || (Array.isArray(payload.profiles) && payload.profiles.length > 0),
   );
@@ -302,6 +331,7 @@ export function applyLlmSettingsPayloadToDraft(previous, payload) {
   return {
     chat: normalizeLlmModelConfig({ ...fallback.chat, ...(payload.chat || {}) }),
     vision: normalizeVisionDraft(payload.vision),
+    compact: normalizeCompactDraft(payload.compact),
     embedding: { ...fallback.embedding, ...(payload.embedding || {}) },
     profiles: Array.isArray(payload.profiles)
       ? payload.profiles.map((profile) => normalizeLlmModelConfig(profile))

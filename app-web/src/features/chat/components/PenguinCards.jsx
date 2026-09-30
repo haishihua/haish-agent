@@ -1,12 +1,12 @@
 import React from 'react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { prefersReducedMotion } from '../../../shared/lib/reduced-motion.js';
-import relax from '../../../../assets/ui/empty-state/penguin-relax-smooth.png';
-import sleepy from '../../../../assets/ui/empty-state/penguin-sleepy-smooth.png';
-import hug from '../../../../assets/ui/empty-state/penguin-hug-smooth.png';
-import relaxPlate from '../../../../assets/ui/empty-state/penguin-relax-plate.png';
-import sleepyPlate from '../../../../assets/ui/empty-state/penguin-sleepy-plate.png';
-import hugPlate from '../../../../assets/ui/empty-state/penguin-hug-plate.png';
+import relax from '../../../../assets/ui/empty-state/penguin-relax-smooth.webp';
+import sleepy from '../../../../assets/ui/empty-state/penguin-sleepy-smooth.webp';
+import hug from '../../../../assets/ui/empty-state/penguin-hug-smooth.webp';
+import relaxPlate from '../../../../assets/ui/empty-state/penguin-relax-plate.webp';
+import sleepyPlate from '../../../../assets/ui/empty-state/penguin-sleepy-plate.webp';
+import hugPlate from '../../../../assets/ui/empty-state/penguin-hug-plate.webp';
 
 // ponytail: these black/cream assets use green solely as a removable backdrop.
 const CARDS = [
@@ -87,7 +87,7 @@ export function PenguinCards() {
           onPointerLeave={cancel}
           onFocus={(event) => { if (event.currentTarget.matches(':focus-visible')) activate(card.id); }}
           onClick={(event) => react(event, card)}>
-          <img className="chat-empty-card-original" src={`/assets/ui/empty-state/penguin-${card.name}-card.png`} alt="" draggable="false" />
+          <img className="chat-empty-card-original" src={`assets/ui/empty-state/penguin-${card.name}-card.webp`} alt="" draggable="false" />
           {/* Only the character region is replaced; original lettering never disappears. */}
           <img className="chat-empty-card-paper" src={card.plate} alt="" draggable="false" />
           <PortalTooltip text="Click to play" position="above">

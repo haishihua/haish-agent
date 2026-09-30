@@ -35,6 +35,9 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
   const provider = getLlmProvider(config.provider);
   // Vision 是多条 provider 列表：每条都可独立编辑，启用状态由同一套开关控制。
   const isVisionProvider = (draft?.vision?.providers || []).some((item) => item.id === selectedId);
+  const isCompactProvider = (draft?.compact?.providers || []).some(item => item.id === selectedId);
+  const effortOptions = SETTINGS_REASONING_OPTIONS;
+  const showEffort = !isVisionProvider && selectedId !== 'embedding';
   const [modelChoices, setModelChoices] = useState(() => llmEditorModelChoices(config));
   const [oauthStartError, setOauthStartError] = useState('');
   const [oauthStartPending, setOauthStartPending] = useState(false);
@@ -81,6 +84,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       enabled: config.enabled,
       mode: config.mode || 'auto',
       reasoning_effort: config.reasoning_effort || 'high',
+      ...(isCompactProvider ? { thinking: 'auto' } : {}),
     });
   };
   const startOAuthLogin = async () => {
@@ -363,13 +367,13 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       </FieldRow>
       )}
       <ModelSelectorRoot
-        models={uniqueModelChoices(modelChoices, config.model).map(model => ({ id: model.id, name: model.label, icon: <ProviderIcon provider={config.provider} name={config.name || provider.label} />, efforts: !isVisionProvider && selectedId !== 'embedding' ? SETTINGS_REASONING_OPTIONS.map(item => ({ id: item.id, name: item.id === 'medium' ? 'Med' : item.id === 'xhigh' ? 'XHigh' : item.id === 'high' ? 'High' : 'Low' })) : undefined }))}
-        value={config.model || ''} onValueChange={model => { if (!disabled) update({ model }); }} effort={config.reasoning_effort || 'high'} onEffortChange={reasoning_effort => { if (!disabled) update({ reasoning_effort }); }}>
+        models={uniqueModelChoices(modelChoices, config.model).map(model => ({ id: model.id, name: model.label, icon: <ProviderIcon provider={config.provider} name={config.name || provider.label} />, efforts: showEffort ? effortOptions.map(item => ({ id: item.id, name: item.id === 'medium' ? 'Med' : item.id === 'xhigh' ? 'XHigh' : item.id === 'high' ? 'High' : 'Low' })) : undefined }))}
+        value={config.model || ''} onValueChange={model => { if (!disabled) update({ model }); }} effort={config.reasoning_effort || 'high'} onEffortChange={reasoning_effort => { if (!disabled) update({ reasoning_effort, ...(isCompactProvider ? { thinking: 'auto' } : {}) }); }}>
         <FieldRow label="Default model"><ModelSelectorTrigger disabled={disabled} className="w-full"><ModelSelectorValue showEffort={false} /></ModelSelectorTrigger></FieldRow>
         <ModelSelectorContent searchable className="settings-model-options"><ModelSelectorSearch aria-label="Search models" /><ModelSelectorList /></ModelSelectorContent>
         <FieldRow label="Model ID"><Input value={config.model || ''} onChange={event => update({ model: event.target.value })} disabled={disabled} placeholder={provider.defaultModel || 'Enter a model ID'} /></FieldRow>
         {modelCatalogError && <ErrorState variant="inline" detail={modelCatalogError} />}
-        {!isVisionProvider && selectedId !== 'embedding' && <ModelSelectorEffort label="Reasoning effort" className="settings-model-effort" />}
+        {showEffort && <ModelSelectorEffort label="Reasoning effort" className="settings-model-effort" />}
       </ModelSelectorRoot>
     </div>
   );

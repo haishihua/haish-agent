@@ -7,6 +7,7 @@
  *   npm run release:mac:unsigned     # skip signing gate; useful for internal smoke
  *
  * Requirements:
+ *   - Full Xcode 26+ selected (Icon Composer compilation with actool)
  *   - gh CLI authenticated (gh auth status)
  *   - package.json version already bumped for this release
  *   - For private repos: clients need GH_TOKEN to download updates unless
@@ -128,6 +129,7 @@ function main() {
   if (!version) fail('package.json is missing version.');
 
   console.log(`[release:mac] version=${version} unsigned=${unsigned} dryRun=${dryRun}`);
+  run('node', ['scripts/check-macos-icon.mjs']);
 
   try {
     runCapture('gh', ['auth', 'status']);

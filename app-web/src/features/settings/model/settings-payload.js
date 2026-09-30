@@ -26,12 +26,12 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
     if (!config?.provider) return 'Provider';
     return runtimeProviderLabel(config);
   };
-  if (activeSubtab === 'vision') {
-    return (draft.vision?.providers || []).map((provider) => ({
+  if (activeSubtab === 'vision' || activeSubtab === 'compact') {
+    return (draft[activeSubtab]?.providers || []).map((provider) => ({
       id: provider.id,
       title: titleForConfig(provider),
       provider: provider.provider,
-      kind: 'Vision Provider',
+      kind: activeSubtab === 'compact' ? 'Compact Provider' : 'Vision Provider',
       summary: provider.model || 'not set',
       protected: true,
       canDelete: true,
@@ -77,6 +77,7 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
 export function configItemsForSection(section, llmDraft, records, activeSubtab = '', agentSettings = null, workflowSettings = null) {
   if (section === 'llm') return getLlmConfigItems(llmDraft, activeSubtab);
   if (section === 'embedding') return getLlmConfigItems(llmDraft, 'embedding');
+  if (section === 'compact') return getLlmConfigItems(llmDraft, 'compact');
   if (section === 'agent') return agentListItems(agentSettings);
   if (section === 'workflow') return workflowListItems(workflowSettings);
   if (section === 'memory') {
@@ -305,6 +306,8 @@ export function buildMemorySettingsPayload(records) {
 export function getSelectedLlmConfig(draft, selectedId) {
   const visionProvider = (draft?.vision?.providers || []).find((item) => item.id === selectedId);
   if (visionProvider) return visionProvider;
+  const compactProvider = (draft?.compact?.providers || []).find((item) => item.id === selectedId);
+  if (compactProvider) return compactProvider;
   if (selectedId === 'embedding') return draft.embedding;
   if (selectedId === 'chat') return draft.chat;
   return (draft.profiles || []).find((profile) => profile.id === selectedId) || draft.chat;
@@ -314,6 +317,9 @@ export function updateSelectedLlmConfig(onDraftChange, selectedId, patch) {
   onDraftChange((prev) => {
     if (selectedId === 'chat') return { ...prev, chat: { ...prev.chat, ...patch } };
     if (selectedId === 'embedding') return { ...prev, embedding: { ...prev.embedding, ...patch } };
+    if ((prev.compact?.providers || []).some((item) => item.id === selectedId)) {
+      return { ...prev, compact: { ...prev.compact, providers: prev.compact.providers.map(item => item.id === selectedId ? { ...item, ...patch } : item) } };
+    }
     if ((prev.vision?.providers || []).some((item) => item.id === selectedId)) {
       return {
         ...prev,
@@ -344,6 +350,10 @@ export function llmProviderRequestPayload(config, { includeSecret = false, refre
     refresh,
   };
   if (providerType) payload.provider_type = providerType;
+  if (providerType === 'compact') {
+    payload.reasoning_effort = config.reasoning_effort || 'high';
+    payload.thinking = config.thinking || 'auto';
+  }
   if (provider === 'custom') {
     payload.base_url = config.base_url || '';
   }

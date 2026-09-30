@@ -123,12 +123,41 @@ folder is stored locally and shown as a project in the full web UI.
 
 ## Build a macOS App
 
+The build host needs **full Xcode 26 or newer**, selected with `xcode-select`;
+Command Line Tools alone cannot compile the Icon Composer app icon. Run
+`npm run check:mac-icon` to check the source and toolchain before packaging.
+Users installing Haish do not need Xcode.
+
 ```bash
 npm run dist:mac
 ```
 
 This runs `build:web` + Electron compile + runtime packaging. The generated `.dmg`, `.zip`, and `.app`
 files are written to `release/`. Unsigned builds may require Finder → right click → Open the first time.
+
+### App icon: one source, one app bundle
+
+`build/Haish.icon` is the maintained app icon source (cream background and the
+existing penguin illustration as a separate foreground). electron-builder compiles
+it into `Assets.car` plus an `icon.icns` static fallback and sets the matching
+Info.plist keys. macOS chooses its supported representation/appearance; no OS
+version branch or separate download is needed. The generated fallback is a static
+rendering of the new design, not a promise to retain the legacy icon pixel-for-pixel.
+Packaged apps must not call `app.dock.setIcon` with a PNG; only unpackaged Electron
+uses the shared UI logo. The renderer artwork remains unchanged.
+
+A pre-signing `afterPack` check verifies both icon formats, plist keys, and that
+icon compilation has not raised the application's minimum macOS version to 26.
+Before releasing, test the built **same app bundle** in Finder, Dock (before and
+after launch), and the app launcher on both an older supported macOS and macOS 26;
+on 26 also check default, dark, clear, and tinted appearances.
+
+The existing `build/icon.png` and `build/icon.icns` remain legacy reference assets,
+not release icon inputs. `python3 scripts/prepare-macos-icon.py` (Pillow required)
+recreates the traced foreground from the legacy artwork if necessary; routine
+packaging uses the committed `.icon` directory and requires no Python image tools.
+The initial source preview has been inspected, but actual Icon Composer compilation
+and OS appearance selection must be verified on an Xcode 26+ build host.
 
 ## In-app updates (GitHub Releases)
 
