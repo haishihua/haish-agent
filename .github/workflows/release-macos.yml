@@ -21,6 +21,11 @@ name: Release macOS
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build only (no release upload) — pipeline validation"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -85,9 +90,19 @@ jobs:
       - name: Build and publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run release:mac:unsigned
+        run: |
+          args=(--unsigned)
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          node scripts/release-mac.mjs "${args[@]}"
+
+      - name: List the built artifacts (dry run)
+        if: ${{ inputs.dry_run }}
+        run: ls -lh release/ release/mac-arm64/ | head -40
 
       - name: Summarize the release
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
