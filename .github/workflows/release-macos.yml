@@ -99,7 +99,13 @@ jobs:
 
       - name: List the built artifacts (dry run)
         if: ${{ inputs.dry_run }}
-        run: ls -lh release/ release/mac-arm64/ | head -40
+        run: |
+          ls -lh release/ release/mac-arm64/ | head -40
+          runtime="release/mac-arm64/Haish.app/Contents/Resources/haish-agent-core/bin/haish-runtime/_internal"
+          echo "=== packaged runtime deps (sample) ==="
+          ls "$runtime" | grep -iE '^(yaml|pillow|PIL|certifi|qdrant_client)$' || echo 'no expected dep dirs found'
+          echo "=== bundled resources ==="
+          ls -lh release/mac-arm64/Haish.app/Contents/Resources/ | head -20
 
       - name: Summarize the release
         if: ${{ !inputs.dry_run }}
