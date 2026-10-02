@@ -84,6 +84,37 @@ export function createConversationActivationHandlers(ctx) {
     return null;
   }
 
+  // A background event and a sidebar selection need the same initial runtime.
+  // Directory summaries are only a shell, never proof that answers were loaded.
+  function ensureConversationRuntime(nextConversationId) {
+    const existingRuntime = getRuntime(nextConversationId);
+    if (existingRuntime) return existingRuntime;
+    const summaryConversation = findConversationById(workspaceState, nextConversationId);
+    const summaryTasks = (Array.isArray(summaryConversation?.tasks) ? summaryConversation.tasks : [])
+      .map(runtimeTaskFromConversationTask)
+      .filter(Boolean);
+    const taskEntries = summaryTasks
+      .map((task) => [task.taskId || task.id, task])
+      .filter(([taskId]) => Boolean(taskId));
+    const activeTask = summaryTasks.find(isTaskActuallyActive) || null;
+    return mutateRuntime(nextConversationId, (rt) => {
+      rt.taskRuntimeState = {
+        activeTaskId: activeTask?.taskId || activeTask?.id || null,
+        pendingTask: null,
+        taskOrder: taskEntries.map(([taskId]) => taskId),
+        tasksById: Object.fromEntries(taskEntries),
+      };
+      rt.busy = Boolean(activeTask);
+      rt.activeRunId = null;
+      rt.activeTaskId = activeTask?.taskId || activeTask?.id || null;
+      rt.fetchController = null;
+      rt.answerBuffer = '';
+      rt.cancelledRunIds = new Set();
+      rt.abortRequested = false;
+      rt.shellSeeded = true;
+    });
+  }
+
   function activateConversationShell(projectId, nextConversationId) {
     if (!nextConversationId || nextConversationId === conversationIdRef.current) return;
     // Leaving a draft without sending must not keep a local draft selection.
@@ -124,36 +155,7 @@ export function createConversationActivationHandlers(ctx) {
     });
     setConversationAttachments([]);
 
-    const existingRuntime = getRuntime(nextConversationId);
-    if (existingRuntime) {
-      syncDisplayedRuntime(existingRuntime);
-      return;
-    }
-
-    const summaryTasks = (Array.isArray(summaryConversation?.tasks) ? summaryConversation.tasks : [])
-      .map(runtimeTaskFromConversationTask)
-      .filter(Boolean);
-    const taskEntries = summaryTasks
-      .map((task) => [task.taskId || task.id, task])
-      .filter(([taskId]) => Boolean(taskId));
-    const taskOrder = taskEntries.map(([taskId]) => taskId);
-    const activeTask = summaryTasks.find(isTaskActuallyActive) || null;
-    mutateRuntime(nextConversationId, (rt) => {
-      rt.taskRuntimeState = {
-        activeTaskId: activeTask?.taskId || activeTask?.id || null,
-        pendingTask: null,
-        taskOrder,
-        tasksById: Object.fromEntries(taskEntries),
-      };
-      rt.busy = Boolean(activeTask);
-      rt.activeRunId = null;
-      rt.activeTaskId = activeTask?.taskId || activeTask?.id || null;
-      rt.fetchController = null;
-      rt.answerBuffer = '';
-      rt.cancelledRunIds = new Set();
-      rt.abortRequested = false;
-      rt.shellSeeded = true;
-    });
+    syncDisplayedRuntime(ensureConversationRuntime(nextConversationId));
   }
 
   async function activateConversationDetail(
@@ -219,20 +221,40 @@ export function createConversationActivationHandlers(ctx) {
     applyConversationSnapshot(detail);
     setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
 
-    // If the conversation we're switching INTO already has a runtime with a
-    // live stream, don't blow away its in-flight state — just bring the
-    // display up to date with whatever the runtime currently holds. Otherwise
-    // (no runtime or a fully-quiescent one) we rebuild task state from
-    // the freshly-fetched detail and seed/refresh the runtime accordingly.
+    // Keep a live turn intact while merging any previously unloaded history.
+    // Quiescent runtimes rebuild from the ordinary conversation detail.
     const incomingRuntime = getRuntime(restoredConversationId);
     const incomingHasInflight = Boolean(
       incomingRuntime
-      && !incomingRuntime.shellSeeded
-      && (incomingRuntime.busy || incomingRuntime.activeRunId || incomingRuntime.fetchController)
+      && (incomingRuntime.activeRunId || incomingRuntime.fetchController
+        || (incomingRuntime.busy && !incomingRuntime.shellSeeded))
     );
     let taskIdsToRestore = [];
 
     if (incomingHasInflight) {
+      // Load history into a shell without resetting a live turn or its buffers.
+      // The same rule applies to manual and background task streams.
+      if (incomingRuntime.shellSeeded) {
+        mutateRuntime(restoredConversationId, (rt) => {
+          const state = rt.taskRuntimeState;
+          const tasksById = { ...state.tasksById };
+          for (const task of restoredTasks) {
+            const previousTask = tasksById[task.task_id];
+            if (previousTask && (previousTask.runtimeHydrated
+              || task.task_id === rt.activeTaskId || task.task_id === state.activeTaskId)) continue;
+            tasksById[task.task_id] = taskSummaryToRuntimeTask(task, mergeChatImageRefs(
+              taskImageAttachmentsRef.current.get(task.task_id) || [],
+              messageImageFallbacks.get(task.task_id) || [],
+            ));
+            taskIdsToRestore.push(task.task_id);
+          }
+          rt.taskRuntimeState = {
+            ...state, tasksById,
+            taskOrder: [...new Set([...restoredTaskIds, ...state.taskOrder])],
+          };
+          rt.shellSeeded = false;
+        });
+      }
       syncDisplayedRuntime(incomingRuntime);
     } else {
       const previousTasksById = incomingRuntime?.taskRuntimeState?.tasksById || {};
@@ -501,6 +523,7 @@ export function createConversationActivationHandlers(ctx) {
   return {
     applyConversationSnapshot,
     detachActiveRunFromCurrentConversation,
+    ensureConversationRuntime,
     activateConversationShell,
     activateConversationDetail,
     fetchConversationDetail,

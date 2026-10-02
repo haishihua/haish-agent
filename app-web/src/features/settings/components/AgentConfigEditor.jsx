@@ -11,7 +11,7 @@ import {
 } from '../../agents/model/agent-settings.js';
 import { FieldRow, SettingsMenuSelect, SettingsToggleRow } from './SettingsPrimitives.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
-import { mcpToolSelected, toggleMcpToolSelection } from '../model/mcp-tool-selection.js';
+import { mcpToolPickerServers, mcpToolSelected, toggleMcpToolSelection } from '../model/mcp-tool-selection.js';
 
 export function AgentConfigEditor({ selectedId, settings, onSettingsChange, readOnly = false }) {
   const normalized = normalizeAgentSettings(settings);
@@ -88,7 +88,8 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
       ? skillOptions.filter((skill) => skill.enabled).map((skill) => skill.id)
       : (Array.isArray(current.skill_policy?.allow) ? current.skill_policy.allow : []),
   );
-  const mcpServers = Array.isArray(normalized.mcp_servers) ? normalized.mcp_servers : [];
+  const mcpServers = mcpToolPickerServers(normalized.mcp_servers);
+  const hasMcpTools = mcpServers.some((server) => server.tools.length > 0);
   const toggleSkill = (skillId) => {
     const next = new Set(allowedSkills);
     if (next.has(skillId)) next.delete(skillId);
@@ -128,7 +129,7 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
       <FieldRow label="Tools">
         <div className="settings-check-grid">
           {toolGroups.map((group) => (
-            <label className="settings-check-row" key={group.id}>
+            <label className="settings-check-row" key={group.id} title={group.description}>
               <Checkbox checked={selectedGroupIds.has(group.id)} onCheckedChange={() => toggleGroup(group.id)} disabled={readOnly} />
               <span className="settings-check-label">{group.label}</span>
             </label>
@@ -156,11 +157,10 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
                       <span className="settings-check-label">{tool.name}</span>
                     </label>
                   ))}
-                  {!tools.length && !server.error ? <small>No tools reported yet.</small> : null}
                 </div>
               );
             })}
-            {!mcpServers.length ? <small>No configured MCP servers.</small> : null}
+            {!hasMcpTools ? <small>No MCP tools available.</small> : null}
           </div>
         </FieldRow>
       ) : null}

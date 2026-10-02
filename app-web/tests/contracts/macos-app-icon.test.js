@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import { inflateSync } from 'node:zlib';
 import { checkIconSource, checkIconToolchain, verifyBundleIcons } from '../../../scripts/check-macos-icon.mjs';
 import afterPack from '../../../scripts/verify-macos-icon-after-pack.mjs';
+import { compileModernIcon, iconCompilerArgs, iconCompilerEnvironment } from '../../../scripts/compile-macos-icon.mjs';
 
 const root = new URL('../../../', import.meta.url);
 const read = (file) => fs.readFileSync(new URL(file, root), 'utf8');
@@ -51,8 +52,8 @@ function pngPixels(file) {
   return { width, height, alpha: (x, y) => pixels[(y * width + x) * 4 + 3] };
 }
 
-test('one Icon Composer source replaces the release ICNS input', () => {
-  assert.equal(pkg.build.mac.icon, 'build/Haish.icon');
+test('original legacy ICNS is the release input; modern artwork remains separate', () => {
+  assert.equal(pkg.build.mac.icon, 'build/icon.icns');
   assert.doesNotThrow(() => checkIconSource());
   assert.equal(icon.supportedPlatforms, undefined);
   assert.equal(icon['supported-platforms'].squares, 'shared');
@@ -93,12 +94,17 @@ test('all Mac packaging commands fail early if the icon toolchain is unavailable
   const release = read('scripts/release-mac.mjs');
   assert.ok(release.indexOf("run('node', ['scripts/check-macos-icon.mjs'])") < release.indexOf("runCapture('gh'"));
   assert.equal(pkg.build.afterPack, 'scripts/verify-macos-icon-after-pack.mjs');
+  const workflow = read('.github/workflows/release-macos.yml');
+  assert.match(workflow, /HAISH_ICON_DEVELOPER_DIR: \/Applications\/Xcode_26\.0\.1\.app\/Contents\/Developer/);
+  assert.match(workflow, /DEVELOPER_DIR="\$HAISH_ICON_DEVELOPER_DIR" xcrun actool --version/);
 });
 
-test('toolchain accepts Xcode 26+ and rejects older/absent actool', () => {
-  const version = (n) => () => ({ status: 0, stdout: `<key>short-bundle-version</key>\n<string>${n}</string>` });
-  assert.equal(checkIconToolchain(version('26.1')), 26);
-  assert.equal(checkIconToolchain(version('27.0')), 27);
+test('hybrid icon toolchain pins 26.0.1 and rejects newer fallback-generation behavior', () => {
+  const version = (n) => (_cmd, argv) => ({ status: 0, stdout: argv[0] === 'xcodebuild'
+    ? `Xcode ${n}\nBuild version test` : '<key>short-bundle-version</key>\n<string>26.0</string>' });
+  assert.equal(checkIconToolchain(version('26.0.1')), 26);
+  assert.throws(() => checkIconToolchain(version('26.1')), /26.0.1/);
+  assert.throws(() => checkIconToolchain(version('27.0')), /26.0.1/);
   assert.throws(() => checkIconToolchain(version('25.0')), /Xcode 26/);
   assert.throws(() => checkIconToolchain(() => ({ status: 1, stderr: 'actool unavailable' })), /Command Line Tools/);
 });
@@ -108,8 +114,8 @@ function withBundle(fn) {
   const resources = path.join(dir, 'Contents/Resources');
   fs.mkdirSync(resources, { recursive: true });
   fs.writeFileSync(path.join(resources, 'Assets.car'), 'catalog-fixture');
-  fs.writeFileSync(path.join(resources, 'icon.icns'), Buffer.from('icns\x00\x00\x00\x0cTEST'));
-  const keys = { CFBundleIconName: 'Icon', CFBundleIconFile: 'icon.icns', LSMinimumSystemVersion: '12.0' };
+  fs.writeFileSync(path.join(resources, 'icon.icns'), fs.readFileSync(new URL('build/icon.icns', root)));
+  const keys = { CFBundleIconName: 'Haish', CFBundleIconFile: 'icon.icns', LSMinimumSystemVersion: '12.0' };
   const run = (_command, args) => ({ status: keys[args[1]] ? 0 : 1, stdout: keys[args[1]] });
   try { fn(dir, resources, keys, run); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
@@ -118,8 +124,8 @@ test('bundle check requires both representations and the matching plist keys', (
   withBundle((dir, resources, keys, run) => {
     assert.doesNotThrow(() => verifyBundleIcons(dir, run));
     keys.CFBundleIconName = 'Wrong';
-    assert.throws(() => verifyBundleIcons(dir, run), /name must be Icon/);
-    keys.CFBundleIconName = 'Icon';
+    assert.throws(() => verifyBundleIcons(dir, run), /name must be Haish/);
+    keys.CFBundleIconName = 'Haish';
     fs.unlinkSync(path.join(resources, 'Assets.car'));
     assert.throws(() => verifyBundleIcons(dir, run));
   });
@@ -133,6 +139,58 @@ test('bundle check rejects empty/broken ICNS fallback and raised minimum OS', ()
     fs.writeFileSync(path.join(resources, 'icon.icns'), 'invalid');
     assert.throws(() => verifyBundleIcons(dir, run), /valid ICNS fallback/);
   });
+});
+
+test('a valid but regenerated new-design ICNS cannot pass as the original icon', () => {
+  withBundle((dir, resources, _keys, run) => {
+    const file = path.join(resources, 'icon.icns');
+    const bytes = fs.readFileSync(file);
+    bytes[bytes.length - 1] ^= 1;
+    fs.writeFileSync(file, bytes);
+    assert.throws(() => verifyBundleIcons(dir, run), /byte-identical/);
+  });
+});
+
+test('modern compiler disables bitmap fallback and cleans its output on success/failure', () => {
+  const args = iconCompilerArgs('/tmp/output');
+  assert.ok(args.includes('--enable-icon-stack-fallback-generation=disabled'));
+  assert.equal(args[args.indexOf('--minimum-deployment-target') + 1], '12.0');
+  assert.equal(args[args.indexOf('--app-icon') + 1], 'Haish');
+  assert.equal(iconCompilerEnvironment({ HAISH_ICON_DEVELOPER_DIR: '/pinned', DEVELOPER_DIR: '/default' }).DEVELOPER_DIR, '/pinned');
+  let output;
+  const run = (_command, argv) => {
+    if (argv[0] === 'xcodebuild') return { status: 0, stdout: 'Xcode 26.0.1\nBuild version test' };
+    if (argv.includes('--version')) return { status: 0, stdout: '<key>short-bundle-version</key><string>26.0</string>' };
+    output = argv[argv.indexOf('--compile') + 1];
+    fs.writeFileSync(path.join(output, 'Assets.car'), 'modern-catalog');
+    return { status: 0 };
+  };
+  assert.equal(compileModernIcon(run).toString(), 'modern-catalog');
+  assert.equal(fs.existsSync(output), false);
+  assert.throws(() => compileModernIcon((cmd, argv) => {
+    if (argv.includes('--version') || argv[0] === 'xcodebuild') return run(cmd, argv);
+    output = argv[argv.indexOf('--compile') + 1];
+    return { status: 1, stderr: 'compile-error' };
+  }), /compile-error/);
+  assert.equal(fs.existsSync(output), false);
+});
+
+test('afterPack writes only the modern catalog, preserves original ICNS and configures plist', { skip: process.platform !== 'darwin' }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'haish-pack-test-'));
+  const app = path.join(dir, 'Haish.app');
+  const resources = path.join(app, 'Contents/Resources');
+  fs.mkdirSync(resources, { recursive: true });
+  const legacy = fs.readFileSync(new URL('build/icon.icns', root));
+  fs.writeFileSync(path.join(resources, 'icon.icns'), legacy);
+  fs.writeFileSync(path.join(app, 'Contents/Info.plist'), `<?xml version="1.0"?><plist version="1.0"><dict>
+    <key>CFBundleIconFile</key><string>icon.icns</string>
+    <key>LSMinimumSystemVersion</key><string>12.0</string></dict></plist>`);
+  try {
+    await afterPack({ electronPlatformName: 'darwin', appOutDir: dir, packager: { appInfo: { productFilename: 'Haish' } } }, () => Buffer.from('modern-catalog-fixture'));
+    assert.ok(fs.readFileSync(path.join(resources, 'icon.icns')).equals(legacy));
+    assert.equal(fs.readFileSync(path.join(resources, 'Assets.car')).toString(), 'modern-catalog-fixture');
+    assert.doesNotThrow(() => verifyBundleIcons(app));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('afterPack does not impose Mac icon requirements on other platforms', async () => {

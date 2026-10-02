@@ -15,6 +15,7 @@ export const DEFAULT_AGENT_TOOL_GROUPS = [
   { id: 'vision', label: 'Vision', description: 'Inspect images and visual content.', tools: ['vision_analyze'] },
   { id: 'planning', label: 'Planning', description: 'Write and update task plans.', tools: ['todo_write'] },
   { id: 'sub_agent', label: 'Sub-agent', description: 'Delegate scoped work to a sub-agent.', tools: ['dispatch_sub_agent'] },
+  { id: 'code_mode', label: 'Tool Script', description: 'Orchestrate enabled tools with JavaScript. Does not grant file edit, terminal, or MCP permissions.', tools: ['code_mode'] },
 ];
 const DEFAULT_AGENT_ALWAYS_ALLOWED_TOOLS = [];
 

@@ -497,7 +497,7 @@
 
 /* 一级标题（Providers / Tools / Context）：保持原有简洁样式，选中仅文字提亮。 */
 
-/* Agent / Agentic Workflow 已归入 Automation 分组（children），与 Context 分组一致：
+/* Agent / Workflow 已归入 Automation 分组（children），与 Context 分组一致：
    子项带图标，父标题统一走上方父标题按钮样式，不再有叶子行。 */
 
 .settings-workbench.provider-list-only {

@@ -4,6 +4,7 @@ import { agentIconNameForAgentId } from '../../agents/model/agent-settings.js';
 import { workflowEdgePath } from '../model/workflow-edge-path.js';
 import { WORKFLOW_PORT_SIDES, workflowSideHandle } from '../model/workflow-canvas-editing.js';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
+import { ProviderIcon } from '../../settings/components/settings-ui.jsx';
 
 export const WORKFLOW_FIT_OPTIONS = { padding: 0.2, minZoom: 0.3, maxZoom: 0.9 };
 
@@ -339,7 +340,7 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
       </span>
       <span className="workflow-flow-node-copy">
         <strong>{node.label}</strong>
-        {NODE_TYPE_LABEL[nodeType] ? <small>{NODE_TYPE_LABEL[nodeType]}</small> : null}
+        {NODE_TYPE_LABEL[nodeType] ? <small className={data?.runtimeModelId ? 'workflow-node-model' : undefined}>{data?.runtimeModelId ? <><ProviderIcon provider={data.runtimeProvider} /><span>Agent · {data.runtimeModelId}</span></> : NODE_TYPE_LABEL[nodeType]}</small> : null}
       </span>
       {WORKFLOW_BRANCHES[nodeType]
         ? WORKFLOW_BRANCHES[nodeType].map((branch, index) => (

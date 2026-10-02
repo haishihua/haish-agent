@@ -34,7 +34,9 @@ test('报告对话框只有标题行，三个动作都是图标按钮', () => {
   assert.doesNotMatch(modalsCss, /\.iv-label\s*\{/);
   assert.equal((resultDialogSource.match(/<AppIcon /g) || []).length, 3);
   assert.match(resultDialogSource, /name="close" size=\{15\}/);
-  assert.match(resultDialogSource, /name="layers" size=\{15\}/);
+  assert.match(resultDialogSource, /name="use-as-context" size=\{15\}/);
+  assert.match(appIconSource, /'use-as-context': FileInput/);
+  assert.doesNotMatch(resultDialogSource, /name="layers"/);
   assert.match(resultDialogSource, /name="download" size=\{15\}/);
   assert.match(appIconSource, /download: Download/);
   // 按钮里只剩图标，文案走 title / aria-label（键盘与读屏仍认得出三枚动作）。

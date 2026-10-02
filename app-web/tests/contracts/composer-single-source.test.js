@@ -54,7 +54,8 @@ test('the workflow composer drives the workflow picker and cannot steer a runnin
   assert.match(props, /agentOptions=\{workflowOptions\}/);
   assert.match(props, /defaultAgentId=\{defaultWorkflowId\}/);
   assert.match(props, /onAgentChange=\{setSelectedWorkflowId\}/);
-  assert.match(props, /onSend=\{handleDeploy\}/);
+  assert.match(props, /onSend=\{\(\.\.\.args\) => handleDeploy\(\.\.\.args, botNodeConfigs\)\}/);
+  assert.match(props, /executionMode="bot"/);
   assert.match(props, /onStop=\{handleStop\}/);
   // Steering a live workflow run is not supported, so the composer offers Stop.
   assert.match(props, /allowRuntimeInput=\{false\}/);

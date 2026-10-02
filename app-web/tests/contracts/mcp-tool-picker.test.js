@@ -40,14 +40,15 @@ test('every MCP checkbox is one tool, and the server name cannot disable it', ()
   );
   // 老写法（整台服务器放行时把工具行锁死）必须消失，否则勾不动。
   assert.doesNotMatch(mcpBlock, /allowedMcpServers\.has\(server\.name\)/);
-  // 清单还没上报的服务器（lazy 未启动）要有交代，而不是只剩一个光标题。
-  assert.match(mcpBlock, /\{!tools\.length && !server\.error \? <small>No tools reported yet\.<\/small> : null\}/);
+  assert.match(editorSource, /const mcpServers = mcpToolPickerServers\(normalized\.mcp_servers\);/);
+  assert.match(mcpBlock, /\{!hasMcpTools \? <small>No MCP tools available\.<\/small> : null\}/);
+  assert.doesNotMatch(mcpBlock, /No tools reported yet|No configured MCP servers/);
 });
 
 test('the selection logic lives in one model: per-tool wins, whole-server allows are read but never written', () => {
   assert.match(
     editorSource,
-    /import \{ mcpToolSelected, toggleMcpToolSelection \} from '\.\.\/model\/mcp-tool-selection\.js';/,
+    /import \{ mcpToolPickerServers, mcpToolSelected, toggleMcpToolSelection \} from '\.\.\/model\/mcp-tool-selection\.js';/,
   );
   assert.match(editorSource, /updateMcpPolicy\(toggleMcpToolSelection\(current\.mcp_policy, server, toolName\)\);/);
   // 读：老档案的 allow_servers 照旧让名下工具全亮。

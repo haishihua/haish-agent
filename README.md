@@ -127,8 +127,10 @@ folder is stored locally and shown as a project in the full web UI.
 below. Building and uploading happen entirely on GitHub; local packaging is only
 an explicit fallback or a development check.**
 
-A local build host needs **full Xcode 26 or newer**, selected with `xcode-select`;
-Command Line Tools alone cannot compile the Icon Composer app icon. Run
+The hybrid icon compiler needs **full Xcode 26.0.1**. CI selects it only for
+icon compilation via `HAISH_ICON_DEVELOPER_DIR=/Applications/Xcode_26.0.1.app/Contents/Developer`;
+the rest of the build can use the host's current Xcode. Command Line Tools alone
+cannot compile the Icon Composer app icon. Run
 `npm run check:mac-icon` to check the source and toolchain before packaging.
 Users installing Haish do not need Xcode.
 
@@ -139,30 +141,37 @@ npm run dist:mac
 This fetches the pinned remote adapter and runs the release web build + Electron compile + runtime packaging. The generated `.dmg`, `.zip`, and `.app`
 files are written to `release/`. Unsigned builds may require Finder → right click → Open the first time.
 
-### App icon: one source, one app bundle
+### App icon: two designs, one app bundle
 
-`build/Haish.icon` is the maintained app icon source (cream background and the
-existing penguin illustration as a separate foreground). electron-builder compiles
-it into `Assets.car` plus an `icon.icns` static fallback and sets the matching
-Info.plist keys. macOS chooses its supported representation/appearance; no OS
-version branch or separate download is needed. The generated fallback is a static
-rendering of the new design, not a promise to retain the legacy icon pixel-for-pixel.
+Older macOS must retain the **original** `build/icon.icns` artwork, byte-for-byte.
+`build/Haish.icon` is the separate modern design for macOS 26. electron-builder
+copies the original ICNS; our pre-signing `afterPack` hook compiles only the modern
+`Assets.car` and adds `CFBundleIconName=Haish`. It does not use the modern design's
+generated ICNS as the legacy fallback. Both designs ship in the same app bundle.
+
+The icon-only compilation pins Xcode 26.0.1 and disables icon-stack fallback
+generation. This is a toolchain-specific workaround: newer actool versions can
+embed new-design bitmaps in Assets.car that older macOS selects before the ICNS.
+See [hybrid icon investigation](https://mjtsai.com/blog/2025/08/08/separate-icons-for-macos-tahoe-vs-earlier/).
+Do not remove the compiler pin without checking both older macOS and Tahoe.
 Packaged apps must not call `app.dock.setIcon` with a PNG; only unpackaged Electron
 uses the shared UI logo. The renderer artwork remains unchanged.
 
-A pre-signing `afterPack` check verifies both icon formats, plist keys, and that
+A pre-signing `afterPack` check verifies both icon formats, byte-identical legacy
+ICNS, plist keys, and that
 icon compilation has not raised the application's minimum macOS version to 26.
 Before releasing, test the built **same app bundle** in Finder, Dock (before and
 after launch), and the app launcher on both an older supported macOS and macOS 26;
 on 26 also check default, dark, clear, and tinted appearances.
 
-The existing `build/icon.png` and `build/icon.icns` remain legacy reference assets,
-not release icon inputs. `python3 scripts/prepare-macos-icon.py` (Pillow required)
+`build/icon.icns` is the original release icon input for older systems;
+`build/icon.png` remains the original reference artwork. `python3 scripts/prepare-macos-icon.py` (Pillow required)
 recreates the traced foreground from the legacy artwork if necessary; routine
 packaging uses the committed `.icon` directory and requires no Python image tools.
-Icon Composer compilation and the automated asset checks passed on the GitHub
-Xcode 26 runner for 0.0.24. Visual appearance across supported macOS versions
-still requires manual testing; successful compilation is not a visual acceptance test.
+The 0.0.24 single-source build incorrectly supplied a static rendering of the
+new design on older systems. The hybrid correction has local hook/contract tests,
+but actual compilation and cross-version visual acceptance still require the CI
+build and manual testing. Successful asset checks are not a visual acceptance test.
 
 ## In-app updates (GitHub Releases)
 

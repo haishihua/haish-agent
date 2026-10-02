@@ -7,7 +7,7 @@
 // 断言：
 //   1. 页面上再也读不到「all tools」；
 //   2. 每个服务器一个分组，标题行里没有勾选框，勾选框总数 == 工具总数；
-//   3. lazy（工具还没上报）的服务器有一句交代，起不来的服务器显示错误；
+//   3. 无可用工具统一显示空状态，空服务器不占行；连接错误仍可见；
 //   4. 点一个工具只写这一条（allow_tools），不写服务器级放行；
 //   5. 老档案里的整台放行读出来工具全亮，而且都能点（不再被锁）；
 //   6. 动其中一条 → 整台放行当场落成逐条工具，别的服务器不受影响；
@@ -91,7 +91,8 @@ const root = createRoot(document.getElementById('root'));
 const renderEditor = () =>
   flushSync(() =>
     root.render(
-      <div className="settings-page settings-modern settings-theme dark">
+      <div className="settings-theme dark">
+        <div className="settings-new-editor">
         <AgentConfigEditor
           selectedId={AGENT_ID}
           settings={state}
@@ -100,6 +101,7 @@ const renderEditor = () =>
           }}
           readOnly={false}
         />
+        </div>
       </div>,
     ),
   );
@@ -123,8 +125,8 @@ async function main() {
 
   // 2) 分组 / 标题行 / 勾选框数量
   const all = groups();
-  check(all.length === 4, `every server is one group (${all.length})`);
-  check(all.map(labelOf).join(',') === 'node-repl,figma,sketch,cua-agent', 'server names are the headings, in order');
+  check(all.length === 3, `only tool-bearing or broken servers have groups (${all.length})`);
+  check(all.map(labelOf).join(',') === 'node-repl,sketch,cua-agent', 'empty server headings are omitted');
   check(
     all.every((group) => !group.firstElementChild.querySelector('[data-slot="checkbox"]')),
     'the heading row carries no checkbox',
@@ -143,16 +145,9 @@ async function main() {
     'no tool is locked by a server-level switch',
   );
 
-  // 3) 没上报清单 / 起不来的服务器
-  check(
-    all[1].textContent.includes('No tools reported yet.'),
-    'a server without a tool list says so instead of showing a dead switch',
-  );
-  check(all[2].textContent.includes('server not reachable'), 'a broken server still shows its error');
-  check(
-    all[2].textContent.includes('No tools reported yet.') === false,
-    'and does not also claim it simply has no tools',
-  );
+  // 3) 空服务器隐藏，连接错误保留；有可选工具但未勾选不是空状态。
+  check(all[1].textContent.includes('server not reachable'), 'a broken server still shows its error');
+  check(!document.getElementById('root').textContent.includes('No MCP tools available.'), 'unselected available tools are not an empty catalog');
 
   // 7) 层级：工具行比标题行缩进
   const headingLeft = all[0].querySelector('.settings-check-label').getBoundingClientRect().left;
@@ -163,7 +158,7 @@ async function main() {
   );
 
   // 4) 点一个工具
-  check(checkedCount(all[0]) === 0 && checkedCount(all[3]) === 0, 'everything starts unselected');
+  check(checkedCount(all[0]) === 0 && checkedCount(all[2]) === 0, 'everything starts unselected');
   boxesOf(all[0])[0].click();
   await tick();
   check(sorted(policy().allow_tools) === 'node-repl.node_repl', 'clicking a tool writes exactly that tool');
@@ -192,7 +187,7 @@ async function main() {
     boxesOf(groups()[0]).every((box) => !box.disabled),
     'and none of them is locked (the old UI disabled exactly these)',
   );
-  check(statesOf(groups()[3]).join(',') === 'checked,unchecked', 'other servers keep their own picks');
+  check(statesOf(groups()[2]).join(',') === 'checked,unchecked', 'other servers keep their own picks');
 
   // 6) 动其中一条 → 整台放行落成逐条
   boxesOf(groups()[0])[1].click();
@@ -205,7 +200,29 @@ async function main() {
   renderEditor();
   await tick();
   check(statesOf(groups()[0]).join(',') === 'checked,unchecked,checked', 'the list now shows exactly what is allowed');
-  check(statesOf(groups()[3]).join(',') === 'checked,unchecked', 'and the other server is untouched');
+  check(statesOf(groups()[2]).join(',') === 'checked,unchecked', 'and the other server is untouched');
+
+  const emptyCases = [
+    ['no configured servers', []],
+    ['all servers have empty tools (reported screenshot)', ['figma', 'sketch', 'node-repl', 'cua-agent'].map((name) => ({ name, tools: [] }))],
+    ['all servers disabled, even with cached tools', baseSettings().mcp_servers.map((server) => ({ ...server, enabled: false }))],
+    ['all tools disabled', [{ name: 'node-repl', tools: NODE_TOOLS.map((name) => ({ name, enabled: false })) }]],
+  ];
+  for (const [name, servers] of emptyCases) {
+    state = { ...baseSettings(), mcp_servers: servers };
+    renderEditor();
+    await tick();
+    const text = document.getElementById('root').textContent;
+    check(text.split('No MCP tools available.').length === 2 && groups().length === 0, `${name}: one empty message, no server headings`);
+    check(!text.includes('No tools reported yet.'), `${name}: no repeated placeholder`);
+  }
+  state = { ...baseSettings(), mcp_servers: [{ name: 'broken', error: 'Connection failed', tools: [] }] };
+  renderEditor();
+  await tick();
+  check(document.getElementById('root').textContent.includes('Connection failed') && document.getElementById('root').textContent.includes('No MCP tools available.'), 'connection error remains visible alongside empty status');
+  state = { ...baseSettings(), mcp_servers: [] };
+  renderEditor();
+  await tick();
 
   const errors = window.__pageErrors || [];
   check(errors.length === 0, `no page errors (${errors.join(' | ') || 'none'})`);

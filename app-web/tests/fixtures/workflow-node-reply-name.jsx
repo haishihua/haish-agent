@@ -143,6 +143,8 @@ async function speakersFor(nodeId) {
   if (!element) return null;
   element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
   await wait(150);
+  const resultTab = [...document.querySelectorAll('.workflow-detail-tabs [role="tab"]')].find((tab) => tab.textContent === 'Run Result');
+  if (resultTab) { resultTab.click(); await wait(150); }
   return [...document.querySelectorAll('.workflow-detail-panel .chat-bubble-meta-main')]
     .map((meta) => meta.textContent.trim());
 }

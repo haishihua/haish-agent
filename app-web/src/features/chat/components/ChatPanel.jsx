@@ -58,6 +58,7 @@ export function ChatPanel({
   disabled = false,
   submitPending = false,
   onSend,
+  onGoalCommand,
   onStop,
   onSelectFile,
   onClearFile,
@@ -381,6 +382,7 @@ export function ChatPanel({
         draft={draft}
         onDraftChange={setDraft}
         onSend={onSend}
+        onGoalCommand={onGoalCommand}
         onStop={onStop}
         onSent={() => setSendScrollKey((value) => value + 1)}
         activeTaskText={activeTaskText}

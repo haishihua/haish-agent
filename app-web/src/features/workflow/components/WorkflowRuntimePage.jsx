@@ -1,4 +1,5 @@
 import React from 'react';
+import { WorkflowRuntimeConfig } from './WorkflowRuntimeConfig.jsx';
 import { agentIconNameForAgentId } from '../../agents/model/agent-settings.js';
 import { workflowControlEvents } from '../model/workflow-control-events.js';
 import {
@@ -48,6 +49,8 @@ import {
   workflowNodeAccent,
 } from './WorkflowFlowNode.jsx';
 
+const EMPTY_OPTIONS = [];
+
 const NODE_ICON = {
   start: 'play',
   agent: 'workflow-agent',
@@ -61,6 +64,7 @@ const NODE_ICON = {
 
 const STATUS_COPY = {
   pending: 'Waiting',
+  queued: 'Waiting',
   running: 'Running',
   waiting_input: 'Waiting for input',
   waiting_approval: 'Awaiting approval',
@@ -68,6 +72,7 @@ const STATUS_COPY = {
   approved: 'Approved',
   rejected: 'Rejected',
   done: 'Completed',
+  succeeded: 'Succeeded',
   failed: 'Failed',
   cancelled: 'Cancelled',
 };
@@ -346,9 +351,17 @@ function NodeConversation({ node, task, attempt, result, status, running, showAp
   );
 }
 
-function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, onRetry, agentName = '', agentOptions = [] }) {
+function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, onRetry, agentName = '', agentOptions = [], providerOptions = [], runtimeConfig = {}, onRuntimeConfigChange, configReadOnly = false }) {
   const detailBodyRef = React.useRef(null);
   const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [detailTab, setDetailTab] = React.useState('config');
+  const isAgent = node.type === 'agent';
+  const showResult = !isAgent || detailTab === 'result';
+  const tabId = React.useId();
+  const selectTab = (tab) => {
+    setDetailTab(tab);
+    if (detailBodyRef.current) detailBodyRef.current.scrollTop = 0;
+  };
   const attempts = React.useMemo(() => nodeAttempts(task, node.id), [node.id, task]);
   const latestResult = run?.nodes?.[node.id] || null;
   const visibleAttempts = attempts.length > 0
@@ -363,6 +376,7 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
   const latestAttempt = visibleAttempts.at(-1) || null;
   const canRetry = onRetry
     && ['done', 'failed', 'cancelled'].includes(normalizeTaskStatus(task?.status))
+    && visibleAttempts.length > 0
     && ['agent', 'llm', 'tool', 'human_approval'].includes(node.type);
   const retryLatest = React.useCallback(() => onRetry?.(node.id), [node.id, onRetry]);
 
@@ -375,6 +389,7 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
             Attempt #{attemptNumber}
           </div>
         ) : null}
+        {attempt?.result?.runtime_config ? <p className="workflow-runtime-actual-config">Executed with {attempt.result.runtime_config.model_id || 'provider default'} · thinking {attempt.result.runtime_config.reasoning_effort || 'provider default'}</p> : null}
         <NodeConversation
           node={node}
           task={task}
@@ -391,7 +406,7 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
   };
 
   return (
-    <aside className={`workflow-detail-panel is-${status}`} data-node-id={node.id} aria-label={`${node.label || node.id} execution details`}>
+    <aside className={`workflow-detail-panel is-${status}${isAgent ? ' has-runtime-tabs' : ''}`} data-node-id={node.id} aria-label={`${node.label || node.id} execution details`}>
       <div
         className="workflow-detail-resizer"
         role="separator"
@@ -419,16 +434,28 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
           <AppIcon name={node.type === 'agent' ? agentIconNameForAgentId(node.agent_id, agentOptions) : NODE_ICON[node.type] || 'box'} size={26} />
         </span>
         <span className="workflow-detail-heading">
-          <strong>{node.label || typeLabelForWorkflowNode(node.type)}</strong>
-          <span className="workflow-detail-subtitle"><i className={`workflow-detail-status-dot is-${status}`} aria-hidden="true" />{typeLabelForWorkflowNode(node.type)} · {STATUS_COPY[status] || status}</span>
+          <span className="workflow-detail-name"><strong>{node.label || typeLabelForWorkflowNode(node.type)}</strong></span>
+          <span className="workflow-detail-subtitle"><i className={`workflow-detail-status-dot is-${status}`} aria-hidden="true" />{typeLabelForWorkflowNode(node.type)} · {isAgent && status === 'pending' ? 'Ready' : STATUS_COPY[status] || status}</span>
         </span>
         <button type="button" className="workflow-detail-close" onClick={onClose} aria-label="Close node details">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
         </button>
       </header>
 
+      {isAgent ? <div className="workflow-detail-tabs" role="tablist" aria-label="Node details">
+        {['config', 'result'].map((tab) => <button key={tab} type="button" role="tab" id={`${tabId}-${tab}-tab`} aria-controls={`${tabId}-panel`} aria-selected={detailTab === tab} tabIndex={detailTab === tab ? 0 : -1} onClick={() => selectTab(tab)} onKeyDown={(event) => {
+          if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+            event.preventDefault();
+            const next = event.key === 'Home' ? 'config' : event.key === 'End' ? 'result' : tab === 'config' ? 'result' : 'config';
+            selectTab(next);
+            document.getElementById(`${tabId}-${next}-tab`)?.focus();
+          }
+        }}>{tab === 'config' ? 'Runtime Config' : 'Run Result'}</button>)}
+      </div> : null}
       <div className="workflow-detail-scroll-region">
-        <div ref={detailBodyRef} className="workflow-detail-body chat-message-list" aria-live="polite">
+        <div ref={detailBodyRef} className={`workflow-detail-body chat-message-list${showResult ? '' : ' is-config'}`} aria-live="polite" role={isAgent ? 'tabpanel' : undefined} id={isAgent ? `${tabId}-panel` : undefined} aria-labelledby={isAgent ? `${tabId}-${detailTab}-tab` : undefined}>
+          {isAgent && !showResult ? <WorkflowRuntimeConfig value={runtimeConfig} providerOptions={providerOptions} readOnly={configReadOnly} onChange={onRuntimeConfigChange} /> : null}
+          {showResult ? <>
           {status === 'waiting_input' ? (
             <div className="workflow-detail-waiting" role="status">
               <AppIcon name="message" size={18} />
@@ -453,19 +480,20 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
           {latestAttempt ? renderAttempt(latestAttempt, visibleAttempts.length - 1, true) : (
             <div className="workflow-detail-empty" role="status">{status === 'running' ? 'Waiting for this node’s first event…' : 'No execution content recorded for this node.'}</div>
           )}
+          </> : null}
         </div>
-        <ScrollToBottomButton
+        {showResult ? <ScrollToBottomButton
           scrollRef={detailBodyRef}
           autoFollow
           resetKey={`${node.id}:${latestAttempt?.id || ''}`}
-        />
+        /> : null}
       </div>
 
     </aside>
   );
 }
 
-function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], onOpenConfig = null }) {
+function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPTY_OPTIONS, onOpenConfig = null, providerOptions = [], nodeRuntimeConfigs = {}, onNodeRuntimeConfigChange, configReadOnly = false }) {
   const controlEvents = workflowControlEvents(task?.eventLog);
   const [selectedNodeId, setSelectedNodeId] = React.useState('');
   const previousSelectionRef = React.useRef({ nodeId: '', status: 'pending' });
@@ -514,7 +542,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
   const canOpenNodeDetail = React.useCallback((node) => (
     Boolean(node)
     && DETAIL_NODE_TYPES.has(node.type)
-    && executedNodeIds.has(String(node.id))
+    && (node.type === 'agent' || executedNodeIds.has(String(node.id)))
   ), [executedNodeIds]);
   // 回环端口（次级→主链那条边的落点）只有一份判断，和配置页调同一个函数。
   const feedbackTargetIds = React.useMemo(
@@ -528,11 +556,19 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
     previousSelectionRef.current = { nodeId: '', status: 'pending' };
   }, [workflowKey, task?.taskId]);
 
-  const layoutNodes = React.useMemo(() => (workflow?.nodes || []).map((node) => {
+  const nodeConfigKey = JSON.stringify(nodeRuntimeConfigs);
+  const providerCatalogKey = JSON.stringify(providerOptions.map((item) => ({ selector: item.requestProvider || item.provider || item.id, provider: item.provider })));
+  const layoutNodes = React.useMemo(() => {
+    const configs = JSON.parse(nodeConfigKey);
+    const providers = JSON.parse(providerCatalogKey);
+    return (workflow?.nodes || []).map((node) => {
     const status = nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds);
     const id = String(node.id);
     const layoutMeta = layout.meta.get(id);
     const runtimeDetailAvailable = canOpenNodeDetail(node);
+    const override = configs[id] || {};
+    const config = run?.nodes?.[id]?.runtime_config || { ...(node.runtime_config || {}), ...(override.provider ? { model_id: '' } : {}), ...override };
+    const provider = providers.find((item) => item.selector === config.provider)?.provider;
     return {
       // ponytail: reuse the editor node renderer; runtime only supplies status/config data.
       id,
@@ -544,6 +580,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
         runtimeStatus: status,
         runtimeStatusLabel: STATUS_COPY[status],
         runtimeDetailAvailable,
+        ...(node.type === 'agent' ? { runtimeModelId: config.model_id, runtimeProvider: provider || config.provider } : {}),
         feedbackTarget: feedbackTargetIds.has(id),
         usedSideHandles: workflowUsedSideHandles(id, workflow?.edges, routes),
         // 端口（含 loop 的 retry 出口）只有一份来源：两页都从 workflowNodePorts 取。
@@ -551,7 +588,8 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
       },
       connectable: false,
     };
-  }), [activeEventNodeIds, agentOptions, arrangement, canOpenNodeDetail, eventNodeOutcomes, feedbackTargetIds, layout, run, task?.status, traversedLoopNodeIds, workflow?.nodes, workflow?.edges, routes]);
+    });
+  }, [activeEventNodeIds, agentOptions, arrangement, canOpenNodeDetail, eventNodeOutcomes, feedbackTargetIds, layout, run, task?.status, traversedLoopNodeIds, workflow?.nodes, workflow?.edges, routes, nodeConfigKey, providerCatalogKey]);
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes);
   React.useEffect(() => { setNodes(layoutNodes); }, [layoutNodes, setNodes]);
   const nodeById = React.useMemo(() => new Map((workflow?.nodes || []).map((node) => [String(node.id), node])), [workflow?.nodes]);
@@ -758,6 +796,10 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = [], 
           onRetry={task ? onRetry : null}
           agentName={selectedNodeAgentName}
           agentOptions={agentOptions}
+          providerOptions={providerOptions}
+          runtimeConfig={{ ...(selectedNode.runtime_config || {}), ...(nodeRuntimeConfigs[selectedNode.id]?.provider ? { model_id: '' } : {}), ...(nodeRuntimeConfigs[selectedNode.id] || {}) }}
+          onRuntimeConfigChange={(config) => onNodeRuntimeConfigChange?.(selectedNode.id, config)}
+          configReadOnly={configReadOnly || !onNodeRuntimeConfigChange}
         />
       ) : null}
     </div>

@@ -81,7 +81,8 @@ test('the sidebar retry resolves the selection stored for that conversation', ()
   assert.match(appShellSource, /onRetryTask=\{\(task\) => handleRetryTask\(task, null, sidebarRetryRunConfig\(task\)\)\}/);
   assert.doesNotMatch(appShellSource, /onRetryTask=\{handleRetryTask\}/);
   assert.match(appShellSource, /const baseKey = buildRunConfigStorageKey\(ownerId, 'chat', targetConversationId\);/);
-  assert.match(appShellSource, /task\?\.executionMode === 'bot' \? `\$\{baseKey\}\.bot` : baseKey,/);
+  assert.match(appShellSource, /if \(!baseKey \|\| task\?\.executionMode === 'bot'\) return null;/);
+  assert.match(appShellSource, /return storedRunConfigRequest\(baseKey, llmProviderOptions\);/);
   // 存储里没有选择就返回 null（沿用源 Task 配置），绝不回落到“第一个 provider”。
   const stored = runConfigSource.slice(runConfigSource.indexOf('export function storedRunConfigRequest'));
   assert.match(stored, /if \(!stored\?\.providerId \|\| !stored\.modelId\) return null;/);

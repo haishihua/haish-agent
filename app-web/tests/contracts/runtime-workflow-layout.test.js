@@ -204,6 +204,7 @@ test('node execution details can be resized without hiding the workflow', () => 
   assert.match(runtimeSource, /'--workflow-detail-width'/);
   assert.match(runtimeStyles, /var\(--workflow-detail-width, 520px\)/);
   assert.match(runtimeStyles, /calc\(100% - 360px\)/);
+  assert.match(runtimeStyles, /\.workflow-run-layout\.has-detail \{\s*column-gap: 0;/);
 });
 
 test('runtime selection and detail share one type accent and clear together', () => {
@@ -470,8 +471,8 @@ test('terminal workflow tasks can rerun an executed business node', () => {
   assert.match(taskStreamSource, /rerunningNode \? 'rerun_node' : 'start'/);
   assert.match(taskStreamSource, /node_id: streamRequest\.rerunNodeId/);
   assert.match(taskStreamSource, /const runId = \(rerunningNode \|\| fullAttempt\) \? generateHexId\(\)/);
-  assert.match(appShellSource, /setViewedWorkflowTask\(null\);\s*executeWorkflowNodeRerun\(currentWorkflowTask, nodeId, botRunConfigRef\.current\)/);
-  assert.match(appShellSource, /onRunConfigChange=\{handleBotRunConfigChange\}/);
+  assert.match(appShellSource, /nodeRuntimeConfigRequest\(botNodeConfigs\[nodeId\]\) : null/);
+  assert.doesNotMatch(appShellSource, /botRunConfigRef/);
   assert.match(taskStreamSource, /provider: streamRequest\.runConfig\.provider/);
   assert.match(taskStreamSource, /model_id: streamRequest\.runConfig\.modelId/);
   assert.match(taskStreamSource, /reasoning_effort: streamRequest\.runConfig\.reasoningEffort/);

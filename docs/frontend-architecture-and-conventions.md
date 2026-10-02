@@ -41,6 +41,7 @@ app-web/
       approvals/             # 审批 API、状态和 UI
       chat/                  # 对话时间线、输入框、流式消息模型
       conversations/         # 项目/会话树、持久化和激活流程
+      schedules/             # 定时任务 API、时间规则、实时状态和管理 UI
       settings/              # 设置页面、编辑器和设置模型
       tasks/                 # 任务部署、任务流和委派 UI
       workflow/              # 工作流模型、画布和运行详情
@@ -86,6 +87,7 @@ main.jsx → app.jsx → features/* → shared/*
 | `tasks` | 任务 runtime、stream、部署和委派 | 不把 UI 状态写入通用 shared |
 | `workflow` | 工作流 schema、布局、节点 UI、运行详情 | 运行页和设置编辑器共用 workflow 自己的画布组件 |
 | `approvals` | 审批/问答 API、状态和卡片 | 静态 CSS；不使用全局请求函数 |
+| `schedules` | 定时定义、时间规则、会话绑定和管理 | 通过 context 显式装配；执行复用 tasks runtime，不另建消息入口 |
 | `settings` | 设置页与各类配置编辑器 | `SettingsPage` 不是导出中转站 |
 | `agents` | Agent 配置与纯模型 | 不依赖 settings UI |
 

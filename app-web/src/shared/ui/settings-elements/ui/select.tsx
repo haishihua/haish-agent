@@ -54,10 +54,11 @@ function SelectContent({
   children,
   position = "item-aligned",
   align = "center",
+  container,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Content>) {
+}: React.ComponentProps<typeof SelectPrimitive.Content> & { container?: HTMLElement | null }) {
   return (
-    <SelectPrimitive.Portal container={getSettingsPortalContainer()}>
+    <SelectPrimitive.Portal container={container ?? getSettingsPortalContainer()}>
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(

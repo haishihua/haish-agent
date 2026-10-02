@@ -1,6 +1,14 @@
 # 回归测试
 
+定时任务接入设计见 [scheduled-tasks-ui-design.md](../../docs/scheduled-tasks-ui-design.md)。
+
 ## 自动测试
+
+- `features/settings/mcp-tool-selection.test.js` + `contracts/mcp-tool-picker.test.js` 覆盖 Agent 的 MCP tools 空状态：无服务器、工具清单为空、服务器/工具全部停用时统一显示「No MCP tools available.」，不逐项显示空服务器；可选但未勾选的工具仍可配置，连接错误保留。`fixtures/mcp-tool-picker.html` 使用真实编辑器验证空状态和逐条勾选/旧服务器级授权迁移。
+
+- `features/settings/code-mode.test.js` 覆盖 Code Mode 独立分组、选中只授予 `code_mode`、新建 custom agent 不默认启用、旧后端目录为准，以及原 custom agent handler 的创建/更新保存回显和取消后重载；不调用模型。
+
+- `features/conversations/goal-command.test.js` 覆盖 Chat → Workflow 的 `/goal` 路由：同目录项目复用、缺失自动导入（bot）、默认项目映射、新会话发送 Goal Loop、裸命令仅跳转、目标会话配置持久化、附件重新上传、准备失败保留草稿、切换会话时停止误投；命令优先于 Skill 和运行中纠偏。`fixtures/goal-command.html` 使用真实 ChatComposer 验证菜单选择、剥离命令、无 Chat 模型时发送、防重复、失败留稿和运行中独立路由（离线桩，不创建真实任务）。
 
 - `npm test`：运行所有 `*.test.js` / `*.test.mjs`。
 - `npm run check:web`：架构检查、自动测试、ESLint 和生产构建。
@@ -32,8 +40,11 @@
 - `contracts/workflow-runtime-title.test.js` 锁住“运行页标题 = 回配置页的入口”：运行页只读、改图一律回配置页，所以标题区（工作流名 + 运行状态）整块是一个真按钮（`onOpenConfig` 缺省时退化成纯文本，不留点了没反应的按钮），点了把 `workflow_id` 交给 AppShell——`openWorkflowConfig` 一个动作里切到设置页、选中该工作流、并投一份一次性 `pendingSettingsEditor`，SettingsPage 消费后走和列表点击同一个 `setEditingSettings` 入口把编辑器拉开，消费完交回清空（否则关掉抽屉、再打开设置页会被旧请求重新弹出）。外观也钉在这里：标题用正文色 `rgba(235, 240, 252, 0.92)`（不再是金色 `rgba(246, 225, 181, 0.96)`），运行中只跑一道和聊天工具标签同款的单色流光（`workflow-title-shimmer`，不再是从金到紫的彩虹渐变 `workflow-title-gradient`），状态改用「文案 + 一颗状态点」（running `#76b9fa` / done·approved `#55d6a0` / 待审批·等输入 `#b494ff` / 失败·驳回 `#ee7a91` / 取消 `#efc75e`）；悬停给底色和提亮只在 `@media (hover: hover) and (pointer: fine)` 里生效、按下 `scale(0.98)`、键盘焦点环走 box-shadow（app 全局 `:focus-visible { outline: none !important }`，写 outline 等于没写），动效都有 `prefers-reduced-motion` 出口。
 - `contracts/settings-form-polish.test.js` 锁住“设置表单的观感只有一个来源”：输入框/下拉/文本域的焦点环一律走 `box-shadow`（app 全局 `:focus-visible { outline: none !important }`，写 outline 等于没写）；设置区按钮的过渡只列真正会变的属性（不许 `transition: all`，覆盖必须写在 `tailwindcss/utilities.css` 之后才压得住）、曲线是自定义 `--ease-snappy: cubic-bezier(0.23, 1, 0.32, 1)`、按下 `scale(0.97)`（`:disabled` 不算）、reduced-motion 退回瞬时；所有 `hover` 都必须在 `@media (hover: hover) and (pointer: fine)` 里——Tailwind 的 `hover:` 变体在 settings.css 里被整体重写成这道门禁（触屏点一下不再命中 hover）。
 - `contracts/settings-test-connection.test.js` 锁住“测试连接只测不存”：搜索提供商的「Test connection」只调测试处理器（`onTestWebProvider`，敲进去的 key 直接交给后端，空串才回落到已存的 key），绝不先跑保存——过去点 Test 会先 `PUT /api/settings/tools` 并弹保存 toast，测试失败也照样把 key 落盘；保存仍然是唯一写入口（只有 Save 按钮走 `saveProvider`，`handleTestWebProvider` 体内不许出现 `method: 'PUT'`）。同一条还锁住已随后端下线的 Tools → Jev 不许在设置页/处理器里复活（`handleTestJev`、`tools/jev`、`onTestJev` 都不许再出现）。
+- `contracts/settings-nav-icons.test.js` 锁住「设置左栏不许两个条目挂同一个图标」：Context 组里 Compact 曾经照抄 Embedding 的 `layers`（堆叠菱形），两个条目长得一模一样、扫一眼分不出谁是谁——现在 Compact 用 `shrink`（向内收的四个箭头），且每个分组内的图标名必须两两不同；用到的名字还必须真在 `shared/ui/AppIcon.jsx` 的 `ICONS` 里注册（写错名字会静默退回 `box`），注册的 lucide 组件也得真的 import 过。反向断言：把 Compact 的图标改回 `layers`，重复检测必须报出来。
 - `features/tasks/task-output.test.js` 锁住「任务报告只有一个出口」：报告内容取工作流 End 节点的产出（`value` 是字符串就用它，value 缺省时用该节点的 `summary`），End 是结构化对象的老快照（Goal Loop 老快照把 Verifier 的 verdict JSON 映射到 End）不许把机器串摊给人——从后往前跳过控制节点（start / output / condition）与机器串（`matched:…` 控制标记、JSON 对象），取最后一个「人话」节点上的报告（Goal Loop 实际就是 Worker 那份），都没有才回落到旧口径的最后一个节点摘要，再回落到 `answerText` / 错误。报告入口在侧栏任务卡尾部，只有收工（done / failed / cancelled）且真有产出（bot 运行、回答文本或错误）才出现，聊天模式仍由 `.app-body.chat-mode` 隐掉这枚按钮，悬停操作组给入口让位（`.has-report` 右移 36px）；收工不自动弹报告——未读仍走完成红点 + 系统通知，结果只从这枚入口进。
 - `features/tasks/task-context.test.js` 锁住「以任务产出为上下文开新任务」：入口只有一处——报告对话框底部的上下文图标按钮（`.iv-btn-context`；对话框底栏三枚动作都是图标按钮：关闭 / 以此为上下文开新任务 / 导出 Markdown，文案在 `title` 与 `aria-label` 上，标题行只有任务标题、不再压一行 `TASK OUTPUT` 小标签——那行标签在同一个对话框被复用的「会话启动失败」里是错的；这枚按钮只有调用方给了 `contextSource` 才出现，而 `createConversationHandlers` 只对 `executionMode === 'bot'` 的收工任务给），点下去关对话框、把 `{ taskId, title, conversationId }` 挂到 AppShell 的 `contextTask` 上；输入框上那枚标签直接复用文件附件芯片的皮（`ContextTaskChip` 用 `composer-file-chip` + `is-context-task`，副标题写 `TASK`、带同一颗 `composer-file-remove` 的 ×），只挂在工作流那侧的 `ChatComposer`（聊天侧不接）；发送时只带引用——start 请求的 `context_tasks` 是 `[{ task_id }]`（重试/编辑分支里不许再拼一份，报告由服务端按引用现取），`preparePendingTask` 把它记进本地 pending 卡，任务真发出去了才清标签（和附件同一个出口）；引用只进请求不进界面——任务行/任务卡上不挂来源标（那枚 `.conversation-task-source-chip`、「点它跳回来源任务」的接线、以及任务运行时模型里那份归一都删了），引用形状只在 start 请求那一处收口成 `[{ task_id }]`。
+
+- `features/workflow/node-runtime-config.test.js` 覆盖节点配置隔离、白名单、已执行配置恢复、提交快照及已知适配器 thinking 限制；后端配套测试覆盖同一 Agent 的两个节点在 Loop 中使用不同模型、节点重跑只更新目标与显式重置。
 
 ## 浏览器 DOM 回归
 
@@ -41,6 +52,12 @@
 
 | 页面 | 覆盖范围 |
 | --- | --- |
+| [mcp-tool-picker.html](fixtures/mcp-tool-picker.html) | Agent MCP tools 逐条选择、旧授权迁移、未勾选但可用的列表、无服务器/全空清单/全部停用时单条空状态、无空服务器标题及连接错误保留。 |
+| [code-mode-settings.html](fixtures/code-mode-settings.html) | 真实 AgentConfigEditor 显示 Code Mode、初始未选、勾选只授予编排入口、File edits/Terminal 保持未选、保存后重挂回显、取消保留已选读工具及取消持久化；7 项 DOM 检查。夹具保存使用独立本地测试存储，正式 API 保存另由 handler 和后端持久化测试验证。 |
+| [scheduled-tasks.html](fixtures/scheduled-tasks.html) | 共用 slash 面板及 Clock、无会话选择器、复用 Radix 非原生下拉/月历与时分输入、跨月/方向键/Escape/焦点返回、编辑保留时间、保存失败重试只绑定一次、固定模型且不执行、侧栏常驻提醒与运行灯不重叠、管理不切会话、暂停/历史/确认删除及实时刷新；离线 fixture 不调用模型。 |
+| [workflow-node-config.html](fixtures/workflow-node-config.html) | Provider / Model / Thinking 及底部 Workflow 复用共享 Radix 非原生 Select，紧凑 12px 字号与整行均分双 Tab（1px 选中底线，无尾部空白）、深色菜单、Portal 防裁剪、方向键/Enter/Escape/焦点返回与外部点击关闭；Workflow 独立灰色节点连线图标（不复用仪表盘）、无文字/无边框入口、展开不留图标外框、灰色菜单选中项无嵌套描边、当前名称提示、菜单切换及运行中锁定；Tab 与配置卡片 8px 间距和紧凑内边距；未执行 Agent 节点可配置；节点选择独立、持久化、历史任务恢复、任务/账号/Workflow 隔离、运行中只读、移除 default 菜单项并用选择提示和独立清空动作替代；Bot 去掉 context 和 model picker 且保留 Workflow 入口、无需隐藏全局模型即可发送；Chat 原入口保留。 |
+| [approval-picker-boundary.html](fixtures/approval-picker-boundary.html) | 生产 ApprovalModePicker 在高层级会话侧栏与裁剪边界旁展开：聊天 / Workflow 样式、240 / 360 / 640px 宽度下动画与两枚选项完整留在工作区，并用命中测试确认未被侧栏遮挡；保留模式切换、只读、Escape 和点击外部关闭行为；`#checks[data-result]` 输出 29 项检查。 |
+| [settings-agent-count.html](fixtures/settings-agent-count.html) | 展开 Automation 即加载 Agent 总数，不用先点 Agent；加载前不显示默认 1，统计系统预设及自定义（含禁用项），切换 Agent / Workflow 不重复请求；计数与加载提示共用固定右侧列，长标题、三位数字及选中状态不改变对齐；`#checks[data-result]` 输出 11 项检查。 |
 | [conversation-search.html](fixtures/conversation-search.html) | 关键词 Range、跨标签匹配、精确跳转和滚动条标记 |
 | [message-annotations.html](fixtures/message-annotations.html) | 选区引用、UTF-16 偏移、跨 Markdown 选取和重新定位 |
 | [annotation-numbering.html](fixtures/annotation-numbering.html) | 注释编号在整个会话内累加：跨轮次、草稿与已发送引用共用同一序号 |

@@ -89,7 +89,7 @@
         "zh_CN",
         "zh_TW"
       ],
-      "icon": "build/Haish.icon",
+      "icon": "build/icon.icns",
       "hardenedRuntime": true,
       "entitlements": "entitlements/entitlements.mac.plist",
       "entitlementsInherit": "entitlements/entitlements.mac.inherit.plist",

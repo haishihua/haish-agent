@@ -37,7 +37,7 @@ let failed = false;
 function check(ok, label) { failed ||= !ok; report.textContent += `\n${ok ? 'PASS' : 'FAIL'} ${label}`; }
 const panel = () => document.querySelector('.workflow-detail-panel');
 const card = (id) => document.querySelector(`.react-flow__node[data-id="${id}"] .workflow-flow-node`);
-const select = async (id) => { document.querySelector(`.react-flow__node[data-id="${id}"]`).dispatchEvent(new MouseEvent('click', { bubbles: true })); await tick(500); };
+const select = async (id) => { document.querySelector(`.react-flow__node[data-id="${id}"]`).dispatchEvent(new MouseEvent('click', { bubbles: true })); await tick(500); const resultTab = [...document.querySelectorAll('.workflow-detail-tabs [role="tab"]')].find((tab) => tab.textContent === 'Run Result'); if (resultTab) { resultTab.click(); await tick(); } };
 (async () => {
   for (let i = 0; i < 80 && !card('worker'); i++) await tick();
   await document.fonts.ready;
@@ -47,6 +47,14 @@ const select = async (id) => { document.querySelector(`.react-flow__node[data-id
   await select('worker');
   check(panel()?.dataset.nodeId === 'worker' && card('worker').classList.contains('active'), 'Click maps node highlight to matching detail');
   check(panel().textContent.includes('Goal Worker') && panel().textContent.includes('Retain real execution content'), 'Real input and agent result rendered');
+  const stageSurface = getComputedStyle(document.querySelector('.app-workflow-stage'));
+  check(stageSurface.borderTopWidth === '0px' && stageSurface.backgroundImage === 'none' && stageSurface.backgroundColor === 'rgba(0, 0, 0, 0)', 'Stage adds no outer frame or background behind node details');
+  const detailSurface = getComputedStyle(panel());
+  check(detailSurface.borderTopWidth === '1px' && detailSurface.borderRadius === '22px' && detailSurface.backgroundImage !== 'none', 'Inner node-colored detail frame is retained');
+  const canvasRect = document.querySelector('.workflow-run-canvas').getBoundingClientRect();
+  const detailRect = panel().getBoundingClientRect();
+  check(Math.abs(detailRect.top - canvasRect.top) < 1 && Math.abs(detailRect.bottom - canvasRect.bottom) < 1, 'Detail top and bottom align with runtime canvas');
+  check(innerWidth <= 900 || Math.abs(detailRect.left - canvasRect.right) < 1, 'Desktop canvas joins detail without a horizontal gap');
   const userMeta = panel().querySelector('.user-speaker-meta');
   check(getComputedStyle(userMeta).justifyContent === 'flex-end' && getComputedStyle(userMeta.querySelector('.chat-bubble-meta-main')).flexDirection === 'row', 'You and user avatar retain shared right alignment');
   const userShell = panel().querySelector('.chat-message-row.user .message-shell');
@@ -77,6 +85,8 @@ const select = async (id) => { document.querySelector(`.react-flow__node[data-id
   check(panel().getBoundingClientRect().width >= beforeWidth, 'Keyboard panel resize retained');
   panel().querySelector('.workflow-detail-close').click(); await tick();
   check(!panel() && !document.querySelector('.workflow-flow-node.active') && !document.querySelector('.workflow-selection-link'), 'Close clears panel, highlight and visual link');
+  const canvasSurface = getComputedStyle(document.querySelector('.workflow-run-canvas'));
+  check(canvasSurface.borderTopWidth === '1px' && canvasSurface.backgroundImage !== 'none', 'Canvas retains its own surface after detail closes');
   await select('tool'); check(!panel(), 'Unexecuted node does not invent execution content');
   await select('worker');
   window.__setRuntimeTask((t) => ({ ...t, taskId: 'second-task' })); await tick();
@@ -84,5 +94,20 @@ const select = async (id) => { document.querySelector(`.react-flow__node[data-id
   await select('model');
   window.__setRuntimeTask((t) => ({ ...t, status: 'done', eventLog: [...t.eventLog, { type: 'workflow_node_finished', workflowNodeId: 'model', status: 'done', timestamp }], workflowRun: { ...t.workflowRun, status: 'done', current_node_id: null, nodes: { ...t.workflowRun.nodes, model: result('Verification complete.') } } })); await tick();
   check(panel()?.querySelector('.workflow-detail-status-dot.is-done') && card('model').classList.contains('active'), 'Completion updates status while retaining selection');
+  for (const [status, color] of [
+    ['done', 'rgb(85, 214, 160)'],
+    ['succeeded', 'rgb(85, 214, 160)'],
+    ['failed', 'rgb(238, 122, 145)'],
+    ['cancelled', 'rgb(239, 199, 94)'],
+    ['pending', 'rgba(181, 195, 220, 0.72)'],
+    ['queued', 'rgba(181, 195, 220, 0.72)'],
+  ]) {
+    window.__setRuntimeTask((t) => ({ ...t, status, workflowRun: { ...t.workflowRun, status } }));
+    await tick();
+    const label = document.querySelector('.workflow-run-status');
+    check(getComputedStyle(label).color === color && getComputedStyle(label, '::before').backgroundColor === color, `${status} title text and status dot use semantic color`);
+  }
+  window.__setRuntimeTask((t) => ({ ...t, status: 'done', workflowRun: { ...t.workflowRun, status: 'succeeded' } }));
+  await tick();
   report.dataset.result = failed ? 'FAIL' : 'PASS';
 })().catch((error) => { check(false, error.stack); report.dataset.result = 'FAIL'; });

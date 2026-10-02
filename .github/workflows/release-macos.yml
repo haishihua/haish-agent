@@ -45,6 +45,9 @@ jobs:
       HAISH_RUNTIME_SOURCE: ${{ github.workspace }}/core-runtime
       # Keep electron-builder from probing the keychain for identities.
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      # Only the hybrid icon catalog is compiled by 26.0.1. Newer actool can
+      # embed new-design legacy renditions which override our original ICNS.
+      HAISH_ICON_DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
     steps:
       - name: Check out the app
         uses: actions/checkout@v5
@@ -55,7 +58,8 @@ jobs:
           sw_vers
           xcode-select -p
           xcodebuild -version
-          xcrun actool --version
+          test -d "$HAISH_ICON_DEVELOPER_DIR" || { echo 'Hybrid icon compiler Xcode 26.0.1 is missing'; exit 1; }
+          DEVELOPER_DIR="$HAISH_ICON_DEVELOPER_DIR" xcrun actool --version
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

@@ -6,7 +6,7 @@ import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import './animate-dialog.css';
 
-export function AnimateDialog({ open, danger, title, description, children, busy, onClose, onOpenAutoFocus, onCloseAutoFocus }) {
+export function AnimateDialog({ open, danger, title, description, children, busy, onClose, onOpenAutoFocus, onCloseAutoFocus, className = '' }) {
   const Primitive = danger ? AlertDialog : Dialog;
   const reducedMotion = useReducedMotion();
   const hidden = reducedMotion ? { opacity: 0 } : {
@@ -24,7 +24,7 @@ export function AnimateDialog({ open, danger, title, description, children, busy
             onCloseAutoFocus={onCloseAutoFocus}
             onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }}
           >
-            <motion.div className={`haish-dialog${danger ? ' is-danger' : ''}`} aria-busy={busy}
+            <motion.div className={`haish-dialog${danger ? ' is-danger' : ''}${className ? ` ${className}` : ''}`} aria-busy={busy}
               initial={hidden} animate={{ opacity: 1, filter: 'blur(0px)', transform: 'perspective(500px) rotateX(0deg) scale(1)' }} exit={hidden}
               transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 150, damping: 25 }}>
               <Primitive.Title className="haish-dialog-title">{title}</Primitive.Title>

@@ -1,5 +1,6 @@
 import { taskFinalOutputText } from '../../tasks/model/runtime-events.js';
 import { createQuestAck } from '../../tasks/model/quest-ack.js';
+import { createGoalCommandHandler } from './createGoalCommandHandler.js';
 
 export function createConversationHandlers(ctx) {
   const {
@@ -886,6 +887,7 @@ export function createConversationHandlers(ctx) {
 
 
   return {
+    handleGoalCommand: createGoalCommandHandler({ ...ctx, createConversationInProject }),
     handleSelectConversation,
     handleConversationRemoved,
     handleSelectProject,

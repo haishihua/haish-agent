@@ -8,7 +8,7 @@ export const SETTINGS_SECTIONS = [
     children: [
       { id: 'memory', label: 'Memory', icon: 'database' },
       { id: 'embedding', label: 'Embedding', icon: 'layers' },
-      { id: 'compact', label: 'Compact', icon: 'layers' },
+      { id: 'compact', label: 'Compact', icon: 'shrink' },
     ],
   },
   {
@@ -16,7 +16,7 @@ export const SETTINGS_SECTIONS = [
     label: 'Automation',
     children: [
       { id: 'agent', label: 'Agent', icon: 'bot' },
-      { id: 'workflow', label: 'Agentic Workflow', icon: 'workflow' },
+      { id: 'workflow', label: 'Workflow', icon: 'workflow' },
     ],
   },
 ];

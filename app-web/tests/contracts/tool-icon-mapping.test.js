@@ -23,6 +23,10 @@ test('ask_user gets a dedicated icon instead of the mcp magic wand', () => {
   assert.doesNotMatch(rule[1], /magic-wand|skill\.png|tool\.png/);
 });
 
+test('Tool Script uses the file-code icon rather than the MCP magic wand', () => {
+  assert.match(timelineSource, /icon=\{isScript \? <FileCode2 size=\{14\}/);
+});
+
 test('every resolveToolIconClass return value is a real base.css icon class', () => {
   const resolve = timelineSource.match(/export function resolveToolIconClass[\s\S]*?\n\}/)[0];
   const classes = [...resolve.matchAll(/return '(ico-[a-z0-9-]+)';/g)].map((match) => match[1]);

@@ -59,7 +59,7 @@ export function ResultDialog({ open, title, result, onClose, onUseAsContext }) {
                 aria-label="Use this task as context for a new task"
                 onClick={onUseAsContext}
               >
-                <AppIcon name="layers" size={15} />
+                <AppIcon name="use-as-context" size={15} />
               </button>
             ) : null}
             <button

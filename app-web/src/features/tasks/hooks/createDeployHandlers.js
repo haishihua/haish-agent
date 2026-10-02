@@ -218,7 +218,7 @@ export function createDeployHandlers(ctx) {
     return taskId ? '' : restoreText;
   }
 
-  function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, selectionId, providerRequest, displayText = text, annotations = []) {
+  function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, selectionId, providerRequest, displayText = text, annotations = [], nodeRuntimeConfigs = {}) {
     const sanitizedImageAttachments = Array.isArray(imageAttachments)
       ? imageAttachments
           .filter((ref) => ref && (ref.file || (ref.image_id && ref.path)))
@@ -235,6 +235,7 @@ export function createDeployHandlers(ctx) {
       text,
       displayText: String(displayText || text || '').trim(),
       annotations: annotations.map((item) => ({ ...item })),
+      nodeRuntimeConfigs: structuredClone(nodeRuntimeConfigs),
       // 「以任务产出为上下文」：只带引用（task_id / title / conversation_id），报告正文
       // 由服务端在起跑时取；没挂上下文就是空数组。
       contextTasks: contextTask
@@ -298,6 +299,7 @@ export function createDeployHandlers(ctx) {
       request.attachment || null,
       request.imageAttachments,
     );
+    pendingTask.nodeRuntimeConfigs = request.nodeRuntimeConfigs || {};
     pendingTask.requestText = request.text;
     pendingTask.annotations = request.annotations;
     pendingTask.contextTasks = Array.isArray(request.contextTasks) ? request.contextTasks : [];
@@ -506,8 +508,8 @@ export function createDeployHandlers(ctx) {
     });
   }
 
-  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText = text, annotations = []) {
-    const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText, annotations);
+  function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText = text, annotations = [], nodeRuntimeConfigs = {}) {
+    const request = buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText, annotations, nodeRuntimeConfigs);
     const activeId = conversationIdRef.current || conversationId;
     const activeRuntime = activeId ? getRuntime(activeId) : null;
     if (!activeId || !activeRuntime) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowUp, BookOpen, CornerDownLeft, Square } from 'lucide-react';
+import { ArrowUp, BookOpen, Clock, CornerDownLeft, Square } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
 import { ContextTaskChip } from '../../../shared/ui/ContextTaskChip.jsx';
@@ -21,7 +21,12 @@ import {
   ApprovalModePicker,
   ModelPicker,
 } from './ModelPickers.jsx';
+import { useConversationRunConfig } from '../../conversations/hooks/useConversationRunConfig.js';
+import { useSchedules } from '../../schedules/hooks/useSchedules.js';
+import { scheduleInvocation, scheduleMenuItems } from '../../schedules/model/schedule.js';
 import { LexicalComposerInput } from './LexicalComposerInput.jsx';
+import { WorkflowPicker } from './WorkflowPicker.jsx';
+import { goalInvocation, goalMenuItems } from '../model/goal-command.js';
 import { ComposerBorderBeam, MetalActionEffect } from '../../../shared/ui/MotionEffects.jsx';
 
 /**
@@ -45,6 +50,7 @@ export function ChatComposer({
   draft: draftProp,
   onDraftChange: onDraftChangeProp,
   onSend,
+  onGoalCommand,
   onStop,
   onSent,
   activeTaskText,
@@ -54,6 +60,7 @@ export function ChatComposer({
   idlePlaceholder = 'Ask, draft, or delegate...',
   disabledPlaceholder = '',
   allowRuntimeInput = true,
+  executionMode = 'chat',
   prepareSubmit,
   pendingCommentCount = 0,
   beforeInput = null,
@@ -78,7 +85,10 @@ export function ChatComposer({
   onAgentChange,
   contextUsage,
   inputRef: inputRefProp,
+  scheduleNodeRuntimeConfigs,
+  onRestoreNodeConfigs,
 }) {
+  const schedules = useSchedules();
   const resolvedProviderOptions = Array.isArray(providerOptions) && providerOptions.length > 0
     ? providerOptions
     : [];
@@ -86,6 +96,8 @@ export function ChatComposer({
   const resolvedDefaultAgentId = defaultAgentId || resolvedAgentOptions[0]?.id || DEFAULT_AGENT_OPTIONS[0].id;
   const [localDraft, setLocalDraft] = React.useState('');
   const [runtimeInputPending, setRuntimeInputPending] = React.useState(false);
+  const [goalPending, setGoalPending] = React.useState(false);
+  const goalPendingRef = React.useRef(false);
   const [selectedSkillName, setSelectedSkillName] = React.useState('');
   const [skillMenuIndex, setSkillMenuIndex] = React.useState(0);
   const [skillMenuDismissed, setSkillMenuDismissed] = React.useState(false);
@@ -101,7 +113,7 @@ export function ChatComposer({
   const [pathNotice, setPathNotice] = React.useState('');
   React.useEffect(() => setPathNotice(''), [scopeId, draft]);
 
-  const { providerId, setProviderId, modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort } = usePersistentRunConfig({
+  const { providerId, setProviderId, modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort, restoreConfig, serverSelection } = usePersistentRunConfig({
     selectionStorageKey,
     providerOptions: resolvedProviderOptions,
     agentOptions: resolvedAgentOptions,
@@ -113,32 +125,41 @@ export function ChatComposer({
   const selectedSkill = resolvedSkills.find((skill) => skill.name === selectedSkillName) || null;
   const composerContent = React.useMemo(() => splitPathReferenceDraft(draft), [draft]);
   const matchingSkills = React.useMemo(
-    () => matchingAgentSkills(composerContent.text, resolvedSkills),
-    [composerContent.text, resolvedSkills],
+    () => goalMenuItems(composerContent.text, scheduleMenuItems(composerContent.text, matchingAgentSkills(composerContent.text, resolvedSkills), Boolean(schedules)), executionMode === 'chat' && Boolean(onGoalCommand)),
+    [composerContent.text, resolvedSkills, schedules, executionMode, onGoalCommand],
   );
   const skillMenuOpen = Boolean(matchingSkills?.length && !selectedSkill && !skillMenuDismissed);
+  const goal = executionMode === 'chat' && onGoalCommand && !selectedSkill ? goalInvocation(composerContent.text) : null;
   const skillMenuRef = React.useRef(null);
   React.useEffect(() => {
     skillMenuRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [skillMenuIndex, skillMenuOpen]);
   const canUploadDocuments = currentSelection?.canUploadDocuments === true;
-  const currentProvider = resolvedProviderOptions.find((item) => item.id === providerId) || resolvedProviderOptions[0];
-  const providerModels = useProviderModels(currentProvider);
+  const currentProvider = resolvedProviderOptions.find((item) => item.id === providerId) || (serverSelection ? null : resolvedProviderOptions[0]);
+  const providerModels = useProviderModels(executionMode === 'bot' ? null : currentProvider);
   const activeModelOptions = providerModels.options;
   const modelLoading = providerModels.loading;
   const providerRequest = currentProvider?.requestProvider || currentProvider?.provider || providerId || '';
   const providerConfigured = Boolean(currentProvider && providerRequest);
-  const sendModelId = activeModelOptions.some((item) => item.id === modelId)
+  const sendModelId = serverSelection ? modelId : activeModelOptions.some((item) => item.id === modelId)
     ? modelId
     : (providerModels.defaultModelId || currentProvider?.defaultModelId || modelId);
 
+  const configError = useConversationRunConfig({
+    sync: schedules?.configSync, conversationId: schedules?.currentConversationId, scopeId,
+    loading: modelLoading,
+    config: { provider: providerRequest, model_id: modelId, reasoning_effort: reasoningEffort, execution_mode: executionMode, use_history: true,
+      ...(executionMode === 'bot' ? { workflow_id: effectiveAgentId, node_runtime_configs: scheduleNodeRuntimeConfigs || {} } : { agent_id: effectiveAgentId }) },
+    restore: (config) => { restoreConfig(config); onRestoreNodeConfigs?.(config.node_runtime_configs || {}, config.workflow_id); },
+  });
+  React.useEffect(() => { if (configError) setPathNotice(configError); }, [configError]);
   React.useEffect(() => {
-    if (modelLoading) return;
+    if (executionMode === 'bot' || modelLoading || serverSelection) return;
     const nextModelId = activeModelOptions.some((item) => item.id === modelId)
       ? modelId
       : providerModels.defaultModelId;
     if (nextModelId !== modelId) setModelId(nextModelId);
-  }, [activeModelOptions, modelId, modelLoading, providerModels.defaultModelId, setModelId]);
+  }, [activeModelOptions, modelId, modelLoading, providerModels.defaultModelId, setModelId, executionMode, serverSelection]);
   React.useEffect(() => onAgentChange?.(effectiveAgentId), [effectiveAgentId, onAgentChange]);
   React.useEffect(() => {
     const modelConfigured = !modelLoading && activeModelOptions.some((item) => item.id === modelId);
@@ -291,7 +312,7 @@ export function ChatComposer({
   const visibleContextRatio = usedTokens > 0 ? Math.max(contextRatio, 0.01) : 0;
   const contextTooltip = `${formatContextUsageLabel(usedTokens, totalTokens, { estimated: Boolean(contextUsage?.estimated) })}${contextUsage?.overLimit ? ' · Over limit' : ''}`;
   const contextSector = contextSectorPath(visibleContextRatio);
-  const runConfigReadOnly = running || submitPending;
+  const runConfigReadOnly = running || submitPending || goalPending;
   const runConfigDisabled = !runConfigReadOnly && (disabled || submitPending);
   // The send/stop metal ring is a state signal, not decoration: it lights up as
   // soon as the composer holds something sendable (typed text, images, or
@@ -299,7 +320,7 @@ export function ChatComposer({
   // `running || submitPending` alone left the button visually dead for the
   // whole time the user was typing — the ring only appeared after the send.
   const sendBeamActive = running || submitPending || hasComposerPayload;
-  const placeholder = !providerConfigured ? 'Configure an LLM provider in Settings first...'
+  const placeholder = executionMode === 'chat' && !providerConfigured ? 'Configure an LLM provider in Settings first...'
     : submitPending ? 'Preparing conversation...'
       : uploading ? 'Document is processing. Please wait...'
         : disabled ? (disabledPlaceholder || idlePlaceholder)
@@ -336,7 +357,7 @@ export function ChatComposer({
   React.useEffect(() => {
     if (!running && !submitPending) return undefined;
     function handleEscape(event) {
-      if (event.key !== 'Escape' || event.isComposing) return;
+      if (event.key !== 'Escape' || event.isComposing || event.target.closest?.('[role="dialog"], [role="alertdialog"]')) return;
       event.preventDefault();
       stopAndRestore();
     }
@@ -362,7 +383,31 @@ export function ChatComposer({
     e?.stopPropagation?.();
     if (Date.now() < suppressSubmitUntilRef.current) return;
     if (skillSelectionPendingRef.current) return;
+    if (goalPendingRef.current) return;
     const text = draft.trim();
+    if (goal) {
+      if (disabled || submitPending || runtimeInputPending || goalPendingRef.current || uploading || imagesUploading) return;
+      if (pendingCommentCount) { setPathNotice('Send or remove comment drafts before starting Goal Loop.'); return; }
+      if (!goal.prompt && (attachment || readyImages.length || composerContent.references.length)) {
+        setPathNotice('Add a task description after /goal before sending attachments or references.'); return;
+      }
+      goalPendingRef.current = true;
+      setGoalPending(true);
+      try {
+        const accepted = await onGoalCommand({ prompt: composePathReferenceDraft(goal.prompt, composerContent.references), attachment, images: readyImages });
+        if (accepted !== false) {
+          // This callback is bound to the source conversation even after navigation.
+          setDraft('');
+          clearComposerAfterSend();
+          onClearFile?.();
+        }
+      } finally { goalPendingRef.current = false; setGoalPending(false); }
+      return;
+    }
+    if (schedules && scheduleInvocation(composerContent.text) && !selectedSkill) {
+      openSchedule();
+      return;
+    }
     if ((!text && readyImages.length === 0 && !pendingCommentCount) || imagesUploading || disabled || submitPending || runtimeInputPending) return;
     if (running && (!allowRuntimeInput || pendingCommentCount)) return;
     const skillInvocation = selectedSkill || !text ? null : extractAgentSkillInvocation(composerContent.text, resolvedSkills);
@@ -384,10 +429,10 @@ export function ChatComposer({
       }
       return;
     }
-    if (!providerConfigured) return;
-    if (!sendModelId) return;
+    if (executionMode === 'chat' && !providerConfigured) return;
+    if (executionMode === 'chat' && !sendModelId) return;
     if (!resolvedAgentOptions.some((o) => o.id === effectiveAgentId)) return;
-    const sendResult = onSend?.(submittedText, attachment, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text, prepared?.annotations || EMPTY_ANNOTATIONS);
+    const sendResult = onSend?.(submittedText, attachment, executionMode === 'bot' ? null : sendModelId, executionMode === 'bot' ? null : reasoningEffort, readyImages, effectiveAgentId, executionMode === 'bot' ? null : providerRequest, text, prepared?.annotations || EMPTY_ANNOTATIONS);
     // Local acceptance is synchronous: clear the composer in the same render as
     // its optimistic message. Only async send handlers need a separate wait.
     const accepted = sendResult && typeof sendResult.then === 'function' ? await sendResult : sendResult;
@@ -401,8 +446,41 @@ export function ChatComposer({
     onClearFile?.();
   }
 
+  function openSchedule() {
+    if (disabled || submitPending) return;
+    const scheduleModelId = modelId;
+    if (!providerConfigured || !scheduleModelId || scheduleModelId === 'auto' || modelLoading) {
+      setPathNotice('Select a configured provider and a concrete model before scheduling.');
+      return;
+    }
+    if (attachment || composerImages.length || pendingCommentCount || contextTask || composerContent.references.length) {
+      setPathNotice('Scheduled tasks accept text only. Remove attachments, comments and path/context references first.');
+      return;
+    }
+    schedules.openCreate({
+      conversationId: schedules.currentConversationId,
+      message: scheduleInvocation(composerContent.text)?.[1] || '',
+      scopeId,
+    });
+    setDraft('');
+    setSkillMenuDismissed(true);
+  }
+
   function selectSkill(skill, event) {
     if (!skill) return;
+    if (skill.command) {
+      event?.preventDefault?.(); event?.stopPropagation?.();
+      if (skill.name === 'goal') {
+        if (disabled || submitPending || goalPendingRef.current) return;
+        const prompt = composerContent.text.match(/^\s*\/[a-z0-9-]*(?:\s+([\s\S]*))?$/i)?.[1] || '';
+        setDraft(composePathReferenceDraft(`/goal ${prompt}`, composerContent.references));
+        setSkillMenuDismissed(true);
+        requestAnimationFrame(() => inputRef.current?.focusAtEnd?.());
+        return;
+      }
+      openSchedule();
+      return;
+    }
     event?.preventDefault?.();
     event?.stopPropagation?.();
     const prompt = composerContent.text.match(/^\s*\/[a-z0-9-]*(?:\s+([\s\S]*))?$/i)?.[1] || '';
@@ -429,7 +507,7 @@ export function ChatComposer({
       {beforeInput}
       {pathNotice && <p className="haish-annotation-notice" role="status">{pathNotice}</p>}
       {skillMenuOpen && (
-        <div ref={skillMenuRef} className="chat-skill-menu" role="listbox" aria-label="Available skills">
+        <div ref={skillMenuRef} className="chat-skill-menu" role="listbox" aria-label="Skills and actions">
           {matchingSkills.map((skill, index) => (
             <button
               key={skill.name}
@@ -443,7 +521,7 @@ export function ChatComposer({
               }}
               onMouseEnter={() => setSkillMenuIndex(index)}
             >
-              <BookOpen className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" />
+              {skill.command ? <Clock className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" /> : <BookOpen className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" />}
               <span className="chat-skill-menu-name">/{skill.name}</span>
               {skill.description ? (
                 <span className="chat-skill-menu-description">{skill.description}</span>
@@ -617,7 +695,7 @@ export function ChatComposer({
             }
           }}
           placeholder={placeholder}
-          disabled={disabled}
+          disabled={disabled || goalPending}
           maxLength={5000}
         />
       </div>
@@ -626,7 +704,7 @@ export function ChatComposer({
           <ApprovalModePicker readOnly={runConfigReadOnly} disabled={runConfigDisabled} />
         </div>
         <div className="chat-composer-submit">
-          {totalTokens > 0 ? <PortalTooltip text={contextTooltip} position="above">
+          {executionMode === 'chat' && totalTokens > 0 ? <PortalTooltip text={contextTooltip} position="above">
             <button
               type="button"
               className={`context-usage-btn icon-only ${contextUsage?.compressed ? 'compressed' : ''} ${contextUsage?.overLimit ? 'over-limit' : ''}`}
@@ -641,7 +719,7 @@ export function ChatComposer({
               </span>
             </button>
           </PortalTooltip> : null}
-          <ModelPicker
+          {executionMode === 'bot' ? <WorkflowPicker value={effectiveAgentId} options={resolvedAgentOptions} disabled={runConfigReadOnly || runConfigDisabled} onChange={setAgentId} /> : <ModelPicker
             value={modelId}
             reasoningEffort={reasoningEffort}
             options={activeModelOptions}
@@ -659,7 +737,7 @@ export function ChatComposer({
             agentLoading={agentLoading}
             agentLocked={agentLocked}
             agentLockedReason={agentLockedReason}
-          />
+          />}
           {submitPending ? (
             <MetalActionEffect active={sendBeamActive}>
               <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Cancel pending request">
@@ -671,7 +749,7 @@ export function ChatComposer({
             // so Stop and Send never appear side by side. Sending clears the
             // draft and the button flips back to Stop.
             <MetalActionEffect active={sendBeamActive}>
-              <button type="submit" className="chat-send" disabled={disabled || runtimeInputPending || !canSubmitPayload} aria-label="Add instruction">
+              <button type="submit" className="chat-send" disabled={disabled || runtimeInputPending || goalPending || !canSubmitPayload} aria-label={goal ? 'Run Goal Loop' : 'Add instruction'}>
                 <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
               </button>
             </MetalActionEffect>
@@ -683,7 +761,7 @@ export function ChatComposer({
             </MetalActionEffect>
           ) : (
             <MetalActionEffect active={sendBeamActive}>
-              <button type="submit" className="chat-send" disabled={disabled || !canSubmitPayload || !providerConfigured || !sendModelId} aria-label="Send">
+              <button type="submit" className="chat-send" disabled={disabled || goalPending || !canSubmitPayload || (!goal && executionMode === 'chat' && (!providerConfigured || !sendModelId))} aria-label={goal ? 'Run Goal Loop' : 'Send'}>
                 <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
               </button>
             </MetalActionEffect>

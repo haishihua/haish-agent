@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  mcpToolPickerServers,
   mcpServerWholesaleAllowed,
   mcpToolKey,
   mcpToolSelected,
@@ -18,6 +19,29 @@ const SERVER = {
 const OTHER_SERVER = { name: 'cua-agent', tools: [{ name: 'run_cua_task' }] };
 
 const sorted = (values) => [...values].sort();
+
+test('no servers, empty catalogs and globally disabled tools produce no choices', () => {
+  assert.deepEqual(mcpToolPickerServers(undefined), []);
+  assert.deepEqual(mcpToolPickerServers([]), []);
+  assert.deepEqual(mcpToolPickerServers([{ name: 'figma', tools: [] }, { name: 'sketch' }]), []);
+  assert.deepEqual(mcpToolPickerServers([{ ...SERVER, enabled: false }]), []);
+  assert.deepEqual(mcpToolPickerServers([{ ...SERVER, tools: SERVER.tools.map((tool) => ({ ...tool, enabled: false })) }]), []);
+});
+
+test('available tool choices do not depend on agent selections; errors remain visible', () => {
+  const disabledTool = { name: 'off', enabled: false };
+  const input = [SERVER, { name: 'mixed', tools: [{ name: 'on' }, disabledTool, null, { name: ' ' }] },
+    { name: 'broken', tools: [], error: 'Connection failed' },
+    { name: 'disabled', enabled: false, error: 'stale error', tools: SERVER.tools }];
+  const before = structuredClone(input);
+  const result = mcpToolPickerServers(input);
+  assert.deepEqual(result.map((server) => server.name), ['node-repl', 'mixed', 'broken']);
+  assert.deepEqual(result[0].tools, SERVER.tools);
+  assert.deepEqual(result[1].tools, [{ name: 'on' }]);
+  assert.equal(result[2].error, 'Connection failed');
+  assert.equal(mcpToolSelected({}, result[0], 'node_repl'), false);
+  assert.deepEqual(input, before);
+});
 
 test('the per-tool key is server.tool, trimmed and never half-built', () => {
   assert.equal(mcpToolKey('cua-agent', 'run_cua_task'), 'cua-agent.run_cua_task');

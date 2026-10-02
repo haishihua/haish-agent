@@ -49,6 +49,7 @@ export function workflowNodeFinishedState(event, currentNode = {}, savedAttempts
     started_at: event.started_at || currentNode.started_at,
     finished_at: finishedAt,
     duration_ms: event.duration_ms,
+    runtime_config: event.runtime_config || currentNode.runtime_config,
   };
   const lastAttempt = attempts.at(-1);
   const duplicate = Boolean(
@@ -89,13 +90,11 @@ export function createTaskStreamHandlers(ctx) {
     normalizeChatImageRefs,
     normalizeTaskStatus,
     normalizeRuntimeEvent,
-    readRuntimeAnswerBuffer,
     removeConversationTaskFromWorkspace,
     runTaskStream = (command, onEvent) => window.haish.runTaskStream(command, onEvent),
     resolveProviderMeta,
     setComposerAttachment,
     setRuntimeActiveTaskId,
-    setRuntimeAnswerBuffer,
     setRuntimeBusy,
     setRuntimeFetchController,
     setUploadState,
@@ -122,7 +121,7 @@ export function createTaskStreamHandlers(ctx) {
     getTaskById(taskId, targetConvId)?.originViewMode === 'chat'
   );
 
-  const appendTaskEvent = (taskId, event) => {
+  const appendTaskEvent = (taskId, event, ownerConvId) => {
     updateTaskById(taskId, (task) => {
       const runtimeEvent = runtimeEventToLog(event);
       return {
@@ -135,7 +134,7 @@ export function createTaskStreamHandlers(ctx) {
             || null,
         }),
       };
-    });
+    }, ownerConvId);
   };
 
   const coalesceStreamEvent = (previous, event) => (
@@ -145,6 +144,12 @@ export function createTaskStreamHandlers(ctx) {
   function applyRuntimeEvent(event, targetConvId = null) {
     const eventConversationId = event.conversation_id || null;
     const ownerConvId = activeRuntimeTargetConvId(targetConvId);
+    // Every event mutation/answer buffer belongs to its explicit conversation,
+    // including unattended scheduled streams while another conversation is open.
+    const updateTaskById = (id, updater) => ctx.updateTaskById(id, updater, ownerConvId);
+    const getTaskById = (id) => ctx.getTaskById(id, ownerConvId);
+    const readRuntimeAnswerBuffer = () => ctx.readRuntimeAnswerBuffer(ownerConvId);
+    const setRuntimeAnswerBuffer = (value) => ctx.setRuntimeAnswerBuffer(value, ownerConvId);
     if (eventConversationId && ownerConvId && eventConversationId !== ownerConvId) {
       return;
     }
@@ -177,7 +182,7 @@ export function createTaskStreamHandlers(ctx) {
       ), ownerConvId);
       return;
     }
-    appendTaskEvent(taskId, event);
+    appendTaskEvent(taskId, event, ownerConvId);
     const nextContextUsage = contextUsageFromRuntimeEvent(event, ownerConvId || conversationId);
     if (nextContextUsage) {
       // 走表盘唯一写入入口：当前会话改表盘 + 落盘，后台会话只落盘。哪个会话算
@@ -420,6 +425,7 @@ export function createTaskStreamHandlers(ctx) {
             loopIndex,
             toolCalls: upsertToolCall(run.toolCalls, event.call_id, {
               callId: event.call_id,
+              parentCallId: event.parent_call_id || '',
               loopIndex,
             toolGroup: event.tool_group || 'external',
             kind: event.kind || 'tool',
@@ -470,6 +476,7 @@ export function createTaskStreamHandlers(ctx) {
             loopIndex,
             toolCalls: upsertToolCall(run.toolCalls, event.call_id, {
               callId: event.call_id,
+              parentCallId: event.parent_call_id || existingToolCall?.parentCallId || '',
               loopIndex,
               toolGroup: event.tool_group || 'external',
               kind: event.kind || existingToolCall?.kind || 'tool',
@@ -702,6 +709,9 @@ export function createTaskStreamHandlers(ctx) {
           requestedModelId: streamRequest.runConfig.modelId,
           requestedReasoningEffort: streamRequest.runConfig.reasoningEffort,
         } : {}),
+        ...(rerunningNode && streamRequest.runConfig?.nodeRuntimeConfig ? {
+          nodeRuntimeConfigs: { ...(pendingTask.nodeRuntimeConfigs || {}), [streamRequest.rerunNodeId]: streamRequest.runConfig.nodeRuntimeConfig },
+        } : {}),
         id: runId,
         taskId: runId,
         sourceTaskId,
@@ -854,9 +864,10 @@ export function createTaskStreamHandlers(ctx) {
         reasoning_effort: streamRequest.runConfig.reasoningEffort,
       } : {}),
     } : rerunningNode ? {
-      provider: streamRequest.runConfig.provider,
-      model_id: streamRequest.runConfig.modelId,
-      reasoning_effort: streamRequest.runConfig.reasoningEffort,
+      ...(streamRequest.runConfig?.nodeRuntimeConfig ? { runtime_config: streamRequest.runConfig.nodeRuntimeConfig } : {}),
+      provider: streamRequest.runConfig?.provider,
+      model_id: streamRequest.runConfig?.modelId,
+      reasoning_effort: streamRequest.runConfig?.reasoningEffort,
     } : {
       message: pendingTask.requestText ?? pendingTask.title,
       annotations: pendingTask.annotations || [],
@@ -876,12 +887,13 @@ export function createTaskStreamHandlers(ctx) {
       }] : [],
       image_attachments: Array.isArray(pendingTask.imageAttachments) ? pendingTask.imageAttachments : [],
       options: {
+        ...(pendingTask.executionMode === 'bot' ? { node_runtime_configs: pendingTask.nodeRuntimeConfigs || {} } : {}),
         provider: pendingTask.requestedProvider || null,
         model_id: pendingTask.requestedModelId || null,
         agent_id: pendingTask.requestedAgentId || null,
         workflow_id: pendingTask.requestedWorkflowId || null,
         execution_mode: pendingTask.executionMode === 'bot' ? 'bot' : 'chat',
-        reasoning_effort: pendingTask.requestedReasoningEffort || DEFAULT_REASONING_EFFORT,
+        reasoning_effort: pendingTask.executionMode === 'bot' ? null : (pendingTask.requestedReasoningEffort || DEFAULT_REASONING_EFFORT),
         use_history: true,
       },
     };
@@ -993,11 +1005,22 @@ export function createTaskStreamHandlers(ctx) {
   }
 
   return {
+    applyScheduledEvent: (message) => {
+      const cid = message.conversation_id;
+      if (!cid || !message.schedule_id) throw new Error('Scheduled event requires an owner.');
+      if (message.type !== 'task.event') return;
+      const event = normalizeRuntimeEvent(message.event);
+      if (!event || (event.conversation_id && event.conversation_id !== cid)) return;
+      batchRuntimeMutations(cid, () => {
+        if (event.type === 'run_started') {
+          mutateRuntime(cid, (runtime) => { runtime.abortRequested = false; runtime.answerBuffer = ''; runtime.activeRunId = `schedule:${message.run_id}`; });
+          setRuntimeBusy(true, cid);
+        }
+        applyRuntimeEvent({ ...event, conversation_id: cid }, cid);
+      });
+    },
     executeQuest,
     executeWorkflowNodeRerun: (task, nodeId, runConfig) => {
-      if (!runConfig?.provider || !runConfig?.modelId || !runConfig?.reasoningEffort) {
-        return Promise.reject(new Error('Select a provider, model, and reasoning effort before rerunning.'));
-      }
       return executeQuest(
         { ...task, id: task?.taskId || task?.id },
         task?.conversationId || task?.conversation_id,

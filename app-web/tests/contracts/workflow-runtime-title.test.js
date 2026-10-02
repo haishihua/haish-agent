@@ -22,7 +22,7 @@ const titleStyles = runtimeStyles.slice(
 test('runtime title is a real button that hands the workflow id back to AppShell', () => {
   assert.match(
     runtimeSource,
-    /function WorkflowCanvas\(\{ workflow, task, composer, onRetry, agentOptions = \[\], onOpenConfig = null \}\)/,
+    /function WorkflowCanvas\(\{ workflow, task, composer, onRetry, agentOptions = EMPTY_OPTIONS, onOpenConfig = null, providerOptions = \[\], nodeRuntimeConfigs = \{\}, onNodeRuntimeConfigChange, configReadOnly = false \}\)/,
   );
   // 运行状态常驻一行（不再用「标题变彩虹」暗示正在跑），标题整块可点。
   assert.match(runtimeSource, /className=\{`workflow-run-status is-\$\{displayRunStatus \|\| 'idle'\}`\}/);
@@ -70,7 +70,11 @@ test('title carries the runtime palette: neutral text, one status dot, one hue',
   assert.match(titleStyles, /\.workflow-run-status \{\n {4}display: inline-flex;/);
   assert.match(titleStyles, /\.workflow-run-status::before \{\n {4}content: '';/);
   assert.match(titleStyles, /\.workflow-run-status\.is-running \{ color: #76b9fa; \}/);
-  assert.match(titleStyles, /\.workflow-run-status\.is-done,\n\.workflow-run-status\.is-approved \{ color: #55d6a0; \}/);
+  assert.match(titleStyles, /\.workflow-run-status\.is-done,\n\.workflow-run-status\.is-succeeded,\n\.workflow-run-status\.is-approved \{ color: #55d6a0; \}/);
+  assert.match(runtimeSource, /succeeded: 'Succeeded'/);
+  assert.match(titleStyles, /\.workflow-run-status\.is-failed,\n\.workflow-run-status\.is-rejected \{ color: #ee7a91; \}/);
+  assert.match(titleStyles, /\.workflow-run-status\.is-cancelled \{ color: #efc75e; \}/);
+  assert.match(titleStyles, /\.workflow-run-status:is\(\.is-idle, \.is-pending, \.is-queued\) \{ color: rgba\(181, 195, 220, 0\.72\); \}/);
 });
 
 test('title interaction is gated: fine-pointer hover, press feedback, keyboard ring, reduced motion', () => {

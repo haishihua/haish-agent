@@ -408,6 +408,12 @@
     flex-shrink: 0;
 }
 
+/* No empty slot when closed. Move the whole centered fan only while expanded;
+   composer padding + workspace gutter protect the left option from the sidebar. */
+.approval-mode-picker.is-open {
+    transform: translateX(8px);
+}
+
 .approval-mode-trigger {
     position: relative;
     z-index: 31;
@@ -427,7 +433,6 @@
     transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
 
-.approval-mode-trigger:hover,
 .approval-mode-picker.is-open .approval-mode-trigger {
     border-color: rgba(154, 169, 204, 0.72);
     background: #202634;
@@ -461,11 +466,11 @@
     transition: color 180ms ease;
 }
 
-.approval-mode-trigger:hover .approval-mode-icon,
 .approval-mode-picker.is-open .approval-mode-icon {
     color: #fff;
 }
 
+/* Keep the current mode centered between the two symmetric upper options. */
 .approval-mode-menu {
     position: absolute;
     left: 50%;
@@ -523,12 +528,23 @@
     animation: approval-mode-right-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
-.approval-mode-option:hover {
-    border-color: rgba(154, 169, 204, 0.82);
-    background: #272e3d;
-    color: #fff;
-    box-shadow: 0 7px 20px rgba(0, 0, 0, 0.4), 0 0 0 3px rgba(132, 157, 208, 0.1);
+@media (hover: hover) and (pointer: fine) {
+    .approval-mode-trigger:hover {
+        border-color: rgba(154, 169, 204, 0.72);
+        background: #202634;
+        color: #fff;
+    }
+    .approval-mode-trigger:hover .approval-mode-icon { color: #fff; }
+    .approval-mode-option:hover {
+        border-color: rgba(154, 169, 204, 0.82);
+        background: #272e3d;
+        color: #fff;
+        box-shadow: 0 7px 20px rgba(0, 0, 0, 0.4), 0 0 0 3px rgba(132, 157, 208, 0.1);
+    }
 }
+
+.approval-mode-trigger:active,
+.approval-mode-option:active { background: #30394b; }
 
 .approval-mode-option-icon {
     display: inline-block;
@@ -572,6 +588,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .approval-mode-trigger,
+    .approval-mode-icon,
+    .approval-mode-option { transition: none; }
     .approval-mode-menu::before,
     .approval-mode-option-1,
     .approval-mode-option-2 {

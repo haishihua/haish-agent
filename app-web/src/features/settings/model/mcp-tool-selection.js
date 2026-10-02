@@ -17,6 +17,19 @@ export function mcpToolKey(serverName, toolName) {
   return server && tool ? `${server}.${tool}` : '';
 }
 
+// The catalog may keep disabled/empty servers (including lazy servers). Only
+// available tools are choices; connection errors remain visible for diagnosis.
+export function mcpToolPickerServers(servers) {
+  return (Array.isArray(servers) ? servers : [])
+    .filter((server) => server && server.enabled !== false)
+    .map((server) => ({
+      ...server,
+      tools: (Array.isArray(server.tools) ? server.tools : [])
+        .filter((tool) => tool && clean(tool.name) && tool.enabled !== false),
+    }))
+    .filter((server) => server.tools.length || server.error);
+}
+
 function serverToolKeys(server) {
   const tools = Array.isArray(server?.tools) ? server.tools : [];
   return tools.map((tool) => mcpToolKey(server?.name, tool?.name)).filter(Boolean);

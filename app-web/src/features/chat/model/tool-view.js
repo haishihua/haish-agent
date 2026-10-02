@@ -1,4 +1,5 @@
 import { normalizeToolName } from './tool-names.js';
+import { isToolScript } from './tool-script.js';
 import { browserPresentation, fetchPresentation, searchPresentation, skillTrigger } from './tool-presentation.js';
 
 const TOOL_READ_NAMES = new Set(['read_file', 'search_text', 'glob_files', 'list_dir']);
@@ -562,6 +563,16 @@ function extractProcessChatMeta(item, name) {
 export function buildToolView(item) {
   const name = normalizeToolName(item.toolName);
   const path = firstToolPath(item);
+  if (isToolScript(item) || item.scriptLedgerOnly) {
+    const output = toolDisplayOutput(item);
+    return {
+      mode: isToolScript(item) ? 'script' : 'json',
+      label: isToolScript(item) ? 'Tool Script' : (item.label || name.replaceAll('_', ' ')),
+      failed: isToolFailure(item),
+      requestJson: toolJsonText(item.toolInput),
+      responseJson: outputJsonText(output),
+    };
+  }
   const skill = skillTrigger(item);
   if (skill) return { mode: 'skill', label: skill.name, skill, failed: isToolFailure(item) };
   if (name === 'web_search' || name === 'web_fetch' || name === 'browser_use') {
@@ -650,6 +661,10 @@ export function buildToolView(item) {
     };
   }
   if (TOOL_READ_NAMES.has(name)) {
+    if (item.parentCallId && isToolFailure(item)) {
+      return { mode: 'json', label: [toolActionLabel(item), path].filter(Boolean).join(' '), failed: true,
+        requestJson: toolJsonText(item.toolInput), responseJson: outputJsonText(toolDisplayOutput(item)) };
+    }
     return {
       mode: 'read',
       label: [toolActionLabel(item), path].filter(Boolean).join(' ') || item.label,

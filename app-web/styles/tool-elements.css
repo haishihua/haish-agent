@@ -74,6 +74,9 @@
 .chat-timeline-meta .aui-tool-label { white-space: normal; overflow-wrap: anywhere; }
 .aui-timeline-steps { margin: 5px 0 4px 13px; padding-left: 10px; border-left: 1px solid color-mix(in srgb, currentColor 10%, transparent); }
 .aui-timeline-step + .aui-timeline-step { margin-top: 3px; }
+.chat-tool-script-detail > .aui-timeline-steps { margin-left: 0; }
+.chat-tool-script-display-note { margin-bottom: 6px; font-size: 12px; opacity: .6; }
+.chat-tool-script-error { margin-top: 8px; color: #ee9292; overflow-wrap: anywhere; }
 .aui-skill-line .aui-tool-label { opacity: .9; }
 .aui-skill-state { font-size: 12px; opacity: .5; white-space: nowrap; }
 .chat-subagent-conversation { display: flex; flex-direction: column; gap: 18px; min-width: 0; font: inherit; }

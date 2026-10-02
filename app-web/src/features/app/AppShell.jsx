@@ -16,6 +16,8 @@ import {
 import { TopBar } from './components/TopBar.jsx';
 import { ConversationsPanel } from '../conversations/components/ConversationsPanel.jsx';
 import { ChatPanel } from '../chat/components/ChatPanel.jsx';
+import { useNodeRuntimeConfigs } from '../workflow/hooks/useNodeRuntimeConfigs.js';
+import { nodeRuntimeConfigRequest } from '../workflow/model/node-runtime-config.js';
 import { ChatComposer } from '../chat/components/ChatComposer.jsx';
 import { storedRunConfigRequest } from '../chat/hooks/useRunConfig.js';
 import { BottomNav, TabPlaceholder } from './components/Shell.jsx';
@@ -163,6 +165,9 @@ import { createConversationHandlers } from '../conversations/hooks/createConvers
 import { createComposerHandlers } from '../chat/hooks/createComposerHandlers.js';
 import { createSettingsHandlers } from '../settings/hooks/createSettingsHandlers.js';
 import { createConversationRuntime } from '../conversations/hooks/createConversationRuntime.js';
+import { SchedulesProvider } from '../schedules/components/SchedulesProvider.jsx';
+import { createScheduleBinding } from '../schedules/model/schedule.js';
+import { createScheduledRuntimeHandlers } from '../schedules/model/runtime-handlers.js';
 import { createTaskStreamHandlers } from '../tasks/hooks/createTaskStreamHandlers.js';
 import { createDeployHandlers } from '../tasks/hooks/createDeployHandlers.js';
 import { createConversationActivationHandlers } from '../conversations/hooks/createConversationActivationHandlers.js';
@@ -218,7 +223,6 @@ export function AppShell() {
     typeof document === 'undefined' ? true : document.hasFocus()
   ));
   const viewModeRef = useRef('chat');
-  const botRunConfigRef = useRef(null);
   const conversationReorderChainsRef = useRef(new Map());
   const conversationReorderVersionsRef = useRef(new Map());
   const projectReorderChainRef = useRef(Promise.resolve());
@@ -258,6 +262,9 @@ export function AppShell() {
   const copyTimerRef = useRef(null);
   const [settingsMode, setSettingsMode] = useState(false);
   const [settingsSection, setSettingsSection] = useState('llm');
+  const [automationExpanded, setAutomationExpanded] = useState(false);
+  const [agentSettingsReady, setAgentSettingsReady] = useState(false);
+  const needsAgentSettings = settingsMode && (automationExpanded || ['agent', 'workflow'].includes(settingsSection));
   const [llmSettingsDraft, setLlmSettingsDraft] = useState(() => loadLlmSettingsDraft());
   const [settingsRecordsDraft, setSettingsRecordsDraft] = useState(() => loadSettingsRecordsDraft());
   // 测试结果的权威副本随已保存的连接一起存（后端）。这里只放本轮会话的临时状态。
@@ -422,13 +429,15 @@ export function AppShell() {
   }, [settingsMode, settingsSection]);
 
   useEffect(() => {
-    if (!settingsMode || !['agent', 'workflow'].includes(settingsSection)) return undefined;
+    if (!needsAgentSettings) return undefined;
     let cancelled = false;
     let retryTimer = null;
     const load = async (attempt = 0) => {
       try {
         const payload = await settingsApiRef.current.fetchAgentSettingsPayload();
-        if (!cancelled) settingsApiRef.current.applyAgentSettingsPayload(payload);
+        if (cancelled) return;
+        settingsApiRef.current.applyAgentSettingsPayload(payload);
+        setAgentSettingsReady(true);
       } catch (error) {
         if (cancelled) return;
         if (attempt < 4) {
@@ -444,8 +453,7 @@ export function AppShell() {
       cancelled = true;
       if (retryTimer) window.clearTimeout(retryTimer);
     };
-  }, [settingsMode, settingsSection]);
-
+  }, [needsAgentSettings]);
   useEffect(() => {
     if (!settingsMode || settingsSection !== 'workflow') return undefined;
     let cancelled = false;
@@ -529,15 +537,9 @@ export function AppShell() {
   const sidebarRetryRunConfig = (task) => {
     const targetConversationId = task?.conversationId || task?.conversation_id;
     const baseKey = buildRunConfigStorageKey(ownerId, 'chat', targetConversationId);
-    if (!baseKey) return null;
-    return storedRunConfigRequest(
-      task?.executionMode === 'bot' ? `${baseKey}.bot` : baseKey,
-      llmProviderOptions,
-    );
+    if (!baseKey || task?.executionMode === 'bot') return null;
+    return storedRunConfigRequest(baseKey, llmProviderOptions);
   };
-  const handleBotRunConfigChange = React.useCallback((config) => {
-    botRunConfigRef.current = config;
-  }, []);
   const workflowOptions = useMemo(() => {
     const normalized = normalizeWorkflowSettings(workflowSettingsDraft);
     return [...normalized.presets, ...normalized.custom]
@@ -759,11 +761,7 @@ export function AppShell() {
     workspaceStateWithConversationDetail,
   });
 
-  draftApiRef.current = {
-    materializeDraftConversationForSend,
-  };
-
-
+  draftApiRef.current = { materializeDraftConversationForSend };
   useEffect(() => () => {
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
   }, []);
@@ -838,6 +836,7 @@ export function AppShell() {
     ensureTaskForEvent,
     updateTaskById,
     getTaskById,
+    ensureConversationRuntime,
   } = createConversationActivationHandlers({
     API_BASE,
     activeRuntimeTargetConvId,
@@ -1023,6 +1022,7 @@ export function AppShell() {
   const {
     executeQuest,
     executeWorkflowNodeRerun,
+    applyScheduledEvent,
   } = createTaskStreamHandlers({
     API_BASE,
     CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
@@ -1076,10 +1076,8 @@ export function AppShell() {
     upsertToolCall,
     userCancelledTaskIdsRef,
   });
-
-
   const {
-    handleSelectConversation,
+    handleSelectConversation, handleGoalCommand,
     handleConversationRemoved,
     handleSelectProject,
     handleToggleProject,
@@ -1101,7 +1099,7 @@ export function AppShell() {
     handleRetryTask,
     handleForkMessage,
   } = createConversationHandlers({
-    executeQuest,
+    executeQuest, workflowById, workflowSettingsDraft, setSelectedWorkflowId,
     API_BASE,
     DEFAULT_SESSION_NAME,
     activateConversationDetail,
@@ -1252,7 +1250,6 @@ export function AppShell() {
     handleStop,
     removeConversationTaskFromWorkspace,
   };
-
   function removeMissingTask(targetConversationId, taskId) {
     if (!targetConversationId || !taskId) return;
     const runtime = getRuntime(targetConversationId);
@@ -1420,6 +1417,8 @@ export function AppShell() {
     setPendingSettingsEditor({ section: 'workflow', id, mode: 'edit' });
   }, []);
   const currentWorkflowTask = currentTask?.executionMode === 'bot' ? currentTask : null;
+  const nodeConfigSelection = useNodeRuntimeConfigs(botRunConfigStorageKey, selectedWorkflow, currentWorkflowTask?.nodeRuntimeConfigs, currentWorkflowTask?.taskId);
+  const botNodeConfigs = nodeConfigSelection.configs;
   async function handleSelectWorkflowTask(projectId, targetConversationId, task) {
     const taskId = task?.taskId || task?.task_id || task?.id;
     if (!targetConversationId || !taskId) return;
@@ -1769,7 +1768,9 @@ export function AppShell() {
     );
   }
 
+  const scheduleRuntime = createScheduledRuntimeHandlers({ applyScheduledEvent, ensureConversationRuntime, restoreLatestTaskRuntime, flushRuntimeTasksToWorkspace, getRuntime, setRuntimeBusy, isTaskActuallyActive });
   return (
+    <SchedulesProvider currentConversationId={conversationId} ensureConversation={createScheduleBinding(materializeDraftConversationForSend, conversationIdRef)} onRuntimeEvent={scheduleRuntime.event} onRecover={scheduleRuntime.recover}>
     <div className="app-shell">
       <MetalFxRuntimeKeeper />
       <TopBar
@@ -1797,6 +1798,8 @@ export function AppShell() {
             records={settingsRecordsDraft}
             onRecordsChange={setSettingsRecordsDraft}
             agentSettings={agentSettingsDraft}
+            agentSettingsLoading={!agentSettingsReady}
+            onAutomationExpandedChange={setAutomationExpanded}
             onAgentSettingsChange={setAgentSettingsDraft}
             workflowSettings={workflowSettingsDraft}
             onWorkflowSettingsChange={setWorkflowSettingsDraft}
@@ -1890,6 +1893,7 @@ export function AppShell() {
 	                    disabled={composerDisabled}
 	                    submitPending={submitPending}
 	                    onSend={handleDeploy}
+                    onGoalCommand={handleGoalCommand}
                     onStop={handleStop}
                     onSelectFile={(file, selectedAgentId) => { handleAttachmentSelect(file, selectedAgentId, 'chat').catch((error) => console.error('attachment upload failed', error)); }}
                     onClearFile={handleAttachmentClear}
@@ -1932,19 +1936,22 @@ export function AppShell() {
                     task={currentWorkflowTask}
                     agentOptions={agentOptions}
                     onOpenConfig={openWorkflowConfig}
+                    {...{ providerOptions: llmProviderOptions, nodeRuntimeConfigs: currentConversationRunning ? (currentWorkflowTask?.nodeRuntimeConfigs || {}) : botNodeConfigs, onNodeRuntimeConfigChange: nodeConfigSelection.change, configReadOnly: currentConversationRunning || submitPending }}
                     onRetry={(nodeId) => {
                       if (!currentWorkflowTask) return;
                       setViewedWorkflowTask(null);
-                      executeWorkflowNodeRerun(currentWorkflowTask, nodeId, botRunConfigRef.current).catch((error) => {
+                      executeWorkflowNodeRerun(currentWorkflowTask, nodeId, selectedWorkflow?.nodes?.find((node) => node.id === nodeId)?.type === 'agent' ? nodeRuntimeConfigRequest(botNodeConfigs[nodeId]) : null).catch((error) => {
                         console.error('workflow node rerun failed', error);
                         showToast('error', String(error?.message || error));
                       });
                     }}
                     composer={<ChatComposer
+                      executionMode="bot"
+                      scheduleNodeRuntimeConfigs={nodeConfigSelection.conversationConfigs} onRestoreNodeConfigs={nodeConfigSelection.restore}
                       scopeId={draftConversationRef.current?.composerScopeId || conversationId}
                       draft={chatDraft}
                       onDraftChange={setChatDraft}
-                      onSend={handleDeploy}
+                      onSend={(...args) => handleDeploy(...args, botNodeConfigs)}
                       onStop={handleStop}
                       activeTaskText={activeTaskText}
                       running={currentConversationRunning}
@@ -1965,7 +1972,6 @@ export function AppShell() {
                       agentLoading={workflowLoading}
                       selectionStorageKey={botRunConfigStorageKey}
                       onAgentChange={setSelectedWorkflowId}
-                      onRunConfigChange={handleBotRunConfigChange}
                       contextUsage={contextUsage}
                     />}
                   />
@@ -1988,6 +1994,6 @@ export function AppShell() {
         onUseAsContext={hollow?.contextSource
           ? () => { setContextTask(hollow.contextSource); setHollow(null); }
           : undefined} />
-    </div>
+    </div></SchedulesProvider>
   );
 }

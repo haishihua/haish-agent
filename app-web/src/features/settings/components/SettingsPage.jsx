@@ -61,6 +61,8 @@ export function SettingsPage({
   records,
   onRecordsChange,
   agentSettings,
+  agentSettingsLoading = false,
+  onAutomationExpandedChange,
   onAgentSettingsChange,
   workflowSettings,
   onWorkflowSettingsChange,
@@ -96,6 +98,11 @@ export function SettingsPage({
   // 开关点按立即保存（与 Skills 一致），保存期间其它行开关暂不可点。
   const [llmToggleBusy, setLlmToggleBusy] = useState('');
   const [expandedSettingsSections, setExpandedSettingsSections] = useState(() => new Set([activeSection]));
+  const automationOpen = expandedSettingsSections.has('automation');
+  useEffect(() => {
+    onAutomationExpandedChange?.(automationOpen);
+  }, [automationOpen, onAutomationExpandedChange]);
+  useEffect(() => () => onAutomationExpandedChange?.(false), [onAutomationExpandedChange]);
   // 从运行页「点标题 → 配置页」跳过来时：直接把那个工作流的编辑器打开（和列表里点一行走同一个
   // setEditingSettings 入口）；消费完把请求交回上层清掉，之后关掉抽屉不会被重新打开。
   const lastOpenRequestRef = useRef(null);
@@ -495,7 +502,7 @@ export function SettingsPage({
           <CollapsibleContent><div className="settings-nav-children">{children.map(child => {
             const selected = isGroup ? activeSection === child.id : activeSection === section.id && activeSubtab === child.id;
             const count = navCount(isGroup ? child.id : section.id, child.id);
-            return <Button key={child.id} variant="ghost" className={`settings-nav-item ${selected ? 'is-selected' : ''}`} aria-current={selected ? 'page' : undefined} onClick={() => { if (panelBusy) return; if (isGroup) { cancelEditor(); setSettingsSearch(''); onSectionChange(child.id); } else selectSubtab(section.id, child.id); }}><AppIcon name={child.icon || SETTINGS_SUBTAB_ICONS[child.id] || 'configure'} size={16} /><span>{child.label}</span>{count !== null && <small>{count}</small>}</Button>;
+            return <Button key={child.id} variant="ghost" className={`settings-nav-item ${selected ? 'is-selected' : ''}`} aria-current={selected ? 'page' : undefined} onClick={() => { if (panelBusy) return; if (isGroup) { cancelEditor(); setSettingsSearch(''); onSectionChange(child.id); } else selectSubtab(section.id, child.id); }}><AppIcon name={child.icon || SETTINGS_SUBTAB_ICONS[child.id] || 'configure'} size={16} /><span>{child.label}</span>{count !== null && <small>{child.id === 'agent' && agentSettingsLoading ? <LoaderCircle size={12} role="status" aria-label="Loading agent count" /> : count}</small>}</Button>;
           })}</div></CollapsibleContent>
         </Collapsible>;
       })}

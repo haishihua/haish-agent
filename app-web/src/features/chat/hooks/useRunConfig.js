@@ -246,6 +246,7 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
       defaultAgentId,
     );
     setSelection((current) => {
+      if (!keyChanged && current.serverKey === nextKey) return current;
       const providerId = keyChanged || !optionHasId(providerOptions, current.providerId)
         ? nextSelection.providerId
         : current.providerId;
@@ -264,7 +265,7 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
       if (providerId === current.providerId && modelId === current.modelId && providerDefaultModelId === current.providerDefaultModelId && agentId === current.agentId && reasoningEffort === current.reasoningEffort) {
         return current;
       }
-      return { providerId, modelId, providerDefaultModelId, agentId, reasoningEffort };
+      return { providerId, modelId, providerDefaultModelId, agentId, reasoningEffort, serverKey: undefined };
     });
     storageKeyRef.current = nextKey;
   }, [selectionStorageKey, providerOptions, agentOptions, defaultAgentId]);
@@ -290,6 +291,11 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
   }, []);
 
   return {
+    restoreConfig: (config) => {
+      const provider = providerOptions.find((item) => (item.requestProvider || item.provider) === config.provider);
+      setSelection((current) => ({ ...current, serverKey: selectionStorageKey || '', providerId: provider?.id || config.provider || '', modelId: config.model_id || '', providerDefaultModelId: provider?.defaultModelId || '', reasoningEffort: config.reasoning_effort || DEFAULT_REASONING_EFFORT, agentId: config.workflow_id || config.agent_id || current.agentId }));
+    },
+    serverSelection: selection.serverKey === (selectionStorageKey || ''),
     providerId: selection.providerId,
     modelId: selection.modelId,
     agentId: selection.agentId,

@@ -1,4 +1,6 @@
 import React from 'react';
+import { Clock } from 'lucide-react';
+import { useSchedules } from '../../schedules/hooks/useSchedules.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ApprovalGlyph, ConversationAction, WaitingInputGlyph } from './ConversationIcons.jsx';
 import { TaskRecordCompact } from './ConversationTaskCards.jsx';
@@ -114,6 +116,8 @@ export function ConversationNode({
   onOpenTaskReport,
   onRetryTask,
 }) {
+  const schedules = useSchedules();
+  const scheduleCount = schedules?.items.filter((job) => job.conversation_id === conversation.id).length || 0;
   const tasks = conversation.tasks || [];
   const [extraVisible, setExtraVisible] = React.useState(0);
   const visibleLimit = Math.max(1, Number(taskPreviewLimit) || PREVIEW_PAGE_SIZE);
@@ -180,7 +184,7 @@ export function ConversationNode({
       <div
         role="button"
         tabIndex={0}
-        className="conversation-row"
+        className={`conversation-row${scheduleCount ? ' has-schedules' : ''}`}
         draggable={true}
         onClick={() => onSelectConversation(project.id, conversation.id)}
         onDoubleClick={(event) => {
@@ -214,6 +218,12 @@ export function ConversationNode({
           </PortalTooltip>
           <ConversationAction label="Delete conversation" icon="trash" onClick={() => onRequestDeleteConversation(project, conversation)} />
         </span>
+        {scheduleCount > 0 && <button type="button" className="conversation-schedule-icon" aria-label={`Scheduled tasks (${scheduleCount})`} title={`${scheduleCount} scheduled task(s)`}
+          onClick={(event) => { event.stopPropagation(); schedules.openManage(conversation.id); }}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}>
+          <Clock size={15} strokeWidth={1.5} aria-hidden="true" />
+        </button>}
         {/* 状态坑位只有一个：在跑 / 在等人 / 未读终态，判据在 model/conversation-run-state.js */}
         {WaitGlyph ? (
           <span className={`conversation-running-indicator ${waitIndicator.className}`} role="status" aria-label={waitIndicator.label}>

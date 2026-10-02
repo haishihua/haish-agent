@@ -80,7 +80,7 @@ test('defaults expose only Task Assistant and no preset workflow', () => {
 test('workflow settings load the agent catalog used by agent nodes', () => {
   assert.match(
     appShellSource,
-    /!\['agent', 'workflow'\]\.includes\(settingsSection\)/,
+    /automationExpanded \|\| \['agent', 'workflow'\]\.includes\(settingsSection\)/,
   );
 });
 

@@ -78,7 +78,8 @@
   .settings-nav-children { padding-bottom: 12px; }
   .settings-nav-item { display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; min-height: 38px; padding: 8px 12px; margin-bottom: 4px; border-radius: 7px; background: transparent; color: #93a0b6; text-align: left; }
   .settings-nav-item.is-selected { background: #1c2f52; color: #e3ecfc; }
-  .settings-nav-item small { margin-left: auto; font-size: 11px; min-width: 20px; text-align: right; color: #8996ac; }
+  .settings-nav-item > span { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .settings-nav-item small { display: flex; align-items: center; justify-content: flex-end; flex: 0 0 24px; margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; color: #8996ac; }
   .settings-nav-item.is-selected small { color: #abc4ec; }
   .settings-content-modern { max-width: 1120px; margin: auto; padding: 24px 28px; }
   .settings-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }

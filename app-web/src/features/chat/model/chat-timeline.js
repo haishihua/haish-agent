@@ -1,6 +1,7 @@
 import { eventDeltaText, stripInjectedSkillInstruction } from './chat-text.js';
 import { streamEventUpdate } from './stream-events.js';
 import { normalizeToolName } from './tool-names.js';
+import { isToolScript, nestToolScriptCalls } from './tool-script.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
 import { skillDisplayName } from '../../tasks/model/runtime-events.js';
 import { skillTrigger } from './tool-presentation.js';
@@ -99,6 +100,7 @@ export function llmRetrySummary(event) {
 
 
 function chatTraceToolName(value) {
+  if (isToolScript({ toolName: value })) return 'Tool Script';
   return String(value || 'tool').replace(/[_-]+/g, ' ').trim() || 'tool';
 }
 
@@ -366,6 +368,7 @@ export function groupConsecutiveTools(items) {
     // ask_user owns an inline answer form and must remain a stable top-level
     // timeline item. Grouping it would remove its chip/slot during rerenders.
     && normalizeToolName(it.toolName) !== 'ask_user'
+    && !isToolScript(it)
   );
   let groupIdx = 0;
   let i = 0;
@@ -936,6 +939,7 @@ export function buildChatTimeline(task, taskStatus) {
         kind: 'tool',
         id: callId || `tool-${seenToolIds.size}`,
         callId,
+        parentCallId: event.parentCallId || event.parent_call_id || call.parentCallId || call.parent_call_id || '',
         category,
         label,
         toolName: call.toolName || '',
@@ -1052,6 +1056,7 @@ export function buildChatTimeline(task, taskStatus) {
       kind: 'tool',
       id: call.callId,
       callId: call.callId,
+      parentCallId: call.parentCallId || call.parent_call_id || '',
       category,
       label,
       toolName: call.toolName || '',
@@ -1117,7 +1122,7 @@ export function buildChatTimeline(task, taskStatus) {
   // 折叠"两段文本之间"的连续工具调用为单行聚合 chip。聊天阅读时关心解决思路
   // (text + thinking)，不关心 read_file / chrome_devtools_* 反复的细节；想看
   // 单条工具调用时点开 chip 还能看到原来的 ChatTimelineToolNode 列表。
-  const timeline = { items: groupConsecutiveTools(items), latestTodos };
+  const timeline = { items: groupConsecutiveTools(nestToolScriptCalls(items)), latestTodos };
   return cacheTimeline(task, finalStatus, timeline);
 }
 
