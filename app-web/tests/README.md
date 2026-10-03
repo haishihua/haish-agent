@@ -6,7 +6,6 @@
 
 - `features/settings/mcp-tool-selection.test.js` + `contracts/mcp-tool-picker.test.js` 覆盖 Agent 的 MCP tools 空状态：无服务器、工具清单为空、服务器/工具全部停用时统一显示「No MCP tools available.」，不逐项显示空服务器；可选但未勾选的工具仍可配置，连接错误保留。`fixtures/mcp-tool-picker.html` 使用真实编辑器验证空状态和逐条勾选/旧服务器级授权迁移。
 
-- `features/settings/code-mode.test.js` 覆盖 Code Mode 独立分组、选中只授予 `code_mode`、新建 custom agent 不默认启用、旧后端目录为准，以及原 custom agent handler 的创建/更新保存回显和取消后重载；不调用模型。
 
 - `features/conversations/goal-command.test.js` 覆盖 Chat → Workflow 的 `/goal` 路由：同目录项目复用、缺失自动导入（bot）、默认项目映射、新会话发送 Goal Loop、裸命令仅跳转、目标会话配置持久化、附件重新上传、准备失败保留草稿、切换会话时停止误投；命令优先于 Skill 和运行中纠偏。`fixtures/goal-command.html` 使用真实 ChatComposer 验证菜单选择、剥离命令、无 Chat 模型时发送、防重复、失败留稿和运行中独立路由（离线桩，不创建真实任务）。
 
@@ -53,7 +52,6 @@
 | 页面 | 覆盖范围 |
 | --- | --- |
 | [mcp-tool-picker.html](fixtures/mcp-tool-picker.html) | Agent MCP tools 逐条选择、旧授权迁移、未勾选但可用的列表、无服务器/全空清单/全部停用时单条空状态、无空服务器标题及连接错误保留。 |
-| [code-mode-settings.html](fixtures/code-mode-settings.html) | 真实 AgentConfigEditor 显示 Code Mode、初始未选、勾选只授予编排入口、File edits/Terminal 保持未选、保存后重挂回显、取消保留已选读工具及取消持久化；7 项 DOM 检查。夹具保存使用独立本地测试存储，正式 API 保存另由 handler 和后端持久化测试验证。 |
 | [scheduled-tasks.html](fixtures/scheduled-tasks.html) | 共用 slash 面板及 Clock、无会话选择器、复用 Radix 非原生下拉/月历与时分输入、跨月/方向键/Escape/焦点返回、编辑保留时间、保存失败重试只绑定一次、固定模型且不执行、侧栏常驻提醒与运行灯不重叠、管理不切会话、暂停/历史/确认删除及实时刷新；离线 fixture 不调用模型。 |
 | [workflow-node-config.html](fixtures/workflow-node-config.html) | Provider / Model / Thinking 及底部 Workflow 复用共享 Radix 非原生 Select，紧凑 12px 字号与整行均分双 Tab（1px 选中底线，无尾部空白）、深色菜单、Portal 防裁剪、方向键/Enter/Escape/焦点返回与外部点击关闭；Workflow 独立灰色节点连线图标（不复用仪表盘）、无文字/无边框入口、展开不留图标外框、灰色菜单选中项无嵌套描边、当前名称提示、菜单切换及运行中锁定；Tab 与配置卡片 8px 间距和紧凑内边距；未执行 Agent 节点可配置；节点选择独立、持久化、历史任务恢复、任务/账号/Workflow 隔离、运行中只读、移除 default 菜单项并用选择提示和独立清空动作替代；Bot 去掉 context 和 model picker 且保留 Workflow 入口、无需隐藏全局模型即可发送；Chat 原入口保留。 |
 | [approval-picker-boundary.html](fixtures/approval-picker-boundary.html) | 生产 ApprovalModePicker 在高层级会话侧栏与裁剪边界旁展开：聊天 / Workflow 样式、240 / 360 / 640px 宽度下动画与两枚选项完整留在工作区，并用命中测试确认未被侧栏遮挡；保留模式切换、只读、Escape 和点击外部关闭行为；`#checks[data-result]` 输出 29 项检查。 |

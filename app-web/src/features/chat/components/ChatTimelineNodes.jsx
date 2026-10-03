@@ -3,11 +3,10 @@ import { TerminalDetail, DiffDetail } from '../../../shared/ui/agent-elements/To
 import { ToolCall, ToolStatus, isActiveToolStatus } from '../../../shared/ui/agent-elements/ToolCall.jsx';
 import { ToolTimeline } from '../../../shared/ui/agent-elements/ToolTimeline.jsx';
 import { WebSearch } from '../../../shared/ui/agent-elements/WebSearch.jsx';
-import { Bot, FileCode2, LoaderCircle, Sparkles } from 'lucide-react';
+import { Bot, LoaderCircle, Sparkles } from 'lucide-react';
 import { BrowserToolDetail } from './BrowserToolDetail.jsx';
 import { VisionToolDetail } from './VisionToolDetail.jsx';
 import { toolCardHeading } from '../model/tool-presentation.js';
-import { isToolScript } from '../model/tool-script.js';
 import { ActivityOrb } from './ActivityOrb.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
@@ -456,21 +455,7 @@ function ChatProcessConversation({ view, conversationId, taskId }) {
   );
 }
 
-export function ChatTimelineToolNode(props) {
-  const { item } = props;
-  const approvalRequest = React.useContext(ToolApprovalsContext).get(item.id);
-  // A single resolved call is an ordinary tool card, not a one-item group.
-  // Keep the parent approval visible before the script is allowed to run.
-  if (isToolScript(item) && item.children?.length === 1 && !approvalRequest) {
-    return <>
-      <ChatTimelineToolNode {...props} item={item.children[0]} />
-      {buildToolView(item).failed ? <ChatToolScriptError item={item} /> : null}
-    </>;
-  }
-  return <ChatTimelineToolCard {...props} />;
-}
-
-function ChatTimelineToolCard({ item, conversationId = '', taskId = '', askUserActive = false }) {
+export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', askUserActive = false }) {
   const approvalRequest = React.useContext(ToolApprovalsContext).get(item.id);
   const isAskUser = String(item.toolName || '').toLowerCase() === 'ask_user';
   const status = item.status || 'pending';
@@ -481,15 +466,11 @@ function ChatTimelineToolCard({ item, conversationId = '', taskId = '', askUserA
   const view = buildToolView(item);
   const heading = toolCardHeading(item, view);
   const isSkill = view.mode === 'skill';
-  const isScript = isToolScript(item);
   const displayStatus = approvalRequest ? 'approval' : view.failed ? 'failed' : status;
-  const approvals = React.useContext(ToolApprovalsContext);
-  const hasChildApproval = isScript && item.children?.some(child => approvals.has(child.id));
   const skillStatus = ['done', 'completed'].includes(displayStatus) ? 'Loaded'
     : displayStatus === 'failed' ? 'Load failed' : displayStatus === 'cancelled' ? 'Cancelled' : 'Loading';
   // 默认折叠：shell/terminal 卡片不自动展开，用户点击头部才展开查看输出。
   const [open, setOpen] = React.useState(Boolean(view.defaultOpen));
-  const expanded = open || Boolean(hasChildApproval);
   React.useEffect(() => setOpen(false), [conversationId, taskId, item.id]);
   const fallbackLines = view.mode === 'read' ? [] : [item.inputSummary, item.outputSummary].filter(Boolean).slice(0, 2);
   const hasChildren = Array.isArray(item.children) && item.children.length > 0;
@@ -529,19 +510,17 @@ function ChatTimelineToolCard({ item, conversationId = '', taskId = '', askUserA
         <span className={`aui-tool-label ${displayStatus === 'running' ? 'is-running' : ''}`}>{view.label}</span>
         <span className="aui-skill-state">{skillStatus}</span>
         <ToolStatus status={displayStatus} label={skillStatus} />
-      </div> : <ToolCall label={approvalRequest ? `${isScript ? 'Tool Script' : item.toolName} · Awaiting approval` : heading.label}
-        query={approvalRequest ? '' : heading.query} status={displayStatus} open={expanded} onOpenChange={setOpen} expandable={hasBody}
-        icon={isScript ? <FileCode2 size={14} /> : <span className={`ico ${iconClass}`} />}>
-          {item.toolResponse?.limits?.display_truncated ? <div className="chat-tool-script-display-note">Showing limited call details.</div> : null}
-          {isScript ? <ChatToolScriptDetail item={item} view={view} conversationId={conversationId} taskId={taskId} /> : null}
-          {!isScript && view.mode !== 'read' ? <ChatTimelineToolBody view={view} conversationId={conversationId} taskId={taskId} /> : null}
+      </div> : <ToolCall label={approvalRequest ? `${item.toolName} · Awaiting approval` : heading.label}
+        query={approvalRequest ? '' : heading.query} status={displayStatus} open={open} onOpenChange={setOpen} expandable={hasBody}
+        icon={<span className={`ico ${iconClass}`} />}>
+          {view.mode !== 'read' ? <ChatTimelineToolBody view={view} conversationId={conversationId} taskId={taskId} /> : null}
           {view.mode === 'read' &&
             fallbackLines.map((line, index) => (
               <div key={index} className="chat-timeline-tool-line">
                 {line}
               </div>
             ))}
-          {!isScript && hasChildren ? (
+          {hasChildren ? (
             <div className="chat-timeline-tool-children">
               {item.children.map((child) => (
                 <ChatTimelineToolNode
@@ -572,26 +551,6 @@ function ChatTimelineToolCard({ item, conversationId = '', taskId = '', askUserA
       {approvalRequest ? <ToolApprovalCard request={approvalRequest} embedded /> : null}
     </div>
   );
-}
-
-function ChatToolScriptDetail({ item, view, conversationId, taskId }) {
-  const children = Array.isArray(item.children) ? item.children : [];
-  const raw = <ChatJsonPair requestJson={view.requestJson} responseJson={view.responseJson} />;
-  if (!children.length) return raw;
-  return <div className="chat-tool-script-detail">
-    <div className="aui-timeline-steps" aria-label="Tool Script calls">
-      {children.map(child => <div className="aui-timeline-step" key={child.id}>
-        <ChatTimelineToolNode item={child} conversationId={conversationId} taskId={taskId} />
-      </div>)}
-    </div>
-    {view.failed ? <ChatToolScriptError item={item} /> : null}
-  </div>;
-}
-
-function ChatToolScriptError({ item }) {
-  const response = item.toolResponse;
-  const message = response?.error?.message || response?.summary || item.outputSummary || 'Script failed.';
-  return <div className="chat-tool-script-error" role="status">{message}</div>;
 }
 
 // Keep the existing action-count summary and per-call interaction inside
