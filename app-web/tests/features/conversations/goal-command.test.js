@@ -152,6 +152,12 @@ test('documents are re-uploaded to the destination, not reused with a source con
   assert.equal(stale.calls.length, 0);
 });
 
+test('goal command uses a target icon while schedule keeps its clock', () => {
+  const source = readFileSync(new URL('../../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
+  assert.match(source, /skill\.command && skill\.name === 'goal' \? <Target className="chat-skill-menu-icon"/);
+  assert.match(source, /: skill\.command \? <Clock className="chat-skill-menu-icon"/);
+});
+
 test('composer intercepts /goal before skill expansion and runtime steering, and locks duplicate sends', () => {
   const source = readFileSync(new URL('../../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
   assert.ok(source.indexOf('if (goal) {') < source.indexOf('const skillInvocation ='));

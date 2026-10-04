@@ -74,7 +74,7 @@ export function createConversationHandlers(ctx) {
     try {
       const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
       const response = await apiFetch(
-        `${API_BASE}/api/projects?execution_mode=${executionMode}`,
+        `${API_BASE}/api/projects?execution_mode=${executionMode}&summary_only=true`,
         { method: 'GET' },
       );
       if (!response.ok) throw new Error(`project reload failed: ${response.status}`);

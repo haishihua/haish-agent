@@ -1804,7 +1804,7 @@ export function AppShell() {
             workflowSettings={workflowSettingsDraft}
             onWorkflowSettingsChange={setWorkflowSettingsDraft}
             onSave={handleSaveSettingsDraft}
-            onSaveTools={handleSaveToolsSettingsDraft}
+            onSaveTools={handleSaveToolsSettingsDraft} onToast={showToast}
             onDeleteLlmProvider={handleDeleteLlmProvider}
             onToggleLlmProvider={handleToggleLlmProvider}
             onTogglePresetAgent={handleTogglePresetAgent}

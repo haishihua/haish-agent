@@ -45,7 +45,7 @@ import {
   stopRemoteAdapter,
   writeRemoteSettings,
 } from './local-remote.js';
-import { createTaskSleepGuard } from './task-sleep-guard.js';
+import { createAppSleepGuard } from './app-sleep-guard.js';
 import { createScheduledTaskActivity } from './scheduled-task-activity.js';
 import { readToolScreenshot } from './tool-screenshot.js';
 
@@ -97,17 +97,12 @@ const scheduledTaskActivity = createScheduledTaskActivity();
 let scheduleActivityTimer: NodeJS.Timeout | null = null;
 let scheduleActivityRefreshing = false;
 
-// 普通任务流或定时执行在跑就不让机器进入自动系统休眠：任务跑在本机
-// Python 运行时里，睡着会把运行时和上游模型流一起挂起。只拦系统休眠，屏幕照常
-// 熄灭、锁屏照常发生，也不挡用户手动睡眠；最后一条任务流结束就放开。
-const taskSleepGuard = createTaskSleepGuard({
+// 应用启动后持续防止自动系统休眠，空闲/关窗时也保持本地定时任务可执行。
+// 屏幕仍可熄灭、锁屏，不阻止手动睡眠或合盖；真正退出应用时释放。
+const appSleepGuard = createAppSleepGuard({
   start: () => powerSaveBlocker.start('prevent-app-suspension'),
   stop: (blockerId) => powerSaveBlocker.stop(blockerId),
 });
-
-function syncTaskSleep(): void {
-  taskSleepGuard.sync(realtimeTaskOwners.size + scheduledTaskActivity.size);
-}
 
 function realtimeSocketUrl(baseUrl: string): string {
   const url = new URL('/api/events/ws', baseUrl);
@@ -133,7 +128,6 @@ function failRealtimeConnection(detail = 'Local runtime connection closed.'): vo
     });
   }
   realtimeTaskOwners.clear();
-  syncTaskSleep();
 }
 
 function scheduleRealtimeReconnect(): void {
@@ -164,7 +158,6 @@ function handleRealtimeMessage(event: MessageEvent): void {
   }
   if (message.type === 'schedule.event' || message.schedule_id) {
     scheduledTaskActivity.handle(message);
-    syncTaskSleep();
     for (const subscriberId of realtimeScheduleSubscribers) {
       sendToWebContents(subscriberId, 'runtime:schedule-event', message);
     }
@@ -175,7 +168,6 @@ function handleRealtimeMessage(event: MessageEvent): void {
     if (ownerId) sendToWebContents(ownerId, 'runtime:task-message', message);
     if (message.type === 'task.end') {
       realtimeTaskOwners.delete(requestId);
-      syncTaskSleep();
     }
     return;
   }
@@ -234,7 +226,6 @@ async function refreshScheduleActivity(): Promise<void> {
     const result = await sendRealtimeCommand({ type: 'schedule.activity.snapshot', request_id: randomUUID() }, 10_000);
     if (runtimeStopInFlight || realtimeSocket !== socket) return;
     snapshot.apply(result.run_ids);
-    syncTaskSleep();
   } catch (error) {
     if (!runtimeStopInFlight) console.warn('[realtime] failed to refresh schedule activity', error);
   } finally {
@@ -559,14 +550,12 @@ ipcMain.handle('runtime:command', async (event, command: RealtimeMessage) => {
   const requestId = String(command?.request_id || '');
   if (command?.type === 'task.start') {
     realtimeTaskOwners.set(requestId, event.sender.id);
-    syncTaskSleep();
   }
   try {
     return await sendRealtimeCommand(command);
   } catch (error) {
     if (command?.type === 'task.start') {
       realtimeTaskOwners.delete(requestId);
-      syncTaskSleep();
     }
     throw error;
   }
@@ -713,7 +702,8 @@ ipcMain.handle('fs:read-file', async (_event, projectId: string, relativePath: s
 app
   .whenReady()
   .then(() => {
-    if (!gotTheLock) return;
+    if (!gotTheLock || runtimeStopInFlight) return;
+    appSleepGuard.start();
     app.setName('Haish');
     applyDockIcon();
     setupAppUpdater();
@@ -752,7 +742,7 @@ app.on('before-quit', (event) => {
   if (scheduleActivityTimer) clearInterval(scheduleActivityTimer);
   scheduledTaskActivity.clear();
   realtimeTaskOwners.clear();
-  syncTaskSleep();
+  appSleepGuard.stop();
   realtimeSocket?.close();
   realtimeSocket = null;
   for (const window of BrowserWindow.getAllWindows()) {

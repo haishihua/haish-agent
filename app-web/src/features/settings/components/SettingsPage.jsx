@@ -68,6 +68,7 @@ export function SettingsPage({
   onWorkflowSettingsChange,
   onSave,
   onSaveTools,
+  onToast,
   onDeleteLlmProvider,
   onToggleLlmProvider,
   onTogglePresetAgent,
@@ -454,6 +455,7 @@ export function SettingsPage({
           onUninstallSkill={onUninstallSkill}
           skillActionBusy={skillActionBusy}
           onSaveTools={onSaveTools}
+          onToast={onToast}
           onTestWebProvider={onTestWebProvider}
         />
       );

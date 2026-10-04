@@ -25,6 +25,7 @@ export const SETTINGS_SUBTAB_ICONS = {
   'tools-mcp': 'nodes',
   'tools-skills': 'wrench',
   'tools-web': 'globe',
+  'tools-browser': 'browser',
 };
 const PROVIDER_LOGOS = {
   openai: openaiLogo,

@@ -16,14 +16,16 @@ import { BrandLogoIcon } from './settings-ui.jsx';
 import { SheetFooter } from '../../../shared/ui/settings-elements/ui/sheet.tsx';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../../../shared/ui/settings-elements/ui/collapsible.tsx';
 import { SkillUpload } from './SkillUpload.jsx';
+import { BrowserConfigEditor } from './BrowserConfigEditor.jsx';
 
-export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSaveTools, onTestWebProvider, onInstallSkill, onToggleSkill, onUninstallSkill, skillActionBusy }) {
+export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSaveTools, onTestWebProvider, onInstallSkill, onToggleSkill, onUninstallSkill, skillActionBusy, onToast }) {
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState(null);
   const [installing, setInstalling] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  if (selectedId === 'tools-browser') return <BrowserConfigEditor onToast={onToast} />;
   const current = (records.tools || []).find(item => item.id === selectedId);
   if (!current) return <div className="settings-empty">No configuration available.</div>;
   const patchedRecords = patch => ({ ...records, tools: (records.tools || []).map(item => item.id === current.id ? { ...item, ...patch } : item) });

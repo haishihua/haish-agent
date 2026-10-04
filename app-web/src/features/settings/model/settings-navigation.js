@@ -42,5 +42,6 @@ export const SETTINGS_SUBTABS = {
     { id: 'tools-mcp', label: 'MCP' },
     { id: 'tools-skills', label: 'Skills' },
     { id: 'tools-web', label: 'Web Search' },
+    { id: 'tools-browser', label: 'Browser' },
   ],
 };

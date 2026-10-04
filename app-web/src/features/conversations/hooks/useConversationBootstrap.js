@@ -32,7 +32,7 @@ export function useConversationBootstrap({
     (async () => {
       try {
         const responses = await Promise.all(['chat', 'bot'].map((executionMode) => (
-          apiFetch(`${API_BASE}/api/projects?execution_mode=${executionMode}`, {
+          apiFetch(`${API_BASE}/api/projects?execution_mode=${executionMode}&summary_only=true`, {
             method: 'GET',
           }, { json: false })
         )));

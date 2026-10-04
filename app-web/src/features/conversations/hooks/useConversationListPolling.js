@@ -48,7 +48,7 @@ export function useConversationListPolling({
       controller = new AbortController();
       try {
         const response = await apiFetch(
-          `${API_BASE}/api/projects?execution_mode=${executionMode}`,
+          `${API_BASE}/api/projects?execution_mode=${executionMode}&summary_only=true`,
           { method: 'GET', signal: controller.signal },
           { json: false },
         );

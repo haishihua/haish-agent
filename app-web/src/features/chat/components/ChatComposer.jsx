@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowUp, BookOpen, Clock, CornerDownLeft, Square } from 'lucide-react';
+import { ArrowUp, BookOpen, Clock, CornerDownLeft, Square, Target } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
 import { ContextTaskChip } from '../../../shared/ui/ContextTaskChip.jsx';
@@ -521,7 +521,7 @@ export function ChatComposer({
               }}
               onMouseEnter={() => setSkillMenuIndex(index)}
             >
-              {skill.command ? <Clock className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" /> : <BookOpen className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" />}
+              {skill.command && skill.name === 'goal' ? <Target className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" /> : skill.command ? <Clock className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" /> : <BookOpen className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" />}
               <span className="chat-skill-menu-name">/{skill.name}</span>
               {skill.description ? (
                 <span className="chat-skill-menu-description">{skill.description}</span>
