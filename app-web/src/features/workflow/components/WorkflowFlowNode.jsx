@@ -335,6 +335,9 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
           style={{ left: '50%' }}
         />
       ) : null}
+      {runtimeStatus === 'running' ? (
+        <span className="workflow-node-live-badge" role="status"><i aria-hidden="true" />Running</span>
+      ) : null}
       <span className="workflow-flow-node-icon" aria-hidden="true">
         <AppIcon name={iconName} size={22} />
       </span>

@@ -58,7 +58,7 @@ test('a workflow agent node names its reply, the nodes without an agent stay unn
   assert.match(workflowRuntimeSource, /^ {10}agentName=\{selectedNodeAgentName\}$/m);
   assert.match(
     workflowRuntimeSource,
-    /function NodeConversation\(\{[\s\S]*?onRetry, agentName = '' \}\) \{/,
+    /function NodeConversation\(\{[\s\S]*?onRetry, agentName = '', pendingInput = null \}\) \{/,
   );
   assert.match(workflowRuntimeSource, /^ {4}agentName,$/m);
   assert.match(workflowRuntimeSource, /^ {10}agentName=\{agentName\}$/m);

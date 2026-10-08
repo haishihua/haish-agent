@@ -7,7 +7,7 @@ import {
   workflowTokenRangeAt,
   workflowVariableTypeForValue,
 } from '../../workflow/model/workflow-catalog.js';
-import { WorkflowDetailFields, workflowDetailFieldIcon } from './WorkflowNodeDetails.jsx';
+import { WorkflowDetailSection, WorkflowDetailFields, workflowDetailFieldIcon } from './WorkflowNodeDetails.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import {
@@ -86,7 +86,9 @@ export function WorkflowTemplateTextarea({
   hint = '',
   embedded = false,
   unframed = false,
+  compact = false,
 }) {
+  const fieldId = React.useId();
   const text = String(sanitizeWorkflowTemplateValue(value ?? ''));
   const textareaRef = useRef(null);
   const insertVariable = (path) => {
@@ -120,6 +122,7 @@ export function WorkflowTemplateTextarea({
   const body = (
     <>
       <textarea
+        id={fieldId}
         ref={textareaRef}
         aria-label={title || undefined}
         className={className}
@@ -140,6 +143,15 @@ export function WorkflowTemplateTextarea({
       ) : null}
     </>
   );
+  if (compact) {
+    const label = <label className="workflow-control-label" htmlFor={fieldId}>{panelTitle}</label>;
+    return (
+      <div className="workflow-input-panel-body workflow-template-compact">
+        {panelTitle ? (panelHint ? <PortalTooltip text={panelHint} position="above" multiline>{label}</PortalTooltip> : label) : null}
+        {body}
+      </div>
+    );
+  }
   if (unframed) return <div className="workflow-input-panel-body workflow-template-unframed">{body}</div>;
   if (!panelTitle) return body;
   return (
@@ -175,37 +187,33 @@ export function WorkflowParameterEditor({
   disabled = false,
   children = null,
 }) {
+  const [expanded, setExpanded] = React.useState(true);
   const rows = workflowParameterEntries(parameters);
   const updateRow = (id, patch) => {
     onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
   return (
-    <div className="workflow-parameter-panel workflow-agent-inputs">
-      <div className="workflow-parameter-head">
-        <div>
-          <PortalTooltip text="Give upstream data short names for this node." position="above" multiline>
-            <strong className="settings-field-label has-hint" tabIndex={0}>
-              <AppIcon name="layers" size={17} />Inputs
-            </strong>
-          </PortalTooltip>
-        </div>
-        {!disabled ? (
+    <WorkflowDetailSection title="Inputs" icon="layers" className="workflow-parameter-panel workflow-agent-inputs"
+      collapsible expanded={expanded} onExpandedChange={setExpanded}
+      action={!disabled ? (
           <button
             type="button"
             className="workflow-parameter-add"
-            onClick={() => onChange([
-              ...rows,
-              {
-                id: `parameter_${Date.now()}_${rows.length}`,
-                name: nextParameterName(rows),
-                value: '',
-              },
-            ])}
+            onClick={() => {
+              setExpanded(true);
+              onChange([
+                ...rows,
+                {
+                  id: `parameter_${Date.now()}_${rows.length}`,
+                  name: nextParameterName(rows),
+                  value: '',
+                },
+              ]);
+            }}
           >
             <AppIcon name="plus" size={14} />Add Input
           </button>
-        ) : null}
-      </div>
+        ) : null}>
       {rows.length ? (
         <div className="workflow-parameter-list">
           {rows.map((row) => (
@@ -248,7 +256,7 @@ export function WorkflowParameterEditor({
         </div>
       ) : null}
       {children}
-    </div>
+    </WorkflowDetailSection>
   );
 }
 
@@ -263,5 +271,5 @@ export function WorkflowOutputContract({ node }) {
   }));
   if (!fields.length) return null;
 
-  return <WorkflowDetailFields title="Outputs" icon="git-branch" fields={fields} className="workflow-agent-outputs" />;
+  return <WorkflowDetailFields key={node.id} title="Outputs" icon="git-branch" fields={fields} className="workflow-agent-outputs" />;
 }

@@ -156,10 +156,7 @@ import {
   CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
 } from '../tasks/model/runtime-events.js';
 const SettingsPage = React.lazy(() => import('../settings/components/SettingsPage.jsx').then((module) => ({ default: module.SettingsPage })));
-const LazyWorkflowRuntimePage = React.lazy(() => import('../workflow/components/WorkflowRuntimePage.jsx').then((module) => ({ default: module.WorkflowRuntimePage })));
-function WorkflowRuntimePage(props) {
-  return <React.Suspense fallback={<div role="status">Loading workflow…</div>}><LazyWorkflowRuntimePage {...props} /></React.Suspense>;
-}
+import { WorkflowRuntimeEntry as WorkflowRuntimePage } from '../workflow/components/WorkflowRuntimeEntry.jsx';
 
 import { createConversationHandlers } from '../conversations/hooks/createConversationHandlers.js';
 import { createComposerHandlers } from '../chat/hooks/createComposerHandlers.js';
@@ -175,9 +172,11 @@ import { createDraftConversationHandlers } from '../conversations/hooks/createDr
 import { usePerConversationDraft } from '../chat/hooks/usePerConversationDraft.js';
 import { useConversationBootstrap } from '../conversations/hooks/useConversationBootstrap.js';
 import { saveLastLocation } from '../conversations/model/last-location.js';
+import { createWorkflowTaskSelectionHandler } from '../conversations/hooks/createWorkflowTaskSelectionHandler.js';
 import { conversationHasSentMessage, sentTaskSummaries } from '../conversations/model/agent-binding.js';
 import { useConversationListPolling } from '../conversations/hooks/useConversationListPolling.js';
 import { useTaskRuntimePolling } from '../tasks/hooks/useTaskRuntimePolling.js';
+import { useViewedTaskCompletionNotice } from '../tasks/hooks/useViewedTaskCompletionNotice.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -290,6 +289,7 @@ export function AppShell() {
   const taskRuntimeEventCacheRef = useRef(new BoundedCache(32));
   const taskRuntimeFetchesRef = useRef(new Map());
   const completionReportedTaskIdsRef = useRef(new Set());
+  const completionViewRef = useRef({ chatVisible: false });
   const conversationReadCursorsRef = useRef({});
   const runtimeApiRef = useRef({});
   const activationApiRef = useRef({});
@@ -614,7 +614,8 @@ export function AppShell() {
     if (!key || !status || completionReportedTaskIdsRef.current.has(key)) return;
     completionReportedTaskIdsRef.current.add(key);
     const settledAt = taskUpdatedTimestamp(taskOrStatus) || Date.now();
-    const viewedNow = document.hasFocus() && conversationIdRef.current === targetConversationId;
+    const viewedNow = completionViewRef.current.chatVisible && document.hasFocus()
+      && conversationIdRef.current === targetConversationId;
     const alreadyViewed = Number(conversationReadCursorsRef.current[targetConversationId] || 0) >= settledAt;
     if (viewedNow) {
       markConversationTaskCompletionsViewed(targetConversationId);
@@ -1417,27 +1418,15 @@ export function AppShell() {
     setPendingSettingsEditor({ section: 'workflow', id, mode: 'edit' });
   }, []);
   const currentWorkflowTask = currentTask?.executionMode === 'bot' ? currentTask : null;
+  completionViewRef.current.chatVisible = activeTab === 'dashboard' && !settingsMode && viewMode === 'chat' && conversationReady;
+  useViewedTaskCompletionNotice({ task: currentWorkflowTask, conversationId, visible: activeTab === 'dashboard' && !settingsMode && viewMode !== 'chat' && conversationReady, windowFocused, notices: taskCompletionNotices, setNotices: setTaskCompletionNotices });
   const nodeConfigSelection = useNodeRuntimeConfigs(botRunConfigStorageKey, selectedWorkflow, currentWorkflowTask?.nodeRuntimeConfigs, currentWorkflowTask?.taskId);
   const botNodeConfigs = nodeConfigSelection.configs;
-  async function handleSelectWorkflowTask(projectId, targetConversationId, task) {
-    const taskId = task?.taskId || task?.task_id || task?.id;
-    if (!targetConversationId || !taskId) return;
-    setTaskCompletionNotices((current) => clearTaskCompletionNotice(current, targetConversationId, taskId));
-    setViewedWorkflowTask({ projectId, taskId });
-    saveLastLocation(window.localStorage, ownerIdRef.current, 'workflow', { projectId, taskId });
-    await handleSelectConversation(projectId, targetConversationId);
-    try {
-      await restoreLatestTaskRuntime(taskId, {
-        targetConversationId,
-        isCurrentActivation: () => conversationIdRef.current === targetConversationId,
-      });
-    } catch (error) {
-      if (error?.status !== 404) throw error;
-      removeMissingTask(targetConversationId, taskId);
-      showToast('error', 'Task no longer exists. Removed the stale entry.');
-      return;
-    }
-  }
+  const handleSelectWorkflowTask = createWorkflowTaskSelectionHandler({
+    getRuntime, setTaskCompletionNotices, setViewedWorkflowTask, ownerIdRef,
+    handleSelectConversation, restoreLatestTaskRuntime, conversationIdRef,
+    removeMissingTask, showToast,
+  });
   async function handleDeleteWorkflowTask(_projectId, targetConversationId, task) {
     const taskId = task?.taskId || task?.task_id || task?.id;
     if (!targetConversationId || !taskId) return;
@@ -1932,6 +1921,7 @@ export function AppShell() {
 	            ) : (
 	              <div className="app-workflow-stage">
                   <WorkflowRuntimePage
+                    loading={conversationLoading}
                     workflow={selectedWorkflow}
                     task={currentWorkflowTask}
                     agentOptions={agentOptions}

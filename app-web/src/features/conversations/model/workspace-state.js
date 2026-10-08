@@ -811,14 +811,23 @@ export function mergeConversationTasks(directoryTasks, runtimeTasks) {
       .map((task) => [task?.taskId || task?.task_id || task?.id, task])
       .filter(([taskId]) => Boolean(taskId)),
   );
+  const confirmedByPendingId = new Map([...runtimeById.values()]
+    .filter((task) => task.pendingTaskId)
+    .map((task) => [task.pendingTaskId, task]));
   const merged = (Array.isArray(directoryTasks) ? directoryTasks : []).map((task) => {
     const taskId = task?.taskId || task?.task_id || task?.id;
-    const runtimeTask = runtimeById.get(taskId);
+    const runtimeTask = runtimeById.get(taskId) || confirmedByPendingId.get(taskId);
     if (!runtimeTask) return task;
-    runtimeById.delete(taskId);
-    return { ...task, ...runtimeTask };
+    const confirmedId = runtimeTask.taskId || runtimeTask.task_id || runtimeTask.id;
+    runtimeById.delete(confirmedId);
+    return { ...task, ...runtimeTask, ...(taskId !== confirmedId && task.id ? { id: confirmedId } : {}) };
   });
-  return [...merged, ...runtimeById.values()];
+  const unique = new Map();
+  for (const task of [...merged, ...runtimeById.values()]) {
+    const id = task?.taskId || task?.task_id || task?.id;
+    unique.set(id, { ...unique.get(id), ...task });
+  }
+  return [...unique.values()];
 }
 
 export function findProjectByConversationId(state, conversationId) {

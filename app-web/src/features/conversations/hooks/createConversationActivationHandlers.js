@@ -441,6 +441,8 @@ export function createConversationActivationHandlers(ctx) {
       return null;
     }
 
+    const promotesPending = Boolean(ownerRuntime.taskRuntimeState.pendingTask
+      && !ownerRuntime.taskRuntimeState.tasksById[taskId]);
     updateTaskRuntimeState((state) => {
       const existingTask = state.tasksById[taskId];
       if (existingTask) {
@@ -467,6 +469,9 @@ export function createConversationActivationHandlers(ctx) {
       };
     }, ownerConvId);
 
+    // Replace the workspace placeholder as soon as the server confirms the
+    // task, including when its conversation is already in the background.
+    if (promotesPending) flushRuntimeTasksToWorkspace?.(ownerConvId);
     mutateRuntime(ownerConvId, (rt) => {
       if (rt.activeTaskId === taskId) return false;
       rt.activeTaskId = taskId;

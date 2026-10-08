@@ -31,6 +31,20 @@ test('the settings fallback renders the loader instead of bare text', () => {
   assert.match(appShell, /import \{ LoadingState \} from '\.\.\/\.\.\/shared\/ui\/agent-elements\/LoadingState\.jsx';/);
 });
 
+test('Bot chunk loading and task restoration reuse the centered shared loader', () => {
+  const entry = readFileSync(new URL('../../src/features/workflow/components/WorkflowRuntimeEntry.jsx', import.meta.url), 'utf8');
+  assert.match(appShell, /WorkflowRuntimeEntry as WorkflowRuntimePage/);
+  assert.doesNotMatch(appShell, /<div role="status">Loading workflow…<\/div>/);
+  assert.match(appShell, /<WorkflowRuntimePage\s+loading=\{conversationLoading\}/);
+  assert.match(entry, /import \{ LoadingState \}/);
+  assert.match(entry, /className="workflow-runtime-loading" role="status"><LoadingState label="Loading workflow…"/);
+  assert.match(entry, /if \(loading\) return <WorkflowRuntimeLoading \/>/);
+  assert.match(entry, /Suspense fallback=\{<WorkflowRuntimeLoading \/>\}/);
+  const rule = shellStyles.match(/\.workflow-runtime-loading\s*\{([^}]*)\}/)?.[1] || '';
+  assert.match(rule, /height:\s*100%/);
+  assert.match(rule, /place-items:\s*center/);
+});
+
 test('the fallback is centered in the settings pane', () => {
   const rule = shellStyles.match(/\.app-body-loading\s*\{([^}]*)\}/);
   assert.ok(rule, 'the centering wrapper needs a rule');

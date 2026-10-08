@@ -26,6 +26,10 @@ export function workflowNodeStartedState(event) {
   };
 }
 
+export function workflowNodeConfiguredState(event, currentNode = {}) {
+  return { ...currentNode, runtime_config: { ...event.runtime_config } };
+}
+
 export function workflowNodeFinishedState(event, currentNode = {}, savedAttempts = [], toText = String) {
   const attempts = Array.isArray(savedAttempts) ? savedAttempts : [];
   const finishedAt = event.finished_at || event.created_at;
@@ -247,6 +251,18 @@ export function createTaskStreamHandlers(ctx) {
           },
         }));
         break;
+      case 'workflow_node_configured':
+        updateTaskById(taskId, (run) => ({
+          ...run,
+          workflowRun: {
+            ...(run.workflowRun || {}),
+            nodes: {
+              ...(run.workflowRun?.nodes || {}),
+              [event.workflow_node_id]: workflowNodeConfiguredState(event, run.workflowRun?.nodes?.[event.workflow_node_id]),
+            },
+          },
+        }));
+        break;
       case 'workflow_run_waiting':
         updateTaskById(taskId, (run) => {
           const nodeId = event.workflow_node_id || event.node_id || run.workflowRun?.current_node_id;
@@ -338,6 +354,7 @@ export function createTaskStreamHandlers(ctx) {
         const providerMeta = resolveProviderMeta(event, getTaskById(taskId));
         updateTaskById(taskId, (run) => ({
           ...run,
+          ...(event.node_runtime_configs ? { nodeRuntimeConfigs: event.node_runtime_configs } : {}),
           provider: providerMeta.label,
           providerKey: providerMeta.key,
           requestedProvider: providerMeta.key,

@@ -234,6 +234,9 @@ export function buildTaskRuntimeRecord(event, pendingTask) {
   const fallbackTitle = stripChatImageAugmentation(pendingTask?.title || event.message || '').text || 'Task';
   return {
     taskId: event.task_id,
+    // Local placeholder identity is not a server task id. Preserve the exact
+    // link so sidebar projection replaces it instead of appending a second row.
+    pendingTaskId: pendingTask?.taskId || pendingTask?.id || null,
     conversationId: event.conversation_id || null,
     title: fallbackTitle,
     description: pendingTask?.description || defaultQuestDescription(fallbackTitle),
@@ -376,6 +379,7 @@ export function upsertToolCall(toolCalls, callId, patch) {
 
 export function runtimeTaskToQuest(task) {
   return {
+    pendingTaskId: task.pendingTaskId || null,
     conversationId: task.conversationId,
     userMessageId: task.userMessageId,
     assistantMessageId: task.assistantMessageId,

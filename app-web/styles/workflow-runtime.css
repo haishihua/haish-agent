@@ -218,7 +218,7 @@
     position: absolute;
     inset: -6px;
     z-index: -1;
-    border: 1px solid var(--node-accent);
+    border: 2px solid var(--node-accent);
     border-radius: 21px;
     pointer-events: none;
     animation: workflow-node-live 1.8s ease-out infinite;
@@ -240,6 +240,38 @@
     box-shadow:
         0 14px 30px rgba(0, 0, 0, 0.34),
         0 0 26px color-mix(in srgb, var(--node-accent) 30%, transparent);
+}
+
+.workflow-node-live-badge {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 10px;
+    border: 1px solid color-mix(in srgb, var(--node-accent) 70%, white);
+    border-radius: 999px;
+    background: #132a40;
+    color: #e4f4ff;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 0 18px color-mix(in srgb, var(--node-accent) 35%, transparent);
+}
+.workflow-node-live-badge i {
+    width: 12px;
+    height: 12px;
+    border: 2px solid #a9dcff;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: workflow-live-spin 0.9s linear infinite;
+}
+@keyframes workflow-live-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .workflow-node-live-badge i { animation: none; }
 }
 
 .workflow-selection-link { position: absolute; inset: 0; pointer-events: none; z-index: 0; }

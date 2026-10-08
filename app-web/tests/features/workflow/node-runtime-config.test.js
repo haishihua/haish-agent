@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest } from '../../../src/features/workflow/model/node-runtime-config.js';
-import { createTaskStreamHandlers, workflowNodeFinishedState } from '../../../src/features/tasks/hooks/createTaskStreamHandlers.js';
+import { nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest, workflowNodeRuntimeConfig } from '../../../src/features/workflow/model/node-runtime-config.js';
+import { createTaskStreamHandlers, workflowNodeFinishedState, workflowNodeConfiguredState } from '../../../src/features/tasks/hooks/createTaskStreamHandlers.js';
 globalThis.window = { HAISH_API_BASE: 'http://fixture.invalid', location: { origin: 'http://fixture.invalid' } };
 const { taskSummaryToRuntimeTask } = await import('../../../src/features/tasks/model/task-runtime.js');
 import { createDeployHandlers } from '../../../src/features/tasks/hooks/createDeployHandlers.js';
@@ -20,6 +20,16 @@ test('node selections stay independent and exclude stale nodes or credentials', 
   assert.deepEqual(nodeRuntimeConfigsForWorkflow(workflow, configs), { worker: { provider: 'a', model_id: 'm1', reasoning_effort: 'high' }, verifier: { provider: 'b', model_id: 'm2', reasoning_effort: 'low' } });
   assert.deepEqual(nodeRuntimeConfigRequest({}), { nodeRuntimeConfig: {} });
 });
+test('all pending and running nodes display recorded task defaults, with per-node execution precedence', () => {
+  const task = { requestedProvider: 'source', requestedModelId: 'source-model', requestedReasoningEffort: 'high', workflowRun: { nodes: { worker: { runtime_config: { provider: 'actual', model_id: 'actual-model', reasoning_effort: 'low' } } } } };
+  assert.equal(workflowNodeRuntimeConfig(workflow.nodes[0], task, {}, true).model_id, 'actual-model');
+  assert.deepEqual(workflowNodeRuntimeConfig(workflow.nodes[1], task, {}, true), { provider: 'source', model_id: 'source-model', reasoning_effort: 'high' });
+  assert.equal(workflowNodeRuntimeConfig(workflow.nodes[1], task, { verifier: { provider: 'other' } }, true).model_id, '');
+  assert.deepEqual(workflowNodeRuntimeConfig(workflow.nodes[1], task, {}, false), {});
+  const running = workflowNodeConfiguredState({ runtime_config: { provider: 'a', model_id: 'm1' } }, { status: 'running', input: 'work', attempt: 2 });
+  assert.deepEqual(running, { status: 'running', input: 'work', attempt: 2, runtime_config: { provider: 'a', model_id: 'm1' } });
+});
+
 test('executed node config survives stream and task reload', () => {
   const config = { provider: 'a', model_id: 'm1', reasoning_effort: 'high' };
   const finished = workflowNodeFinishedState({ runtime_config: config, success: true }, {}, []);

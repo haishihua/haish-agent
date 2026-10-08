@@ -607,6 +607,7 @@ export function WorkflowConfigEditor({
     const parameterEntries = workflowParameterEntries(selectedNode.parameters);
     const renderInputParameters = (templateKey, templateValue, children) => (
       <WorkflowParameterEditor
+        key={selectedNode.id}
         parameters={parameterEntries}
         variables={availableVariables}
         disabled={!isEditable}
@@ -697,21 +698,24 @@ export function WorkflowConfigEditor({
       const expression = selectedNode.expression || '';
       return (
         <>
-          {renderInputParameters('expression', expression, (
-            <WorkflowTemplateTextarea
-              title="Expression"
-              hint="Supports equals, not equals, contains, exists, and truthiness."
-              value={workflowTemplateWithParameterAliases(expression, parameterEntries)}
-              disabled={!isEditable}
-              rows={4}
-              showVariables={false}
-              embedded
-              onChange={(value) => updateNode(selectedNode.id, {
-                expression: workflowTemplateWithParameterAliases(value, parameterEntries),
-              })}
-            />
-          ))}
-          <WorkflowOutputContract node={selectedNode} />
+          <WorkflowDetailSection title="Condition" icon="workflow-condition" className="workflow-control-section">
+            <div className="workflow-control-fields">
+              <WorkflowTemplateTextarea
+                title="Expression"
+                hint="Supports equals, not equals, contains, exists, and truthiness."
+                value={workflowTemplateWithParameterAliases(expression, parameterEntries)}
+                variables={availableVariables}
+                disabled={!isEditable}
+                rows={3}
+                compact
+                placeholder="{{nodes.worker.success}} == true"
+                onChange={(value) => updateNode(selectedNode.id, {
+                  expression: workflowTemplateWithParameterAliases(value, parameterEntries),
+                })}
+              />
+            </div>
+          </WorkflowDetailSection>
+          {parameterEntries.length ? renderInputParameters('expression', expression, null) : null}
         </>
       );
     }
@@ -721,43 +725,36 @@ export function WorkflowConfigEditor({
         : {};
       return (
         <>
-          <WorkflowDetailSection title="Inputs" icon="layers">
-          <div className="workflow-detail-fields">
-          <FieldRow label="title" hint="Short heading shown in the approval card.">
+          <WorkflowDetailSection title="Approval request" icon="workflow-approval" className="workflow-control-section">
+          <div className="workflow-control-fields">
+          <div className="workflow-control-field">
+            <label className="workflow-control-label" htmlFor={`workflow-approval-title-${selectedNode.id}`}>Approval title</label>
             <input
+              id={`workflow-approval-title-${selectedNode.id}`}
+              aria-label="Approval title"
               value={approvalInput.title || ''}
               disabled={!isEditable}
-              placeholder="Approval required"
+              placeholder={selectedNode.label || 'Approval required'}
               onChange={(event) => updateNode(selectedNode.id, {
                 input: { ...approvalInput, title: event.target.value },
               })}
             />
-          </FieldRow>
+          </div>
           <WorkflowTemplateTextarea
             title="Review content"
             hint="Content the user must approve or reject."
             value={approvalInput.summaryText || ''}
             variables={availableVariables}
             disabled={!isEditable}
-            rows={6}
+            rows={4}
+            compact
             placeholder="Select or describe the upstream result to review"
             onChange={(summaryText) => updateNode(selectedNode.id, {
               input: { ...approvalInput, summaryText },
             })}
           />
-          <FieldRow label="payload" hint="Optional structured upstream value preserved with the decision.">
-            <WorkflowVariableSelect
-              value={approvalInput.payload || ''}
-              variables={availableVariables}
-              disabled={!isEditable}
-              onChange={(payload) => updateNode(selectedNode.id, {
-                input: { ...approvalInput, payload },
-              })}
-            />
-          </FieldRow>
           </div>
           </WorkflowDetailSection>
-          <WorkflowOutputContract node={selectedNode} />
         </>
       );
     }
@@ -805,7 +802,6 @@ export function WorkflowConfigEditor({
           </p>
           </div>
           </WorkflowDetailSection>
-          <WorkflowOutputContract node={selectedNode} />
         </>
       );
     }
@@ -835,10 +831,9 @@ export function WorkflowConfigEditor({
               disabled={!isEditable}
             />
           {outputMode === 'json_object' ? (
-            <div className="workflow-output-mapping workflow-detail-mapping">
-              <div className="workflow-output-mapping-head workflow-agent-section-head">
-                <AppIcon name="git-branch" size={17} /><strong>Outputs</strong>
-                {isEditable ? (
+            <WorkflowDetailSection key={selectedNode.id} title="Outputs" icon="git-branch" collapsible
+              className="workflow-output-mapping workflow-detail-mapping"
+              action={isEditable ? (
                   <button
                     type="button"
                     className="workflow-json-add"
@@ -849,8 +844,7 @@ export function WorkflowConfigEditor({
                   >
                     <AppIcon name="plus" size={14} />Add Field
                   </button>
-                ) : null}
-              </div>
+                ) : null}>
               <div className="workflow-output-mapping-table" aria-label="output">
                 <div className="workflow-output-mapping-row is-header">
                   <span>Name</span>
@@ -924,9 +918,9 @@ export function WorkflowConfigEditor({
                   </div>
                 ))}
               </div>
-            </div>
+            </WorkflowDetailSection>
           ) : (
-            <WorkflowDetailSection title="Outputs" icon="git-branch">
+            <WorkflowDetailSection key={selectedNode.id} title="Outputs" icon="git-branch" collapsible>
               <WorkflowTemplateTextarea
                 title="Final text"
                 unframed

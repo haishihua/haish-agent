@@ -86,6 +86,32 @@
 }
 
 .workflow-agent-detail .workflow-agent-inputs { overflow: visible; }
+.workflow-agent-detail .workflow-collapsible-section { min-height: max-content; }
+.workflow-collapsible-section > .workflow-agent-section-head { padding: 0; gap: 0; min-height: 40px; background: transparent; }
+.workflow-agent-detail .workflow-section-toggle {
+    display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; min-height: 40px;
+    padding: 8px 10px; border: 0; border-radius: 0; background: transparent;
+    color: var(--workflow-detail-tint); font-family: var(--conversation-font); text-align: left; cursor: pointer;
+    transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+.workflow-section-toggle > .app-icon { flex: 0 0 auto; color: var(--workflow-detail-tint); }
+.workflow-section-toggle > strong { white-space: nowrap; }
+.workflow-section-toggle .workflow-detail-readonly-badge { display: inline-flex; }
+.workflow-section-chevron { flex: 0 0 14px; width: 14px; height: 14px; margin-left: auto; color: #899eb8; transition: transform 120ms ease; }
+.workflow-collapsible-section[data-expanded="true"] > .workflow-agent-section-head .workflow-section-chevron { transform: rotate(90deg); }
+.workflow-collapsible-section[data-expanded="false"] > .workflow-agent-section-head { border-bottom: 0; border-radius: 12px; }
+.workflow-section-body[hidden] { display: none; }
+.workflow-section-action { flex: 0 0 auto; display: flex; margin-right: 10px; }
+.workflow-agent-detail .workflow-section-toggle:focus-visible { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--workflow-detail-accent) 45%, transparent); }
+.workflow-agent-detail .workflow-section-toggle:active { background: color-mix(in srgb, var(--workflow-detail-accent) 16%, transparent); }
+.workflow-agent-detail .workflow-agent-inputs .workflow-section-body > .workflow-input-panel.is-embedded { border: 0; border-radius: 0; }
+@media (hover: hover) and (pointer: fine) {
+    .workflow-agent-detail .workflow-section-toggle:hover:not(:active) { background: transparent; }
+    .workflow-section-toggle:hover .workflow-section-chevron { color: var(--workflow-detail-tint); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .workflow-agent-detail .workflow-section-toggle, .workflow-section-chevron { transition: none; }
+}
 
 .workflow-agent-section-head,
 .workflow-agent-detail .workflow-parameter-head {
@@ -172,6 +198,31 @@
 .workflow-agent-detail .workflow-detail-section { overflow: visible; }
 .workflow-detail-fields { display: grid; gap: 12px; min-width: 0; padding: 12px; }
 .workflow-detail-fields > .settings-field { margin: 0; min-width: 0; }
+/* Control nodes use one section and flat, consistently labelled fields. */
+.workflow-control-fields { display: grid; gap: 12px; min-width: 0; padding: 10px 12px 12px; }
+.workflow-agent-detail .workflow-control-field,
+.workflow-agent-detail .workflow-template-compact { display: grid; gap: 6px; min-width: 0; padding: 0; }
+.workflow-agent-detail .workflow-control-label { color: #99a9bf; font: 500 12px/20px var(--conversation-font); }
+.workflow-agent-detail .workflow-control-field input,
+.workflow-agent-detail .workflow-template-compact textarea {
+    box-sizing: border-box; width: 100%; min-width: 0; padding: 8px 10px;
+    border: 1px solid var(--workflow-detail-border); border-radius: 8px;
+    background: rgba(4, 10, 18, 0.32); color: #d3dff0; font: 12px/1.6 var(--conversation-font);
+    transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+.workflow-agent-detail .workflow-control-field input { height: 34px; padding: 6px 10px; }
+.workflow-agent-detail .workflow-template-compact textarea { min-height: 76px; resize: vertical; }
+.workflow-agent-detail .workflow-control-field input:focus-visible,
+.workflow-agent-detail .workflow-template-compact textarea:focus-visible { outline: none; border-radius: 8px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--workflow-detail-accent) 35%, transparent); }
+.workflow-agent-detail .workflow-control-fields :is(input, textarea):disabled { opacity: 1; color: #aab9ce; -webkit-text-fill-color: #aab9ce; }
+.workflow-agent-detail .workflow-template-compact .workflow-variable-panel { margin: 2px 0 0; font-size: 11px; }
+@media (hover: hover) and (pointer: fine) {
+    .workflow-agent-detail .workflow-control-fields :is(input, textarea):not(:disabled):hover { border-color: color-mix(in srgb, var(--workflow-detail-accent) 35%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .workflow-agent-detail .workflow-control-field input,
+    .workflow-agent-detail .workflow-template-compact textarea { transition: none; }
+}
 .workflow-agent-detail .workflow-detail-section > .workflow-agent-section-head { border-radius: 12px 12px 0 0; }
 .workflow-agent-detail .workflow-detail-mapping { border: 1px solid rgba(144, 177, 217, 0.16); border-radius: 12px; background: rgba(12, 21, 33, 0.66); overflow: visible; }
 .workflow-agent-detail .workflow-output-mapping-table { padding: 9px; gap: 7px; }

@@ -17,7 +17,7 @@ const initial = normalizeWorkflowSettings({ custom: [{ workflow_id: 'custom.agen
     { id: 'loop', type: 'loop', label: 'Retry', max_loops: 3 },
     { id: 'llm', type: 'llm', label: 'Model', prompt: '{{Goal}}', parameters: [{ id: 'l', name: 'Goal', value: '{{input.message}}' }] },
     { id: 'tool', type: 'tool', label: 'Tool', arguments: '{{Goal}}', parameters: [{ id: 't', name: 'Goal', value: '{{input.message}}' }] },
-    { id: 'approval', type: 'human_approval', label: 'Approval', input: { title: 'Review', summaryText: '{{input.message}}' } },
+    { id: 'approval', type: 'human_approval', label: 'Approval', input: { title: 'Review', summaryText: '{{input.message}}', payload: '{{nodes.worker.structured}}', reviewTag: 'keep-existing' } },
   ], edges: [{ from: 'start', to: 'worker' }, { from: 'worker', to: 'output' }],
 }] });
 function Stage() {
@@ -65,7 +65,23 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
   check(![...panel.querySelectorAll('.settings-field-label')].some((el) => /^label$/i.test(el.textContent)), 'No duplicate Label field');
   check(!panel.textContent.includes('Basic'), 'No Basic frame');
   check(panel.querySelectorAll('.workflow-agent-output-row').length === workflowOutputFields('agent').length, 'All actual output contract fields retained');
-  check(!panel.querySelector('.workflow-agent-outputs button'), 'Output contract has no unsupported edit action');
+  const outputToggle = panel.querySelector('.workflow-agent-outputs .workflow-section-toggle');
+  const outputBody = document.getElementById(outputToggle.getAttribute('aria-controls'));
+  check(outputToggle.getAttribute('aria-expanded') === 'false' && outputBody.hidden, 'Generated Outputs start collapsed with accessible state');
+  const outputHead = outputToggle.parentElement;
+  check(getComputedStyle(outputHead).paddingRight === '0px' && Math.abs(outputToggle.getBoundingClientRect().right - outputHead.getBoundingClientRect().right) < 1, 'Disclosure trigger fills header without unused trailing padding');
+  check(getComputedStyle(outputHead).backgroundColor === 'rgba(0, 0, 0, 0)' && getComputedStyle(outputToggle).borderRadius === '0px', 'Disclosure header has no nested colored or rounded selection surface');
+  check(panel.querySelectorAll('.workflow-agent-outputs button').length === 1, 'Output contract has only a disclosure button, no edit action');
+  outputToggle.click(); await tick();
+  check(!outputBody.hidden && outputToggle.getAttribute('aria-expanded') === 'true', 'Outputs expand to show all fields');
+  const inputToggle = panel.querySelector('.workflow-agent-inputs .workflow-section-toggle');
+  const inputBody = document.getElementById(inputToggle.getAttribute('aria-controls'));
+  const originalMessage = panel.querySelector('[aria-label="Message"]');
+  const originalValue = originalMessage.value;
+  inputToggle.click(); await tick();
+  check(inputBody.hidden && inputToggle.getAttribute('aria-expanded') === 'false', 'Inputs collapse independently');
+  inputToggle.click(); await tick();
+  check(!inputBody.hidden && panel.querySelector('[aria-label="Message"]') === originalMessage && originalMessage.value === originalValue, 'Input collapse keeps editor mounted and preserves content');
   panel.querySelector('.workflow-agent-selector .model-picker-trigger').click(); await tick();
   check(Boolean(panel.querySelector('.workflow-agent-selector [role="listbox"]')), 'Agent selector opens');
   panel.querySelector('.workflow-agent-selector [role="option"]').click(); await tick();
@@ -112,8 +128,9 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
   const name = panel.querySelector('[aria-label="Parameter name"]');
   setValue(name, 'Task'); await tick();
   check(worker().parameters[0].name === 'Task' && worker().input === '{{Task}}', 'Input rename reconciles message aliases');
+  inputToggle.click(); await tick();
   panel.querySelector('.workflow-parameter-add').click(); await tick();
-  check(worker().parameters.length === 2, 'Add Input updates data');
+  check(worker().parameters.length === 2 && !inputBody.hidden, 'Add Input updates data and expands collapsed Inputs');
   panel.querySelectorAll('.workflow-parameter-delete')[1].click(); await tick();
   check(worker().parameters.length === 1, 'Delete input updates data');
   const form = document.querySelector('.settings-workflow-form');
@@ -127,17 +144,41 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
   check([...panel.querySelectorAll('input,textarea')].every((el) => el.disabled), 'Read-only disables editing');
   check(Boolean(panel.querySelector('.workflow-agent-selector .workflow-detail-select-static')) && !panel.querySelector('.workflow-agent-selector button'), 'Read-only Agent is a clean value, not a disabled dropdown');
   check(alignedSelect(), 'Read-only Agent icon, label and value visually align');
+  inputToggle.click(); await tick();
+  check(inputBody.hidden, 'Read-only Inputs remain collapsible');
+  inputToggle.click(); await tick();
+  outputToggle.click(); await tick();
+  check(outputBody.hidden, 'Read-only Outputs remain collapsible');
+  outputToggle.click(); await tick();
   window.__detailsReadOnly(false); await tick();
   const getNode = (id) => window.__detailsState.custom[0].nodes.find((node) => node.id === id);
   const select = async (id) => { document.querySelector(`.react-flow__node[data-id="${id}"]`).click(); await tick(150); panel.scrollTop = 0; };
   for (const id of ['start', 'output', 'condition', 'loop', 'llm', 'tool', 'approval']) {
     await select(id);
     const node = getNode(id);
+    const outputs = panel.querySelector('.workflow-agent-outputs .workflow-section-toggle');
+    if (outputs && outputs.getAttribute('aria-expanded') === 'false') { outputs.click(); await tick(); }
     checkNodeTheme(id);
     check(panel.querySelector('.workflow-agent-heading')?.dataset.nodeType === node.type, `${id}: shared heading with correct type`);
     check(![...panel.querySelectorAll('.settings-field-label')].some((el) => /^label$/i.test(el.textContent)), `${id}: no duplicate label field`);
     check(panel.querySelectorAll('.workflow-node-panel-head button').length === (['start', 'output'].includes(id) ? 0 : 1), `${id}: header actions respect protected nodes`);
-    if (id !== 'output') check(panel.querySelectorAll('.workflow-agent-outputs .workflow-agent-output-row').length === workflowOutputFields(node).length, `${id}: real output contract uses shared rows`);
+    if (['condition', 'loop', 'approval'].includes(id)) {
+      check(!panel.querySelector('[aria-label="Outputs"], .workflow-agent-outputs'), `${id}: control node omits generated output contract`);
+    } else if (id !== 'output') {
+      check(panel.querySelectorAll('.workflow-agent-outputs .workflow-agent-output-row').length === workflowOutputFields(node).length, `${id}: real output contract uses shared rows`);
+    }
+    if (id === 'approval') {
+      check(Boolean(panel.querySelector('[aria-label="Approval request"]')) && !panel.querySelector('[aria-label="Inputs"], .workflow-variable-menu-select'), 'Approval uses request configuration, not generic Inputs or payload picker');
+      check(!panel.textContent.includes('payload'), 'Approval hides internal payload configuration');
+      check(!panel.querySelector('[aria-label="Approval request"] .workflow-io-panel'), 'Approval fields have no nested Review content card');
+      const labels = [...panel.querySelectorAll('[aria-label="Approval request"] .workflow-control-label')];
+      check(labels.length === 2 && labels.every((label) => getComputedStyle(label).fontSize === '12px' && label.control), 'Approval labels share compact typography and are associated with their controls');
+      check(getComputedStyle(panel.querySelector('[aria-label="Approval title"]')).height === '34px', 'Approval title uses a compact single-line field');
+      setValue(panel.querySelector('[aria-label="Approval request"] input'), 'Confirm requirements'); await tick();
+      setValue(panel.querySelector('[aria-label="Review content"]'), 'Review the updated requirements'); await tick();
+      check(getNode(id).input.title === 'Confirm requirements' && getNode(id).input.summaryText === 'Review the updated requirements', 'Approval title and review content still save');
+      check(getNode(id).input.payload === '{{nodes.worker.structured}}' && getNode(id).input.reviewTag === 'keep-existing', 'Approval edits preserve existing payload and unrelated request fields');
+    }
     for (const width of [280, 340, 520]) {
       form.style.setProperty('--workflow-node-panel-width', `${width}px`); await tick();
       check(panel.scrollWidth <= panel.clientWidth + 1, `${id}: no overflow at ${width}px`);
@@ -152,6 +193,16 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
       setValue(panel.querySelector('[aria-label="Parameter name"]'), 'Renamed'); await tick();
       const key = { condition: 'expression', llm: 'prompt', tool: 'arguments' }[id];
       check(getNode(id)[key] === '{{Renamed}}', `${id}: input aliases still reconcile`);
+      if (id === 'condition') {
+        panel.querySelector('.workflow-parameter-delete').click(); await tick();
+        check(!panel.querySelector('.workflow-parameter-panel') && getNode(id).expression === '{{input.message}}', 'Condition without aliases omits empty Inputs and preserves expression reference');
+        check(Boolean(panel.querySelector('[aria-label="Condition"] .workflow-template-compact')) && !panel.querySelector('[aria-label="Condition"] .workflow-io-panel'), 'Condition uses a flat compact expression editor');
+        setValue(panel.querySelector('[aria-label="Expression"]'), '{{input.message}} != ""'); await tick();
+        check(getNode(id).expression === '{{input.message}} != ""', 'Flat condition expression edits save');
+        panel.querySelector('.workflow-variable-panel .model-picker-trigger').click(); await tick();
+        panel.querySelector('.workflow-variable-panel [role="option"]').click(); await tick();
+        check(panel.querySelector('[aria-label="Expression"]').value === getNode(id).expression, 'Condition data insertion updates saved expression');
+      }
     }
     if (id === 'start') {
       check(Boolean(panel.querySelector('[aria-label="Inputs"] .workflow-agent-output-row')), 'Start schema uses shared Inputs rows');
@@ -181,8 +232,11 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
       check(alignedSelect(), 'Editable Response type icon, label and value visually align');
       const selector = panel.querySelector('.workflow-detail-select');
       check(Math.abs(centerY(selector.querySelector('.workflow-detail-select-label')) - centerY(selector.querySelector('.model-picker-trigger'))) < 1 && selector.getBoundingClientRect().height <= 44, 'Response type uses a compact aligned single row');
+      const endToggle = panel.querySelector('[aria-label="Outputs"] .workflow-section-toggle');
+      endToggle.click(); await tick();
+      check(document.getElementById(endToggle.getAttribute('aria-controls')).hidden, 'End structured Outputs can collapse');
       panel.querySelector('.workflow-json-add').click(); await tick();
-      check(Object.keys(getNode(id).output_mapping).length === 2, 'End Add Field persists');
+      check(Object.keys(getNode(id).output_mapping).length === 2 && endToggle.getAttribute('aria-expanded') === 'true', 'End Add Field persists and opens collapsed Outputs');
       const field = panel.querySelector('[aria-label="Output field name"]'); field.focus();
       const previousValue = Object.values(getNode(id).output_mapping)[0];
       setValue(field, 'result'); await tick();
@@ -192,6 +246,8 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
     }
     window.__detailsReadOnly(true); await tick();
     check(!panel.querySelector('.workflow-node-panel-head button') && [...panel.querySelectorAll('input,textarea')].every((el) => el.disabled), `${id}: read-only permissions retained`);
+    if (['condition', 'loop', 'approval'].includes(id)) check(!panel.querySelector('[aria-label="Outputs"]'), `${id}: read-only also omits generated Outputs`);
+    if (id === 'approval') check(Boolean(panel.querySelector('[aria-label="Approval request"]')) && !panel.querySelector('[aria-label="Inputs"], .workflow-variable-menu-select'), 'Read-only Approval keeps only request content');
     if (id === 'loop') check(panel.querySelectorAll('.workflow-retry-policy .workflow-detail-select-static').length === 2 && !panel.querySelector('.workflow-retry-policy button, .workflow-retry-policy input'), 'Read-only retry policy displays clean values');
     check(!panel.querySelector('.workflow-variable-panel'), `${id}: read-only hides unavailable data insertion`);
     if (id === 'output') {
@@ -204,7 +260,7 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
   panel.querySelector('.workflow-parameter-delete').click(); await tick();
   check(worker().parameters.length === 0 && !panel.querySelector('.workflow-parameter-empty, .workflow-parameter-list') && !panel.textContent.includes('No parameters'), 'Empty parameters omit placeholder and empty list');
   check(Boolean(panel.querySelector('.workflow-parameter-add')) && Boolean(panel.querySelector('.workflow-input-panel textarea')), 'Empty parameters retain Add Input and Message editing');
-  const inputHead = panel.querySelector('.workflow-parameter-head').getBoundingClientRect();
+  const inputHead = panel.querySelector('.workflow-agent-inputs > .workflow-agent-section-head').getBoundingClientRect();
   const message = panel.querySelector('.workflow-input-panel');
   check(Math.abs(message.getBoundingClientRect().top - inputHead.bottom) < 1 && getComputedStyle(message).borderTopWidth === '0px', 'Message follows Inputs directly without empty gap or doubled border');
   setValue(panel.querySelector('[aria-label="Agent prompt"]'), ''); await tick();
@@ -220,6 +276,11 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
   check(Boolean(finalText) && !panel.querySelector('[aria-label="Outputs"] .workflow-io-panel'), 'End Text uses one card, no nested Final text frame');
   setValue(finalText, 'Final result'); await tick();
   check(getNode('output').output === 'Final result', 'Unframed End text still saves');
+  const textOutputToggle = panel.querySelector('[aria-label="Outputs"] .workflow-section-toggle');
+  textOutputToggle.click(); await tick();
+  check(document.getElementById(textOutputToggle.getAttribute('aria-controls')).hidden, 'End text Outputs can collapse');
+  textOutputToggle.click(); await tick();
+  check(panel.querySelector('[aria-label="Final text"]') === finalText && finalText.value === 'Final result', 'End text output retains editor and value when reopened');
   check(Boolean(panel.querySelector('.workflow-variable-panel')), 'Editable End retains data insertion');
   window.__detailsReadOnly(true); await tick();
   check(!panel.querySelector('.workflow-variable-panel') && panel.querySelector('[aria-label="Final text"]').value === 'Final result', 'Read-only End hides insertion but retains output content');

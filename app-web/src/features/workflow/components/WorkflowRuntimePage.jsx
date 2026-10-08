@@ -1,7 +1,12 @@
 import React from 'react';
 import { WorkflowRuntimeConfig } from './WorkflowRuntimeConfig.jsx';
+import { workflowNodeRuntimeConfig } from '../model/node-runtime-config.js';
+import { approvalStore } from '../../approvals/model/approval-store.js';
+import { AskUserInlineForm } from '../../chat/components/AskUserInlineForm.jsx';
+import { workflowAttentionRequest } from '../model/workflow-attention.js';
 import { agentIconNameForAgentId } from '../../agents/model/agent-settings.js';
 import { workflowControlEvents } from '../model/workflow-control-events.js';
+import { reconcileRuntimeFlowNodes } from '../model/runtime-flow-nodes.js';
 import {
   Background,
   ReactFlow,
@@ -269,7 +274,7 @@ function timestampMs(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function NodeConversation({ node, task, attempt, result, status, running, showApproval, onRetry, agentName = '' }) {
+function NodeConversation({ node, task, attempt, result, status, running, showApproval, onRetry, agentName = '', pendingInput = null }) {
   const scopedTask = React.useMemo(() => attemptTask(task, attempt, result), [attempt, result, task]);
   const timelineStatus = running ? 'running' : normalizeTaskStatus(result?.status || status);
   const timeline = React.useMemo(
@@ -315,6 +320,10 @@ function NodeConversation({ node, task, attempt, result, status, running, showAp
     completedAt,
     firstTokenAt: taskFirstStreamTimestamp(scopedTask),
   }), [agentName, attempt?.id, completedAt, createdAt, node.id, resultText, running, scopedTask, task?.conversationId, task?.taskId, timeline?.latestTodos, timelineItems, timelineStatus]);
+  const hasAskUser = (items) => items.some((item) => (
+    String(item.toolName || '').toLowerCase() === 'ask_user'
+    || hasAskUser(item.children || item.tools || [])
+  ));
   const showAssistant = node.type !== 'human_approval'
     ? running || Boolean(resultText) || timelineItems.length > 0
     : Boolean(resultText) || timelineItems.length > 0;
@@ -347,14 +356,42 @@ function NodeConversation({ node, task, attempt, result, status, running, showAp
     <>
       {inputText ? <ChatMessageRow message={inputMessage} /> : null}
       {showAssistant ? <ChatMessageRow message={assistantMessage} onRetry={onRetry} /> : null}
+      {pendingInput && !hasAskUser(timelineItems) ? <AskUserInlineForm taskId={task?.taskId} conversationId={task?.conversationId} toolCallId={pendingInput.tool_call_id || ''} active /> : null}
     </>
   );
 }
 
-function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, onRetry, agentName = '', agentOptions = [], providerOptions = [], runtimeConfig = {}, onRuntimeConfigChange, configReadOnly = false }) {
+function NodeDetail({ node, task, run, status, attention = null, onClose, onResize, onResizeBy, onRetry, agentName = '', agentOptions = [], providerOptions = [], runtimeConfig = {}, onRuntimeConfigChange, configReadOnly = false }) {
   const detailBodyRef = React.useRef(null);
   const [historyOpen, setHistoryOpen] = React.useState(false);
-  const [detailTab, setDetailTab] = React.useState('config');
+  const live = ['running', 'waiting_input', 'approval'].includes(status);
+  const [detailTab, setDetailTab] = React.useState(() => live ? 'result' : 'config');
+  const wasLiveRef = React.useRef(live);
+  React.useEffect(() => {
+    // Follow the transition into execution once, without overriding a user's
+    // explicit tab choice on every streamed update.
+    if (live && !wasLiveRef.current) setDetailTab('result');
+    wasLiveRef.current = live;
+  }, [live]);
+  const attentionKey = attention?.key || '';
+  React.useEffect(() => {
+    if (attentionKey) setDetailTab('result');
+  }, [attentionKey]);
+  React.useEffect(() => {
+    if (!attentionKey || !detailBodyRef.current) return undefined;
+    const body = detailBodyRef.current;
+    const reveal = () => {
+      const latest = body.querySelector('.workflow-detail-attempt.is-latest') || body;
+      const card = latest.querySelector('.haish-user-input-card, .haish-approval-card');
+      if (!card) return;
+      card.scrollIntoView({ block: 'nearest' });
+      observer.disconnect();
+    };
+    const observer = new MutationObserver(reveal);
+    observer.observe(body, { childList: true, subtree: true });
+    reveal();
+    return () => observer.disconnect();
+  }, [attentionKey]);
   const isAgent = node.type === 'agent';
   const showResult = !isAgent || detailTab === 'result';
   const tabId = React.useId();
@@ -400,6 +437,7 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
           showApproval={isLatestAttempt}
           onRetry={isLatestAttempt && canRetry ? retryLatest : null}
           agentName={agentName}
+          pendingInput={isLatestAttempt && attention?.status === 'waiting_input' ? attention.request : null}
         />
       </section>
     );
@@ -477,7 +515,9 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
               {historicalAttempts.map((attempt, index) => renderAttempt(attempt, index, false))}
             </details>
           ) : null}
-          {latestAttempt ? renderAttempt(latestAttempt, visibleAttempts.length - 1, true) : (
+          {latestAttempt ? renderAttempt(latestAttempt, visibleAttempts.length - 1, true) : attention ? (
+            <NodeConversation node={node} task={task} status={status} running showApproval agentName={agentName} pendingInput={attention.status === 'waiting_input' ? attention.request : null} />
+          ) : (
             <div className="workflow-detail-empty" role="status">{status === 'running' ? 'Waiting for this node’s first event…' : 'No execution content recorded for this node.'}</div>
           )}
           </> : null}
@@ -495,6 +535,15 @@ function NodeDetail({ node, task, run, status, onClose, onResize, onResizeBy, on
 
 function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPTY_OPTIONS, onOpenConfig = null, providerOptions = [], nodeRuntimeConfigs = {}, onNodeRuntimeConfigChange, configReadOnly = false }) {
   const controlEvents = workflowControlEvents(task?.eventLog);
+  const [pendingInputs, setPendingInputs] = React.useState([]);
+  const [pendingApprovals, setPendingApprovals] = React.useState([]);
+  React.useEffect(() => approvalStore.subscribeInputs(setPendingInputs), []);
+  React.useEffect(() => approvalStore.subscribe(setPendingApprovals), []);
+  const attention = workflowAttentionRequest(workflow, task, pendingInputs, pendingApprovals);
+  const attentionNodeId = attention?.nodeId || '';
+  const attentionStatus = attention?.status || '';
+  const attentionKey = attention?.key || '';
+  const previousAttentionRef = React.useRef('');
   const [selectedNodeId, setSelectedNodeId] = React.useState('');
   const previousSelectionRef = React.useRef({ nodeId: '', status: 'pending' });
   const followApprovalBranchRef = React.useRef('');
@@ -542,8 +591,8 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
   const canOpenNodeDetail = React.useCallback((node) => (
     Boolean(node)
     && DETAIL_NODE_TYPES.has(node.type)
-    && (node.type === 'agent' || executedNodeIds.has(String(node.id)))
-  ), [executedNodeIds]);
+    && (node.type === 'agent' || executedNodeIds.has(String(node.id)) || String(node.id) === attentionNodeId)
+  ), [attentionNodeId, executedNodeIds]);
   // 回环端口（次级→主链那条边的落点）只有一份判断，和配置页调同一个函数。
   const feedbackTargetIds = React.useMemo(
     () => workflowFeedbackTargetIds(workflow?.edges, layout.meta),
@@ -554,7 +603,15 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     setSelectedNodeId('');
     followApprovalBranchRef.current = '';
     previousSelectionRef.current = { nodeId: '', status: 'pending' };
+    previousAttentionRef.current = '';
   }, [workflowKey, task?.taskId]);
+  React.useEffect(() => {
+    if (attentionKey && attentionKey !== previousAttentionRef.current) {
+      followApprovalBranchRef.current = '';
+      setSelectedNodeId(attentionNodeId);
+    }
+    previousAttentionRef.current = attentionKey;
+  }, [attentionKey, attentionNodeId, workflowKey, task?.taskId]);
 
   const nodeConfigKey = JSON.stringify(nodeRuntimeConfigs);
   const providerCatalogKey = JSON.stringify(providerOptions.map((item) => ({ selector: item.requestProvider || item.provider || item.id, provider: item.provider })));
@@ -562,12 +619,11 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     const configs = JSON.parse(nodeConfigKey);
     const providers = JSON.parse(providerCatalogKey);
     return (workflow?.nodes || []).map((node) => {
-    const status = nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds);
+    const status = String(node.id) === attentionNodeId ? attentionStatus : nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds);
     const id = String(node.id);
     const layoutMeta = layout.meta.get(id);
     const runtimeDetailAvailable = canOpenNodeDetail(node);
-    const override = configs[id] || {};
-    const config = run?.nodes?.[id]?.runtime_config || { ...(node.runtime_config || {}), ...(override.provider ? { model_id: '' } : {}), ...override };
+    const config = workflowNodeRuntimeConfig(node, task, configs, configReadOnly);
     const provider = providers.find((item) => item.selector === config.provider)?.provider;
     return {
       // ponytail: reuse the editor node renderer; runtime only supplies status/config data.
@@ -589,9 +645,9 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
       connectable: false,
     };
     });
-  }, [activeEventNodeIds, agentOptions, arrangement, canOpenNodeDetail, eventNodeOutcomes, feedbackTargetIds, layout, run, task?.status, traversedLoopNodeIds, workflow?.nodes, workflow?.edges, routes, nodeConfigKey, providerCatalogKey]);
+  }, [attentionNodeId, attentionStatus, activeEventNodeIds, agentOptions, arrangement, canOpenNodeDetail, eventNodeOutcomes, feedbackTargetIds, layout, run, task, configReadOnly, traversedLoopNodeIds, workflow?.nodes, workflow?.edges, routes, nodeConfigKey, providerCatalogKey]);
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes);
-  React.useEffect(() => { setNodes(layoutNodes); }, [layoutNodes, setNodes]);
+  React.useEffect(() => { setNodes((current) => reconcileRuntimeFlowNodes(current, layoutNodes)); }, [layoutNodes, setNodes]);
   const nodeById = React.useMemo(() => new Map((workflow?.nodes || []).map((node) => [String(node.id), node])), [workflow?.nodes]);
   const statusById = React.useMemo(
     () => new Map((workflow?.nodes || []).map((node) => [String(node.id), nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)])),
@@ -653,7 +709,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
   const selectedNodeAgentName = selectedNode
     ? workflowNodeAgentName(selectedNode, agentOptions)
     : '';
-  const selectedStatus = selectedNode
+  const selectedStatus = selectedNodeId === attentionNodeId && attentionStatus ? attentionStatus : selectedNode
     ? nodeStatus(selectedNode, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)
     : 'pending';
   React.useEffect(() => {
@@ -790,6 +846,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
           task={task}
           run={run}
           status={selectedStatus}
+          attention={selectedNodeId === attentionNodeId ? attention : null}
           onClose={() => setSelectedNodeId('')}
           onResize={resizeDetail}
           onResizeBy={resizeDetailBy}
@@ -797,7 +854,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
           agentName={selectedNodeAgentName}
           agentOptions={agentOptions}
           providerOptions={providerOptions}
-          runtimeConfig={{ ...(selectedNode.runtime_config || {}), ...(nodeRuntimeConfigs[selectedNode.id]?.provider ? { model_id: '' } : {}), ...(nodeRuntimeConfigs[selectedNode.id] || {}) }}
+          runtimeConfig={workflowNodeRuntimeConfig(selectedNode, task, nodeRuntimeConfigs, configReadOnly)}
           onRuntimeConfigChange={(config) => onNodeRuntimeConfigChange?.(selectedNode.id, config)}
           configReadOnly={configReadOnly || !onNodeRuntimeConfigChange}
         />

@@ -47,15 +47,23 @@ export function WorkflowDetailSelect({ label, icon, value, options, disabled, on
   );
 }
 
-export function WorkflowDetailSection({ title, icon = 'layers', meta, action, children, className = '' }) {
+export function WorkflowDetailSection({ title, icon = 'layers', meta, action, children, className = '', collapsible = false, defaultExpanded = true, expanded, onExpandedChange }) {
+  const [localExpanded, setLocalExpanded] = React.useState(defaultExpanded);
+  const bodyId = React.useId();
+  const isExpanded = expanded ?? localExpanded;
+  const heading = <>
+    <AppIcon name={icon} size={17} /><strong>{title}</strong>
+    {meta ? <span className={`workflow-agent-section-meta${meta === 'Read only' ? ' workflow-detail-readonly-badge' : ''}`}>{meta}</span> : null}
+    {collapsible ? <svg className="workflow-section-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg> : null}
+  </>;
   return (
-    <section className={`workflow-agent-section workflow-detail-section ${className}`.trim()} aria-label={title}>
+    <section className={`workflow-agent-section workflow-detail-section ${collapsible ? 'workflow-collapsible-section' : ''} ${className}`.trim()} aria-label={title} data-expanded={collapsible ? isExpanded : undefined}>
       <div className="workflow-agent-section-head">
-        <AppIcon name={icon} size={17} /><strong>{title}</strong>
-        {meta ? <span className={`workflow-agent-section-meta${meta === 'Read only' ? ' workflow-detail-readonly-badge' : ''}`}>{meta}</span> : null}
-        {action}
+        {collapsible ? <button type="button" className="workflow-section-toggle" aria-label={title} aria-expanded={isExpanded} aria-controls={bodyId}
+          onClick={() => { setLocalExpanded(!isExpanded); onExpandedChange?.(!isExpanded); }}>{heading}</button> : heading}
+        {action ? <div className="workflow-section-action" onClick={() => { if (collapsible) { setLocalExpanded(true); onExpandedChange?.(true); } }}>{action}</div> : null}
       </div>
-      {children}
+      {collapsible ? <div id={bodyId} className="workflow-section-body" hidden={!isExpanded}>{children}</div> : children}
     </section>
   );
 }
@@ -76,7 +84,7 @@ export function workflowDetailFieldIcon(field) {
 export function WorkflowDetailFields({ title, fields, icon = 'layers', className = '' }) {
   if (!fields.length) return null;
   return (
-    <WorkflowDetailSection title={title} icon={icon} meta="Read only" className={className}>
+    <WorkflowDetailSection title={title} icon={icon} meta="Read only" className={className} collapsible defaultExpanded={title !== 'Outputs'}>
       <div className="workflow-agent-output-list">
         {fields.map((field, index) => {
           const type = field.type === 'boolean' ? 'bool' : field.type || 'any';

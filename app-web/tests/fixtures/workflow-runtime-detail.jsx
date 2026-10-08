@@ -24,11 +24,14 @@ const initialTask = {
   workflowRun: { status: 'running', current_node_id: 'model', nodes: { worker: result('## Result\n\n节点详情应与画布节点保持配色一致。\n\n- Retain real execution content\n- Keep input, response and trace together'), model: { status: 'running' } } },
   eventLog: [{ type: 'workflow_node_started', workflowNodeId: 'model', nodeInput: 'Verify the worker result.', timestamp }],
 };
+const inheritedConfig = { provider: 'custom.source', model_id: 'gpt-5.5', reasoning_effort: 'high' };
+const providers = [{ id: 'source', requestProvider: 'custom.source', provider: 'openai', label: 'Source Provider', defaultModelId: 'gpt-5.5', modelOptions: [{ id: 'gpt-5.5' }] }];
+window.fetch = async () => new Response(JSON.stringify({ models: [{ id: 'gpt-5.5' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 function Fixture() {
   const [task, setTask] = React.useState(initialTask);
   window.__runtimeTask = task;
   window.__setRuntimeTask = setTask;
-  return <AppTooltipProvider><div className="app-workflow-stage" style={{ height: '100%', gridColumn: 'auto' }}><WorkflowRuntimePage workflow={workflow} task={task} agentOptions={[{ id: 'goal.worker', label: 'Goal Worker' }]} composer={<div style={{ padding: 18, border: '1px solid #35425a', borderRadius: 14, color: '#92a1bd' }}>Describe the task you want to delegate…</div>} /></div></AppTooltipProvider>;
+  return <AppTooltipProvider><div className="app-workflow-stage" style={{ height: '100%', gridColumn: 'auto' }}><WorkflowRuntimePage workflow={workflow} task={task} providerOptions={providers} nodeRuntimeConfigs={task.nodeRuntimeConfigs || {}} configReadOnly={task.status === 'running'} agentOptions={[{ id: 'goal.worker', label: 'Goal Worker' }]} composer={<div style={{ padding: 18, border: '1px solid #35425a', borderRadius: 14, color: '#92a1bd' }}>Describe the task you want to delegate…</div>} /></div></AppTooltipProvider>;
 }
 createRoot(document.getElementById('root')).render(<Fixture />);
 const tick = (ms = 180) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -109,5 +112,28 @@ const select = async (id) => { document.querySelector(`.react-flow__node[data-id
   }
   window.__setRuntimeTask((t) => ({ ...t, status: 'done', workflowRun: { ...t.workflowRun, status: 'succeeded' } }));
   await tick();
+  await select('worker');
+  [...document.querySelectorAll('[role="tab"]')].find((tab) => tab.textContent === 'Runtime Config').click(); await tick();
+  window.__setRuntimeTask((t) => ({ ...t, status: 'running', nodeRuntimeConfigs: { worker: inheritedConfig }, eventLog: [{ type: 'workflow_node_started', workflowNodeId: 'worker', nodeInput: 'Requirements document: docs/requirements/goal.md', timestamp }], workflowRun: { status: 'running', current_node_id: 'worker', nodes: { worker: { status: 'running', started_at: timestamp } } } }));
+  await tick();
+  const selectedTab = () => panel().querySelector('[role="tab"][aria-selected="true"]')?.textContent;
+  check(selectedTab() === 'Run Result', 'Agent entering execution defaults to Run Result');
+  check(card('worker').querySelector('.workflow-node-live-badge')?.textContent === 'Running', 'Running badge is visible without hovering');
+  check(getComputedStyle(card('worker').querySelector('.workflow-node-live-badge i')).animationName === 'workflow-live-spin', 'Running badge has an animated spinner');
+  [...document.querySelectorAll('[role="tab"]')].find((tab) => tab.textContent === 'Runtime Config').click(); await tick();
+  window.__setRuntimeTask((t) => ({ ...t, eventLog: [...t.eventLog, { type: 'text_delta', delta: 'checking', workflowNodeId: 'worker' }] })); await tick();
+  check(selectedTab() === 'Runtime Config', 'Streaming does not override an explicit tab choice');
+  const configShown = (model, effort) => document.querySelector('[aria-label="Node provider"]')?.textContent.includes('Source Provider')
+    && document.querySelector('[aria-label="Node model"]')?.textContent.includes(model)
+    && document.querySelector('[aria-label="Node thinking level"]')?.textContent.toLowerCase().includes(effort);
+  check(configShown('gpt-5.5', 'high') && [...panel().querySelectorAll('[role="combobox"]')].every((item) => item.disabled), 'Running node displays inherited Provider, Model and Reasoning effort before completion');
+  window.__setRuntimeTask((t) => ({ ...t, workflowRun: { ...t.workflowRun, nodes: { worker: { ...t.workflowRun.nodes.worker, runtime_config: { ...inheritedConfig, model_id: 'actual-model', reasoning_effort: 'low' } } } } })); await tick();
+  check(configShown('actual-model', 'low'), 'Read-only runtime config prefers the actual executed snapshot over requested values');
+  panel().querySelector('.workflow-detail-close').click(); await tick();
+  document.querySelector('.react-flow__node[data-id="worker"]').dispatchEvent(new MouseEvent('click', { bubbles: true })); await tick(500);
+  check(selectedTab() === 'Run Result', 'Opening a running Agent defaults to Run Result');
+  window.__setRuntimeTask((t) => ({ ...t, status: 'waiting_input', workflowRun: { ...t.workflowRun, status: 'waiting_input' } })); await tick();
+  check(selectedTab() === 'Run Result' && !card('worker').querySelector('.workflow-node-live-badge') && panel().querySelector('.workflow-detail-waiting'), 'Waiting for input removes Running badge and keeps result visible');
+  window.__setRuntimeTask((t) => ({ ...t, status: 'running', workflowRun: { ...t.workflowRun, status: 'running' } })); await tick();
   report.dataset.result = failed ? 'FAIL' : 'PASS';
 })().catch((error) => { check(false, error.stack); report.dataset.result = 'FAIL'; });
