@@ -4,10 +4,20 @@
 
 ## 自动测试
 
+- `features/chat/composer-message-history.test.js` 覆盖用户消息历史与未发送草稿分离：↑ 只预览当前会话的全部用户消息、↓/Escape 返回草稿、非浏览状态 ↓ 不清空、切会话/组件重挂保留原草稿及编辑/清空成为新草稿。`fixtures/composer-message-history.html` 使用真实 ChatPanel 与 Lexical 输入框检查方向键、光标移动、多行草稿和历史窗口外的消息。
+
+- `contracts/conversation-search-scroll.test.js` 与 `contracts/scroll-to-bottom.test.js` 锁住搜索刷新不重复跳转、关闭不重启底部跟随、历史窗口/执行步骤保留以及焦点返回不滚动。`fixtures/conversation-search-scroll.html` 用真实 ChatPanel 的 100 条消息验证搜索期间自由滚动、输出更新不拉回、×/Escape/清空关键词保留位置、显式上下项跳转及返回最新/切会话恢复跟随。
+
+- `features/workflow/runtime-flow-nodes.test.js` 验证状态/流式更新保留 React Flow 的 measured 尺寸和 handle bounds、未变化节点复用、真正的移动/增删/类型替换仍生效；`fixtures/runtime-update-stability.html` 用生产运行画布连续更新 30 次，检查节点/边不隐藏且 DOM 身份不变，并用生产任务卡与确认 hook 验证当前任务完成无需切换就清绿点、延迟通知/回前台/返回任务页自动清除，同时保留同会话其他任务和后台未读通知。
+
+- `contracts/skill-detail-toggle.test.js` 锁住 Skill 启停只有外层列表一个入口：详情保留描述和 Location，不重复显示 Enable skill；`fixtures/skill-details.html` 验证外层开关、详情打开/关闭和无重复开关。
+
 - `features/settings/mcp-tool-selection.test.js` + `contracts/mcp-tool-picker.test.js` 覆盖 Agent 的 MCP tools 空状态：无服务器、工具清单为空、服务器/工具全部停用时统一显示「No MCP tools available.」，不逐项显示空服务器；可选但未勾选的工具仍可配置，连接错误保留。`fixtures/mcp-tool-picker.html` 使用真实编辑器验证空状态和逐条勾选/旧服务器级授权迁移。
 
 
-- `features/conversations/goal-command.test.js` 覆盖 Chat → Workflow 的 `/goal` 路由：同目录项目复用、缺失自动导入（bot）、默认项目映射、新会话发送 Goal Loop、裸命令仅跳转、目标会话配置持久化、附件重新上传、准备失败保留草稿、切换会话时停止误投；命令优先于 Skill 和运行中纠偏。`fixtures/goal-command.html` 使用真实 ChatComposer 验证菜单选择、剥离命令、无 Chat 模型时发送、防重复、失败留稿和运行中独立路由（离线桩，不创建真实任务）。
+- `features/conversations/goal-command.test.js` 覆盖 Chat → Workflow 的 `/goal` 路由：同目录项目复用、缺失自动导入（bot）、默认项目映射、新会话发送 Goal Loop、裸命令仅跳转、来源会话当前 Provider/Model/Reasoning effort 在跳转前快照到所有 Agent 节点，目标会话与任务配置持久化、附件重新上传、准备失败保留草稿、切换会话时停止误投；命令优先于 Skill 和运行中纠偏。`fixtures/goal-command.html` 使用真实 ChatComposer 验证 Enter/Tab/鼠标选中 `/goal` 后显示与 Skill 同样式的 Target 图标标签、点击/Backspace 删除、切会话清除、裸标签二次回车导航、剥离命令、无 Chat 模型时发送、防重复、失败保留标签与草稿、Skill 图标不变和运行中独立路由（离线桩，不创建真实任务）。
+
+- `features/conversations/goal-task-confirmation.test.js` 串联真实 Goal 路由、deploy、runtime 和任务确认处理器：未导入项目时只创建一个会话/启动一次，前台与后台确认都替换占位任务；侧栏按确切占位 ID 合并，不按标题误合并，未确认点击不查询本地 ID，确认后点击恢复真实任务。审批节点重放覆盖完整展示转换链路（pending → quest → 侧栏合并 → 点击 → 服务端确认）：临时 ID 和重放上下文保留、确认关联 ID 不丢失、不重复或请求 `/api/tasks/pending`；`fixtures/workflow-replay-identity.html` 使用生产侧栏与 WorkflowRuntimePage 验证同一路径及运行详情。`fixtures/workflow-runtime-detail.html` 补充运行 Agent 默认 Run Result、从待运行转入运行自动切换、显式页签选择不被流更新抢走、常显 Running/spinner 与等待输入状态切换检查，以及运行中显示继承模型配置、只读详情优先显示实际执行快照。
 
 - `npm test`：运行所有 `*.test.js` / `*.test.mjs`。
 - `npm run check:web`：架构检查、自动测试、ESLint 和生产构建。
@@ -21,7 +31,7 @@
 - `contracts/user-message-line-breaks.test.js` + `features/chat/remark-hard-breaks.test.js` 锁住用户气泡换行：用户文本的软换行转成 `<br>`（真实 mdast→hast 管线断言），助手回答保持 CommonMark 软换行，代码块不受影响；编号列表里的续行（编辑重发那种「3. xxx / 续行」）同样要留在自己一行，且 resend 行文本（`task.displayText ?? task.title`）只许 trim 两端、不许折叠内部换行。
 - `features/chat/remark-json-block.test.js` 锁住“裸 JSON 自动成块”：模型把 JSON 当正文吐出来（Goal Loop 的 verdict、接口返回）时，CommonMark 只当它是普通段落——换行被折掉、`\"` 这类转义被 Markdown 吃掉，气泡既是一大坨、复制出来也不再是合法 JSON，而 Markdown 只认 fenced / 四空格缩进的代码块，所以修复放在 remark 管线（`shared/lib/remark-json-block.js`，`Markdown.jsx` 两种文本都注册）：按 mdast 的 `position` 从**原始 source** 切片、`JSON.parse` 且必须是对象/数组才转成 ```json 代码块（`JSON.stringify(v, null, 2)`），半截流式 JSON、普通花括号文字、已经是 fence 的内容、代码块/表格内都保持原样；转出的块走 Streamdown 现成的 fenced-code 路径（Shiki 高亮 + 复制/下载/行号）——`Markdown.jsx` 的 `hasCode` 闸门因此也要认裸 JSON（只认 ``` 围栏就不会去加载 Shiki 插件）。
 - `contracts/markdown-remark-plugins.test.js` 锁住「remarkPlugins 得自己把默认那套拼回去」：Streamdown 对 remarkPlugins 是「传了就用你这份、没传才用默认」（默认 = `defaultRemarkPlugins` 的 gfm + codeMeta），而 `Markdown.jsx` 为了挂 remarkJsonBlock 必须自己传数组——默认那套不拼在最前面，gfm 当场被整套换掉（答案里的表格 / 删除线 / 任务列表退化成带竖线的普通文本）。契约拿夹具里那份真实 payload（Goal Loop Verifier 那条裸 JSON 回答）跑同款管线：修复后的组合 → 单个 `language-json` 代码块；去掉 remarkJsonBlock → 退回一个段落；只写 `[remarkJsonBlock]` → 表格不再是表格（后两条是反向断言，锁住两次线上翻车的样子）；浏览器侧由 `fixtures/markdown-json-answer.html` 量渲染出来的 DOM。
-- `contracts/loading-state.test.js` 锁住设置页的加载占位：懒加载回退必须渲染 assistant-ui Loader（九宫格点亮规则、120ms 计时与清理）、整块居中，标签用正文字体 `--conversation-font` 并有扫光与 reduced-motion 回退。
+- `contracts/loading-state.test.js` 锁住设置页和 Bot 运行页的加载占位：懒加载回退必须渲染共享 assistant-ui Loader（九宫格点亮规则、120ms 计时与清理）、整块居中，标签用正文字体 `--conversation-font` 并有扫光与 reduced-motion 回退。`fixtures/workflow-runtime-loading.html` 使用真实 WorkflowRuntimeEntry 和样式，验证首次 Bot 分包加载、会话恢复及后续加载均为单个居中九点 Loader，加载完成正常显示页面。
 - `contracts/conversation-loading.test.js` + `features/chat/conversation-loading.test.js` 锁住「打开会话先整段占位」：正文还没到（时间线还是工作区快照搭的，只有标题和状态）时，整段会话由会话面板在消息区正中间用一颗共享 Loader 占位——加载期间一行都不渲染，正文到了一次性铺开用户 + 助手消息（不再是「用户气泡都显示了、助手那一轮各自转一个圈」）；占位是会话级的，行里不再带逐行标志（气泡里也不许再有 `Loading answer…`），空会话（没有轮次）、本地草稿、拉详情失败三种情况都不占位（空态 / 错误提示说话），判据只有 `features/chat/model/conversation-loading.js` 一份。
 - `contracts/error-surface-unification.test.js` 锁住“失败提示只有一套 UI”：旧的私有错误类（`.message-action-error` / `.settings-inline-error` / `.haish-dialog-error` / `.haish-approval-error` / `.remote-settings-error` / `.form-error`）必须从 `app-web/src` 与 `app-web/styles` 里消失；聊天失败轮、设置表单、删除对话框、重命名对话框、远端设置、审批卡（含提问卡与工作流审批）、工具卡的失败详情、崩溃屏都渲染 `shared/ui/agent-elements/ErrorState.jsx`（面板内用 `variant="inline"`），红卡/胶囊 Retry 的口径留在同一份 `error-state.css`；崩溃屏必须继续识别陈旧分片（`Failed to fetch dynamically imported module` → “Reload app”），且 `shared/lib/preload-recovery.js` 在 `./app.jsx` 之前挂上 `vite:preloadError` 一次性重载（sessionStorage 防循环）。
 - `contracts/steering-message-style.test.js` 锁住“纠偏气泡就是用户气泡”：气泡底色/边框/圆角/内边距必须与用户消息共用同一条规则（不许本地再抄一份），正文走 `.chat-bubble-text` + Markdown hardBreaks，且仍嵌在被打断的 assistant 回复框内。
@@ -45,12 +55,18 @@
 
 - `features/workflow/node-runtime-config.test.js` 覆盖节点配置隔离、白名单、已执行配置恢复、提交快照及已知适配器 thinking 限制；后端配套测试覆盖同一 Agent 的两个节点在 Loop 中使用不同模型、节点重跑只更新目标与显式重置。
 
+- `features/workflow/workflow-attention.test.js` + `fixtures/workflow-attention.html` 覆盖 Workflow 待确认自动定位：进入/返回 Workflow、任务切换、新 ask_user 或审批请求自动打开对应节点及 Run Result，滚到确认卡；未加载节点日志时从待处理快照显示表单，日志恢复不重复；相同请求不抢手动选择，已解决、其他任务/会话/工作流与终态不误弹；确认仍需用户点击。
+
 ## 浏览器 DOM 回归
 
 运行 `npx vite --config vite.app-web.config.ts`，依次打开下面的页面。每页自动执行断言并显示 `PASS` / `FAIL`；这些检查需要真实 DOM，不包含在 `npm test` 中。
 
 | 页面 | 覆盖范围 |
 | --- | --- |
+| [runtime-update-stability.html](fixtures/runtime-update-stability.html) | 30 次状态/流式更新节点与边保持可见；当前任务完成、延迟通知、回前台和返回任务页自动清绿点，不清其他任务/会话及后台未读。 |
+| [workflow-all-node-models.html](fixtures/workflow-all-node-models.html) | Clarifier / Worker / Verifier 在完成、运行、待执行时均显示模型配置；画布与详情一致，实际执行配置立即覆盖本节点，其他节点配置不受影响；旧任务空节点配置表使用本任务记录的默认路由，只读且不修改任务。 |
+| [workflow-provider-icons.html](fixtures/workflow-provider-icons.html) | Provider / Model 的收起字段与菜单均展示图标；只读历史品牌键（openai）显示 OpenAI 与品牌图标，不误用当前同品牌配置；已删除配置显示通用图标，空值保留占位；仅显示不改写运行配置。 |
+| [workflow-agent-details.html](fixtures/workflow-agent-details.html) | Inputs/Outputs 可折叠，Inputs 与 End 可编辑 Outputs 默认展开，生成的 Outputs 默认收起；标题按钮可键盘操作，隐藏时保留编辑器和内容，添加输入/输出字段自动展开，只读仍可折叠；控制节点精简：Approval 使用统一 12px 标签、34px 标题输入及扁平待审内容编辑器，无嵌套卡片、通用 Inputs/Outputs 或 payload 选择器，编辑保留已有 payload 及其他字段；Condition 使用紧凑表达式编辑器和数据插入，无参数时隐藏空 Inputs，已有别名可编辑/删除；Retry 保留重试策略，均不展示生成的 Outputs；编辑/只读、280/340/520px 无溢出及其他节点原有字段回归。 |
 | [mcp-tool-picker.html](fixtures/mcp-tool-picker.html) | Agent MCP tools 逐条选择、旧授权迁移、未勾选但可用的列表、无服务器/全空清单/全部停用时单条空状态、无空服务器标题及连接错误保留。 |
 | [scheduled-tasks.html](fixtures/scheduled-tasks.html) | 共用 slash 面板及 Clock、无会话选择器、复用 Radix 非原生下拉/月历与时分输入、跨月/方向键/Escape/焦点返回、编辑保留时间、保存失败重试只绑定一次、固定模型且不执行、侧栏常驻提醒与运行灯不重叠、管理不切会话、暂停/历史/确认删除及实时刷新；离线 fixture 不调用模型。 |
 | [workflow-node-config.html](fixtures/workflow-node-config.html) | Provider / Model / Thinking 及底部 Workflow 复用共享 Radix 非原生 Select，紧凑 12px 字号与整行均分双 Tab（1px 选中底线，无尾部空白）、深色菜单、Portal 防裁剪、方向键/Enter/Escape/焦点返回与外部点击关闭；Workflow 独立灰色节点连线图标（不复用仪表盘）、无文字/无边框入口、展开不留图标外框、灰色菜单选中项无嵌套描边、当前名称提示、菜单切换及运行中锁定；Tab 与配置卡片 8px 间距和紧凑内边距；未执行 Agent 节点可配置；节点选择独立、持久化、历史任务恢复、任务/账号/Workflow 隔离、运行中只读、移除 default 菜单项并用选择提示和独立清空动作替代；Bot 去掉 context 和 model picker 且保留 Workflow 入口、无需隐藏全局模型即可发送；Chat 原入口保留。 |
