@@ -192,6 +192,8 @@ function main() {
     '--requirement',
     runtimeRequirementsPath,
   ]);
+  // pip check ignores app extras when the core is installed with --no-deps.
+  run(venvPython, [path.join(__dirname, 'check-runtime-dependencies.py'), sourceRoot]);
   removeSourceBuildArtifacts();
   removeInstalledRuntimePackage(venvPython);
   run(venvPython, ['-m', 'pip', 'install', '--no-cache-dir', '--force-reinstall', '--no-deps', sourceRoot]);
@@ -251,7 +253,12 @@ function main() {
   if (!fs.existsSync(websocketPackagePath)) {
     throw new Error(`Bundled WebSocket runtime is missing: ${websocketPackagePath}`);
   }
-  console.log(`Built minimal runtime at ${runtimeRoot}`);
+  run(process.execPath, [
+    path.join(__dirname, 'smoke-runtime.mjs'),
+    path.join(runtimeRoot, 'bin', 'haish-runtime', 'haish-runtime'),
+    path.join(buildRoot, 'frozen-smoke.log'),
+  ]);
+  console.log(`Built and smoke-tested runtime at ${runtimeRoot}`);
 }
 
 main();

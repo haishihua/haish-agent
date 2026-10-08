@@ -26,6 +26,11 @@ on:
         description: "Build only (no release upload) — pipeline validation"
         type: boolean
         default: false
+      runtime_ref:
+        description: "Exact core commit SHA for reproducible builds"
+        type: string
+        required: true
+        default: "a42b48bcb21b2af2fd151613dbf27a1775a5380b"
 
 permissions:
   contents: write
@@ -78,13 +83,31 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate release gates and source pin
+        env:
+          RUNTIME_REF: ${{ inputs.runtime_ref }}
+        run: |
+          [[ "$RUNTIME_REF" =~ ^[0-9a-f]{40}$ ]] || { echo 'runtime_ref must be an exact commit SHA'; exit 1; }
+          python3 -m venv build/release-check-venv
+          build/release-check-venv/bin/python -m pip install packaging==26.3
+          PATH="$PWD/build/release-check-venv/bin:$PATH" npm run test:release
+          npm run typecheck
+
       - name: Check out the private runtime source
         uses: actions/checkout@v5
         with:
           repository: haishihua/haish-agent-core
-          ref: master
+          ref: ${{ inputs.runtime_ref }}
           path: core-runtime
           token: ${{ secrets.HAISH_PAT }}
+
+      - name: Record runtime source
+        env:
+          RUNTIME_REF: ${{ inputs.runtime_ref }}
+        run: |
+          actual="$(git -C core-runtime rev-parse HEAD)"
+          test "$actual" = "$RUNTIME_REF"
+          echo "Runtime source: $actual" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fetch the pinned remote adapter
         env:
@@ -110,6 +133,19 @@ jobs:
           ls "$runtime" | grep -iE '^(yaml|pillow|PIL|certifi|qdrant_client)$' || echo 'no expected dep dirs found'
           echo "=== bundled resources ==="
           ls -lh release/mac-arm64/Haish.app/Contents/Resources/ | head -20
+
+      - name: Preserve diagnostics and build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-release-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            build/runtime/*-smoke.log
+            build/runtime/pyinstaller-work/haish-runtime/warn-haish-runtime.txt
+            release/Haish-*.dmg
+            release/Haish-*.zip
+            release/latest-mac.yml
 
       - name: Summarize the release
         if: ${{ !inputs.dry_run }}

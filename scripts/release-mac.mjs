@@ -121,6 +121,11 @@ function verifyPackagedRuntime() {
     fail('Packaged runtime is missing the TLS CA certificate.', [certifiBundlePath]);
   }
   console.log(`[release:mac] verified packaged TLS CA certificate: ${certifiBundlePath}`);
+  run('node', [
+    'scripts/smoke-runtime.mjs',
+    path.join(appPath, 'Contents/Resources/haish-agent-core/bin/haish-runtime/haish-runtime'),
+    'build/runtime/packaged-smoke.log',
+  ]);
 }
 
 function main() {
@@ -220,6 +225,8 @@ function main() {
       ...assets,
       '--repo',
       repo,
+      '--target',
+      runCapture('git', ['rev-parse', 'HEAD']),
       '--title',
       title,
       '--notes',
