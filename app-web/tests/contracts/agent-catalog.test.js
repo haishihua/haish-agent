@@ -211,8 +211,8 @@ test('the metal ring tracks in-flight work and typed payload instead of staying 
   assert.match(motionEffectsSource, /paused=\{prefersReducedMotion\(\) \|\| !active\}/);
   assert.match(composerSource, /const sendBeamActive = running \|\| submitPending \|\| hasComposerPayload;/);
   assert.doesNotMatch(composerSource, /<MetalActionEffect>/);
-  // 同一个输入框也对聊天独有的内容计数：贴图与批注草稿都算「有东西可发」。
-  assert.match(composerSource, /const hasComposerPayload = Boolean\(draft\.trim\(\) \|\| composerImages\.length > 0 \|\| pendingCommentCount\)/);
+  // 选中的 Goal 命令也能直接导航；贴图与批注草稿继续算「有东西可发」。
+  assert.match(composerSource, /const hasComposerPayload = Boolean\(selectedCommand \|\| draft\.trim\(\) \|\| composerImages\.length > 0 \|\| pendingCommentCount\)/);
   // Unmounting the shell would swap the button surface mid-press, so the idle
   // state hides the shader layers instead and keeps the shell mounted.
   assert.match(chatStyles, /\.chat-send-metal\.is-idle \.metal-fx-canvas[\s\S]*opacity: 0;/);

@@ -24,9 +24,10 @@ import {
 import { useConversationRunConfig } from '../../conversations/hooks/useConversationRunConfig.js';
 import { useSchedules } from '../../schedules/hooks/useSchedules.js';
 import { scheduleInvocation, scheduleMenuItems } from '../../schedules/model/schedule.js';
+import { useComposerHistory } from '../hooks/useComposerHistory.js';
 import { LexicalComposerInput } from './LexicalComposerInput.jsx';
 import { WorkflowPicker } from './WorkflowPicker.jsx';
-import { goalInvocation, goalMenuItems } from '../model/goal-command.js';
+import { GOAL_COMMAND, goalInvocation, goalMenuItems } from '../model/goal-command.js';
 import { ComposerBorderBeam, MetalActionEffect } from '../../../shared/ui/MotionEffects.jsx';
 
 /**
@@ -99,17 +100,18 @@ export function ChatComposer({
   const [goalPending, setGoalPending] = React.useState(false);
   const goalPendingRef = React.useRef(false);
   const [selectedSkillName, setSelectedSkillName] = React.useState('');
+  const [goalSelected, setGoalSelected] = React.useState(false);
   const [skillMenuIndex, setSkillMenuIndex] = React.useState(0);
   const [skillMenuDismissed, setSkillMenuDismissed] = React.useState(false);
   const selectedSkillNameRef = React.useRef('');
   const skillSelectionPendingRef = React.useRef(false);
-  const draft = draftProp !== undefined ? draftProp : localDraft;
-  const setDraft = draftProp !== undefined ? onDraftChangeProp : setLocalDraft;
+  const { draft, setDraft, navigate: navigateHistory, restore: restoreHistory } = useComposerHistory({
+    scopeId, draft: draftProp !== undefined ? draftProp : localDraft,
+    onDraftChange: draftProp !== undefined ? onDraftChangeProp : setLocalDraft, history,
+  });
   const localInputRef = React.useRef(null);
   const inputRef = inputRefProp || localInputRef;
   const suppressSubmitUntilRef = React.useRef(0);
-  const historyCursorRef = React.useRef(-1);
-  const historySavedDraftRef = React.useRef('');
   const [pathNotice, setPathNotice] = React.useState('');
   React.useEffect(() => setPathNotice(''), [scopeId, draft]);
 
@@ -128,8 +130,11 @@ export function ChatComposer({
     () => goalMenuItems(composerContent.text, scheduleMenuItems(composerContent.text, matchingAgentSkills(composerContent.text, resolvedSkills), Boolean(schedules)), executionMode === 'chat' && Boolean(onGoalCommand)),
     [composerContent.text, resolvedSkills, schedules, executionMode, onGoalCommand],
   );
-  const skillMenuOpen = Boolean(matchingSkills?.length && !selectedSkill && !skillMenuDismissed);
-  const goal = executionMode === 'chat' && onGoalCommand && !selectedSkill ? goalInvocation(composerContent.text) : null;
+  const selectedCommand = goalSelected && executionMode === 'chat' && onGoalCommand ? GOAL_COMMAND : null;
+  const skillMenuOpen = Boolean(matchingSkills?.length && !selectedSkill && !selectedCommand && !skillMenuDismissed);
+  const goal = executionMode === 'chat' && onGoalCommand && !selectedSkill
+    ? (selectedCommand ? { prompt: composerContent.text.trim() } : goalInvocation(composerContent.text))
+    : null;
   const skillMenuRef = React.useRef(null);
   React.useEffect(() => {
     skillMenuRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
@@ -177,7 +182,12 @@ export function ChatComposer({
     selectedSkillNameRef.current = '';
     skillSelectionPendingRef.current = false;
     setSkillMenuDismissed(false);
+    setGoalSelected(false);
   }, [scopeId]);
+
+  React.useEffect(() => {
+    if (executionMode !== 'chat' || !onGoalCommand) setGoalSelected(false);
+  }, [executionMode, onGoalCommand]);
 
   React.useEffect(() => {
     if (selectedSkillName && !resolvedSkills.some((skill) => skill.name === selectedSkillName)) {
@@ -303,8 +313,8 @@ export function ChatComposer({
       mime: img.mime,
       previewUrl: img.previewUrl || null,
     }));
-  const hasComposerPayload = Boolean(draft.trim() || composerImages.length > 0 || pendingCommentCount);
-  const canSubmitPayload = Boolean((draft.trim() || readyImages.length > 0 || pendingCommentCount) && !imagesUploading && !(running && pendingCommentCount));
+  const hasComposerPayload = Boolean(selectedCommand || draft.trim() || composerImages.length > 0 || pendingCommentCount);
+  const canSubmitPayload = Boolean((selectedCommand || draft.trim() || readyImages.length > 0 || pendingCommentCount) && !imagesUploading && !(running && pendingCommentCount));
 
   const usedTokens = Math.max(0, Math.round(Number(contextUsage?.usedTokens) || 0));
   const totalTokens = Math.max(0, Math.round(Number(contextUsage?.totalTokens) || 0));
@@ -372,6 +382,8 @@ export function ChatComposer({
     setComposerImages([]);
     if (currentComposerScopeRef.current !== scopeId) return;
     onSent?.();
+    setSkillMenuDismissed(false);
+    setGoalSelected(false);
     setDraft('');
     setSelectedSkillName('');
     selectedSkillNameRef.current = '';
@@ -394,7 +406,10 @@ export function ChatComposer({
       goalPendingRef.current = true;
       setGoalPending(true);
       try {
-        const accepted = await onGoalCommand({ prompt: composePathReferenceDraft(goal.prompt, composerContent.references), attachment, images: readyImages });
+        const accepted = await onGoalCommand({
+          prompt: composePathReferenceDraft(goal.prompt, composerContent.references), attachment, images: readyImages,
+          runConfig: { provider: providerRequest, model_id: sendModelId, reasoning_effort: reasoningEffort },
+        });
         if (accepted !== false) {
           // This callback is bound to the source conversation even after navigation.
           setDraft('');
@@ -473,7 +488,11 @@ export function ChatComposer({
       if (skill.name === 'goal') {
         if (disabled || submitPending || goalPendingRef.current) return;
         const prompt = composerContent.text.match(/^\s*\/[a-z0-9-]*(?:\s+([\s\S]*))?$/i)?.[1] || '';
-        setDraft(composePathReferenceDraft(`/goal ${prompt}`, composerContent.references));
+        setGoalSelected(true);
+        setSelectedSkillName('');
+        selectedSkillNameRef.current = '';
+        skillSelectionPendingRef.current = false;
+        setDraft(composePathReferenceDraft(prompt, composerContent.references));
         setSkillMenuDismissed(true);
         requestAnimationFrame(() => inputRef.current?.focusAtEnd?.());
         return;
@@ -484,6 +503,7 @@ export function ChatComposer({
     event?.preventDefault?.();
     event?.stopPropagation?.();
     const prompt = composerContent.text.match(/^\s*\/[a-z0-9-]*(?:\s+([\s\S]*))?$/i)?.[1] || '';
+    setGoalSelected(false);
     selectedSkillNameRef.current = skill.name;
     skillSelectionPendingRef.current = !prompt.trim() && !composerContent.references.length;
     setSelectedSkillName(skill.name);
@@ -537,6 +557,16 @@ export function ChatComposer({
           ref={inputRef}
           value={draft}
           selectedSkill={selectedSkill}
+          selectedCommand={selectedCommand}
+          onTokenChange={(token) => {
+            setGoalSelected(token?.command === true && token.name === 'goal');
+            const skillName = token && !token.command ? token.name : '';
+            setSelectedSkillName(skillName);
+            selectedSkillNameRef.current = skillName;
+            skillSelectionPendingRef.current = false;
+            setSkillMenuDismissed(Boolean(token));
+          }}
+          onRemoveCommand={() => { setGoalSelected(false); setSkillMenuDismissed(false); }}
           attachments={(composerImages.length > 0 || attachment || contextTask) && (
             <>
               {contextTask && (
@@ -615,11 +645,13 @@ export function ChatComposer({
             if (
               event.key === 'Backspace'
               && !event.nativeEvent.isComposing
-              && selectedSkill
+              && (selectedSkill || selectedCommand)
               && inputRef.current?.isSelectionAtStart()
             ) {
               event.preventDefault();
               event.stopPropagation();
+              setGoalSelected(false);
+              setSkillMenuDismissed(false);
               selectedSkillNameRef.current = '';
               skillSelectionPendingRef.current = false;
               setSelectedSkillName('');
@@ -646,6 +678,12 @@ export function ChatComposer({
                 return;
               }
             }
+            if (event.key === 'Escape' && !event.nativeEvent.isComposing && restoreHistory()) {
+              event.preventDefault();
+              event.stopPropagation();
+              requestAnimationFrame(() => inputRef.current?.focusAtEnd());
+              return;
+            }
             if (event.key === 'Escape' && running && !event.nativeEvent.isComposing) {
               event.preventDefault();
               event.stopPropagation();
@@ -657,41 +695,15 @@ export function ChatComposer({
               submit(event);
               return;
             }
-            // ArrowUp / ArrowDown history navigation (terminal-style).
-            if (event.key === 'ArrowUp' && !event.shiftKey && !event.nativeEvent.isComposing) {
-              if (!inputRef.current?.isSelectionAtStart()) return;
+            // History previews never overwrite the cached unsent draft.
+            if (['ArrowUp', 'ArrowDown'].includes(event.key) && !event.shiftKey
+              && !event.altKey && !event.ctrlKey && !event.metaKey && !event.nativeEvent.isComposing) {
+              const older = event.key === 'ArrowUp';
+              if (!(older ? inputRef.current?.isSelectionAtStart() : inputRef.current?.isSelectionAtEnd())) return;
+              if (!navigateHistory(older ? 'older' : 'newer')) return;
               event.preventDefault();
               event.stopPropagation();
-              if (history.length === 0) return;
-              const cursor = historyCursorRef.current;
-              if (cursor === -1) {
-                historySavedDraftRef.current = draft;
-              }
-              const nextCursor = Math.min(cursor + 1, history.length - 1);
-              historyCursorRef.current = nextCursor;
-              setDraft(history[nextCursor]);
               requestAnimationFrame(() => inputRef.current?.focusAtEnd());
-              return;
-            }
-            if (event.key === 'ArrowDown' && !event.shiftKey && !event.nativeEvent.isComposing) {
-              if (!inputRef.current?.isSelectionAtEnd()) return;
-              event.preventDefault();
-              event.stopPropagation();
-              const cursor = historyCursorRef.current;
-              if (cursor <= 0) {
-                historyCursorRef.current = -1;
-                setDraft(historySavedDraftRef.current);
-                return;
-              }
-              const nextCursor = cursor - 1;
-              historyCursorRef.current = nextCursor;
-              setDraft(history[nextCursor]);
-              requestAnimationFrame(() => inputRef.current?.focusAtEnd());
-              return;
-            }
-            // Any non-modifier key resets the history cursor.
-            if (!['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(event.key)) {
-              historyCursorRef.current = -1;
             }
           }}
           placeholder={placeholder}

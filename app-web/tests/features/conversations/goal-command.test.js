@@ -104,6 +104,41 @@ test('bare /goal navigates with Goal Loop selected but never submits an empty ta
   assert.equal(h.sent.length, 0);
 });
 
+const goalNodes = [
+  { id: 'start', type: 'start' },
+  { id: 'clarify', type: 'agent' },
+  { id: 'approve_requirements', type: 'human_approval' },
+  { id: 'goal_worker', type: 'agent', runtime_config: { provider: 'old', model_id: 'old-model' } },
+  { id: 'goal_verifier', type: 'agent' },
+  { id: 'goal_gate', type: 'condition' },
+  { id: 'goal_loop', type: 'loop' },
+  { id: 'output', type: 'output' },
+];
+for (const prompt of ['', 'Task']) {
+  test(`/goal snapshots the source model for every Agent node and persists it (${prompt || 'navigation only'})`, async () => {
+    const h = harness({ missing: true, workflow: { nodes: goalNodes } });
+    const runConfig = { provider: 'custom.provider-id', model_id: 'gpt-5.5', reasoning_effort: 'xhigh', api_key: 'not-a-config-field', agent_id: 'source-agent' };
+    const expected = Object.fromEntries(['clarify', 'goal_worker', 'goal_verifier'].map((id) => [id, {
+      provider: 'custom.provider-id', model_id: 'gpt-5.5', reasoning_effort: 'xhigh',
+    }]));
+    const pending = h.run({ prompt, runConfig });
+    runConfig.model_id = 'changed-after-navigation';
+    assert.equal(await pending, true);
+    assert.deepEqual(h.calls.find((call) => call.method === 'PUT').body.node_runtime_configs, expected);
+    if (prompt) {
+      assert.deepEqual(h.sent[0][0].nodeRuntimeConfigs, expected);
+      assert.equal(h.sent[0][0].modelId, null, 'models are node scoped, not global Bot settings');
+    } else assert.equal(h.sent.length, 0);
+    assert.equal(h.notices.length, 0);
+  });
+}
+
+test('/goal without a selected source model keeps ordinary workflow defaults and never submits model-only config', async () => {
+  const h = harness({ workflow: { nodes: goalNodes } });
+  assert.equal(await h.run({ prompt: 'Task', runConfig: { provider: '', model_id: 'unbound', reasoning_effort: 'high' } }), true);
+  assert.deepEqual(h.sent[0][0].nodeRuntimeConfigs, Object.fromEntries(['clarify', 'goal_worker', 'goal_verifier'].map((id) => [id, { reasoning_effort: 'high' }])));
+});
+
 test('long prompts only truncate the conversation title, never the actual task', async () => {
   const h = harness();
   const prompt = 'a'.repeat(500);

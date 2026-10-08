@@ -1,9 +1,10 @@
 import { GOAL_WORKFLOW_ID, matchingWorkflowProject } from '../../chat/model/goal-command.js';
+import { nodeRuntimeConfigsForWorkflow } from '../../workflow/model/node-runtime-config.js';
 
 // Explicit routing: never infer the destination from the currently displayed
 // mode after an await, or let /goal become a chat steering instruction.
 export function createGoalCommandHandler(ctx) {
-  return async function handleGoalCommand({ prompt, attachment = null, images = [] }) {
+  return async function handleGoalCommand({ prompt, attachment = null, images = [], runConfig = {} }) {
     const {
       API_BASE, apiFetch, buildApiHeaders, workspaceState, conversationIdRef,
       viewModeRef, draftConversationRef, workflowSettingsDraft, workflowById,
@@ -28,7 +29,16 @@ export function createGoalCommandHandler(ctx) {
       return false;
     }
     const workflowAttachment = attachment ? { ...attachment, uploaded: false } : null;
-    const request = buildDeployRequest(prompt, workflowAttachment, null, null, images, GOAL_WORKFLOW_ID, null, prompt);
+    // Capture the source composer's selection before any asynchronous navigation.
+    // Only model fields cross this boundary; never copy credentials or Agent identity.
+    const sourceConfig = Object.fromEntries(['provider', 'model_id', 'reasoning_effort']
+      .filter((field) => typeof runConfig[field] === 'string' && runConfig[field].trim())
+      .map((field) => [field, runConfig[field].trim()]));
+    if (!sourceConfig.provider) delete sourceConfig.model_id;
+    const nodeRuntimeConfigs = nodeRuntimeConfigsForWorkflow(workflow, Object.fromEntries(
+      (workflow.nodes || []).map((node) => [node.id, { ...sourceConfig }]),
+    ));
+    const request = buildDeployRequest(prompt, workflowAttachment, null, null, images, GOAL_WORKFLOW_ID, null, prompt, [], nodeRuntimeConfigs);
     Object.assign(request, { executionMode: 'bot', workflowId: GOAL_WORKFLOW_ID, agentId: null });
     const activationSeq = invalidateConversationActivation();
     const isCurrent = () => isConversationActivationCurrent(activationSeq)
@@ -60,7 +70,7 @@ export function createGoalCommandHandler(ctx) {
       await call(`/api/conversations/${encodeURIComponent(detail.conversation_id)}/run-config`, {
         method: 'PUT', body: JSON.stringify({
           execution_mode: 'bot', workflow_id: GOAL_WORKFLOW_ID, use_history: true,
-          node_runtime_configs: {},
+          node_runtime_configs: nodeRuntimeConfigs,
         }),
       });
       if (!isCurrent()) return false;

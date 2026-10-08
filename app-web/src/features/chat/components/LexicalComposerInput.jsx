@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, Target } from 'lucide-react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
@@ -26,9 +26,10 @@ import {
 } from 'lexical';
 
 class SkillTokenNode extends DecoratorNode {
-  constructor(skillName = '', key) {
+  constructor(skillName = '', key, command = false) {
     super(key);
     this.__skillName = skillName;
+    this.__command = command;
   }
 
   static getType() {
@@ -36,17 +37,18 @@ class SkillTokenNode extends DecoratorNode {
   }
 
   static clone(node) {
-    return new SkillTokenNode(node.__skillName, node.__key);
+    return new SkillTokenNode(node.__skillName, node.__key, node.__command);
   }
 
   static importJSON(serializedNode) {
-    return new SkillTokenNode(serializedNode.skillName || '');
+    return new SkillTokenNode(serializedNode.skillName || '', undefined, serializedNode.command === true);
   }
 
   exportJSON() {
     return {
       ...super.exportJSON(),
       skillName: this.__skillName,
+      command: this.__command,
       type: 'skill-token',
       version: 1,
     };
@@ -54,6 +56,10 @@ class SkillTokenNode extends DecoratorNode {
 
   getSkillName() {
     return this.getLatest().__skillName;
+  }
+
+  isCommand() {
+    return this.getLatest().__command;
   }
 
   createDOM() {
@@ -67,15 +73,17 @@ class SkillTokenNode extends DecoratorNode {
   }
 
   decorate() {
+    const Icon = this.__command ? Target : BookOpen;
     return (
       <span
         className="chat-skill-token"
-        data-skill-token={this.__skillName}
+        data-skill-token={this.__command ? undefined : this.__skillName}
+        data-command-token={this.__command ? this.__skillName : undefined}
         role="button"
-        aria-label={`Remove ${this.__skillName} skill`}
-        title="Click to remove skill"
+        aria-label={`Remove ${this.__skillName} ${this.__command ? 'command' : 'skill'}`}
+        title={`Click to remove ${this.__command ? 'command' : 'skill'}`}
       >
-        <BookOpen className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" />
+        <Icon className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" />
         <span>{this.__skillName}</span>
       </span>
     );
@@ -94,8 +102,8 @@ class SkillTokenNode extends DecoratorNode {
   }
 }
 
-function $createSkillTokenNode(skillName) {
-  return $applyNodeReplacement(new SkillTokenNode(skillName));
+function $createSkillTokenNode(skillName, command = false) {
+  return $applyNodeReplacement(new SkillTokenNode(skillName, undefined, command));
 }
 
 function appendPlainText(parent, value) {
@@ -127,13 +135,17 @@ function selectionHasContent(rootElement, direction) {
     range.setStart(domSelection.anchorNode, domSelection.anchorOffset);
   }
   const fragment = range.cloneContents();
-  fragment.querySelectorAll?.('.chat-skill-token-host, [data-skill-token]').forEach((node) => node.remove());
+  fragment.querySelectorAll?.('.chat-skill-token-host, [data-skill-token], [data-command-token]').forEach((node) => node.remove());
   return Boolean(fragment.textContent || fragment.querySelector?.('br'));
 }
 
-function ComposerController({ value, selectedSkill, disabled, maxLength, onChange, onReferencesChange, apiRef }) {
+function ComposerController({ value, selectedSkill, selectedCommand, disabled, maxLength, onChange, onTokenChange, onReferencesChange, apiRef }) {
   const [editor] = useLexicalComposerContext();
   const lastEmittedValueRef = React.useRef(String(value || ''));
+  const lastEmittedTokenRef = React.useRef({
+    name: selectedCommand?.name || selectedSkill?.name || '',
+    command: Boolean(selectedCommand),
+  });
 
   React.useEffect(() => {
     editor.setEditable(!disabled);
@@ -141,11 +153,14 @@ function ComposerController({ value, selectedSkill, disabled, maxLength, onChang
 
   React.useEffect(() => {
     const nextValue = String(value || '').slice(0, maxLength);
-    const nextSkillName = selectedSkill?.name || '';
+    const nextSkillName = selectedCommand?.name || selectedSkill?.name || '';
+    const nextCommand = Boolean(selectedCommand);
     let shouldSync = false;
     editor.getEditorState().read(() => {
-      const currentSkillName = $nodesOfType(SkillTokenNode)[0]?.getSkillName() || '';
-      shouldSync = $composerValue() !== nextValue || currentSkillName !== nextSkillName;
+      const currentToken = $nodesOfType(SkillTokenNode)[0];
+      const currentSkillName = currentToken?.getSkillName() || '';
+      shouldSync = $composerValue() !== nextValue || currentSkillName !== nextSkillName
+        || Boolean(currentToken?.isCommand()) !== nextCommand;
     });
     if (!shouldSync) return;
 
@@ -155,12 +170,13 @@ function ComposerController({ value, selectedSkill, disabled, maxLength, onChang
       const paragraph = $createParagraphNode();
       const { text, references } = splitPathReferenceDraft(nextValue);
       $setState(root, composerReferenceState, references);
-      if (nextSkillName) paragraph.append($createSkillTokenNode(nextSkillName));
+      if (nextSkillName) paragraph.append($createSkillTokenNode(nextSkillName, nextCommand));
       appendPlainText(paragraph, text);
       root.append(paragraph);
       lastEmittedValueRef.current = $composerValue();
+      lastEmittedTokenRef.current = { name: nextSkillName, command: nextCommand };
     }, { tag: 'composer-controlled-value' });
-  }, [editor, maxLength, selectedSkill?.name, value]);
+  }, [editor, maxLength, selectedSkill?.name, selectedCommand, value]);
 
   React.useEffect(() => {
     apiRef.current = {
@@ -214,12 +230,20 @@ function ComposerController({ value, selectedSkill, disabled, maxLength, onChang
   const handleChange = React.useCallback((editorState) => {
     editorState.read(() => {
       onReferencesChange($getState($getRoot(), composerReferenceState));
+      // Undo/redo can change only the token, whose text content is empty.
+      const token = $nodesOfType(SkillTokenNode)[0];
+      const name = token?.getSkillName() || '';
+      const command = Boolean(token?.isCommand());
+      if (name !== lastEmittedTokenRef.current.name || command !== lastEmittedTokenRef.current.command) {
+        lastEmittedTokenRef.current = { name, command };
+        onTokenChange?.(name ? { name, command } : null);
+      }
       const nextValue = $composerValue().slice(0, maxLength);
       if (nextValue === lastEmittedValueRef.current) return;
       lastEmittedValueRef.current = nextValue;
       onChange(nextValue);
     });
-  }, [maxLength, onChange, onReferencesChange]);
+  }, [maxLength, onChange, onTokenChange, onReferencesChange]);
 
   return <OnChangePlugin onChange={handleChange} ignoreSelectionChange />;
 }
@@ -227,13 +251,16 @@ function ComposerController({ value, selectedSkill, disabled, maxLength, onChang
 export const LexicalComposerInput = React.forwardRef(function LexicalComposerInput({
   value,
   selectedSkill,
+  selectedCommand,
   disabled = false,
   maxLength = 5000,
   placeholder = '',
   onChange,
+  onTokenChange,
   onKeyDown,
   onPaste,
   onRemoveSkill,
+  onRemoveCommand,
   onPathLimit,
   attachments,
 }, forwardedRef) {
@@ -271,10 +298,12 @@ export const LexicalComposerInput = React.forwardRef(function LexicalComposerInp
       <div
         className="chat-composer-editor-shell"
         onMouseDown={(event) => {
-          const token = event.target.closest?.('[data-skill-token]');
+          if (disabled) return;
+          const token = event.target.closest?.('[data-skill-token], [data-command-token]');
           if (!token) return;
           event.preventDefault();
-          onRemoveSkill?.();
+          if (token.hasAttribute('data-command-token')) onRemoveCommand?.();
+          else onRemoveSkill?.();
           requestAnimationFrame(() => apiRef.current?.focus());
         }}
       >
@@ -297,15 +326,17 @@ export const LexicalComposerInput = React.forwardRef(function LexicalComposerInp
               }}
             />
           )}
-          placeholder={selectedSkill ? null : <div className="chat-composer-placeholder">{placeholder}</div>}
+          placeholder={selectedSkill || selectedCommand ? null : <div className="chat-composer-placeholder">{placeholder}</div>}
           ErrorBoundary={LexicalErrorBoundary}
         />
         <ComposerController
           value={value}
           selectedSkill={selectedSkill}
+          selectedCommand={selectedCommand}
           disabled={disabled}
           maxLength={maxLength}
           onChange={onChange}
+          onTokenChange={onTokenChange}
           onReferencesChange={setReferences}
           apiRef={apiRef}
         />
