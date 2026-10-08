@@ -4,9 +4,9 @@ import test from 'node:test';
 
 const source = readFileSync(new URL('../../src/shared/ui/ScrollToBottomButton.jsx', import.meta.url), 'utf8');
 // Execute the production effect with deterministic browser scheduling, without JSX rendering.
-const effectBody = source.split('React.useLayoutEffect(() => {')[1].split('}, [autoFollow, resetKey, scrollRef]);')[0];
+const effectBody = source.split('React.useLayoutEffect(() => {')[2].split('}, [resetKey, scrollRef]);')[0];
 const createEffect = new Function(
-  'scrollRef', 'frameRef', 'followLatestRef', 'autoFollow', 'setVisible',
+  'scrollRef', 'frameRef', 'followLatestRef', 'autoFollowRef', 'setVisible',
   'requestAnimationFrame', 'cancelAnimationFrame', 'ResizeObserver', 'MutationObserver', 'SHOW_THRESHOLD',
   effectBody,
 );
@@ -32,7 +32,7 @@ for (const firstFrameId of [0, 1]) {
       disconnect() {}
     }
     const setup = () => createEffect(
-      { current: element }, frameRef, followLatestRef, false, (value) => { visible = value; },
+      { current: element }, frameRef, followLatestRef, { current: false }, (value) => { visible = value; },
       (callback) => { const id = nextFrameId++; frames.set(id, callback); return id; },
       (id) => frames.delete(id), Observer, Observer, SHOW_THRESHOLD,
     );
@@ -93,8 +93,10 @@ test('streaming follows the bottom but preserves even a small upward scroll', ()
     observe() {}
     disconnect() {}
   }
+  const autoFollowRef = { current: true };
+  const followLatestRef = { current: true };
   const cleanup = createEffect(
-    { current: element }, { current: null }, { current: true }, true,
+    { current: element }, { current: null }, followLatestRef, autoFollowRef,
     (value) => { visible = value; },
     (callback) => { const id = nextId++; frames.set(id, callback); return id; },
     (id) => frames.delete(id), ResizeObserver, MutationObserver, SHOW_THRESHOLD,
@@ -155,6 +157,23 @@ test('streaming follows the bottom but preserves even a small upward scroll', ()
     element.scrollTop = element.scrollHeight;
     listeners.get('scroll')(); flush();
   }
+  // Use the production option-change effect without reinstalling observers.
+  const optionBody = source.split('React.useLayoutEffect(() => {')[1].split('}, [autoFollow]);')[0];
+  const setAutoFollow = new Function('autoFollow', 'autoFollowRef', 'followLatestRef', optionBody);
+  setAutoFollow(false, autoFollowRef, followLatestRef);
+  element.scrollTop = 100;
+  listeners.get('scroll')(); resize(); flush();
+  setAutoFollow(true, autoFollowRef, followLatestRef);
+  resize(); flush();
+  assert.equal(element.scrollTop, 100, 'closing search does not reset to bottom');
+  element.scrollHeight += growth;
+  resize(); flush();
+  assert.equal(element.scrollTop, 100, 'new output after search preserves reading position');
+  element.scrollTop = element.scrollHeight;
+  listeners.get('scroll')(); flush();
+  element.scrollHeight += growth;
+  resize(); flush();
+  assert.equal(element.scrollTop, element.scrollHeight - VIEWPORT_HEIGHT, 'returning to latest enables follow again');
   cleanup();
   assert.equal(listeners.size, 0);
 });

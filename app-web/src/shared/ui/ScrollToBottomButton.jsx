@@ -7,6 +7,13 @@ export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = f
   const [visible, setVisible] = React.useState(false);
   const frameRef = React.useRef(null);
   const followLatestRef = React.useRef(true);
+  const autoFollowRef = React.useRef(autoFollow);
+  React.useLayoutEffect(() => {
+    autoFollowRef.current = autoFollow;
+    // Search/programmatic navigation relinquishes following. Turning the
+    // option back on must not reset the user's current reading position.
+    if (!autoFollow) followLatestRef.current = false;
+  }, [autoFollow]);
 
   React.useLayoutEffect(() => {
     const element = scrollRef?.current;
@@ -16,7 +23,7 @@ export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = f
     let contentChanged = false;
     const update = () => {
       frameRef.current = null;
-      if (contentChanged && autoFollow && followLatestRef.current) {
+      if (contentChanged && autoFollowRef.current && followLatestRef.current) {
         element.scrollTop = element.scrollHeight;
       }
       contentChanged = false;
@@ -32,8 +39,8 @@ export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = f
       const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
       // Lazy row layout/scroll anchoring can move scrollTop backwards without
       // user input. Keep following until an actual navigation gesture opts out.
-      if (distance <= SHOW_THRESHOLD) followLatestRef.current = true;
-      if (autoFollow && followLatestRef.current) contentChanged = true;
+      if (autoFollowRef.current && distance <= SHOW_THRESHOLD) followLatestRef.current = true;
+      if (autoFollowRef.current && followLatestRef.current) contentChanged = true;
       scheduleUpdate();
     };
     const handleWheel = (event) => {
@@ -70,8 +77,10 @@ export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = f
     const mutationObserver = new MutationObserver(observeRows);
     mutationObserver.observe(element, { childList: true });
     observeRows();
-    if (autoFollow) {
+    if (autoFollowRef.current) {
       element.scrollTop = element.scrollHeight;
+    } else {
+      followLatestRef.current = false;
     }
     scheduleUpdate();
 
@@ -86,7 +95,7 @@ export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = f
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
     };
-  }, [autoFollow, resetKey, scrollRef]);
+  }, [resetKey, scrollRef]);
 
   const scrollToLatest = () => {
     followLatestRef.current = true;

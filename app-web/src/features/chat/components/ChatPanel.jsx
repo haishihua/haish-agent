@@ -85,6 +85,19 @@ export function ChatPanel({
 }) {
   const [localDraft, setLocalDraft] = React.useState('');
   const [searchActive, setSearchActive] = React.useState(false);
+  const [searchExpandedConversation, setSearchExpandedConversation] = React.useState(null);
+  const searchExpanded = searchExpandedConversation === conversationId;
+  const searchContextRef = React.useRef(null);
+  const handleSearchChange = React.useCallback((active) => {
+    const context = searchContextRef.current;
+    if (context && (active || context.expanded)) {
+      // Keep the searched history mounted after clearing/closing. Shrinking
+      // back to the tail would remove the message the reader just found.
+      setRowWindow((count) => Math.max(count, context.rowCount));
+      if (active) setSearchExpandedConversation(context.conversationId);
+    }
+    setSearchActive(active);
+  }, []);
   const [sendScrollKey, setSendScrollKey] = React.useState(0);
   const draft = draftProp !== undefined ? draftProp : localDraft;
   const setDraft = draftProp !== undefined ? onDraftChangeProp : setLocalDraft;
@@ -121,6 +134,12 @@ export function ChatPanel({
     () => (searchActive ? listRows : windowRows(listRows, rowWindow)),
     [listRows, rowWindow, searchActive],
   );
+  React.useLayoutEffect(() => {
+    searchContextRef.current = { conversationId, rowCount: listRows.length, expanded: searchExpanded };
+  }, [conversationId, listRows.length, searchExpanded]);
+  // Keep measured history visible after search; restoring content-visibility
+  // estimates here would shift the reader even though all rows are retained.
+  const retainSearchLayout = searchActive || searchExpanded;
   const hasEarlierRows = !searchActive && windowedRows.length < listRows.length;
   const [annotationNotice, setAnnotationNotice] = React.useState('');
   const annotationUiRef = React.useRef(null);
@@ -343,9 +362,9 @@ export function ChatPanel({
   return (
     <section className="chat-workspace" aria-label="Chat">
       <div className="chat-message-region">
-        <ConversationSearch key={conversationId || 'draft'} scrollRef={listRef} onSearchChange={setSearchActive}
+        <ConversationSearch key={conversationId || 'draft'} scrollRef={listRef} onSearchChange={handleSearchChange}
           loading={earlierTaskRuntimesPending && !earlierTasksError} />
-        <div ref={listRef} className={`chat-message-list${searchActive ? ' is-searching' : ''}`} onScroll={handleListScroll}>
+        <div ref={listRef} className={`chat-message-list${retainSearchLayout ? ' is-searching' : ''}`} onScroll={handleListScroll}>
           {!loading && messages.length > 0 && (earlierTaskRuntimesPending || earlierTaskRuntimesLoading) ? (
             <div className="chat-earlier-tasks" role="status">
               {earlierTasksError ? <>{earlierTasksError} <button type="button" onClick={loadEarlierTasks}>Retry loading steps</button></>

@@ -7,6 +7,7 @@ export function ConversationSearch({ scrollRef, onSearchChange, loading = false 
   const [query, setQuery] = React.useState('');
   const [index, setIndex] = React.useState(0);
   const [hits, setHits] = React.useState([]);
+  const collectedQueryRef = React.useRef('');
   const [positions, setPositions] = React.useState([]);
   React.useEffect(() => {
     const searching = open && Boolean(query.trim());
@@ -16,7 +17,10 @@ export function ConversationSearch({ scrollRef, onSearchChange, loading = false 
     let frame;
     const refresh = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => setHits(collectConversationMatches(container, query)));
+      frame = requestAnimationFrame(() => {
+        collectedQueryRef.current = query;
+        setHits(collectConversationMatches(container, query));
+      });
     };
     refresh();
     const observer = new MutationObserver(refresh);
@@ -24,7 +28,7 @@ export function ConversationSearch({ scrollRef, onSearchChange, loading = false 
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [open, query, scrollRef, onSearchChange]);
   React.useEffect(() => () => onSearchChange(false), [onSearchChange]);
-  const active = hits[Math.min(index, hits.length - 1)];
+  const active = open && collectedQueryRef.current === query ? hits[Math.min(index, hits.length - 1)] : undefined;
   React.useLayoutEffect(() => {
     const container = scrollRef.current;
     if (!open || !hits.length || !container) { setPositions([]); return undefined; }
@@ -47,9 +51,18 @@ export function ConversationSearch({ scrollRef, onSearchChange, loading = false 
     CSS.highlights.set('conversation-matches', new Highlight(...hits.map((hit) => hit.range)));
     return () => CSS.highlights.delete('conversation-matches');
   }, [hits]);
+  // A refreshed Range is not a navigation request. Streaming/DOM updates can
+  // rebuild hits while the reader is scrolling, so jump only for a new query
+  // or an explicitly selected match, not for every new hit object.
+  const navigationRef = React.useRef(null);
   React.useEffect(() => {
-    scrollToConversationMatch(scrollRef.current, active?.range);
-  }, [active, scrollRef]);
+    if (!open || !query.trim()) { navigationRef.current = null; return; }
+    if (!active) return;
+    const key = `${query}:${Math.min(index, hits.length - 1)}`;
+    if (navigationRef.current === key) return;
+    navigationRef.current = key;
+    scrollToConversationMatch(scrollRef.current, active.range);
+  }, [open, query, index, hits.length, active, scrollRef]);
   React.useEffect(() => {
     if (!globalThis.CSS?.highlights || !globalThis.Highlight || !active) return undefined;
     const highlight = new Highlight(active.range);
@@ -57,7 +70,13 @@ export function ConversationSearch({ scrollRef, onSearchChange, loading = false 
     CSS.highlights.set('conversation-active-match', highlight);
     return () => CSS.highlights.delete('conversation-active-match');
   }, [active]);
-  const step = (delta) => { if (hits.length) setIndex((value) => (Math.min(value, hits.length - 1) + delta + hits.length) % hits.length); };
+  const step = (delta) => {
+    if (!hits.length) return;
+    const next = (Math.min(index, hits.length - 1) + delta + hits.length) % hits.length;
+    setIndex(next);
+    // A single-result Next/Enter is still an explicit request to return to it.
+    scrollToConversationMatch(scrollRef.current, hits[next].range);
+  };
   const containerRef = React.useRef(null);
   const inputRef = React.useRef(null);
   const previousFocusRef = React.useRef(null);
@@ -74,7 +93,7 @@ export function ConversationSearch({ scrollRef, onSearchChange, loading = false 
     document.addEventListener('keydown', handleFind);
     return () => document.removeEventListener('keydown', handleFind);
   }, [open]);
-  const close = () => { setOpen(false); setQuery(''); previousFocusRef.current?.focus?.(); };
+  const close = () => { setOpen(false); setQuery(''); previousFocusRef.current?.focus?.({ preventScroll: true }); };
   return <div ref={containerRef} className="haish-conversation-search" onKeyDown={(event) => {
     if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); close(); }
   }}>

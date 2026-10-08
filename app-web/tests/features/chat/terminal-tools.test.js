@@ -178,6 +178,87 @@ test('write_stdin updates the original exec_command card by session id', () => {
   assert.equal(view.exitCode, 0);
 });
 
+test('cmd inputs, including serialized inputs, display the command with command taking precedence', () => {
+  for (const input of [{ cmd: 'printf test' }, JSON.stringify({ cmd: 'printf test' }), { command: 'printf test', cmd: 'ignored' }]) {
+    const view = buildToolView({ toolName: 'exec_command', status: 'done', toolInput: input });
+    assert.equal(view.command, 'printf test');
+    assert.equal(view.label, 'Shell printf test');
+  }
+});
+
+const terminalStart = (callId, toolName = 'exec_command', toolInput = { cmd: 'printf test' }) => ({
+  type: 'tool_call_started', callId, toolName, toolInput,
+});
+const terminalDelta = (callId, delta) => ({ type: 'tool_output_delta', callId, delta });
+const terminalDone = (callId, output, data = { exit_code: 0 }) => ({
+  type: 'tool_call_completed', callId,
+  toolResponse: { status: 'ok', result_state: data.session_id ? 'partial' : 'resolved', data, artifacts: { output } },
+});
+const terminalItems = (timeline) => timeline.items.flatMap((item) => item.kind === 'tool_group' ? item.tools : [item])
+  .filter((item) => item.kind === 'tool');
+
+for (const withSnapshot of [false, true]) {
+  test(`streamed output and final snapshot appear exactly once (toolCalls snapshot: ${withSnapshot})`, () => {
+    const output = '=== heading ===\nline one\nline two\n';
+    const start = terminalStart('exec-1');
+    const done = terminalDone('exec-1', output);
+    const eventLog = [start, terminalDelta('exec-1', '=== heading ===\n'),
+      terminalDelta('exec-1', 'line one\n'), terminalDelta('exec-1', 'line two\n'), done, done];
+    const toolCalls = withSnapshot ? [{ ...start, ...done, toolName: 'exec_command', toolInput: start.toolInput, state: 'completed' }] : [];
+    const [item] = terminalItems(buildChatTimeline({ eventLog, toolCalls }, 'done'));
+    assert.equal(item.terminalOutput, output);
+    assert.equal(buildToolView(item).stdout, output);
+    assert.equal(item.status, 'done');
+  });
+}
+
+test('repeated and overlapping terminal chunks are literal output, not answer fragments', () => {
+  const events = [terminalStart('exec-1'), terminalDelta('exec-1', 'abab'),
+    terminalDelta('exec-1', 'abab'), terminalDelta('exec-1', 'abc')];
+  const [item] = terminalItems(buildChatTimeline({ eventLog: events }, 'running'));
+  assert.equal(item.terminalOutput, 'abababababc');
+});
+
+test('each poll replaces only its streamed segment and keeps identical output from separate polls', () => {
+  const eventLog = [terminalStart('exec-1'), terminalDelta('exec-1', 'tick\n'),
+    terminalDone('exec-1', 'tick\n', { session_id: 'session-1' })];
+  for (const callId of ['poll-1', 'poll-2']) {
+    eventLog.push(terminalStart(callId, 'write_stdin', { session_id: 'session-1', chars: '' }),
+      terminalDelta(callId, 'tick\n'), terminalDone(callId, 'tick\n', callId === 'poll-1' ? { session_id: 'session-1' } : { exit_code: 0 }));
+  }
+  const items = terminalItems(buildChatTimeline({ eventLog }, 'done'));
+  assert.equal(items.length, 1);
+  assert.equal(items[0].terminalOutput, 'tick\ntick\ntick\n');
+  assert.equal(items[0].status, 'done');
+});
+
+test('partial streamed output is replaced by authoritative final output and missing final output preserves deltas', () => {
+  for (const finalOutput of ['abc complete\n', undefined]) {
+    const done = terminalDone('exec-1', finalOutput);
+    if (finalOutput === undefined) done.toolResponse.artifacts = {};
+    const [item] = terminalItems(buildChatTimeline({ eventLog: [terminalStart('exec-1'), terminalDelta('exec-1', 'abc'), done] }, 'done'));
+    assert.equal(item.terminalOutput, finalOutput ?? 'abc');
+  }
+});
+
+test('snapshots without events still display output and completed snapshots do not seed active streams', () => {
+  const call = { callId: 'exec-1', toolName: 'exec_command', toolInput: { cmd: 'printf test' },
+    toolResponse: { status: 'ok', data: { exit_code: 0 }, artifacts: { output: 'abc complete\n' } }, state: 'completed' };
+  const [backfilled] = terminalItems(buildChatTimeline({ toolCalls: [call] }, 'done'));
+  assert.equal(backfilled.terminalOutput, 'abc complete\n');
+  const [streaming] = terminalItems(buildChatTimeline({ toolCalls: [call],
+    eventLog: [terminalStart('exec-1'), terminalDelta('exec-1', 'abc')] }, 'running'));
+  assert.equal(streaming.terminalOutput, 'abc');
+});
+
+test('independent commands remain separate cards rather than merging output by content', () => {
+  const eventLog = [terminalStart('exec-1'), terminalDone('exec-1', 'tick\n'),
+    terminalStart('exec-2'), terminalDone('exec-2', 'tick\n')];
+  const items = terminalItems(buildChatTimeline({ eventLog }, 'done'));
+  assert.equal(items.length, 2);
+  assert.deepEqual(items.map((item) => item.terminalOutput), ['tick\n', 'tick\n']);
+});
+
 test('a yielded exec_command stays running without rendering its status summary as output', () => {
   const eventLog = [
     {

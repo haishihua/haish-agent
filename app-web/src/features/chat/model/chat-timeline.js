@@ -524,6 +524,21 @@ export function buildChatTimeline(task, taskStatus) {
   // interaction with that process, so fold it back into the originating card
   // instead of rendering a second timeline item.
   const terminalItemsBySessionId = new Map();
+  const terminalOutputByItem = new WeakMap();
+  const terminalCallsWithOutputEvents = new Set(events
+    .filter((event) => event.type === 'tool_output_delta' || event.type === 'tool_call_completed')
+    .map((event) => event.callId || event.toolCallId || event.tool_call_id || ''));
+  const updateTerminalOutput = (toolItem, callId, text, append = false) => {
+    let outputs = terminalOutputByItem.get(toolItem);
+    if (!outputs) {
+      outputs = new Map();
+      terminalOutputByItem.set(toolItem, outputs);
+    }
+    // Stream deltas are literal bytes, not overlapping answer fragments. Final
+    // results replace only this invocation's segment; polls retain prior output.
+    outputs.set(callId, append ? (outputs.get(callId) || '') + text : text);
+    toolItem.terminalOutput = [...outputs.values()].join('');
+  };
   const plainObject = (value) => {
     if (value && typeof value === 'object' && !Array.isArray(value)) return value;
     if (typeof value !== 'string') return {};
@@ -552,17 +567,18 @@ export function buildChatTimeline(task, taskStatus) {
     if (output !== undefined && output !== null) return String(output);
     const raw = source?.toolOutput || source?.tool_output || '';
     const rawText = String(raw || '');
-    if (rawText.trimStart().startsWith('TOOL_RESPONSE')) return '';
+    if (!rawText || rawText.trimStart().startsWith('TOOL_RESPONSE')) return null;
     const rawPayload = plainObject(rawText);
-    if (rawPayload.tool_name || rawPayload.toolName) return '';
+    if (rawPayload.tool_name || rawPayload.toolName) return null;
     return rawText;
   };
-  const mergeTerminalResult = (toolItem, source, terminalState = '') => {
+  const mergeTerminalResult = (toolItem, source, terminalState = '', seed = false) => {
     if (!toolItem || !source) return;
     const response = source.toolResponse || source.tool_response || null;
     const chunk = terminalOutputChunk(source);
-    if (chunk) {
-      toolItem.terminalOutput = appendAnswerDelta(toolItem.terminalOutput || '', chunk);
+    const callId = source.callId || source.call_id || toolItem.callId;
+    if (chunk !== null && !(seed && terminalCallsWithOutputEvents.has(callId))) {
+      updateTerminalOutput(toolItem, callId, chunk);
     }
     if (response) toolItem.toolResponse = response;
     toolItem.outputSummary = source.outputSummary || source.output_summary || toolItem.outputSummary || '';
@@ -953,7 +969,7 @@ export function buildChatTimeline(task, taskStatus) {
         progressEvents: [],
       };
       if (eventToolName === 'exec_command' || eventToolName === 'write_stdin') {
-        mergeTerminalResult(toolItem, call, call.state || 'requested');
+        mergeTerminalResult(toolItem, call, call.state || 'requested', true);
       }
       appendToolProgress(toolItem, event, 'requested');
       if (callId) {
@@ -981,7 +997,7 @@ export function buildChatTimeline(task, taskStatus) {
           if (delta) {
             if (normalizeToolName(toolItem.toolName) === 'exec_command'
               || normalizeToolName(toolItem.toolName) === 'write_stdin') {
-              toolItem.terminalOutput = appendAnswerDelta(toolItem.terminalOutput || '', delta);
+              updateTerminalOutput(toolItem, callId, delta, true);
             } else {
               toolItem.toolOutput = `${toolItem.toolOutput || ''}${delta}`;
             }
@@ -1140,8 +1156,13 @@ function sanitizeTodoItems(items) {
 }
 
 export function pendingTaskToQuest(pendingTask) {
+  const taskId = pendingTask.taskId || pendingTask.id;
   return {
-    id: 'pending',
+    ...pendingTask,
+    // Keep the local identity until the server confirms it. A display-only
+    // "pending" id breaks sidebar deduplication and gets queried as a real task.
+    id: taskId,
+    taskId,
     title: pendingTask.title,
     description: pendingTask.description,
     status: pendingTask.status,

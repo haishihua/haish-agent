@@ -664,7 +664,7 @@ export function buildToolView(item) {
     const diagnostics = toolPlainObject(artifacts.diagnostics);
     const error = toolPlainObject(response.error);
     const input = toolPlainObject(item.toolInput);
-    const command = input.command || '';
+    const command = input.command || input.cmd || '';
     const cwd = subject.cwd || '';
     const output = firstToolDisplayValue(
       item.terminalOutput,

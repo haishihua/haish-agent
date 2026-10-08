@@ -67,6 +67,11 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
   const isAgent = message.role === 'agent';
   const [traceExpansionOverride, setTraceExpanded] = React.useState(null);
   React.useEffect(() => setTraceExpanded(null), [message.conversationId, message.id]);
+  React.useEffect(() => {
+    // Search opens traces for discovery. Keep them open when search closes so
+    // the found text stays in place; the normal collapse control returns.
+    if (forceTraceOpen) setTraceExpanded(true);
+  }, [forceTraceOpen, message.conversationId, message.id]);
   const traceExpanded = traceExpansionOverride ?? message.status === 'cancelled';
   const hasTraceDisclosure = isAgent && (hasTimeline || message.streaming);
   // The live trace is the task's progress view, so keep it visible by default.
