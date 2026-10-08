@@ -398,15 +398,16 @@ export function createDeployHandlers(ctx) {
       && isDefaultConversationName(currentConversation.name)
       && (currentConversation.tasks || []).length === 0
     );
-    setComposerAttachment(null);
+    const isSelected = conversationIdRef.current === deployConvId;
+    if (isSelected) setComposerAttachment(null);
     // 上下文标签和附件一样：任务真的发出去了才消（失败时 pendingTask 自己会标红）。
-    if (request.contextTasks?.length) clearContextTask?.();
+    if (isSelected && request.contextTasks?.length) clearContextTask?.();
     setWorkspaceState((state) => {
       let nextState = state;
       // First message on a just-materialized draft may race the previous
       // setWorkspaceState; seed the conversation row from the create payload.
       if (seedDetail?.conversation_id && !findConversationById(nextState, deployConvId)) {
-        nextState = workspaceStateWithConversationDetail(nextState, seedDetail, true);
+        nextState = workspaceStateWithConversationDetail(nextState, seedDetail, isSelected);
       }
       const currentTasks = [
         ...deployTaskState.taskOrder
@@ -421,7 +422,7 @@ export function createDeployHandlers(ctx) {
         // withDefaultExpansion auto-expands the active conversation with tasks.
         name: shouldUpdateConversationTitle ? nextConversationTitle : undefined,
         title: shouldUpdateConversationTitle ? nextConversationTitle : undefined,
-      });
+      }, isSelected);
     });
     if (shouldUpdateConversationTitle) {
       updateConversationTitle(deployConvId, nextConversationTitle)
@@ -591,10 +592,9 @@ export function createDeployHandlers(ctx) {
           if (!realConversationId) return;
           request.targetConversationId = realConversationId;
           request.runtimeConversationId = realConversationId;
-          if (!canStartDeployForConversation(realConversationId)) {
-            setQueuedDeploy(request);
-            return;
-          }
+          // This send was accepted on its draft before creation began. It now
+          // owns a real runtime and may start in the background; navigation
+          // must neither steal selection nor queue it behind the viewed chat.
           startDeploy(request, realConversationId, materialized?.detail || null);
         })
         .catch((error) => {

@@ -61,6 +61,16 @@ test('the panel renders one centered loader instead of the rows while loading', 
   assert.match(chatPanel, /if \(loading\) return;/);
 });
 
+test('layout auto-fill waits for real rows and rechecks when loading ends', () => {
+  const effects = [...chatPanel.matchAll(/React\.useLayoutEffect\(\(\) => \{([\s\S]*?)\}, \[([^\]]*)\]\);/g)];
+  const autoFill = effects.find((effect) => effect[1].includes('element.scrollHeight <= element.clientHeight'));
+  assert.ok(autoFill, 'the viewport auto-fill effect must remain available');
+  assert.match(autoFill[1], /if \(loading\) return;/, 'do not measure the loader as message content');
+  assert.ok(autoFill[1].indexOf('if (loading) return;') < autoFill[1].indexOf('const element = listRef.current;'));
+  assert.ok(autoFill[2].split(',').map((dependency) => dependency.trim()).includes('loading'),
+    'the same message array must be measured once loading changes to false');
+});
+
 test('the placeholder is centered in the message column without a fixed box', () => {
   const rule = chatStyles.match(/\.chat-conversation-loading\s*\{([^}]*)\}/);
   assert.ok(rule, '占位需要一个样式规则');

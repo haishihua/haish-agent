@@ -773,7 +773,7 @@ export function AppShell() {
   useEffect(() => {
     if (!conversationError) return;
     setHollow({
-      title: 'Conversation Bootstrap Error',
+      title: 'Conversation Load Error',
       result: conversationError,
       taskId: null,
     });
@@ -1114,6 +1114,8 @@ export function AppShell() {
     projectReorderVersionRef,
     // Late-bound: createDeployHandlers runs after this factory (selection pending deps).
     buildDeployRequest: (...args) => deployApiRef.current.buildDeployRequest?.(...args),
+    conversationError,
+    setConversationError,
     settingsMode,
     canStartDeployForConversation: (...args) => deployApiRef.current.canStartDeployForConversation?.(...args),
     clearDraftConversationState,
@@ -1343,10 +1345,8 @@ export function AppShell() {
           if (!realConversationId) return;
           request.targetConversationId = realConversationId;
           request.runtimeConversationId = realConversationId;
-          if (!deployApiRef.current.canStartDeployForConversation?.(realConversationId)) {
-            setQueuedDeploy(request);
-            return;
-          }
+          // Creation may finish after navigation. The accepted send belongs
+          // to its own runtime and must continue without selecting that chat.
           deployApiRef.current.startDeploy?.(request, realConversationId, materialized?.detail || null);
         })
         .catch((error) => {

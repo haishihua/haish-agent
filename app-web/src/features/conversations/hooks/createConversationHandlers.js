@@ -20,6 +20,7 @@ export function createConversationHandlers(ctx) {
     canStartDeployForConversation,
     clearDraftConversationState,
     conversationDetailAbortRef,
+    conversationError = '',
     conversationId,
     conversationIdRef,
     createDefaultProject,
@@ -36,6 +37,7 @@ export function createConversationHandlers(ctx) {
     openDraftConversation,
     replaceWorkspaceModeFromProjects,
     setActiveTab,
+    setConversationError = () => {},
     setSettingsMode,
     setHollow,
     setViewMode,
@@ -99,6 +101,7 @@ export function createConversationHandlers(ctx) {
     restoreLatest = true,
   }) {
     if (!targetConversationId) throw new Error('conversation activation requires a conversation id');
+    setConversationError('');
     // Cached runtimes skip detail hydration, so selection must move with the shell.
     setWorkspaceState((state) => (
       state.activeProjectId === projectId && state.activeConversationId === targetConversationId
@@ -128,6 +131,8 @@ export function createConversationHandlers(ctx) {
         await recoverMissingConversation(projectId, targetConversationId);
         return null;
       }
+      // Keep the shell unhydrated for retries, but stop its loading placeholder.
+      setConversationError(String(error?.message || error));
       throw error;
     } finally {
       if (conversationDetailAbortRef.current === controller) {
@@ -193,7 +198,7 @@ export function createConversationHandlers(ctx) {
       }),
     });
     const currentConversationId = conversationIdRef.current || conversationId;
-    if (!nextConversationId || nextConversationId === currentConversationId) {
+    if (!nextConversationId || (nextConversationId === currentConversationId && !conversationError)) {
       setWorkspaceState((state) => normalizeWorkspaceOrdering(stampActivation(state)));
       return;
     }

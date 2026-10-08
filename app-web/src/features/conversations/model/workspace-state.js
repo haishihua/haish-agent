@@ -734,7 +734,7 @@ export function workspaceStateWithConversationDetail(
   });
 }
 
-export function workspaceStateWithTouchedConversation(state, conversationId, patch = {}) {
+export function workspaceStateWithTouchedConversation(state, conversationId, patch = {}, activate = true) {
   if (!conversationId) return normalizeWorkspaceOrdering(state);
   const now = Date.now();
   const definedPatch = Object.fromEntries(
@@ -743,7 +743,7 @@ export function workspaceStateWithTouchedConversation(state, conversationId, pat
   let nextActiveProjectId = state.activeProjectId;
   const projects = state.projects.map((project) => {
     const hasConversation = project.conversations.some((conversation) => conversation.id === conversationId);
-    if (hasConversation) nextActiveProjectId = project.id;
+    if (hasConversation && activate) nextActiveProjectId = project.id;
     return {
       ...project,
       updatedAt: hasConversation ? now : project.updatedAt,
@@ -763,7 +763,7 @@ export function workspaceStateWithTouchedConversation(state, conversationId, pat
     ...state,
     projects,
     activeProjectId: nextActiveProjectId,
-    activeConversationId: conversationId,
+    activeConversationId: activate ? conversationId : state.activeConversationId,
   });
 }
 

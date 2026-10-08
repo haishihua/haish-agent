@@ -140,6 +140,8 @@ test('conversation restore fetches all task runtimes in one request', async () =
 test('draft materialization rejects a server conversation from another project', async () => {
   const handlers = createDraftConversationHandlers({
     conversationId: 'draft-1',
+    conversationActivationSeqRef: { current: 0 },
+    draftConversationIdsRef: { current: new Map() },
     conversationIdRef: { current: 'draft-1' },
     draftConversationRef: {
       current: {

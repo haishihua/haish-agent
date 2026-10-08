@@ -14,6 +14,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ChatPanel } from '../../src/features/chat/components/ChatPanel.jsx';
+import { CHAT_ROW_WINDOW_INITIAL } from '../../src/features/chat/model/chat-row-window.js';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import '../../styles/base.css';
 import '../../styles/chat.css';
@@ -41,6 +42,12 @@ const LOADED_MESSAGES = [
   },
 ];
 const ANSWER_SNIPPET = '三段规则叠在一起';
+// 200 行覆盖“加载占位被误判为正文高度不足，窗口提前扩到全量”的冷加载回归。
+const LONG_MESSAGES = Array.from({ length: 200 }, (_, index) => ({
+  id: `long-row-${index}`, taskId: `long-task-${index}`, role: 'user', status: 'done',
+  text: Array.from({ length: 6 }, (_, line) => `History ${index}: line ${line}`).join('\n'),
+}));
+const SHORT_MESSAGES = LONG_MESSAGES.map((message) => ({ ...message, text: 'Short turn' }));
 
 const PROVIDER_OPTIONS = [{ id: 'fixture', provider: 'fixture', defaultModelId: 'fixture-model', modelOptions: ['fixture-model'] }];
 const originalFetch = window.fetch;
@@ -160,6 +167,36 @@ async function runChecks() {
     Boolean(document.querySelector('.chat-empty')) && loaderNodes().length === 0,
     `empty=${Boolean(document.querySelector('.chat-empty'))} loaders=${loaderNodes().length}`,
   );
+
+  // 长会话：等待详情期间不扩窗；同一份消息只切 loading，正文到达仍只挂首批。
+  render('fixture-long-loading', LONG_MESSAGES, true);
+  await sleep(250);
+  check('long history mounts no rows while loading', visibleRows().length === 0,
+    `visible=${visibleRows().length}`);
+  render('fixture-long-loading', LONG_MESSAGES, false);
+  await sleep(250);
+  check('long history keeps the initial row window when loading ends',
+    visibleRows().length === CHAT_ROW_WINDOW_INITIAL,
+    `mounted=${visibleRows().length} initial=${CHAT_ROW_WINDOW_INITIAL} total=${LONG_MESSAGES.length}`);
+  check('the newest row remains in the initial window',
+    visibleRows().at(-1)?.textContent.includes('History 199:'),
+    `last=${visibleRows().at(-1)?.textContent.slice(0, 40)}`);
+
+  // 正文到达后仍按真实高度补齐：放大视口，让首批短消息不足以填满它。
+  render('fixture-short-loading', SHORT_MESSAGES, true);
+  const workspace = document.querySelector('.chat-workspace');
+  const originalHeight = workspace.style.height;
+  workspace.style.height = '6000px';
+  await sleep(250);
+  render('fixture-short-loading', SHORT_MESSAGES, false);
+  await sleep(250);
+  check('short rows still auto-fill the viewport after loading ends',
+    visibleRows().length > CHAT_ROW_WINDOW_INITIAL && visibleRows().length < SHORT_MESSAGES.length,
+    `mounted=${visibleRows().length} initial=${CHAT_ROW_WINDOW_INITIAL} total=${SHORT_MESSAGES.length}`);
+  check('auto-fill uses actual row height rather than the loading placeholder',
+    listNode().scrollHeight > listNode().clientHeight + 400,
+    `scrollHeight=${listNode().scrollHeight} clientHeight=${listNode().clientHeight}`);
+  workspace.style.height = originalHeight;
 
   check('no page error was raised while opening conversations', window.__pageErrors.length === 0, window.__pageErrors.join(' | '));
   return results;

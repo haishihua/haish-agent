@@ -269,13 +269,16 @@ export function createDraftConversationHandlers(ctx) {
         workspacePath: draft.workspacePath,
         workspaceLabel: draft.workspaceLabel,
       };
+    const activationSeq = conversationActivationSeqRef.current;
     const request = (async () => {
       const detail = await createConversationInProject(
         project,
         title || draft.name || DEFAULT_SESSION_NAME,
         draft.executionMode || (viewModeRef.current === 'chat' ? 'chat' : 'bot'),
       );
-      pendingCreatedDetailRef.current = detail;
+      const stillSelected = isConversationActivationCurrent(activationSeq)
+        && draftConversationRef.current === draft
+        && conversationIdRef.current === draft.id;
 
       const previousDraftId = draft.id;
       const realId = detail.conversation_id;
@@ -289,18 +292,23 @@ export function createDraftConversationHandlers(ctx) {
         runtimesRef.current.delete(previousDraftId);
       }
 
-      draftConversationRef.current = {
-        ...draft,
-        id: realId,
-        localDraftId: previousDraftId,
-        serverCreated: true,
-      };
       rekeyChatDraft?.(previousDraftId, realId);
-      conversationIdRef.current = realId;
-      setConversationId(realId);
-      // Still withhold from storage/sidebar until the first user message is sent.
-      setStoredConversationId(null);
-      applyConversationSnapshot(detail);
+      // Runtime ownership always transfers; display ownership only transfers
+      // if the user has not navigated since creation started.
+      if (stillSelected) {
+        pendingCreatedDetailRef.current = detail;
+        draftConversationRef.current = {
+          ...draft,
+          id: realId,
+          localDraftId: previousDraftId,
+          serverCreated: true,
+        };
+        conversationIdRef.current = realId;
+        setConversationId(realId);
+        // Still withhold from storage/sidebar until the first user message is sent.
+        setStoredConversationId(null);
+        applyConversationSnapshot(detail);
+      }
       return detail;
     })();
     draftServerCreateRef.current = { draftId: draft.id, request };
@@ -321,6 +329,9 @@ export function createDraftConversationHandlers(ctx) {
     }
     // 这一笔发送已经接下、还没落地（同步设上，handleDeploy 靠它挡住第二次提交）。
     draftFirstSendRef.current = draft.id;
+    // A later '+' in the same project must not reuse this in-flight runtime.
+    forgetDraftConversationId(draftConversationIdsRef.current, draft.projectId);
+    const activationSeq = conversationActivationSeqRef.current;
     try {
       const nextTitle = titleFromTaskText(request?.displayText || request?.text || '') || draft.name || DEFAULT_SESSION_NAME;
       let detail = pendingCreatedDetailRef.current;
@@ -345,15 +356,19 @@ export function createDraftConversationHandlers(ctx) {
       const previousDraftId = draft.id;
       // The draft is real now: the next "new conversation" in this project starts
       // from a fresh id (and a fresh, empty composer).
-      forgetDraftConversationId(draftConversationIdsRef.current, draft.projectId);
-      setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
-      setStoredConversationId(realId);
+      const stillSelected = isConversationActivationCurrent(activationSeq)
+        && conversationIdRef.current === realId
+        && draftConversationRef.current?.id === realId;
+      setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, stillSelected));
       rekeyChatDraft?.(previousDraftId, realId);
-      conversationIdRef.current = realId;
-      setConversationId(realId);
-      applyConversationSnapshot(detail);
-      draftConversationRef.current = null;
-      pendingCreatedDetailRef.current = null;
+      if (stillSelected) {
+        setStoredConversationId(realId);
+        conversationIdRef.current = realId;
+        setConversationId(realId);
+        applyConversationSnapshot(detail);
+        draftConversationRef.current = null;
+        pendingCreatedDetailRef.current = null;
+      }
       // Return detail so startDeploy can seed the list entry even if React has not
       // flushed the setWorkspaceState above yet.
       return { id: realId, detail };

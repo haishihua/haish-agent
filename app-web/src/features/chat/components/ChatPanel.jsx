@@ -276,10 +276,12 @@ export function ChatPanel({
     element.scrollTop += (anchor.node.getBoundingClientRect().top - viewportTop) - anchor.offset;
   }, [rowWindow]);
   React.useLayoutEffect(() => {
+    // Loading 占位不是正文：等真实消息挂载后再测高度，避免等待详情时把窗口补到全量。
+    if (loading) return;
     const element = listRef.current;
     // 窗口比视口还矮时继续补：内容撑不满就没有滚动条，“滚到顶补一页”永远触发不了。
     if (element && hasEarlierRows && element.scrollHeight <= element.clientHeight + CHAT_ROW_WINDOW_TRIGGER_PX) growEarlierRows();
-  }, [hasEarlierRows, windowedRows.length, growEarlierRows]);
+  }, [loading, hasEarlierRows, windowedRows.length, growEarlierRows]);
   const [earlierTasksState, setEarlierTasksState] = React.useState(null);
   const earlierTasksLoadRef = React.useRef(null);
   const earlierTasksContextRef = React.useRef(null);

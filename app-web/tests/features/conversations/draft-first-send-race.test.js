@@ -28,6 +28,10 @@ const { createConversationActivationHandlers } = await import(
   '../../../src/features/conversations/hooks/createConversationActivationHandlers.js'
 );
 
+const { workspaceStateWithConversationDetail, workspaceStateWithTouchedConversation } = await import(
+  '../../../src/features/conversations/model/workspace-state.js'
+);
+
 const PROJECT_ID = 'project-1';
 const PROJECTS = [{ id: PROJECT_ID, type: 'project', workspacePath: '/tmp/one', conversations: [] }];
 
@@ -82,9 +86,14 @@ function createRuntimeStore() {
 }
 
 function createDraftHarness({ createConversationInProject } = {}) {
-  const state = { conversationId: null, createCalls: 0, deletedConversationIds: [] };
+  const state = {
+    conversationId: null, createCalls: 0, deletedConversationIds: [], snapshots: [], storedId: null,
+    workspace: { projects: PROJECTS.map((project) => ({ ...project, executionMode: 'chat' })), activeProjectId: PROJECT_ID, activeConversationId: null },
+  };
+  const setWorkspaceState = (updater) => { state.workspace = updater(state.workspace); };
   let hexCount = 0;
   let serverCount = 0;
+  const conversationActivationSeqRef = { current: 0 };
   const conversationIdRef = { current: null };
   const draftConversationRef = { current: null };
   const draftConversationIdsRef = { current: new Map() };
@@ -101,12 +110,12 @@ function createDraftHarness({ createConversationInProject } = {}) {
   const handlers = createDraftConversationHandlers({
     API_BASE: 'http://runtime',
     DEFAULT_SESSION_NAME: 'New Conversation',
-    applyConversationSnapshot: () => {},
+    applyConversationSnapshot: (detail) => { state.snapshots.push(detail.conversation_id); },
     apiFetch,
     applyContextUsage: () => {},
     buildApiHeaders: () => ({}),
     chatFinalizedTaskIdsRef: { current: new Set() },
-    conversationActivationSeqRef: { current: 0 },
+    conversationActivationSeqRef,
     conversationDetailAbortRef: { current: null },
     conversationId: null,
     conversationIdRef,
@@ -148,9 +157,9 @@ function createDraftHarness({ createConversationInProject } = {}) {
     setConversationId: (value) => { state.conversationId = value; },
     setConversationReady: () => {},
     setLocalWorkspace: () => {},
-    setStoredConversationId: () => {},
+    setStoredConversationId: (id) => { state.storedId = id; },
     setUploadState: () => {},
-    setWorkspaceState: () => {},
+    setWorkspaceState,
     taskDetailToRuntimeTask: (task) => task,
     taskRuntimeEventCacheRef: { current: new Map() },
     taskRuntimeFetchesRef: { current: new Map() },
@@ -160,9 +169,11 @@ function createDraftHarness({ createConversationInProject } = {}) {
     userCancelledTaskIdsRef: { current: new Set() },
     viewModeRef: { current: 'chat' },
     workspaceState: { projects: PROJECTS.map((project) => ({ ...project })) },
-    workspaceStateWithConversationDetail: (value) => value,
+    workspaceStateWithConversationDetail,
   });
   return {
+    setWorkspaceState,
+    conversationActivationSeqRef,
     conversationIdRef,
     draftConversationRef,
     draftFirstSendRef,
@@ -227,7 +238,7 @@ function createDeployHarness(options = {}) {
     setRuntimeActiveTaskId: () => {},
     setRuntimeBusy: () => {},
     setRuntimeFetchController: () => {},
-    setWorkspaceState: () => {},
+    setWorkspaceState: draft.setWorkspaceState,
     showToast: (...args) => { state.notices.push(args); },
     taskUpdatedTimestamp: () => 0,
     titleFromTaskText: (text) => String(text || '').trim().slice(0, 48),
@@ -240,8 +251,8 @@ function createDeployHarness(options = {}) {
     viewModeRef: { current: 'chat' },
     workflowSettingsDraft: null,
     workspaceState: { projects: PROJECTS.map((project) => ({ ...project })) },
-    workspaceStateWithConversationDetail: (value) => value,
-    workspaceStateWithTouchedConversation: (value) => value,
+    workspaceStateWithConversationDetail,
+    workspaceStateWithTouchedConversation,
   });
   return { ...draft, deployHandlers: handlers };
 }
@@ -369,6 +380,56 @@ test('a second send while the first one materializes keeps its text and sends no
   assert.equal(harness.deployHandlers.handleDeploy('third message'), true, '落地后发送恢复正常');
   await settle();
   assert.equal(harness.state.executions.length, 2);
+});
+
+test('late first-send creation adds its sidebar row and starts in background without stealing selection', async () => {
+  const create = deferred();
+  const harness = createDeployHarness({ createConversationInProject: () => create.promise });
+  harness.handlers.openDraftConversation(PROJECT_ID);
+  assert.equal(harness.deployHandlers.handleDeploy('first message'), true);
+  harness.handlers.clearDraftConversationState();
+  harness.handlers.invalidateConversationActivation();
+  harness.conversationIdRef.current = 'other-conversation';
+  harness.state.conversationId = 'other-conversation';
+  harness.state.storedId = 'other-conversation';
+  harness.state.workspace.activeConversationId = 'other-conversation';
+
+  create.resolve({ conversation_id: 'server-1', project_id: PROJECT_ID, execution_mode: 'chat',
+    workspace_path: '/tmp/one', title: 'first message', messages: [], tasks: [] });
+  await settle();
+  await settle();
+
+  assert.equal(harness.conversationIdRef.current, 'other-conversation');
+  assert.equal(harness.state.conversationId, 'other-conversation');
+  assert.equal(harness.state.storedId, 'other-conversation');
+  assert.equal(harness.state.workspace.activeConversationId, 'other-conversation');
+  assert.deepEqual(harness.state.snapshots, []);
+  assert.equal(harness.state.executions.length, 1);
+  assert.equal(harness.state.executions[0].targetConversationId, 'server-1');
+  assert.equal(harness.state.workspace.projects[0].conversations[0].id, 'server-1');
+  assert.deepEqual(harness.state.queued, []);
+});
+
+test('late first-send creation cannot overwrite a newer draft in the same project', async () => {
+  const create = deferred();
+  const harness = createDeployHarness({ createConversationInProject: () => create.promise });
+  harness.handlers.openDraftConversation(PROJECT_ID);
+  const oldId = harness.conversationIdRef.current;
+  assert.equal(harness.deployHandlers.handleDeploy('first message'), true);
+  harness.handlers.openDraftConversation(PROJECT_ID);
+  const newDraft = harness.draftConversationRef.current;
+  assert.notEqual(newDraft.id, oldId);
+
+  create.resolve({ conversation_id: 'server-1', project_id: PROJECT_ID, execution_mode: 'chat',
+    workspace_path: '/tmp/one', title: 'first message', messages: [], tasks: [] });
+  await settle();
+  await settle();
+  assert.equal(harness.draftConversationRef.current, newDraft);
+  assert.equal(harness.conversationIdRef.current, newDraft.id);
+  assert.equal(harness.pendingCreatedDetailRef.current, null);
+  assert.equal(harness.state.workspace.activeConversationId, null);
+  assert.ok(harness.runtimeStore.getRuntime(newDraft.id));
+  assert.equal(harness.state.executions[0].targetConversationId, 'server-1');
 });
 
 test('a stream event for a dropped runtime recreates it instead of throwing', () => {

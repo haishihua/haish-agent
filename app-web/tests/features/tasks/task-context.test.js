@@ -79,7 +79,7 @@ test('发送链路只带引用：start 请求带 context_tasks，重试/编辑�
   assert.match(streamHandlersSource, /\(Array\.isArray\(pendingTask\.contextTasks\) \? pendingTask\.contextTasks : \[\]\)/);
   assert.match(deployHandlersSource, /contextTasks: contextTask/);
   assert.match(deployHandlersSource, /pendingTask\.contextTasks = Array\.isArray\(request\.contextTasks\)/);
-  assert.match(deployHandlersSource, /if \(request\.contextTasks\?\.length\) clearContextTask\?\.\(\)/);
+  assert.match(deployHandlersSource, /if \(isSelected && request\.contextTasks\?\.length\) clearContextTask\?\.\(\)/);
   assert.match(appShellSource, /clearContextTask: \(\) => setContextTask\(null\)/);
 });
 
