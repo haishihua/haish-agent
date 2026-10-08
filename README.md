@@ -206,10 +206,11 @@ Developer ID signing or notarization). Version 0.0.24 was released through this 
 
 - Review the app working tree and run relevant tests / `npm run build:release`.
   Commit only the intended changes (usual app commit: `fix: 前端优化`).
-- **The runtime comes from the private core repository's remote `master`, not
-  the local core working tree.** Check whether frontend changes depend on
-  uncommitted/unpushed core changes. Test and push the required core changes
-  before dispatching, with user approval for changes outside this repository.
+- **The runtime comes from the private core repository at the exact 40-character
+  `runtime_ref` commit SHA, not the local core working tree or a floating branch.**
+  Check whether frontend changes depend on uncommitted/unpushed core changes.
+  Test and push required core changes before dispatching, with user approval for
+  changes outside this repository, then select the resulting remote commit SHA.
 - The adapter comes from `scripts/remote-adapter.lock.json`, not the locally
   staged binary. If updating it, first publish the corresponding private adapter
   release, then update the lock tag and verified SHA-256 values. Never silently
@@ -233,7 +234,7 @@ explicitly requests a same-version overwrite.
 #### 2. Dispatch and watch the GitHub build
 
 ```bash
-gh workflow run release-macos.yml -R haishihua/haish-agent --ref master -f dry_run=false
+gh workflow run release-macos.yml -R haishihua/haish-agent --ref master -f dry_run=false -f runtime_ref=CORE_COMMIT_SHA
 gh run list -R haishihua/haish-agent --workflow release-macos.yml --branch master --event workflow_dispatch -L 5
 # Select the run matching this dispatch time and intended app commit:
 gh run view RUN_ID -R haishihua/haish-agent --json headSha,status,conclusion,url
@@ -242,9 +243,15 @@ gh run watch RUN_ID -R haishihua/haish-agent --exit-status
 
 Alternatively: repository **Actions → Release macOS → Run workflow → master**, with
 `dry_run` disabled. A push alone does not trigger this manual workflow. Optional
-`dry_run=true` builds without creating/uploading a release; it does not retain
-installers as downloadable Actions artifacts. Do not routinely run a dry build
-and then rebuild again for publication.
+`dry_run=true` builds without creating/uploading a release. Installers and smoke
+logs are retained as downloadable Actions artifacts. Do not routinely run a dry
+build and then rebuild again for publication.
+
+The release fails closed if the complete core `[app]` dependency graph is missing
+or incompatible, if the frozen runtime cannot start, or if health, chat/bot
+project lists, or schedules fail. Startup checks run both before packaging and
+against the runtime inside the final `.app`, using temporary state and no developer
+credentials. These gates must pass before any GitHub Release upload.
 
 #### 3. Verify and report publication
 
