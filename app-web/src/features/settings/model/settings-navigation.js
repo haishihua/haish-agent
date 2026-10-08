@@ -1,3 +1,5 @@
+import { SKILL_TABS } from './skill-inventory.js';
+
 // Settings domain model.
 export const SETTINGS_SECTIONS = [
   { id: 'llm', label: 'Providers' },
@@ -40,7 +42,7 @@ export const SETTINGS_SUBTABS = {
   ],
   tools: [
     { id: 'tools-mcp', label: 'MCP' },
-    { id: 'tools-skills', label: 'Skills' },
+    { id: 'tools-skills', label: 'Skills', children: SKILL_TABS },
     { id: 'tools-web', label: 'Web Search' },
     { id: 'tools-browser', label: 'Browser' },
   ],

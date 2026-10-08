@@ -6,7 +6,7 @@ import { FileUpload, FileUploadDropzone, FileUploadTrigger, FileUploadList, File
 import { parseSkillPackage, SKILL_PACKAGE_MAX_SIZE, validateSkillPackageFile } from '../model/skill-package.js';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 
-export function SkillUpload({ installedSkills, onInstall, onClose }) {
+export function SkillUpload({ installedSkills, destination, onInstall, onClose }) {
   const [files, setFiles] = useState([]);
   const [skill, setSkill] = useState(null);
   const [reading, setReading] = useState(false);
@@ -30,6 +30,7 @@ export function SkillUpload({ installedSkills, onInstall, onClose }) {
   return <Dialog open onOpenChange={open => { if (!open && !installing) onClose(); }}>
     <DialogContent className="skill-upload-dialog" aria-describedby={undefined} showCloseButton={!installing}>
       <DialogHeader><DialogTitle>Install skill</DialogTitle></DialogHeader>
+      {destination && <p className="settings-skill-install-destination">Install to {destination}. Installation enables this skill; enablement is shared by name across projects.</p>}
       <FileUpload disabled={installing} value={files} onValueChange={selectFiles} accept=".zip,.skill,.ZIP,.SKILL" maxFiles={1} maxSize={SKILL_PACKAGE_MAX_SIZE} label="Skill package" onFileValidate={validateSkillPackageFile} onFileReject={(_, message) => setError(message)}>
         {!files.length && <FileUploadDropzone className="skill-dropzone">
           <span className="skill-dropzone-icon"><FileArchive size={24} /></span>

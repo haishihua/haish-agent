@@ -1,4 +1,5 @@
 import { setVisionProviderEnabled, llmDraftForStorage } from '../model/llm-settings.js';
+import { withoutStoredSkillInventory } from '../model/live-tools-settings.js';
 
 export function skillAllowPayload(value) {
   return value === null ? null : (Array.isArray(value) ? value : []);
@@ -11,6 +12,8 @@ export function createSettingsHandlers(ctx) {
     SETTINGS_RECORDS_STORAGE_KEY,
     WEB_SEARCH_PROVIDER_OPTIONS,
     activeTab,
+    skillConversationId,
+    invalidateSkillInventory,
     agentCatalogFromSettings,
     agentSettingsDraft,
     applyLlmSettingsPayloadToDraft,
@@ -45,6 +48,8 @@ export function createSettingsHandlers(ctx) {
     workflowSettingsDraft,
   } = ctx;
 
+  const skillContextQuery = skillConversationId === undefined ? '' : `?conversation_id=${encodeURIComponent(skillConversationId || '')}`;
+
   function handleToggleSettings() {
     if (activeTab !== 'dashboard') setActiveTab('dashboard');
     setSettingsMode((enabled) => {
@@ -57,7 +62,7 @@ export function createSettingsHandlers(ctx) {
   async function handleSaveSettingsDraft(section = '') {
     try {
       window.localStorage?.setItem(LLM_SETTINGS_STORAGE_KEY, llmDraftForStorage(llmSettingsDraft));
-      window.localStorage?.setItem(SETTINGS_RECORDS_STORAGE_KEY, JSON.stringify(settingsRecordsDraft));
+      window.localStorage?.setItem(SETTINGS_RECORDS_STORAGE_KEY, JSON.stringify(withoutStoredSkillInventory(settingsRecordsDraft)));
       const llmResponse = await apiFetch(`${API_BASE}/api/settings/llm`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -74,7 +79,7 @@ export function createSettingsHandlers(ctx) {
         return true;
       }
       const toolsPayload = buildToolsSettingsPayload(settingsRecordsDraft);
-      const response = await apiFetch(`${API_BASE}/api/settings/tools`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/tools${skillContextQuery}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(toolsPayload),
@@ -84,6 +89,7 @@ export function createSettingsHandlers(ctx) {
         throw new Error(message);
       }
       const payload = await response.json();
+      invalidateSkillInventory?.();
       setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
       const memoryResponse = await apiFetch(`${API_BASE}/api/settings/memory`, {
         method: 'PUT',
@@ -108,9 +114,9 @@ export function createSettingsHandlers(ctx) {
 
   async function handleSaveToolsSettingsDraft(nextRecords = settingsRecordsDraft, successMessage = 'settings saved') {
     try {
-      window.localStorage?.setItem(SETTINGS_RECORDS_STORAGE_KEY, JSON.stringify(nextRecords));
+      window.localStorage?.setItem(SETTINGS_RECORDS_STORAGE_KEY, JSON.stringify(withoutStoredSkillInventory(nextRecords)));
       const toolsPayload = buildToolsSettingsPayload(nextRecords);
-      const response = await apiFetch(`${API_BASE}/api/settings/tools`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/tools${skillContextQuery}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(toolsPayload),
@@ -120,6 +126,7 @@ export function createSettingsHandlers(ctx) {
         throw new Error(message);
       }
       const payload = await response.json();
+      invalidateSkillInventory?.();
       setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
       if (successMessage) showToast('success', successMessage);
       return true;
@@ -522,10 +529,10 @@ export function createSettingsHandlers(ctx) {
     }
   }
 
-  async function handleInstallSkillPackage(file) {
+  async function handleInstallSkillPackage(file, scope = 'global') {
     try {
       setSkillActionBusy('install');
-      const response = await apiFetch(`${API_BASE}/api/settings/tools/skills/install`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/tools/skills/install${skillContextQuery}${skillContextQuery ? '&' : '?'}scope=${encodeURIComponent(scope)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: file,
       }, { json: false });
       if (!response.ok) throw new Error(await parseResponseMessage(response, `Skill install failed (${response.status})`));
@@ -537,6 +544,7 @@ export function createSettingsHandlers(ctx) {
       showToast('error', String(error?.message || error));
       throw error;
     } finally {
+      invalidateSkillInventory?.();
       setSkillActionBusy('');
     }
   }
@@ -545,7 +553,7 @@ export function createSettingsHandlers(ctx) {
     if (!name) return;
     try {
       setSkillActionBusy(name);
-      const response = await apiFetch(`${API_BASE}/api/settings/tools/skills/${encodeURIComponent(name)}`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/tools/skills/${encodeURIComponent(name)}${skillContextQuery}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
@@ -562,15 +570,16 @@ export function createSettingsHandlers(ctx) {
       showToast('error', String(error?.message || error));
       return false;
     } finally {
+      invalidateSkillInventory?.();
       setSkillActionBusy('');
     }
   }
 
-  async function handleUninstallSkill(name) {
+  async function handleUninstallSkill(name, scope) {
     if (!name) return;
     try {
       setSkillActionBusy(name);
-      const response = await apiFetch(`${API_BASE}/api/settings/tools/skills/${encodeURIComponent(name)}`, {
+      const response = await apiFetch(`${API_BASE}/api/settings/tools/skills/${encodeURIComponent(name)}${skillContextQuery}${scope ? `${skillContextQuery ? '&' : '?'}scope=${encodeURIComponent(scope)}` : ''}`, {
         method: 'DELETE',
       }, { json: false });
       if (!response.ok) {
@@ -585,6 +594,7 @@ export function createSettingsHandlers(ctx) {
       showToast('error', String(error?.message || error));
       return false;
     } finally {
+      invalidateSkillInventory?.();
       setSkillActionBusy('');
     }
   }

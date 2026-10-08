@@ -1,4 +1,5 @@
 // Settings domain model.
+import { withoutStoredSkillInventory } from './live-tools-settings.js';
 export const SETTINGS_RECORDS_STORAGE_KEY = 'haish.settingsRecordsDraft.v1';
 export const DEFAULT_MCP_CONFIG_JSON = JSON.stringify({ servers: {} }, null, 2);
 export const MCP_CONFIG_TEMPLATE_JSON = JSON.stringify({
@@ -106,17 +107,17 @@ export function loadSettingsRecordsDraft() {
   const fallback = createDefaultSettingsRecords();
   try {
     const raw = window.localStorage?.getItem(SETTINGS_RECORDS_STORAGE_KEY);
-    if (!raw) return fallback;
+    if (!raw) return withoutStoredSkillInventory(fallback);
     const stored = JSON.parse(raw);
-    return Object.fromEntries(
+    return withoutStoredSkillInventory(Object.fromEntries(
       Object.entries(fallback).map(([section, records]) => {
         if (section === 'memory') return [section, mergeKnownDefaultRecords(records, stored?.[section])];
         const merged = mergeDefaultRecords(records, stored?.[section]);
         // 已下线的记录（Tools → Jev）不进草稿：老草稿里存过的密钥也跟着一起丢掉。
         return [section, section === 'tools' ? merged.filter((record) => !RETIRED_TOOLS_RECORD_IDS.has(record?.id)) : merged];
       }),
-    );
+    ));
   } catch {
-    return fallback;
+    return withoutStoredSkillInventory(fallback);
   }
 }

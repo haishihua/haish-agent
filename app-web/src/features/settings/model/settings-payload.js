@@ -220,6 +220,9 @@ export function applyToolsSettingsPayloadToRecords(records, payload) {
         return {
           ...record,
           skills: Array.isArray(payload.skills.items) ? payload.skills.items : [],
+          skill_groups: payload.skills.groups || null,
+          skill_workspace: payload.skills.workspace || '',
+          skill_inventory_ready: Array.isArray(payload.skills.items),
           skill_errors: Array.isArray(payload.skills.errors) ? payload.skills.errors : [],
           skill_install_root: payload.skills.install_root || '',
           skill_can_install: payload.skills.can_install !== false,
@@ -269,12 +272,12 @@ export function buildToolsSettingsPayload(records) {
   }
   return {
     mcp: { config: parsedMcp.value },
-    skills: {
+    ...(skills?.skill_inventory_ready === false ? {} : { skills: {
       disabled: (Array.isArray(skills?.skills) ? skills.skills : [])
         .filter((skill) => skill.enabled === false)
         .map((skill) => skill.name || skill.id)
         .filter(Boolean),
-    },
+    } }),
     web_search: {
       enabled: true,
       mode: 'hybrid',

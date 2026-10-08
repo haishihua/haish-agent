@@ -5,6 +5,7 @@ import {
   SETTINGS_SUBTABS,
   settingsSectionMeta,
 } from '../model/settings-navigation.js';
+import { isSkillPage, skillGroups } from '../model/skill-inventory.js';
 import { normalizeAgentSettings } from '../../agents/model/agent-settings.js';
 import {
   normalizeWorkflowSettings,
@@ -59,10 +60,13 @@ export function SettingsPage({
   llmDraft,
   onLlmDraftChange,
   records,
+  toolsSettingsState = { status: 'ready', error: '' },
+  onRefreshTools,
   onRecordsChange,
   agentSettings,
   agentSettingsLoading = false,
   onAutomationExpandedChange,
+  onSkillsExpandedChange,
   onAgentSettingsChange,
   workflowSettings,
   onWorkflowSettingsChange,
@@ -99,6 +103,10 @@ export function SettingsPage({
   // 开关点按立即保存（与 Skills 一致），保存期间其它行开关暂不可点。
   const [llmToggleBusy, setLlmToggleBusy] = useState('');
   const [expandedSettingsSections, setExpandedSettingsSections] = useState(() => new Set([activeSection]));
+  const [skillsOpen, setSkillsOpen] = useState(() => activeSection === 'tools' && isSkillPage(selectionBySection.tools));
+  const skillsVisible = expandedSettingsSections.has('tools') && skillsOpen;
+  useEffect(() => { onSkillsExpandedChange?.(skillsVisible); }, [skillsVisible, onSkillsExpandedChange]);
+  useEffect(() => () => onSkillsExpandedChange?.(false), [onSkillsExpandedChange]);
   const automationOpen = expandedSettingsSections.has('automation');
   useEffect(() => {
     onAutomationExpandedChange?.(automationOpen);
@@ -117,10 +125,13 @@ export function SettingsPage({
     onOpenEditorRequestConsumed?.();
   }, [onOpenEditorRequestConsumed, openEditorRequest]);
   const sectionMeta = settingsSectionMeta(activeSection) || SETTINGS_SECTIONS[0];
-  const subtabs = SETTINGS_SUBTABS[activeSection] || [];
+  const subtabs = (SETTINGS_SUBTABS[activeSection] || []).flatMap(item => item.children ? [item, ...item.children] : [item]);
   const activeSubtab = subtabs.some((item) => item.id === selectionBySection[activeSection])
     ? selectionBySection[activeSection]
     : (subtabs[0]?.id || '');
+  useEffect(() => {
+    if (activeSection === 'tools' && isSkillPage(activeSubtab)) setSkillsOpen(true);
+  }, [activeSection, activeSubtab]);
   const showConfigList = activeSection !== 'tools';
   const displayItems = configItemsForSection(activeSection, llmDraft, records, activeSubtab, agentSettings, workflowSettings);
   const items = showConfigList ? displayItems : [];
@@ -449,6 +460,8 @@ export function SettingsPage({
           key={id}
           selectedId={id}
           records={records}
+          toolsSettingsState={toolsSettingsState}
+          onRefreshTools={onRefreshTools}
           onRecordsChange={onRecordsChange}
           onInstallSkill={onInstallSkill}
           onToggleSkill={onToggleSkill}
@@ -491,7 +504,7 @@ export function SettingsPage({
 
   const workflowDetailOpen = showSideEditor && panelSection === 'workflow';
   const ordinaryEditorOpen = showSideEditor && !workflowDetailOpen;
-  const navCount = (section, tab) => ['llm', 'embedding', 'compact'].includes(section) ? configItemsForSection(section, llmDraft, records, tab, agentSettings).length : section === 'agent' || section === 'workflow' ? configItemsForSection(section, llmDraft, records, '', agentSettings, workflowSettings).length : tab === 'tools-skills' ? (records.tools || []).find(r => r.id === tab)?.skills?.length || 0 : null;
+  const navCount = (section, tab) => ['llm', 'embedding', 'compact'].includes(section) ? configItemsForSection(section, llmDraft, records, tab, agentSettings).length : section === 'agent' || section === 'workflow' ? configItemsForSection(section, llmDraft, records, '', agentSettings, workflowSettings).length : null;
   const addButton = canAddItem && <Button size="sm" onClick={addItem} disabled={Boolean(panelBusy)}><Plus size={16} />{['llm', 'embedding', 'compact'].includes(activeSection) ? 'Add provider' : activeSection === 'agent' ? 'Create agent' : 'Create workflow'}</Button>;
   return <div className="settings-page settings-modern settings-theme dark">
     <aside className="settings-nav-modern"><div className="settings-nav-title"><Settings2 size={17} />Settings</div><nav aria-label="Settings navigation">
@@ -502,6 +515,19 @@ export function SettingsPage({
         return <Collapsible key={section.id} open={expandedSettingsSections.has(section.id)} onOpenChange={open => setExpandedSettingsSections(prev => { const next = new Set(prev); if (open) next.add(section.id); else next.delete(section.id); return next; })}>
           <CollapsibleTrigger asChild><Button variant="ghost" className={`settings-nav-group ${isActive ? 'is-current' : ''}`}><span>{section.label}</span><ChevronRight size={14} /></Button></CollapsibleTrigger>
           <CollapsibleContent><div className="settings-nav-children">{children.map(child => {
+            if (child.children) {
+              const skillsSelected = activeSection === 'tools' && isSkillPage(activeSubtab);
+              const groups = skillGroups((records.tools || []).find(record => record.id === 'tools-skills'));
+              return <Collapsible key={child.id} open={skillsOpen} onOpenChange={setSkillsOpen}>
+                <CollapsibleTrigger asChild><Button variant="ghost" className={`settings-nav-item settings-skill-nav-parent ${skillsSelected ? 'is-current' : ''}`}><AppIcon name="wrench" size={16} /><span>Skills</span><ChevronRight size={14} className={skillsOpen ? 'settings-skill-nav-expanded' : undefined} /></Button></CollapsibleTrigger>
+                <CollapsibleContent><div className="settings-skill-nav-children">{child.children.map(sub => <Button
+                  key={sub.id} variant="ghost" className={`settings-nav-item ${activeSection === 'tools' && (activeSubtab === sub.id || (activeSubtab === 'tools-skills' && sub.scope === 'builtin')) ? 'is-selected' : ''}`}
+                  aria-current={activeSection === 'tools' && activeSubtab === sub.id ? 'page' : undefined}
+                  onClick={() => { if (!panelBusy) selectSubtab('tools', sub.id); }}>
+                  <span>{sub.label}</span><small>{toolsSettingsState.status === 'ready' ? (groups[sub.scope] || []).length : toolsSettingsState.status === 'error' ? '—' : <LoaderCircle size={12} className="settings-spin" role="status" aria-label={`Loading ${sub.label} count`} />}</small>
+                </Button>)}{toolsSettingsState.error && <Button variant="ghost" size="sm" onClick={onRefreshTools} title={toolsSettingsState.error}>Retry skill counts</Button>}</div></CollapsibleContent>
+              </Collapsible>;
+            }
             const selected = isGroup ? activeSection === child.id : activeSection === section.id && activeSubtab === child.id;
             const count = navCount(isGroup ? child.id : section.id, child.id);
             return <Button key={child.id} variant="ghost" className={`settings-nav-item ${selected ? 'is-selected' : ''}`} aria-current={selected ? 'page' : undefined} onClick={() => { if (panelBusy) return; if (isGroup) { cancelEditor(); setSettingsSearch(''); onSectionChange(child.id); } else selectSubtab(section.id, child.id); }}><AppIcon name={child.icon || SETTINGS_SUBTAB_ICONS[child.id] || 'configure'} size={16} /><span>{child.label}</span>{count !== null && <small>{child.id === 'agent' && agentSettingsLoading ? <LoaderCircle size={12} role="status" aria-label="Loading agent count" /> : count}</small>}</Button>;

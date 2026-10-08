@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { AlertTriangle, ChevronRight, FileJson2, FlaskConical, LoaderCircle, Plus, Server, Sparkles } from 'lucide-react';
+import { AlertTriangle, ChevronRight, FileJson2, FlaskConical, LoaderCircle, Plus, RefreshCw, Server, Sparkles } from 'lucide-react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import { DEFAULT_MCP_CONFIG_JSON, MCP_CONFIG_TEMPLATE_JSON, WEB_SEARCH_PROVIDER_OPTIONS } from '../model/settings-records.js';
 import { parseJsonSafe, isEmptyMcpConfigDraft, normalizeWebSearchDraft } from '../model/settings-payload.js';
 import { mcpServerEnabled, setMcpServerEnabled } from '../model/mcp-server-toggle.js';
+import { skillSourceLabel } from '../model/skill-source-label.js';
+import { isSkillPage, skillScopeForPage, skillGroups } from '../model/skill-inventory.js';
+import './skill-tabs.css';
 import { WEB_SEARCH_BRAND_LOGOS } from './settings-ui.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
-import { SecretKeyField, FieldRow, SettingsRow, SettingsSearch, SettingsSheet, SettingsDeleteDialog, SettingsToggleRow } from './SettingsPrimitives.jsx';
+import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
+import { SecretKeyField, FieldRow, SettingsRow, SettingsSearch, SettingsSheet, SettingsDeleteDialog } from './SettingsPrimitives.jsx';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import { Item, ItemGroup } from '../../../shared/ui/settings-elements/ui/item.tsx';
 import { Switch } from '../../../shared/ui/settings-elements/ui/switch.tsx';
@@ -18,15 +22,16 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../../../sh
 import { SkillUpload } from './SkillUpload.jsx';
 import { BrowserConfigEditor } from './BrowserConfigEditor.jsx';
 
-export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSaveTools, onTestWebProvider, onInstallSkill, onToggleSkill, onUninstallSkill, skillActionBusy, onToast }) {
+export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSaveTools, onTestWebProvider, onInstallSkill, onToggleSkill, onUninstallSkill, skillActionBusy, onToast, toolsSettingsState = { status: 'ready', error: '' }, onRefreshTools }) {
   const [query, setQuery] = useState('');
+  const skillTab = skillScopeForPage(selectedId);
   const [editing, setEditing] = useState(null);
   const [installing, setInstalling] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   if (selectedId === 'tools-browser') return <BrowserConfigEditor onToast={onToast} />;
-  const current = (records.tools || []).find(item => item.id === selectedId);
+  const current = (records.tools || []).find(item => item.id === (isSkillPage(selectedId) ? 'tools-skills' : selectedId));
   if (!current) return <div className="settings-empty">No configuration available.</div>;
   const patchedRecords = patch => ({ ...records, tools: (records.tools || []).map(item => item.id === current.id ? { ...item, ...patch } : item) });
   const update = patch => onRecordsChange(prev => ({ ...prev, tools: (prev.tools || []).map(item => item.id === current.id ? { ...item, ...patch } : item) }));
@@ -67,12 +72,14 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
     </div></div>;
   }
 
-  const skillsPane = selectedId === 'tools-skills';
+  const skillsPane = isSkillPage(selectedId);
   const skills = Array.isArray(current.skills) ? current.skills : [];
   const skillErrors = current.skill_errors || [];
   const web = normalizeWebSearchDraft(current.web_search);
-  const shown = (skillsPane ? skills : WEB_SEARCH_PROVIDER_OPTIONS).filter(item => `${item.name || item.label} ${item.description || ''}`.toLowerCase().includes(query.toLowerCase()));
-  const selectedSkill = skills.find(skill => (skill.id || skill.name) === editing);
+  const groups = skillGroups(current);
+  const tabSkills = groups[skillTab] || [];
+  const shown = (skillsPane ? tabSkills : WEB_SEARCH_PROVIDER_OPTIONS).filter(item => `${item.name || item.label} ${item.description || ''}`.toLowerCase().includes(query.toLowerCase()));
+  const selectedSkill = tabSkills.find(skill => (skill.id || skill.name) === editing);
   const provider = WEB_SEARCH_PROVIDER_OPTIONS.find(item => item.id === editing);
   const providerDraft = provider ? web.providers[provider.id] || {} : {};
   const patchProvider = patch => update({ web_search: normalizeWebSearchDraft({ ...web, providers: { ...web.providers, [provider.id]: { ...providerDraft, ...patch } } }) });
@@ -80,26 +87,39 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
     const saved = await onSaveTools?.(patchedRecords({ web_search: web }), 'Search provider saved');
     if (saved !== false) setEditing(null);
   };
-  return <div className={`settings-tools-modern ${editing ? 'with-editor' : ''}`}><div className="settings-content-modern">
-    <div className="settings-page-heading"><h1>{skillsPane ? 'Installed skills' : 'Search providers'}</h1>{skillsPane && current.skill_can_install !== false && <Button size="sm" disabled={Boolean(skillActionBusy)} onClick={() => { setEditing(null); setInstalling(true); }}><Plus size={16} />Install skill</Button>}</div>
+  if (skillsPane && toolsSettingsState.status !== 'ready') {
+    return <div className="settings-content-modern settings-skills-content"><div className="settings-page-heading"><h1>Skills · {skillTab === 'builtin' ? 'Built-in' : skillTab === 'global' ? 'Global' : 'Project'}</h1></div>
+      {toolsSettingsState.status === 'error'
+        ? <><ErrorState variant="inline" detail={toolsSettingsState.error || 'Unable to load current skills.'} /><Button variant="outline" size="sm" onClick={onRefreshTools}>Retry</Button></>
+        : <div className="app-body-loading"><LoadingState role="status" label="Loading settings…" /></div>}
+    </div>;
+  }
+  return <div className={`settings-tools-modern ${editing ? 'with-editor' : ''}`}><div className={`settings-content-modern ${skillsPane ? 'settings-skills-content' : ''}`}>
+    <div className="settings-page-heading"><h1>{skillsPane ? `Skills · ${skillTab === 'builtin' ? 'Built-in' : skillTab === 'global' ? 'Global' : 'Project'}` : 'Search providers'}</h1>{skillsPane && <div className="settings-skill-actions">{onRefreshTools && <Button variant="outline" size="sm" disabled={Boolean(skillActionBusy || toolsSettingsState.refreshing)} onClick={onRefreshTools}><RefreshCw size={16} aria-hidden="true" className={toolsSettingsState.refreshing ? 'settings-spin' : undefined} />Refresh</Button>}{skillTab !== 'builtin' && current.skill_can_install !== false && <Button size="sm" disabled={Boolean(skillActionBusy)} onClick={() => { setEditing(null); setInstalling(true); }}><Plus size={16} />Install skill</Button>}</div>}</div>
+    {skillsPane && <><div className="settings-skill-context">
+      <p>{skillTab === 'builtin' ? 'Included with Haish.' : skillTab === 'global' ? 'Installed packages and user-level Codex skills, shared across projects.' : <>Project skills · <strong>{current.skill_workspace || 'Current workspace'}</strong></>}</p>
+      <p>Enablement is shared across projects by skill name. Agent access also follows its role permissions.</p>
+    </div>{toolsSettingsState.error && <div className="settings-skill-refresh-error"><ErrorState variant="inline" detail={toolsSettingsState.error} /><Button variant="outline" size="sm" onClick={onRefreshTools}>Retry</Button></div>}</>}
+    <div id={skillsPane ? 'skill-list-panel' : undefined}>
     <SettingsSearch value={query} onChange={setQuery} label={skillsPane ? 'Search skills' : 'Search providers'} />
     <ItemGroup className="settings-list-modern">{shown.map(item => {
       const id = skillsPane ? item.id || item.name : item.id;
       const configured = !skillsPane && Boolean(web.providers[id]?.api_key_configured || web.providers[id]?.api_key);
-      const skillSource = item.source === 'haish' || item.source === 'installed' ? 'Haish' : 'Codex';
-      return <SettingsRow key={id} title={item.name || item.label} description={item.description} icon={skillsPane ? <Sparkles size={22} /> : <BrandLogoIcon logo={WEB_SEARCH_BRAND_LOGOS[id]} />} selected={editing === id} onOpen={() => { setEditing(id); setError(''); }} enabled={item.enabled} onToggle={skillsPane ? enabled => onToggleSkill(item.name, enabled) : undefined} busy={Boolean(skillActionBusy || busy)} onDelete={skillsPane && item.can_uninstall ? () => setDeleting({ title: item.name }) : undefined} deleteLabel="Uninstall skill" badge={skillsPane ? skillSource : undefined} status={!skillsPane ? { label: configured ? 'Configured' : 'Needs setup', className: configured ? 'success' : '' } : undefined} />;
-    })}{!shown.length && <div className="settings-empty">{query ? 'No matching items.' : 'No installed skills.'}</div>}</ItemGroup>
+      const skillSource = skillSourceLabel(item.source);
+      return <SettingsRow key={id} title={item.name || item.label} description={skillsPane && item.shadowed ? `${item.description || ''} · Overridden by the current project.` : skillsPane && skillTab === 'project' && groups.global.some(global => global.name === item.name) ? `${item.description || ''} · Overrides the user-level Codex version.` : item.description} icon={skillsPane ? <Sparkles size={22} /> : <BrandLogoIcon logo={WEB_SEARCH_BRAND_LOGOS[id]} />} selected={editing === id} onOpen={() => { setEditing(id); setError(''); }} enabled={item.enabled} onToggle={skillsPane && !item.shadowed ? enabled => onToggleSkill(item.name, enabled) : undefined} busy={Boolean(skillActionBusy || busy)} onDelete={skillsPane && item.can_uninstall ? () => setDeleting({ title: item.name }) : undefined} deleteLabel="Uninstall skill" badge={skillsPane ? skillSource : undefined} status={!skillsPane ? { label: configured ? 'Configured' : 'Needs setup', className: configured ? 'success' : '' } : undefined} />;
+    })}{!shown.length && <div className="settings-empty">{query ? 'No matching items.' : 'No skills in this scope.'}</div>}</ItemGroup>
+    </div>
     {skillsPane && skillErrors.length > 0 && <Collapsible className="settings-skill-errors">
       <CollapsibleTrigger asChild><Button variant="ghost" size="sm"><AlertTriangle size={14} /><span>{skillErrors.length} {skillErrors.length === 1 ? 'skill' : 'skills'} couldn’t be loaded</span><ChevronRight size={14} className="settings-skill-errors-chevron" /></Button></CollapsibleTrigger>
       <CollapsibleContent><ul>{skillErrors.map((failure, index) => <li key={index}><p>{failure.message || failure.code}</p>{failure.origin && <span>{failure.origin}</span>}</li>)}</ul></CollapsibleContent>
     </Collapsible>}
     </div>
     <SettingsSheet open={Boolean(editing)} title={selectedSkill?.name || provider?.label || 'Details'} onClose={() => { if (!busy) setEditing(null); }}><div className="settings-editor-scroll">
-      {selectedSkill && <div className="skill-details"><p>{selectedSkill.description}</p>{(selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path) && <dl><dt>Location</dt><dd>{selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path}</dd></dl>}<SettingsToggleRow label="Enable skill" checked={selectedSkill.enabled !== false} disabled={Boolean(skillActionBusy)} onCheckedChange={enabled => onToggleSkill(selectedSkill.name, enabled)} /></div>}
+      {selectedSkill && <div className="skill-details"><p>{selectedSkill.description}</p>{(selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path) && <dl><dt>Location</dt><dd>{selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path}</dd></dl>}</div>}
       {provider && <FieldRow label={`${provider.label} API key`}><SecretKeyField value={providerDraft.api_key || ''} configured={providerDraft.api_key_configured} onChange={event => patchProvider({ api_key: event.target.value })} disabled={Boolean(busy)} /></FieldRow>}
       {error && <ErrorState variant="inline" detail={error} />}
     </div><SheetFooter><div>{provider && <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('test', () => onTestWebProvider?.(provider.id, providerDraft.api_key || ''))}>{busy === 'test' ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button variant="ghost" size="sm" disabled={Boolean(busy)} onClick={() => setEditing(null)}>{skillsPane ? 'Close' : 'Cancel'}</Button>{provider && <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', saveProvider)}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></SettingsSheet>
-    {installing && <SkillUpload installedSkills={skills} onClose={() => setInstalling(false)} onInstall={(_skill, file) => onInstallSkill(file)} />}
-    <SettingsDeleteDialog target={deleting} label="Uninstall skill" onClose={() => setDeleting(null)} onConfirm={async target => { const success = await onUninstallSkill(target.title); if (success !== false && selectedSkill?.name === target.title) setEditing(null); return success; }} />
+    {installing && <SkillUpload installedSkills={skills} destination={skillTab === 'project' ? `Project · ${current.skill_workspace || 'Current workspace'}` : 'Global · All projects'} onClose={() => setInstalling(false)} onInstall={(_skill, file) => onInstallSkill(file, skillTab)} />}
+    <SettingsDeleteDialog target={deleting} label="Uninstall skill" onClose={() => setDeleting(null)} onConfirm={async target => { const success = await onUninstallSkill(target.title, skillTab); if (success !== false && selectedSkill?.name === target.title) setEditing(null); return success; }} />
   </div>;
 }

@@ -104,7 +104,7 @@ test('skill installation sends the selected archive and refreshes persisted skil
     API_BASE: '', applyToolsSettingsPayloadToRecords, setSkillActionBusy: value => busy.push(value),
     setSettingsRecordsDraft: update => { state = update(state); }, showToast() {},
     apiFetch: async (url, init) => {
-      assert.equal(url, '/api/settings/tools/skills/install');
+      assert.equal(url, '/api/settings/tools/skills/install?scope=global');
       assert.equal(init.body, file);
       assert.equal(init.headers['Content-Type'], 'application/zip');
       return { ok: true, json: async () => ({ skills: { can_install: true, items: [{ name: 'example', source: 'installed' }] } }) };
