@@ -174,8 +174,8 @@ function main() {
   for (const name of ['.env', '.env.local', '.env.production', '.env.development']) {
     fs.rmSync(path.join(runtimeRoot, name), { force: true });
   }
-  // Bundled skills now ship as package data under src/haish_agent_core/skills/
-  // and are picked up by PyInstaller's collect_data_files. No extra copy here.
+  // Presets are copied from the installed distribution below, so the source
+  // package selected by --paths has the same reviewed data as the wheel.
 
   const python = process.env.HAISH_RUNTIME_BUILD_PYTHON || 'python3';
   fs.rmSync(buildVenvPath, { recursive: true, force: true });
@@ -198,6 +198,17 @@ function main() {
   removeInstalledRuntimePackage(venvPython);
   run(venvPython, ['-m', 'pip', 'install', '--no-cache-dir', '--force-reinstall', '--no-deps', sourceRoot]);
   run(venvPython, ['-m', 'pip', 'check']);
+  // --paths points PyInstaller at the copied source package, not site-packages.
+  // Copy its preset data from the installed wheel (built by core's build_py).
+  const installedSkillsPath = spawnSync(venvPython, ['-I', '-c',
+    "import importlib.util; from pathlib import Path; print(Path(importlib.util.find_spec('haish_agent_core').origin).parent / 'skills')",
+  ], { encoding: 'utf8' });
+  if (installedSkillsPath.status !== 0) throw new Error('Could not locate installed preset skills.');
+  const presetSource = installedSkillsPath.stdout.trim();
+  if (!fs.existsSync(path.join(presetSource, 'settings-manager', 'scripts', 'settings_api.py'))) {
+    throw new Error('Installed runtime is missing the Settings Manager preset.');
+  }
+  fs.cpSync(presetSource, path.join(runtimeRoot, 'src', 'haish_agent_core', 'skills'), { recursive: true });
   pruneRuntime();
   writeRuntimeLauncher();
   run(venvPython, [
@@ -226,12 +237,22 @@ function main() {
     'websockets',
     '--collect-data',
     'haish_agent_core',
+    // collect-data excludes .py files; the fixed Settings client is Skill data.
+    '--add-data',
+    `${path.join(runtimeRoot, 'src', 'haish_agent_core', 'skills')}:haish_agent_core/skills`,
     '--collect-data',
     'tiktoken',
     '--collect-data',
     'certifi',
     runtimeLauncherPath,
   ]);
+  for (const name of ['settings-manager', 'grill-with-docs', 'grilling', 'domain-modeling',
+    'handoff', 'to-spec', 'to-tickets', 'implement-spec', 'tdd', 'code-review']) {
+    const skillFile = path.join(runtimeRoot, 'bin', 'haish-runtime', '_internal', 'haish_agent_core', 'skills', name, 'SKILL.md');
+    if (!fs.existsSync(skillFile)) throw new Error(`Frozen runtime is missing preset: ${name}`);
+  }
+  const clientFile = path.join(runtimeRoot, 'bin', 'haish-runtime', '_internal', 'haish_agent_core', 'skills', 'settings-manager', 'scripts', 'settings_api.py');
+  if (!fs.existsSync(clientFile)) throw new Error('Frozen runtime is missing the Settings Manager client.');
   const certifiBundlePath = path.join(
     runtimeRoot,
     'bin',

@@ -52,6 +52,10 @@ test('dependency and frozen startup gates cannot be bypassed', () => {
   const build = read('scripts/build-runtime.mjs');
   assert.ok(build.indexOf("'check-runtime-dependencies.py'") < build.indexOf("'PyInstaller'"));
   assert.ok(build.indexOf("'smoke-runtime.mjs'") > build.indexOf("'PyInstaller'"));
+  assert.match(build, /fs\.cpSync\(presetSource, path\.join\(runtimeRoot, 'src', 'haish_agent_core', 'skills'\)/);
+  assert.match(build, /'--add-data'/);
+  assert.match(build, /Frozen runtime is missing preset/);
+  assert.match(build, /Frozen runtime is missing the Settings Manager client/);
   const release = read('scripts/release-mac.mjs');
   assert.match(release, /function verifyPackagedRuntime\(\)[\s\S]*?'scripts\/smoke-runtime.mjs'/);
   assert.ok(release.indexOf('  verifyPackagedRuntime();') < release.indexOf('  if (dryRun)'));
