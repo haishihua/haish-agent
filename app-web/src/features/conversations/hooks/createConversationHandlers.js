@@ -1,3 +1,4 @@
+import { beginConversationLoadPerf, conversationLoadPerf } from '../../../shared/lib/conversation-load-perf.js';
 import { taskFinalOutputText } from '../../tasks/model/runtime-events.js';
 import { createQuestAck } from '../../tasks/model/quest-ack.js';
 import { createGoalCommandHandler } from './createGoalCommandHandler.js';
@@ -115,7 +116,10 @@ export function createConversationHandlers(ctx) {
     conversationDetailAbortRef.current = controller;
     try {
       const detail = await fetchConversationDetail(targetConversationId, { signal: controller.signal });
-      if (!isConversationActivationCurrent(activationSeq) || controller.signal.aborted) return null;
+      if (!isConversationActivationCurrent(activationSeq) || controller.signal.aborted) {
+        conversationLoadPerf('detail_discarded', targetConversationId, { aborted: controller.signal.aborted });
+        return null;
+      }
       await activateConversationDetail(detail, {
         activationSeq,
         restoreLatest,
@@ -197,8 +201,13 @@ export function createConversationHandlers(ctx) {
         };
       }),
     });
+    beginConversationLoadPerf(nextConversationId, 'selection');
     const currentConversationId = conversationIdRef.current || conversationId;
     if (!nextConversationId || (nextConversationId === currentConversationId && !conversationError)) {
+      conversationLoadPerf('selection_no_request', nextConversationId, {
+        shell_seeded: Boolean(getRuntime?.(nextConversationId)?.shellSeeded),
+        pending_request: Boolean(conversationDetailAbortRef?.current),
+      });
       setWorkspaceState((state) => normalizeWorkspaceOrdering(stampActivation(state)));
       return;
     }

@@ -26,7 +26,7 @@ export function workflowTaskDisplayStatus(task) {
 }
 
 /** 已落地的完成标记：比 status 更可信，凡是「还在跑 / 还在等」的判断都要先过这一关。 */
-export function taskHasFinishedMarker(task) {
+function taskHasFinishedMarker(task) {
   return Boolean(task?.completedAt || task?.completed_at || task?.serverFinished === true);
 }
 

@@ -308,6 +308,8 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 async function proxyApiRequest(request: Request, url: URL): Promise<Response> {
+  const perfStarted = performance.now();
+  const perfMatch = /^\/api\/conversations\/([a-f0-9]+)(\/tasks\/runtime)?$/.exec(url.pathname);
   let runtime;
   try {
     runtime = await ensureLocalRuntime(runtimePaths());
@@ -319,6 +321,7 @@ async function proxyApiRequest(request: Request, url: URL): Promise<Response> {
       { status: 503 },
     );
   }
+  const perfRuntimeReady = performance.now();
   const targetUrl = `${runtime.baseUrl}${url.pathname}${url.search}`;
   const headers = new Headers(request.headers);
   headers.delete('host');
@@ -326,13 +329,21 @@ async function proxyApiRequest(request: Request, url: URL): Promise<Response> {
   headers.delete('referer');
   const body =
     request.method === 'GET' || request.method === 'HEAD' ? undefined : Buffer.from(await request.arrayBuffer());
-  return proxyResponse((signal) => net.fetch(targetUrl, {
+  const response = await proxyResponse((signal) => net.fetch(targetUrl, {
     method: request.method,
     headers,
     body,
     // proxyResponse also forwards response-body cancellation from Chromium.
     signal,
   }), request.signal);
+  if (devMode && perfMatch) console.log('[conversation-load-perf] ' + JSON.stringify({
+    phase: 'desktop_proxy_headers', conversation_id: perfMatch[1],
+    kind: perfMatch[2] ? 'runtime' : 'detail', timestamp_ms: Date.now(),
+    runtime_ready_ms: perfRuntimeReady - perfStarted,
+    upstream_ms: performance.now() - perfRuntimeReady,
+    total_ms: performance.now() - perfStarted, status: response.status,
+  }));
+  return response;
 }
 
 function registerWebProtocol(): void {
@@ -457,6 +468,13 @@ function createWindow(): void {
   window.on('unmaximize', () => publishWindowVisualState(window));
   window.on('restore', () => publishWindowVisualState(window));
   window.on('focus', stopDockAttention);
+  // TEMPORARY conversation-load timing bridge; never forward arbitrary console data.
+  if (devMode) window.webContents.on('console-message', (details) => {
+    const message = details.message;
+    if (message.startsWith('[conversation-load-perf] ') && message.length < 4096) {
+      console.log(message);
+    }
+  });
   window.webContents.once('did-finish-load', () => publishWindowVisualState(window));
 
   window.loadURL('haish://app/index.html').catch((error) => console.error('Failed to load Haish UI:', error));

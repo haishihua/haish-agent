@@ -1,3 +1,4 @@
+import { conversationLoadPerf } from '../../../shared/lib/conversation-load-perf.js';
 import { splitTaskRuntimeRestoreOrder } from '../../tasks/model/task-runtime-paging.js';
 
 export function createConversationActivationHandlers(ctx) {
@@ -163,6 +164,8 @@ export function createConversationActivationHandlers(ctx) {
     { restoreLatest = true, activationSeq = null, signal } = {},
   ) {
     if (!detail?.conversation_id) return;
+    const perfStarted = performance.now();
+    conversationLoadPerf('activation_begin', detail.conversation_id);
     // Race model: standalone activates bump the activation seq. Conversation
     // selection passes its existing seq so the immediate shell switch and the
     // later detail hydration share the same stale-response guard.
@@ -298,6 +301,10 @@ export function createConversationActivationHandlers(ctx) {
       });
     }
 
+    conversationLoadPerf('body_state_submitted', restoredConversationId, {
+      duration_ms: performance.now() - perfStarted,
+      tasks: restoredTasks.length,
+    });
     if (restoreLatest && taskIdsToRestore.length > 0) {
       const restoreOrder = [
         latestTaskId,
@@ -307,6 +314,8 @@ export function createConversationActivationHandlers(ctx) {
       // conversation detail already carries and are hydrated in pages when the
       // user scrolls up (see task-runtime-paging.js).
       const { initialIds } = splitTaskRuntimeRestoreOrder(restoreOrder);
+      const perfRuntimeStarted = performance.now();
+      conversationLoadPerf('runtime_restore_begin', restoredConversationId, { tasks: initialIds.length });
       try {
         await restoreTaskRuntimes(initialIds, {
           targetConversationId: restoredConversationId,
@@ -316,8 +325,14 @@ export function createConversationActivationHandlers(ctx) {
       } catch (error) {
         if (!isCurrentActivation() || signal?.aborted) return;
         console.error('task runtime batch restore failed', error);
+      } finally {
+        conversationLoadPerf('runtime_restore_end', restoredConversationId, {
+          duration_ms: performance.now() - perfRuntimeStarted,
+          current: isCurrentActivation(), aborted: Boolean(signal?.aborted),
+        });
       }
     }
+    conversationLoadPerf('activation_end', restoredConversationId, { duration_ms: performance.now() - perfStarted });
   }
 
   async function fetchConversationDetail(nextConversationId, { signal } = {}) {

@@ -1,3 +1,5 @@
+import { timedConversationFetch } from '../lib/conversation-load-perf.js';
+
 export const CONVERSATION_STORAGE_KEY = 'haish_conversation_id';
 export const WORKSPACE_STORAGE_KEY = 'haish_workspaces_v2';
 export const CONTEXT_USAGE_STORAGE_KEY = 'haish_context_usage_v1';
@@ -53,7 +55,11 @@ function withApiInit(init = {}, options = {}) {
 }
 
 export function apiFetch(input, init = {}, options = {}) {
-  return fetch(input, withApiInit(init, options));
+  const requestInit = withApiInit(init, options);
+  if (/\/api\/conversations\/[a-f0-9]+(?:\/tasks\/runtime)?(?:\?|$)/.test(String(input))) {
+    return timedConversationFetch(fetch, input, requestInit);
+  }
+  return fetch(input, requestInit);
 }
 
 export async function parseResponseMessage(response, fallback) {

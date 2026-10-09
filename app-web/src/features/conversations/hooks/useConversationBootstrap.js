@@ -1,3 +1,4 @@
+import { beginConversationLoadPerf, conversationLoadPerf } from '../../../shared/lib/conversation-load-perf.js';
 import React from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, DEFAULT_SESSION_NAME } from '../../../shared/api/client.js';
@@ -116,6 +117,7 @@ export function useConversationBootstrap({
             : null;
         };
         if (activeSummary) {
+          beginConversationLoadPerf(activeSummary.conversation_id, 'startup');
           try {
             const detail = Array.isArray(activeSummary.messages)
               ? activeSummary
@@ -132,7 +134,10 @@ export function useConversationBootstrap({
       } catch (error) {
         if (!cancelled) setConversationError(String(error?.message || error));
       } finally {
-        if (!cancelled) setWorkspaceLoading(false);
+        if (!cancelled) {
+          conversationLoadPerf('startup_loading_end');
+          setWorkspaceLoading(false);
+        }
       }
     })();
     return () => {
