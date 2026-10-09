@@ -47,7 +47,7 @@ export function createDefaultSettingsRecords() {
       { id: 'tools-web', name: 'Web Search', kind: 'Provider Keys', enabled: true, protected: true, endpoint: '', notes: 'Configure Tavily and SerpApi search keys.', web_search: createDefaultWebSearchSettings() },
     ],
     memory: [
-      { id: 'memory-qdrant', name: 'Qdrant', kind: 'Vector Store', enabled: true, protected: true, endpoint: '', notes: 'Vector search for long-term memory and the knowledge base.', qdrant: normalizeQdrantDraft() },
+      { id: 'memory-qdrant', name: 'Qdrant', kind: 'Vector Store', enabled: true, protected: true, endpoint: '', notes: 'Vector search for long-term memory.', qdrant: normalizeQdrantDraft() },
     ],
     agent: [
       { id: 'agent-default', name: 'Default Agent', kind: 'Profile', enabled: true, endpoint: '', notes: 'Default assistant profile.' },

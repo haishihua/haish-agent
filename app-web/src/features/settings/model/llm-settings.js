@@ -152,7 +152,7 @@ export function nextProviderDraft(providerId, previous = {}) {
 // Vision providers are a list because the runtime only ever runs one VLM: the
 // chat model is preferred, and otherwise the single enabled provider serves
 // the request. A draft entry stays disabled until the user flips its switch.
-export function normalizeVisionProvider(entry, index = 0) {
+function normalizeVisionProvider(entry, index = 0) {
   const source = entry && typeof entry === 'object' ? entry : {};
   const provider = normalizeLlmProviderId(source.provider);
   const authMode = String(source.auth_mode || '').trim().toLowerCase().replace(/-/g, '_');

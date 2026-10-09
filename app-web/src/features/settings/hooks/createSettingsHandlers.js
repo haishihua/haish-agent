@@ -37,7 +37,6 @@ export function createSettingsHandlers(ctx) {
     setSettingsMode,
     setLlmSettingsDraft,
     setSettingsRecordsDraft,
-    setSettingsSection,
     setSkillActionBusy,
     setWorkflowSettingsDraft,
     settingsRecordsDraft,
@@ -52,11 +51,9 @@ export function createSettingsHandlers(ctx) {
 
   function handleToggleSettings() {
     if (activeTab !== 'dashboard') setActiveTab('dashboard');
-    setSettingsMode((enabled) => {
-      const next = !enabled;
-      if (next) setSettingsSection('llm');
-      return next;
-    });
+    // Section and subtab selections live in AppShell, so a Settings remount
+    // restores the last page. First entry still uses AppShell's default tab.
+    setSettingsMode((enabled) => !enabled);
   }
 
   async function handleSaveSettingsDraft(section = '') {
