@@ -67,7 +67,7 @@ export function toDisplayText(value) {
   return String(value);
 }
 
-export function finalWorkflowResultText(task, fallback = '') {
+function finalWorkflowResultText(task, fallback = '') {
   const nodeTypes = new Map(
     (task?.workflowSnapshot?.nodes || []).map((node) => [String(node?.id || ''), String(node?.type || '')]),
   );

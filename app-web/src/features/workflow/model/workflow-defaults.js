@@ -364,7 +364,6 @@ export const DEFAULT_WORKFLOW_SETTINGS = {
   node_types: DEFAULT_WORKFLOW_NODE_TYPES,
 };
 
-// 侧边栏导航：memory / knowledge 在 UI 上合并为 Context 分组下的两个子 tab，
-// 但内部 section id 仍是 memory / knowledge（后端、存储、连接检测全部按这两个
-// id 工作），children 仅用于侧边栏展示。主行（大标题）不带图标，
-// 只有子 tab（children / SETTINGS_SUBTABS）带图标。
+// 侧边栏导航：Context 分组下的子 tab（memory / embedding / compact）与内部
+// section id 一一对应（后端、存储、连接检测都按这些 id 工作），children 仅用于
+// 侧边栏展示。主行（大标题）不带图标，只有子 tab（children / SETTINGS_SUBTABS）带图标。

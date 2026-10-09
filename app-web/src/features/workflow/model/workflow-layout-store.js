@@ -5,8 +5,6 @@
 // 定义自己的 nodes[].position 里（保存后随定义走），配置页不会往这里写第二遍。
 const WORKFLOW_LAYOUTS_STORAGE_KEY = 'haish.workflow-layouts.v1';
 
-export { WORKFLOW_LAYOUTS_STORAGE_KEY };
-
 function layoutStorage() {
   try {
     return typeof window !== 'undefined' && window.localStorage ? window.localStorage : null;

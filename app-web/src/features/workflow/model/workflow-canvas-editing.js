@@ -4,7 +4,7 @@ export const workflowRouteKey = (edge) => JSON.stringify([
   String(edge.from || edge.source || ''), String(edge.to || edge.target || ''), String(edge.branch || ''),
 ]);
 export const workflowSideHandle = (type, side) => `visual-${type}-${side}`;
-export function workflowHandleSide(handle, type) {
+function workflowHandleSide(handle, type) {
   return WORKFLOW_PORT_SIDES.find((side) => handle === workflowSideHandle(type, side)) || '';
 }
 

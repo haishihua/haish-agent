@@ -3,7 +3,7 @@ const pad = (value) => String(value).padStart(2, '0');
 export function calendarDate(key) {
   return new Date(`${key}T00:00:00Z`);
 }
-export function dateKey(date) {
+function dateKey(date) {
   return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 }
 export function shiftDay(key, count) {

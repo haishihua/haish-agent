@@ -6,9 +6,9 @@
 // The flag survives the reload, so this fires once per renderer session: a chunk that is
 // genuinely broken (not just stale) stops looping and surfaces through ErrorBoundary like
 // any other crash.
-export const CHUNK_RELOAD_FLAG = 'haish.chunk-reload.v1';
+const CHUNK_RELOAD_FLAG = 'haish.chunk-reload.v1';
 
-export function installPreloadRecovery(target = window) {
+function installPreloadRecovery(target = window) {
   target.addEventListener('vite:preloadError', (event) => {
     try {
       if (target.sessionStorage.getItem(CHUNK_RELOAD_FLAG)) return;

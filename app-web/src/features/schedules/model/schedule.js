@@ -1,4 +1,4 @@
-export const SCHEDULE_COMMAND = { name: 'schedule', description: 'Schedule task', command: true };
+const SCHEDULE_COMMAND = { name: 'schedule', description: 'Schedule task', command: true };
 
 export function scheduleInvocation(text) {
   return String(text || '').match(/^\s*\/schedule(?:\s+([\s\S]*))?$/i);
