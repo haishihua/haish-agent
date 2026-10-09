@@ -74,6 +74,9 @@ export function ChatComposer({
   imageStore,
   onPreviewImage,
   history = EMPTY_HISTORY,
+  conversationId,
+  approvalDraft = false,
+  ensureApprovalConversation,
   providerOptions = [],
   agentOptions,
   defaultAgentId,
@@ -713,7 +716,9 @@ export function ChatComposer({
       </div>
       <div className="chat-composer-actions">
         <div className="chat-composer-tools">
-          <ApprovalModePicker readOnly={runConfigReadOnly} disabled={runConfigDisabled} />
+          <ApprovalModePicker key={conversationId || 'draft'} conversationId={conversationId}
+            draft={approvalDraft} ensureConversation={ensureApprovalConversation}
+            disabled={!conversationId || submitPending || goalPending} />
         </div>
         <div className="chat-composer-submit">
           {executionMode === 'chat' && totalTokens > 0 ? <PortalTooltip text={contextTooltip} position="above">

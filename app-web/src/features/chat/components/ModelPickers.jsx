@@ -2,6 +2,7 @@ import React from 'react';
 import { resolveApiBase } from '../../../shared/api/base.js';
 import { approvalStore } from '../../approvals/model/approval-store.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS } from '../model/run-catalog.js';
 
 export const APPROVAL_MODE_OPTIONS = [
@@ -10,18 +11,37 @@ export const APPROVAL_MODE_OPTIONS = [
   { id: 'full',   label: 'Full Access',      icon: 'cyber-security.png', desc: 'Allow everything without prompting' },
 ];
 
-export function ApprovalModePicker({ disabled = false, readOnly = false }) {
+export function ApprovalModePicker({ conversationId, draft = false, ensureConversation, disabled = false, readOnly = false }) {
   const [open, setOpen] = React.useState(false);
   const [mode, setMode] = React.useState('smart');
   const [loaded, setLoaded] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
   const rootRef = React.useRef(null);
   const API = React.useMemo(() => resolveApiBase(), []);
 
-  React.useEffect(() => approvalStore.subscribeMode((value) => {
-    setLoaded(value !== null);
-    if (value !== null) setMode(value);
-  }), []);
+  React.useEffect(() => {
+    if (!conversationId) return undefined;
+    const unsubscribe = approvalStore.subscribeMode(conversationId, (value) => {
+      setLoaded(value !== null);
+      if (value !== null) setMode(value);
+    });
+    if (approvalStore.getMode(conversationId) !== null) return unsubscribe;
+    const controller = new AbortController();
+    const query = draft ? '' : `?conversation_id=${encodeURIComponent(conversationId)}`;
+    fetch(`${API}/api/approvals/state${query}`, {
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) throw new Error(`Load approval mode failed: ${response.status}`);
+      const state = await response.json();
+      if (!controller.signal.aborted && approvalStore.getMode(conversationId) === null) {
+        approvalStore.setMode(conversationId, state.mode);
+      }
+    }).catch((err) => {
+      if (!controller.signal.aborted) setError(err.message);
+    });
+    return () => { controller.abort(); unsubscribe(); };
+  }, [API, conversationId, draft]);
 
   React.useEffect(() => {
     if (!open) return undefined;
@@ -44,18 +64,21 @@ export function ApprovalModePicker({ disabled = false, readOnly = false }) {
   async function changeMode(next) {
     if (!loaded || readOnly || disabled || next === mode || busy) { setOpen(false); return; }
     const prev = mode;
+    setError('');
     setMode(next);
     setOpen(false);
     setBusy(true);
     try {
+      const targetId = draft ? (await ensureConversation()).conversation_id : conversationId;
       const resp = await fetch(`${API}/api/approvals/mode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: next }),
+        body: JSON.stringify({ mode: next, conversation_id: targetId }),
       });
-      if (!resp.ok) throw new Error(`set mode failed: ${resp.status}`);
+      if (!resp.ok) throw new Error(`Set approval mode failed: ${resp.status}`);
+      approvalStore.setMode(targetId, next);
     } catch (err) {
-      console.warn('[approval-mode] failed to set mode, reverting', err);
+      setError(err.message);
       setMode(prev);
     } finally {
       setBusy(false);
@@ -72,8 +95,8 @@ export function ApprovalModePicker({ disabled = false, readOnly = false }) {
         <button
           type="button"
           className="approval-mode-trigger"
-          onClick={() => { if (!disabled) setOpen((o) => !o); }}
-          disabled={disabled || !loaded}
+          onClick={() => setOpen((o) => !o)}
+          disabled={disabled || readOnly || busy || !loaded || !conversationId}
           aria-disabled={disabled ? 'true' : undefined}
           aria-readonly={readOnly ? 'true' : undefined}
           aria-haspopup="menu"
@@ -90,6 +113,7 @@ export function ApprovalModePicker({ disabled = false, readOnly = false }) {
           />
         </button>
       </PortalTooltip>
+      {error ? <ErrorState variant="inline" detail={error} /> : null}
       {open ? (
         <div className="approval-mode-menu" role="menu" aria-label="Approval mode">
           {alternateModes.map((opt, index) => (
@@ -99,7 +123,7 @@ export function ApprovalModePicker({ disabled = false, readOnly = false }) {
                   role="menuitemradio"
                   aria-checked="false"
                   className={`approval-mode-option approval-mode-option-${index + 1} ${readOnly ? 'is-readonly' : ''}`}
-                  aria-disabled={readOnly ? 'true' : undefined}
+                  disabled={disabled || readOnly || busy}
                   aria-label={approvalHint(opt)}
                   onClick={() => changeMode(opt.id)}
                 >

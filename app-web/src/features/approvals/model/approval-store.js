@@ -3,7 +3,7 @@ export const approvalStore = (() => {
   const listeners = new Set();
   let stopEvents = null;
   let inputs = [];
-  let mode = null;
+  const modes = new Map();
   const inputListeners = new Set();
   const modeListeners = new Set();
   // Runtime cards embedded in the chat timeline claim their request while
@@ -18,6 +18,10 @@ export const approvalStore = (() => {
         fn(snapshot);
       } catch (_) {}
     }
+  }
+
+  function notifyModes() {
+    for (const { conversationId, fn } of modeListeners) fn(modes.get(conversationId) ?? null);
   }
 
   function ensureStream() {
@@ -36,13 +40,16 @@ export const approvalStore = (() => {
           ...(state.pending_computer_runtime_installs || []),
         ];
         inputs = state.pending_user_inputs;
-        mode = state.mode;
+        for (const [conversationId, value] of Object.entries(state.conversation_modes || {})) {
+          modes.set(conversationId, value);
+        }
         notify();
         for (const listener of inputListeners) listener(inputs.slice());
-        for (const listener of modeListeners) listener(mode);
+        notifyModes();
       } else if (payload.type === 'approval_mode_changed') {
-        mode = payload.mode;
-        for (const listener of modeListeners) listener(mode);
+        if (!payload.conversation_id) return;
+        modes.set(payload.conversation_id, payload.mode);
+        notifyModes();
       } else if (payload.type === 'input_requested' || payload.type === 'input_resolved') {
         inputs = inputs.filter((item) => item.request_id !== payload.request_id);
         if (payload.type === 'input_requested') inputs.push(payload);
@@ -90,10 +97,18 @@ export const approvalStore = (() => {
       inputs = inputs.filter((item) => item.request_id !== requestId);
       for (const listener of inputListeners) listener(inputs.slice());
     },
-    subscribeMode(fn) {
-      modeListeners.add(fn);
-      fn(mode);
-      return () => modeListeners.delete(fn);
+    getMode(conversationId) {
+      return modes.get(conversationId) ?? null;
+    },
+    subscribeMode(conversationId, fn) {
+      const listener = { conversationId, fn };
+      modeListeners.add(listener);
+      fn(modes.get(conversationId) ?? null);
+      return () => modeListeners.delete(listener);
+    },
+    setMode(conversationId, value) {
+      modes.set(conversationId, value);
+      notifyModes();
     },
     subscribe(fn) {
       listeners.add(fn);
@@ -112,7 +127,7 @@ export const approvalStore = (() => {
       modeListeners.clear();
       pending = [];
       inputs = [];
-      mode = null;
+      modes.clear();
       claimedRuntimeIds.clear();
     },
     remove(requestId) {

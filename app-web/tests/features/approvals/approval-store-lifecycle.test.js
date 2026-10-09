@@ -28,15 +28,15 @@ test('application owns one stream across view switches and snapshots replace sta
   unsubscribeEvents();
   assert.equal(streams[0].closed, false);
 
-  const unsubscribeAgain = approvalStore.subscribeMode(() => {});
+  const unsubscribeAgain = approvalStore.subscribeMode('conversation-a', () => {});
   assert.equal(streams.length, 1);
   unsubscribeAgain();
   let approvals, inputs, mode;
   approvalStore.subscribe(value => { approvals = value; });
   approvalStore.subscribeInputs(value => { inputs = value; });
-  approvalStore.subscribeMode(value => { mode = value; });
+  approvalStore.subscribeMode('conversation-a', value => { mode = value; });
   const emit = payload => streams[0].callback(payload);
-  const state = { mode: 'strict', pending: [{ request_id: 'a' }],
+  const state = { mode: 'smart', conversation_modes: { 'conversation-a': 'strict' }, pending: [{ request_id: 'a' }],
     pending_workflow_approvals: [], pending_browser_runtime_installs: [],
     pending_computer_runtime_installs: [{
       request_id: 'computer-snapshot', type: 'computer_runtime_install_required',
@@ -58,7 +58,7 @@ test('application owns one stream across view switches and snapshots replace sta
   } });
   assert.deepEqual(approvals, []);
   assert.deepEqual(inputs, []);
-  emit({ type: 'approval_mode_changed', mode: 'full' });
+  emit({ type: 'approval_mode_changed', conversation_id: 'conversation-a', mode: 'full' });
   assert.equal(mode, 'full');
   approvalStore.stop();
   assert.equal(streams[0].closed, true);

@@ -1899,6 +1899,8 @@ export function AppShell() {
                 <div className="app-chat-main">
 	                  <ChatPanel
 	                    conversationId={conversationId}
+                        approvalDraft={Boolean(draftConversationRef.current && !draftConversationRef.current.serverCreated)}
+                        ensureApprovalConversation={ensureServerConversationForActiveDraft}
 	                    earlierTaskRuntimesPending={pendingEarlierTaskRuntimeIds.length > 0}
 	                    onLoadEarlierTasks={loadEarlierTaskRuntimes}
 	                    composerScopeId={draftConversationRef.current?.composerScopeId || conversationId}
@@ -1962,6 +1964,9 @@ export function AppShell() {
                       });
                     }}
                     composer={<ChatComposer
+                      conversationId={conversationId}
+                      approvalDraft={Boolean(draftConversationRef.current && !draftConversationRef.current.serverCreated)}
+                      ensureApprovalConversation={ensureServerConversationForActiveDraft}
                       executionMode="bot"
                       scheduleNodeRuntimeConfigs={nodeConfigSelection.conversationConfigs} onRestoreNodeConfigs={nodeConfigSelection.restore}
                       scopeId={draftConversationRef.current?.composerScopeId || conversationId}

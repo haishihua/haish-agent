@@ -49,6 +49,8 @@ const ChatRowGroup = React.memo(function ChatRowGroup({ group, hidden = false })
 
 export function ChatPanel({
   conversationId,
+  approvalDraft = false,
+  ensureApprovalConversation,
   composerScopeId = conversationId,
   messages = [],
   // 会话正文还在路上（判据见 AppShell 的 conversationLoading）：整段会话在正中间用一颗
@@ -398,6 +400,9 @@ export function ChatPanel({
         ) : null}
       </div>
       <ChatComposer
+        conversationId={conversationId}
+        approvalDraft={approvalDraft}
+        ensureApprovalConversation={ensureApprovalConversation}
         scopeId={composerScopeId}
         inputRef={composerInputRef}
         draft={draft}

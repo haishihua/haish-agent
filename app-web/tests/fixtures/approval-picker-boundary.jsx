@@ -13,21 +13,32 @@ window.haish = { onApprovalEvent: callback => { emit = callback; return () => {}
 approvalStore.start();
 const nativeFetch = window.fetch;
 const posts = [];
+const modes = new Map([['fixture-conversation', 'full'], ['other-conversation', 'full']]);
+let failNext = false;
+let ensureCalls = 0;
 window.fetch = async (url, options) => {
+  if (String(url).includes('/api/approvals/state')) {
+    const id = new URL(String(url), window.location.href).searchParams.get('conversation_id');
+    return Response.json({ mode: modes.get(id) || 'full' });
+  }
   if (String(url).endsWith('/api/approvals/mode')) {
-    posts.push(JSON.parse(options.body).mode);
-    return Response.json({ ok: true });
+    const body = JSON.parse(options.body);
+    posts.push(body);
+    if (failNext) { failNext = false; return new Response('', { status: 500 }); }
+    modes.set(body.conversation_id, body.mode);
+    return Response.json({ ok: true, ...body });
   }
   return nativeFetch(url, options);
 };
 const root = createRoot(document.getElementById('root'));
-const render = (width, readOnly = false, workflow = false) => flushSync(() => root.render(
+const render = (width, readOnly = false, workflow = false, conversationId = 'fixture-conversation', draft = false) => flushSync(() => root.render(
   <AppTooltipProvider><div className="stage">
     <aside className="fixture-sidebar">Conversation list</aside>
     <div className="fixture-workspace" style={{ width, position: 'relative' }}>
       <div className={workflow ? 'workflow-composer-dock' : 'fixture-chat-dock'}>
         <div className="chat-composer"><div className="chat-composer-input-row">Describe your task…</div>
-          <div className="chat-composer-actions"><div className="chat-composer-tools"><ApprovalModePicker readOnly={readOnly} /></div></div>
+          <div className="chat-composer-actions"><div className="chat-composer-tools"><ApprovalModePicker key={conversationId} conversationId={conversationId} readOnly={readOnly} draft={draft}
+            ensureConversation={async () => { ensureCalls++; return { conversation_id: 'created-conversation' }; }} /></div></div>
         </div>
       </div>
     </div>
@@ -53,7 +64,7 @@ function reachable() {
 }
 async function run() {
   render(360);
-  emit({ type: 'approval_mode_changed', mode: 'full' });
+  emit({ type: 'approval_mode_changed', conversation_id: 'fixture-conversation', mode: 'full' });
   await sleep(50);
   for (const workflow of [false, true]) {
     for (const width of [240, 360, 640]) {
@@ -80,21 +91,43 @@ async function run() {
   render(360, true);
   trigger().click();
   await sleep(280);
-  options()[0].click();
-  await sleep(30);
-  check(posts.length === 0 && options().length === 0, 'Read-only mode still prevents updates');
+  check(trigger().disabled && posts.length === 0 && options().length === 0, 'Read-only picker is visibly disabled, not a clickable no-op');
   render(360);
   trigger().click();
   await sleep(280);
   options()[0].click();
   await sleep(30);
-  check(posts.length === 1 && posts[0] === 'strict', 'Selecting Request Approval preserves mode update behavior');
+  check(posts.length === 1 && posts[0].mode === 'strict' && posts[0].conversation_id === 'fixture-conversation', 'Selecting Request Approval sends the owning conversation');
   trigger().click();
   await sleep(280);
   check(inside() && reachable(), 'Menu remains bounded after changing current mode');
   document.querySelector('.fixture-sidebar').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
   await sleep(30);
   check(options().length === 0, 'Clicking outside closes menu');
+  trigger().click();
+  await sleep(280);
+  options().find(button => button.getAttribute('aria-label').startsWith('Auto Approve')).click();
+  await sleep(30);
+  check(posts.at(-1).mode === 'smart' && trigger().getAttribute('aria-label').startsWith('Auto Approve'), 'Smart button updates current mode');
+  render(360, false, false, 'other-conversation');
+  await sleep(50);
+  check(trigger().getAttribute('aria-label').startsWith('Full Access'), 'Other conversation remains Full Access');
+  render(360);
+  await sleep(50);
+  check(trigger().getAttribute('aria-label').startsWith('Auto Approve'), 'Switching back restores this conversation mode');
+  failNext = true;
+  trigger().click();
+  await sleep(280);
+  options()[0].click();
+  await sleep(30);
+  check(trigger().getAttribute('aria-label').startsWith('Auto Approve') && Boolean(document.querySelector('[role="alert"]')), 'Failure is visible and selection rolls back');
+  render(360, false, false, 'draft-local', true);
+  await sleep(50);
+  trigger().click();
+  await sleep(280);
+  options()[0].click();
+  await sleep(30);
+  check(ensureCalls === 1 && posts.at(-1).conversation_id === 'created-conversation', 'New chat creates its own conversation before saving mode');
   check(errors.length === 0, 'No page errors');
 }
 run().catch(error => check(false, error.message)).finally(() => {
