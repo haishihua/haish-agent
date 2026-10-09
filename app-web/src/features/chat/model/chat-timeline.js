@@ -236,10 +236,6 @@ function classifyToolForGroup(item) {
   if (name.includes('checkpoint') || name.includes('rollback')) {
     return { bucket: 'snapshot', verbPast: 'snapshotted', verbPresent: 'snapshotting', subject: '', unitSingular: 'checkpoint', unitPlural: 'checkpoints' };
   }
-  if (name.startsWith('document_') || name.includes('rag') || name.includes('knowledge')
-      || name.includes('retrieve') || name.includes('vector') || name.includes('embed')) {
-    return { bucket: 'queried', verbPast: 'queried', verbPresent: 'querying', subject: 'knowledge', unitSingular: 'time', unitPlural: 'times' };
-  }
   // category 兜底：MCP 工具按 server 聚合。
   if (category === 'mcp') {
     const server = mcpServerNameFromToolName(name);
@@ -285,7 +281,7 @@ function summarizeToolGroup(tools, status = 'done') {
   const orderedKeys = [
     'read', 'wrote', 'edited', 'deleted', 'managed',
     'searched', 'executed', 'fetched', 'visualized',
-    'noted', 'snapshot', 'queried',
+    'noted', 'snapshot',
   ];
   const parts = [];
   for (const key of orderedKeys) {
@@ -323,7 +319,7 @@ function aggregateGroupStatus(tools) {
   return 'done';
 }
 
-const SEARCH_ACTIVITY_BUCKETS = new Set(['read', 'searched', 'fetched', 'queried', 'visualized']);
+const SEARCH_ACTIVITY_BUCKETS = new Set(['read', 'searched', 'fetched', 'visualized']);
 
 export function resolveAgentActivity(items, streaming = false, waitState = '') {
   if (!streaming) return null;

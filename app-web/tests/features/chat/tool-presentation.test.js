@@ -19,7 +19,7 @@ test('only reading a skill entry document loads a Skill, including catalog paths
   }
   assert.equal(skillTrigger({ ...metadata, toolName: 'read_file', toolInput: { path: '/workspace/.skills/browser-use/scripts/start.py' } }), null);
   assert.equal(skillTrigger({ ...metadata, toolName: 'write_file', toolInput: { path: metadata.skillPath } }), null);
-  assert.equal(skillTrigger({ toolName: 'exec_command', toolGroup: 'knowledge' }), null);
+  assert.equal(skillTrigger({ toolName: 'exec_command', toolGroup: 'web' }), null);
 });
 
 test('Skill name and path survive live and restored timeline construction without duplicate nodes', () => {

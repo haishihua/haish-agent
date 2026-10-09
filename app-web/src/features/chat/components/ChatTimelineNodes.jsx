@@ -89,16 +89,6 @@ export function resolveToolIconClass(toolName, defaultClass) {
   if (name === 'edit_file' || name === 'replace_lines' || name === 'multi_edit' || name === 'apply_patch') {
     return 'ico-file-write';
   }
-  if (
-    name.startsWith('document_') ||
-    name.includes('rag') ||
-    name.includes('knowledge') ||
-    name.includes('retrieve') ||
-    name.includes('vector') ||
-    name.includes('embed')
-  ) {
-    return 'ico-rag';
-  }
   if (name.includes('memory') || name.includes('remember') || name.includes('recall')) {
     return 'ico-memory';
   }

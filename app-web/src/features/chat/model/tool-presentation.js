@@ -23,7 +23,7 @@ export function skillTrigger(item) {
   return displayName ? { name: displayName, path } : null;
 }
 
-export function safeToolUrl(value) {
+function safeToolUrl(value) {
   if (typeof value !== 'string') return '';
   try {
     const url = new URL(value);

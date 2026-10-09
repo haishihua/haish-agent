@@ -2,7 +2,7 @@
 
 import { useId, type ComponentProps } from "react";
 
-export type LogoProps = ComponentProps<"svg">;
+type LogoProps = ComponentProps<"svg">;
 
 function ClaudeLogo(props: LogoProps) {
   return (

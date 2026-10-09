@@ -278,6 +278,17 @@ test('agent tool catalog exposes browser_use and ask_user without legacy browser
   assert.equal(exposedTools.some((tool) => legacyBrowserTools.has(tool)), false);
 });
 
+test('agent tool catalog drops the retired RAG group without touching memory', () => {
+  const groups = Object.fromEntries(DEFAULT_AGENT_TOOL_GROUPS.map((group) => [group.id, group]));
+  assert.equal(groups.knowledge, undefined);
+
+  const exposedTools = DEFAULT_AGENT_TOOL_GROUPS.flatMap((group) => group.tools || []);
+  assert.equal(exposedTools.includes('rag_search'), false);
+  assert.equal(exposedTools.includes('document_list'), false);
+
+  assert.deepEqual(groups.memory.tools, ['memory_search', 'memory_add', 'memory_forget']);
+});
+
 test('icon and bubble-name lookups share one id → catalog lookup', () => {
   // 选单、图标、气泡名字必须读同一份 catalog（同一个 id 只能有一个答案）。
   const options = [

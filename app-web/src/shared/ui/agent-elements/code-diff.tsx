@@ -5,9 +5,9 @@ import type { ComponentProps } from "react";
 const cn = (...values: (string | false | undefined)[]) => values.filter(Boolean).join(" ");
 import { codeScroll, codeSurface, mono, paper } from "./surfaces";
 
-export type DiffKind = "context" | "added" | "removed";
+type DiffKind = "context" | "added" | "removed";
 
-export interface DiffLine {
+interface DiffLine {
   kind: DiffKind;
   text: string;
 }

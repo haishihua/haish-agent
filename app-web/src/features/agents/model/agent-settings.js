@@ -11,7 +11,6 @@ export const DEFAULT_AGENT_TOOL_GROUPS = [
   { id: 'user_input', label: 'Ask user', description: 'Pause the agent to ask the user structured or open questions, then continue with the answers.', tools: ['ask_user'] },
   { id: 'web', label: 'Web', description: 'Search the web and fetch pages.', tools: ['web_search', 'web_fetch'] },
   { id: 'memory', label: 'Memory', description: 'Search, add, and forget long-term memory entries.', tools: ['memory_search', 'memory_add', 'memory_forget'] },
-  { id: 'knowledge', label: 'RAG', description: 'List indexed documents and search retrieval collections.', tools: ['document_list', 'rag_search'] },
   { id: 'vision', label: 'Vision', description: 'Inspect images and visual content.', tools: ['vision_analyze'] },
   { id: 'planning', label: 'Planning', description: 'Write and update task plans.', tools: ['todo_write'] },
   { id: 'sub_agent', label: 'Sub-agent', description: 'Delegate scoped work to a sub-agent.', tools: ['dispatch_sub_agent'] },

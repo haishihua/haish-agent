@@ -26,22 +26,21 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from "../ui/command";
 import { RadioGroup as RadioGroupPrimitive } from "radix-ui";
 
-export type ModelSelectorEffortOption = {
+type ModelSelectorEffortOption = {
   id: string;
   name: string;
 };
 
-export const DEFAULT_EFFORT_OPTIONS: readonly ModelSelectorEffortOption[] = [
+const DEFAULT_EFFORT_OPTIONS: readonly ModelSelectorEffortOption[] = [
   { id: "low", name: "Low" },
   { id: "medium", name: "Med" },
   { id: "high", name: "High" },
 ];
 
-export type ModelOption = {
+type ModelOption = {
   id: string;
   name: string;
   description?: string;
@@ -118,7 +117,7 @@ const ModelSelectorContext = createContext<ModelSelectorContextValue | null>(
   null,
 );
 
-export function useModelSelectorContext() {
+function useModelSelectorContext() {
   const ctx = useContext(ModelSelectorContext);
   if (!ctx) {
     throw new Error(
@@ -134,7 +133,7 @@ export function useModelSelectorContext() {
  * DropdownMenu) when the built-in ModelSelector.Effort layout doesn't fit.
  * `efforts` is undefined for models without configurable reasoning.
  */
-export function useModelSelectorEfforts(): {
+function useModelSelectorEfforts(): {
   efforts: readonly ModelSelectorEffortOption[] | undefined;
   effort: string | undefined;
   setEffort: (effort: string) => void;
@@ -143,7 +142,7 @@ export function useModelSelectorEfforts(): {
   return { efforts, effort, setEffort };
 }
 
-export type ModelSelectorRootProps = {
+type ModelSelectorRootProps = {
   models: readonly ModelOption[];
   value?: string;
   defaultValue?: string;
@@ -221,7 +220,7 @@ function ModelSelectorRoot({
   );
 }
 
-export const modelSelectorTriggerVariants = cva(
+const modelSelectorTriggerVariants = cva(
   "focus-visible:ring-ring/50 flex w-fit items-center justify-between gap-2 overflow-hidden rounded-md text-sm whitespace-nowrap transition-colors outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
   {
     variants: {
@@ -244,7 +243,7 @@ export const modelSelectorTriggerVariants = cva(
   },
 );
 
-export type ModelSelectorTriggerProps = ComponentPropsWithoutRef<
+type ModelSelectorTriggerProps = ComponentPropsWithoutRef<
   typeof PopoverTrigger
 > &
   VariantProps<typeof modelSelectorTriggerVariants>;
@@ -285,7 +284,7 @@ function ModelSelectorTrigger({
   );
 }
 
-export type ModelSelectorValueProps = {
+type ModelSelectorValueProps = {
   placeholder?: ReactNode;
   /** Show the active effort level next to the model name. */
   showEffort?: boolean;
@@ -350,7 +349,7 @@ function ModelSelectorValue({
   );
 }
 
-export type ModelSelectorContentProps = Omit<
+type ModelSelectorContentProps = Omit<
   ComponentPropsWithoutRef<typeof PopoverContent>,
   "side"
 > & {
@@ -453,7 +452,7 @@ function ModelSelectorContent({
   );
 }
 
-export type ModelSelectorSearchProps = ComponentPropsWithoutRef<
+type ModelSelectorSearchProps = ComponentPropsWithoutRef<
   typeof CommandInput
 >;
 
@@ -470,7 +469,7 @@ function ModelSelectorSearch({
   );
 }
 
-export type ModelSelectorListProps = ComponentPropsWithoutRef<
+type ModelSelectorListProps = ComponentPropsWithoutRef<
   typeof CommandList
 >;
 
@@ -504,7 +503,7 @@ function ModelSelectorList({
   );
 }
 
-export type ModelSelectorEmptyProps = ComponentPropsWithoutRef<
+type ModelSelectorEmptyProps = ComponentPropsWithoutRef<
   typeof CommandEmpty
 >;
 
@@ -516,23 +515,7 @@ function ModelSelectorEmpty({ children, ...props }: ModelSelectorEmptyProps) {
   );
 }
 
-export type ModelSelectorGroupProps = ComponentPropsWithoutRef<
-  typeof CommandGroup
->;
-
-function ModelSelectorGroup(props: ModelSelectorGroupProps) {
-  return <CommandGroup data-slot="model-selector-group" {...props} />;
-}
-
-export type ModelSelectorSeparatorProps = ComponentPropsWithoutRef<
-  typeof CommandSeparator
->;
-
-function ModelSelectorSeparator(props: ModelSelectorSeparatorProps) {
-  return <CommandSeparator data-slot="model-selector-separator" {...props} />;
-}
-
-export type ModelSelectorItemProps = Omit<
+type ModelSelectorItemProps = Omit<
   ComponentPropsWithoutRef<typeof CommandItem>,
   "value"
 > & {
@@ -590,7 +573,7 @@ function ModelSelectorItem({
   );
 }
 
-export type ModelSelectorEffortProps = ComponentPropsWithoutRef<"div"> & {
+type ModelSelectorEffortProps = ComponentPropsWithoutRef<"div"> & {
   label?: ReactNode;
 };
 
@@ -655,28 +638,12 @@ function ModelSelectorEffort({
   );
 }
 
-export type ModelSelectorProps = Omit<ModelSelectorRootProps, "children"> &
-  VariantProps<typeof modelSelectorTriggerVariants> & {
-    /** Render a search input above the model list. */
-    searchable?: boolean;
-    /** Alignment of the dropdown relative to the trigger. Use `"end"` when the
-     * trigger sits at the right edge of its container. */
-    align?: ModelSelectorContentProps["align"];
-    className?: string;
-    contentClassName?: string;
-  };
-
 export {
   ModelSelectorRoot,
   ModelSelectorTrigger,
   ModelSelectorValue,
   ModelSelectorContent,
   ModelSelectorSearch,
-  ModelSelectorFocusAnchor,
   ModelSelectorList,
-  ModelSelectorEmpty,
-  ModelSelectorGroup,
-  ModelSelectorSeparator,
-  ModelSelectorItem,
   ModelSelectorEffort,
 };

@@ -46,4 +46,7 @@ test('retired icon CSS no longer pulls unused images into release assets', () =>
   }
   assert.match(css, /\.ico-trash\s*\{/);
   assert.match(css, /\.ico-multiple\s*\{/);
+  // RAG 已下线：知识库图标和 .ico-rag 类名一起退役。
+  assert.ok(!css.includes('.ico-rag'));
+  assert.ok(!css.includes('icons/knowledge-base.png'));
 });

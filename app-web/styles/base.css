@@ -365,13 +365,6 @@ svg {
     height: 14px;
 }
 
-.ico-rag {
-    -webkit-mask-image: url("../assets/ui/icons/knowledge-base.png");
-    mask-image: url("../assets/ui/icons/knowledge-base.png");
-    width: 14px;
-    height: 14px;
-}
-
 .ico-memory {
     -webkit-mask-image: url("../assets/ui/icons/alzheimer.png");
     mask-image: url("../assets/ui/icons/alzheimer.png");
