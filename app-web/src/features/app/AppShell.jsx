@@ -85,13 +85,9 @@ import {
   setStoredConversationId,
   saveWorkspaceState,
   normalizeWorkspaceOrdering,
-  workspaceStateWithConversationDetail as mergeConversationDetailIntoWorkspace,
   workspaceStateWithTouchedConversation,
   findConversationById,
   findProjectByConversationId,
-  buildWorkspaceStateFromProjects as buildWorkspaceFromProjects,
-  replaceWorkspaceModeFromProjects as replaceWorkspaceModeFromProjectDetails,
-  conversationDetailToWorkspaceConversation as mapConversationDetailToWorkspace,
   titleFromTaskText,
   isDefaultConversationName,
   normalizeChatImageRefs,
@@ -179,27 +175,10 @@ import { conversationHasSentMessage, sentTaskSummaries } from '../conversations/
 import { useConversationListPolling } from '../conversations/hooks/useConversationListPolling.js';
 import { useTaskRuntimePolling } from '../tasks/hooks/useTaskRuntimePolling.js';
 import { useViewedTaskCompletionNotice } from '../tasks/hooks/useViewedTaskCompletionNotice.js';
+import * as workspaceRuntime from './model/workspace-runtime.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
-const conversationDetailToWorkspaceConversation = (detail, previousConversation = null) => (
-  mapConversationDetailToWorkspace(detail, previousConversation, taskSummaryToRuntimeTask)
-);
-const buildWorkspaceStateFromProjects = (projects, previousState) => (
-  buildWorkspaceFromProjects(projects, previousState, taskSummaryToRuntimeTask)
-);
-const replaceWorkspaceModeFromProjects = (executionMode, projects, previousState, activeDraft = null) => (
-  replaceWorkspaceModeFromProjectDetails(
-    executionMode,
-    projects,
-    previousState,
-    taskSummaryToRuntimeTask,
-    activeDraft,
-  )
-);
-const workspaceStateWithConversationDetail = (state, detail, activate = true) => (
-  mergeConversationDetailIntoWorkspace(state, detail, activate, taskSummaryToRuntimeTask)
-);
 const TASK_COMPLETION_NOTICES_STORAGE_KEY = 'haish.task-completion-notices.v1';
 
 export function AppShell() {
@@ -777,7 +756,7 @@ export function AppShell() {
     userCancelledTaskIdsRef,
     viewModeRef,
     workspaceState,
-    workspaceStateWithConversationDetail,
+    workspaceStateWithConversationDetail: workspaceRuntime.workspaceStateWithConversationDetail,
   });
 
   draftApiRef.current = { materializeDraftConversationForSend };
@@ -901,7 +880,7 @@ export function AppShell() {
     userCancelledTaskIdsRef,
     viewModeRef,
     workspaceState,
-    workspaceStateWithConversationDetail,
+    workspaceStateWithConversationDetail: workspaceRuntime.workspaceStateWithConversationDetail,
   });
 
   activationApiRef.current = {
@@ -924,7 +903,7 @@ export function AppShell() {
 
   useConversationBootstrap({
     activationApiRef,
-    buildWorkspaceStateFromProjects,
+    buildWorkspaceStateFromProjects: workspaceRuntime.buildWorkspaceStateFromProjects,
     ownerIdRef,
     setConversationError,
     setConversationReady,
@@ -1131,7 +1110,7 @@ export function AppShell() {
     applyConversationSnapshot,
     apiFetch,
     buildApiHeaders,
-    replaceWorkspaceModeFromProjects,
+    replaceWorkspaceModeFromProjects: workspaceRuntime.replaceWorkspaceModeFromProjects,
     conversationReorderChainsRef,
     conversationReorderVersionsRef,
     projectReorderChainRef,
@@ -1169,7 +1148,7 @@ export function AppShell() {
     taskUpdatedTimestamp,
     viewModeRef,
     workspaceState,
-    workspaceStateWithConversationDetail,
+    workspaceStateWithConversationDetail: workspaceRuntime.workspaceStateWithConversationDetail,
   });
   // 列表轮询发现当前会话消失：和处理恢复 404 的是同一条路（换目标或开空白对话）。
   directorySelectionApiRef.current.handleActiveConversationRemoved = handleConversationRemoved;
@@ -1180,7 +1159,7 @@ export function AppShell() {
     draftConversationRef,
     enabled: conversationReady && !settingsMode,
     executionMode: viewMode === 'chat' ? 'chat' : 'bot',
-    replaceWorkspaceModeFromProjects,
+    replaceWorkspaceModeFromProjects: workspaceRuntime.replaceWorkspaceModeFromProjects,
     setWorkspaceState,
   });
   const quests = useMemo(() => {
@@ -1216,7 +1195,7 @@ export function AppShell() {
     cancelActiveTask,
     queueTaskInput,
     chatFinalizedTaskIdsRef,
-    conversationDetailToWorkspaceConversation,
+    conversationDetailToWorkspaceConversation: workspaceRuntime.conversationDetailToWorkspaceConversation,
     conversationError,
     conversationId,
     conversationIdRef,
@@ -1264,7 +1243,7 @@ export function AppShell() {
     viewModeRef,
     workflowSettingsDraft,
     workspaceState,
-    workspaceStateWithConversationDetail,
+    workspaceStateWithConversationDetail: workspaceRuntime.workspaceStateWithConversationDetail,
     workspaceStateWithTouchedConversation,
   });
   deployApiRef.current = {
