@@ -3,9 +3,11 @@ dist/
 dist-electron/
 app-web/dist/
 app-web/dist-release/
-build/runtime/
-build/remote-adapter/
-build/remote-adapter-download/
+# Generated build / verification output; keep packaging icons versioned.
+/build/*
+!/build/Haish.icon/
+!/build/icon.icns
+!/build/icon.png
 release/
 tmp/
 .DS_Store
