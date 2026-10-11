@@ -123,6 +123,7 @@ main.jsx → app.jsx → features/* → shared/*
 - 会话切换、任务取消、stream abort 必须带明确 owner（conversation/task id）和 abort controller。
 - 服务端快照、本地草稿、运行中状态分别建模，不能靠一个“大对象”覆盖全部阶段。
 - 会话“还在不在跑”只有一处判据：`conversations/model/conversation-run-state.js`（任务自身未落终态 = 在跑；后端实时快照 `approvalStore` 有未决提问/审批 = 在等人；落地终态 = 熄灯）。侧边栏状态灯、面板 streaming、面板活动文案都读它。禁止在组件里重新推导运行态，也不准把 `workflowRun` 快照、在飞工具卡当状态源——那些是轮询旧值/渲染结果，会让两侧慢半拍而互相矛盾。
+- 自动创建 Chat/Bot 会话时不发送 `title`（包括首发草稿落地、附件提前建会话、`/goal`、启动和删除后的空会话兜底）。占位标题由后端首任务路径持久化，前端可按显示需求在本地乐观显示 48 字符占位，但不能通过标题 PATCH 写回；标题 PATCH 只用于用户主动改名，哪怕改名文字与占位相同。生成结果复用现有会话目录刷新进入侧栏，不在前端另发模型请求。
 - 循环执行和审批历史按 attempt 追加；旧 attempt 折叠展示，不覆盖历史输入输出。
 - UI 自动滚动只在用户位于底部时跟随；用户主动向上浏览后不得抢焦点。
 - workflow 与 agent 两种模式分别保存当前项目、会话、任务和选中节点。
