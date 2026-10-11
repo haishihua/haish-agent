@@ -1,7 +1,7 @@
 import { beginConversationLoadPerf, conversationLoadPerf } from '../../../shared/lib/conversation-load-perf.js';
 import React from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
-import { apiFetch, DEFAULT_SESSION_NAME } from '../../../shared/api/client.js';
+import { apiFetch } from '../../../shared/api/client.js';
 import { createConversationWithRetry } from '../api/conversations.js';
 import { readLastLocation, resolveStoredWorkflowTask } from '../model/last-location.js';
 import {
@@ -56,7 +56,7 @@ export function useConversationBootstrap({
         if (chatConversations.length === 0) {
           if (!isCurrent()) return;
           const created = await createConversationWithRetry(
-            { title: DEFAULT_SESSION_NAME, execution_mode: 'chat' },
+            { execution_mode: 'chat' },
             isCurrent,
           );
           if (!created) return;
@@ -111,7 +111,7 @@ export function useConversationBootstrap({
           // 一个能用的会话都没有：开一个空白对话，和首次启动的兜底一致。
           return isCurrent()
             ? createConversationWithRetry(
-                { title: DEFAULT_SESSION_NAME, execution_mode: 'chat' },
+                { execution_mode: 'chat' },
                 isCurrent,
               )
             : null;

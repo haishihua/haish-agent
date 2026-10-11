@@ -1,4 +1,5 @@
 // Settings domain model.
+import { REASONING_EFFORT_OPTIONS, normalizeReasoningEffort } from '../../chat/model/run-catalog.js';
 const LLM_PROVIDER_MODELS = {
   openai: ['gpt-5.5', 'gpt-5.4'],
   xai: ['grok-4.5'],
@@ -35,12 +36,7 @@ export const LLM_OAUTH_CALLBACK_PROVIDERS = new Set(['openai', 'xai']);
 
 export const LLM_SETTINGS_STORAGE_KEY = 'haish.llmSettingsDraft.v1';
 
-export const SETTINGS_REASONING_OPTIONS = [
-  { id: 'low', label: 'low' },
-  { id: 'medium', label: 'medium' },
-  { id: 'high', label: 'high' },
-  { id: 'xhigh', label: 'xhigh' },
-];
+export const SETTINGS_REASONING_OPTIONS = REASONING_EFFORT_OPTIONS;
 
 export function getLlmProvider(id) {
   return LLM_PROVIDER_OPTIONS.find((item) => item.id === id) || LLM_PROVIDER_OPTIONS[0];
@@ -77,6 +73,32 @@ export function uniqueModelChoices(...groups) {
   return result;
 }
 
+export function customModelIds(config) {
+  return uniqueModelChoices(Array.isArray(config?.custom_model_ids) ? config.custom_model_ids : []).map(item => item.id);
+}
+
+export function addCustomModelId(config, value) {
+  const id = String(value || '').trim();
+  const existing = customModelIds(config);
+  if (!id || id.length > 512 || (existing.length >= 256 && !existing.includes(id))) return {};
+  return { custom_model_ids: uniqueModelChoices(existing, id).map(item => item.id) };
+}
+
+export function llmModelCatalogPatch(config, catalog) {
+  const remote = uniqueModelChoices(Array.isArray(catalog?.models) ? catalog.models : []);
+  const additions = customModelIds(config);
+  const choices = uniqueModelChoices(remote, additions, config?.model);
+  const defaultModel = String(config?.model || '').trim();
+  return {
+    // Keep additions out of the discovery cache so removing one also removes
+    // its option, unless it is still selected as the default.
+    model_options: remote.filter(item => !additions.includes(item.id)),
+    ...(!defaultModel && catalog?.default_model ? { model: catalog.default_model } : {}),
+    ...(catalog?.oauth_saved ? { oauth_configured: true, oauth_code: '' } : {}),
+    choices,
+  };
+}
+
 export function configuredModelOptions(config) {
   if (config?.provider === 'ollama') return [];
   return config?.model_options || [];
@@ -110,7 +132,7 @@ export function runtimeLlmProviderOptions(draft) {
     const id = seen.has(idBase) ? `${idBase}:${index}` : idBase;
     seen.add(id);
     const provider = normalizeLlmProviderId(config.provider);
-    const modelOptions = uniqueModelChoices(config.model, configuredModelOptions(config));
+    const modelOptions = uniqueModelChoices(config.model, configuredModelOptions(config), customModelIds(config));
     return {
       id,
       label: runtimeProviderLabel(config),
@@ -120,6 +142,8 @@ export function runtimeLlmProviderOptions(draft) {
       customProvider: provider === 'custom' ? String(config.name || config.custom_provider || '').trim() : '',
       baseUrl: provider === 'custom' ? String(config.base_url || '').trim() : '',
       defaultModelId: String(config.model || '').trim(),
+      defaultReasoningEffort: normalizeReasoningEffort(config.reasoning_effort),
+      customModelIds: customModelIds(config),
       modelOptions,
     };
   });
@@ -141,6 +165,7 @@ export function nextProviderDraft(providerId, previous = {}) {
     api_key: '',
     api_key_configured: false,
     model_options: [],
+    custom_model_ids: [],
     oauth_auth_url: '',
     oauth_code: '',
     oauth_state: '',
@@ -292,9 +317,9 @@ function normalizeLlmModelConfig(config) {
   const provider = normalizeLlmProviderId(config.provider);
   if (!provider) return { ...config, provider: '' };
   if (provider === 'custom' && !config.name && config.custom_provider) {
-    return { ...config, provider, name: config.custom_provider };
+    return { ...config, provider, name: config.custom_provider, reasoning_effort: normalizeReasoningEffort(config.reasoning_effort) };
   }
-  return { ...config, provider };
+  return { ...config, provider, reasoning_effort: normalizeReasoningEffort(config.reasoning_effort) };
 }
 
 export function loadLlmSettingsDraft() {

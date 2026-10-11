@@ -13,6 +13,13 @@ const check = (ok, label) => results.push(`${ok ? 'PASS' : 'FAIL'} ${label}`);
 let accept = true, ordinary = 0, api;
 const sourceProviders = [{ id: 'source', requestProvider: 'custom.source', provider: 'openai', label: 'Source Provider', defaultModelId: 'gpt-5.5', modelOptions: [{ id: 'gpt-5.5' }] }];
 window.fetch = async () => new Response(JSON.stringify({ models: [{ id: 'gpt-5.5' }], default_model: 'gpt-5.5' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+const selectionKey = 'goal-fixture-explicit-selection';
+const previousSelection = localStorage.getItem(selectionKey);
+function selectSourceModel() {
+  localStorage.setItem(selectionKey, JSON.stringify({ providerId: 'source', modelId: 'gpt-5.5', reasoningEffort: null }));
+  api.setProviders(sourceProviders);
+  api.setScopeId('goal-configured');
+}
 const key = (value) => document.querySelector('[contenteditable="true"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }));
 function Harness() {
   const [draft, setDraft] = React.useState('');
@@ -21,7 +28,7 @@ function Harness() {
   const [providers, setProviders] = React.useState([]);
   const inputRef = React.useRef(null);
   api = { inputRef, draft, setProviders: (value) => flushSync(() => setProviders(value)), setDraft: (text) => flushSync(() => setDraft(text)), setRunning: (value) => flushSync(() => setRunning(value)), setScopeId: (value) => flushSync(() => setScopeId(value)) };
-  return <ChatComposer inputRef={inputRef} scopeId={scopeId} draft={draft} onDraftChange={setDraft}
+  return <ChatComposer key={scopeId} selectionStorageKey={selectionKey} inputRef={inputRef} scopeId={scopeId} draft={draft} onDraftChange={setDraft}
     providerOptions={providers} agentOptions={[{ id: 'agent', skills: [{ name: 'goal' }, { name: 'Grill-Me' }] }]} defaultAgentId="agent" running={running}
     onSend={() => { ordinary++; return true; }} onStop={() => {}}
     onGoalCommand={async (payload) => { calls.push(payload); await sleep(80); return accept; }} />;
@@ -42,8 +49,15 @@ async function run() {
   api.setDraft('Fix the bug');
   await sleep(50);
   const button = document.querySelector('[aria-label="Run Goal Loop"]');
-  check(button && !button.disabled, 'Goal Loop can submit without a configured chat model');
-  button?.click();
+  check(button && button.disabled, 'Goal with a prompt cannot submit without a configured model');
+  document.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await sleep(80);
+  check(calls.length === 0 && api.draft === 'Fix the bug', 'unconfigured Goal preserves its draft and does not dispatch');
+  selectSourceModel();
+  await sleep(200);
+  api.setDraft('/goal Fix the bug');
+  await sleep(80);
+  document.querySelector('[aria-label="Run Goal Loop"]')?.click();
   document.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   await sleep(160);
   check(calls.length === 1 && calls[0].prompt === 'Fix the bug', 'one command dispatch strips /goal and duplicate sends are blocked');
@@ -108,11 +122,11 @@ async function run() {
   await sleep(80);
   document.querySelector('[aria-label="Run Goal Loop"]')?.click();
   await sleep(160);
-  check(JSON.stringify(calls.at(-1)?.runConfig) === JSON.stringify({ provider: 'custom.source', model_id: 'gpt-5.5', reasoning_effort: 'high' }), 'Goal snapshots the current composer Provider selector, Model and Reasoning effort');
+  check(calls.at(-1)?.runConfig?.provider === 'custom.source' && calls.at(-1)?.runConfig?.model_id === 'gpt-5.5' && calls.at(-1)?.runConfig?.reasoning_effort === 'high', 'Goal snapshots the committed provider/model with normalized high effort');
   // Use the editor insertion API and native keyboard history, not setDraft,
   // so token-only undo/redo must update the actual send button and route.
   api.setRunning(false);
-  api.setProviders([]);
+  api.setProviders(sourceProviders);
   for (const task of ['', '继续远程桌面']) {
     api.setDraft('');
     api.setScopeId(`history-${task || 'bare'}`);
@@ -138,8 +152,8 @@ async function run() {
     shortcut(true);
     await sleep(80);
     check(!document.querySelector('[data-command-token]') && !document.querySelector('[aria-label="Run Goal Loop"]')
-      && document.querySelector('[aria-label="Send"]')?.disabled,
-    `redo removes Goal route and restores ordinary model gating (${task || 'bare'})`);
+      && Boolean(document.querySelector('[aria-label="Send"]')?.disabled) === !task,
+    `redo removes Goal route and restores ordinary send eligibility (${task || 'bare'})`);
     shortcut(false);
     await sleep(80);
     document.querySelector('[aria-label="Run Goal Loop"]')?.click();
@@ -151,6 +165,7 @@ async function run() {
 }
 run().catch((error) => check(false, error.message)).finally(() => {
   const output = document.getElementById('checks');
+  if (previousSelection === null) localStorage.removeItem(selectionKey); else localStorage.setItem(selectionKey, previousSelection);
   output.textContent = results.join('\n');
   output.dataset.result = results.some((item) => item.startsWith('FAIL')) ? 'FAIL' : 'PASS';
 });

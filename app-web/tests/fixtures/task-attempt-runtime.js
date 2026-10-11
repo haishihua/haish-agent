@@ -16,7 +16,7 @@ export function createAttemptHarness(source, { reject = false, hold = false } = 
   const requests = [];
   const snapshots = [];
   const context = {
-    API_BASE: '',
+    API_BASE: '', providerOptions: ['fixture', 'p', 'current-provider'].map((provider) => ({ id: provider, provider })),
     getRuntime: () => runtime,
     mutateRuntime: (_id, update) => update(runtime),
     activeRuntimeTargetConvId: () => source.conversationId,

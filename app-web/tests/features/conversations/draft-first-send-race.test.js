@@ -192,7 +192,7 @@ function createDeployHarness(options = {}) {
   state.notices = [];
   state.queued = [];
   const handlers = createDeployHandlers({
-    APP_DEFAULT_AGENT_OPTIONS: [{ id: 'agent-1' }],
+    APP_DEFAULT_AGENT_OPTIONS: [{ id: 'agent-1' }], providerOptions: [{ provider: 'fixture' }],
     applyTerminalTaskState: (task) => task,
     cancelActiveConversationTask: async () => ({ ok: true }),
     cancelActiveTask: async () => ({ ok: true }),
@@ -334,7 +334,7 @@ test('startDeploy recreates a missing runtime instead of failing the send', asyn
     'high',
     [],
     'agent-1',
-    '',
+    'fixture',
     'hi',
     [],
   );
@@ -359,8 +359,8 @@ test('a second send while the first one materializes keeps its text and sends no
   const draftId = harness.draftConversationRef.current.id;
   assert.equal(draftId, harness.conversationIdRef.current);
 
-  assert.equal(harness.deployHandlers.handleDeploy('first message'), true);
-  assert.equal(harness.deployHandlers.handleDeploy('second message'), false, '文字必须留在输入框');
+  assert.equal(harness.deployHandlers.handleDeploy('first message', null, 'model', null, [], 'agent-1', 'fixture'), true);
+  assert.equal(harness.deployHandlers.handleDeploy('second message', null, 'model', null, [], 'agent-1', 'fixture'), false, '文字必须留在输入框');
   assert.equal(harness.state.createCalls, 1, '第二次提交不能再建会话');
   assert.match(String(harness.state.notices.at(-1)[1]), /still being sent/);
 
@@ -377,7 +377,7 @@ test('a second send while the first one materializes keeps its text and sends no
   assert.equal(harness.state.executions.length, 1, '第一条消息只能发一轮');
   assert.equal(harness.state.executions[0].targetConversationId, 'server-1');
   assert.equal(harness.draftConversationRef.current, null);
-  assert.equal(harness.deployHandlers.handleDeploy('third message'), true, '落地后发送恢复正常');
+  assert.equal(harness.deployHandlers.handleDeploy('third message', null, 'model', null, [], 'agent-1', 'fixture'), true, '落地后发送恢复正常');
   await settle();
   assert.equal(harness.state.executions.length, 2);
 });
@@ -386,7 +386,7 @@ test('late first-send creation adds its sidebar row and starts in background wit
   const create = deferred();
   const harness = createDeployHarness({ createConversationInProject: () => create.promise });
   harness.handlers.openDraftConversation(PROJECT_ID);
-  assert.equal(harness.deployHandlers.handleDeploy('first message'), true);
+  assert.equal(harness.deployHandlers.handleDeploy('first message', null, 'model', null, [], 'agent-1', 'fixture'), true);
   harness.handlers.clearDraftConversationState();
   harness.handlers.invalidateConversationActivation();
   harness.conversationIdRef.current = 'other-conversation';
@@ -415,7 +415,7 @@ test('late first-send creation cannot overwrite a newer draft in the same projec
   const harness = createDeployHarness({ createConversationInProject: () => create.promise });
   harness.handlers.openDraftConversation(PROJECT_ID);
   const oldId = harness.conversationIdRef.current;
-  assert.equal(harness.deployHandlers.handleDeploy('first message'), true);
+  assert.equal(harness.deployHandlers.handleDeploy('first message', null, 'model', null, [], 'agent-1', 'fixture'), true);
   harness.handlers.openDraftConversation(PROJECT_ID);
   const newDraft = harness.draftConversationRef.current;
   assert.notEqual(newDraft.id, oldId);

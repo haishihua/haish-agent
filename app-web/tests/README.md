@@ -4,6 +4,16 @@
 
 ## 自动测试
 
+- `features/chat/config-save-status.test.js` 与 `fixtures/conversation-agent-switch.html` 覆盖轻量配置保存：小于 700ms 的保存无提示，慢保存只在配置按钮旁显示无动画的 `Saving…`，不撑高输入区；后台保存不禁用发送，点击后等待统一保存屏障、防重复提交，使用实际保存值。保存失败保留草稿和附件、只报一次错误；等待期间新输入的文字保留；切会话/卸载不启动旧请求。API/保存为离线夹具，不调用真实模型或修改已有会话。
+
+- `features/chat/send-blocked-tooltip.test.js` 锁住发送配置校验与展示位置：缺 provider/model、provider 失效、Agent 停用或 Bot 节点缺配置时，原因只放在禁用发送按钮的共享 tooltip，不作为输入框内常驻提示或占位文案。`fixtures/send-blocked-tooltip.html` 使用生产 ChatComposer/PortalTooltip 与离线保存器，检查输入区悬停不弹提示、按钮区域悬停/移开、键盘可达、拒发保留草稿及配置修正后提示消失、正常发送仍可用；不调用模型或写真实会话。
+
+- `features/chat/reasoning-gauge.test.js` 覆盖 thinking 指针按实际档位数量映射到固定 240° 弧（-165° 至 75°），防新增档位让 xhigh 绕回朝上；保留四档旧角度，显式 null/失效档位不补 high、只显示中性圆心。`fixtures/thinking-gauge.html` 使用生产 ModelPicker 与样式验证六档实际 CSS 旋转矩阵、滑块选值、显式 null、子集/单档/空目录、只读及 Escape；正常滑块只有六个具体档位，不额外提供 Unspecified。
+
+- `features/settings/provider-thinking-defaults.test.js` 与 `features/chat/run-config-storage.test.js` 覆盖 Settings 默认模型/默认 thinking 的配置映射、缺省 none 与显式 null 区分。`fixtures/provider-thinking-defaults.html` 用生产 Settings 编辑器、ChatComposer 与保存队列验证主动选择 provider 同时保存模型及 thinking、缺省 none、保存 pending 时发送等待、实际发送值、历史显式 null 保留和六档 Settings 编辑；持久化/API 均使用离线夹具，不调用模型或写真实会话。
+
+- `fixtures/conversation-agent-switch.html` 是新增的真实 React/DOM 离线行为回归：使用生产 run-config hook、串行保存器、重试处理器、ChatPanel/ChatComposer/ModelPicker，检查立即保存、pending 期间发送/重试/编辑/侧栏等待、失败恢复与显式错误、切会话后旧回调隔离、历史任务名字不变及 null effort 不被默认值覆盖；恢复模型字段与 Agent 选择；Agent 切换成功/失败使用统一 AppToast、保存前/旧会话回调不误弹且输入框无常驻反馈，`features/conversations/agent-switch-toast.test.js` 另锁住 toast 接线与 3.2 秒自动消失；需通过下述 Vite 启动方式单独打开，不包含在 Node `npm test` 中。另覆盖未配置/已删除 provider/新会话不自动选择第一项、拒发保留草稿与附件、Bot 缺节点配置拒发和已配置节点 null effort 的保存/发送。
+
 - `features/chat/composer-message-history.test.js` 覆盖用户消息历史与未发送草稿分离：↑ 只预览当前会话的全部用户消息、↓/Escape 返回草稿、非浏览状态 ↓ 不清空、切会话/组件重挂保留原草稿及编辑/清空成为新草稿。`fixtures/composer-message-history.html` 使用真实 ChatPanel 与 Lexical 输入框检查方向键、光标移动、多行草稿和历史窗口外的消息。
 
 - `contracts/conversation-search-scroll.test.js` 与 `contracts/scroll-to-bottom.test.js` 锁住搜索刷新不重复跳转、关闭不重启底部跟随、历史窗口/执行步骤保留以及焦点返回不滚动。`fixtures/conversation-search-scroll.html` 用真实 ChatPanel 的 100 条消息验证搜索期间自由滚动、输出更新不拉回、×/Escape/清空关键词保留位置、显式上下项跳转及返回最新/切会话恢复跟随。
@@ -15,7 +25,7 @@
 - `features/settings/mcp-tool-selection.test.js` + `contracts/mcp-tool-picker.test.js` 覆盖 Agent 的 MCP tools 空状态：无服务器、工具清单为空、服务器/工具全部停用时统一显示「No MCP tools available.」，不逐项显示空服务器；可选但未勾选的工具仍可配置，连接错误保留。`fixtures/mcp-tool-picker.html` 使用真实编辑器验证空状态和逐条勾选/旧服务器级授权迁移。
 
 
-- `features/conversations/goal-command.test.js` 覆盖 Chat → Workflow 的 `/goal` 路由：同目录项目复用、缺失自动导入（bot）、默认项目映射、新会话发送 Goal Loop、裸命令仅跳转、来源会话当前 Provider/Model/Reasoning effort 在跳转前快照到所有 Agent 节点，目标会话与任务配置持久化、附件重新上传、准备失败保留草稿、切换会话时停止误投；命令优先于 Skill 和运行中纠偏。`fixtures/goal-command.html` 使用真实 ChatComposer 验证 Enter/Tab/鼠标选中 `/goal` 后显示与 Skill 同样式的 Target 图标标签、点击/Backspace 删除、切会话清除、裸标签二次回车导航、剥离命令、无 Chat 模型时发送、防重复、失败保留标签与草稿、Skill 图标不变和运行中独立路由（离线桩，不创建真实任务）。
+- `features/conversations/goal-command.test.js` 覆盖 Chat → Workflow 的 `/goal` 路由：同目录项目复用、缺失自动导入（bot）、默认项目映射、新会话发送 Goal Loop、裸命令仅跳转、来源会话当前 Provider/Model/Reasoning effort 在跳转前快照到所有 Agent 节点，目标会话与任务配置持久化、附件重新上传、准备失败保留草稿、切换会话时停止误投；命令优先于 Skill 和运行中纠偏。`fixtures/goal-command.html` 使用真实 ChatComposer 验证 Enter/Tab/鼠标选中 `/goal` 后显示与 Skill 同样式的 Target 图标标签、点击/Backspace 删除、切会话清除、裸标签二次回车导航、剥离命令、缺有效模型时禁发并保留草稿、显式配置且 effort 为 null 时发送、防重复、失败保留标签与草稿、Skill 图标不变和运行中独立路由（离线桩，不创建真实任务）。
 
 - `features/conversations/goal-task-confirmation.test.js` 串联真实 Goal 路由、deploy、runtime 和任务确认处理器：未导入项目时只创建一个会话/启动一次，前台与后台确认都替换占位任务；侧栏按确切占位 ID 合并，不按标题误合并，未确认点击不查询本地 ID，确认后点击恢复真实任务。审批节点重放覆盖完整展示转换链路（pending → quest → 侧栏合并 → 点击 → 服务端确认）：临时 ID 和重放上下文保留、确认关联 ID 不丢失、不重复或请求 `/api/tasks/pending`；`fixtures/workflow-replay-identity.html` 使用生产侧栏与 WorkflowRuntimePage 验证同一路径及运行详情。`fixtures/workflow-runtime-detail.html` 补充运行 Agent 默认 Run Result、从待运行转入运行自动切换、显式页签选择不被流更新抢走、常显 Running/spinner 与等待输入状态切换检查，以及运行中显示继承模型配置、只读详情优先显示实际执行快照。
 

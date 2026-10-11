@@ -14,7 +14,7 @@ test('image upload failure is model-visible but does not trigger frontend recove
   const executions = [];
   const noop = () => {};
   const context = {
-    createPendingTaskDraft,
+    createPendingTaskDraft, providerOptions: [{ provider: 'provider' }],
     viewModeRef: { current: 'chat' },
     draftConversationRef: { current: null },
     conversationIdRef: { current: conversationId },

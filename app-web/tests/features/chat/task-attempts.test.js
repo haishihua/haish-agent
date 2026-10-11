@@ -8,6 +8,7 @@ const { createConversationHandlers } = await import('../../../src/features/conve
 const { taskOrderTimestamp } = await import('../../../src/features/conversations/model/workspace-state.js');
 
 const sourceTurn = () => ({ taskId: 'source', conversationId: 'conversation', userMessageId: 'original-user',
+  requestedProvider: 'fixture', requestedModelId: 'fixture-model', requestedReasoningEffort: null,
   title: 'Old message', displayText: 'Old message', requestText: 'Old message', status: 'cancelled', originViewMode: 'chat' });
 
 test('edited text replaces every display projection while preserving the source turn', async () => {
@@ -44,7 +45,7 @@ test('editing uses the current run configuration without changing the original t
     canStartDeployForConversation: () => true,
     getRuntime: () => harness.runtime,
   });
-  const runConfig = { provider: 'current-provider', modelId: 'current-model', reasoningEffort: 'low' };
+  const runConfig = { provider: 'current-provider', modelId: 'current-model', reasoningEffort: 'low', agentId: 'custom.current' };
   await handlers.handleRetryTask(source, 'Revised message', runConfig);
   const body = harness.requests[0].body;
   assert.equal(body.provider, runConfig.provider);
@@ -115,7 +116,7 @@ test('an edit against an unready conversation cannot be acknowledged as successf
   const handlers = createConversationHandlers({
     executeQuest: () => assert.fail('must not send'), canStartDeployForConversation: () => false,
   });
-  await assert.rejects(handlers.handleRetryTask(sourceTurn(), 'Keep my draft'), /not been sent/);
+  await assert.rejects(handlers.handleRetryTask(sourceTurn(), 'Keep my draft', { provider: 'p', modelId: 'm', agentId: 'a' }), /not been sent/);
 });
 
 test('a local running task blocks a second attempt without replacing its runtime', async () => {
@@ -148,7 +149,7 @@ test('an accepted edit is on screen as the running turn before the server names 
     getRuntime: () => harness.runtime,
   });
   let acknowledged = false;
-  const edit = handlers.handleRetryTask(source, 'Revised message', {}).then((accepted) => {
+  const edit = handlers.handleRetryTask(source, 'Revised message', { provider: 'p', modelId: 'm', agentId: 'a' }).then((accepted) => {
     acknowledged = true;
     return accepted;
   });
@@ -185,7 +186,7 @@ test('a run that dies after it was taken still closes the editor and reports the
     getRuntime: () => harness.runtime,
     showToast: (kind, message) => toasts.push([kind, message]),
   });
-  assert.equal(await handlers.handleRetryTask(source, 'Keep my draft', {}), true);
+  assert.equal(await handlers.handleRetryTask(source, 'Keep my draft', { provider: 'p', modelId: 'm', agentId: 'a' }), true);
   for (let turn = 0; turn < 40 && toasts.length === 0; turn += 1) {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
@@ -207,8 +208,24 @@ test('an edit blocked before the server takes it keeps the editor and its draft'
     getRuntime: () => harness.runtime,
     showToast: () => {},
   });
-  await assert.rejects(handlers.handleRetryTask(source, 'Keep my draft', {}), /finish or stop/);
+  await assert.rejects(handlers.handleRetryTask(source, 'Keep my draft', { provider: 'p', modelId: 'm', agentId: 'a' }), /finish or stop/);
   assert.equal(harness.requests.length, 0, '被拦下的发送一个字都没发出去');
+});
+
+test('missing and removed model routes reject before pending state or acknowledgement', async () => {
+  for (const provider of ['', 'removed']) {
+    const source = sourceTurn();
+    const harness = createAttemptHarness(source);
+    let accepted = false;
+    await assert.rejects(harness.executeQuest(source, source.conversationId, {
+      attempt: 'edit', message: 'Keep my draft', runConfig: { provider, modelId: 'model', reasoningEffort: null },
+      onAccepted: () => { accepted = true; },
+    }), /provider.*not been sent/);
+    assert.equal(accepted, false);
+    assert.equal(harness.requests.length, 0);
+    assert.equal(harness.runtime.taskRuntimeState.pendingTask, null);
+    assert.equal(harness.runtime.busy, false);
+  }
 });
 
 test('a pending turn only replaces the attempt it actually succeeds', () => {

@@ -1,5 +1,7 @@
 import { appendStreamEvent, mergeAdjacentStreamEvent } from '../../chat/model/stream-events.js';
-import { DEFAULT_REASONING_EFFORT } from '../../chat/model/run-catalog.js';
+import { executionConfigError } from '../../workflow/model/execution-config.js';
+import { normalizeReasoningEffort } from '../../chat/model/run-catalog.js';
+import { nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest } from '../../workflow/model/node-runtime-config.js';
 import { usableWorkflowSnapshot } from '../../workflow/model/workflow-snapshot.js';
 import { stripInjectedSkillInstruction } from '../../chat/model/chat-text.js';
 import { runtimeEventToLog } from '../model/runtime-events.js';
@@ -708,12 +710,35 @@ export function createTaskStreamHandlers(ctx) {
     if (!runConversationId) {
       throw new Error('conversation is not ready');
     }
+    const providers = ctx.providerOptions || [];
+    const defaultEffort = (provider) => providers.find((item) => (item.requestProvider || item.provider || item.id) === provider)?.defaultReasoningEffort;
+    if (streamRequest?.runConfig) {
+      const config = streamRequest.runConfig;
+      streamRequest = { ...streamRequest, runConfig: {
+        ...config,
+        ...(config.nodeRuntimeConfig ? nodeRuntimeConfigRequest(config.nodeRuntimeConfig, providers) : {}),
+        ...(config.provider ? { reasoningEffort: normalizeReasoningEffort(config.reasoningEffort, defaultEffort(config.provider)) } : {}),
+      } };
+    }
+    pendingTask = { ...pendingTask,
+      ...(pendingTask.executionMode === 'bot'
+        ? { nodeRuntimeConfigs: nodeRuntimeConfigsForWorkflow(pendingTask.workflowSnapshot, pendingTask.nodeRuntimeConfigs, providers) }
+        : { requestedReasoningEffort: normalizeReasoningEffort(pendingTask.requestedReasoningEffort, defaultEffort(pendingTask.requestedProvider)) }),
+    };
     const rerunningNode = Boolean(streamRequest?.rerunNodeId);
     const fullAttempt = Boolean(streamRequest?.attempt);
     const previousRuntime = getRuntime(runConversationId);
     if (fullAttempt && (previousRuntime?.busy || previousRuntime?.fetchController || previousRuntime?.activeRunId)) {
       throw new Error('Wait for the current task to finish or stop before resending. Your changes have not been sent.');
     }
+    const candidate = fullAttempt && streamRequest.runConfig ? {
+      ...pendingTask, requestedProvider: streamRequest.runConfig.provider, requestedModelId: streamRequest.runConfig.modelId,
+    } : pendingTask;
+    const configs = rerunningNode && streamRequest.runConfig?.nodeRuntimeConfig
+      ? { ...candidate.nodeRuntimeConfigs, [streamRequest.rerunNodeId]: streamRequest.runConfig.nodeRuntimeConfig } : candidate.nodeRuntimeConfigs;
+    const configError = executionConfigError({ executionMode: candidate.executionMode, provider: candidate.requestedProvider,
+      modelId: candidate.requestedModelId, workflow: candidate.workflowSnapshot, nodeRuntimeConfigs: configs, providerOptions: ctx.providerOptions || [] });
+    if (configError) throw new Error(`${configError} Your changes have not been sent.`);
     const editedText = streamRequest?.attempt === 'edit' ? streamRequest.message : null;
     const sourceTaskId = pendingTask.taskId || pendingTask.id || null;
     const runId = (rerunningNode || fullAttempt) ? generateHexId() : (sourceTaskId || generateHexId());
@@ -725,6 +750,7 @@ export function createTaskStreamHandlers(ctx) {
           requestedProvider: streamRequest.runConfig.provider,
           requestedModelId: streamRequest.runConfig.modelId,
           requestedReasoningEffort: streamRequest.runConfig.reasoningEffort,
+          ...(pendingTask.executionMode !== 'bot' ? { requestedAgentId: streamRequest.runConfig.agentId } : {}),
         } : {}),
         ...(rerunningNode && streamRequest.runConfig?.nodeRuntimeConfig ? {
           nodeRuntimeConfigs: { ...(pendingTask.nodeRuntimeConfigs || {}), [streamRequest.rerunNodeId]: streamRequest.runConfig.nodeRuntimeConfig },
@@ -910,7 +936,7 @@ export function createTaskStreamHandlers(ctx) {
         agent_id: pendingTask.requestedAgentId || null,
         workflow_id: pendingTask.requestedWorkflowId || null,
         execution_mode: pendingTask.executionMode === 'bot' ? 'bot' : 'chat',
-        reasoning_effort: pendingTask.executionMode === 'bot' ? null : (pendingTask.requestedReasoningEffort || DEFAULT_REASONING_EFFORT),
+        reasoning_effort: pendingTask.requestedReasoningEffort ?? null,
         use_history: true,
       },
     };

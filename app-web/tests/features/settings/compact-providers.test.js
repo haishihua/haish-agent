@@ -31,7 +31,7 @@ test('Compact rows, selected config and patches are isolated from Chat and Visio
   assert.deepEqual(applyLlmSettingsPayloadToDraft(draft, { compact: { providers: [] } }).compact.providers, []);
 });
 
-test('Compact uses the same four generic thinking efforts as Chat for every model', () => {
+test('Compact retains its four generic thinking efforts for every model', () => {
   const efforts = SETTINGS_REASONING_OPTIONS.map(item => item.id);
   assert.deepEqual(efforts, ['low', 'medium', 'high', 'xhigh']);
   for (const model of ['deepseek-v4-flash', 'glm-5.3', 'gpt-4o', 'gpt-5.5', 'o3', 'unknown']) {
@@ -53,7 +53,9 @@ test('Compact editor shares Chat selector, removes On/Off and preserves effort o
   assert.ok(!source.includes('Enable compact provider'));
   assert.ok(source.includes('{isVisionProvider && (\n        <SettingsToggleRow'));
   assert.ok(source.includes('update({ model });'));
-  assert.ok(source.includes('update({ model: event.target.value })'));
+  assert.ok(source.includes('setModelIdInput(event.target.value)'));
+  assert.ok(source.includes('update(addCustomModelId(configRef.current, modelIdInput))'));
+  assert.ok(!source.includes('update({ model: event.target.value })'));
   assert.ok(source.includes("update({ reasoning_effort, ...(isCompactProvider ? { thinking: 'auto' } : {}) })"));
 });
 

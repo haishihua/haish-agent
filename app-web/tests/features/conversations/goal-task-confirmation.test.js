@@ -24,13 +24,13 @@ for (const background of [false, true]) {
     const calls = [], notices = [];
     let seq = 0, launches = 0, confirm;
     const ctx = {
-      API_BASE: '', workspaceState: workspace,
+      API_BASE: '', workspaceState: workspace, providerOptions: [{ provider: 'source-provider' }],
       conversationIdRef: { current: 'chat-conversation' }, viewModeRef: { current: 'chat' },
       draftConversationRef: { current: null }, streamTargetConvIdRef: { current: null },
       modeLocationRef: { current: {} }, runtimesRef: { current: new Map() },
       taskImageAttachmentsRef: { current: new Map() },
       userCancelledTaskIdsRef: { current: new Set() }, chatFinalizedTaskIdsRef: { current: new Set() },
-      workflowSettingsDraft: { presets: [] }, workflowById: () => ({ enabled: true, nodes: ['clarify', 'goal_worker', 'goal_verifier'].map((id) => ({ id, type: 'agent' })) }),
+      workflowSettingsDraft: { presets: [{ workflow_id: 'workflow.goal-loop', nodes: ['clarify', 'goal_worker', 'goal_verifier'].map((id) => ({ id, type: 'agent' })) }] }, workflowById: (settings) => settings.presets[0],
       buildApiHeaders: () => ({}),
       invalidateConversationActivation: () => ++seq,
       isConversationActivationCurrent: (value) => value === seq,

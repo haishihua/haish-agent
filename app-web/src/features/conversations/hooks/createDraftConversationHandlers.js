@@ -29,7 +29,6 @@ export function createDraftConversationHandlers(ctx) {
     flushRuntimeTasksToWorkspace,
     generateHexId,
     getRuntime,
-    isDefaultConversationName,
     isTaskActuallyActive,
     latestContextUsageFromTasks,
     mutateRuntime,
@@ -52,7 +51,6 @@ export function createDraftConversationHandlers(ctx) {
     taskRuntimeEventCacheRef,
     taskRuntimeFetchesRef,
     taskUpdatedTimestamp,
-    titleFromTaskText,
     updateTaskRuntimeState,
     userCancelledTaskIdsRef,
     viewModeRef,
@@ -243,7 +241,7 @@ export function createDraftConversationHandlers(ctx) {
     return isConversationActivationCurrent(requestSeq) ? draftId : null;
   }
 
-  async function ensureServerConversationForActiveDraft({ title } = {}) {
+  async function ensureServerConversationForActiveDraft() {
     const draft = draftConversationRef.current;
     if (!draft?.id) return null;
 
@@ -271,9 +269,11 @@ export function createDraftConversationHandlers(ctx) {
       };
     const activationSeq = conversationActivationSeqRef.current;
     const request = (async () => {
+      // Automatic shells must use the backend default title. Sending a local
+      // placeholder as `title` would mark it as a user rename and disable titling.
       const detail = await createConversationInProject(
         project,
-        title || draft.name || DEFAULT_SESSION_NAME,
+        undefined,
         draft.executionMode || (viewModeRef.current === 'chat' ? 'chat' : 'bot'),
       );
       const stillSelected = isConversationActivationCurrent(activationSeq)
@@ -321,7 +321,7 @@ export function createDraftConversationHandlers(ctx) {
     }
   }
 
-  async function materializeDraftConversationForSend(request) {
+  async function materializeDraftConversationForSend() {
     const draft = draftConversationRef.current;
     if (!draft) {
       const existingId = conversationIdRef.current || conversationId || null;
@@ -333,18 +333,12 @@ export function createDraftConversationHandlers(ctx) {
     forgetDraftConversationId(draftConversationIdsRef.current, draft.projectId);
     const activationSeq = conversationActivationSeqRef.current;
     try {
-      const nextTitle = titleFromTaskText(request?.displayText || request?.text || '') || draft.name || DEFAULT_SESSION_NAME;
       let detail = pendingCreatedDetailRef.current;
       if (!detail?.conversation_id) {
-        detail = await ensureServerConversationForActiveDraft({ title: nextTitle });
-      } else if (nextTitle && isDefaultConversationName(detail.title || detail.label || draft.name)) {
-        try {
-          const renamed = await updateConversationTitle(detail.conversation_id, nextTitle);
-          if (renamed) detail = renamed;
-        } catch (error) {
-          console.warn('draft conversation title update skipped:', error);
-        }
+        detail = await ensureServerConversationForActiveDraft();
       }
+      // An attachment may have created this shell before the first send. Do not
+      // PATCH its title: the backend first-task path owns the persisted placeholder.
       if (!detail?.conversation_id) {
         throw new Error('conversation create failed');
       }
@@ -670,20 +664,6 @@ export function createDraftConversationHandlers(ctx) {
     runtimesRef.current.delete(nextConversationId);
   }
 
-  async function updateConversationTitle(conversationId, title) {
-    const trimmed = String(title || '').trim();
-    if (!conversationId || !trimmed) return null;
-    const response = await apiFetch(`${API_BASE}/api/conversations/${conversationId}`, {
-      method: 'PATCH',
-      headers: buildApiHeaders(),
-      body: JSON.stringify({ title: trimmed }),
-    });
-    if (!response.ok) {
-      throw new Error(`conversation title update failed: ${response.status}`);
-    }
-    return response.json();
-  }
-
   return {
     invalidateConversationActivation,
     isConversationActivationCurrent,
@@ -704,6 +684,5 @@ export function createDraftConversationHandlers(ctx) {
     queueTaskInput,
     cancelActiveConversationTask,
     stopConversationRuntimeBeforeDelete,
-    updateConversationTitle,
   };
 }

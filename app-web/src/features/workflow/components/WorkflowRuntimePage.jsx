@@ -426,7 +426,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
             Attempt #{attemptNumber}
           </div>
         ) : null}
-        {attempt?.result?.runtime_config ? <p className="workflow-runtime-actual-config">Executed with {attempt.result.runtime_config.model_id || 'provider default'} · thinking {attempt.result.runtime_config.reasoning_effort || 'provider default'}</p> : null}
+        {attempt?.result?.runtime_config ? <p className="workflow-runtime-actual-config">Executed with {attempt.result.runtime_config.model_id || 'provider default'} · thinking {attempt.result.runtime_config.reasoning_effort || 'Unspecified'}</p> : null}
         <NodeConversation
           node={node}
           task={task}

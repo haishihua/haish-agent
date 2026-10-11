@@ -181,6 +181,10 @@
     overflow: visible;
 }
 
+.chat-composer .model-picker-gauge.is-unspecified {
+    color: var(--dim);
+}
+
 .chat-composer .model-picker-gauge-arc {
     fill: none;
     stroke: currentColor;

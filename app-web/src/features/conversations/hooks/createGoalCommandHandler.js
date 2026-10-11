@@ -1,4 +1,5 @@
 import { GOAL_WORKFLOW_ID, matchingWorkflowProject } from '../../chat/model/goal-command.js';
+import { executionConfigError } from '../../workflow/model/execution-config.js';
 import { nodeRuntimeConfigsForWorkflow } from '../../workflow/model/node-runtime-config.js';
 
 // Explicit routing: never infer the destination from the currently displayed
@@ -34,10 +35,15 @@ export function createGoalCommandHandler(ctx) {
     const sourceConfig = Object.fromEntries(['provider', 'model_id', 'reasoning_effort']
       .filter((field) => typeof runConfig[field] === 'string' && runConfig[field].trim())
       .map((field) => [field, runConfig[field].trim()]));
+    if (Object.hasOwn(runConfig, 'reasoning_effort')) sourceConfig.reasoning_effort = runConfig.reasoning_effort ?? null;
     if (!sourceConfig.provider) delete sourceConfig.model_id;
     const nodeRuntimeConfigs = nodeRuntimeConfigsForWorkflow(workflow, Object.fromEntries(
       (workflow.nodes || []).map((node) => [node.id, { ...sourceConfig }]),
-    ));
+    ), ctx.providerOptions || []);
+    if (prompt) {
+      const error = executionConfigError({ executionMode: 'bot', workflow, nodeRuntimeConfigs, providerOptions: ctx.providerOptions || [] });
+      if (error) { showToast('error', error); return false; }
+    }
     const request = buildDeployRequest(prompt, workflowAttachment, null, null, images, GOAL_WORKFLOW_ID, null, prompt, [], nodeRuntimeConfigs);
     Object.assign(request, { executionMode: 'bot', workflowId: GOAL_WORKFLOW_ID, agentId: null });
     const activationSeq = invalidateConversationActivation();
@@ -65,7 +71,7 @@ export function createGoalCommandHandler(ctx) {
       // One Workflow task gets its own conversation; never reuse an active run.
       const detail = await createConversationInProject({
         id: target.project_id, executionMode: 'bot', workspacePath: target.workspace_path,
-      }, prompt.slice(0, 120) || 'New conversation', 'bot');
+      }, undefined, 'bot');
       if (!isCurrent()) return false;
       await call(`/api/conversations/${encodeURIComponent(detail.conversation_id)}/run-config`, {
         method: 'PUT', body: JSON.stringify({

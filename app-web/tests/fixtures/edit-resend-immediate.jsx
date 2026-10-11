@@ -117,8 +117,10 @@ function panelProps(harness, conversationId, rows, running) {
     getRuntime: () => harness.runtime,
     showToast: () => {},
   });
+  const selectedKey = `haish_run_config_v1:fixture:chat:${conversationId}`;
+  localStorage.setItem(selectedKey, JSON.stringify({ providerId: 'fixture', modelId: 'fixture-model', reasoningEffort: null }));
   return (
-    <ChatPanel conversationId={conversationId} messages={rows} running={running}
+    <ChatPanel conversationId={conversationId} selectionStorageKey={selectedKey} messages={rows} running={running}
       providerOptions={[{ id: 'fixture', provider: 'fixture', defaultModelId: 'fixture-model', modelOptions: ['fixture-model'] }]}
       onEditMessage={(taskId, text, config) => handlers.handleRetryTask(sourceTurn(conversationId), text, config)} />
   );

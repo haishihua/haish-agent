@@ -14,7 +14,6 @@ globalThis.window = {
 };
 
 const { storedRunConfigRequest } = await import('../../../src/features/chat/hooks/useRunConfig.js');
-const { DEFAULT_REASONING_EFFORT } = await import('../../../src/features/chat/model/run-catalog.js');
 
 // 形状取自 settings/model/llm-settings.js 的 runtimeLlmProviderOptions：
 // id 是选择器的 key，requestProvider 才是发给后端的那串选择器（profile id / custom:xxx）。
@@ -48,7 +47,7 @@ test('a stored selection becomes the retry run config with its request selector'
   });
 });
 
-test('a stale reasoning level falls back to the default instead of rejecting the retry', () => {
+test('a stale reasoning level uses the high runtime default', () => {
   const config = withStoredSelection({
     providerId: 'chat:generic',
     modelId: 'old-model',
@@ -57,11 +56,11 @@ test('a stale reasoning level falls back to the default instead of rejecting the
   assert.deepEqual(config, {
     provider: 'generic',
     modelId: 'old-model',
-    reasoningEffort: DEFAULT_REASONING_EFFORT,
+    reasoningEffort: 'high',
   });
 });
 
-test('nothing stored for the conversation keeps the source task config', () => {
+test('nothing stored for the conversation returns no configuration', () => {
   assert.equal(withStoredSelection(undefined, () => storedRunConfigRequest(STORAGE_KEY, PROVIDERS)), null);
   assert.equal(withStoredSelection('{not json', () => storedRunConfigRequest(STORAGE_KEY, PROVIDERS)), null);
   assert.equal(withStoredSelection({ providerId: 'chat:generic' }, () => storedRunConfigRequest(STORAGE_KEY, PROVIDERS)), null);

@@ -73,9 +73,14 @@ export function ChatPanel({
   agentOptions,
   defaultAgentId,
   agentLoading = false,
+  agentError = '',
+  onAgentRetry,
   agentLocked = false,
   agentLockedReason = '',
   lockedAgentId = '',
+  hasSentMessage = false,
+  onAgentChange,
+  onToast,
   selectionStorageKey = '',
   draft: draftProp,
   onDraftChange: onDraftChangeProp,
@@ -208,22 +213,23 @@ export function ChatPanel({
     rowActionRef.current = { onForkMessage, onRetryTask, onEditMessage };
   });
   const forkMessage = React.useCallback((message) => rowActionRef.current.onForkMessage?.(message), []);
-  // 失败重跑和编辑同一口径：带上输入框当前选中的 run config。取不到有效选择时传 null，
-  // 由后端沿用来源 Task 的原请求参数。
-  const retryMessage = React.useCallback((message) => {
+  // Attempts wait for the current configuration commit, never the source Task's selection.
+  const retryMessage = React.useCallback(async (message) => {
     const current = composerRunConfigRef.current;
-    const runConfig = current?.provider && current.modelId
-      ? { provider: current.provider, modelId: current.modelId, reasoningEffort: current.reasoningEffort }
-      : null;
-    return rowActionRef.current.onRetryTask?.(message.taskId, runConfig);
+    if (!current) throw new Error('Wait for the current provider/model configuration before retrying.');
+    const saved = await current?.ensureSaved?.();
+    return rowActionRef.current.onRetryTask?.(message.taskId, saved ? {
+      provider: saved.provider, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id,
+    } : null);
   }, []);
-  const editMessage = React.useCallback((text, message) => {
+  const editMessage = React.useCallback(async (text, message) => {
     const current = composerRunConfigRef.current;
     if (!current?.provider || !current.modelId) {
       throw new Error('Select an available provider and model before resending. Your changes have not been sent.');
     }
+    const saved = await current.ensureSaved();
     return rowActionRef.current.onEditMessage?.(message.taskId, text, {
-      provider: current.provider, modelId: current.modelId, reasoningEffort: current.reasoningEffort,
+      provider: saved.provider, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id,
     });
   }, []);
 
@@ -409,6 +415,7 @@ export function ChatPanel({
         onDraftChange={setDraft}
         onSend={onSend}
         onGoalCommand={onGoalCommand}
+        onToast={onToast}
         onStop={onStop}
         onSent={() => setSendScrollKey((value) => value + 1)}
         activeTaskText={activeTaskText}
@@ -437,9 +444,13 @@ export function ChatPanel({
         agentOptions={agentOptions}
         defaultAgentId={defaultAgentId}
         agentLoading={agentLoading}
+        agentError={agentError}
+        onAgentRetry={onAgentRetry}
         agentLocked={agentLocked}
         agentLockedReason={agentLockedReason}
         lockedAgentId={lockedAgentId}
+        hasSentMessage={hasSentMessage}
+        onAgentChange={onAgentChange}
         selectionStorageKey={selectionStorageKey}
         onRunConfigChange={handleComposerRunConfig}
         contextUsage={contextUsage}

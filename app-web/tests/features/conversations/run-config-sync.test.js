@@ -31,6 +31,19 @@ test('switching conversation never writes another scope and failures are explici
   const failing = createRunConfigSync({ save: async () => { throw new Error('offline'); } });
   failing.observe('s', { model_id: 'new' });
   await assert.rejects(failing.flush('c', 's'), /offline/);
+  const beforeReads = [];
+  sync.observe('one', { model_id: 'new' });
+  let release;
+  const queue = createRunConfigSync({ save: () => new Promise(resolve => { release = resolve; }), get: async () => { beforeReads.push('read'); return { model_id: 'new' }; } });
+  queue.observe('scope', { model_id: 'new' });
+  const saving = queue.flush('one', 'scope');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const loaded = queue.load('one');
+  await Promise.resolve();
+  assert.equal(beforeReads.length, 0);
+  release(); await saving;
+  assert.deepEqual(await loaded, { model_id: 'new' });
+  await queue.waitForSave('one');
 });
 
 test('run configuration API is independent of schedule definitions and rejects errors', async () => {

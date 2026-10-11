@@ -118,6 +118,7 @@ test('ask_user remains a top-level timeline item instead of entering a tool grou
 
 test('conversation switching does not silently discard sends while model options reload', () => {
   assert.match(composerSource, /const sendModelId =/);
-  assert.match(composerSource, /currentProvider\?\.defaultModelId/);
+  assert.match(composerSource, /const sendModelId = modelId/);
+  assert.doesNotMatch(composerSource, /providerModels\.defaultModelId \|\|/);
   assert.doesNotMatch(composerSource, /if \(modelLoading \|\| !activeModelOptions\.some/);
 });

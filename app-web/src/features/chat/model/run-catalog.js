@@ -13,6 +13,13 @@ export const REASONING_EFFORT_OPTIONS = [
   { id: 'xhigh', label: 'xhigh' },
 ];
 
+// Runtime selections are always concrete. Legacy none/null/minimal values use
+// the selected Settings row's default, or the original high UI default.
+export function normalizeReasoningEffort(effort, defaultEffort = DEFAULT_REASONING_EFFORT) {
+  const supported = (value) => REASONING_EFFORT_OPTIONS.some((option) => option.id === value);
+  return supported(effort) ? effort : (supported(defaultEffort) ? defaultEffort : DEFAULT_REASONING_EFFORT);
+}
+
 export const CATEGORY_ICON_CLASS = {
   tool: 'ico-tool',
   skill: 'ico-skill',

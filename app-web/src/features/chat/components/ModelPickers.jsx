@@ -3,7 +3,9 @@ import { resolveApiBase } from '../../../shared/api/base.js';
 import { approvalStore } from '../../approvals/model/approval-store.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
-import { DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS } from '../model/run-catalog.js';
+import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
+import { REASONING_EFFORT_OPTIONS } from '../model/run-catalog.js';
+import { reasoningGaugeRotation } from '../model/reasoning-gauge.js';
 
 export const APPROVAL_MODE_OPTIONS = [
   { id: 'strict', label: 'Request Approval', icon: 'ask-for-help.png',   desc: 'Ask before every write or network op' },
@@ -147,7 +149,7 @@ export function ModelPicker({
   value,
   reasoningEffort,
   options = [],
-  reasoningOptions = REASONING_EFFORT_OPTIONS,
+  reasoningOptions: suppliedReasoningOptions = REASONING_EFFORT_OPTIONS,
   onChange,
   onReasoningChange,
   disabled,
@@ -160,6 +162,8 @@ export function ModelPicker({
   agentOptions,
   onAgentChange,
   agentLoading = false,
+  agentError = '',
+  onAgentRetry,
   agentLocked = false,
   agentLockedReason = '',
 }) {
@@ -169,25 +173,25 @@ export function ModelPicker({
   const leaveTimerRef = React.useRef(null);
   React.useEffect(() => () => window.clearTimeout(leaveTimerRef.current), []);
   const rootRef = React.useRef(null);
-  const current = options.find((o) => o.id === value) || options[0];
-  const currentProvider = providerOptions.find((o) => o.id === providerValue) || providerOptions[0] || null;
-  const currentReasoning = reasoningOptions.find((o) => o.id === reasoningEffort) || reasoningOptions.find((o) => o.id === DEFAULT_REASONING_EFFORT) || reasoningOptions[0];
-  const currentReasoningIndex = Math.max(0, reasoningOptions.findIndex((o) => o.id === currentReasoning?.id));
-  const reasoningRatio = currentReasoningIndex / Math.max(1, reasoningOptions.length - 1);
+  const current = options.find((o) => o.id === value) || (value ? { id: value, label: value } : null);
+  const currentProvider = providerOptions.find((o) => o.id === providerValue) || null;
+  const reasoningOptions = suppliedReasoningOptions;
+  const currentReasoning = reasoningOptions.find((o) => o.id === (reasoningEffort ?? null)) || { id: reasoningEffort, label: reasoningEffort };
+  const currentReasoningIndex = reasoningOptions.findIndex((o) => o.id === currentReasoning?.id);
+  const reasoningRatio = Math.max(0, currentReasoningIndex) / Math.max(1, reasoningOptions.length - 1);
   const reasoningProgressOffset = 12 - (24 * reasoningRatio);
   const reasoningProgress = `calc(${reasoningRatio * 100}% ${reasoningProgressOffset < 0 ? '-' : '+'} ${Math.abs(reasoningProgressOffset)}px)`;
-  const gaugeRotation = `${currentReasoningIndex * 80 - 165}deg`;
+  const gaugeRotation = reasoningGaugeRotation(reasoningEffort, suppliedReasoningOptions);
   const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : [];
   const currentAgent = resolvedAgentOptions.find((o) => o.id === agentValue)
     || (agentValue ? { id: agentValue, label: agentValue } : null)
     || resolvedAgentOptions[0]
     || null;
   const modelLabel = current ? current.label : (currentProvider ? (loading ? 'loading' : 'unavailable') : 'No model');
-  const runConfigLabel = `${value || 'No model'} · ${reasoningEffort || currentReasoning?.id || 'unknown'}`;
+  const runConfigLabel = `${value || 'No model'} · ${currentReasoning?.label || 'Unspecified'}`;
   const providerLabel = currentProvider ? currentProvider.label : 'Configure LLM';
   const agentLabel = currentAgent ? currentAgent.label : 'Agent';
-  const pickerLoading = agentLoading;
-  const agentChangeDisabled = disabled || readOnly || pickerLoading || agentLocked;
+  const agentChangeDisabled = disabled || readOnly || agentLoading || Boolean(agentError) || agentLocked;
   const agentLockText = agentLockedReason || 'Cannot change agent for this conversation.';
 
   React.useEffect(() => {
@@ -219,35 +223,35 @@ export function ModelPicker({
       type="button"
       className="model-picker-trigger"
       onClick={() => {
-        if (disabled || pickerLoading) return;
+        if (disabled) return;
         setOpen((o) => {
           setMenuOpen(false);
           setActiveSubmenu(null);
           return !o;
         });
       }}
-      disabled={disabled || pickerLoading}
+      disabled={disabled}
       aria-disabled={disabled ? 'true' : undefined}
       aria-readonly={readOnly ? 'true' : undefined}
       aria-haspopup="dialog"
       aria-expanded={open}
       aria-label={`Run configuration, ${runConfigLabel}`}
     >
-      {pickerLoading ? <span className="model-picker-loading" aria-hidden="true" /> : (
-        <svg className="model-picker-gauge" style={{ '--gauge-rotation': gaugeRotation }} viewBox="0 0 24 24" aria-hidden="true">
-          <path className="model-picker-gauge-arc" d="M3.34 19a10 10 0 1 1 17.32 0" />
+      <svg className={`model-picker-gauge ${gaugeRotation === null ? 'is-unspecified' : ''}`} style={{ '--gauge-rotation': gaugeRotation === null ? undefined : `${gaugeRotation}deg` }} viewBox="0 0 24 24" aria-hidden="true">
+        <path className="model-picker-gauge-arc" d="M3.34 19a10 10 0 1 1 17.32 0" />
+        {gaugeRotation === null ? <circle cx="12" cy="14" r="1.8" fill="currentColor" /> : (
           <g className="model-picker-gauge-needle">
             <path className="model-picker-gauge-pointer" d="M10.9 13.4 12.6 15.1 18.65 7.35Z" />
             <circle cx="12" cy="14" r="1.8" />
           </g>
-        </svg>
-      )}
+        )}
+      </svg>
     </button>
   );
 
   return (
     <div
-      className={`model-picker run-config-picker ${open ? 'is-open' : ''} ${pickerLoading ? 'is-loading' : ''} ${readOnly ? 'is-readonly' : ''}`}
+      className={`model-picker run-config-picker ${open ? 'is-open' : ''} ${readOnly ? 'is-readonly' : ''}`}
       ref={rootRef}
       onMouseEnter={() => window.clearTimeout(leaveTimerRef.current)}
       onMouseLeave={() => {
@@ -281,14 +285,14 @@ export function ModelPicker({
               min="0"
               max={Math.max(0, reasoningOptions.length - 1)}
               step="1"
-              value={currentReasoningIndex}
+              value={Math.max(0, currentReasoningIndex)}
               disabled={disabled || readOnly}
               aria-label="Thinking level"
               aria-valuetext={currentReasoning?.label || 'Thinking'}
               onChange={(event) => onReasoningChange?.(reasoningOptions[Number(event.target.value)]?.id)}
             />
             <span className="model-picker-reasoning-marks" aria-hidden="true">
-              {reasoningOptions.map((option, index) => <i className={index === currentReasoningIndex ? 'is-active' : ''} key={option.id} />)}
+              {reasoningOptions.map((option, index) => <i className={index === currentReasoningIndex ? 'is-active' : ''} key={option.id ?? 'unspecified'} />)}
             </span>
           </div>
         </div>
@@ -296,7 +300,7 @@ export function ModelPicker({
       {open && menuOpen ? (
         <div className={`model-picker-menu ${activeSubmenu ? 'has-flyout' : ''}`} role="menu">
           <div className="model-picker-submenu">
-            {currentAgent ? (
+            {currentAgent || agentLoading || agentError ? (
               <button
                 type="button"
                 role="menuitem"
@@ -341,7 +345,9 @@ export function ModelPicker({
               <div className="model-picker-flyout model-picker-flyout-agent" role="listbox" aria-label="agent">
                 <div className="model-picker-header">Agent</div>
                 <div className="model-picker-list">
-                  {resolvedAgentOptions.map((opt) => {
+                  {agentLoading ? <LoadingState label="Loading agents" role="status" /> : agentError ? (
+                    <ErrorState variant="inline" detail={agentError} onRetry={onAgentRetry} />
+                  ) : resolvedAgentOptions.map((opt) => {
                     const active = opt.id === currentAgent?.id;
                     return (
                       <PortalTooltip key={opt.id} text={agentLocked ? agentLockText : ''} position="above">
@@ -349,10 +355,11 @@ export function ModelPicker({
                           type="button"
                           role="option"
                           aria-selected={active}
-                          aria-disabled={agentChangeDisabled ? 'true' : undefined}
-                          className={`model-picker-option ${active ? 'is-active' : ''} ${agentChangeDisabled ? 'is-disabled' : ''}`}
+                          aria-disabled={agentChangeDisabled || opt.unavailable ? 'true' : undefined}
+                          disabled={agentChangeDisabled || opt.unavailable}
+                          className={`model-picker-option ${active ? 'is-active' : ''} ${agentChangeDisabled || opt.unavailable ? 'is-disabled' : ''}`}
                           onClick={() => {
-                            if (agentChangeDisabled) return;
+                            if (agentChangeDisabled || opt.unavailable) return;
                             onAgentChange?.(opt.id);
                             setOpen(false);
                             setActiveSubmenu(null);
@@ -389,8 +396,9 @@ export function ModelPicker({
                         role="option"
                         aria-selected={active}
                         className={`model-picker-option ${active ? 'is-active' : ''} ${readOnly ? 'is-readonly' : ''}`}
-                        aria-disabled={readOnly ? 'true' : undefined}
-                        onClick={() => { if (readOnly) return; onProviderChange?.(opt.id); }}
+                        disabled={disabled || readOnly}
+                        aria-disabled={disabled || readOnly ? 'true' : undefined}
+                        onClick={() => { if (disabled || readOnly) return; onProviderChange?.(opt.id); }}
                       >
                         <span className="model-picker-option-label">{opt.label || opt.id}</span>
                         {active ? (
@@ -411,7 +419,7 @@ export function ModelPicker({
               <div className="model-picker-flyout model-picker-flyout-model" role="listbox" aria-label="model">
                 <div className="model-picker-header">Model</div>
                 <div className="model-picker-list">
-                  {options.length === 0 ? (
+                  {loading ? <LoadingState label="Loading models" role="status" /> : options.length === 0 ? (
                     <div className="model-picker-empty">No models</div>
                   ) : options.map((opt) => {
                     const active = opt.id === value;
@@ -422,8 +430,9 @@ export function ModelPicker({
                         role="option"
                         aria-selected={active}
                         className={`model-picker-option model-picker-model-option ${active ? 'is-active' : ''} ${readOnly ? 'is-readonly' : ''}`}
-                        aria-disabled={readOnly ? 'true' : undefined}
-                        onClick={() => { if (readOnly) return; onChange(opt.id); }}
+                        disabled={disabled || readOnly || loading}
+                        aria-disabled={disabled || readOnly || loading ? 'true' : undefined}
+                        onClick={() => { if (disabled || readOnly || loading) return; onChange(opt.id); }}
                       >
                         <span className="model-picker-option-label">{opt.label}</span>
                         {active ? (

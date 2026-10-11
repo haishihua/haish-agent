@@ -14,8 +14,10 @@ import {
   modelChoicesFor,
   uniqueModelChoices,
   configuredModelOptions,
+  customModelIds,
   runtimeProviderLabel,
 } from './llm-settings.js';
+import { DEFAULT_REASONING_EFFORT } from '../../chat/model/run-catalog.js';
 import { agentListItems } from '../../agents/model/agent-settings.js';
 import {
   workflowListItems,
@@ -125,7 +127,7 @@ export function createLlmProfile() {
     model: '',
     api_key: '',
     base_url: '',
-    reasoning_effort: 'high',
+    reasoning_effort: DEFAULT_REASONING_EFFORT,
     model_options: [],
   };
 }
@@ -350,6 +352,7 @@ export function llmProviderRequestPayload(config, { includeSecret = false, refre
     auth_mode: config.auth_mode || getLlmProvider(provider).defaultAuth,
     custom_provider: provider === 'custom' ? String(config.name || config.custom_provider || '').trim() : '',
     model: config.model || '',
+    custom_model_ids: customModelIds(config),
     refresh,
   };
   if (providerType) payload.provider_type = providerType;
@@ -376,5 +379,6 @@ export function llmEditorModelChoices(config) {
   return uniqueModelChoices(
     config?.model,
     discovered.length ? discovered : modelChoicesFor(config?.provider),
+    customModelIds(config),
   );
 }

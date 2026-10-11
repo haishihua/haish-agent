@@ -84,7 +84,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
   // slices in, and the wait is no longer announced with a line of copy.
   const tracePending = isAgent && message.traceHydrated === false && !message.streaming;
   const isUser = message.role === 'user';
-  // 这一轮用的是哪个 agent（会话选定后锁定，所以整段对话同一个名字）。
+  // 名字来自每轮任务的实际 Agent，而非会话当前默认选择。
   // AppShell 从任务/会话记录里解析；拿不到历史 agent 记录的旧任务才退回 Assistant。
   const agentName = String(message.agentName || '').trim();
   const visibleText = isUser ? stripInjectedSkillInstruction(message.text) : message.text;

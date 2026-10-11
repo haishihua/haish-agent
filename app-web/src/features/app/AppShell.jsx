@@ -19,7 +19,7 @@ import { ChatPanel } from '../chat/components/ChatPanel.jsx';
 import { useNodeRuntimeConfigs } from '../workflow/hooks/useNodeRuntimeConfigs.js';
 import { nodeRuntimeConfigRequest } from '../workflow/model/node-runtime-config.js';
 import { ChatComposer } from '../chat/components/ChatComposer.jsx';
-import { storedRunConfigRequest } from '../chat/hooks/useRunConfig.js';
+import { useConversationAgentSelection } from '../conversations/hooks/useConversationAgentSelection.js';
 import { BottomNav, TabPlaceholder } from './components/Shell.jsx';
 import { AppToast } from './components/AppToast.jsx';
 import {
@@ -45,11 +45,11 @@ import {
   APP_DEFAULT_AGENT_OPTIONS,
   DEFAULT_AGENT_SETTINGS,
   normalizeAgentSettings,
-  agentCatalogFromProfiles,
   agentCatalogFromSettings,
   createDefaultCustomAgentPayload,
   withAlwaysAllowedAgentTools,
 } from '../agents/model/agent-settings.js';
+import { startAgentCatalogLoad, staleAgentCatalog } from '../agents/model/agent-catalog-loading.js';
 import {
   DEFAULT_WORKFLOW_SETTINGS,
   DIRECT_AGENT_WORKFLOW_ID,
@@ -161,6 +161,8 @@ import { createComposerHandlers } from '../chat/hooks/createComposerHandlers.js'
 import { createSettingsHandlers } from '../settings/hooks/createSettingsHandlers.js';
 import { createConversationRuntime } from '../conversations/hooks/createConversationRuntime.js';
 import { SchedulesProvider } from '../schedules/components/SchedulesProvider.jsx';
+import { createRunConfigSync } from '../conversations/model/run-config-sync.js';
+import { runConfigApi } from '../conversations/api/run-config.js';
 import { createScheduleBinding } from '../schedules/model/schedule.js';
 import { createScheduledRuntimeHandlers } from '../schedules/model/runtime-handlers.js';
 import { createTaskStreamHandlers } from '../tasks/hooks/createTaskStreamHandlers.js';
@@ -171,17 +173,22 @@ import { usePerConversationDraft } from '../chat/hooks/usePerConversationDraft.j
 import { useConversationBootstrap } from '../conversations/hooks/useConversationBootstrap.js';
 import { saveLastLocation } from '../conversations/model/last-location.js';
 import { createWorkflowTaskSelectionHandler } from '../conversations/hooks/createWorkflowTaskSelectionHandler.js';
-import { conversationHasSentMessage, sentTaskSummaries } from '../conversations/model/agent-binding.js';
 import { useConversationListPolling } from '../conversations/hooks/useConversationListPolling.js';
 import { useTaskRuntimePolling } from '../tasks/hooks/useTaskRuntimePolling.js';
 import { useViewedTaskCompletionNotice } from '../tasks/hooks/useViewedTaskCompletionNotice.js';
-import * as workspaceRuntime from './model/workspace-runtime.js';
+import {
+  conversationDetailToWorkspaceConversation,
+  buildWorkspaceStateFromProjects,
+  replaceWorkspaceModeFromProjects,
+  workspaceStateWithConversationDetail,
+} from './model/workspace-runtime.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
 const TASK_COMPLETION_NOTICES_STORAGE_KEY = 'haish.task-completion-notices.v1';
 
 export function AppShell() {
+  const configSync = useMemo(() => createRunConfigSync(runConfigApi), []);
   React.useEffect(() => {
     approvalStore.start();
     return () => approvalStore.stop();
@@ -234,7 +241,13 @@ export function AppShell() {
     options: APP_DEFAULT_AGENT_OPTIONS,
     defaultAgentId: APP_DEFAULT_AGENT_OPTIONS[0].id,
   }));
-  const [agentLoading, setAgentLoading] = useState(true);
+  const agentContextKey = JSON.stringify([ownerId, localWorkspace.path]);
+  const agentContextKeyRef = useRef(agentContextKey);
+  agentContextKeyRef.current = agentContextKey;
+  const [agentLoadState, setAgentLoadState] = useState({ key: '', status: 'loading', error: '' });
+  const [agentRetry, setAgentRetry] = useState(0);
+  const agentState = agentLoadState.key === agentContextKey ? agentLoadState : { status: 'loading', error: '' };
+  const agentLoading = agentState.status === 'loading';
   const [workflowLoading, setWorkflowLoading] = useState(true);
   const [agentSettingsDraft, setAgentSettingsDraft] = useState(() => normalizeAgentSettings(DEFAULT_AGENT_SETTINGS));
   const [workflowSettingsDraft, setWorkflowSettingsDraft] = useState(() => normalizeWorkflowSettings(DEFAULT_WORKFLOW_SETTINGS));
@@ -355,27 +368,22 @@ export function AppShell() {
   }
 
   useEffect(() => {
-    let cancelled = false;
     const workspaceQuery = localWorkspace.path
       ? `?workspace_path=${encodeURIComponent(localWorkspace.path)}`
       : '';
-    setAgentLoading(true);
-    apiFetch(`${API_BASE}/api/agents${workspaceQuery}`, { method: 'GET' }, { json: false })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return;
-        const contextWindowTokens = Number(data?.runtime?.context_window_tokens) || 0;
-        // 分母变了只换分母（分子仍是上一次实测值）；估算值不落盘。
+    setAgentCatalog(staleAgentCatalog);
+    const load = startAgentCatalogLoad({
+      request: apiFetch,
+      url: `${API_BASE}/api/agents${workspaceQuery}`,
+      onState: (state) => setAgentLoadState({ ...state, key: agentContextKey }),
+      onCatalog: setAgentCatalog,
+      onRuntime: (runtime) => {
+        const contextWindowTokens = Number(runtime?.context_window_tokens) || 0;
         if (contextWindowTokens > 0) contextUsageTrackerRef.current?.setTotalTokens(contextWindowTokens);
-        const catalog = agentCatalogFromProfiles(data);
-        if (catalog.options.length > 0) setAgentCatalog(catalog);
-      })
-      .catch((error) => console.warn('failed to fetch assistant agents', error))
-      .finally(() => {
-        if (!cancelled) setAgentLoading(false);
+      },
     });
-    return () => { cancelled = true; };
-  }, [localWorkspace.path]);
+    return load.cancel;
+  }, [localWorkspace.path, agentContextKey, agentRetry]);
 
   useEffect(() => {
     let cancelled = false;
@@ -525,18 +533,12 @@ export function AppShell() {
   }, []);
 
   const llmProviderOptions = useMemo(() => runtimeLlmProviderOptions(llmSettingsDraft), [llmSettingsDraft]);
-  const agentOptions = agentCatalog?.options || APP_DEFAULT_AGENT_OPTIONS;
+  const agentOptions = agentState.status === 'ready'
+    ? (agentCatalog?.options || APP_DEFAULT_AGENT_OPTIONS)
+    : staleAgentCatalog(agentCatalog).options;
   const defaultAgentId = agentCatalog?.defaultAgentId || APP_DEFAULT_AGENT_OPTIONS[0].id;
   const runConfigStorageKey = buildRunConfigStorageKey(ownerId, 'chat', conversationId);
   const botRunConfigStorageKey = runConfigStorageKey ? `${runConfigStorageKey}.bot` : '';
-  // 侧边栏的「Run again」没有输入框，用这个会话上次真正选过的模型配置；取不到就沿用
-  // 来源 Task 的原请求参数。
-  const sidebarRetryRunConfig = (task) => {
-    const targetConversationId = task?.conversationId || task?.conversation_id;
-    const baseKey = buildRunConfigStorageKey(ownerId, 'chat', targetConversationId);
-    if (!baseKey || task?.executionMode === 'bot') return null;
-    return storedRunConfigRequest(baseKey, llmProviderOptions);
-  };
   const workflowOptions = useMemo(() => {
     const normalized = normalizeWorkflowSettings(workflowSettingsDraft);
     return [...normalized.presets, ...normalized.custom]
@@ -545,7 +547,7 @@ export function AppShell() {
         id: item.workflow_id,
         label: item.display_name || item.workflow_id,
         description: item.description || '',
-        canUploadDocuments: item.can_upload_documents === true,
+        canUploadDocuments: item.can_upload_documents === true, nodes: item.nodes,
       }));
   }, [workflowSettingsDraft]);
   const defaultWorkflowId = workflowOptions.find((item) => item.id === workflowSettingsDraft.default_workflow_id)?.id
@@ -703,7 +705,6 @@ export function AppShell() {
     queueTaskInput,
     cancelActiveConversationTask,
     stopConversationRuntimeBeforeDelete,
-    updateConversationTitle,
   } = createDraftConversationHandlers({
     API_BASE,
     DEFAULT_SESSION_NAME,
@@ -728,7 +729,6 @@ export function AppShell() {
     flushRuntimeTasksToWorkspace: (...args) => runtimeApiRef.current.flushRuntimeTasksToWorkspace?.(...args),
     generateHexId,
     getRuntime: (...args) => runtimeApiRef.current.getRuntime?.(...args),
-    isDefaultConversationName,
     isTaskActuallyActive,
     latestContextUsageFromTasks,
     mutateRuntime: (...args) => runtimeApiRef.current.mutateRuntime?.(...args),
@@ -751,12 +751,11 @@ export function AppShell() {
     taskRuntimeEventCacheRef,
     taskRuntimeFetchesRef,
     taskUpdatedTimestamp,
-    titleFromTaskText,
     updateTaskRuntimeState: (...args) => runtimeApiRef.current.updateTaskRuntimeState?.(...args),
     userCancelledTaskIdsRef,
     viewModeRef,
     workspaceState,
-    workspaceStateWithConversationDetail: workspaceRuntime.workspaceStateWithConversationDetail,
+    workspaceStateWithConversationDetail,
   });
 
   draftApiRef.current = { materializeDraftConversationForSend };
@@ -880,7 +879,7 @@ export function AppShell() {
     userCancelledTaskIdsRef,
     viewModeRef,
     workspaceState,
-    workspaceStateWithConversationDetail: workspaceRuntime.workspaceStateWithConversationDetail,
+    workspaceStateWithConversationDetail,
   });
 
   activationApiRef.current = {
@@ -903,7 +902,7 @@ export function AppShell() {
 
   useConversationBootstrap({
     activationApiRef,
-    buildWorkspaceStateFromProjects: workspaceRuntime.buildWorkspaceStateFromProjects,
+    buildWorkspaceStateFromProjects,
     ownerIdRef,
     setConversationError,
     setConversationReady,
@@ -976,7 +975,14 @@ export function AppShell() {
     parseResponseMessage,
     payloadForCustomWorkflow,
     setActiveTab,
-    setAgentCatalog,
+    setAgentCatalog: () => {
+      // Settings responses are not workspace-scoped runtime catalogs. Re-read
+      // the current catalog instead of publishing old-workspace Skill metadata.
+      if (agentContextKeyRef.current !== agentContextKey) return;
+      setAgentCatalog(staleAgentCatalog);
+      setAgentLoadState({ key: agentContextKey, status: 'loading', error: '' });
+      setAgentRetry((attempt) => attempt + 1);
+    },
     setAgentSettingsDraft,
     setSettingsMode,
     setLlmSettingsDraft,
@@ -1027,7 +1033,7 @@ export function AppShell() {
     executeWorkflowNodeRerun,
     applyScheduledEvent,
   } = createTaskStreamHandlers({
-    API_BASE,
+    API_BASE, providerOptions: llmProviderOptions,
     CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
     STREAM_EVENT_BATCH_MS,
     STREAM_IMMEDIATE_EVENT_TYPES,
@@ -1102,7 +1108,7 @@ export function AppShell() {
     handleRetryTask,
     handleForkMessage,
   } = createConversationHandlers({
-    executeQuest, workflowById, workflowSettingsDraft, setSelectedWorkflowId,
+    executeQuest, workflowById, workflowSettingsDraft, setSelectedWorkflowId, configSync, providerOptions: llmProviderOptions,
     API_BASE,
     DEFAULT_SESSION_NAME,
     activateConversationDetail,
@@ -1110,7 +1116,7 @@ export function AppShell() {
     applyConversationSnapshot,
     apiFetch,
     buildApiHeaders,
-    replaceWorkspaceModeFromProjects: workspaceRuntime.replaceWorkspaceModeFromProjects,
+    replaceWorkspaceModeFromProjects,
     conversationReorderChainsRef,
     conversationReorderVersionsRef,
     projectReorderChainRef,
@@ -1148,7 +1154,7 @@ export function AppShell() {
     taskUpdatedTimestamp,
     viewModeRef,
     workspaceState,
-    workspaceStateWithConversationDetail: workspaceRuntime.workspaceStateWithConversationDetail,
+    workspaceStateWithConversationDetail,
   });
   // 列表轮询发现当前会话消失：和处理恢复 404 的是同一条路（换目标或开空白对话）。
   directorySelectionApiRef.current.handleActiveConversationRemoved = handleConversationRemoved;
@@ -1159,7 +1165,7 @@ export function AppShell() {
     draftConversationRef,
     enabled: conversationReady && !settingsMode,
     executionMode: viewMode === 'chat' ? 'chat' : 'bot',
-    replaceWorkspaceModeFromProjects: workspaceRuntime.replaceWorkspaceModeFromProjects,
+    replaceWorkspaceModeFromProjects,
     setWorkspaceState,
   });
   const quests = useMemo(() => {
@@ -1187,7 +1193,7 @@ export function AppShell() {
     startDeploy,
     handleDeploy,
   } = createDeployHandlers({
-    uploadChatImage,
+    uploadChatImage, providerOptions: llmProviderOptions,
     APP_DEFAULT_AGENT_OPTIONS,
     applyTerminalTaskState,
     busy,
@@ -1195,7 +1201,7 @@ export function AppShell() {
     cancelActiveTask,
     queueTaskInput,
     chatFinalizedTaskIdsRef,
-    conversationDetailToWorkspaceConversation: workspaceRuntime.conversationDetailToWorkspaceConversation,
+    conversationDetailToWorkspaceConversation,
     conversationError,
     conversationId,
     conversationIdRef,
@@ -1235,7 +1241,6 @@ export function AppShell() {
     taskHasAssistantStreamContent,
     taskUpdatedTimestamp,
     titleFromTaskText,
-    updateConversationTitle,
     updateTaskById,
     updateTaskRuntimeState,
     userCancelledTaskIdsRef,
@@ -1243,7 +1248,7 @@ export function AppShell() {
     viewModeRef,
     workflowSettingsDraft,
     workspaceState,
-    workspaceStateWithConversationDetail: workspaceRuntime.workspaceStateWithConversationDetail,
+    workspaceStateWithConversationDetail,
     workspaceStateWithTouchedConversation,
   });
   deployApiRef.current = {
@@ -1422,7 +1427,7 @@ export function AppShell() {
   const currentWorkflowTask = currentTask?.executionMode === 'bot' ? currentTask : null;
   completionViewRef.current.chatVisible = activeTab === 'dashboard' && !settingsMode && viewMode === 'chat' && conversationReady;
   useViewedTaskCompletionNotice({ task: currentWorkflowTask, conversationId, visible: activeTab === 'dashboard' && !settingsMode && viewMode !== 'chat' && conversationReady, windowFocused, notices: taskCompletionNotices, setNotices: setTaskCompletionNotices });
-  const nodeConfigSelection = useNodeRuntimeConfigs(botRunConfigStorageKey, selectedWorkflow, currentWorkflowTask?.nodeRuntimeConfigs, currentWorkflowTask?.taskId);
+  const nodeConfigSelection = useNodeRuntimeConfigs(botRunConfigStorageKey, selectedWorkflow, currentWorkflowTask?.nodeRuntimeConfigs, currentWorkflowTask?.taskId, llmProviderOptions);
   const botNodeConfigs = nodeConfigSelection.configs;
   const handleSelectWorkflowTask = createWorkflowTaskSelectionHandler({
     getRuntime, setTaskCompletionNotices, setViewedWorkflowTask, ownerIdRef,
@@ -1723,18 +1728,10 @@ export function AppShell() {
     draft: Boolean(draftConversationRef.current),
     error: conversationError,
   });
-  const lockedAgentId = currentConversation?.agentId
-    || currentConversation?.tasks?.find((task) => task?.requestedAgentId)?.requestedAgentId
-    || '';
-  // 锁的判据只有一份（见 conversations/model/agent-binding.js）：发过消息就锁，
-  // 只是传过文件（解析文档）不算。还只在本机的那一笔（本地 pending：排队 / 失败 /
-  // 取消）同样不算——服务端一个字都没收到：会话行上的乐观写入要被 sentTaskSummaries
-  // 摘掉，时间线上它那一行用户气泡带 unaccepted 标记。
-  const agentSelectionLocked = conversationHasSentMessage({
-    tasks: sentTaskSummaries(currentConversation?.tasks, taskRuntimeState.pendingTask),
-    hasUserTurn: chatMessages.some((message) => message.role === 'user' && !message.unaccepted),
+  const chatAgentSelection = useConversationAgentSelection({
+    conversation: currentConversation, options: agentOptions, messages: chatMessages,
+    pendingTask: taskRuntimeState.pendingTask, running: currentConversationRunning, queued: queuedDeploy, setWorkspaceState,
   });
-  const agentLockedReason = agentSelectionLocked ? 'Cannot change agent for this conversation.' : '';
   const submitPending = Boolean(queuedDeploy);
 
   const composerDisabled = uploadState.active
@@ -1761,7 +1758,7 @@ export function AppShell() {
 
   const scheduleRuntime = createScheduledRuntimeHandlers({ applyScheduledEvent, ensureConversationRuntime, restoreLatestTaskRuntime, flushRuntimeTasksToWorkspace, getRuntime, setRuntimeBusy, isTaskActuallyActive });
   return (
-    <SchedulesProvider currentConversationId={conversationId} ensureConversation={createScheduleBinding(materializeDraftConversationForSend, conversationIdRef)} onRuntimeEvent={scheduleRuntime.event} onRecover={scheduleRuntime.recover}>
+    <SchedulesProvider configSync={configSync} currentConversationId={conversationId} ensureConversation={createScheduleBinding(materializeDraftConversationForSend, conversationIdRef)} onRuntimeEvent={scheduleRuntime.event} onRecover={scheduleRuntime.recover}>
     <div className="app-shell">
       <MetalFxRuntimeKeeper />
       <TopBar
@@ -1871,7 +1868,7 @@ export function AppShell() {
               onReorderConversations={handleReorderConversations}
               onReorderProjects={handleReorderProjects}
               onOpenTaskReport={handleOpenTaskReport}
-              onRetryTask={(task) => handleRetryTask(task, null, sidebarRetryRunConfig(task))}
+              onRetryTask={(task) => handleRetryTask(task)}
             />
             {viewMode === 'chat' ? (
               <div className="app-chat-stage">
@@ -1890,6 +1887,7 @@ export function AppShell() {
 	                    submitPending={submitPending}
 	                    onSend={handleDeploy}
                     onGoalCommand={handleGoalCommand}
+                    onToast={showToast}
                     onStop={handleStop}
                     onSelectFile={(file, selectedAgentId) => { handleAttachmentSelect(file, selectedAgentId, 'chat').catch((error) => console.error('attachment upload failed', error)); }}
                     onClearFile={handleAttachmentClear}
@@ -1901,12 +1899,11 @@ export function AppShell() {
                     homePath={window.haish?.homePath || ''}
                     activeTaskText={activeTaskText}
                     providerOptions={llmProviderOptions}
-                    agentOptions={agentOptions}
+                    {...chatAgentSelection}
                     defaultAgentId={defaultAgentId}
                     agentLoading={agentLoading}
-                    agentLocked={agentSelectionLocked}
-                    agentLockedReason={agentLockedReason}
-                    lockedAgentId={lockedAgentId}
+                    agentError={agentState.error}
+                    onAgentRetry={() => setAgentRetry((attempt) => attempt + 1)}
                     selectionStorageKey={runConfigStorageKey}
                     draft={chatDraft}
 	                    onDraftChange={setChatDraft}
@@ -1937,7 +1934,7 @@ export function AppShell() {
                     onRetry={(nodeId) => {
                       if (!currentWorkflowTask) return;
                       setViewedWorkflowTask(null);
-                      executeWorkflowNodeRerun(currentWorkflowTask, nodeId, selectedWorkflow?.nodes?.find((node) => node.id === nodeId)?.type === 'agent' ? nodeRuntimeConfigRequest(botNodeConfigs[nodeId]) : null).catch((error) => {
+                      executeWorkflowNodeRerun(currentWorkflowTask, nodeId, selectedWorkflow?.nodes?.find((node) => node.id === nodeId)?.type === 'agent' ? nodeRuntimeConfigRequest(botNodeConfigs[nodeId], llmProviderOptions) : null).catch((error) => {
                         console.error('workflow node rerun failed', error);
                         showToast('error', String(error?.message || error));
                       });
@@ -1947,11 +1944,12 @@ export function AppShell() {
                       approvalDraft={Boolean(draftConversationRef.current && !draftConversationRef.current.serverCreated)}
                       ensureApprovalConversation={ensureServerConversationForActiveDraft}
                       executionMode="bot"
+                      onToast={showToast}
                       scheduleNodeRuntimeConfigs={nodeConfigSelection.conversationConfigs} onRestoreNodeConfigs={nodeConfigSelection.restore}
                       scopeId={draftConversationRef.current?.composerScopeId || conversationId}
                       draft={chatDraft}
                       onDraftChange={setChatDraft}
-                      onSend={(...args) => handleDeploy(...args, botNodeConfigs)}
+                      onSend={(...args) => handleDeploy(...args.slice(0, 9), args[9] ?? botNodeConfigs)}
                       onStop={handleStop}
                       activeTaskText={activeTaskText}
                       running={currentConversationRunning}

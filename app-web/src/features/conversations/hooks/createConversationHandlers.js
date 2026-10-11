@@ -6,7 +6,6 @@ import { createGoalCommandHandler } from './createGoalCommandHandler.js';
 export function createConversationHandlers(ctx) {
   const {
     API_BASE,
-    DEFAULT_SESSION_NAME,
     activateConversationDetail,
     activateConversationShell,
     applyConversationSnapshot,
@@ -606,7 +605,7 @@ export function createConversationHandlers(ctx) {
         name: project.name,
         workspacePath: project.workspace_path,
         workspaceLabel: project.name,
-      }, DEFAULT_SESSION_NAME);
+      });
       if (!isConversationActivationCurrent(requestSeq)) return;
       await activateConversationDetail(detail, { restoreLatest: false });
       showToast('success', `local workspace set: ${pickResult.project.name}`);
@@ -616,7 +615,6 @@ export function createConversationHandlers(ctx) {
       method: 'POST',
       headers: buildApiHeaders(),
       body: JSON.stringify({
-        title: DEFAULT_SESSION_NAME,
         execution_mode: viewModeRef.current === 'chat' ? 'chat' : 'bot',
       }),
     });
@@ -665,7 +663,7 @@ export function createConversationHandlers(ctx) {
       conversation.id !== nextConversationId && conversation.executionMode === executionMode
     ));
     if (!fallbackConversation) {
-      const detail = await createConversationInProject(project, project.type === 'system' ? DEFAULT_SESSION_NAME : 'New Conversation');
+      const detail = await createConversationInProject(project);
       setWorkspaceState((state) => normalizeWorkspaceOrdering({
         ...state,
         projects: state.projects.map((item) => item.id === projectId ? {
@@ -741,7 +739,7 @@ export function createConversationHandlers(ctx) {
       const detail = await fetchConversationDetail(fallbackConversation.id);
       await activateConversationDetail(detail);
     } else {
-      const detail = await createConversationInProject(defaultProject, DEFAULT_SESSION_NAME);
+      const detail = await createConversationInProject(defaultProject);
       await activateConversationDetail(detail, { restoreLatest: false });
     }
   }
@@ -858,6 +856,14 @@ export function createConversationHandlers(ctx) {
   async function handleRetryTask(task, editedMessage = null, runConfig = null) {
     const targetConversationId = task?.conversationId || task?.conversation_id;
     if (!targetConversationId) throw new Error('Conversation is unavailable. Your changes have not been sent.');
+    if (task?.executionMode !== 'bot') {
+      await ctx.configSync?.waitForSave(targetConversationId);
+      if (!runConfig) {
+        const saved = await ctx.configSync?.load(targetConversationId);
+        runConfig = saved && { provider: saved.provider, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id };
+      }
+      if (!runConfig?.provider || !runConfig.modelId || !runConfig.agentId) throw new Error('Save the current Agent, provider and model selection before retrying.');
+    }
     if ((task?.userMessageId || task?.user_message_id) && executeQuest) {
       if (!canStartDeployForConversation(targetConversationId)) throw new Error('Conversation is still loading. Your changes have not been sent.');
       const source = getRuntime(targetConversationId)?.taskRuntimeState?.tasksById?.[task.taskId || task.task_id || task.id] || task;
@@ -885,15 +891,16 @@ export function createConversationHandlers(ctx) {
     setViewMode(restoredMode);
     const selectionId = task?.executionMode === 'bot'
       ? task?.requestedWorkflowId
-      : task?.requestedAgentId;
+      : runConfig?.agentId;
     const request = buildDeployRequest(
       task?.title || '',
       task?.attachment || null,
-      runConfig?.modelId || task?.requestedModelId || '',
-      runConfig?.reasoningEffort || task?.requestedReasoningEffort || 'high',
+      task?.executionMode === 'bot' ? (runConfig?.modelId || task?.requestedModelId || '') : runConfig.modelId,
+      task?.executionMode === 'bot' ? (runConfig && Object.hasOwn(runConfig, 'reasoningEffort') ? runConfig.reasoningEffort : task?.requestedReasoningEffort ?? null) : runConfig.reasoningEffort,
       task?.imageAttachments || [],
       selectionId,
-      runConfig?.provider || task?.requestedProvider || '',
+      task?.executionMode === 'bot' ? (runConfig?.provider || task?.requestedProvider || '') : runConfig.provider,
+      task?.displayText || task?.title || '', task?.annotations || [], task?.nodeRuntimeConfigs || {},
     );
     request.targetConversationId = targetConversationId;
     if (canStartDeployForConversation(targetConversationId)) startDeploy(request, targetConversationId);

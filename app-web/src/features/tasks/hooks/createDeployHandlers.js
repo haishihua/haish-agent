@@ -1,3 +1,5 @@
+import { executionConfigError } from '../../workflow/model/execution-config.js';
+
 export function resolveDeployTargetConversationId({
   draftConversation,
   selectedConversationId,
@@ -50,7 +52,6 @@ export function createDeployHandlers(ctx) {
     showToast,
     taskUpdatedTimestamp,
     titleFromTaskText,
-    updateConversationTitle,
     updateTaskById,
     updateTaskRuntimeState,
     uploadChatImage,
@@ -317,7 +318,7 @@ export function createDeployHandlers(ctx) {
       pendingTask.workflowSnapshot = [...workflows.presets, ...workflows.custom]
         .find((item) => item.workflow_id === pendingTask.requestedWorkflowId) || null;
     }
-    pendingTask.requestedReasoningEffort = request.reasoningEffort || 'high';
+    pendingTask.requestedReasoningEffort = request.reasoningEffort ?? null;
     pendingTask.requestedProvider = request.providerRequest || '';
     pendingTask.originViewMode = viewModeRef.current || viewMode;
     request.pendingTask = pendingTask;
@@ -371,7 +372,16 @@ export function createDeployHandlers(ctx) {
     return !targetConversationId || activeConversationId === targetConversationId;
   }
 
+  function requestConfigError(request) {
+    const workflows = request.executionMode === 'bot' ? normalizeWorkflowSettings(workflowSettingsDraft) : { presets: [], custom: [] };
+    return executionConfigError({ executionMode: request.executionMode, provider: request.providerRequest, modelId: request.modelId,
+      workflow: [...workflows.presets, ...workflows.custom].find((item) => item.workflow_id === request.workflowId),
+      nodeRuntimeConfigs: request.nodeRuntimeConfigs, providerOptions: ctx.providerOptions || [] });
+  }
+
   function startDeploy(request, deployConvId, seedDetail = null) {
+    const error = requestConfigError(request);
+    if (error) { showToast('error', error); return false; }
     if (!deployConvId) return;
     const text = request.text;
     const pendingTask = preparePendingTask(request);
@@ -392,7 +402,7 @@ export function createDeployHandlers(ctx) {
     const activeTaskIdBeforeDeploy = runtime.activeTaskId
       || deployTaskState.activeTaskId
       || null;
-    const shouldUpdateConversationTitle = Boolean(
+    const shouldShowTaskPlaceholder = Boolean(
       nextConversationTitle
       && currentConversation
       && isDefaultConversationName(currentConversation.name)
@@ -420,19 +430,12 @@ export function createDeployHandlers(ctx) {
         agentId: pendingTask.requestedAgentId || undefined,
         // No explicit `expanded`: the touched conversation becomes active and
         // withDefaultExpansion auto-expands the active conversation with tasks.
-        name: shouldUpdateConversationTitle ? nextConversationTitle : undefined,
-        title: shouldUpdateConversationTitle ? nextConversationTitle : undefined,
+        name: shouldShowTaskPlaceholder ? nextConversationTitle : undefined,
+        title: shouldShowTaskPlaceholder ? nextConversationTitle : undefined,
       }, isSelected);
     });
-    if (shouldUpdateConversationTitle) {
-      updateConversationTitle(deployConvId, nextConversationTitle)
-        .then((detail) => {
-          if (detail) {
-            setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, false));
-          }
-        })
-        .catch((error) => console.warn('conversation title update skipped:', error));
-    }
+    // Optimistic title above is local display only. The backend persists the
+    // first-task placeholder; PATCHing here would incorrectly mark a manual title.
     updateTaskRuntimeState((state) => ({
       ...state,
       pendingTask,
@@ -570,6 +573,8 @@ export function createDeployHandlers(ctx) {
           return false;
         });
     }
+    const configError = requestConfigError(request);
+    if (configError) { showToast('error', configError); return false; }
     // First send on a local draft: create the server conversation, insert the
     // sidebar record, then continue the normal deploy path.
     if (draftConversationRef.current) {

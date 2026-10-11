@@ -5,9 +5,9 @@ import fs from 'node:fs';
 import { conversationHasSentMessage, sentTaskSummaries } from '../../../src/features/conversations/model/agent-binding.js';
 import { createDeployHandlers } from '../../../src/features/tasks/hooks/createDeployHandlers.js';
 
-test('a conversation that has sent a message locks the agent', () => {
+test('accepted history requires an Agent-switch impact notice, not a permanent lock', () => {
   assert.equal(conversationHasSentMessage({ tasks: [{ taskId: 'task-1' }] }), true);
-  // 按发送那一刻就锁：本地已经渲染出这一轮的用户消息，不用等服务端回话。
+  // 已接受的用户轮次用于影响提示；锁定只看运行/排队状态。
   assert.equal(conversationHasSentMessage({ tasks: [], hasUserTurn: true }), true);
 });
 
@@ -35,32 +35,26 @@ test('a turn the server never accepted does not count as a sent message', () => 
   assert.deepEqual(sentTaskSummaries(null, pendingTask), []);
 });
 
-test('the time line only locks on turns the server accepted', () => {
+test('the impact notice only counts turns the server accepted', () => {
   const source = fs.readFileSync(
-    new URL('../../../src/features/app/AppShell.jsx', import.meta.url),
+    new URL('../../../src/features/conversations/hooks/useConversationAgentSelection.js', import.meta.url),
     'utf8',
   );
-  // 本地 pending 的用户气泡带 unaccepted 标记，锁的判据跳过它。
-  assert.match(source, /unaccepted: true,/);
+  // Local unaccepted turns do not require the Agent-switch notice.
   assert.match(
     source,
-    /hasUserTurn: chatMessages\.some\(\(message\) => message\.role === 'user' && !message\.unaccepted\)/,
+    /hasUserTurn: messages\.some\(\(message\) => message\.role === 'user' && !message\.unaccepted\)/,
   );
   assert.match(
     source,
-    /tasks: sentTaskSummaries\(currentConversation\?\.tasks, taskRuntimeState\.pendingTask\)/,
+    /tasks: sentTaskSummaries\(conversation\?\.tasks, pendingTask\)/,
   );
 });
 
-test('the agent lock reads sent messages, not the optimistic agentId write', () => {
-  const source = fs.readFileSync(
-    new URL('../../../src/features/app/AppShell.jsx', import.meta.url),
-    'utf8',
-  );
-  assert.match(source, /const agentSelectionLocked = conversationHasSentMessage\(\{/);
-  // 发送时乐观写进会话行的 agentId 没被服务端确认，不能拿来锁（发送失败、会话已删时
-  // 它会留下一个假的「已绑定」，就是那次「没发消息却改不了 agent」的来源）。
-  assert.doesNotMatch(source, /agentSelectionLocked = Boolean\(lockedAgentId/);
+test('the picker only locks during live execution or submission, not after prior messages', () => {
+  const source = fs.readFileSync(new URL('../../../src/features/conversations/hooks/useConversationAgentSelection.js', import.meta.url), 'utf8');
+  assert.match(source, /const locked = running \|\| Boolean\(queued\);/);
+  assert.match(source, /hasSentMessage: conversationHasSentMessage/);
 });
 
 test('a message that never left the machine cannot lock the picker', () => {
@@ -95,7 +89,7 @@ test('a message that never left the machine cannot lock the picker', () => {
 
   const tasks = state.projects[0].conversations[0].tasks;
   assert.deepEqual(tasks, []);
-  // 摘掉之后，锁的判据回到「发过消息」为假——选择器能用。
+  // 没有服务端接受的历史时，不展示切换影响提示。
   assert.equal(conversationHasSentMessage({ tasks }), false);
   // 失败本身照旧留在运行时里（时间线/重试还要用它）。
   assert.equal(runtimeState.pendingTask.status, 'failed');

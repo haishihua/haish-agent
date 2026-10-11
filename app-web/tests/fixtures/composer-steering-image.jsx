@@ -20,6 +20,8 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ChatComposer } from '../../src/features/chat/components/ChatComposer.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
+import { SchedulesContext } from '../../src/features/schedules/hooks/useSchedules.js';
+import { createRunConfigSync } from '../../src/features/conversations/model/run-config-sync.js';
 import '../../styles/base.css';
 import '../../styles/chat.css';
 
@@ -55,6 +57,11 @@ const PROVIDER_OPTIONS = [
 ];
 const AGENT_OPTIONS = [{ id: 'simple-agent', label: 'Simple Agent' }];
 const SCOPE_ID = 'steering-image';
+let savedConfig = { execution_mode: 'chat', agent_id: 'simple-agent', provider: 'openai', model_id: 'gpt-4o-mini', reasoning_effort: null, use_history: true };
+const configSync = createRunConfigSync({
+  get: async () => savedConfig,
+  save: async (_id, config) => { savedConfig = structuredClone(config); },
+});
 
 // 图片草稿的 store 就是 AppShell → ChatPanel(imageDrafts) → ChatComposer(imageStore) 传下来的
 // 那一份（scopeId → 草稿数组）。传了它，拖拽/粘贴附件才走 attachImageFile。
@@ -106,7 +113,9 @@ function Harness() {
 
 createRoot(document.getElementById('root')).render(
   <AppTooltipProvider searchRoot={document.body}>
-    <Harness />
+    <SchedulesContext.Provider value={{ currentConversationId: SCOPE_ID, configSync }}>
+      <Harness />
+    </SchedulesContext.Provider>
   </AppTooltipProvider>,
 );
 

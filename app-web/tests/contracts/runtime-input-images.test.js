@@ -36,11 +36,11 @@ test('an accepted steering send consumes the composer image drafts', () => {
   // 而这个出口只清正文，图片草稿留在 store 里继续渲染 → 截图里「图片还在输入框留了一份」。
   assert.match(
     composerSource,
-    /const clearComposerAfterSend = \(\) => \{\n\s+setComposerImages\(\[\]\);/,
-    '清空出口的第一件事就是丢掉图片草稿',
+    /const clearComposerAfterSend = \(\) => \{\n\s+setComposerImages\(\(previous\) => previous\.filter\(\(image\) => !composerImages\.some/,
+    '清空出口只消费本次发送的图片，等待期间新添加的图片保留',
   );
   // 两条发送路径共用这一个出口，谁都不许再自己清一遍图片。
-  assert.equal((composerSource.match(/setComposerImages\(\[\]\)/g) || []).length, 1, '图片草稿的清空只有一份实现');
+  assert.equal((composerSource.match(/previous\.filter\(\(image\) => !composerImages\.some/g) || []).length, 1, '图片草稿的消费只有一份实现');
   assert.match(composerSource, /if \(accepted !== false\) clearComposerAfterSend\(\);/);
   assert.match(composerSource, /clearComposerAfterSend\(\);\n\s+onClearFile\?\.\(\);/);
   // 清空只丢 store 里的条目：刚发出的那条消息的缩略图还要用同一个 blob URL，不能 revoke。

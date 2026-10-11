@@ -1,5 +1,6 @@
 import React from 'react';
 import { useProviderModels } from '../../chat/hooks/useRunConfig.js';
+import { normalizeReasoningEffort } from '../../chat/model/run-catalog.js';
 import { nodeReasoningOptions } from '../model/node-reasoning-options.js';
 import { runtimeProviderDisplay } from '../model/runtime-provider-display.js';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
@@ -28,7 +29,8 @@ export function WorkflowRuntimeConfig({ value = {}, providerOptions = [], readOn
   const provider = display.selected;
   const models = useProviderModels(provider);
   const efforts = nodeReasoningOptions(value.model_id || provider?.defaultModelId || '');
-  const patch = (next) => onChange?.({ ...value, ...next });
+  const effort = normalizeReasoningEffort(value.reasoning_effort, provider?.defaultReasoningEffort);
+  const patch = (next) => onChange?.({ ...value, reasoning_effort: effort, ...next });
   return (
     <section className="workflow-runtime-config" aria-label="Model Configuration">
       <div className="workflow-runtime-config-heading">
@@ -38,7 +40,7 @@ export function WorkflowRuntimeConfig({ value = {}, providerOptions = [], readOn
       </div>
       <ConfigSelect label="Model Provider" value={value.provider || ''} disabled={readOnly} onChange={(next) => {
         const selected = providerOptions.find((item) => (item.requestProvider || item.provider || item.id) === next);
-        onChange?.(selected ? { provider: next, model_id: selected.defaultModelId || '', ...(value.reasoning_effort ? { reasoning_effort: value.reasoning_effort } : {}) } : {});
+        onChange?.(selected ? { provider: next, model_id: selected.defaultModelId || '', reasoning_effort: normalizeReasoningEffort(selected.defaultReasoningEffort) } : {});
       }} options={{ ariaLabel: 'Node provider', placeholder: 'Select provider', items: [
         ...(value.provider && !provider ? [{ id: value.provider, label: display.label, provider: display.provider }] : []),
         ...providerOptions.map((item) => ({ id: item.requestProvider || item.provider || item.id, label: item.label || item.id, provider: item.provider || 'custom' })),
@@ -47,10 +49,7 @@ export function WorkflowRuntimeConfig({ value = {}, providerOptions = [], readOn
         ...(value.model_id && !models.options.some((item) => item.id === value.model_id) ? [{ id: value.model_id, label: value.model_id, provider: value.provider ? display.provider : null }] : []),
         ...models.options.map((item) => ({ id: item.id, label: item.label || item.id, provider: display.provider })),
       ] }} />
-      <ConfigSelect label="Reasoning effort" value={value.reasoning_effort || ''} disabled={readOnly} onChange={(next) => patch({ reasoning_effort: next })} options={{ ariaLabel: 'Node thinking level', placeholder: 'Select effort', items: [
-        ...(value.reasoning_effort && !efforts.some((item) => item.id === value.reasoning_effort) ? [{ id: value.reasoning_effort, label: `Unsupported: ${value.reasoning_effort}` }] : []),
-        ...efforts,
-      ] }} />
+      <ConfigSelect label="Reasoning effort" value={effort} disabled={readOnly} onChange={(next) => patch({ reasoning_effort: next })} options={{ ariaLabel: 'Node thinking level', placeholder: 'Select thinking level', items: efforts }} />
     </section>
   );
 }

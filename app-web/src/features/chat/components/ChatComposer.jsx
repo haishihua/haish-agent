@@ -3,6 +3,7 @@ import { ArrowUp, BookOpen, Clock, CornerDownLeft, Square, Target } from 'lucide
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
 import { ContextTaskChip } from '../../../shared/ui/ContextTaskChip.jsx';
+import { ConfigSaveStatus } from './ConfigSaveStatus.jsx';
 import { firstPastedDocument } from '../model/document-paste.js';
 import { composePathReferenceDraft, splitPathReferenceDraft, transferredLocalPaths } from '../model/path-references.js';
 import {
@@ -17,6 +18,8 @@ import {
   useProviderModels,
 } from '../hooks/useRunConfig.js';
 import { DEFAULT_AGENT_OPTIONS } from '../model/run-catalog.js';
+import { executionConfigError } from '../../workflow/model/execution-config.js';
+import { nodeRuntimeConfigsForWorkflow } from '../../workflow/model/node-runtime-config.js';
 import {
   ApprovalModePicker,
   ModelPicker,
@@ -81,12 +84,16 @@ export function ChatComposer({
   agentOptions,
   defaultAgentId,
   agentLoading = false,
+  agentError = '',
+  onAgentRetry,
   agentLocked = false,
   agentLockedReason = '',
   lockedAgentId = '',
+  hasSentMessage = false,
   selectionStorageKey = '',
   onRunConfigChange,
   onAgentChange,
+  onToast,
   contextUsage,
   inputRef: inputRefProp,
   scheduleNodeRuntimeConfigs,
@@ -112,19 +119,34 @@ export function ChatComposer({
     scopeId, draft: draftProp !== undefined ? draftProp : localDraft,
     onDraftChange: draftProp !== undefined ? onDraftChangeProp : setLocalDraft, history,
   });
+  const currentDraftRef = React.useRef(draft);
+  currentDraftRef.current = draft;
   const localInputRef = React.useRef(null);
   const inputRef = inputRefProp || localInputRef;
   const suppressSubmitUntilRef = React.useRef(0);
+  const submissionOwnerRef = React.useRef({ scopeId });
+  if (submissionOwnerRef.current.scopeId !== scopeId) submissionOwnerRef.current = { scopeId };
+  const submissionOwner = submissionOwnerRef.current;
+  const submissionRef = React.useRef(null);
+  const [waitingOwner, setWaitingOwner] = React.useState(null);
+  const waitingForSend = waitingOwner === submissionOwner;
+  const submissionContextRef = React.useRef(null);
+  submissionContextRef.current = { owner: submissionOwner, running, disabled, submitPending };
+  const submissionMountedRef = React.useRef(false);
+  React.useEffect(() => {
+    submissionMountedRef.current = true;
+    return () => { submissionMountedRef.current = false; };
+  }, []);
   const [pathNotice, setPathNotice] = React.useState('');
   React.useEffect(() => setPathNotice(''), [scopeId, draft]);
 
-  const { providerId, setProviderId, modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort, restoreConfig, serverSelection } = usePersistentRunConfig({
+  const { providerId, setProviderId, modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort, restoreConfig } = usePersistentRunConfig({
     selectionStorageKey,
     providerOptions: resolvedProviderOptions,
     agentOptions: resolvedAgentOptions,
     defaultAgentId: resolvedDefaultAgentId,
   });
-  const effectiveAgentId = agentLocked && lockedAgentId ? lockedAgentId : agentId;
+  const effectiveAgentId = agentId;
   const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
   const resolvedSkills = currentSelection?.skills || EMPTY_SKILLS;
   const selectedSkill = resolvedSkills.find((skill) => skill.name === selectedSkillName) || null;
@@ -143,40 +165,44 @@ export function ChatComposer({
     skillMenuRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [skillMenuIndex, skillMenuOpen]);
   const canUploadDocuments = currentSelection?.canUploadDocuments === true;
-  const currentProvider = resolvedProviderOptions.find((item) => item.id === providerId) || (serverSelection ? null : resolvedProviderOptions[0]);
+  const currentProvider = resolvedProviderOptions.find((item) => item.id === providerId);
   const providerModels = useProviderModels(executionMode === 'bot' ? null : currentProvider);
   const activeModelOptions = providerModels.options;
   const modelLoading = providerModels.loading;
   const providerRequest = currentProvider?.requestProvider || currentProvider?.provider || providerId || '';
   const providerConfigured = Boolean(currentProvider && providerRequest);
-  const sendModelId = serverSelection ? modelId : activeModelOptions.some((item) => item.id === modelId)
-    ? modelId
-    : (providerModels.defaultModelId || currentProvider?.defaultModelId || modelId);
+  const sendModelId = modelId;
+  const modelConfigError = executionConfigError({ executionMode, provider: executionMode === 'bot' ? null : providerRequest, modelId: executionMode === 'bot' ? null : sendModelId,
+    workflow: currentSelection, nodeRuntimeConfigs: scheduleNodeRuntimeConfigs || {}, providerOptions: resolvedProviderOptions });
+  const normalizedNodeConfigs = nodeRuntimeConfigsForWorkflow(currentSelection, scheduleNodeRuntimeConfigs || {}, resolvedProviderOptions);
 
-  const configError = useConversationRunConfig({
+  const configSync = useConversationRunConfig({
     sync: schedules?.configSync, conversationId: schedules?.currentConversationId, scopeId,
     loading: modelLoading,
-    config: { provider: providerRequest, model_id: modelId, reasoning_effort: reasoningEffort, execution_mode: executionMode, use_history: true,
-      ...(executionMode === 'bot' ? { workflow_id: effectiveAgentId, node_runtime_configs: scheduleNodeRuntimeConfigs || {} } : { agent_id: effectiveAgentId }) },
+    readOnly: running || submitPending || waitingForSend || goalPending || agentLocked,
+    initialAgentId: executionMode === 'chat' ? lockedAgentId : '',
+    hasSentMessage,
+    onAgentSaved: onAgentChange,
+    onToast,
+    config: { provider: executionMode === 'bot' ? null : providerRequest, model_id: executionMode === 'bot' ? null : modelId, reasoning_effort: executionMode === 'bot' ? null : reasoningEffort, execution_mode: executionMode, use_history: true,
+      ...(executionMode === 'bot' ? { workflow_id: effectiveAgentId, node_runtime_configs: normalizedNodeConfigs } : { agent_id: effectiveAgentId }) },
     restore: (config) => { restoreConfig(config); onRestoreNodeConfigs?.(config.node_runtime_configs || {}, config.workflow_id); },
   });
-  React.useEffect(() => { if (configError) setPathNotice(configError); }, [configError]);
+  async function changeAgent(nextId) {
+    if (nextId === effectiveAgentId) return;
+    try {
+      await configSync.changeAgent(nextId);
+    } catch { /* The hook reports switch failures through the shared toast. */ }
+  }
+  React.useEffect(() => { if (executionMode === 'bot') onAgentChange?.(effectiveAgentId); }, [effectiveAgentId, onAgentChange, executionMode]);
   React.useEffect(() => {
-    if (executionMode === 'bot' || modelLoading || serverSelection) return;
-    const nextModelId = activeModelOptions.some((item) => item.id === modelId)
-      ? modelId
-      : providerModels.defaultModelId;
-    if (nextModelId !== modelId) setModelId(nextModelId);
-  }, [activeModelOptions, modelId, modelLoading, providerModels.defaultModelId, setModelId, executionMode, serverSelection]);
-  React.useEffect(() => onAgentChange?.(effectiveAgentId), [effectiveAgentId, onAgentChange]);
-  React.useEffect(() => {
-    const modelConfigured = !modelLoading && activeModelOptions.some((item) => item.id === modelId);
+    const modelConfigured = !modelLoading && Boolean(modelId) && modelId !== 'auto';
     onRunConfigChange?.(
       providerConfigured && modelConfigured
-        ? { provider: providerRequest, modelId, reasoningEffort }
+        ? { provider: providerRequest, modelId, reasoningEffort, agentId: effectiveAgentId, ensureSaved: configSync.ensureSaved }
         : null,
     );
-  }, [activeModelOptions, modelId, modelLoading, onRunConfigChange, providerConfigured, providerRequest, reasoningEffort]);
+  });
 
   // The logical composer scope remains stable while a local draft receives its
   // server id, and changes only when the user actually switches conversations.
@@ -325,16 +351,17 @@ export function ChatComposer({
   const visibleContextRatio = usedTokens > 0 ? Math.max(contextRatio, 0.01) : 0;
   const contextTooltip = `${formatContextUsageLabel(usedTokens, totalTokens, { estimated: Boolean(contextUsage?.estimated) })}${contextUsage?.overLimit ? ' · Over limit' : ''}`;
   const contextSector = contextSectorPath(visibleContextRatio);
-  const runConfigReadOnly = running || submitPending || goalPending;
+  const runConfigReadOnly = running || submitPending || waitingForSend || goalPending || configSync.pending || !configSync.ready;
   const runConfigDisabled = !runConfigReadOnly && (disabled || submitPending);
+  const sendBlockedReason = ((!goal || goal.prompt) && modelConfigError)
+    || (currentSelection?.disabled ? 'This Agent is disabled. Select an enabled Agent before starting.' : '');
   // The send/stop metal ring is a state signal, not decoration: it lights up as
   // soon as the composer holds something sendable (typed text, images, or
   // annotation drafts) and keeps running while work is in flight. Gating on
   // `running || submitPending` alone left the button visually dead for the
   // whole time the user was typing — the ring only appeared after the send.
   const sendBeamActive = running || submitPending || hasComposerPayload;
-  const placeholder = executionMode === 'chat' && !providerConfigured ? 'Configure an LLM provider in Settings first...'
-    : submitPending ? 'Preparing conversation...'
+  const placeholder = submitPending ? 'Preparing conversation...'
       : uploading ? 'Document is processing. Please wait...'
         : disabled ? (disabledPlaceholder || idlePlaceholder)
           : running && allowRuntimeInput ? 'Add instructions while the assistant is working...'
@@ -382,9 +409,12 @@ export function ChatComposer({
   // 进了运行中的任务，图片如果留在这里，就是「同一张图还躺在输入框里等下一次误发」。
   // 只丢 store 里的条目、不 revoke blob URL：刚发出的那条消息的缩略图还要靠它。
   const clearComposerAfterSend = () => {
-    setComposerImages([]);
+    setComposerImages((previous) => previous.filter((image) => !composerImages.some((sent) => sent.id === image.id)));
     if (currentComposerScopeRef.current !== scopeId) return;
     onSent?.();
+    // The submitted payload is frozen at click; edits made while saving belong
+    // to the next draft, not to this send and must not be cleared on acceptance.
+    if (currentDraftRef.current !== draft) return;
     setSkillMenuDismissed(false);
     setGoalSelected(false);
     setDraft('');
@@ -396,7 +426,28 @@ export function ChatComposer({
   async function submit(e) {
     e?.preventDefault();
     e?.stopPropagation?.();
-    if (Date.now() < suppressSubmitUntilRef.current) return;
+    if (Date.now() < suppressSubmitUntilRef.current || submissionRef.current?.owner === submissionOwner) return;
+    if (disabled || submitPending || runtimeInputPending || goalPendingRef.current || !canSubmitPayload) return;
+    const operation = { owner: submissionOwner };
+    submissionRef.current = operation;
+    setWaitingOwner(submissionOwner);
+    try { await submitPayload(submissionOwner); } finally {
+      if (submissionRef.current === operation) {
+        submissionRef.current = null;
+        setWaitingOwner(null);
+      }
+    }
+  }
+
+  async function submitPayload(owner) {
+    if ((!running || goal) && (!goal || goal.prompt) && modelConfigError) return;
+    let savedConfig = null;
+    if ((!running && !goal) || goal?.prompt) {
+      try { savedConfig = await configSync.ensureSaved(); } catch { return; } // The save hook reports errors; keep the payload intact.
+      const current = submissionContextRef.current;
+      if (!submissionMountedRef.current || current.owner !== owner || current.disabled || current.submitPending || (!running && current.running)) return;
+      if (currentSelection?.disabled) return;
+    }
     if (skillSelectionPendingRef.current) return;
     if (goalPendingRef.current) return;
     const text = draft.trim();
@@ -411,11 +462,9 @@ export function ChatComposer({
       try {
         const accepted = await onGoalCommand({
           prompt: composePathReferenceDraft(goal.prompt, composerContent.references), attachment, images: readyImages,
-          runConfig: { provider: providerRequest, model_id: sendModelId, reasoning_effort: reasoningEffort },
+          runConfig: savedConfig || { provider: providerRequest, model_id: sendModelId, reasoning_effort: reasoningEffort },
         });
-        if (accepted !== false) {
-          // This callback is bound to the source conversation even after navigation.
-          setDraft('');
+        if (accepted !== false && submissionMountedRef.current && submissionOwnerRef.current === owner) {
           clearComposerAfterSend();
           onClearFile?.();
         }
@@ -447,14 +496,17 @@ export function ChatComposer({
       }
       return;
     }
-    if (executionMode === 'chat' && !providerConfigured) return;
-    if (executionMode === 'chat' && !sendModelId) return;
+    const savedError = savedConfig ? executionConfigError({ executionMode,
+      provider: savedConfig.provider, modelId: savedConfig.model_id, workflow: resolvedAgentOptions.find((item) => item.id === (savedConfig.workflow_id || savedConfig.agent_id)),
+      nodeRuntimeConfigs: savedConfig.node_runtime_configs || {}, providerOptions: resolvedProviderOptions }) : modelConfigError;
+    if (savedError) return;
     if (!resolvedAgentOptions.some((o) => o.id === effectiveAgentId)) return;
-    const sendResult = onSend?.(submittedText, attachment, executionMode === 'bot' ? null : sendModelId, executionMode === 'bot' ? null : reasoningEffort, readyImages, effectiveAgentId, executionMode === 'bot' ? null : providerRequest, text, prepared?.annotations || EMPTY_ANNOTATIONS);
+    if (currentComposerScopeRef.current !== scopeId) return;
+    const sendResult = onSend?.(submittedText, attachment, executionMode === 'bot' ? null : (savedConfig?.model_id || sendModelId), executionMode === 'bot' ? null : (savedConfig ? savedConfig.reasoning_effort : reasoningEffort), readyImages, (savedConfig?.workflow_id || savedConfig?.agent_id) || effectiveAgentId, executionMode === 'bot' ? null : (savedConfig?.provider || providerRequest), text, prepared?.annotations || EMPTY_ANNOTATIONS, executionMode === 'bot' ? savedConfig?.node_runtime_configs : undefined);
     // Local acceptance is synchronous: clear the composer in the same render as
     // its optimistic message. Only async send handlers need a separate wait.
     const accepted = sendResult && typeof sendResult.then === 'function' ? await sendResult : sendResult;
-    if (accepted === false) return;
+    if (accepted === false || !submissionMountedRef.current || submissionOwnerRef.current !== owner) return;
     clearComposerAfterSend();
     onClearFile?.();
   }
@@ -736,25 +788,30 @@ export function ChatComposer({
               </span>
             </button>
           </PortalTooltip> : null}
-          {executionMode === 'bot' ? <WorkflowPicker value={effectiveAgentId} options={resolvedAgentOptions} disabled={runConfigReadOnly || runConfigDisabled} onChange={setAgentId} /> : <ModelPicker
-            value={modelId}
-            reasoningEffort={reasoningEffort}
-            options={activeModelOptions}
-            onChange={setModelId}
-            onReasoningChange={setReasoningEffort}
-            disabled={runConfigDisabled}
-            readOnly={runConfigReadOnly}
-            loading={modelLoading}
-            providerValue={providerId}
-            providerOptions={resolvedProviderOptions}
-            onProviderChange={setProviderId}
-            agentValue={effectiveAgentId}
-            agentOptions={resolvedAgentOptions}
-            onAgentChange={setAgentId}
-            agentLoading={agentLoading}
-            agentLocked={agentLocked}
-            agentLockedReason={agentLockedReason}
-          />}
+          <div className="chat-config-control">
+            <ConfigSaveStatus key={scopeId} pending={configSync.pending} />
+            {executionMode === 'bot' ? <WorkflowPicker value={effectiveAgentId} options={resolvedAgentOptions} disabled={runConfigReadOnly || runConfigDisabled} onChange={setAgentId} /> : <ModelPicker
+              value={modelId}
+              reasoningEffort={reasoningEffort}
+              options={activeModelOptions}
+              onChange={setModelId}
+              onReasoningChange={setReasoningEffort}
+              disabled={runConfigDisabled}
+              readOnly={runConfigReadOnly}
+              loading={modelLoading}
+              providerValue={providerId}
+              providerOptions={resolvedProviderOptions}
+              onProviderChange={setProviderId}
+              agentValue={effectiveAgentId}
+              agentOptions={resolvedAgentOptions}
+              onAgentChange={changeAgent}
+              agentLoading={agentLoading}
+              agentError={agentError}
+              onAgentRetry={onAgentRetry}
+              agentLocked={agentLocked}
+              agentLockedReason={agentLockedReason}
+            />}
+          </div>
           {submitPending ? (
             <MetalActionEffect active={sendBeamActive}>
               <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Cancel pending request">
@@ -766,7 +823,7 @@ export function ChatComposer({
             // so Stop and Send never appear side by side. Sending clears the
             // draft and the button flips back to Stop.
             <MetalActionEffect active={sendBeamActive}>
-              <button type="submit" className="chat-send" disabled={disabled || runtimeInputPending || goalPending || !canSubmitPayload} aria-label={goal ? 'Run Goal Loop' : 'Add instruction'}>
+              <button type="submit" className="chat-send" disabled={disabled || waitingForSend || runtimeInputPending || goalPending || !canSubmitPayload} aria-label={goal ? 'Run Goal Loop' : 'Add instruction'}>
                 <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
               </button>
             </MetalActionEffect>
@@ -777,11 +834,15 @@ export function ChatComposer({
               </button>
             </MetalActionEffect>
           ) : (
-            <MetalActionEffect active={sendBeamActive}>
-              <button type="submit" className="chat-send" disabled={disabled || goalPending || !canSubmitPayload || (!goal && executionMode === 'chat' && (!providerConfigured || !sendModelId))} aria-label={goal ? 'Run Goal Loop' : 'Send'}>
-                <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
-              </button>
-            </MetalActionEffect>
+            <PortalTooltip text={sendBlockedReason} position="above">
+              <span className="chat-send-tooltip-trigger" tabIndex={sendBlockedReason ? 0 : undefined}>
+                <MetalActionEffect active={sendBeamActive}>
+                  <button type="submit" className="chat-send" disabled={disabled || waitingForSend || goalPending || !configSync.ready || currentSelection?.disabled || !canSubmitPayload || Boolean((!goal || goal.prompt) && modelConfigError)} aria-busy={waitingForSend} aria-label={goal ? 'Run Goal Loop' : 'Send'}>
+                    <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
+                  </button>
+                </MetalActionEffect>
+              </span>
+            </PortalTooltip>
           )}
         </div>
       </div>

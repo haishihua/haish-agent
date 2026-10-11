@@ -41,7 +41,7 @@ const compactedEvent = (overrides = {}) => ({
 
 // Exercise the public stream consumer with an offline realtime bridge, not a copied reducer.
 async function replayUsageEvents(events, { background = false } = {}) {
-  let task = { taskId: 'compaction-task', title: 'Continue', originViewMode: 'chat', eventLog: [] };
+  let task = { taskId: 'compaction-task', title: 'Continue', originViewMode: 'chat', eventLog: [], requestedProvider: 'fixture', requestedModelId: 'model' };
   const runtime = { cancelledRunIds: new Set(), taskRuntimeState: {} };
   const displayed = [];
   const saved = [];
@@ -53,7 +53,7 @@ async function replayUsageEvents(events, { background = false } = {}) {
     load: () => createEmptyContextUsage(CONVERSATION_ID),
   });
   const handlers = createTaskStreamHandlers({
-    API_BASE: '', conversationId: CONVERSATION_ID,
+    API_BASE: '', conversationId: CONVERSATION_ID, providerOptions: [{ provider: 'fixture' }],
     conversationIdRef: { current: background ? 'another-conversation' : CONVERSATION_ID },
     streamTargetConvIdRef: { current: null },
     userCancelledTaskIdsRef: { current: new Set() }, chatFinalizedTaskIdsRef: { current: new Set() },

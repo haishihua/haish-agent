@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Thinking gauge regression</title>
+  <style>
+    body { margin: 24px; background: #10131b; color: #eee; font: 14px system-ui; overflow: auto; }
+    #root { padding-top: 140px; }
+    .gauge-fixture.chat-composer { position: relative; width: 340px; padding: 18px; margin: 16px 0; }
+    .gauge-samples { display: flex; gap: 20px; padding-top: 32px; }
+    .gauge-sample.chat-composer { position: relative; width: auto; margin: 0; padding: 12px; text-align: center; }
+    .gauge-sample-label { display: block; margin-bottom: 10px; }
+    #checks { white-space: pre-wrap; color: #93dfb0; }
+    #checks[data-result="FAIL"] { color: #f88; }
+  </style>
+</head>
+<body>
+  <h1>Thinking gauge</h1>
+  <div id="root"></div>
+  <pre id="checks">Running checks…</pre>
+  <script type="module" src="./thinking-gauge.jsx"></script>
+</body>
+</html>

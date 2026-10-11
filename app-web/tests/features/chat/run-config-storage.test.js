@@ -11,7 +11,6 @@ globalThis.window = {
 
 const { buildRunConfigStorageKey, stableHash } = await import('../../../src/shared/api/client.js');
 const {
-  firstRunProvider,
   resolveRunConfigSelection,
   safeWriteRunConfigSelection,
 } = await import('../../../src/features/chat/hooks/useRunConfig.js');
@@ -49,9 +48,29 @@ test('run config keys require owner, mode, and conversation', () => {
   assert.equal(buildRunConfigStorageKey('owner', 'chat', ''), '');
 });
 
-test('brand-new conversations use provider order instead of hard-coding xAI', () => {
-  assert.equal(firstRunProvider([
-    { id: 'ai-router', provider: 'openai_compatible' },
-    { id: 'xai', provider: 'xai' },
-  ]).id, 'ai-router');
+test('brand-new conversations do not invent a provider or model and start at high', () => {
+  values.clear();
+  const selection = resolveRunConfigSelection('fresh', providers, agents, 'agent-default');
+  assert.equal(selection.providerId, '');
+  assert.equal(selection.modelId, '');
+  assert.equal(selection.reasoningEffort, 'high');
+});
+
+test('removed conversation provider is kept visible instead of replaced by preferred or first provider', () => {
+  values.clear();
+  safeWriteRunConfigSelection('removed', { providerId: 'gone', modelId: 'm', reasoningEffort: null });
+  const selection = resolveRunConfigSelection('removed', providers, agents, 'agent-default');
+  assert.equal(selection.providerId, 'gone');
+  assert.equal(selection.modelId, 'm');
+  assert.equal(selection.reasoningEffort, 'high');
+});
+
+test('legacy missing/none/null/minimal effort uses the selected provider default', () => {
+  values.clear();
+  const withDefault = [{ ...providers[0], defaultReasoningEffort: 'xhigh' }];
+  for (const effort of [undefined, null, 'none', 'minimal']) {
+    values.set('legacy', JSON.stringify({ providerId: 'ai-router', modelId: 'gpt-5.6-sol', reasoningEffort: effort }));
+    assert.equal(resolveRunConfigSelection('legacy', withDefault, agents, 'agent-default').reasoningEffort, 'xhigh');
+    assert.equal(resolveRunConfigSelection('legacy', providers, agents, 'agent-default').reasoningEffort, 'high');
+  }
 });

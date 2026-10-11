@@ -5,9 +5,10 @@ import { ScheduleDialog } from './ScheduleDialog.jsx';
 import { runConfigApi } from '../../conversations/api/run-config.js';
 import { createRunConfigSync } from '../../conversations/model/run-config-sync.js';
 
-export function SchedulesProvider({ children, ensureConversation, currentConversationId, onRuntimeEvent, onRecover, api = schedulesApi, configApi = runConfigApi, subscribe }) {
+export function SchedulesProvider({ children, ensureConversation, currentConversationId, onRuntimeEvent, onRecover, api = schedulesApi, configApi = runConfigApi, configSync: suppliedConfigSync, subscribe }) {
   const state = useSchedulesState({ api, subscribe, onRuntimeEvent, onRecover });
-  const configSync = React.useMemo(() => createRunConfigSync(configApi), [configApi]);
+  const localConfigSync = React.useMemo(() => createRunConfigSync(configApi), [configApi]);
+  const configSync = suppliedConfigSync || localConfigSync;
   const value = { ...state, currentConversationId, configSync };
   return <SchedulesContext.Provider value={value}>
     {children}

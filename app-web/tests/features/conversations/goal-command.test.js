@@ -5,11 +5,11 @@ import { createConversationHandlers } from '../../../src/features/conversations/
 import { createDeployHandlers } from '../../../src/features/tasks/hooks/createDeployHandlers.js';
 import { goalInvocation, goalMenuItems, GOAL_WORKFLOW_ID } from '../../../src/features/chat/model/goal-command.js';
 
-function harness({ missing = false, defaultProject = false, fail = '', workflow = {}, draft = false, interrupt = '' } = {}) {
+function harness({ missing = false, defaultProject = false, fail = '', workflow = { nodes: [{ id: 'worker', type: 'agent', runtime_config: { provider: 'fixture', model_id: 'model' } }] }, draft = false, interrupt = '' } = {}) {
   const source = { id: 'chat-project', executionMode: 'chat', name: 'Renamed project', workspacePath: defaultProject ? null : '/repo', conversations: [] };
   const target = { project_id: 'bot-project', execution_mode: 'bot', name: 'Different name', workspace_path: source.workspacePath, is_default: defaultProject };
   const ctx = {
-    API_BASE: '', workspaceState: { activeProjectId: source.id, projects: [source] },
+    API_BASE: '', providerOptions: ['fixture', 'old', 'custom.provider-id'].map((provider) => ({ provider })), workspaceState: { activeProjectId: source.id, projects: [source] },
     conversationIdRef: { current: draft ? 'draft-chat' : 'chat-conversation' },
     viewModeRef: { current: 'chat' }, draftConversationRef: { current: draft ? { projectId: source.id } : null },
     modeLocationRef: { current: {} }, workflowSettingsDraft: {},
@@ -62,7 +62,7 @@ test('existing Workflow project is matched by path, not its renamed title, and r
   assert.equal(await h.run({ prompt: 'Fix the bug' }), true);
   assert.equal(h.calls.some((call) => call.url === '/api/projects'), false);
   assert.deepEqual(h.calls.find((call) => call.url === '/api/conversations').body, {
-    title: 'Fix the bug', execution_mode: 'bot', project_id: 'bot-project',
+    execution_mode: 'bot', project_id: 'bot-project',
   });
   const [request, id, detail] = h.sent[0];
   assert.equal(request.executionMode, 'bot');
@@ -133,17 +133,33 @@ for (const prompt of ['', 'Task']) {
   });
 }
 
-test('/goal without a selected source model keeps ordinary workflow defaults and never submits model-only config', async () => {
+test('/goal normalizes old null before persisting and sending node config', async () => {
   const h = harness({ workflow: { nodes: goalNodes } });
-  assert.equal(await h.run({ prompt: 'Task', runConfig: { provider: '', model_id: 'unbound', reasoning_effort: 'high' } }), true);
-  assert.deepEqual(h.sent[0][0].nodeRuntimeConfigs, Object.fromEntries(['clarify', 'goal_worker', 'goal_verifier'].map((id) => [id, { reasoning_effort: 'high' }])));
+  assert.equal(await h.run({ prompt: 'Task', runConfig: { provider: 'custom.provider-id', model_id: 'model', reasoning_effort: null } }), true);
+  assert.ok(Object.values(h.sent[0][0].nodeRuntimeConfigs).every((config) => config.reasoning_effort === 'high'));
 });
 
-test('long prompts only truncate the conversation title, never the actual task', async () => {
+test('/goal legacy effort uses the selected provider default rather than early high', async () => {
+  const h = harness({ workflow: { nodes: goalNodes } });
+  h.ctx.providerOptions.find((item) => item.provider === 'custom.provider-id').defaultReasoningEffort = 'medium';
+  assert.equal(await h.run({ prompt: 'Task', runConfig: { provider: 'custom.provider-id', model_id: 'model', reasoning_effort: null } }), true);
+  assert.ok(Object.values(h.sent[0][0].nodeRuntimeConfigs).every((config) => config.reasoning_effort === 'medium'));
+  assert.ok(Object.values(h.calls.find((call) => call.method === 'PUT').body.node_runtime_configs).every((config) => config.reasoning_effort === 'medium'));
+});
+
+test('/goal without a valid node route rejects before creating a project or task', async () => {
+  const h = harness({ workflow: { nodes: goalNodes } });
+  assert.equal(await h.run({ prompt: 'Task', runConfig: { provider: '', model_id: 'unbound', reasoning_effort: 'high' } }), false);
+  assert.equal(h.sent.length, 0);
+  assert.equal(h.calls.length, 0);
+  assert.match(h.notices[0][1], /provider/);
+});
+
+test('long prompts stay in the task, not in a user-title field on automatic create', async () => {
   const h = harness();
   const prompt = 'a'.repeat(500);
   await h.run({ prompt });
-  assert.equal(h.calls.find((call) => call.url === '/api/conversations').body.title.length, 120);
+  assert.equal(Object.hasOwn(h.calls.find((call) => call.url === '/api/conversations').body, 'title'), false);
   assert.equal(h.sent[0][0].text, prompt);
 });
 
@@ -200,5 +216,5 @@ test('composer intercepts /goal before skill expansion and runtime steering, and
   assert.match(source, /goalPendingRef\.current = true/);
   assert.match(source, /if \(goalPendingRef\.current\) return/);
   assert.match(source, /if \(accepted !== false\)[\s\S]*?setDraft\(''\)/);
-  assert.match(source, /!goal && executionMode === 'chat'/, 'Goal Loop uses workflow node models, not chat model gating');
+  assert.match(source, /modelConfigError/, 'Goal Loop with a prompt must have a valid effective model route');
 });

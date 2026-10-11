@@ -36,12 +36,11 @@ function handleRetryTaskBranch() {
 }
 
 test('failure retry carries the composer run config, not the failed attempt one', () => {
-  // 输入框当前选中的 provider/model/reasoning 就是重跑要用的那一份；取不到有效选择时
-  // 传 null，后端沿用来源 Task 的原请求参数（不改旧行为）。
+  // Wait for the current commit before retrying; missing overrides use server current selection.
   const retry = retryMessageBody();
   assert.match(retry, /composerRunConfigRef\.current/);
-  assert.match(retry, /provider: current\.provider, modelId: current\.modelId, reasoningEffort: current\.reasoningEffort/);
-  assert.match(retry, /onRetryTask\?\.\(message\.taskId, runConfig\)/);
+  assert.match(retry, /await current\?\.ensureSaved\?\.\(\)/);
+  assert.match(retry, /provider: saved\.provider, modelId: saved\.model_id, reasoningEffort: saved\.reasoning_effort/);
 });
 
 test('the retry handoff forwards the config into the task attempt request', () => {
@@ -59,8 +58,10 @@ test('the retry handoff forwards the config into the task attempt request', () =
     'rerun must not drop the run config override',
   );
   // 旧数据入口（没有 userMessageId / 没有实时通道）也优先用同一份选择。
-  assert.match(branch, /runConfig\?\.modelId \|\| task\?\.requestedModelId \|\| ''/);
-  assert.match(branch, /runConfig\?\.provider \|\| task\?\.requestedProvider \|\| ''/);
+  assert.match(branch, /await ctx\.configSync\?\.waitForSave\(targetConversationId\)/);
+  assert.match(branch, /await ctx\.configSync\?\.load\(targetConversationId\)/);
+  assert.match(branch, /: runConfig\.modelId/);
+  assert.match(branch, /: runConfig\.provider/);
 });
 
 test('the retry command body carries provider, model and reasoning overrides', () => {
@@ -76,14 +77,10 @@ test('the retry command body carries provider, model and reasoning overrides', (
   assert.match(body, /streamRequest\.attempt === 'edit' \? \{ message: streamRequest\.message \} : \{\}/);
 });
 
-test('the sidebar retry resolves the selection stored for that conversation', () => {
-  assert.match(appShellSource, /const sidebarRetryRunConfig = \(task\) => \{/);
-  assert.match(appShellSource, /onRetryTask=\{\(task\) => handleRetryTask\(task, null, sidebarRetryRunConfig\(task\)\)\}/);
-  assert.doesNotMatch(appShellSource, /onRetryTask=\{handleRetryTask\}/);
-  assert.match(appShellSource, /const baseKey = buildRunConfigStorageKey\(ownerId, 'chat', targetConversationId\);/);
-  assert.match(appShellSource, /if \(!baseKey \|\| task\?\.executionMode === 'bot'\) return null;/);
-  assert.match(appShellSource, /return storedRunConfigRequest\(baseKey, llmProviderOptions\);/);
-  // 存储里没有选择就返回 null（沿用源 Task 配置），绝不回落到“第一个 provider”。
+test('the sidebar retry uses the persisted current server selection, not stale local storage', () => {
+  assert.match(appShellSource, /onRetryTask=\{\(task\) => handleRetryTask\(task\)\}/);
+  assert.doesNotMatch(appShellSource, /storedRunConfigRequest/);
+  // Legacy local helper remains unused here; missing Chat configuration must not replay the source Task.
   const stored = runConfigSource.slice(runConfigSource.indexOf('export function storedRunConfigRequest'));
   assert.match(stored, /if \(!stored\?\.providerId \|\| !stored\.modelId\) return null;/);
   assert.match(stored, /if \(!request\) return null;/);

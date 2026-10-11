@@ -518,6 +518,7 @@ export function conversationDetailToWorkspaceConversation(
     tasks,
     agentId: detail.agent_id || detail.profile_id || previousConversation?.agentId || tasks[0]?.requestedAgentId || null,
     profileId: detail.profile_id || previousConversation?.profileId || null,
+    agentStatus: detail.agent_status ?? previousConversation?.agentStatus ?? null,
     profileDisplayName: detail.profile_display_name || previousConversation?.profileDisplayName || null,
     createdAt: detail.created_at || previousConversation?.createdAt || null,
     updatedAt: detail.updated_at || detail.last_message_at || previousConversation?.updatedAt || null,

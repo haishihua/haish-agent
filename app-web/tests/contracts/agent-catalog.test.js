@@ -172,7 +172,7 @@ test('selected skill renders as an inline Lexical token inside the composer', ()
 });
 
 test('run configuration progressively reveals thinking before agent and model settings', () => {
-  assert.match(modelPickersSource, /className="model-picker-gauge"/);
+  assert.match(modelPickersSource, /<svg className=\{`model-picker-gauge /);
   assert.match(modelPickersSource, /model-picker-quick thinking-/);
   assert.match(modelPickersSource, /type="range"/);
   assert.match(modelPickersSource, /setMenuOpen\(true\)/);

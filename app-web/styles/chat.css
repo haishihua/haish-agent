@@ -2164,6 +2164,25 @@
     flex: 0 0 auto;
 }
 
+.chat-config-control {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.chat-config-save-status {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 3px);
+    color: var(--dim);
+    font-family: var(--conversation-font, inherit);
+    font-size: 11px;
+    line-height: 14px;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
 .chat-composer .model-picker {
     position: relative;
     flex-shrink: 0;
@@ -2381,6 +2400,26 @@
 
 .chat-composer .context-usage-btn.over-limit .context-usage-icon-sector {
     fill: #ef5b5b;
+}
+
+.chat-send-tooltip-trigger {
+    display: inline-flex;
+    flex: 0 0 auto;
+    border-radius: 50%;
+}
+
+.chat-send-tooltip-trigger:focus-visible {
+    outline: 2px solid rgba(74, 140, 255, 0.72);
+    outline-offset: 2px;
+}
+
+.chat-send-tooltip-trigger:has(.chat-send:disabled) {
+    cursor: not-allowed;
+}
+
+/* Disabled native buttons do not reliably dispatch hover; the wrapper owns it. */
+.chat-send-tooltip-trigger .chat-send:disabled {
+    pointer-events: none;
 }
 
 .chat-send-metal {

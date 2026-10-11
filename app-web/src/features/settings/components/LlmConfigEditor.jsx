@@ -5,9 +5,12 @@ import {
   CircleCheck,
   ExternalLink,
   LoaderCircle,
+  Plus,
+  X,
 } from 'lucide-react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
+import { normalizeReasoningEffort } from '../../chat/model/run-catalog.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import {
   getLlmProvider,
@@ -18,6 +21,9 @@ import {
   formatAuthModeLabel,
   nextProviderDraft,
   uniqueModelChoices,
+  addCustomModelId,
+  customModelIds,
+  llmModelCatalogPatch,
 } from '../model/llm-settings.js';
 import {
   getSelectedLlmConfig,
@@ -45,6 +51,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
   const [oauthFlowStatus, setOauthFlowStatus] = useState('idle');
   const [oauthFlowMessage, setOauthFlowMessage] = useState('');
   const [modelCatalogError, setModelCatalogError] = useState('');
+  const [modelIdInput, setModelIdInput] = useState('');
   const disabled = readOnly || (selectedId === 'embedding' && !draft.embedding?.enabled);
   const showProviderNameField = config.provider === 'custom';
   const showAuthModeField = provider.authModes.length > 1;
@@ -63,15 +70,28 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
   configRef.current = config;
   const configuredModel = config.model;
   const configuredModelOptions = config.model_options;
+  const configuredCustomModelIds = config.custom_model_ids;
+  const configuredCustomModelIdsKey = JSON.stringify(customModelIds(config));
   const configuredProvider = config.provider;
   const localModelChoices = useMemo(
     () => llmEditorModelChoices({
       model: configuredModel,
       model_options: configuredModelOptions,
+      custom_model_ids: configuredCustomModelIds,
       provider: configuredProvider,
     }),
-    [configuredModel, configuredModelOptions, configuredProvider],
+    [configuredModel, configuredModelOptions, configuredCustomModelIds, configuredProvider],
   );
+  const addModel = () => {
+    if (disabled || !modelIdInput.trim()) return;
+    update(addCustomModelId(configRef.current, modelIdInput));
+    setModelIdInput('');
+  };
+
+  useEffect(() => {
+    setModelIdInput('');
+  }, [selectedId, config.provider, config.auth_mode]);
+
   const changeProvider = (providerId) => {
     const next = nextProviderDraft(providerId, config);
     setOauthStartError('');
@@ -83,7 +103,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       ...next,
       enabled: config.enabled,
       mode: config.mode || 'auto',
-      reasoning_effort: config.reasoning_effort || 'high',
+      reasoning_effort: normalizeReasoningEffort(config.reasoning_effort),
       ...(isCompactProvider ? { thinking: 'auto' } : {}),
     });
   };
@@ -189,7 +209,6 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
     if (config.provider === 'custom' && !config.base_url) return undefined;
     let cancelled = false;
     const currentConfig = configRef.current;
-    const fallbackChoices = llmEditorModelChoices(currentConfig);
     const timer = window.setTimeout(() => {
       setModelCatalogError('');
       const payload = llmProviderRequestPayload(currentConfig, { includeSecret: true, includeOAuth: true, refresh: true });
@@ -209,27 +228,22 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
             oauth_configured: true,
             oauth_code: '',
           } : {};
-          // When the backend returns a live provider catalog, treat it as the
-          // source of truth so newly available models (e.g. gpt-5.6) appear and
-          // static allow-lists do not keep padding the dropdown.
+          // Refresh discovery only; the latest draft owns manual additions and
+          // the default selection (including edits made while fetching).
+          const latestConfig = configRef.current;
           if (remoteChoices.length) {
-            const remoteDefault = catalog.default_model || remoteChoices[0].id;
-            const selectedModelSupported = remoteChoices.some((item) => item.id === currentConfig.model);
+            const { choices, ...patch } = llmModelCatalogPatch(latestConfig, catalog);
             setModelCatalogError('');
-            setModelChoices(uniqueModelChoices(remoteChoices));
-            update({
-              model_options: remoteChoices,
-              ...(selectedModelSupported ? {} : { model: remoteDefault }),
-              ...oauthPatch,
-            });
+            setModelChoices(choices);
+            update(patch);
             return;
           }
-          setModelChoices(fallbackChoices);
+          setModelChoices(llmEditorModelChoices(latestConfig));
           if (catalog.oauth_saved) update(oauthPatch);
         })
         .catch((error) => {
           if (!cancelled) {
-            setModelChoices(fallbackChoices);
+            setModelChoices(llmEditorModelChoices(configRef.current));
             setModelCatalogError(String(error?.message || error));
           }
         });
@@ -247,7 +261,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
     config.api_key,
     config.api_key_configured,
     oauthModelCatalogReady,
-    config.model,
+    configuredCustomModelIdsKey,
     disabled,
     refreshModels,
     update,
@@ -367,11 +381,42 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       </FieldRow>
       )}
       <ModelSelectorRoot
-        models={uniqueModelChoices(modelChoices, config.model).map(model => ({ id: model.id, name: model.label, icon: <ProviderIcon provider={config.provider} name={config.name || provider.label} />, efforts: showEffort ? effortOptions.map(item => ({ id: item.id, name: item.id === 'medium' ? 'Med' : item.id === 'xhigh' ? 'XHigh' : item.id === 'high' ? 'High' : 'Low' })) : undefined }))}
-        value={config.model || ''} onValueChange={model => { if (!disabled) update({ model }); }} effort={config.reasoning_effort || 'high'} onEffortChange={reasoning_effort => { if (!disabled) update({ reasoning_effort, ...(isCompactProvider ? { thinking: 'auto' } : {}) }); }}>
+        models={uniqueModelChoices(modelChoices, config.model).map(model => ({ id: model.id, name: model.label, icon: <ProviderIcon provider={config.provider} name={config.name || provider.label} />, efforts: showEffort ? effortOptions.map(item => ({ id: item.id, name: item.id === 'medium' ? 'Med' : item.id === 'xhigh' ? 'XHigh' : `${item.id[0].toUpperCase()}${item.id.slice(1)}` })) : undefined }))}
+        value={config.model || ''} onValueChange={model => { if (!disabled) update({ model }); }} effort={normalizeReasoningEffort(config.reasoning_effort)} onEffortChange={reasoning_effort => { if (!disabled) update({ reasoning_effort, ...(isCompactProvider ? { thinking: 'auto' } : {}) }); }}>
         <FieldRow label="Default model"><ModelSelectorTrigger disabled={disabled} className="w-full"><ModelSelectorValue showEffort={false} /></ModelSelectorTrigger></FieldRow>
         <ModelSelectorContent searchable className="settings-model-options"><ModelSelectorSearch aria-label="Search models" /><ModelSelectorList /></ModelSelectorContent>
-        <FieldRow label="Model ID"><Input value={config.model || ''} onChange={event => update({ model: event.target.value })} disabled={disabled} placeholder={provider.defaultModel || 'Enter a model ID'} /></FieldRow>
+        <FieldRow label="Model ID" hint="Add models missing from the provider list. Choose the default model separately above.">
+          <Input
+            value={modelIdInput}
+            onChange={event => setModelIdInput(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                addModel();
+              }
+            }}
+            disabled={disabled}
+            maxLength={512}
+            placeholder="Enter a model ID to add"
+          />
+        </FieldRow>
+        <Button type="button" variant="outline" disabled={disabled || !modelIdInput.trim()} onClick={addModel}>
+          <Plus size={14} aria-hidden="true" />Add model
+        </Button>
+        {customModelIds(config).length > 0 && (
+          <div className="flex flex-wrap gap-2" aria-label="Additional models">
+            {customModelIds(config).map(id => (
+              <span key={id} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm">
+                <span className="break-all">{id}</span>
+                <Button
+                  type="button" variant="ghost" size="icon-sm" disabled={disabled}
+                  aria-label={`Remove additional model ${id}`}
+                  onClick={() => update({ custom_model_ids: customModelIds(config).filter(value => value !== id) })}
+                ><X size={12} aria-hidden="true" /></Button>
+              </span>
+            ))}
+          </div>
+        )}
         {modelCatalogError && <ErrorState variant="inline" detail={modelCatalogError} />}
         {showEffort && <ModelSelectorEffort label="Reasoning effort" className="settings-model-effort" />}
       </ModelSelectorRoot>

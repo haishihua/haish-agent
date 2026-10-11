@@ -1,7 +1,7 @@
 import React from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch } from '../../../shared/api/client.js';
-import { DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS } from '../model/run-catalog.js';
+import { REASONING_EFFORT_OPTIONS, normalizeReasoningEffort } from '../model/run-catalog.js';
 
 const PROVIDER_MODELS_STORAGE_KEY = 'haish_provider_models_v1';
 
@@ -28,7 +28,7 @@ function safeReadRunConfigSelection(storageKey) {
       modelId: typeof parsed.modelId === 'string' ? parsed.modelId : '',
       providerId: typeof parsed.providerId === 'string' ? parsed.providerId : '',
       providerDefaultModelId: typeof parsed.providerDefaultModelId === 'string' ? parsed.providerDefaultModelId : '',
-      reasoningEffort: typeof parsed.reasoningEffort === 'string' ? parsed.reasoningEffort : '',
+      reasoningEffort: parsed.reasoningEffort,
     };
   } catch (_) {
     return null;
@@ -54,11 +54,6 @@ function optionHasId(options, id) {
   return Array.isArray(options) && options.some((item) => item?.id === id);
 }
 
-export function firstRunProvider(providerOptions) {
-  if (!Array.isArray(providerOptions) || providerOptions.length === 0) return null;
-  return providerOptions[0];
-}
-
 function providerModelsRequest(providerOption) {
   if (!providerOption?.provider) return null;
   return {
@@ -67,6 +62,7 @@ function providerModelsRequest(providerOption) {
     custom_provider: providerOption.customProvider || '',
     base_url: providerOption.baseUrl || '',
     model: providerOption.defaultModelId || '',
+    custom_model_ids: providerOption.customModelIds || [],
     refresh: true,
   };
 }
@@ -177,37 +173,24 @@ export function resolveRunConfigSelection(storageKey, providerOptions, agentOpti
   const agentSource = optionHasId(agentOptions, stored?.agentId)
     ? stored
     : (optionHasId(agentOptions, preferred?.agentId) ? preferred : null);
-  const providerSource = optionHasId(providerOptions, stored?.providerId)
-    ? stored
-    : (optionHasId(providerOptions, preferred?.providerId) ? preferred : null);
-  const storedReasoning = REASONING_EFFORT_OPTIONS.some((item) => item.id === stored?.reasoningEffort)
-    ? stored.reasoningEffort
-    : (REASONING_EFFORT_OPTIONS.some((item) => item.id === preferred?.reasoningEffort)
-      ? preferred.reasoningEffort
-      : '');
-  const fallbackProvider = firstRunProvider(providerOptions);
-  const storedProviderIsValid = Boolean(providerSource?.providerId);
-  const providerId = storedProviderIsValid ? providerSource.providerId : (fallbackProvider?.id || '');
-  const provider = (providerOptions || []).find((item) => item.id === providerId) || fallbackProvider;
+  const providerSource = stored || (optionHasId(providerOptions, preferred?.providerId) ? preferred : null);
+  const providerId = providerSource?.providerId || '';
+  const provider = (providerOptions || []).find((item) => item.id === providerId);
   const providerDefaultModelId = String(provider?.defaultModelId || '').trim();
-  const sourceDefaultIsCurrent = providerSource?.providerDefaultModelId === providerDefaultModelId;
   return {
     providerId,
-    modelId: storedProviderIsValid && sourceDefaultIsCurrent
-      ? providerSource?.modelId || providerDefaultModelId
-      : providerDefaultModelId,
+    modelId: providerSource?.modelId || '',
     providerDefaultModelId,
     agentId: agentSource?.agentId || defaultAgentId,
-    reasoningEffort: storedReasoning || DEFAULT_REASONING_EFFORT,
+    reasoningEffort: normalizeReasoningEffort(providerSource?.reasoningEffort, provider?.defaultReasoningEffort),
   };
 }
 
 /**
  * 该会话（或该模式）真正存过的选择 → 可直接发给后端的 run config。
  *
- * 与 `resolveRunConfigSelection` 的区别：这里不做「回落到第一个 provider / owner 最近
- * 一次选择」的兜底——侧边栏重跑没有输入框，只有用户确实在这个会话里选过才带覆盖，
- * 否则返回 null，让调用方沿用来源 Task 的原请求参数。
+ * 本地缓存解析工具（当前 Chat 重试已不使用它）；它不回落到第一个 provider。
+ * 缺少有效缓存返回 null，调用方必须读取服务端当前选择或明确拒绝，不能恢复来源任务配置。
  */
 export function storedRunConfigRequest(storageKey, providerOptions) {
   const stored = safeReadRunConfigSelection(storageKey);
@@ -218,9 +201,7 @@ export function storedRunConfigRequest(storageKey, providerOptions) {
   return {
     provider: request,
     modelId: stored.modelId,
-    reasoningEffort: REASONING_EFFORT_OPTIONS.some((item) => item.id === stored.reasoningEffort)
-      ? stored.reasoningEffort
-      : DEFAULT_REASONING_EFFORT,
+    reasoningEffort: normalizeReasoningEffort(stored.reasoningEffort, provider.defaultReasoningEffort),
   };
 }
 
@@ -246,7 +227,14 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
       defaultAgentId,
     );
     setSelection((current) => {
-      if (!keyChanged && current.serverKey === nextKey) return current;
+      if (!keyChanged && current.serverKey === nextKey) {
+        if (!Object.hasOwn(current, 'pendingReasoningEffort')) return current;
+        const provider = (providerOptions || []).find((item) => item.id === current.providerId || (item.requestProvider || item.provider) === current.providerId);
+        if (!provider) return current;
+        const { pendingReasoningEffort, ...rest } = current;
+        return { ...rest, providerId: provider.id, providerDefaultModelId: provider.defaultModelId || '',
+          reasoningEffort: normalizeReasoningEffort(pendingReasoningEffort, provider.defaultReasoningEffort) };
+      }
       const providerId = keyChanged || !optionHasId(providerOptions, current.providerId)
         ? nextSelection.providerId
         : current.providerId;
@@ -259,7 +247,7 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
       const agentId = keyChanged || !optionHasId(agentOptions, current.agentId)
         ? nextSelection.agentId
         : current.agentId;
-      const reasoningEffort = keyChanged || !REASONING_EFFORT_OPTIONS.some((item) => item.id === current.reasoningEffort)
+      const reasoningEffort = keyChanged || (defaultModelChanged && !current.providerDefaultModelId) || !REASONING_EFFORT_OPTIONS.some((item) => item.id === current.reasoningEffort)
         ? nextSelection.reasoningEffort
         : current.reasoningEffort;
       if (providerId === current.providerId && modelId === current.modelId && providerDefaultModelId === current.providerDefaultModelId && agentId === current.agentId && reasoningEffort === current.reasoningEffort) {
@@ -293,7 +281,13 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
   return {
     restoreConfig: (config) => {
       const provider = providerOptions.find((item) => (item.requestProvider || item.provider) === config.provider);
-      setSelection((current) => ({ ...current, serverKey: selectionStorageKey || '', providerId: provider?.id || config.provider || '', modelId: config.model_id || '', providerDefaultModelId: provider?.defaultModelId || '', reasoningEffort: config.reasoning_effort || DEFAULT_REASONING_EFFORT, agentId: config.workflow_id || config.agent_id || current.agentId }));
+      setSelection((current) => {
+        const { pendingReasoningEffort: _pending, ...rest } = current;
+        return { ...rest, serverKey: selectionStorageKey || '', providerId: provider?.id || config.provider || '', modelId: config.model_id || '', providerDefaultModelId: provider?.defaultModelId || '',
+          reasoningEffort: normalizeReasoningEffort(config.reasoning_effort, provider?.defaultReasoningEffort),
+          ...(!provider ? { pendingReasoningEffort: config.reasoning_effort } : {}),
+          agentId: config.workflow_id || config.agent_id || current.agentId };
+      });
     },
     serverSelection: selection.serverKey === (selectionStorageKey || ''),
     providerId: selection.providerId,
@@ -305,7 +299,10 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
       setSelection((current) => {
         const provider = (providerOptions || []).find((item) => item.id === providerId);
         const providerDefaultModelId = String(provider?.defaultModelId || '').trim();
-        return provider ? { ...current, providerId: provider.id, modelId: providerDefaultModelId, providerDefaultModelId } : current;
+        // Apply the selected Settings row atomically; never inherit the previous provider's effort.
+        const reasoningEffort = normalizeReasoningEffort(provider?.defaultReasoningEffort);
+        const { pendingReasoningEffort: _pending, ...rest } = current;
+        return provider ? { ...rest, providerId: provider.id, modelId: providerDefaultModelId, providerDefaultModelId, reasoningEffort } : current;
       });
     }, [providerOptions, markPreferredWrite]),
     setModelId: React.useCallback((modelId) => {
@@ -318,7 +315,11 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
     }, [markPreferredWrite]),
     setReasoningEffort: React.useCallback((reasoningEffort) => {
       markPreferredWrite();
-      setSelection((current) => ({ ...current, reasoningEffort }));
-    }, [markPreferredWrite]),
+      setSelection((current) => {
+        const provider = providerOptions.find((item) => item.id === current.providerId);
+        const { pendingReasoningEffort: _pending, ...rest } = current;
+        return { ...rest, reasoningEffort: normalizeReasoningEffort(reasoningEffort, provider?.defaultReasoningEffort) };
+      });
+    }, [providerOptions, markPreferredWrite]),
   };
 }
