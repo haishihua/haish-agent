@@ -213,6 +213,76 @@ test('an edit blocked before the server takes it keeps the editor and its draft'
   assert.equal(harness.requests.length, 0, '被拦下的发送一个字都没发出去');
 });
 
+test('a retry interrupted after run_started becomes retryable instead of a stranded running turn', async () => {
+  const source = { ...sourceTurn(), status: 'failed' };
+  const harness = createAttemptHarness(source, { transport: async (_command, onEvent) => {
+    onEvent({ type: 'run_started', task_id: 'interrupted-attempt', conversation_id: source.conversationId,
+      source_task_id: source.taskId, user_message_id: source.userMessageId });
+    throw new Error('Synthetic model stream interrupted');
+  } });
+  await assert.rejects(harness.executeQuest(source, source.conversationId, {
+    attempt: 'rerun', requestId: 'interrupted-retry',
+    runConfig: { provider: 'current-provider', modelId: 'current-model', reasoningEffort: 'xhigh' },
+  }), /Synthetic model stream interrupted/);
+  const state = harness.runtime.taskRuntimeState;
+  const failed = state.tasksById['interrupted-attempt'];
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.error, 'Synthetic model stream interrupted');
+  assert.equal(failed.requestedProvider, 'current-provider');
+  assert.equal(failed.requestedModelId, 'current-model');
+  assert.equal(failed.requestedReasoningEffort, 'xhigh');
+  assert.equal(state.activeTaskId, null);
+  assert.equal(state.pendingTask, null);
+  assert.equal(harness.runtime.busy, false);
+  assert.equal(harness.runtime.activeRunId, null);
+  assert.equal(harness.runtime.activeTaskId, null);
+  assert.equal(harness.runtime.fetchController, null);
+  assert.equal(source.status, 'failed');
+});
+
+test('a terminal task is not overwritten by a later transport error', async () => {
+  for (const status of ['done', 'failed', 'cancelled']) {
+    const source = { ...sourceTurn(), status: 'failed' };
+    const harness = createAttemptHarness(source, { transport: async (_command, onEvent) => {
+      const event = { task_id: 'terminal-attempt', conversation_id: source.conversationId,
+        source_task_id: source.taskId, user_message_id: source.userMessageId };
+      onEvent({ ...event, type: 'run_started' });
+      onEvent({ ...event, type: 'run_finished', status, error: 'Original terminal error',
+        task: { ...event, status, error: 'Original terminal error', answer_text: 'Original answer' } });
+      throw new Error('Later transport error');
+    } });
+    await assert.rejects(harness.executeQuest(source, source.conversationId, { attempt: 'rerun' }), /Later transport error/);
+    const task = harness.runtime.taskRuntimeState.tasksById['terminal-attempt'];
+    assert.equal(task.status, status);
+    assert.equal(task.error, 'Original terminal error');
+    assert.equal(harness.runtime.busy, false);
+    assert.equal(harness.runtime.activeRunId, null);
+    assert.equal(harness.runtime.activeTaskId, null);
+  }
+});
+
+test('interrupted Bot retry preserves canonical node routes and can retry again', async () => {
+  const source = { ...sourceTurn(), executionMode: 'bot', requestedProvider: '', requestedModelId: '',
+    workflowSnapshot: { nodes: [{ id: 'worker', type: 'agent' }] },
+    nodeRuntimeConfigs: { worker: { llm_config_id: 'fixture', model_id: 'node-model', reasoning_effort: 'xhigh' } } };
+  let count = 0;
+  const harness = createAttemptHarness(source, { transport: async (_command, onEvent) => {
+    count += 1;
+    const event = { task_id: `bot-${count}`, conversation_id: source.conversationId, user_message_id: source.userMessageId };
+    onEvent({ ...event, type: 'run_started' });
+    if (count === 1) throw new Error('Interrupted Bot model');
+    onEvent({ ...event, type: 'run_finished', status: 'done', task: { ...event, status: 'done' } });
+  } });
+  await assert.rejects(harness.executeQuest(source, source.conversationId, { attempt: 'rerun' }), /Interrupted Bot model/);
+  const failed = harness.runtime.taskRuntimeState.tasksById['bot-1'];
+  assert.equal(failed.status, 'failed');
+  assert.deepEqual(failed.nodeRuntimeConfigs, source.nodeRuntimeConfigs);
+  await harness.executeQuest(failed, source.conversationId, { attempt: 'rerun' });
+  assert.equal(harness.requests.length, 2);
+  assert.equal(harness.runtime.taskRuntimeState.tasksById['bot-2'].status, 'done');
+  assert.deepEqual(harness.snapshots[1].nodeRuntimeConfigs, source.nodeRuntimeConfigs);
+});
+
 test('missing and removed model routes reject before pending state or acknowledgement', async () => {
   for (const provider of ['', 'removed']) {
     const source = sourceTurn();

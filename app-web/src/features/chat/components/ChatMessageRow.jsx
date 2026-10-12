@@ -48,6 +48,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
   const [draft, setDraft] = React.useState('');
   const [actionBusy, setActionBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState('');
+  React.useEffect(() => setActionError(''), [message.id, message.text, message.status]);
   const actionLock = React.useRef(false);
   async function perform(action) {
     if (actionLock.current) return;
@@ -205,7 +206,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
             <EditMessage value={draft} onValueChange={setDraft} busy={actionBusy} disabled={actionsDisabled}
               onCancel={() => { setEditing(false); setActionError(''); }} onSave={() => perform(() => onEdit(draft, message))} />
           ) : isAgent && message.status === 'failed' ? (
-            <ErrorState title="Task failed" detail={message.text} retrying={actionBusy}
+            <ErrorState title="Task failed" detail={[message.text, actionError].filter(Boolean).join('\n')} retrying={actionBusy}
               disabled={actionsDisabled} onRetry={onRetry ? () => perform(() => onRetry(message)) : undefined} />
           ) : isAgent ? (
             <FinalAnswerMarkdown source={message.text} streaming={message.streaming} sourceMessageId={message.status === 'done' ? message.messageId : undefined} />
@@ -217,7 +218,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
             </div>
           ) : null}
           </div>
-          {actionError ? <ErrorState variant="inline" detail={actionError} /> : null}
+          {actionError && !(isAgent && message.status === 'failed') ? <ErrorState variant="inline" detail={actionError} /> : null}
         </div>
       {(messageClock || copyText || onRetry || onFork || onEdit) && !editing ? (
         <div className="chat-message-actions">

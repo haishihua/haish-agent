@@ -941,6 +941,7 @@ export function createTaskStreamHandlers(ctx) {
       },
     };
 
+    let confirmedTaskId = null;
     const queuedEvents = [];
     let flushTimer = null;
     const runRuntime = getRuntime(runConversationId, { create: true });
@@ -965,6 +966,7 @@ export function createTaskStreamHandlers(ctx) {
             ) {
               continue;
             }
+            if (event.type === 'run_started' && event.task_id) confirmedTaskId = event.task_id;
             if (
               event.task_id
               && runRuntime.activeTaskId !== event.task_id
@@ -1029,13 +1031,26 @@ export function createTaskStreamHandlers(ctx) {
         }
       }
     } catch (error) {
-      rollbackUnconfirmedRerun();
-      if (fullAttempt) {
-        flushQueuedEvents();
-        const activeId = getRuntime(runConversationId)?.activeTaskId;
-        if (activeId) updateTaskById(activeId, (task) => applyTerminalTaskState(task, 'failed', { error: String(error?.message || error) }), runConversationId);
-        setRuntimeBusy(false, runConversationId);
-        setRuntimeActiveTaskId(null, runConversationId);
+      // Drain first: run_started may have promoted the local placeholder to a
+      // server task. Rolling back first clears its pointer and strands that task
+      // in running state, permanently blocking the next Retry.
+      flushQueuedEvents();
+      if (!confirmedTaskId) {
+        rollbackUnconfirmedRerun();
+      } else if (fullAttempt || rerunningNode) {
+        updateTaskById(confirmedTaskId, (task) => isTerminalTaskStatus(task.status)
+          ? task
+          : applyTerminalTaskState(task, 'failed', { error: String(error?.message || error) }), runConversationId);
+        chatFinalizedTaskIdsRef.current.add(confirmedTaskId);
+        updateTaskRuntimeState((state) => ({ ...state,
+          activeTaskId: state.activeTaskId === confirmedTaskId ? null : state.activeTaskId,
+        }), runConversationId);
+        const runtime = getRuntime(runConversationId);
+        if (runtime?.activeRunId === runId) {
+          mutateRuntime(runConversationId, (rt) => { rt.activeRunId = null; });
+          setRuntimeBusy(false, runConversationId);
+          setRuntimeActiveTaskId(null, runConversationId);
+        }
       }
       throw error;
     } finally {
