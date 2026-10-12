@@ -53,9 +53,8 @@ test('Compact editor shares Chat selector, removes On/Off and preserves effort o
   assert.ok(!source.includes('Enable compact provider'));
   assert.ok(source.includes('{isVisionProvider && (\n        <SettingsToggleRow'));
   assert.ok(source.includes('update({ model });'));
-  assert.ok(source.includes('setModelIdInput(event.target.value)'));
-  assert.ok(source.includes('update(addCustomModelId(configRef.current, modelIdInput))'));
-  assert.ok(!source.includes('update({ model: event.target.value })'));
+  assert.ok(source.includes('update({ model: event.target.value })'));
+  assert.ok(!source.includes('update(addCustomModelId(configRef.current, modelIdInput))'));
   assert.ok(source.includes("update({ reasoning_effort, ...(isCompactProvider ? { thinking: 'auto' } : {}) })"));
 });
 

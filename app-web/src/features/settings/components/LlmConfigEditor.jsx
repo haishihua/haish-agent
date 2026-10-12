@@ -5,8 +5,6 @@ import {
   CircleCheck,
   ExternalLink,
   LoaderCircle,
-  Plus,
-  X,
 } from 'lucide-react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
@@ -21,7 +19,6 @@ import {
   formatAuthModeLabel,
   nextProviderDraft,
   uniqueModelChoices,
-  addCustomModelId,
   customModelIds,
   llmModelCatalogPatch,
 } from '../model/llm-settings.js';
@@ -51,7 +48,6 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
   const [oauthFlowStatus, setOauthFlowStatus] = useState('idle');
   const [oauthFlowMessage, setOauthFlowMessage] = useState('');
   const [modelCatalogError, setModelCatalogError] = useState('');
-  const [modelIdInput, setModelIdInput] = useState('');
   const disabled = readOnly || (selectedId === 'embedding' && !draft.embedding?.enabled);
   const showProviderNameField = config.provider === 'custom';
   const showAuthModeField = provider.authModes.length > 1;
@@ -82,16 +78,6 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
     }),
     [configuredModel, configuredModelOptions, configuredCustomModelIds, configuredProvider],
   );
-  const addModel = () => {
-    if (disabled || !modelIdInput.trim()) return;
-    update(addCustomModelId(configRef.current, modelIdInput));
-    setModelIdInput('');
-  };
-
-  useEffect(() => {
-    setModelIdInput('');
-  }, [selectedId, config.provider, config.auth_mode]);
-
   const changeProvider = (providerId) => {
     const next = nextProviderDraft(providerId, config);
     setOauthStartError('');
@@ -385,38 +371,14 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
         value={config.model || ''} onValueChange={model => { if (!disabled) update({ model }); }} effort={normalizeReasoningEffort(config.reasoning_effort)} onEffortChange={reasoning_effort => { if (!disabled) update({ reasoning_effort, ...(isCompactProvider ? { thinking: 'auto' } : {}) }); }}>
         <FieldRow label="Default model"><ModelSelectorTrigger disabled={disabled} className="w-full"><ModelSelectorValue showEffort={false} /></ModelSelectorTrigger></FieldRow>
         <ModelSelectorContent searchable className="settings-model-options"><ModelSelectorSearch aria-label="Search models" /><ModelSelectorList /></ModelSelectorContent>
-        <FieldRow label="Model ID" hint="Add models missing from the provider list. Choose the default model separately above.">
+        <FieldRow label="Model ID">
           <Input
-            value={modelIdInput}
-            onChange={event => setModelIdInput(event.target.value)}
-            onKeyDown={event => {
-              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                addModel();
-              }
-            }}
+            value={config.model || ''}
+            onChange={event => update({ model: event.target.value })}
             disabled={disabled}
-            maxLength={512}
-            placeholder="Enter a model ID to add"
+            placeholder={provider.defaultModel || 'Enter a model ID'}
           />
         </FieldRow>
-        <Button type="button" variant="outline" disabled={disabled || !modelIdInput.trim()} onClick={addModel}>
-          <Plus size={14} aria-hidden="true" />Add model
-        </Button>
-        {customModelIds(config).length > 0 && (
-          <div className="flex flex-wrap gap-2" aria-label="Additional models">
-            {customModelIds(config).map(id => (
-              <span key={id} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm">
-                <span className="break-all">{id}</span>
-                <Button
-                  type="button" variant="ghost" size="icon-sm" disabled={disabled}
-                  aria-label={`Remove additional model ${id}`}
-                  onClick={() => update({ custom_model_ids: customModelIds(config).filter(value => value !== id) })}
-                ><X size={12} aria-hidden="true" /></Button>
-              </span>
-            ))}
-          </div>
-        )}
         {modelCatalogError && <ErrorState variant="inline" detail={modelCatalogError} />}
         {showEffort && <ModelSelectorEffort label="Reasoning effort" className="settings-model-effort" />}
       </ModelSelectorRoot>

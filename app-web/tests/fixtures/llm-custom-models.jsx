@@ -15,7 +15,7 @@ window.fetch = async (url, init) => {
   if (!String(url).endsWith('/api/llm/models')) throw new Error('Unexpected fixture request');
   window.__llmFixture.requests.push(JSON.parse(init.body));
   await new Promise(resolve => setTimeout(resolve, 600));
-  // Deliberately omit every manually added model, like Zhipu's live catalog.
+  // Deliberately omit the manually entered model, like an incomplete provider catalog.
   return Response.json({ provider: 'zhipu', models_source: 'remote', models: [{ id: 'glm-5.3-flash', label: 'glm-5.3-flash' }, { id: 'glm-4.7', label: 'glm-4.7' }], default_model: 'glm-5.3-flash' });
 };
 function Fixture() {
@@ -24,7 +24,7 @@ function Fixture() {
   window.__llmFixture.snapshot = draft;
   window.__llmFixture.runtime = runtimeLlmProviderOptions(draft);
   return <AppTooltipProvider><main className="settings-theme dark" data-settings-portal style={{ padding: 24, width: 460 }}>
-    <h1>Zhipu supplemental model regression</h1>
+    <h1>Direct Model ID editing regression</h1>
     <div className="settings-new-editor" style={{ position: 'relative', width: '100%', height: 'auto', padding: 24 }}>
       <LlmConfigEditor key={mount} selectedId="zhipu-test" draft={draft} onDraftChange={setDraft} refreshModels />
     </div>
