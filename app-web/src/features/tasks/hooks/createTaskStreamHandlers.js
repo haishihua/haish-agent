@@ -711,7 +711,7 @@ export function createTaskStreamHandlers(ctx) {
       throw new Error('conversation is not ready');
     }
     const providers = ctx.providerOptions || [];
-    const defaultEffort = (provider) => providers.find((item) => (item.requestProvider || item.provider || item.id) === provider)?.defaultReasoningEffort;
+    const defaultEffort = (provider) => providers.find((item) => item.id === provider)?.defaultReasoningEffort;
     if (streamRequest?.runConfig) {
       const config = streamRequest.runConfig;
       streamRequest = { ...streamRequest, runConfig: {
@@ -902,13 +902,13 @@ export function createTaskStreamHandlers(ctx) {
       request_id: streamRequest.requestId,
       ...(streamRequest.attempt === 'edit' ? { message: streamRequest.message } : {}),
       ...(streamRequest.runConfig ? {
-        provider: streamRequest.runConfig.provider,
+        llm_config_id: streamRequest.runConfig.provider,
         model_id: streamRequest.runConfig.modelId,
         reasoning_effort: streamRequest.runConfig.reasoningEffort,
       } : {}),
     } : rerunningNode ? {
       ...(streamRequest.runConfig?.nodeRuntimeConfig ? { runtime_config: streamRequest.runConfig.nodeRuntimeConfig } : {}),
-      provider: streamRequest.runConfig?.provider,
+      llm_config_id: streamRequest.runConfig?.provider,
       model_id: streamRequest.runConfig?.modelId,
       reasoning_effort: streamRequest.runConfig?.reasoningEffort,
     } : {
@@ -931,7 +931,7 @@ export function createTaskStreamHandlers(ctx) {
       image_attachments: Array.isArray(pendingTask.imageAttachments) ? pendingTask.imageAttachments : [],
       options: {
         ...(pendingTask.executionMode === 'bot' ? { node_runtime_configs: pendingTask.nodeRuntimeConfigs || {} } : {}),
-        provider: pendingTask.requestedProvider || null,
+        llm_config_id: pendingTask.requestedProvider || null,
         model_id: pendingTask.requestedModelId || null,
         agent_id: pendingTask.requestedAgentId || null,
         workflow_id: pendingTask.requestedWorkflowId || null,

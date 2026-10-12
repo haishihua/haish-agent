@@ -54,7 +54,7 @@ test('a stale reasoning level uses the high runtime default', () => {
     reasoningEffort: 'not-a-level',
   }, () => storedRunConfigRequest(STORAGE_KEY, PROVIDERS));
   assert.deepEqual(config, {
-    provider: 'generic',
+    provider: 'chat:generic',
     modelId: 'old-model',
     reasoningEffort: 'high',
   });

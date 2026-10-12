@@ -192,7 +192,7 @@ function createDeployHarness(options = {}) {
   state.notices = [];
   state.queued = [];
   const handlers = createDeployHandlers({
-    APP_DEFAULT_AGENT_OPTIONS: [{ id: 'agent-1' }], providerOptions: [{ provider: 'fixture' }],
+    APP_DEFAULT_AGENT_OPTIONS: [{ id: 'agent-1' }], providerOptions: [{ id: 'fixture', provider: 'custom' }],
     applyTerminalTaskState: (task) => task,
     cancelActiveConversationTask: async () => ({ ok: true }),
     cancelActiveTask: async () => ({ ok: true }),

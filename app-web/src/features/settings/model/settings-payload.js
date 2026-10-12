@@ -120,6 +120,7 @@ export function createGenericRecord(section) {
 export function createLlmProfile() {
   return {
     id: `llm-profile-${Date.now()}`,
+    _persisted: false,
     name: '',
     provider: 'custom',
     auth_mode: 'api_key',
@@ -348,6 +349,7 @@ export function updateSelectedLlmConfig(onDraftChange, selectedId, patch) {
 export function llmProviderRequestPayload(config, { includeSecret = false, refresh = false, includeOAuth = false, providerType = '' } = {}) {
   const provider = normalizeLlmProviderId(config.provider);
   const payload = {
+    llm_config_id: config._persisted === false ? undefined : (String(config.id || '').trim() || undefined),
     provider,
     auth_mode: config.auth_mode || getLlmProvider(provider).defaultAuth,
     custom_provider: provider === 'custom' ? String(config.name || config.custom_provider || '').trim() : '',

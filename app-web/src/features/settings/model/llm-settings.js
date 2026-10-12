@@ -110,27 +110,22 @@ export function runtimeProviderLabel(config) {
   return config.provider === 'custom' && name ? name : provider.label;
 }
 
-function runtimeProviderSelector(config) {
-  const provider = normalizeLlmProviderId(config.provider);
-  if (provider === 'custom') {
-    const key = String(config.name || config.custom_provider || config.base_url || config.model || '').trim();
-    return key ? `custom:${key}` : 'custom';
-  }
-  return provider || 'auto';
-}
-
 export function runtimeLlmProviderOptions(draft) {
+  const records = [draft?.chat, draft?.embedding, ...(draft?.profiles || []), ...(draft?.vision?.providers || []), ...(draft?.compact?.providers || [])];
+  const idCounts = new Map();
+  for (const record of records) {
+    const id = String(record?.id || '').trim();
+    if (record?.provider && id) idCounts.set(id, (idCounts.get(id) || 0) + 1);
+  }
+  const reserved = new Set([...LLM_PROVIDER_OPTIONS.map(item => item.id), 'auto', 'chat', 'vision', 'compact', 'embedding']);
   const rows = [
     draft?.chat,
     ...(Array.isArray(draft?.profiles) ? draft.profiles : []),
-  ].filter((item) => item && item.provider);
-  const seen = new Set();
-  const options = rows.map((config, index) => {
-    const providerSelector = runtimeProviderSelector(config);
-    const requestProvider = String(config.id || '').trim() || providerSelector;
-    const idBase = config.id || `${index === 0 ? 'chat' : 'profile'}:${providerSelector}`;
-    const id = seen.has(idBase) ? `${idBase}:${index}` : idBase;
-    seen.add(id);
+  ].filter((item) => item && item.provider && item._persisted !== false);
+  const options = rows.map((config) => {
+    const id = String(config.id || '').trim();
+    if (!id || id.length > 256 || reserved.has(id.toLowerCase()) || id.toLowerCase().startsWith('custom:') || idCounts.get(id) !== 1) return null;
+    const requestProvider = id;
     const provider = normalizeLlmProviderId(config.provider);
     const modelOptions = uniqueModelChoices(config.model, configuredModelOptions(config), customModelIds(config));
     return {
@@ -138,6 +133,7 @@ export function runtimeLlmProviderOptions(draft) {
       label: runtimeProviderLabel(config),
       provider,
       requestProvider,
+      legacySelectors: Array.isArray(config.legacy_selectors) ? config.legacy_selectors : [],
       authMode: String(config.auth_mode || getLlmProvider(provider).defaultAuth || '').trim(),
       customProvider: provider === 'custom' ? String(config.name || config.custom_provider || '').trim() : '',
       baseUrl: provider === 'custom' ? String(config.base_url || '').trim() : '',
@@ -147,7 +143,7 @@ export function runtimeLlmProviderOptions(draft) {
       modelOptions,
     };
   });
-  return options;
+  return options.filter(Boolean);
 }
 
 export function nextProviderDraft(providerId, previous = {}) {
@@ -184,6 +180,7 @@ function normalizeVisionProvider(entry, index = 0) {
   return {
     ...source,
     id: String(source.id || '').trim() || `vision-${index + 1}`,
+    _persisted: source.id ? source._persisted : false,
     enabled: source.enabled === true,
     provider,
     auth_mode: authMode || (provider === 'ollama' ? 'none' : 'api_key'),
@@ -234,6 +231,7 @@ export function normalizeVisionDraft(value) {
 export function createVisionProviderDraft() {
   return {
     id: `vision-${Date.now()}`,
+    _persisted: false,
     enabled: false,
     provider: 'custom',
     auth_mode: 'api_key',
@@ -341,6 +339,11 @@ export function loadLlmSettingsDraft() {
   }
 }
 
+function persistedAuxiliaryRows(section) {
+  const rows = Array.isArray(section?.providers) ? section.providers : (section?.provider ? [section] : []);
+  return { ...section, providers: rows.filter(row => row && typeof row === 'object').map(row => ({ ...row, _persisted: Boolean(row.id) })) };
+}
+
 export function applyLlmSettingsPayloadToDraft(previous, payload) {
   if (!payload || typeof payload !== 'object') return previous;
   const hasBackendConfig = Boolean(
@@ -354,12 +357,12 @@ export function applyLlmSettingsPayloadToDraft(previous, payload) {
   if (!hasBackendConfig) return previous;
   const fallback = createDefaultLlmSettings();
   return {
-    chat: normalizeLlmModelConfig({ ...fallback.chat, ...(payload.chat || {}) }),
-    vision: normalizeVisionDraft(payload.vision),
-    compact: normalizeCompactDraft(payload.compact),
-    embedding: { ...fallback.embedding, ...(payload.embedding || {}) },
+    chat: normalizeLlmModelConfig({ ...fallback.chat, ...(payload.chat || {}), _persisted: Boolean(payload.chat?.id) }),
+    vision: normalizeVisionDraft(persistedAuxiliaryRows(payload.vision)),
+    compact: normalizeCompactDraft(persistedAuxiliaryRows(payload.compact)),
+    embedding: { ...fallback.embedding, ...(payload.embedding || {}), _persisted: Boolean(payload.embedding?.id) },
     profiles: Array.isArray(payload.profiles)
-      ? payload.profiles.map((profile) => normalizeLlmModelConfig(profile))
+      ? payload.profiles.map((profile) => normalizeLlmModelConfig({ ...profile, _persisted: Boolean(profile.id) }))
       : [],
   };
 }

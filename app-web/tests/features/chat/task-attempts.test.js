@@ -48,7 +48,8 @@ test('editing uses the current run configuration without changing the original t
   const runConfig = { provider: 'current-provider', modelId: 'current-model', reasoningEffort: 'low', agentId: 'custom.current' };
   await handlers.handleRetryTask(source, 'Revised message', runConfig);
   const body = harness.requests[0].body;
-  assert.equal(body.provider, runConfig.provider);
+  assert.equal(body.llm_config_id, runConfig.provider);
+  assert.equal(body.provider, undefined);
   assert.equal(body.model_id, runConfig.modelId);
   assert.equal(body.reasoning_effort, runConfig.reasoningEffort);
   assert.equal(harness.snapshots[0].requestedProvider, runConfig.provider);
@@ -220,7 +221,7 @@ test('missing and removed model routes reject before pending state or acknowledg
     await assert.rejects(harness.executeQuest(source, source.conversationId, {
       attempt: 'edit', message: 'Keep my draft', runConfig: { provider, modelId: 'model', reasoningEffort: null },
       onAccepted: () => { accepted = true; },
-    }), /provider.*not been sent/);
+    }), /configuration.*not been sent/);
     assert.equal(accepted, false);
     assert.equal(harness.requests.length, 0);
     assert.equal(harness.runtime.taskRuntimeState.pendingTask, null);

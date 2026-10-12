@@ -140,7 +140,7 @@ export function ChatComposer({
   const [pathNotice, setPathNotice] = React.useState('');
   React.useEffect(() => setPathNotice(''), [scopeId, draft]);
 
-  const { providerId, setProviderId, modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort, restoreConfig } = usePersistentRunConfig({
+  const { providerId, legacyProvider, setProviderId, modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort, restoreConfig } = usePersistentRunConfig({
     selectionStorageKey,
     providerOptions: resolvedProviderOptions,
     agentOptions: resolvedAgentOptions,
@@ -169,22 +169,25 @@ export function ChatComposer({
   const providerModels = useProviderModels(executionMode === 'bot' ? null : currentProvider);
   const activeModelOptions = providerModels.options;
   const modelLoading = providerModels.loading;
-  const providerRequest = currentProvider?.requestProvider || currentProvider?.provider || providerId || '';
+  const providerRequest = currentProvider?.id || '';
   const providerConfigured = Boolean(currentProvider && providerRequest);
   const sendModelId = modelId;
-  const modelConfigError = executionConfigError({ executionMode, provider: executionMode === 'bot' ? null : providerRequest, modelId: executionMode === 'bot' ? null : sendModelId,
+  const modelConfigError = executionConfigError({ executionMode, provider: executionMode === 'bot' ? null : providerId, legacyProvider: executionMode === 'bot' ? null : legacyProvider, modelId: executionMode === 'bot' ? null : sendModelId,
     workflow: currentSelection, nodeRuntimeConfigs: scheduleNodeRuntimeConfigs || {}, providerOptions: resolvedProviderOptions });
   const normalizedNodeConfigs = nodeRuntimeConfigsForWorkflow(currentSelection, scheduleNodeRuntimeConfigs || {}, resolvedProviderOptions);
 
   const configSync = useConversationRunConfig({
     sync: schedules?.configSync, conversationId: schedules?.currentConversationId, scopeId,
     loading: modelLoading,
+    saveBlockedReason: modelConfigError,
     readOnly: running || submitPending || waitingForSend || goalPending || agentLocked,
     initialAgentId: executionMode === 'chat' ? lockedAgentId : '',
     hasSentMessage,
     onAgentSaved: onAgentChange,
     onToast,
-    config: { provider: executionMode === 'bot' ? null : providerRequest, model_id: executionMode === 'bot' ? null : modelId, reasoning_effort: executionMode === 'bot' ? null : reasoningEffort, execution_mode: executionMode, use_history: true,
+    // Preserve the restored identity even before Settings loads or if it was removed.
+    // Availability gates sending/saving; it must never erase the server selection.
+    config: { llm_config_id: executionMode === 'bot' ? null : providerId, ...(executionMode !== 'bot' && legacyProvider ? { provider: legacyProvider } : {}), model_id: executionMode === 'bot' ? null : modelId, reasoning_effort: executionMode === 'bot' ? null : reasoningEffort, execution_mode: executionMode, use_history: true,
       ...(executionMode === 'bot' ? { workflow_id: effectiveAgentId, node_runtime_configs: normalizedNodeConfigs } : { agent_id: effectiveAgentId }) },
     restore: (config) => { restoreConfig(config); onRestoreNodeConfigs?.(config.node_runtime_configs || {}, config.workflow_id); },
   });
@@ -196,12 +199,11 @@ export function ChatComposer({
   }
   React.useEffect(() => { if (executionMode === 'bot') onAgentChange?.(effectiveAgentId); }, [effectiveAgentId, onAgentChange, executionMode]);
   React.useEffect(() => {
-    const modelConfigured = !modelLoading && Boolean(modelId) && modelId !== 'auto';
-    onRunConfigChange?.(
-      providerConfigured && modelConfigured
-        ? { provider: providerRequest, modelId, reasoningEffort, agentId: effectiveAgentId, ensureSaved: configSync.ensureSaved }
-        : null,
-    );
+    // Retry needs the same guarded save even for a missing/unavailable route.
+    // Dropping the handle turns a concrete validation error into a permanent
+    // "wait for configuration" failure; ensureSaved remains the authority.
+    onRunConfigChange?.({ provider: providerRequest, modelId, reasoningEffort,
+      agentId: effectiveAgentId, ensureSaved: configSync.ensureSaved });
   });
 
   // The logical composer scope remains stable while a local draft receives its
@@ -462,7 +464,7 @@ export function ChatComposer({
       try {
         const accepted = await onGoalCommand({
           prompt: composePathReferenceDraft(goal.prompt, composerContent.references), attachment, images: readyImages,
-          runConfig: savedConfig || { provider: providerRequest, model_id: sendModelId, reasoning_effort: reasoningEffort },
+          runConfig: savedConfig || { llm_config_id: providerRequest, model_id: sendModelId, reasoning_effort: reasoningEffort },
         });
         if (accepted !== false && submissionMountedRef.current && submissionOwnerRef.current === owner) {
           clearComposerAfterSend();
@@ -497,12 +499,12 @@ export function ChatComposer({
       return;
     }
     const savedError = savedConfig ? executionConfigError({ executionMode,
-      provider: savedConfig.provider, modelId: savedConfig.model_id, workflow: resolvedAgentOptions.find((item) => item.id === (savedConfig.workflow_id || savedConfig.agent_id)),
+      provider: savedConfig.llm_config_id, modelId: savedConfig.model_id, workflow: resolvedAgentOptions.find((item) => item.id === (savedConfig.workflow_id || savedConfig.agent_id)),
       nodeRuntimeConfigs: savedConfig.node_runtime_configs || {}, providerOptions: resolvedProviderOptions }) : modelConfigError;
     if (savedError) return;
     if (!resolvedAgentOptions.some((o) => o.id === effectiveAgentId)) return;
     if (currentComposerScopeRef.current !== scopeId) return;
-    const sendResult = onSend?.(submittedText, attachment, executionMode === 'bot' ? null : (savedConfig?.model_id || sendModelId), executionMode === 'bot' ? null : (savedConfig ? savedConfig.reasoning_effort : reasoningEffort), readyImages, (savedConfig?.workflow_id || savedConfig?.agent_id) || effectiveAgentId, executionMode === 'bot' ? null : (savedConfig?.provider || providerRequest), text, prepared?.annotations || EMPTY_ANNOTATIONS, executionMode === 'bot' ? savedConfig?.node_runtime_configs : undefined);
+    const sendResult = onSend?.(submittedText, attachment, executionMode === 'bot' ? null : (savedConfig?.model_id || sendModelId), executionMode === 'bot' ? null : (savedConfig ? savedConfig.reasoning_effort : reasoningEffort), readyImages, (savedConfig?.workflow_id || savedConfig?.agent_id) || effectiveAgentId, executionMode === 'bot' ? null : (savedConfig ? savedConfig.llm_config_id : providerRequest), text, prepared?.annotations || EMPTY_ANNOTATIONS, executionMode === 'bot' ? savedConfig?.node_runtime_configs : undefined);
     // Local acceptance is synchronous: clear the composer in the same render as
     // its optimistic message. Only async send handlers need a separate wait.
     const accepted = sendResult && typeof sendResult.then === 'function' ? await sendResult : sendResult;

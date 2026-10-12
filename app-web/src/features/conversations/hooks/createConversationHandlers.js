@@ -860,7 +860,7 @@ export function createConversationHandlers(ctx) {
       await ctx.configSync?.waitForSave(targetConversationId);
       if (!runConfig) {
         const saved = await ctx.configSync?.load(targetConversationId);
-        runConfig = saved && { provider: saved.provider, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id };
+        runConfig = saved && { provider: saved.llm_config_id, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id };
       }
       if (!runConfig?.provider || !runConfig.modelId || !runConfig.agentId) throw new Error('Save the current Agent, provider and model selection before retrying.');
     }

@@ -219,7 +219,7 @@ export function ChatPanel({
     if (!current) throw new Error('Wait for the current provider/model configuration before retrying.');
     const saved = await current?.ensureSaved?.();
     return rowActionRef.current.onRetryTask?.(message.taskId, saved ? {
-      provider: saved.provider, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id,
+      provider: saved.llm_config_id, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id,
     } : null);
   }, []);
   const editMessage = React.useCallback(async (text, message) => {
@@ -229,7 +229,7 @@ export function ChatPanel({
     }
     const saved = await current.ensureSaved();
     return rowActionRef.current.onEditMessage?.(message.taskId, text, {
-      provider: saved.provider, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id,
+      provider: saved.llm_config_id, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id,
     });
   }, []);
 

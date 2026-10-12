@@ -42,6 +42,7 @@ test('a stored single-object vision draft migrates to one provider and keeps its
     providers: [
       {
         id: 'vision-1',
+        _persisted: false,
         enabled: true,
         provider: 'custom',
         auth_mode: 'api_key',

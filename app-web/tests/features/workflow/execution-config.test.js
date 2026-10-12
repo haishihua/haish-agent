@@ -4,13 +4,13 @@ import { createDeployHandlers } from '../../../src/features/tasks/hooks/createDe
 import { executionConfigError } from '../../../src/features/workflow/model/execution-config.js';
 import { nodeRuntimeConfigRequest, nodeRuntimeConfigsForWorkflow, workflowNodeRuntimeConfig } from '../../../src/features/workflow/model/node-runtime-config.js';
 
-const providerOptions = [{ id: 'ui-id', requestProvider: 'configured' }];
+const providerOptions = [{ id: 'configured', provider: 'custom' }];
 const workflow = { nodes: [{ id: 'first', type: 'agent' }, { id: 'second', type: 'agent' }] };
-const route = { provider: 'configured', model_id: 'custom-model', reasoning_effort: null };
+const route = { llm_config_id: 'configured', model_id: 'custom-model', reasoning_effort: null };
 
 test('Chat rejects missing, auto or removed provider and missing concrete model', () => {
   for (const provider of ['', 'auto', 'AUTO', 'removed']) {
-    assert.match(executionConfigError({ provider, modelId: 'custom-model', providerOptions }), /provider/);
+    assert.match(executionConfigError({ provider, modelId: 'custom-model', providerOptions }), /configuration/);
   }
   for (const modelId of ['', 'auto', 'AUTO', '   ']) {
     assert.match(executionConfigError({ provider: 'configured', modelId, providerOptions }), /concrete model/);
@@ -20,14 +20,14 @@ test('Chat rejects missing, auto or removed provider and missing concrete model'
 
 test('Bot requires each node config, not another global picker or the first configured node', () => {
   const input = { executionMode: 'bot', workflow, providerOptions, nodeRuntimeConfigs: { first: route } };
-  assert.match(executionConfigError(input), /Node second.*provider/);
+  assert.match(executionConfigError(input), /Node second.*configuration/);
   assert.equal(executionConfigError({ ...input, nodeRuntimeConfigs: { first: route, second: route } }), '');
-  assert.match(executionConfigError({ ...input, nodeRuntimeConfigs: { first: route, second: { ...route, provider: 'removed' } } }), /unavailable/);
+  assert.match(executionConfigError({ ...input, nodeRuntimeConfigs: { first: route, second: { ...route, llm_config_id: 'removed' } } }), /unavailable/);
 });
 
 test('Bot accepts explicit task defaults but cannot execute a model-free graph without a route', () => {
-  assert.equal(executionConfigError({ executionMode: 'bot', workflow, providerOptions, provider: route.provider, modelId: route.model_id }), '');
-  assert.match(executionConfigError({ executionMode: 'bot', workflow: { nodes: [{ id: 'tool', type: 'tool' }] }, providerOptions }), /provider/);
+  assert.equal(executionConfigError({ executionMode: 'bot', workflow, providerOptions, provider: route.llm_config_id, modelId: route.model_id }), '');
+  assert.match(executionConfigError({ executionMode: 'bot', workflow: { nodes: [{ id: 'tool', type: 'tool' }] }, providerOptions }), /configuration/);
 });
 
 test('Chat and Bot deploy reject before task staging, upload or conversation creation', () => {
@@ -42,7 +42,7 @@ test('Chat and Bot deploy reject before task staging, upload or conversation cre
       materializeDraftConversationForSend: () => assert.fail('must not create conversation'),
     });
     assert.equal(handlers.handleDeploy('Keep my draft', null, 'model', null, [], executionMode === 'chat' ? 'agent' : 'wf'), false);
-    assert.match(notices[0][1], /provider/);
+    assert.match(notices[0][1], /configuration/);
     const request = handlers.buildDeployRequest('Keep my draft', null, 'model', null, [], 'wf');
     assert.equal(handlers.startDeploy(request, 'conversation'), false);
     assert.equal(request.pendingTask, undefined);

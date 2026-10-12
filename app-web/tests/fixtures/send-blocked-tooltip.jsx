@@ -10,17 +10,22 @@ import '../../styles.css';
 const checks = [];
 const errors = [];
 const store = new Map();
-const providers = [{ id: 'provider', provider: 'custom', requestProvider: 'provider', label: 'Configured provider', defaultModelId: 'gpt-5.5', modelOptions: ['gpt-5.5'], defaultReasoningEffort: 'none' }];
-const route = { provider: 'provider', model_id: 'gpt-5.5', reasoning_effort: 'none', agent_id: 'a', execution_mode: 'chat', use_history: true };
+const saveCalls = [];
+const providers = [{ id: 'provider', provider: 'custom', requestProvider: 'provider', legacySelectors: ['custom:legacy-router', 'chat:custom:legacy-router'], label: 'Configured provider', defaultModelId: 'gpt-5.5', modelOptions: ['gpt-5.5'], defaultReasoningEffort: 'none' }];
+const route = { llm_config_id: 'provider', model_id: 'gpt-5.5', reasoning_effort: 'high', agent_id: 'a', execution_mode: 'chat', use_history: true };
 const cases = [
-  { name: 'missing-provider', config: { ...route, provider: null, model_id: null }, hint: 'Chat: select a configured model provider before sending.' },
-  { name: 'removed-provider', config: { ...route, provider: 'removed' }, hint: 'Chat: the selected provider is unavailable. Select a configured provider.' },
+  { name: 'missing-provider', config: { ...route, llm_config_id: null, model_id: null }, hint: 'Chat: select a saved model configuration before sending.' },
+  { name: 'removed-provider', config: { ...route, llm_config_id: 'removed' }, hint: 'Chat: the selected configuration is unavailable. Select a saved configuration.' },
+  { name: 'conflicting-provider', config: { ...route, provider: 'other-record', reasoning_effort: 'xhigh' }, hint: 'Chat: conflicting model configuration identities.' },
   { name: 'missing-model', config: { ...route, model_id: null }, hint: 'Chat: select a concrete model before sending.' },
   { name: 'disabled-agent', config: route, agentDisabled: true, hint: 'This Agent is disabled. Select an enabled Agent before starting.' },
-  { name: 'bot-node', config: { ...route, execution_mode: 'bot', workflow_id: 'wf', provider: null, model_id: null, node_runtime_configs: {} }, hint: 'Node worker: select a configured model provider before sending.' },
+  { name: 'bot-node', config: { ...route, execution_mode: 'bot', workflow_id: 'wf', llm_config_id: null, model_id: null, node_runtime_configs: {} }, hint: 'Node worker: select a saved model configuration before sending.' },
 ];
 for (const item of cases) store.set(item.name, item.config);
-const sync = createRunConfigSync({ get: async (id) => structuredClone(store.get(id)), save: async (id, config) => store.set(id, structuredClone(config)) });
+const sync = createRunConfigSync({ get: async (id) => structuredClone(store.get(id)), save: async (id, config) => {
+  saveCalls.push({ id, config: structuredClone(config) });
+  store.set(id, structuredClone(config));
+} });
 const originalFetch = window.fetch;
 window.fetch = (input, init) => {
   if (String(input).endsWith('/api/llm/models')) {
@@ -33,6 +38,7 @@ window.fetch = (input, init) => {
 window.addEventListener('error', (event) => errors.push(event.message));
 window.addEventListener('unhandledrejection', (event) => errors.push(String(event.reason)));
 let control;
+let currentRoute;
 let sends = 0;
 function Fixture() {
   const [current, setCurrent] = React.useState(cases[0]);
@@ -45,6 +51,7 @@ function Fixture() {
     <SchedulesContext.Provider value={{ currentConversationId: current.name, configSync: sync }}>
       <ChatComposer key={current.name} scopeId={current.name} executionMode={bot ? 'bot' : 'chat'} providerOptions={providers}
         agentOptions={agents} defaultAgentId={bot ? 'wf' : 'a'} draft={text} onDraftChange={setText}
+        onRunConfigChange={config => { currentRoute = config; }}
         onSend={() => { sends += 1; return true; }} />
     </SchedulesContext.Provider>
   </AppTooltipProvider>;
@@ -65,6 +72,15 @@ async function run() {
   for (const item of cases) {
     control.setCurrent(item); await sleep(200);
     check(document.querySelector('.chat-send').disabled, `${item.name} retains native disabled send`);
+    if (!item.agentDisabled) check(!saveCalls.some(call => call.id === item.name), `${item.name} invalid restore never overwrites server configuration`);
+    if (item.name === 'removed-provider') check(store.get(item.name).llm_config_id === 'removed', 'Unavailable configuration identity remains intact');
+    if (item.name === 'conflicting-provider') {
+      check(store.get(item.name).llm_config_id === 'provider' && store.get(item.name).provider === 'other-record',
+        'Restore keeps both conflicting identities, model and Xhigh without automatic save');
+      let rejected = false;
+      try { await currentRoute.ensureSaved(); } catch (error) { rejected = /conflicting/.test(error.message); }
+      check(rejected && !saveCalls.some(call => call.id === item.name), 'Retry guard rejects the conflict before persistence');
+    }
     check(!document.querySelector('.chat-composer .haish-annotation-notice') && !tooltip(), `${item.name} has no inline or unsolicited hint`);
     enter(document.querySelector('[contenteditable="true"]')); await sleep(430);
     check(!tooltip(), `${item.name} hovering the input does not show a send hint`);
@@ -82,7 +98,8 @@ async function run() {
     leave(hit); await until(() => !tooltip());
     check(!tooltip(), `${item.name} leaving the button hides the hint`);
   }
-  control.setCurrent(cases[0]); await sleep(200);
+  const conflict = cases.find(item => item.name === 'conflicting-provider');
+  control.setCurrent(conflict); await sleep(200);
   enter(wrapper()); await until(() => tooltip());
   document.querySelector('.model-picker-trigger').click(); await sleep();
   document.querySelector('[aria-label="Open agent and model settings"]').click(); await sleep();
@@ -97,7 +114,31 @@ async function run() {
   document.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   await until(() => sends === 1);
   check(sends === 1, 'Valid configuration still sends normally');
+  check(store.get(conflict.name).llm_config_id === 'provider' && !store.get(conflict.name).provider,
+    'Only explicit provider reselection clears the conflict and saves canonical identity');
   leave(wrapper());
+  const history = { name: 'history-new-id', config: { ...route, reasoning_effort: 'xhigh' } };
+  store.set(history.name, history.config);
+  control.setCurrent(history); control.setText('Continue history'); await sleep(250);
+  await until(() => !document.querySelector('.chat-send').disabled);
+  check(store.get(history.name).llm_config_id === 'provider'
+    && store.get(history.name).reasoning_effort === 'xhigh', 'New-format history restores its configuration and Xhigh without losing identity');
+  document.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await until(() => sends === 2);
+  check(sends === 2, 'Historical conversation with llm_config_id can send');
+  const legacy = { name: 'history-legacy-provider', config: { ...route, llm_config_id: null,
+    provider: 'custom:legacy-router', reasoning_effort: 'xhigh' } };
+  store.set(legacy.name, legacy.config);
+  control.setCurrent(legacy); control.setText('Continue legacy history'); await sleep(250);
+  await until(() => !document.querySelector('.chat-send').disabled);
+  await until(() => store.get(legacy.name).llm_config_id === 'provider');
+  check(!store.get(legacy.name).provider && store.get(legacy.name).reasoning_effort === 'xhigh',
+    'Legacy alias restores and saves canonical identity without clearing effort');
+  check(saveCalls.filter(call => call.id === legacy.name).every(call => call.config.llm_config_id === 'provider'),
+    'No transient empty identity is saved during legacy restore');
+  document.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await until(() => sends === 3);
+  check(sends === 3, 'Legacy conversation sends without manual reselection');
   check(errors.length === 0, 'No page errors');
   control.setCurrent(cases[2]); control.setText('Keep this draft'); await sleep(200);
 }

@@ -16,7 +16,8 @@ const task = {
   status: 'done',
   created_at: '2026-10-10T00:00:00Z',
   updated_at: '2026-10-10T00:01:00Z',
-  provider_key: 'configured-provider',
+  provider_key: 'custom',
+  request_llm_config_id: 'configured-provider',
   model: 'custom-model',
   reasoning_effort: 'medium',
 };
@@ -37,7 +38,7 @@ const empty = () => ({ projects: [], activeProjectId: null, activeConversationId
 
 function assertRuntimeTask(actual) {
   assert.equal(actual.taskId, task.task_id);
-  assert.equal(actual.requestedProvider, task.provider_key);
+  assert.equal(actual.requestedProvider, task.request_llm_config_id);
   assert.equal(actual.requestedModelId, task.model);
   assert.equal(actual.requestedReasoningEffort, task.reasoning_effort);
   assert.equal(actual.runtimeHydrated, false);

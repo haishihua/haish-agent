@@ -311,7 +311,7 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = []) {
     loopIndex: 0,
     provider: task.provider,
     providerKey: task.provider_key || 'auto',
-    requestedProvider: task.provider_key || 'auto',
+    requestedProvider: task.request_llm_config_id || task.request_provider || '',
     requestedAgentId: task.agent_id || task.profile_id || '',
     requestedWorkflowId: task.workflow_id || '',
     executionMode: task.execution_mode === 'bot' ? 'bot' : 'chat',

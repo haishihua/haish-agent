@@ -32,11 +32,11 @@ export function createGoalCommandHandler(ctx) {
     const workflowAttachment = attachment ? { ...attachment, uploaded: false } : null;
     // Capture the source composer's selection before any asynchronous navigation.
     // Only model fields cross this boundary; never copy credentials or Agent identity.
-    const sourceConfig = Object.fromEntries(['provider', 'model_id', 'reasoning_effort']
+    const sourceConfig = Object.fromEntries(['llm_config_id', 'model_id', 'reasoning_effort']
       .filter((field) => typeof runConfig[field] === 'string' && runConfig[field].trim())
       .map((field) => [field, runConfig[field].trim()]));
     if (Object.hasOwn(runConfig, 'reasoning_effort')) sourceConfig.reasoning_effort = runConfig.reasoning_effort ?? null;
-    if (!sourceConfig.provider) delete sourceConfig.model_id;
+    if (!sourceConfig.llm_config_id) delete sourceConfig.model_id;
     const nodeRuntimeConfigs = nodeRuntimeConfigsForWorkflow(workflow, Object.fromEntries(
       (workflow.nodes || []).map((node) => [node.id, { ...sourceConfig }]),
     ), ctx.providerOptions || []);

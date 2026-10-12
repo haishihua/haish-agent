@@ -53,7 +53,7 @@ async function replayUsageEvents(events, { background = false } = {}) {
     load: () => createEmptyContextUsage(CONVERSATION_ID),
   });
   const handlers = createTaskStreamHandlers({
-    API_BASE: '', conversationId: CONVERSATION_ID, providerOptions: [{ provider: 'fixture' }],
+    API_BASE: '', conversationId: CONVERSATION_ID, providerOptions: [{ id: 'fixture', provider: 'custom' }],
     conversationIdRef: { current: background ? 'another-conversation' : CONVERSATION_ID },
     streamTargetConvIdRef: { current: null },
     userCancelledTaskIdsRef: { current: new Set() }, chatFinalizedTaskIdsRef: { current: new Set() },

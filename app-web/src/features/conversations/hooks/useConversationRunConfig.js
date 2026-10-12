@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function useConversationRunConfig({ sync, conversationId, scopeId, config, restore, loading, readOnly, initialAgentId, hasSentMessage, onAgentSaved, onToast }) {
+export function useConversationRunConfig({ sync, conversationId, scopeId, config, restore, loading, saveBlockedReason = '', readOnly, initialAgentId, hasSentMessage, onAgentSaved, onToast }) {
   const [ready, setReady] = React.useState('');
   const [error, setError] = React.useState('');
   const [pending, setPending] = React.useState(false);
@@ -10,7 +10,7 @@ export function useConversationRunConfig({ sync, conversationId, scopeId, config
     return () => { mountedRef.current = false; };
   }, []);
   const currentRef = React.useRef({});
-  currentRef.current = { config, restore, onAgentSaved, hasSentMessage, onToast };
+  currentRef.current = { config, restore, onAgentSaved, hasSentMessage, onToast, saveBlockedReason };
   const committedRef = React.useRef(null);
   const baselineRef = React.useRef(null);
   const operationRef = React.useRef(null);
@@ -50,6 +50,7 @@ export function useConversationRunConfig({ sync, conversationId, scopeId, config
     if (ownerRef.current !== owner || ready !== key) throw new Error('Conversation configuration is still loading.');
     if (operationRef.current) await operationRef.current;
     if (ownerRef.current !== owner) throw new Error('Conversation changed while configuration was saving.');
+    if (currentRef.current.saveBlockedReason) throw new Error(currentRef.current.saveBlockedReason);
     const before = committedRef.current || baselineRef.current;
     const operation = (async () => {
       setPending(true); setError('');
@@ -84,19 +85,22 @@ export function useConversationRunConfig({ sync, conversationId, scopeId, config
   }, [sync, scopeId, serverId, key, ready, owner]);
 
   React.useEffect(() => {
-    if (ready !== key || loading || readOnly || operationRef.current) return;
+    // A missing/unavailable route is a restore/setup state, not a new selection.
+    // Never observe it: another in-flight flush could otherwise persist it too.
+    if (ready !== key || loading || saveBlockedReason || readOnly || operationRef.current) return;
     if (error && JSON.stringify(committedRef.current || baselineRef.current) === serialized) return;
     const next = JSON.parse(serialized);
     sync?.observe(scopeId, next);
     if (JSON.stringify(committedRef.current) === serialized) return;
     persist(next).catch(() => {}); // Error is surfaced and the saved selection is restored above.
-  }, [sync, ready, key, loading, readOnly, scopeId, serialized, persist, pending, error]);
+  }, [sync, ready, key, loading, saveBlockedReason, readOnly, scopeId, serialized, persist, pending, error]);
 
   return {
     error, pending, ready: ready === key,
     ensureSaved: async () => {
       if (operationRef.current) await operationRef.current;
       if (ownerRef.current !== owner || ready !== key || loading) throw new Error('Conversation configuration is not ready.');
+      if (currentRef.current.saveBlockedReason) throw new Error(currentRef.current.saveBlockedReason);
       if (error) throw new Error(error);
       if (JSON.stringify(committedRef.current) === JSON.stringify(currentRef.current.config)) return committedRef.current;
       return persist(currentRef.current.config);

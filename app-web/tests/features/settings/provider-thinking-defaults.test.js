@@ -1,10 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runtimeLlmProviderOptions, applyLlmSettingsPayloadToDraft, createCompactProviderDraft } from '../../../src/features/settings/model/llm-settings.js';
+import { runtimeLlmProviderOptions, applyLlmSettingsPayloadToDraft, createCompactProviderDraft, SETTINGS_REASONING_OPTIONS } from '../../../src/features/settings/model/llm-settings.js';
 import { createLlmProfile } from '../../../src/features/settings/model/settings-payload.js';
 import { REASONING_EFFORT_OPTIONS } from '../../../src/features/chat/model/run-catalog.js';
 
 const row = (id, effort) => ({ id, provider: 'custom', name: id, model: `${id}-model`, reasoning_effort: effort });
+
+test('Settings and the original chat slider share exactly four effort levels', () => {
+  assert.equal(SETTINGS_REASONING_OPTIONS, REASONING_EFFORT_OPTIONS);
+  assert.deepEqual(SETTINGS_REASONING_OPTIONS.map(({ id }) => id), ['low', 'medium', 'high', 'xhigh']);
+});
 
 test('each Settings provider exports its own explicit default model and thinking', () => {
   const rows = REASONING_EFFORT_OPTIONS.map(({ id }) => row(id, id));

@@ -24,7 +24,7 @@ for (const background of [false, true]) {
     const calls = [], notices = [];
     let seq = 0, launches = 0, confirm;
     const ctx = {
-      API_BASE: '', workspaceState: workspace, providerOptions: [{ provider: 'source-provider' }],
+      API_BASE: '', workspaceState: workspace, providerOptions: [{ id: 'source-provider', provider: 'custom' }],
       conversationIdRef: { current: 'chat-conversation' }, viewModeRef: { current: 'chat' },
       draftConversationRef: { current: null }, streamTargetConvIdRef: { current: null },
       modeLocationRef: { current: {} }, runtimesRef: { current: new Map() },
@@ -64,7 +64,7 @@ for (const background of [false, true]) {
       activation.ensureTaskForEvent({ task_id: 'server-task', conversation_id: detail.conversation_id }, detail.conversation_id);
     };
     Object.assign(ctx, createDeployHandlers(ctx));
-    const runConfig = { provider: 'source-provider', model_id: 'source-model', reasoning_effort: 'high' };
+    const runConfig = { llm_config_id: 'source-provider', model_id: 'source-model', reasoning_effort: 'high' };
     const expectedConfigs = Object.fromEntries(['clarify', 'goal_worker', 'goal_verifier'].map((id) => [id, runConfig]));
     const accepted = await createGoalCommandHandler(ctx)({ prompt: 'Goal', runConfig });
     assert.equal(accepted, true);

@@ -90,8 +90,8 @@ function createHarness({ executionMode = 'chat', projectType = 'custom' } = {}) 
     setLocalWorkspace: () => {}, setStoredConversationId: () => {}, setUploadState: () => {},
     APP_DEFAULT_AGENT_OPTIONS: [{ id: 'agent-1' }], defaultAgentId: 'agent-1', defaultWorkflowId: 'workflow-1',
     createPendingTaskDraft: (text) => ({ id: 'pending-1', title: text }),
-    providerOptions: [{ provider: 'fixture' }],
-    normalizeWorkflowSettings: () => ({ presets: [{ workflow_id: 'workflow-1', nodes: [{ id: 'worker', type: 'agent', runtime_config: { provider: 'fixture', model_id: 'model' } }] }], custom: [] }),
+    providerOptions: [{ id: 'fixture', provider: 'custom' }],
+    normalizeWorkflowSettings: () => ({ presets: [{ workflow_id: 'workflow-1', nodes: [{ id: 'worker', type: 'agent', runtime_config: { llm_config_id: 'fixture', model_id: 'model' } }] }], custom: [] }),
     executeQuest: async (task, id) => { state.executions.push({ task, id }); },
   };
   const conversations = createConversationHandlers(ctx);

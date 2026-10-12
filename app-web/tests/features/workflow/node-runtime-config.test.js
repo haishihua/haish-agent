@@ -15,24 +15,24 @@ test('every model exposes the same four runtime levels', () => {
 
 const workflow = { nodes: [{ id: 'worker', type: 'agent' }, { id: 'verifier', type: 'agent' }, { id: 'tool', type: 'tool' }] };
 test('node selections stay independent and exclude stale nodes or credentials', () => {
-  const configs = { worker: { provider: 'a', model_id: 'm1', reasoning_effort: 'high', api_key: 'never-send' }, verifier: { provider: 'b', model_id: 'm2', reasoning_effort: 'low' }, missing: {}, tool: {} };
-  assert.deepEqual(nodeRuntimeConfigsForWorkflow(workflow, configs), { worker: { provider: 'a', model_id: 'm1', reasoning_effort: 'high' }, verifier: { provider: 'b', model_id: 'm2', reasoning_effort: 'low' } });
+  const configs = { worker: { llm_config_id: 'a', model_id: 'm1', reasoning_effort: 'high', api_key: 'never-send' }, verifier: { llm_config_id: 'b', model_id: 'm2', reasoning_effort: 'low' }, missing: {}, tool: {} };
+  assert.deepEqual(nodeRuntimeConfigsForWorkflow(workflow, configs), { worker: { llm_config_id: 'a', model_id: 'm1', reasoning_effort: 'high' }, verifier: { llm_config_id: 'b', model_id: 'm2', reasoning_effort: 'low' } });
   assert.deepEqual(nodeRuntimeConfigRequest({}), { nodeRuntimeConfig: {} });
 });
 test('node legacy effort uses its inherited provider default without adding a route', () => {
-  const graph = { nodes: [{ id: 'worker', type: 'agent', runtime_config: { provider: 'a', model_id: 'm1' } }] };
-  const providers = [{ id: 'ui-a', requestProvider: 'a', defaultReasoningEffort: 'medium' }];
+  const graph = { nodes: [{ id: 'worker', type: 'agent', runtime_config: { llm_config_id: 'a', model_id: 'm1' } }] };
+  const providers = [{ id: 'a', provider: 'custom', defaultReasoningEffort: 'medium' }];
   for (const reasoning_effort of [null, 'none', 'minimal']) {
     assert.deepEqual(nodeRuntimeConfigsForWorkflow(graph, { worker: { reasoning_effort } }, providers), { worker: { reasoning_effort: 'medium' } });
-    assert.deepEqual(nodeRuntimeConfigRequest({ provider: 'a', model_id: 'm1', reasoning_effort }, providers).nodeRuntimeConfig,
-      { provider: 'a', model_id: 'm1', reasoning_effort: 'medium' });
+    assert.deepEqual(nodeRuntimeConfigRequest({ llm_config_id: 'a', model_id: 'm1', reasoning_effort }, providers).nodeRuntimeConfig,
+      { llm_config_id: 'a', model_id: 'm1', reasoning_effort: 'medium' });
   }
 });
 
 test('all pending and running nodes display recorded task defaults, with per-node execution precedence', () => {
   const task = { requestedProvider: 'source', requestedModelId: 'source-model', requestedReasoningEffort: 'high', workflowRun: { nodes: { worker: { runtime_config: { provider: 'actual', model_id: 'actual-model', reasoning_effort: 'low' } } } } };
   assert.equal(workflowNodeRuntimeConfig(workflow.nodes[0], task, {}, true).model_id, 'actual-model');
-  assert.deepEqual(workflowNodeRuntimeConfig(workflow.nodes[1], task, {}, true), { provider: 'source', model_id: 'source-model', reasoning_effort: 'high' });
+  assert.deepEqual(workflowNodeRuntimeConfig(workflow.nodes[1], task, {}, true), { llm_config_id: 'source', model_id: 'source-model', reasoning_effort: 'high' });
   assert.equal(workflowNodeRuntimeConfig(workflow.nodes[1], task, { verifier: { provider: 'other' } }, true).model_id, '');
   assert.deepEqual(workflowNodeRuntimeConfig(workflow.nodes[1], task, {}, false), {});
   const running = workflowNodeConfiguredState({ runtime_config: { provider: 'a', model_id: 'm1' } }, { status: 'running', input: 'work', attempt: 2 });
@@ -46,7 +46,7 @@ test('executed node config survives stream and task reload', () => {
   const task = taskSummaryToRuntimeTask({ task_id: 't', status: 'done', node_runtime_configs: { worker: config } });
   assert.deepEqual(task.nodeRuntimeConfigs, { worker: config });
 });
-async function captureStreamRequest(task, streamRequest = null, providers = ['a', 'b', 'c'].map((provider) => ({ provider }))) {
+async function captureStreamRequest(task, streamRequest = null, providers = ['a', 'b', 'c'].map((id) => ({ id, provider: 'custom' }))) {
   const runtime = { cancelledRunIds: new Set(), taskRuntimeState: {} };
   let command;
   const handlers = createTaskStreamHandlers({
@@ -63,7 +63,7 @@ async function captureStreamRequest(task, streamRequest = null, providers = ['a'
   return { command, pending: runtime.taskRuntimeState.pendingTask };
 }
 test('chat start and full attempt transport migrate null using provider default', async () => {
-  const providers = [{ provider: 'a', defaultReasoningEffort: 'medium' }];
+  const providers = [{ id: 'a', provider: 'custom', defaultReasoningEffort: 'medium' }];
   const task = { taskId: 'task', title: 'Run', executionMode: 'chat', requestedProvider: 'a', requestedModelId: 'm1', requestedReasoningEffort: null };
   const { command } = await captureStreamRequest(task, null, providers);
   assert.equal(command.payload.options.reasoning_effort, 'medium');
@@ -74,26 +74,26 @@ test('chat start and full attempt transport migrate null using provider default'
 });
 
 test('Bot transport sends node map and no global thinking or model', async () => {
-  const config = { worker: { provider: 'a', model_id: 'm1' } };
+  const config = { worker: { llm_config_id: 'a', model_id: 'm1' } };
   const { command } = await captureStreamRequest({ taskId: 'task', title: 'Run', executionMode: 'bot', workflowSnapshot: { nodes: [workflow.nodes[0]] }, nodeRuntimeConfigs: config });
   assert.deepEqual(command.payload.options.node_runtime_configs, { worker: { ...config.worker, reasoning_effort: 'high' } });
-  assert.equal(command.payload.options.provider, null);
+  assert.equal(command.payload.options.llm_config_id, null);
   assert.equal(command.payload.options.model_id, null);
   assert.equal(command.payload.options.reasoning_effort, null);
 });
 test('node rerun replaces only target config and normalizes old null before transport', async () => {
-  const original = { worker: { provider: 'a', model_id: 'm1' }, verifier: { provider: 'b', model_id: 'm2' } };
-  for (const replacement of [{ provider: 'c', model_id: 'm3' }, { provider: 'c', model_id: 'm3', reasoning_effort: null }]) {
+  const original = { worker: { llm_config_id: 'a', model_id: 'm1' }, verifier: { llm_config_id: 'b', model_id: 'm2' } };
+  for (const replacement of [{ llm_config_id: 'c', model_id: 'm3' }, { llm_config_id: 'c', model_id: 'm3', reasoning_effort: null }]) {
     const { command, pending } = await captureStreamRequest({ taskId: 'task', title: 'Run', executionMode: 'bot', workflowSnapshot: workflow, nodeRuntimeConfigs: original }, { rerunNodeId: 'worker', runConfig: nodeRuntimeConfigRequest(replacement) });
     assert.equal(command.operation, 'rerun_node');
     assert.deepEqual(command.payload.runtime_config, { ...replacement, reasoning_effort: 'high' });
     assert.deepEqual(pending.nodeRuntimeConfigs.worker, { ...replacement, reasoning_effort: 'high' });
     assert.deepEqual(pending.nodeRuntimeConfigs.verifier, { ...original.verifier, reasoning_effort: 'high' });
-    assert.deepEqual(original.worker, { provider: 'a', model_id: 'm1' });
+    assert.deepEqual(original.worker, { llm_config_id: 'a', model_id: 'm1' });
   }
 });
 test('empty rerun config is rejected without a configured definition or task default', async () => {
-  await assert.rejects(captureStreamRequest({ taskId: 'task', executionMode: 'bot', workflowSnapshot: { nodes: [workflow.nodes[0]] }, nodeRuntimeConfigs: { worker: { provider: 'a', model_id: 'm1' } } }, { rerunNodeId: 'worker', runConfig: nodeRuntimeConfigRequest({}) }), /provider.*not been sent/);
+  await assert.rejects(captureStreamRequest({ taskId: 'task', executionMode: 'bot', workflowSnapshot: { nodes: [workflow.nodes[0]] }, nodeRuntimeConfigs: { worker: { provider: 'a', model_id: 'm1' } } }, { rerunNodeId: 'worker', runConfig: nodeRuntimeConfigRequest({}) }), /configuration.*not been sent/);
 });
 
 test('deploy snapshots node config before queuing', () => {

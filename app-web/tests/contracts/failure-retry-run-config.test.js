@@ -40,7 +40,7 @@ test('failure retry carries the composer run config, not the failed attempt one'
   const retry = retryMessageBody();
   assert.match(retry, /composerRunConfigRef\.current/);
   assert.match(retry, /await current\?\.ensureSaved\?\.\(\)/);
-  assert.match(retry, /provider: saved\.provider, modelId: saved\.model_id, reasoningEffort: saved\.reasoning_effort/);
+  assert.match(retry, /provider: saved\.llm_config_id, modelId: saved\.model_id, reasoningEffort: saved\.reasoning_effort/);
 });
 
 test('the retry handoff forwards the config into the task attempt request', () => {
@@ -70,7 +70,7 @@ test('the retry command body carries provider, model and reasoning overrides', (
   const body = streamSource.slice(start, streamSource.indexOf('} : rerunningNode ?', start));
   assert.match(body, /request_id: streamRequest\.requestId,/);
   assert.match(body, /\.\.\.\(streamRequest\.runConfig \? \{/);
-  assert.match(body, /provider: streamRequest\.runConfig\.provider,/);
+  assert.match(body, /llm_config_id: streamRequest\.runConfig\.provider,/);
   assert.match(body, /model_id: streamRequest\.runConfig\.modelId,/);
   assert.match(body, /reasoning_effort: streamRequest\.runConfig\.reasoningEffort,/);
   // 重跑不接受 message：只有编辑重发才带文本。

@@ -19,7 +19,7 @@ test('image files upload on send into the captured conversation before task exec
   const runtime = { taskRuntimeState: { tasksById: {}, taskOrder: [] } };
   const file = new Blob(['image']);
   const handlers = createDeployHandlers({
-    conversationIdRef, selectedConversationId: 'original', conversationReady: true, providerOptions: [{ provider: 'fixture' }],
+    conversationIdRef, selectedConversationId: 'original', conversationReady: true, providerOptions: [{ id: 'fixture', provider: 'custom' }],
     draftConversationRef: { current: null }, viewModeRef: { current: 'chat' },
     getRuntime: () => runtime,
     isTaskActuallyActive: () => false,
@@ -55,7 +55,7 @@ test('one failed image upload is skipped without a duplicate frontend toast', as
   const good = new Blob(['good']);
   good.name = 'good.png';
   const handlers = createDeployHandlers({
-    conversationIdRef: { current: 'conversation' }, selectedConversationId: 'conversation', conversationReady: true, providerOptions: [{ provider: 'fixture' }],
+    conversationIdRef: { current: 'conversation' }, selectedConversationId: 'conversation', conversationReady: true, providerOptions: [{ id: 'fixture', provider: 'custom' }],
     draftConversationRef: { current: null }, viewModeRef: { current: 'chat' },
     getRuntime: () => runtime, isTaskActuallyActive: () => false,
     createPendingTaskDraft: (title, attachment, imageAttachments) => ({ id: 'pending', title, attachment, imageAttachments, status: 'queued' }),

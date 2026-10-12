@@ -473,7 +473,7 @@ test('terminal workflow tasks can rerun an executed business node', () => {
   assert.match(taskStreamSource, /const runId = \(rerunningNode \|\| fullAttempt\) \? generateHexId\(\)/);
   assert.match(appShellSource, /nodeRuntimeConfigRequest\(botNodeConfigs\[nodeId\], llmProviderOptions\) : null/);
   assert.doesNotMatch(appShellSource, /botRunConfigRef/);
-  assert.match(taskStreamSource, /provider: streamRequest\.runConfig\.provider/);
+  assert.match(taskStreamSource, /llm_config_id: streamRequest\.runConfig\.provider/);
   assert.match(taskStreamSource, /model_id: streamRequest\.runConfig\.modelId/);
   assert.match(taskStreamSource, /reasoning_effort: streamRequest\.runConfig\.reasoningEffort/);
   assert.match(taskStreamSource, /sourceTaskId/);

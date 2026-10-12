@@ -5,11 +5,11 @@ import { createConversationHandlers } from '../../../src/features/conversations/
 import { createDeployHandlers } from '../../../src/features/tasks/hooks/createDeployHandlers.js';
 import { goalInvocation, goalMenuItems, GOAL_WORKFLOW_ID } from '../../../src/features/chat/model/goal-command.js';
 
-function harness({ missing = false, defaultProject = false, fail = '', workflow = { nodes: [{ id: 'worker', type: 'agent', runtime_config: { provider: 'fixture', model_id: 'model' } }] }, draft = false, interrupt = '' } = {}) {
+function harness({ missing = false, defaultProject = false, fail = '', workflow = { nodes: [{ id: 'worker', type: 'agent', runtime_config: { llm_config_id: 'fixture', model_id: 'model' } }] }, draft = false, interrupt = '' } = {}) {
   const source = { id: 'chat-project', executionMode: 'chat', name: 'Renamed project', workspacePath: defaultProject ? null : '/repo', conversations: [] };
   const target = { project_id: 'bot-project', execution_mode: 'bot', name: 'Different name', workspace_path: source.workspacePath, is_default: defaultProject };
   const ctx = {
-    API_BASE: '', providerOptions: ['fixture', 'old', 'custom.provider-id'].map((provider) => ({ provider })), workspaceState: { activeProjectId: source.id, projects: [source] },
+    API_BASE: '', providerOptions: ['fixture', 'old', 'custom.provider-id'].map((id) => ({ id, provider: id })), workspaceState: { activeProjectId: source.id, projects: [source] },
     conversationIdRef: { current: draft ? 'draft-chat' : 'chat-conversation' },
     viewModeRef: { current: 'chat' }, draftConversationRef: { current: draft ? { projectId: source.id } : null },
     modeLocationRef: { current: {} }, workflowSettingsDraft: {},
@@ -108,7 +108,7 @@ const goalNodes = [
   { id: 'start', type: 'start' },
   { id: 'clarify', type: 'agent' },
   { id: 'approve_requirements', type: 'human_approval' },
-  { id: 'goal_worker', type: 'agent', runtime_config: { provider: 'old', model_id: 'old-model' } },
+  { id: 'goal_worker', type: 'agent', runtime_config: { llm_config_id: 'old', model_id: 'old-model' } },
   { id: 'goal_verifier', type: 'agent' },
   { id: 'goal_gate', type: 'condition' },
   { id: 'goal_loop', type: 'loop' },
@@ -117,9 +117,9 @@ const goalNodes = [
 for (const prompt of ['', 'Task']) {
   test(`/goal snapshots the source model for every Agent node and persists it (${prompt || 'navigation only'})`, async () => {
     const h = harness({ missing: true, workflow: { nodes: goalNodes } });
-    const runConfig = { provider: 'custom.provider-id', model_id: 'gpt-5.5', reasoning_effort: 'xhigh', api_key: 'not-a-config-field', agent_id: 'source-agent' };
+    const runConfig = { llm_config_id: 'custom.provider-id', model_id: 'gpt-5.5', reasoning_effort: 'xhigh', api_key: 'not-a-config-field', agent_id: 'source-agent' };
     const expected = Object.fromEntries(['clarify', 'goal_worker', 'goal_verifier'].map((id) => [id, {
-      provider: 'custom.provider-id', model_id: 'gpt-5.5', reasoning_effort: 'xhigh',
+      llm_config_id: 'custom.provider-id', model_id: 'gpt-5.5', reasoning_effort: 'xhigh',
     }]));
     const pending = h.run({ prompt, runConfig });
     runConfig.model_id = 'changed-after-navigation';
@@ -135,24 +135,24 @@ for (const prompt of ['', 'Task']) {
 
 test('/goal normalizes old null before persisting and sending node config', async () => {
   const h = harness({ workflow: { nodes: goalNodes } });
-  assert.equal(await h.run({ prompt: 'Task', runConfig: { provider: 'custom.provider-id', model_id: 'model', reasoning_effort: null } }), true);
+  assert.equal(await h.run({ prompt: 'Task', runConfig: { llm_config_id: 'custom.provider-id', model_id: 'model', reasoning_effort: null } }), true);
   assert.ok(Object.values(h.sent[0][0].nodeRuntimeConfigs).every((config) => config.reasoning_effort === 'high'));
 });
 
 test('/goal legacy effort uses the selected provider default rather than early high', async () => {
   const h = harness({ workflow: { nodes: goalNodes } });
   h.ctx.providerOptions.find((item) => item.provider === 'custom.provider-id').defaultReasoningEffort = 'medium';
-  assert.equal(await h.run({ prompt: 'Task', runConfig: { provider: 'custom.provider-id', model_id: 'model', reasoning_effort: null } }), true);
+  assert.equal(await h.run({ prompt: 'Task', runConfig: { llm_config_id: 'custom.provider-id', model_id: 'model', reasoning_effort: null } }), true);
   assert.ok(Object.values(h.sent[0][0].nodeRuntimeConfigs).every((config) => config.reasoning_effort === 'medium'));
   assert.ok(Object.values(h.calls.find((call) => call.method === 'PUT').body.node_runtime_configs).every((config) => config.reasoning_effort === 'medium'));
 });
 
 test('/goal without a valid node route rejects before creating a project or task', async () => {
   const h = harness({ workflow: { nodes: goalNodes } });
-  assert.equal(await h.run({ prompt: 'Task', runConfig: { provider: '', model_id: 'unbound', reasoning_effort: 'high' } }), false);
+  assert.equal(await h.run({ prompt: 'Task', runConfig: { llm_config_id: '', model_id: 'unbound', reasoning_effort: 'high' } }), false);
   assert.equal(h.sent.length, 0);
   assert.equal(h.calls.length, 0);
-  assert.match(h.notices[0][1], /provider/);
+  assert.match(h.notices[0][1], /configuration/);
 });
 
 test('long prompts stay in the task, not in a user-title field on automatic create', async () => {

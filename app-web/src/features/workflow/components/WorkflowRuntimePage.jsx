@@ -614,7 +614,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
   }, [attentionKey, attentionNodeId, workflowKey, task?.taskId]);
 
   const nodeConfigKey = JSON.stringify(nodeRuntimeConfigs);
-  const providerCatalogKey = JSON.stringify(providerOptions.map((item) => ({ selector: item.requestProvider || item.provider || item.id, provider: item.provider })));
+  const providerCatalogKey = JSON.stringify(providerOptions.map((item) => ({ id: item.id, provider: item.provider, legacySelectors: item.legacySelectors })));
   const layoutNodes = React.useMemo(() => {
     const configs = JSON.parse(nodeConfigKey);
     const providers = JSON.parse(providerCatalogKey);
@@ -623,8 +623,8 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     const id = String(node.id);
     const layoutMeta = layout.meta.get(id);
     const runtimeDetailAvailable = canOpenNodeDetail(node);
-    const config = workflowNodeRuntimeConfig(node, task, configs, configReadOnly);
-    const provider = providers.find((item) => item.selector === config.provider)?.provider;
+    const config = workflowNodeRuntimeConfig(node, task, configs, configReadOnly, providers);
+    const provider = providers.find((item) => item.id === config.llm_config_id)?.provider;
     return {
       // ponytail: reuse the editor node renderer; runtime only supplies status/config data.
       id,
@@ -636,7 +636,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
         runtimeStatus: status,
         runtimeStatusLabel: STATUS_COPY[status],
         runtimeDetailAvailable,
-        ...(node.type === 'agent' ? { runtimeModelId: config.model_id, runtimeProvider: provider || config.provider } : {}),
+        ...(node.type === 'agent' ? { runtimeModelId: config.model_id, runtimeProvider: provider || config.llm_config_id || config.provider } : {}),
         feedbackTarget: feedbackTargetIds.has(id),
         usedSideHandles: workflowUsedSideHandles(id, workflow?.edges, routes),
         // 端口（含 loop 的 retry 出口）只有一份来源：两页都从 workflowNodePorts 取。
@@ -854,7 +854,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
           agentName={selectedNodeAgentName}
           agentOptions={agentOptions}
           providerOptions={providerOptions}
-          runtimeConfig={workflowNodeRuntimeConfig(selectedNode, task, nodeRuntimeConfigs, configReadOnly)}
+          runtimeConfig={workflowNodeRuntimeConfig(selectedNode, task, nodeRuntimeConfigs, configReadOnly, providerOptions)}
           onRuntimeConfigChange={(config) => onNodeRuntimeConfigChange?.(selectedNode.id, config)}
           configReadOnly={configReadOnly || !onNodeRuntimeConfigChange}
         />

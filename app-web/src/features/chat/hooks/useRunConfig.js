@@ -2,6 +2,7 @@ import React from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch } from '../../../shared/api/client.js';
 import { REASONING_EFFORT_OPTIONS, normalizeReasoningEffort } from '../model/run-catalog.js';
+import { migrateExecutionRoute, savedExecutionConfigId } from '../../settings/model/execution-identity.js';
 
 const PROVIDER_MODELS_STORAGE_KEY = 'haish_provider_models_v1';
 
@@ -36,7 +37,7 @@ function safeReadRunConfigSelection(storageKey) {
 }
 
 export function safeWriteRunConfigSelection(storageKey, selection) {
-  if (!storageKey || typeof window === 'undefined' || !window.localStorage) return;
+  if (!storageKey || typeof window === 'undefined' || !window.localStorage || selection.legacyProvider) return;
   try {
     window.localStorage.setItem(storageKey, JSON.stringify({
       agentId: selection.agentId,
@@ -57,6 +58,7 @@ function optionHasId(options, id) {
 function providerModelsRequest(providerOption) {
   if (!providerOption?.provider) return null;
   return {
+    llm_config_id: providerOption.id,
     provider: providerOption.provider,
     auth_mode: providerOption.authMode || '',
     custom_provider: providerOption.customProvider || '',
@@ -173,8 +175,8 @@ export function resolveRunConfigSelection(storageKey, providerOptions, agentOpti
   const agentSource = optionHasId(agentOptions, stored?.agentId)
     ? stored
     : (optionHasId(agentOptions, preferred?.agentId) ? preferred : null);
-  const providerSource = stored || (optionHasId(providerOptions, preferred?.providerId) ? preferred : null);
-  const providerId = providerSource?.providerId || '';
+  const providerSource = stored || (savedExecutionConfigId(preferred?.providerId, providerOptions, true) ? preferred : null);
+  const providerId = savedExecutionConfigId(providerSource?.providerId, providerOptions, true) || providerSource?.providerId || '';
   const provider = (providerOptions || []).find((item) => item.id === providerId);
   const providerDefaultModelId = String(provider?.defaultModelId || '').trim();
   return {
@@ -195,8 +197,9 @@ export function resolveRunConfigSelection(storageKey, providerOptions, agentOpti
 export function storedRunConfigRequest(storageKey, providerOptions) {
   const stored = safeReadRunConfigSelection(storageKey);
   if (!stored?.providerId || !stored.modelId) return null;
-  const provider = (providerOptions || []).find((item) => item.id === stored.providerId);
-  const request = String(provider?.requestProvider || provider?.provider || '').trim();
+  const configId = savedExecutionConfigId(stored.providerId, providerOptions, true);
+  const provider = (providerOptions || []).find((item) => item.id === configId);
+  const request = String(provider?.id || '').trim();
   if (!request) return null;
   return {
     provider: request,
@@ -228,10 +231,11 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
     );
     setSelection((current) => {
       if (!keyChanged && current.serverKey === nextKey) {
-        if (!Object.hasOwn(current, 'pendingReasoningEffort')) return current;
-        const provider = (providerOptions || []).find((item) => item.id === current.providerId || (item.requestProvider || item.provider) === current.providerId);
+        if (current.legacyProvider || !Object.hasOwn(current, 'pendingReasoningEffort')) return current;
+        const configId = savedExecutionConfigId(current.providerId, providerOptions, current.pendingLegacyIdentity === true);
+        const provider = (providerOptions || []).find((item) => item.id === configId);
         if (!provider) return current;
-        const { pendingReasoningEffort, ...rest } = current;
+        const { pendingReasoningEffort, pendingLegacyIdentity: _legacy, ...rest } = current;
         return { ...rest, providerId: provider.id, providerDefaultModelId: provider.defaultModelId || '',
           reasoningEffort: normalizeReasoningEffort(pendingReasoningEffort, provider.defaultReasoningEffort) };
       }
@@ -260,7 +264,8 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
 
   React.useEffect(() => {
     if (
-      optionHasId(providerOptions, selection.providerId)
+      !selection.legacyProvider
+      && optionHasId(providerOptions, selection.providerId)
       && Boolean(selection.modelId)
       && optionHasId(agentOptions, selection.agentId)
       && REASONING_EFFORT_OPTIONS.some((item) => item.id === selection.reasoningEffort)
@@ -280,17 +285,19 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
 
   return {
     restoreConfig: (config) => {
-      const provider = providerOptions.find((item) => (item.requestProvider || item.provider) === config.provider);
+      config = migrateExecutionRoute(config, providerOptions);
+      const provider = providerOptions.find((item) => item.id === (config.llm_config_id || config.provider));
       setSelection((current) => {
-        const { pendingReasoningEffort: _pending, ...rest } = current;
-        return { ...rest, serverKey: selectionStorageKey || '', providerId: provider?.id || config.provider || '', modelId: config.model_id || '', providerDefaultModelId: provider?.defaultModelId || '',
+        const { pendingReasoningEffort: _pending, pendingLegacyIdentity: _legacy, legacyProvider: _provider, ...rest } = current;
+        return { ...rest, legacyProvider: config.llm_config_id ? (config.provider || '') : '', serverKey: selectionStorageKey || '', providerId: provider?.id || config.llm_config_id || config.provider || '', modelId: config.model_id || '', providerDefaultModelId: provider?.defaultModelId || '',
           reasoningEffort: normalizeReasoningEffort(config.reasoning_effort, provider?.defaultReasoningEffort),
-          ...(!provider ? { pendingReasoningEffort: config.reasoning_effort } : {}),
+          ...(!provider ? { pendingReasoningEffort: config.reasoning_effort, pendingLegacyIdentity: !config.llm_config_id } : {}),
           agentId: config.workflow_id || config.agent_id || current.agentId };
       });
     },
     serverSelection: selection.serverKey === (selectionStorageKey || ''),
     providerId: selection.providerId,
+    legacyProvider: selection.legacyProvider || '',
     modelId: selection.modelId,
     agentId: selection.agentId,
     reasoningEffort: selection.reasoningEffort,
@@ -301,7 +308,7 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
         const providerDefaultModelId = String(provider?.defaultModelId || '').trim();
         // Apply the selected Settings row atomically; never inherit the previous provider's effort.
         const reasoningEffort = normalizeReasoningEffort(provider?.defaultReasoningEffort);
-        const { pendingReasoningEffort: _pending, ...rest } = current;
+        const { pendingReasoningEffort: _pending, pendingLegacyIdentity: _legacy, legacyProvider: _provider, ...rest } = current;
         return provider ? { ...rest, providerId: provider.id, modelId: providerDefaultModelId, providerDefaultModelId, reasoningEffort } : current;
       });
     }, [providerOptions, markPreferredWrite]),
