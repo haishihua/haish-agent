@@ -93,3 +93,49 @@ Skills 列表按来源映射标签：`preset` / `builtin` → **Built-in**，`in
 - 导航分组调整：Embedding 从 Providers 子标签移到 **Context** 分组，与 Memory 并列；Providers 只剩 Chat / Vision。Embedding 段的列表、编辑面板、Add provider、连接测试与删除全部复用原 LLM 通道（`configItemsForSection('embedding')` 走 `getLlmConfigItems`，测试走 `onTestLlmConfig`，删除走 `onDeleteLlmProvider('embedding')`）。单条目段的搜索框和已配置时的 Add 一并隐藏。
 - Qdrant 的“测没测过”原来只存在浏览器 `localStorage`（`haish.settingsConnectionStatus.v1`，靠一段连接签名匹配）。签名由本地草稿算出，草稿没落盘、记录改名（knowledge-qdrant → memory-qdrant）或换过一个段都会让它对不上，结果就退回 `Not tested`，下一次同步还会把已存的结果覆盖掉。现在改由后端跟着已保存的连接存：`memory.qdrant.last_test`（state / message / tested_at + 内部 `identity`），`GET /api/settings/memory` 只返回结果不返回 identity，连接（URL、collection、是否带 key）变了就当没测过。前端删掉整层签名与 localStorage 持久化，只保留本轮会话的临时状态。
 - 验证：`npm test` 310 项、ESLint、架构检查（128 个模块）与 `build:web` 通过；后端新增 `test_connection_test_result_is_stored_with_the_saved_connection`，全量 `pytest --ignore=tests/test_app_web.py` 1613 passed。
+
+## 2026-10-11：模型记录身份与 OAuth 单存储
+
+- 执行 network / run-config 使用 `llm_config_id`，它对应 Settings 持久记录 `id`；`provider` 仅用于协议类型与品牌展示，不是执行 selector。聊天、Goal、retry/edit、任务恢复、workflow 默认/节点/重跑均传递记录 ID。
+- runtime options 不按品牌/名称/模型/位置生成 selector，不回退第一条；缺失、保留或重复 ID 不进入执行列表。有效模型覆盖与四档 Thinking 恢复保持，目录刷新不能覆盖已有有效选择。
+- 新建或旧无 ID 辅助草稿的 UI 编辑 ID 不冒认持久记录：保存前不进入执行选项，独立目录/连接测试省略 `llm_config_id`，明确传协议/地址/凭据；Settings 保存返回记录后才可执行。
+- 已提供 ID 的目录/测试请求即使有显式 Key 也由后端校验；协议、认证或地址被编辑时不借原记录保存 Key。Model ID 继续直接编辑，不恢复 Add model / 附加模型列表。
+- OAuth 登录、状态、执行、目录、测试和刷新使用后端应用 Settings 根目录唯一 `auth.json`；旧用户 OAuth 文件不兜底、不双写、不自动迁移。缺凭据时在 Settings 重新登录。
+- 最终前端离线验证：`npm test` **987 passed / 0 failed**；架构检查 **197 modules**、ESLint、typecheck 与 `build:web` 均退出 0。Vite 仅有大 chunk 提示。未发布、重启应用或调用真实模型；已有 UI 改动保留。
+
+### 历史会话恢复与空配置保护
+
+- 桌面端使用 `app-web/dist`，修改源码或只重启 Python 后端不会更新已经打开的 renderer。记录 ID 协议升级后必须重建此目录并重新加载桌面应用；旧构建只识别 `provider`，会丢失后端返回的 `llm_config_id`。
+- `ChatComposer` 保存配置使用恢复出的记录 ID，而不是用当前 options 的查找结果生成空字符串。未加载、已删除或不可用的配置保持可见，发送校验明确拒绝，不自动选择其他记录。
+- `useConversationRunConfig` 接收 `saveBlockedReason`，无效路由不进入自动 observe/save，也不能通过 ensureSaved 或 Agent 切换绕过。用户明确选择有效配置后才恢复保存；Bot 的完整节点路由仍可在无全局配置时执行。
+- 当时已被旧构建写空的会话不能仅凭 renderer 更新恢复身份；能否自动恢复取决于是否保留可确认的原引用证据。两条已单独授权恢复的会话另行完成恢复；本节不代表继续修改真实数据的许可。第三轮兼容规则见下方。
+- 验证：前端 **991 tests passed**；架构检查 **197 modules**、lint、typecheck、`build:web` 和 diff checks 通过。`send-blocked-tooltip.html` 真实 React 离线夹具通过，覆盖无效恢复不覆盖配置、已删除身份保留、明确重选保存、`llm_config_id` 历史会话保留 Xhigh 并发送。未调用真实模型或重启桌面应用。
+
+### 统一身份升级与兼容收尾
+
+- 后端读取旧 Settings 时自动补一次并持久化记录 ID，用户无需手填。Settings 回传的 `legacy_selectors` 是升级时冻结且可确认的旧 selector → 原记录映射；前端只消费它，不根据今天的品牌/名字/模型/排序推测配置。
+- 旧 `provider` 中的精确有效 ID 或冻结 alias 自动兼容；新 `llm_config_id` 仍严格校验。不可用/冲突身份保留并阻止发送及无效自动保存，删除后不会静默绑定同名新记录。
+- 修复旧工作流 Agent `runtime_config.provider` 与 LLM `provider` 被前端误拦截的问题。节点展示、提取、保存及重跑共用迁移函数；节点明确换配置时不得借全局的模型和 effort。
+- 历史与本地缓存恢复可自动转规范 ID，保留原模型与 Thinking。Settings 延迟加载时仅旧字段可走 alias；错误的新 ID 不能冒充旧字段绕过校验。既有 `saveBlockedReason` guard 保持。
+- 最新验收：**996 tests passed、0 failed**；architecture **198 modules**、lint、typecheck、`build:web` 均 exit 0。最终 renderer 入口为 `app-web/dist/assets/js/index-C4CJ6EPq.js`，回读确认包含新兼容与防护逻辑。Vite 只有大 chunk 提示。
+- 真实 React 离线夹具 **PASS**：旧 alias 无需手动重选可恢复/保存/发送，Xhigh 保留，恢复过程中不写空 ID；新 ID 历史、不可用引用及其他保存 guard 同时通过。临时 Vite 已停止。
+- 本轮只改源码、构建及隔离验证，未重载桌面、调用真实模型、写真实 Settings/凭据或重新恢复会话。构建成功不等于已打开 renderer/运行中后端已加载新版本；完全缺失原身份依据的数据仍不自动猜配。
+
+### 失败页 Retry 收尾修复
+
+- 离线行为回归先复现：收到 `run_started` 后传输失败，旧处理先回滚并清空 active task 指针，再读取它去标记失败，导致已确认的新 attempt 留在 `running`。现在先处理已接收事件，区分未确认请求和已确认任务；后者保留任务并标记失败、释放属于该次请求的运行占用。已经收到终态的任务不被后续传输错误覆盖。
+- 从本地 pending 转为服务端任务时保留 model、Thinking 和 request text，Chat 重试使用当前已保存的明确选择，Bot 保留规范化节点路由。不可用配置仍由 `ensureSaved` guard 拒绝，composer 不再丢弃该 guard 的句柄并只报泛化的“等待配置”。
+- 移除失败卡下面独立的 Retry action-error 小卡；实际错误合并在原失败卡内，不吞错。编辑重发的草稿及行内失败反馈保持不变。
+- 本次验证：前端 **999 tests passed、0 failed**，architecture **198 modules**、lint、typecheck 通过；renderer 重建入口为 `app-web/dist/assets/js/index-DyL791nz.js`，只有既有大 chunk 提示。后端无新源码修改，隔离 HOME/Settings、禁外网的 attempt/身份回归 **86 passed**。
+- 真实 React 离线 `failure-retry.html` **16 checks PASS**：连续两次重试、双击防重、当前记录/model/Xhigh、流失败释放占用、无下方小卡、无效身份不写不发及错误保留。既有 `edit-resend-immediate.html` 与 `send-blocked-tooltip.html` 同时 PASS，无页面错误；临时 Vite 已停止。
+- 上述 999 项与旧 bundle 是本次边界修复之前的历史验收，不作为当前提交依据；当时两处身份遗漏尚未修复。当前最终结果见下节。
+
+### 2026-10-12：身份恢复 / 幂等重放边界修复与提交验收
+
+- 恢复配置时保留冲突的两份身份，模型与 Xhigh 不丢；阻止 localStorage 写入、自动保存、Retry/发送保存及 Agent 切换。改模型、Thinking 或刷新 Settings 不能解除冲突；明确选择有效配置才清除旧身份。guard 不被重选提示或默认回退替代。
+- 后端 Retry 重放统一首次执行的显式身份清空规则；旧 `provider: null`、空白/失效 ID 或另一记录返回 409，不新增任务或模型调用。省略身份、相同记录 ID 和合法冻结 alias 仍重放原任务。
+- 最终前端 **1000 passed、0 failed**；architecture **198 modules**、lint、typecheck、`build:web` 串行链 exit 0，仅既有 chunk-size warning。renderer 入口 **`app-web/dist/assets/js/index-OEYvguuy.js`**；回读确认冲突保留、规范 ID、guard 与 Retry 收尾均在产物中。
+- 后端隔离 HOME/Settings、禁外网全仓 **3223 passed、599 subtests passed、67 skipped、3 warnings**，exit 0；其中 attempt/身份专项 **95 passed**，已被全仓覆盖，不另累加。67 skipped 属于可选 Harbor、真实浏览器/Embedding 与历史证据项，不当作通过。
+- 真实 React 离线 `failure-retry.html` **16 PASS**（重复检查）、`edit-resend-immediate.html` **19 PASS**、`send-blocked-tooltip.html` **66 PASS**，无页面异常；覆盖双击防重、连续重试、已确认中断及终态保护、当前路由/Xhigh、冲突阻断和明确重选规范保存、原错误保留与无下方小提示。Retry 夹具等待 mock 目录 effect 完成，生产 guard 未放宽。
+- 本次按照用户授权，将现有完整增量按功能本地分批 commit；精确 hash 以最终 Git 记录为准，不 push。验收日志在后端 `build/settings-only-runtime/submission-final-*`（本地 ignored 产物）。
+- 未写真实 Settings/凭据/历史会话、未再次执行已获批会话恢复，未安装依赖、发布、重载桌面或调用真实模型。新产物不证明运行中的 renderer/后端已加载更新，也不证明真实 OAuth/远程模型验收。
