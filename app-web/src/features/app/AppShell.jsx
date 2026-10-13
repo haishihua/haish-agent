@@ -133,8 +133,8 @@ import {
   appendChatProgressText,
   appendAnswerDelta,
   pendingTaskToQuest,
-  getToolResponseTraceStatus,
 } from '../chat/model/chat-timeline.js';
+import { getToolResponseTraceStatus } from '../chat/model/tool-trace-status.js';
 import {
   addTaskCompletionNotice,
   clearConversationCompletionNotices,

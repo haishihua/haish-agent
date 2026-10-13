@@ -1,6 +1,8 @@
 import { eventDeltaText, stripInjectedSkillInstruction } from './chat-text.js';
 import { streamEventUpdate } from './stream-events.js';
 import { normalizeToolName } from './tool-names.js';
+import { getToolResponseTraceStatus, getToolTraceStatus } from './tool-trace-status.js';
+import { createTerminalTimeline } from './terminal-timeline.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
 import { skillDisplayName } from '../../tasks/model/runtime-events.js';
 import { skillTrigger } from './tool-presentation.js';
@@ -115,47 +117,6 @@ function isMcpTraceItem(item) {
   const group = String(item?.toolGroup || item?.tool_group || '').toLowerCase();
   const kind = String(item?.kind || '').toLowerCase();
   return group === 'external' || kind === 'mcp';
-}
-
-function getToolTraceStatus(state, fallbackStatus = 'running') {
-  const normalized = String(state || '').toLowerCase();
-  const fallback = normalizeTaskStatus(fallbackStatus);
-  if (normalized === 'returned' || normalized === 'completed' || normalized === 'done') return 'done';
-  if (normalized === 'failed' || normalized === 'error') return 'failed';
-  // In-flight states: when the surrounding task has already finished, the
-  // call's "still running" marker cannot be true anymore — it just means the
-  // matching tool_call_completed event was never
-  // recorded (or this timeline was rebuilt before those events were merged).
-  // Defer to the terminal task status instead of rendering a permanent
-  // yellow indicator. This is the safety net that catches the "switch away
-  // and back → all tool calls yellow" regression even if the buildChatTimeline
-  // event-pairing logic ever misses a callId.
-  if (normalized === 'running' || normalized === 'dispatched' || normalized === 'received' || normalized === 'requested') {
-    if (fallback === 'done') return 'done';
-    if (fallback === 'failed') return 'failed';
-    if (fallback === 'cancelled') return 'cancelled';
-    return 'running';
-  }
-  if (fallback === 'done') return 'done';
-  if (fallback === 'failed') return 'failed';
-  return 'pending';
-}
-
-export function getToolResponseTraceStatus(response, fallback = '') {
-  if (!response || typeof response !== 'object') return fallback || '';
-  const status = String(response.status || '').toLowerCase();
-  const resultState = String(response.result_state || response.resultState || response.state || '').toLowerCase();
-  const error = response.error || null;
-  if (error || status === 'error' || status === 'failed' || resultState === 'blocked' || resultState === 'failed' || resultState === 'error') {
-    return 'failed';
-  }
-  if (status === 'ok' || status === 'success' || resultState === 'resolved' || resultState === 'done' || resultState === 'success') {
-    return 'done';
-  }
-  if (resultState === 'not_found' || resultState === 'no_change' || resultState === 'partial') {
-    return 'done';
-  }
-  return fallback || '';
 }
 
 export function categorizeToolCall(call) {
@@ -516,84 +477,10 @@ export function buildChatTimeline(task, taskStatus) {
   // which is what caused the "all tool calls yellow" regression after a
   // tab-switch round-trip rebuilds the timeline from the event log alone.
   const toolItemsByCallId = new Map();
-  // exec_command owns the visible terminal card. write_stdin is a protocol
-  // interaction with that process, so fold it back into the originating card
-  // instead of rendering a second timeline item.
-  const terminalItemsBySessionId = new Map();
-  const terminalOutputByItem = new WeakMap();
-  const terminalCallsWithOutputEvents = new Set(events
-    .filter((event) => event.type === 'tool_output_delta' || event.type === 'tool_call_completed')
-    .map((event) => event.callId || event.toolCallId || event.tool_call_id || ''));
-  const updateTerminalOutput = (toolItem, callId, text, append = false) => {
-    let outputs = terminalOutputByItem.get(toolItem);
-    if (!outputs) {
-      outputs = new Map();
-      terminalOutputByItem.set(toolItem, outputs);
-    }
-    // Stream deltas are literal bytes, not overlapping answer fragments. Final
-    // results replace only this invocation's segment; polls retain prior output.
-    outputs.set(callId, append ? (outputs.get(callId) || '') + text : text);
-    toolItem.terminalOutput = [...outputs.values()].join('');
-  };
-  const plainObject = (value) => {
-    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
-    if (typeof value !== 'string') return {};
-    try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
-  };
-  const terminalSessionId = (value) => {
-    const response = plainObject(value);
-    const data = plainObject(response.data);
-    return String(data.session_id || data.sessionId || '').trim();
-  };
-  const terminalOutputChunk = (source) => {
-    const response = plainObject(source?.toolResponse || source?.tool_response);
-    const artifacts = plainObject(response.artifacts);
-    const data = plainObject(response.data);
-    const output = artifacts.output
-      ?? artifacts.content
-      ?? artifacts.text
-      ?? artifacts.stdout
-      ?? data.output
-      ?? data.stdout;
-    if (output !== undefined && output !== null) return String(output);
-    const raw = source?.toolOutput || source?.tool_output || '';
-    const rawText = String(raw || '');
-    if (!rawText || rawText.trimStart().startsWith('TOOL_RESPONSE')) return null;
-    const rawPayload = plainObject(rawText);
-    if (rawPayload.tool_name || rawPayload.toolName) return null;
-    return rawText;
-  };
-  const mergeTerminalResult = (toolItem, source, terminalState = '', seed = false) => {
-    if (!toolItem || !source) return;
-    const response = source.toolResponse || source.tool_response || null;
-    const chunk = terminalOutputChunk(source);
-    const callId = source.callId || source.call_id || toolItem.callId;
-    if (chunk !== null && !(seed && terminalCallsWithOutputEvents.has(callId))) {
-      updateTerminalOutput(toolItem, callId, chunk);
-    }
-    if (response) toolItem.toolResponse = response;
-    toolItem.outputSummary = source.outputSummary || source.output_summary || toolItem.outputSummary || '';
-
-    const nextSessionId = terminalSessionId(response);
-    if (nextSessionId) {
-      toolItem.terminalSessionId = nextSessionId;
-      terminalItemsBySessionId.set(nextSessionId, toolItem);
-      toolItem.status = getToolTraceStatus('running', finalStatus);
-      return;
-    }
-
-    if (toolItem.terminalSessionId && terminalState !== 'requested') {
-      terminalItemsBySessionId.delete(toolItem.terminalSessionId);
-      toolItem.terminalSessionId = '';
-    }
-    const responseState = getToolResponseTraceStatus(response, terminalState);
-    toolItem.status = getToolTraceStatus(responseState || terminalState, finalStatus);
-  };
+  const { findTerminalForInput, mergeTerminalResult, updateTerminalOutput } = createTerminalTimeline({
+    events: events.filter((event) => !String(event.type).startsWith('sub_agent_')),
+    finalStatus,
+  });
   const runtimeInputItemsById = new Map();
   const canNestToolChildren = (toolItem) => {
     if (!toolItem) return false;
@@ -903,8 +790,7 @@ export function buildChatTimeline(task, taskStatus) {
       const eventToolName = normalizeToolName(event.toolName);
       if (eventToolName === 'todo_write') continue;
       if (eventToolName === 'write_stdin') {
-        const input = plainObject(event.toolInput || event.tool_input);
-        const parent = terminalItemsBySessionId.get(String(input.session_id || input.sessionId || '').trim());
+        const parent = findTerminalForInput(event.toolInput || event.tool_input);
         if (parent) {
           parent.status = getToolTraceStatus('running', finalStatus);
           if (callId) {
@@ -1049,8 +935,7 @@ export function buildChatTimeline(task, taskStatus) {
     const callToolName = normalizeToolName(call.toolName);
     if (callToolName === 'todo_write') continue;
     if (callToolName === 'write_stdin') {
-      const input = plainObject(call.toolInput);
-      const parent = terminalItemsBySessionId.get(String(input.session_id || input.sessionId || '').trim());
+      const parent = findTerminalForInput(call.toolInput);
       if (parent) {
         toolItemsByCallId.set(call.callId, parent);
         mergeTerminalResult(parent, call, call.state || 'completed');

@@ -4,6 +4,8 @@
 
 ## 自动测试
 
+- `features/chat/sub-agent-terminal.test.js` 与 `features/chat/terminal-tools.test.js` 覆盖主/子 Agent 共用终端归并：同 session 的查询、输入和中断更新原 Shell，独立命令及不同 Agent 隔离，逐调用输出去重但保留各轮相同日志，保留运行/退出/失败状态；历史重建走相同规则。`fixtures/tool-cards.html` 用生产嵌套卡片验证多轮查询不新增卡、不重置展开状态、独立命令失败不串卡及最终退出与输出正确显示，全程离线。
+
 - `features/tasks/stop-recovery-lifecycle.test.js` 组合生产 runtime、Stop、流事件与缓存回收，覆盖停止失败不冒充运行中、页面清理后仍可再次停止、跨会话投影隔离、停止/收尾/恢复期间不可淘汰及成功后恢复淘汰；历史恢复使用请求归属与单调 run generation，覆盖新手动/定时任务已启动又结束、详情与正文迟到、恢复请求乱序和失败重试。`fixtures/retry-stop-race.html` 另验证实际错误卡、“Stop again”按钮、拒发/禁编辑及成功后恢复 Send。均为离线数据，不调用模型或改写真会话。
 
 - `features/tasks/retry-stop-race.test.js` 覆盖 Retry 启动前/确认后 Stop、迟到启动保留真实任务 ID、取消先于任务注册时精确补停、旧流收尾与服务端历史恢复屏障、后续 Retry/send 等待、启动拒绝不误确认、latest-turn 409 只刷新不自动改投、恢复失败拒发及跨会话隔离。夹具与生产共用即时事件/批处理常量，不调用模型或改写真实会话。`fixtures/retry-stop-race.html` 通过生产 ChatPanel 点击 Retry 和 Stop，验证早停旧卡不复现、迟到内容被丢弃、真实任务保留及收尾期间动作禁用。

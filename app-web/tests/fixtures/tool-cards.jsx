@@ -58,7 +58,9 @@ const subagent = tool('subagent', 'dispatch_sub_agent', { task: 'Inspect the pro
 const runningSubagent = { ...tool('subagent-running', 'dispatch_sub_agent', { agent: 'Reviewer', task: '检查工具卡片样式与嵌套调用。' }, {}, 'running'), progressEvents: [
   { type: 'sub_agent_answer_delta', message: '正在检查项目中的工具组件。' },
   { type: 'sub_agent_tool_call_started', callId: 'nested-shell', toolName: 'exec_command', toolInput: { command: 'npm run check:web' } },
-  { type: 'sub_agent_tool_call_completed', callId: 'nested-shell', toolName: 'exec_command', toolResponse: { status: 'ok', data: { stdout: 'Nested checks passed', exit_code: 0 } } },
+  { type: 'sub_agent_tool_call_completed', callId: 'nested-shell', toolName: 'exec_command', toolResponse: { status: 'ok', data: { session_id: 'nested-session' }, artifacts: { output: 'Nested checks started\n' } } },
+  { type: 'sub_agent_tool_call_started', callId: 'nested-read', toolName: 'read_file', toolInput: { path: 'README.md' } },
+  { type: 'sub_agent_tool_call_completed', callId: 'nested-read', toolName: 'read_file', toolResponse: { status: 'ok' } },
   { type: 'sub_agent_answer_delta', message: '验证通过，正在整理结果。' },
 ] };
 let items = [{ kind: 'tool_group', id: 'group', summary: 'read 1 file · searched 1 time · used 3 tools', status: 'done', tools: [read, search, first, second, browser] }, { ...read, id: 'standalone-read', callId: 'standalone-read' }, skill, ...compactionRows, ...retryRows, terminal, diff, failedSearch, browserCode, browserOutput, browserFailure, fetchedPage, pendingFetch, failedFetch, emptyFetch, cancelledFetch, vision, runningVision, failedVision, cancelledVision, emptyVision, subagent, runningSubagent];
@@ -213,7 +215,38 @@ async function run() {
   check(Boolean(node('subagent-running').querySelector('.chat-subagent-reply .chat-timeline'))
     && node('subagent-running').textContent.includes('验证通过'), 'Sub-agent stream and nested tools use the production timeline');
   await click(nestedTool.querySelector('button.aui-tool-trigger'));
-  check(nestedTool.textContent.includes('Nested checks passed') && Boolean(nestedTool.querySelector('.haish-tool-elements')), 'Nested shell preserves its dedicated detail and independent disclosure');
+  check(nestedTool.textContent.includes('Nested checks started') && Boolean(nestedTool.querySelector('.haish-tool-elements')), 'Nested shell preserves its dedicated detail and independent disclosure');
+  check(nestedTool.classList.contains('status-running') && !nestedTool.textContent.includes('exit 0'), 'Yielded sub-agent shell stays running rather than showing premature success');
+  const appendNested = async (events) => {
+    items = items.map((item) => item.id === runningSubagent.id ? { ...item, progressEvents: [...item.progressEvents, ...events] } : item);
+    render();
+    await tick();
+  };
+  const nestedPoll = (callId) => ({ type: 'sub_agent_tool_call_started', callId, toolName: 'write_stdin', toolInput: { session_id: 'nested-session', chars: '' } });
+  const nestedResult = (callId, output, data) => ({ type: 'sub_agent_tool_call_completed', callId, toolName: 'write_stdin', toolResponse: { status: 'ok', data, artifacts: { output } } });
+  await appendNested([nestedPoll('nested-poll-1')]);
+  check(!node('subagent-running').querySelector('[data-tool-name="write_stdin"]') && node('nested-shell') === nestedTool, 'Polling starts on the original nested shell without a query card or DOM replacement');
+  await appendNested([nestedResult('nested-poll-1', 'tick\n', { session_id: 'nested-session' }),
+    { type: 'sub_agent_tool_call_started', callId: 'nested-independent', toolName: 'exec_command', toolInput: { command: 'independent-check' } },
+    { type: 'sub_agent_tool_call_completed', callId: 'nested-independent', toolName: 'exec_command', toolResponse: { status: 'error', data: { exit_code: 7 }, error: { message: 'independent failure' }, artifacts: { output: 'failed check\n' } } },
+    nestedPoll('nested-poll-2'), nestedResult('nested-poll-2', 'tick\n', { session_id: 'nested-session' })]);
+  check(node('subagent-running').querySelectorAll('[data-tool-name="exec_command"]').length === 2
+    && node('nested-independent').classList.contains('status-failed') && nestedTool.classList.contains('status-running'), 'Independent nested command keeps its own failure card without finishing the other process');
+  check(nestedTool.querySelectorAll('[data-terminal-output] > div').length === 4, 'Identical logs from different sub-agent polls are both preserved');
+  const finalPoll = nestedResult('nested-poll-3', 'Nested checks passed\n', { exit_code: 0 });
+  await appendNested([nestedPoll('nested-poll-3'), finalPoll, finalPoll]);
+  check(node('nested-shell') === nestedTool && nestedTool.querySelector('button.aui-tool-trigger').getAttribute('aria-expanded') === 'true', 'Poll completion and replay preserve the original nested disclosure');
+  check(nestedTool.classList.contains('status-done') && nestedTool.textContent.includes('exit 0')
+    && nestedTool.textContent.includes('npm run check:web'), 'Final exit and original command are shown together in the nested Shell card');
+  check(nestedTool.querySelectorAll('[data-terminal-output] > div').length === 5
+    && nestedTool.textContent.split('Nested checks passed').length === 2, 'Repeated completion does not duplicate terminal output');
+  check(!node('subagent-running').querySelector('[data-tool-name="write_stdin"]')
+    && !node('subagent-running').textContent.includes('Process finished'), 'Sub-agent timeline has no standalone query or Process finished cards');
+  items = JSON.parse(JSON.stringify(items));
+  render();
+  await tick();
+  check(node('nested-shell').textContent.includes('Nested checks started') && node('nested-shell').textContent.includes('Nested checks passed')
+    && node('nested-shell').classList.contains('status-done'), 'Serialized history replay restores the same merged nested shell');
   items = items.map((item) => item.id === runningSubagent.id ? { ...item, progressEvents: [...item.progressEvents, { type: 'sub_agent_answer_delta', message: '补充流式内容。' }] } : item);
   render();
   await tick();

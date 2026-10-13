@@ -1,4 +1,6 @@
 import { normalizeToolName } from './tool-names.js';
+import { createTerminalTimeline } from './terminal-timeline.js';
+import { getToolResponseTraceStatus, getToolTraceStatus } from './tool-trace-status.js';
 import { browserPresentation, fetchPresentation, searchPresentation, skillTrigger } from './tool-presentation.js';
 
 const TOOL_READ_NAMES = new Set(['read_file', 'search_text', 'glob_files', 'list_dir']);
@@ -307,6 +309,7 @@ function subAgentEventText(event) {
 
 function subAgentToolEventKey(event) {
   return event?.callId
+    || event?.call_id
     || event?.toolCallId
     || event?.tool_call_id
     || '';
@@ -319,11 +322,11 @@ function subAgentToolNameKey(event) {
     .toLowerCase();
 }
 
-function findPendingSubAgentTool(items, event) {
+function findPendingSubAgentTool(items, event, pendingTools) {
   const nameKey = subAgentToolNameKey(event);
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
-    if (!item || item.kind !== 'tool' || item.status === 'done') continue;
+    if (!pendingTools.has(item)) continue;
     if (subAgentToolNameKey(item) === nameKey) return item;
   }
   return null;
@@ -341,6 +344,9 @@ export function buildSubAgentTimelineItems(view) {
   const events = Array.isArray(view.progressEvents) ? view.progressEvents : [];
   const items = [];
   const toolItemsByKey = new Map();
+  const pendingTools = new Set();
+  const finalStatus = view.isRunning ? 'running' : view.cancelled ? 'cancelled' : view.failed ? 'failed' : 'done';
+  const { findTerminalForInput, mergeTerminalResult } = createTerminalTimeline({ events, finalStatus });
   let textBuffer = '';
   let textIndex = 0;
   const flushText = (streaming = false) => {
@@ -363,13 +369,28 @@ export function buildSubAgentTimelineItems(view) {
       return;
     }
     if (type === 'sub_agent_tool_call_started') {
-      flushText(false);
       const key = subAgentToolEventKey(event) || `pending-${index}`;
+      if (normalizeToolName(event.toolName) === 'write_stdin') {
+        const parent = findTerminalForInput(event.toolInput);
+        if (parent) {
+          parent.status = getToolTraceStatus('running', finalStatus);
+          toolItemsByKey.set(key, parent);
+        }
+        return;
+      }
+      flushText(false);
+      const existing = toolItemsByKey.get(key);
+      if (existing) {
+        existing.toolInput = event.toolInput || existing.toolInput;
+        existing.inputSummary = event.inputSummary || existing.inputSummary;
+        return;
+      }
       const item = {
         kind: 'tool',
         id: `sub-tool-${key}-${index}`,
+        callId: key,
         category: subAgentToolCategory(event),
-        status: 'running',
+        status: getToolTraceStatus('running', finalStatus),
         toolName: event.toolName || event.summary || 'Tool',
         label: event.toolName || event.summary || 'Tool',
         inputSummary: event.inputSummary || event.summary || '',
@@ -379,6 +400,7 @@ export function buildSubAgentTimelineItems(view) {
         toolOutput: '',
       };
       items.push(item);
+      pendingTools.add(item);
       if (subAgentToolEventKey(event)) toolItemsByKey.set(key, item);
       return;
     }
@@ -386,12 +408,23 @@ export function buildSubAgentTimelineItems(view) {
       flushText(false);
       const key = subAgentToolEventKey(event);
       let item = key ? toolItemsByKey.get(key) : null;
-      if (!item) item = findPendingSubAgentTool(items, event);
+      if (normalizeToolName(event.toolName) === 'write_stdin') {
+        item ||= findTerminalForInput(event.toolInput);
+        if (item) {
+          if (key) toolItemsByKey.set(key, item);
+          mergeTerminalResult(item, event, 'completed');
+        }
+        return;
+      }
+      // A supplied call id is authoritative. Name fallback is only for legacy
+      // events without ids, never for a different concurrent invocation.
+      if (!item && !key) item = findPendingSubAgentTool(items, event, pendingTools);
       if (!item) {
         const fallbackKey = key || `completed-${index}`;
         item = {
           kind: 'tool',
           id: `sub-tool-${fallbackKey}-${index}`,
+          callId: fallbackKey,
           category: subAgentToolCategory(event),
           status: 'done',
           toolName: event.toolName || 'Tool',
@@ -404,9 +437,13 @@ export function buildSubAgentTimelineItems(view) {
         };
         items.push(item);
         if (key) toolItemsByKey.set(key, item);
+      }
+      pendingTools.delete(item);
+      if (normalizeToolName(item.toolName) === 'exec_command') {
+        mergeTerminalResult(item, event, 'completed');
         return;
       }
-      item.status = 'done';
+      item.status = getToolResponseTraceStatus(toolPlainObject(event.toolResponse), 'done');
       item.outputSummary = event.outputSummary || event.summary || item.outputSummary || '';
       item.toolResponse = event.toolResponse || item.toolResponse || null;
       item.toolOutput = event.toolOutput || item.toolOutput || '';

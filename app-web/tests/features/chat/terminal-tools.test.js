@@ -99,7 +99,7 @@ test('write_stdin view keeps interaction details available outside the chat proj
   assert.equal(view.mode, 'terminal');
   assert.equal(view.label, 'Process finished · exit 0');
   assert.equal(view.stdout, 'still running\n');
-  assert.match(chatTimelineSource, /terminalItemsBySessionId/);
+  assert.match(chatTimelineSource, /createTerminalTimeline/);
 });
 
 test('an orphan write_stdin does not create a chat card', () => {
