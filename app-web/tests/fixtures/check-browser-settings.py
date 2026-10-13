@@ -6,7 +6,7 @@ STATES = ['first', 'prepared', 'setup', 'install', 'ready', 'paused', 'missing',
           'unverified', 'checking', 'repairing', 'stopped', 'checkFailed']
 
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True, channel='chromium')
+    browser = p.chromium.launch(headless=True, channel='chrome')
     try:
         page = browser.new_page()
         errors = []
@@ -108,9 +108,9 @@ with sync_playwright() as p:
         for state, label, action in [('ready', 'Pause', 'pause'), ('paused', 'Resume', 'resume'), ('ready', 'Disable', 'disable')]:
             open_state(state)
             page.get_by_role('button', name=label, exact=True).click()
+            assert page.get_by_role('alertdialog').count() == 0
             expect_write(action)
-            page.get_by_role('tooltip').wait_for(state='hidden')
-            print('PASS unchanged action dispatch', action)
+            print('PASS unified action dispatch', action)
 
         for state in ['ready', 'unverified', 'disabled', 'paused', 'checkFailed']:
             open_state(state)

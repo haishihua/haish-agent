@@ -84,7 +84,7 @@ export function BrowserConfigEditor({ onToast }) {
       {showConsent && <div className="browser-setup-fields">
         <Field orientation="horizontal" className="browser-consent" data-disabled={blocked}>
           <Checkbox id="browser-sync-consent" checked={consent} onCheckedChange={value => setConsent(value === true)} disabled={blocked} aria-describedby="browser-sync-consent-description" />
-          <FieldContent><FieldLabel htmlFor="browser-sync-consent">{state.initial_import_error ? 'Keep existing logins' : state.initial_import_complete ? 'Allow dependency repair' : 'Allow setup & initial import'}</FieldLabel><FieldDescription id="browser-sync-consent-description">{state.initial_import_error ? 'Skip remaining import. Sign in manually in Haish Browser.' : state.initial_import_complete ? 'Install or update required tools. Logins and browser selection stay unchanged.' : 'Install browser-use, Playwright and Chromium as needed. Import logins once.'}</FieldDescription></FieldContent>
+          <FieldContent><FieldLabel htmlFor="browser-sync-consent">{state.initial_import_error ? 'Keep existing logins' : state.initial_import_complete ? 'Allow dependency repair' : 'Allow setup & initial import'}</FieldLabel><FieldDescription id="browser-sync-consent-description">{state.initial_import_error ? 'Skip remaining import. Sign in manually in Haish Browser.' : state.initial_import_complete ? 'Install or update required tools. Logins and browser selection stay unchanged.' : 'Install browser-use and Playwright as needed. Stable Chrome must already be installed. Import logins once.'}</FieldDescription></FieldContent>
         </Field>
         {mismatch && !state.initial_import_error && <Field orientation="horizontal" className="browser-consent browser-replace-consent" data-disabled={blocked}>
           <Checkbox id="browser-runtime-replace" checked={replace} onCheckedChange={value => setReplace(value === true)} disabled={blocked} aria-describedby="browser-runtime-replace-description" />
@@ -92,11 +92,11 @@ export function BrowserConfigEditor({ onToast }) {
         </Field>}
       </div>}
       <div className="browser-settings-actions">
-        <span className="browser-action-hint"><ShieldCheck size={14} />{running ? (syncing ? 'Importing logins once' : maintenance ? 'Logins and browser selection stay unchanged' : state?.step === 'waiting_allow' ? 'Click Allow in Chrome' : 'Keep Haish open during setup') : state?.enabled ? 'Account sessions stay on this device' : state?.initial_import_complete ? 'Saved logins stay in Haish Browser' : 'macOS only'}</span>
+        <span className="browser-action-hint"><ShieldCheck size={14} />{state?.enabled && state?.paused ? 'Automation paused' : running ? (syncing ? 'Importing logins once' : maintenance ? 'Logins and browser selection stay unchanged' : state?.step === 'waiting_allow' ? 'Click Allow in Chrome' : 'Keep Haish open during setup') : state?.enabled ? 'Account sessions stay on this device' : state?.initial_import_complete ? 'Saved logins stay in Haish Browser' : 'macOS only'}</span>
         <div className={`browser-action-buttons${state?.enabled && !running && !showConsent ? ' browser-maintenance-actions' : ''}`}>
           {running ? <Button variant="outline" size="sm" disabled={busy} onClick={() => action('cancel')}>{pendingAction === 'cancel' ? 'Cancelling…' : maintenance ? 'Cancel' : syncing ? 'Cancel import' : 'Cancel setup'}</Button> : <>
             {state && (state.enabled || state.paused) && <PortalTooltip text={state.paused ? 'Resume automation' : 'Pause automation'} position="above" multiline>
-              <Button variant="outline" size="sm" disabled={blocked} onClick={() => action(state.paused ? 'resume' : 'pause')}>{state.paused ? <Play size={14} /> : <Pause size={14} />}{state.paused ? 'Resume' : 'Pause'}</Button>
+              <Button variant="outline" size="sm" disabled={blocked} onClick={() => { const name = state.paused ? 'resume' : 'pause'; action(name); }}>{state.paused ? <Play size={14} /> : <Pause size={14} />}{state.paused ? 'Resume' : 'Pause'}</Button>
             </PortalTooltip>}
             {state?.enabled && <PortalTooltip text="Use personal Chrome" position="above" multiline>
               <Button variant="outline" size="sm" disabled={blocked} onClick={() => action('disable')}><Power size={14} />{pendingAction === 'disable' ? 'Disabling…' : 'Disable'}</Button>
@@ -111,14 +111,14 @@ export function BrowserConfigEditor({ onToast }) {
     <Collapsible className="browser-settings-details">
       <CollapsibleTrigger asChild><Button variant="ghost" size="sm"><Info size={14} />Details<ChevronRight size={14} className="browser-details-chevron" /></Button></CollapsibleTrigger>
       <CollapsibleContent><div className="browser-details-content">
-        {state && <div><h3>Dependencies</h3><p>browser-use {state.required_version}{state.managed_browser_version ? ` · Playwright ${state.managed_browser_version} · Chromium` : ''}. Installed together during setup.</p><p>Check verifies tools without installing, opening a browser or changing logins.</p><Button variant="outline" size="sm" disabled={blocked || running || !state} onClick={() => action('check')}><Wrench size={14} />{pendingAction === 'check' || (running && state.step === 'check') ? 'Checking…' : 'Check browser'}</Button></div>}
+        {state && <div><h3>Dependencies</h3><p>browser-use {state.required_version}{state.managed_browser_version ? ` · Playwright ${state.managed_browser_version} · Google Chrome` : ''}. Tools are installed during setup; stable Chrome is required separately.</p><p>Check verifies tools without installing, opening a browser or changing logins.</p><Button variant="outline" size="sm" disabled={blocked || running || !state} onClick={() => action('check')}><Wrench size={14} />{pendingAction === 'check' || (running && state.step === 'check') ? 'Checking…' : 'Check browser'}</Button></div>}
         {hasBrowserImportSummary(state) && <dl className="browser-runtime-summary">
           <div><dt>Initial import</dt><dd>{formatBrowserSyncTime(state?.last_sync)}</dd></div>
           <div><dt>Copied Cookies</dt><dd>{formatBrowserCookieCount(state)}</dd></div>
         </dl>}
         <div><h3>Permissions</h3><p>Grant macOS permissions when prompted; click Allow yourself in Chrome. Haish won’t restart personal Chrome.</p></div>
-        <div><h3>Scope</h3><p>Cookies only. No local storage or IndexedDB; some sites may still need login.</p></div>
-        <div><h3>Login maintenance</h3><p>No further sync after import. Sign in or out directly in Haish Browser. Pause before manual use; already issued operations may still finish.</p></div>
+        <div><h3>Import scope</h3><p>Initial import copies Cookies only, not local storage or IndexedDB. Logins saved directly in Haish Browser stay in its profile; some sites may still need login.</p></div>
+        <div><h3>Login maintenance</h3><p>No further sync after import. Sign in or out directly in Haish Browser. Pause before manual use; already issued operations may still finish. Pause does not remove automation startup attributes; some sites may still reject sign-in.</p></div>
         <div><h3>Browser access</h3><p>Disabled by default. Enabled: a separate, visible browser with a persistent profile. Opens on a browser call or first setup, stays open between tasks, and closes with Haish. Manual exit waits for the next call to reopen. No fallback to personal Chrome. Disabled: your original connection; saved logins remain.</p></div>
       </div></CollapsibleContent>
     </Collapsible>

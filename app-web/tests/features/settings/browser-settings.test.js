@@ -53,7 +53,8 @@ test('Browser has a window icon distinct from Web Search and concise primary cop
   assert.ok(!primary.includes('browser-page-description'));
   assert.ok(!primary.includes('Latest applied export'));
   assert.ok(!primary.includes('Setup prepares missing dependencies'));
-  assert.match(primary, /Install browser-use, Playwright and Chromium/);
+  assert.match(primary, /Install browser-use and Playwright/);
+  assert.match(primary, /Stable Chrome must already be installed/);
   assert.match(primary, /Import logins once/);
 });
 
@@ -96,7 +97,7 @@ test('healthy runtime does not repeat the Enabled badge with another Ready statu
   assert.match(editor, /const dependency = browserDependencyAction\(state\)/);
   assert.match(editor, /runtimeIssue && !running && !state.message/);
   assert.match(editor, /<h3>Dependencies<\/h3>/);
-  assert.match(editor, /Installed together during setup/);
+  assert.match(editor, /Tools are installed during setup/);
 });
 
 test('Browser action feedback is wired to the existing app toast, not panel notices', () => {
@@ -115,7 +116,7 @@ test('Browser action feedback is wired to the existing app toast, not panel noti
 
 test('keep-logins/disable feedback and action failures release busy state', async () => {
   const actionBody = editor.slice(editor.indexOf('const action = async (name) => {') + 'const action = async (name) => {'.length, editor.indexOf('\n  const mismatch'));
-  const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'onToast', `return async (name) => {${actionBody}`);
+  const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
   for (const [name, ok] of [['keep_existing_logins', true], ['disable', true], ['repair', false]]) {
     const events = [];
     const next = { enabled: name !== 'disable' };
@@ -139,7 +140,7 @@ test('initial import shows progress without repeat sync and supports pause', () 
   assert.match(editor, /Cancel import/);
   assert.ok(!editor.includes("action('sync')"));
   assert.match(editor, /No further sync after import/);
-  assert.match(editor, /action\(state.paused \? 'resume' : 'pause'\)/);
+  assert.match(editor, /const name = state.paused \? 'resume' : 'pause'/);
   assert.equal(browserStatusMeta({ paused: true }).label, 'Paused');
   assert.equal(browserSetupHeading({ initial_import_error: true }), 'Import stopped');
 });
@@ -227,7 +228,7 @@ test('Check lives only in Details; selection never re-enters setup consent', () 
 });
 
 test('first setup labels and maintenance status do not conflate installation, selection and checking', () => {
-  const first = { enabled: false, initial_import_complete: false, dependency_status: 'missing', managed_dependency_status: 'missing' };
+  const first = { enabled: false, status: 'disabled', initial_import_complete: false, dependency_status: 'missing', managed_dependency_status: 'missing' };
   assert.deepEqual(browserDependencyAction(first), { label: 'Install and enable', action: 'install', consent: true });
   assert.equal(browserStatusMeta(first).label, 'Not installed');
   assert.equal(browserStatusMeta({ ...first, managed_dependency_status: 'unverified', dependency_status: 'compatible' }).label, 'Needs check');
@@ -242,13 +243,37 @@ test('first setup labels and maintenance status do not conflate installation, se
 
 test('Check and Enable do not inherit checked installation consent in their request', async () => {
   const actionBody = editor.slice(editor.indexOf('const action = async (name) => {') + 'const action = async (name) => {'.length, editor.indexOf('\n  const mismatch'));
-  const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'onToast', `return async (name) => {${actionBody}`);
+  const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
   for (const name of ['check', 'enable', 'disable', 'pause', 'repair', 'install']) {
     let payload;
     const action = makeAction(async (url, options) => { payload = JSON.parse(options.body); return { ok: true, json: async () => ({}) }; }, '', () => {}, true, true, () => {}, () => {}, () => {}, () => {}, () => {}, () => {});
     await action(name);
     const needsConsent = ['install', 'repair'].includes(name);
     assert.deepEqual(payload, { action: name, confirmed: needsConsent, allow_replace: needsConsent });
+  }
+});
+
+test('Pause and Resume remain simple dispatch controls without mode switching or automatic priority', () => {
+  const state = { enabled: true, paused: true, initial_import_complete: true, dependency_status: 'compatible', managed_dependency_status: 'compatible' };
+  assert.deepEqual(browserDependencyAction(state), { label: '', action: null });
+  assert.equal(browserStatusMeta(state).label, 'Paused');
+  assert.equal(browserSetupHeading(state), 'Browser paused');
+  assert.equal(browserStatusMeta({ ...state, setup_running: true, step: 'check' }).label, 'Checking');
+  assert.equal(browserSetupHeading({ ...state, setup_running: true, step: 'check' }), 'Dependency check');
+  for (const removed of ['mode_switch_running', 'control_mode', 'auto_yielded', 'foreground_unknown', 'active_browser_calls', 'AlertDialog', 'Manual login']) assert.ok(!editor.includes(removed));
+  assert.match(editor, /state && \(state.enabled \|\| state.paused\)/);
+  assert.match(editor, /Pause does not remove automation startup attributes/);
+  assert.match(editor, /action\(name\)/);
+});
+
+test('Pause/Resume requests do not confirm restart, install or shared-runtime replacement', async () => {
+  const actionBody = editor.slice(editor.indexOf('const action = async (name) => {') + 'const action = async (name) => {'.length, editor.indexOf('\n  const mismatch'));
+  const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
+  for (const name of ['pause', 'resume']) {
+    let payload;
+    const action = makeAction(async (url, options) => { payload = JSON.parse(options.body); return { ok: true, json: async () => ({}) }; }, '', () => {}, true, true, () => {}, () => {}, () => {}, () => {}, () => {}, () => {});
+    await action(name);
+    assert.deepEqual(payload, { action: name, confirmed: false, allow_replace: false });
   }
 });
 
