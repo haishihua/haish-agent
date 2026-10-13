@@ -95,11 +95,11 @@ async function componentChecks() {
     && stored.get('ui').agent_id === 'a' && !document.querySelector('.chat-send').disabled,
   'short save is silent and does not disable sending or claim success early');
   await new Promise(resolve => setTimeout(resolve, 750));
-  const savingStatus = document.querySelector('.chat-config-control .chat-config-save-status');
-  check(savingStatus?.getAttribute('role') === 'status' && savingStatus.textContent === 'Saving…'
-    && getComputedStyle(savingStatus).position === 'absolute'
+  check(!document.querySelector('.chat-config-save-status')
+    && !document.querySelector('.chat-composer').textContent.includes('Saving')
+    && !document.querySelector('.chat-send').disabled
     && Math.abs(document.querySelector('.chat-composer').getBoundingClientRect().height - composerHeight) < 1,
-  'slow save shows only a small accessible status beside configuration without changing composer height');
+  'slow save remains silent without changing composer height or disabling sending');
   const form = document.querySelector('form.chat-composer');
   document.querySelector('.chat-send').click();
   form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
@@ -114,7 +114,7 @@ async function componentChecks() {
     && document.querySelector('.app-toast-message')?.textContent === 'Agent switched. Future tasks will use the new Agent.'
     && getComputedStyle(document.querySelector('.app-toast')).position === 'fixed'
     && !document.querySelector('.chat-composer').textContent.includes('Agent switched'), 'successful Agent switch uses the shared floating AppToast, never a composer banner');
-  check(!document.querySelector('.chat-config-save-status'), 'quiet save status disappears after success');
+  check(!document.querySelector('.chat-config-save-status'), 'no saving label appears after success');
   check(document.querySelector('.chat-message-row.agent').textContent.includes('Agent A'), 'history label remains actual A after current selection becomes B');
   setStatus('cancelled'); await tick();
   hold = true; await select('Agent A');
@@ -354,4 +354,7 @@ async function main() {
   await modelRuleChecks();
   report.dataset.result = 'PASS';
 }
-main().catch(error => { report.dataset.result = 'FAIL'; report.textContent += `\nFAIL ${error.stack || error}`; });
+const runChecks = new URLSearchParams(window.location.search).has('save-status')
+  ? async () => { await componentChecks(); report.dataset.result = 'PASS'; }
+  : main;
+runChecks().catch(error => { report.dataset.result = 'FAIL'; report.textContent += `\nFAIL ${error.stack || error}`; });

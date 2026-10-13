@@ -2171,18 +2171,6 @@
     flex: 0 0 auto;
 }
 
-.chat-config-save-status {
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 3px);
-    color: var(--dim);
-    font-family: var(--conversation-font, inherit);
-    font-size: 11px;
-    line-height: 14px;
-    white-space: nowrap;
-    pointer-events: none;
-}
-
 .chat-composer .model-picker {
     position: relative;
     flex-shrink: 0;

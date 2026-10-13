@@ -4,18 +4,11 @@ import fs from 'node:fs';
 
 const read = (path) => fs.readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
 const source = read('src/features/chat/components/ChatComposer.jsx');
-const status = read('src/features/chat/components/ConfigSaveStatus.jsx');
 const css = read('styles/chat.css');
 
-test('save feedback is delayed, accessible and cannot change composer layout', () => {
-  assert.match(status, /CONFIG_SAVE_STATUS_DELAY_MS = 700/);
-  assert.match(status, /window\.setTimeout/);
-  assert.match(status, /window\.clearTimeout\(timer\)/);
-  assert.match(status, /if \(!pending \|\| !visible\) return null/);
-  assert.match(status, /role="status" aria-label="Saving configuration"/);
-  assert.doesNotMatch(status, /LoadingState|setInterval|animation/);
-  assert.match(css, /\.chat-config-save-status\s*\{[^}]*position: absolute/);
-  assert.match(css, /\.chat-config-save-status\s*\{[^}]*pointer-events: none/);
+test('background configuration saving has no composer status label or leftover styles', () => {
+  assert.doesNotMatch(source, /ConfigSaveStatus|chat-config-save-status|Saving…/);
+  assert.doesNotMatch(css, /\.chat-config-save-status/);
 });
 
 test('background saving alone never disables Send; submit keeps the commit barrier', () => {

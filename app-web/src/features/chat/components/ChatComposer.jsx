@@ -3,7 +3,6 @@ import { ArrowUp, BookOpen, Clock, CornerDownLeft, Square, Target } from 'lucide
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
 import { ContextTaskChip } from '../../../shared/ui/ContextTaskChip.jsx';
-import { ConfigSaveStatus } from './ConfigSaveStatus.jsx';
 import { firstPastedDocument } from '../model/document-paste.js';
 import { composePathReferenceDraft, splitPathReferenceDraft, transferredLocalPaths } from '../model/path-references.js';
 import {
@@ -791,7 +790,6 @@ export function ChatComposer({
             </button>
           </PortalTooltip> : null}
           <div className="chat-config-control">
-            <ConfigSaveStatus key={scopeId} pending={configSync.pending} />
             {executionMode === 'bot' ? <WorkflowPicker value={effectiveAgentId} options={resolvedAgentOptions} disabled={runConfigReadOnly || runConfigDisabled} onChange={setAgentId} /> : <ModelPicker
               value={modelId}
               reasoningEffort={reasoningEffort}
