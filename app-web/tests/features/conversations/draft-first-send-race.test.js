@@ -27,6 +27,12 @@ const { createDeployHandlers } = await import(
 const { createConversationActivationHandlers } = await import(
   '../../../src/features/conversations/hooks/createConversationActivationHandlers.js'
 );
+const { createConversationRuntime } = await import(
+  '../../../src/features/conversations/hooks/createConversationRuntime.js'
+);
+const { conversationContentLoading } = await import(
+  '../../../src/features/chat/model/conversation-loading.js'
+);
 
 const { workspaceStateWithConversationDetail, workspaceStateWithTouchedConversation } = await import(
   '../../../src/features/conversations/model/workspace-state.js'
@@ -45,44 +51,27 @@ function emptyTaskRuntimeState() {
   return { activeTaskId: null, pendingTask: null, taskOrder: [], tasksById: {} };
 }
 
-function emptyRuntime() {
-  return {
-    taskRuntimeState: emptyTaskRuntimeState(),
-    busy: false,
-    activeRunId: null,
-    activeTaskId: null,
-    fetchController: null,
-    answerBuffer: '',
-    cancelledRunIds: new Set(),
-    abortRequested: false,
-    shellSeeded: false,
-  };
-}
-
-// createConversationRuntime 的最小等价物：getRuntime 默认不建、显式 create 才建——
-// 生产里 "conversation runtime is missing" 就是 getRuntime(...) 拿到 null 抛出来的。
-function createRuntimeStore() {
+// Use the production runtime projection as well as the draft/deploy handlers:
+// loading must stay false in displayed state, not just in runtimesRef.
+function createRuntimeStore(conversationIdRef = { current: null }) {
   const runtimesRef = { current: new Map() };
-  const getRuntime = (conversationIdValue, { create = false } = {}) => {
-    if (!conversationIdValue) return null;
-    let runtime = runtimesRef.current.get(conversationIdValue);
-    if (!runtime && create) {
-      runtime = emptyRuntime();
-      runtimesRef.current.set(conversationIdValue, runtime);
-    }
-    return runtime || null;
-  };
-  const mutateRuntime = (conversationIdValue, mutator) => {
-    const runtime = getRuntime(conversationIdValue, { create: true });
-    mutator(runtime);
-    return runtime;
-  };
-  const updateTaskRuntimeState = (updater, targetConversationId = null) => {
-    mutateRuntime(targetConversationId, (runtime) => {
-      runtime.taskRuntimeState = updater(runtime.taskRuntimeState);
-    });
-  };
-  return { getRuntime, mutateRuntime, runtimesRef, updateTaskRuntimeState };
+  const displayed = { taskRuntimeState: emptyTaskRuntimeState(), shellSeeded: false, busy: false };
+  const runtime = createConversationRuntime({
+    conversationIdRef,
+    createEmptyTaskRuntimeState: emptyTaskRuntimeState,
+    normalizeWorkspaceOrdering: (state) => state,
+    notifyTaskComplete: () => {},
+    runtimesRef,
+    setBusy: (value) => { displayed.busy = value; },
+    setShellSeeded: (value) => { displayed.shellSeeded = value; },
+    setWorkspaceState: () => {},
+    setTaskRuntimeState: (value) => { displayed.taskRuntimeState = value; },
+    setToast: () => {},
+    streamTargetConvIdRef: { current: null },
+    taskImageAttachmentsRef: { current: new Map() },
+    toastTimerRef: { current: null },
+  });
+  return { ...runtime, displayed, runtimesRef };
 }
 
 function createDraftHarness({ createConversationInProject } = {}) {
@@ -100,7 +89,7 @@ function createDraftHarness({ createConversationInProject } = {}) {
   const draftFirstSendRef = { current: null };
   const draftServerCreateRef = { current: null };
   const pendingCreatedDetailRef = { current: null };
-  const runtimeStore = createRuntimeStore();
+  const runtimeStore = createRuntimeStore(conversationIdRef);
   const apiFetch = async (url, options = {}) => {
     if (options.method === 'DELETE') {
       state.deletedConversationIds.push(decodeURIComponent(String(url).split('/').pop()));
@@ -208,6 +197,7 @@ function createDeployHarness(options = {}) {
     defaultWorkflowId: null,
     draftConversationRef: draft.draftConversationRef,
     executeQuest: async (pendingTask, targetConversationId) => {
+      options.onExecuteQuest?.(pendingTask, targetConversationId, draft);
       // 模拟真 executeQuest 的首尾：会话完成 hydration、运行态释放。
       draft.runtimeStore.mutateRuntime(targetConversationId, (runtime) => {
         runtime.shellSeeded = false;
@@ -236,8 +226,8 @@ function createDeployHarness(options = {}) {
     setQueuedDeploy: (value) => { state.queued.push(value); },
     setRuntimeActiveRunId: () => {},
     setRuntimeActiveTaskId: () => {},
-    setRuntimeBusy: () => {},
-    setRuntimeFetchController: () => {},
+    setRuntimeBusy: draft.runtimeStore.setRuntimeBusy,
+    setRuntimeFetchController: draft.runtimeStore.setRuntimeFetchController,
     setWorkspaceState: draft.setWorkspaceState,
     showToast: (...args) => { state.notices.push(args); },
     taskUpdatedTimestamp: () => 0,
@@ -245,7 +235,7 @@ function createDeployHarness(options = {}) {
     updateConversationTitle: async () => null,
     updateTaskById: () => {},
     updateTaskRuntimeState: draft.runtimeStore.updateTaskRuntimeState,
-    uploadChatImage: async () => ({}),
+    uploadChatImage: options.uploadChatImage || (async () => ({})),
     userCancelledTaskIdsRef: { current: new Set() },
     viewMode: 'chat',
     viewModeRef: { current: 'chat' },
@@ -258,6 +248,152 @@ function createDeployHarness(options = {}) {
 }
 
 const settle = () => new Promise((resolve) => { setTimeout(resolve, 0); });
+
+function displayedContentLoading(harness) {
+  const { displayed } = harness.runtimeStore;
+  const state = displayed.taskRuntimeState;
+  return conversationContentLoading({
+    shellSeeded: displayed.shellSeeded,
+    rowCount: state.taskOrder.length * 2 + (state.pendingTask ? 2 : 0),
+    draft: Boolean(harness.draftConversationRef.current),
+  });
+}
+
+const IMAGE = { file: { name: 'first-message.png' }, mime: 'image/png' };
+const SERVER_DETAIL = {
+  conversation_id: 'server-1', project_id: PROJECT_ID, execution_mode: 'chat',
+  workspace_path: '/tmp/one', messages: [], tasks: [],
+};
+const UPLOADED_IMAGE = { image_id: 'image-1', path: '/fixture/image.png', mime: 'image/png' };
+
+// A new conversation's empty history is already known. Creating its server id
+// and uploading the first message must never look like historical hydration.
+test('a local draft starts with a body-ready runtime and display projection', () => {
+  const harness = createDraftHarness();
+  const id = harness.handlers.openDraftConversation(PROJECT_ID);
+  assert.equal(harness.runtimeStore.getRuntime(id).shellSeeded, false);
+  assert.equal(harness.runtimeStore.displayed.shellSeeded, false);
+  assert.equal(displayedContentLoading(harness), false);
+});
+
+test('a text-only first send is body-ready before task execution begins', async () => {
+  const loadingAtExecution = [];
+  const harness = createDeployHarness({
+    onExecuteQuest: (_task, id, draft) => {
+      loadingAtExecution.push(displayedContentLoading(draft));
+      assert.equal(draft.runtimeStore.getRuntime(id).shellSeeded, false);
+    },
+  });
+  harness.handlers.openDraftConversation(PROJECT_ID);
+  assert.equal(harness.deployHandlers.handleDeploy('first text', null, 'model', null, [], 'agent-1', 'fixture'), true);
+  assert.equal(displayedContentLoading(harness), false);
+  await settle();
+  assert.deepEqual(loadingAtExecution, [false]);
+  assert.equal(harness.draftConversationRef.current, null);
+  assert.equal(harness.state.createCalls, 1);
+  assert.equal(harness.runtimeStore.displayed.taskRuntimeState.pendingTask.displayText, 'first text');
+});
+
+for (const uploadFails of [false, true]) {
+  test(`a first image send never hides its message during upload (${uploadFails ? 'failed upload' : 'successful upload'})`, async () => {
+    const create = deferred();
+    const upload = deferred();
+    const uploadTargets = [];
+    const harness = createDeployHarness({
+      createConversationInProject: () => create.promise,
+      uploadChatImage: async (_file, _signal, id) => {
+        uploadTargets.push(id);
+        const result = await upload.promise;
+        if (uploadFails) throw new Error('image upload failed');
+        return result;
+      },
+    });
+    harness.handlers.openDraftConversation(PROJECT_ID);
+    assert.equal(harness.deployHandlers.handleDeploy('first image', null, 'model', null, [IMAGE], 'agent-1', 'fixture'), true);
+    const pending = harness.runtimeStore.displayed.taskRuntimeState.pendingTask;
+    assert.equal(pending.displayText, 'first image');
+    assert.equal(displayedContentLoading(harness), false, 'server creation cannot hide the staged message');
+    assert.equal(harness.state.executions.length, 0);
+
+    create.resolve(SERVER_DETAIL);
+    await settle();
+    assert.deepEqual(uploadTargets, ['server-1']);
+    assert.equal(harness.draftConversationRef.current, null);
+    assert.equal(harness.runtimeStore.displayed.taskRuntimeState.pendingTask, pending, 'handoff preserves the exact staged turn');
+    assert.equal(harness.runtimeStore.displayed.busy, true, 'upload still uses the normal sending state');
+    assert.equal(harness.runtimeStore.getRuntime('server-1').shellSeeded, false);
+    assert.equal(harness.runtimeStore.displayed.shellSeeded, false);
+    assert.equal(displayedContentLoading(harness), false, 'upload waiting is not history loading');
+    assert.equal(harness.state.executions.length, 0);
+
+    upload.resolve(UPLOADED_IMAGE);
+    await settle();
+    assert.equal(harness.state.executions.length, 1);
+    assert.equal(harness.state.executions[0].targetConversationId, 'server-1');
+    assert.equal(displayedContentLoading(harness), false);
+    assert.equal(harness.runtimeStore.getRuntime('server-1').fetchController, null);
+    if (uploadFails) {
+      assert.deepEqual(pending.imageAttachments, []);
+      assert.match(pending.requestText, /image could not be uploaded/);
+    } else {
+      assert.equal(pending.imageAttachments[0].image_id, 'image-1');
+    }
+  });
+}
+
+test('a document-created draft reuses its body-ready runtime for the first image send', async () => {
+  const upload = deferred();
+  const harness = createDeployHarness({ uploadChatImage: () => upload.promise });
+  harness.handlers.openDraftConversation(PROJECT_ID);
+  await harness.handlers.ensureServerConversationForActiveDraft();
+  harness.handlers.markDraftConversationKept('server-1');
+  assert.equal(harness.runtimeStore.getRuntime('server-1').shellSeeded, false);
+  assert.equal(harness.deployHandlers.handleDeploy('after document', null, 'model', null, [IMAGE], 'agent-1', 'fixture'), true);
+  await settle();
+  assert.equal(harness.state.createCalls, 1, 'document upload already created this conversation');
+  assert.equal(harness.draftConversationRef.current, null);
+  assert.equal(harness.runtimeStore.displayed.taskRuntimeState.pendingTask.displayText, 'after document');
+  assert.equal(displayedContentLoading(harness), false);
+  upload.resolve(UPLOADED_IMAGE);
+  await settle();
+  assert.equal(harness.state.executions.length, 1);
+});
+
+test('background first-image creation cannot clear a historical conversation loading state', async () => {
+  const create = deferred();
+  const upload = deferred();
+  const harness = createDeployHarness({
+    createConversationInProject: () => create.promise,
+    uploadChatImage: () => upload.promise,
+  });
+  harness.handlers.openDraftConversation(PROJECT_ID);
+  assert.equal(harness.deployHandlers.handleDeploy('background image', null, 'model', null, [IMAGE], 'agent-1', 'fixture'), true);
+  harness.handlers.clearDraftConversationState();
+  harness.handlers.invalidateConversationActivation();
+  harness.conversationIdRef.current = 'history';
+  harness.state.conversationId = 'history';
+  harness.state.workspace.activeConversationId = 'history';
+  const history = harness.runtimeStore.mutateRuntime('history', (runtime) => {
+    runtime.shellSeeded = true;
+    runtime.taskRuntimeState = { ...emptyTaskRuntimeState(), taskOrder: ['historical-task'], tasksById: { 'historical-task': { taskId: 'historical-task' } } };
+  });
+  assert.equal(displayedContentLoading(harness), true);
+
+  create.resolve(SERVER_DETAIL);
+  await settle();
+  assert.equal(harness.runtimeStore.getRuntime('server-1').shellSeeded, false);
+  assert.equal(harness.runtimeStore.displayed.taskRuntimeState, history.taskRuntimeState);
+  assert.equal(displayedContentLoading(harness), true, 'background ownership must not change foreground loading');
+  assert.equal(harness.conversationIdRef.current, 'history');
+  upload.resolve(UPLOADED_IMAGE);
+  await settle();
+  assert.equal(harness.state.executions[0].targetConversationId, 'server-1');
+  assert.equal(harness.conversationIdRef.current, 'history');
+  assert.equal(displayedContentLoading(harness), true);
+
+  harness.runtimeStore.mutateRuntime('history', (runtime) => { runtime.shellSeeded = false; });
+  assert.equal(displayedContentLoading(harness), false, 'historical hydration still ends the placeholder normally');
+});
 
 test('the handoff rebuilds the real conversation runtime after the draft runtime was reclaimed', async () => {
   const harness = createDraftHarness();

@@ -49,6 +49,7 @@ test('executed node config survives stream and task reload', () => {
 async function captureStreamRequest(task, streamRequest = null, providers = ['a', 'b', 'c'].map((id) => ({ id, provider: 'custom' }))) {
   const runtime = { cancelledRunIds: new Set(), taskRuntimeState: {} };
   let command;
+  let pending;
   const handlers = createTaskStreamHandlers({
     providerOptions: providers,
     generateHexId: () => 'derived', getRuntime: () => runtime,
@@ -57,10 +58,11 @@ async function captureStreamRequest(task, streamRequest = null, providers = ['a'
     setRuntimeFetchController: (controller) => { runtime.fetchController = controller; },
     setRuntimeActiveTaskId: (id) => { runtime.activeTaskId = id; }, setRuntimeBusy: () => {},
     chatFinalizedTaskIdsRef: { current: new Set() }, userCancelledTaskIdsRef: { current: new Set() },
-    runTaskStream: async (request) => { command = request; },
+    removeConversationTaskFromWorkspace: () => {},
+    runTaskStream: async (request) => { command = request; pending = runtime.taskRuntimeState.pendingTask; },
   });
   await handlers.executeQuest(task, 'conversation', streamRequest);
-  return { command, pending: runtime.taskRuntimeState.pendingTask };
+  return { command, pending };
 }
 test('chat start and full attempt transport migrate null using provider default', async () => {
   const providers = [{ id: 'a', provider: 'custom', defaultReasoningEffort: 'medium' }];

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offline Retry / Stop reconciliation</title>
+<style>
+  body { margin: 0; background: #0a0f18; color: #e7ecf6; font: 13px system-ui; }
+  #root { padding: 12px; }
+  #root .chat-workspace { height: 520px; }
+  #checks { margin: 12px; white-space: pre-wrap; color: #9fd8a4; }
+  #checks[data-result='FAIL'] { color: #ff8b9d; }
+</style>
+<div id="root"></div>
+<pre id="checks">Running checks…</pre>
+<script type="module" src="./retry-stop-race.jsx"></script>
+</html>

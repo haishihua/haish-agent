@@ -17,6 +17,9 @@ test('selecting a conversation reveals it even beyond the collapsed preview', as
   const handlers = createConversationHandlers({
     draftConversationRef: { current: null },
     conversationIdRef: { current: 'c7' },
+    workspaceState: state,
+    findConversationById,
+    getRuntime: () => ({ shellSeeded: false, taskRuntimeState: { taskOrder: [], tasksById: {} } }),
     setWorkspaceState: (update) => { state = update(state); },
     normalizeWorkspaceOrdering: (next) => next,
   });

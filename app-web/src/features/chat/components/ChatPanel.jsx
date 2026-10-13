@@ -58,7 +58,10 @@ export function ChatPanel({
   loading = false,
   running = false,
   disabled = false,
+  latestTaskId = null,
+  taskActionsPending = false,
   submitPending = false,
+  stopError = '',
   onSend,
   onGoalCommand,
   onStop,
@@ -351,14 +354,14 @@ export function ChatPanel({
     count: rowWindow,
     annotationNumbers,
     forceTraceOpen: searchActive,
-    actionsDisabled: running || submitPending,
-    lastTaskId: messages.at(-1)?.taskId,
+    actionsDisabled: running || submitPending || taskActionsPending || Boolean(stopError),
+    lastTaskId: latestTaskId || messages.at(-1)?.taskId,
     onForkMessage: forkMessage,
     onRetryTask: retryMessage,
     onEditMessage: editMessage,
     onPreviewImage: openImagePreview,
     onAnnotationJump: jumpToAnnotation,
-  }), [conversationId, windowedRows, rowWindow, annotationNumbers, searchActive, running, submitPending, messages, forkMessage, retryMessage, editMessage, openImagePreview, jumpToAnnotation]);
+  }), [conversationId, windowedRows, rowWindow, annotationNumbers, searchActive, running, submitPending, latestTaskId, taskActionsPending, stopError, messages, forkMessage, retryMessage, editMessage, openImagePreview, jumpToAnnotation]);
   // 下一次会话切换时，这一份就是被留在原地的那个分组。
   liveGroupRef.current = liveGroup;
   const composerInputRef = React.useRef(null);
@@ -422,6 +425,7 @@ export function ChatPanel({
         running={running}
         disabled={disabled}
         submitPending={submitPending}
+        stopError={stopError}
         prepareSubmit={prepareSubmit}
         pendingCommentCount={annotationDrafts.length}
         beforeInput={<>

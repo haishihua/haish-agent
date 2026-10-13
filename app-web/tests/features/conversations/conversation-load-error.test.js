@@ -116,11 +116,73 @@ test('a late failure from an abandoned selection cannot mark the new conversatio
   assert.equal(h.loading(), false);
 });
 
-test('intentional cancellation does not become a conversation load error', async () => {
+test('cancellation caused by navigation stays silent', async () => {
+  const h = createHarness();
+  let rejectOld;
+  h.respondWith(() => new Promise((_resolve, reject) => { rejectOld = reject; }));
+  const abandoned = h.select('a');
+  h.respondWith(async (id) => ({ conversation_id: id }));
+  await h.select('b');
+  rejectOld(Object.assign(new Error('cancelled'), { name: 'AbortError' }));
+  await abandoned;
+  assert.equal(h.error(), '');
+  assert.equal(h.loading(), false);
+});
+
+test('an interrupted current selection stops its loader and can be retried', async () => {
   const h = createHarness();
   h.failWith(Object.assign(new Error('cancelled'), { name: 'AbortError' }));
   await h.select('a');
+  assert.match(h.error(), /interrupted.*retry/);
+  assert.equal(h.loading(), false);
+  assert.equal(h.runtime('a').shellSeeded, true, 'interruption must not claim successful hydration');
+  assert.equal(h.controller(), null);
+  h.respondWith(async (id) => ({ conversation_id: id }));
+  await h.select('a');
+  assert.equal(h.requests(), 2);
   assert.equal(h.error(), '');
+  assert.equal(h.runtime('a').shellSeeded, false);
+});
+
+test('an abandoned shell with no error or pending request must retry on reselect', async () => {
+  const h = createHarness();
+  await h.select('a');
+  h.runtime('a').shellSeeded = true;
+  assert.equal(h.error(), '');
+  assert.equal(h.controller(), null);
+  await h.select('a');
+  assert.equal(h.requests(), 2);
+  assert.equal(h.loading(), false);
+});
+
+test('reselecting during detail loading keeps the same request and activation', async () => {
+  const h = createHarness();
+  let resolve;
+  h.respondWith(() => new Promise((done) => { resolve = done; }));
+  const first = h.select('a');
+  const controller = h.controller();
+  await h.select('a');
+  assert.equal(h.requests(), 1);
+  assert.equal(h.controller(), controller);
+  assert.equal(controller.signal.aborted, false);
+  resolve({ conversation_id: 'a' });
+  await first;
+  assert.equal(h.loading(), false);
+});
+
+test('a cancelled controller cannot prevent an immediate same-conversation retry', async () => {
+  const h = createHarness();
+  let resolveOld;
+  h.respondWith(() => new Promise((done) => { resolveOld = done; }));
+  const first = h.select('a');
+  h.controller().abort();
+  h.respondWith(async (id) => ({ conversation_id: id }));
+  await h.select('a');
+  resolveOld({ conversation_id: 'a' });
+  await first;
+  assert.equal(h.requests(), 2);
+  assert.equal(h.error(), '');
+  assert.equal(h.loading(), false);
 });
 
 test('404 recovery is not reported as a conversation load failure', async () => {

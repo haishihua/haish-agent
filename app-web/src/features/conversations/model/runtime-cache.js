@@ -3,6 +3,8 @@ import { isTaskActuallyActive } from './workspace-state.js';
 export function evictInactiveRuntimes(runtimes, currentId, keep = 3) {
   const inactive = [...runtimes].filter(([id, runtime]) => (
     id !== currentId && !runtime.busy && !runtime.activeRunId && !runtime.fetchController
+    // Control-plane requests/errors must survive navigation until reconciled.
+    && !runtime.stopPromise && !runtime.stopError && !runtime.pendingRun && !runtime.taskRecoveryRequest
     && !runtime.taskRuntimeState?.pendingTask
     && !Object.values(runtime.taskRuntimeState?.tasksById || {}).some(isTaskActuallyActive)
   )).sort((a, b) => (b[1].lastAccessedAt || 0) - (a[1].lastAccessedAt || 0));

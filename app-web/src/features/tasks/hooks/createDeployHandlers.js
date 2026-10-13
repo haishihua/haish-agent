@@ -13,6 +13,8 @@ export function createDeployHandlers(ctx) {
     APP_DEFAULT_AGENT_OPTIONS,
     applyTerminalTaskState,
     cancelActiveConversationTask,
+    cancelActiveTask,
+    recoverConversationTasks,
     queueTaskInput,
     chatFinalizedTaskIdsRef,
     conversationDetailToWorkspaceConversation,
@@ -100,7 +102,9 @@ export function createDeployHandlers(ctx) {
     if (!targetConvId) {
       return hadQueuedDeploy ? String(queuedRequest?.text || '') : '';
     }
-    const targetRuntime = getRuntime(targetConvId);
+    const targetRuntime = getRuntime(targetConvId, { create: true });
+    if (targetRuntime?.stopPromise) return '';
+    const pendingRun = targetRuntime?.pendingRun || null;
     const currentTaskState = targetRuntime?.taskRuntimeState || null;
     let taskId = targetRuntime?.activeTaskId
       || currentTaskState?.activeTaskId
@@ -167,15 +171,50 @@ export function createDeployHandlers(ctx) {
       draftConversationRef.current && draftConversationRef.current.id === targetConvId
     );
     if (!isDraftTarget) {
-      cancelActiveConversationTask(targetConvId)
-        .then((response) => {
-          if (response && !response.ok) {
-            console.error('conversation cancel failed', response.status);
+      const reconcileStop = async () => {
+        const readCancel = async (response) => {
+          if (!response?.ok) throw new Error(`conversation cancel failed: ${response?.status || 'no response'}`);
+          const payload = response.json ? await response.json() : {};
+          if (payload.conversation_id && payload.conversation_id !== targetConvId) {
+            throw new Error('Conversation cancellation returned a different owner.');
           }
-        })
-        .catch((error) => {
-          console.error('conversation cancel failed', error);
-        });
+          return payload;
+        };
+        const payload = await readCancel(await cancelActiveConversationTask(targetConvId));
+        // A conversation cancel response names what the server stopped, not
+        // necessarily this request's attempt. Only run_started confirms lineage;
+        // recovery below restores any task known solely through cancellation.
+        const confirmedId = pendingRun ? await pendingRun.identitySettled : null;
+        // Stop may beat task registration. Once the request confirms its own
+        // identity, cancel that exact task, never a future conversation-wide run.
+        if (confirmedId && (payload.task_id !== confirmedId || !payload.cancelled)) {
+          await readCancel(await cancelActiveTask(confirmedId));
+        }
+        if (pendingRun) await pendingRun.streamSettled;
+        if (targetRuntime && getRuntime(targetConvId) === targetRuntime) {
+          await recoverConversationTasks(targetConvId, { expectedRuntime: targetRuntime });
+          if (getRuntime(targetConvId) === targetRuntime) {
+            mutateRuntime(targetConvId, (rt) => { rt.stopError = null; });
+          }
+        }
+      };
+      // Keep Stop synchronous for composer restoration; the next operation waits
+      // on this promise. Fail closed if cancellation/recovery could not be verified.
+      const stopPromise = reconcileStop().catch((error) => {
+        console.error('conversation cancel failed', error);
+        if (getRuntime(targetConvId) === targetRuntime && targetRuntime) {
+          mutateRuntime(targetConvId, (rt) => {
+            rt.stopError = 'Could not verify that the previous task stopped. Stop again before sending or retrying.';
+            // The explicit stop error keeps reconciliation available in the UI.
+            // Do not pretend a task is running or overwrite a newer run's busy flag.
+          });
+        }
+      }).finally(() => {
+        if (getRuntime(targetConvId) === targetRuntime && targetRuntime?.stopPromise === stopPromise) {
+          mutateRuntime(targetConvId, (rt) => { rt.stopPromise = null; });
+        }
+      });
+      if (targetRuntime) targetRuntime.stopPromise = stopPromise;
     }
     controllerToAbort?.abort?.();
     if (taskId) {
@@ -185,8 +224,9 @@ export function createDeployHandlers(ctx) {
         updateTaskRuntimeState((state) => ({
           ...state,
           activeTaskId: null,
-          pendingTask: null,
-          taskOrder: state.taskOrder.includes(taskId) ? state.taskOrder : [...state.taskOrder, taskId],
+          pendingTask: pendingRun && !pendingRun.taskId
+            ? { ...applyTerminalTaskState(pendingTask, 'cancelled', { aborted: true }), stopPending: true } : null,
+          taskOrder: activeTask && !state.taskOrder.includes(taskId) ? [...state.taskOrder, taskId] : state.taskOrder,
         }), targetConvId);
     } else if (pendingTask) {
       const pendingKey = pendingTask.id || pendingTask.taskId || null;
@@ -194,9 +234,10 @@ export function createDeployHandlers(ctx) {
       updateTaskRuntimeState((state) => ({
         ...state,
         activeTaskId: null,
-        pendingTask: null,
+        pendingTask: pendingRun && !pendingRun.taskId
+          ? { ...applyTerminalTaskState(pendingTask, 'cancelled', { aborted: true }), stopPending: true } : null,
       }), targetConvId);
-      if (pendingKey) removeConversationTaskFromWorkspace(targetConvId, pendingKey);
+      if (pendingKey && !pendingRun) removeConversationTaskFromWorkspace(targetConvId, pendingKey);
     } else {
       // Queued deploy only — nothing rendered yet; just restore composer text.
     }
@@ -383,6 +424,15 @@ export function createDeployHandlers(ctx) {
     const error = requestConfigError(request);
     if (error) { showToast('error', error); return false; }
     if (!deployConvId) return;
+    const stoppingRuntime = getRuntime(deployConvId);
+    if (stoppingRuntime?.stopPromise) {
+      return stoppingRuntime.stopPromise.then(() => startDeploy(request, deployConvId, seedDetail));
+    }
+    if (stoppingRuntime?.stopError) { showToast('error', stoppingRuntime.stopError); return false; }
+    if (stoppingRuntime?.busy || stoppingRuntime?.activeRunId || stoppingRuntime?.fetchController) {
+      showToast('error', 'Wait for the current task to finish or stop before sending.');
+      return false;
+    }
     const text = request.text;
     const pendingTask = preparePendingTask(request);
     pendingTask.conversationId = deployConvId;
@@ -520,6 +570,17 @@ export function createDeployHandlers(ctx) {
       showToast('error', 'Conversation runtime is unavailable.');
       return false;
     }
+    if (activeRuntime.stopPromise) {
+      return activeRuntime.stopPromise.then(() => {
+        if (conversationIdRef.current !== activeId) return false;
+        if (activeRuntime.busy) {
+          showToast('error', 'The previous task is still stopping. Your message has not been sent.');
+          return false;
+        }
+        return handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText, annotations, nodeRuntimeConfigs);
+      });
+    }
+    if (activeRuntime.stopError) { showToast('error', activeRuntime.stopError); return false; }
     // Do not acknowledge a send against a half-loaded or previously-selected
     // runtime. Returning false keeps the composer text and attachments intact.
     if (!draftConversationRef.current && (
@@ -610,8 +671,7 @@ export function createDeployHandlers(ctx) {
       return true;
     }
     const deployConvId = activeId;
-    startDeploy(request, deployConvId);
-    return true;
+    return startDeploy(request, deployConvId) !== false;
   }
 
   return {

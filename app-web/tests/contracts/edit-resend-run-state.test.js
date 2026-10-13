@@ -25,13 +25,10 @@ function handleRetryTaskBranch() {
   return conversationSource.slice(start, conversationSource.indexOf('\n\n  return {', start));
 }
 
-test('an accepted run announces itself before the stream is awaited', () => {
-  // 校验收下、状态摆好、请求就要出手——这一档才算“发出去了”。再往后就是整段流，
-  // 可能跑几分钟，调用方（编辑框）不能等到那里。
-  const accepted = streamSource.indexOf('streamRequest?.onAccepted?.();');
-  const awaited = streamSource.indexOf('await runTaskStream(command');
-  assert.ok(accepted > 0, 'executeQuest must expose the acceptance point');
-  assert.ok(accepted < awaited, 'acceptance fires before the run is awaited');
+test('acceptance is announced only in the server startup confirmation branch', () => {
+  // The editor waits for server acceptance, not full execution or a local draft.
+  assert.match(streamSource, /if \(event\.type === 'run_started' && event\.task_id\) \{\s*settleIdentity\(event\.task_id\);\s*streamRequest\?\.onAccepted\?\.\(\);/);
+  assert.equal(streamSource.match(/streamRequest\?\.onAccepted\?\.\(\);/g)?.length, 1);
   assert.match(ackSource, /export function createQuestAck\(\) \{/);
   assert.match(ackSource, /accept\(\) \{/);
   assert.match(ackSource, /follow\(run, onLateError\) \{/);

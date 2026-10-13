@@ -1,5 +1,6 @@
 import { eventDeltaText } from '../../chat/model/chat-text.js';
 import { compactStreamEvents } from '../../chat/model/stream-events.js';
+import { fetchCoalescedTaskRuntimeBatch } from '../model/task-runtime-requests.js';
 import {
   forgetDraftConversationId,
   rememberDraftConversationId,
@@ -223,7 +224,10 @@ export function createDraftConversationHandlers(ctx) {
       rt.answerBuffer = '';
       rt.cancelledRunIds = new Set();
       rt.abortRequested = false;
-      rt.shellSeeded = true;
+      // Local drafts have a complete, empty history; they are not directory
+      // summary shells waiting for hydration. Keep this body-ready state when
+      // the runtime is handed to the server id, including first-image uploads.
+      rt.shellSeeded = false;
     });
 
     setWorkspaceState((state) => normalizeWorkspaceOrdering({
@@ -422,6 +426,16 @@ export function createDraftConversationHandlers(ctx) {
 
   async function fetchTaskRuntimeBatch(targetConversationId, taskIds, signal) {
     if (!targetConversationId || !taskIds.length) return [];
+    return fetchCoalescedTaskRuntimeBatch(
+      taskRuntimeFetchesRef.current,
+      targetConversationId,
+      taskIds,
+      (ids, sharedSignal) => requestTaskRuntimeBatch(targetConversationId, ids, sharedSignal),
+      signal,
+    );
+  }
+
+  async function requestTaskRuntimeBatch(targetConversationId, taskIds, signal) {
     const response = await apiFetch(
       `${API_BASE}/api/conversations/${encodeURIComponent(targetConversationId)}/tasks/runtime`,
       {
@@ -444,6 +458,7 @@ export function createDraftConversationHandlers(ctx) {
       throw error;
     }
     const payload = await response.json();
+    if (signal.aborted) throw new DOMException('Task runtime loading was cancelled', 'AbortError');
     if (!Array.isArray(payload) || payload.length !== taskIds.length) {
       throw new Error('task batch restore returned an incomplete response');
     }
@@ -469,7 +484,7 @@ export function createDraftConversationHandlers(ctx) {
     if (typeof isCurrentActivation !== 'function') throw new Error('task restore requires an activation guard');
     if (!Array.isArray(taskIds) || taskIds.length === 0 || !isCurrentActivation()) return [];
     const details = await fetchTaskRuntimeBatch(targetConversationId, taskIds, signal);
-    if (!isCurrentActivation()) return [];
+    if (signal?.aborted || !isCurrentActivation()) return [];
     updateTaskRuntimeState((state) => {
       const tasksById = { ...state.tasksById };
       let activeTaskId = state.activeTaskId;

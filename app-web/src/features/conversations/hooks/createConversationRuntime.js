@@ -7,6 +7,7 @@ export function createConversationRuntime(ctx) {
     runtimesRef,
     setBusy,
     setShellSeeded,
+    setConversationStopState = () => {},
     setWorkspaceState,
     setTaskRuntimeState,
     setToast,
@@ -25,6 +26,11 @@ export function createConversationRuntime(ctx) {
       answerBuffer: '',
       cancelledRunIds: new Set(),
       abortRequested: false,
+      pendingRun: null,
+      runGeneration: 0,
+      taskRecoveryRequest: null,
+      stopPromise: null,
+      stopError: null,
       shellSeeded: false,
     };
   }
@@ -82,6 +88,13 @@ export function createConversationRuntime(ctx) {
     cacheTaskImageAttachments(rt.taskRuntimeState);
     setTaskRuntimeState(rt.taskRuntimeState);
     setBusy(rt.busy);
+    // Stop is a control-plane state, not evidence that a task is still running.
+    // Project it explicitly even when the task list and busy flag are unchanged.
+    const pending = Boolean(rt.stopPromise);
+    const error = rt.stopError || '';
+    setConversationStopState((current) => (
+      current?.pending === pending && current?.error === error ? current : { pending, error }
+    ));
     // 「这一份时间线还是工作区快照搭的」也是显示状态：会话刚打开时时间线只有标题和
     // 状态，正文还没水合（整段会话的占位判据见 chat/model/conversation-loading.js）。必须
     // 跟着 taskRuntimeState 一起投影，否则渲染层只能去读 runtime 本体。

@@ -2,8 +2,9 @@
 import { createTaskStreamHandlers } from '../../src/features/tasks/hooks/createTaskStreamHandlers.js';
 import { createConversationActivationHandlers } from '../../src/features/conversations/hooks/createConversationActivationHandlers.js';
 import { applyTerminalTaskState, buildTaskRuntimeRecord } from '../../src/features/tasks/model/task-runtime.js';
+import { CHAT_FINAL_FOLLOWUP_EVENT_TYPES, STREAM_EVENT_BATCH_MS, STREAM_IMMEDIATE_EVENT_TYPES } from '../../src/features/tasks/model/runtime-events.js';
 
-export function createAttemptHarness(source, { reject = false, hold = false, transport = null } = {}) {
+export function createAttemptHarness(source, { reject = false, hold = false, transport = null, recover = null } = {}) {
   // reject=true：每次都 409（模拟“上一轮永远没收尾”）；reject=N：前 N 次 409。
   // hold=true：请求发出后把流挂住，直到 release()——用来观察“已被接下、还没跑完”那一档。
   let remainingRejections = reject === true ? Number.POSITIVE_INFINITY : (Number.isFinite(reject) ? reject : 0);
@@ -43,14 +44,15 @@ export function createAttemptHarness(source, { reject = false, hold = false, tra
     getChatProgressLine: () => '',
     removeConversationTaskFromWorkspace: () => {},
     batchRuntimeMutations: (_id, update) => update(),
-    CHAT_FINAL_FOLLOWUP_EVENT_TYPES: new Set(['run_finished']),
-    STREAM_IMMEDIATE_EVENT_TYPES: new Set(['run_started', 'run_finished']),
+    CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
+    STREAM_EVENT_BATCH_MS,
+    STREAM_IMMEDIATE_EVENT_TYPES,
+    recoverConversationTasks: recover || (async () => {}),
     runTaskStream: async (command, onEvent) => {
       const request = command.payload;
       requests.push({ operation: command.operation, body: request });
       snapshots.push({ ...runtime.taskRuntimeState.pendingTask });
       if (transport) return transport(command, onEvent);
-      if (hold) await new Promise((resolve) => releases.push(resolve));
       if (remainingRejections > 0) {
         remainingRejections -= 1;
         throw Object.assign(new Error('Conversation already has an active task.'), { status: 409 });
@@ -58,14 +60,13 @@ export function createAttemptHarness(source, { reject = false, hold = false, tra
       const text = request.message ?? source.requestText ?? source.title;
       const event = { task_id: 'confirmed-attempt', conversation_id: source.conversationId,
         source_task_id: source.taskId, user_message_id: 'edited-user', annotations: source.annotations || [], display_text: null };
-      for (const item of [
-        { ...event, type: 'run_started', message: text },
-        { ...event, type: 'run_finished', status: 'done', task: { ...event, title: text, status: 'done', answer_text: 'Updated reply' } },
-      ]) onEvent(item);
+      onEvent({ ...event, type: 'run_started', message: text });
+      if (hold) await new Promise((resolve) => releases.push(resolve));
+      onEvent({ ...event, type: 'run_finished', status: 'done', task: { ...event, title: text, status: 'done', answer_text: 'Updated reply' } });
     },
   };
   const activation = createConversationActivationHandlers(context);
-  const handlers = createTaskStreamHandlers({ ...context, ...activation });
+  const handlers = createTaskStreamHandlers({ ...context, ...activation, recoverConversationTasks: context.recoverConversationTasks });
   return {
     ...handlers,
     runtime,

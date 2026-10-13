@@ -25,7 +25,9 @@ export function createQuestAck() {
       return new Promise((resolve, reject) => {
         acceptedOnce.then(() => resolve(true));
         run.then(
-          () => { if (!accepted) resolve(true); },
+          () => {
+            if (!accepted) reject(new Error('The request was not confirmed by the server. Your changes have not been sent.'));
+          },
           (error) => {
             if (!accepted) { reject(error); return; }
             onLateError?.(error);

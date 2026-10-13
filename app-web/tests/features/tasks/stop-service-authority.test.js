@@ -54,6 +54,7 @@ function createHarness({
         ? cancelConversationTask(targetConvId)
         : Promise.resolve({ ok: true });
     },
+    recoverConversationTasks: async () => {},
     updateTaskById: (taskId, updater) => {
       const task = runtime?.taskRuntimeState?.tasksById?.[taskId];
       if (!task) return;

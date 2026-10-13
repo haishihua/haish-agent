@@ -229,7 +229,7 @@ export function createConversationActivationHandlers(ctx) {
     const incomingRuntime = getRuntime(restoredConversationId);
     const incomingHasInflight = Boolean(
       incomingRuntime
-      && (incomingRuntime.activeRunId || incomingRuntime.fetchController
+      && (incomingRuntime.stopPromise || incomingRuntime.activeRunId || incomingRuntime.fetchController
         || (incomingRuntime.busy && !incomingRuntime.shellSeeded))
     );
     let taskIdsToRestore = [];
@@ -283,6 +283,7 @@ export function createConversationActivationHandlers(ctx) {
       const nextTaskRuntimeState = {
         activeTaskId: activeTask?.taskId || null,
         pendingTask: null,
+        latestTaskId,
         taskOrder: restoredTaskIds,
         tasksById: Object.fromEntries(
           nextTasks.map((task) => [task.taskId, task])
@@ -347,6 +348,51 @@ export function createConversationActivationHandlers(ctx) {
       throw error;
     }
     return detailResponse.json();
+  }
+
+  // Reconcile task history without activating a conversation or touching the
+  // displayed conversation's attachments, selection or workspace directory.
+  async function recoverConversationTasks(ownerConvId, { expectedRuntime = getRuntime(ownerConvId) } = {}) {
+    if (!expectedRuntime || expectedRuntime.activeRunId) return;
+    const request = {};
+    const generation = expectedRuntime.runGeneration || 0;
+    const initialState = expectedRuntime.taskRuntimeState;
+    expectedRuntime.taskRecoveryRequest = request;
+    // A newer run can start AND finish while the response is in flight. Its
+    // generation never rolls back to idle; request identity also orders retries.
+    const isCurrentOwner = () => getRuntime(ownerConvId) === expectedRuntime
+      && expectedRuntime.taskRecoveryRequest === request
+      && (expectedRuntime.runGeneration || 0) === generation
+      && !expectedRuntime.activeRunId;
+    try {
+      const detail = await fetchConversationDetail(ownerConvId);
+      if (!isCurrentOwner() || expectedRuntime.taskRuntimeState !== initialState) return;
+      if (detail.conversation_id !== ownerConvId) throw new Error('Conversation recovery returned a different owner.');
+      const tasks = Array.isArray(detail.tasks) ? detail.tasks : [];
+      const taskOrder = sortTaskIdsForRestore(tasks);
+      const latestTaskId = detail.last_task_id || taskOrder.at(-1) || null;
+      updateTaskRuntimeState((state) => ({ ...state, latestTaskId, taskOrder, pendingTask: null,
+        tasksById: Object.fromEntries(tasks.map((task) => {
+          const previous = state.tasksById[task.task_id];
+          const summary = taskSummaryToRuntimeTask(task, previous?.imageAttachments || []);
+          return [task.task_id, previous?.runtimeHydrated && previous.updatedAt === summary.updatedAt ? previous : summary];
+        })),
+      }), ownerConvId);
+      if (latestTaskId) await restoreTaskRuntimes([latestTaskId], {
+        targetConversationId: ownerConvId, isCurrentActivation: isCurrentOwner,
+      });
+      if (!isCurrentOwner()) return;
+      mutateRuntime(ownerConvId, (rt) => {
+        const active = Object.values(rt.taskRuntimeState.tasksById).find(isTaskActuallyActive);
+        rt.activeTaskId = active?.taskId || null;
+        rt.taskRuntimeState = { ...rt.taskRuntimeState, activeTaskId: rt.activeTaskId };
+        rt.busy = Boolean(active);
+      });
+      flushRuntimeTasksToWorkspace(ownerConvId);
+      return detail;
+    } finally {
+      if (expectedRuntime.taskRecoveryRequest === request) expectedRuntime.taskRecoveryRequest = null;
+    }
   }
 
   // 服务端已经确认不存在的会话（404）。恢复链是从同一份过期的工作区快照里挑下一个
@@ -547,6 +593,7 @@ export function createConversationActivationHandlers(ctx) {
     activateConversationShell,
     activateConversationDetail,
     fetchConversationDetail,
+    recoverConversationTasks,
     dropMissingConversation,
     ensureTaskForEvent,
     updateTaskById,

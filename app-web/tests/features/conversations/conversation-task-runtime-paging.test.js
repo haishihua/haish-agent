@@ -4,6 +4,15 @@ import assert from 'node:assert/strict';
 // The activation handler chain reaches shared/api/base.js, which reads window.
 globalThis.window = globalThis.window || { haish: {} };
 
+const { createDraftConversationHandlers } = await import(
+  '../../../src/features/conversations/hooks/createDraftConversationHandlers.js'
+);
+const { nextEarlierTaskRuntimeIds } = await import(
+  '../../../src/features/tasks/model/task-runtime-paging.js'
+);
+const { taskDetailToRuntimeTask } = await import(
+  '../../../src/features/tasks/model/task-runtime.js'
+);
 const { createConversationActivationHandlers } = await import(
   '../../../src/features/conversations/hooks/createConversationActivationHandlers.js'
 );
@@ -47,7 +56,7 @@ const DETAIL = {
 
 const TASK_ORDER = ['task-1', 'task-2', 'task-3', 'task-4', 'task-5', 'task-6'];
 
-function createActivationHarness() {
+function createActivationHarness({ restoreTaskRuntimes } = {}) {
   const conversationIdRef = { current: null };
   const runtimes = new Map();
   const restoreCalls = [];
@@ -86,7 +95,7 @@ function createActivationHarness() {
     pendingCreatedDetailRef: { current: null },
     restoreTaskRuntimes: async (taskIds, options) => {
       restoreCalls.push({ taskIds, options });
-      return [];
+      return restoreTaskRuntimes ? restoreTaskRuntimes(taskIds, options) : [];
     },
     saveStoredContextUsage: () => {},
     setComposerAttachment: () => {},
@@ -150,4 +159,59 @@ test('a single-task conversation still hydrates that task up front', async () =>
   );
 
   assert.deepEqual(harness.restoreCalls[0].taskIds, ['task-1']);
+});
+
+test('real activation and paging share their first in-flight page without losing earlier history', async () => {
+  let resolve;
+  const response = new Promise((done) => { resolve = done; });
+  const requests = [];
+  let harness;
+  const drafts = createDraftConversationHandlers({
+    API_BASE: 'http://runtime',
+    buildApiHeaders: () => ({}),
+    apiFetch: async (_url, options) => {
+      const ids = JSON.parse(options.body).tasks.map((task) => task.task_id);
+      requests.push(ids);
+      if (requests.length === 1) await response;
+      return {
+        ok: true,
+        json: async () => ids.map((id) => ({ ...DETAIL.tasks.find((task) => task.task_id === id), events: [] })),
+      };
+    },
+    taskRuntimeFetchesRef: { current: new Map() },
+    taskRuntimeEventCacheRef: { current: new Map() },
+    normalizeRuntimeEvents: (events) => events || [],
+    taskDetailToRuntimeTask,
+    isTaskActuallyActive,
+    applyContextUsage: () => {},
+    latestContextUsageFromTasks: () => ({}),
+    updateTaskRuntimeState: (updater, id) => {
+      const runtime = harness.runtimes.get(id);
+      runtime.taskRuntimeState = updater(runtime.taskRuntimeState);
+    },
+  });
+  harness = createActivationHarness({ restoreTaskRuntimes: drafts.restoreTaskRuntimes });
+  const activation = harness.handlers.activateConversationDetail(DETAIL, { activationSeq: 1 });
+  await new Promise((done) => setImmediate(done));
+  const runtime = harness.runtimes.get(CONVERSATION_ID);
+  assert.equal(runtime.shellSeeded, false, 'detail summary is already visible while runtime hydration waits');
+  const pageIds = () => nextEarlierTaskRuntimeIds(runtime.taskRuntimeState.taskOrder, runtime.taskRuntimeState.tasksById);
+  assert.deepEqual(pageIds(), ['task-4', 'task-5', 'task-6']);
+  const page = drafts.restoreTaskRuntimes(pageIds(), {
+    targetConversationId: CONVERSATION_ID,
+    isCurrentActivation: () => true,
+  });
+  await new Promise((done) => setImmediate(done));
+  assert.deepEqual(requests, [['task-6', 'task-5', 'task-4']]);
+  resolve();
+  await Promise.all([activation, page]);
+  assert.deepEqual(pageIds(), ['task-1', 'task-2', 'task-3']);
+  await drafts.restoreTaskRuntimes(pageIds(), {
+    targetConversationId: CONVERSATION_ID,
+    isCurrentActivation: () => true,
+  });
+  assert.equal(requests.length, 2);
+  assert.deepEqual(runtime.taskRuntimeState.taskOrder, TASK_ORDER);
+  assert.deepEqual(pageIds(), []);
+  assert.ok(Object.values(runtime.taskRuntimeState.tasksById).every((task) => task.runtimeHydrated));
 });

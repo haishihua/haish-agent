@@ -10,6 +10,7 @@ export const CHAT_FINAL_FOLLOWUP_EVENT_TYPES = new Set([
 ]);
 
 export const STREAM_IMMEDIATE_EVENT_TYPES = new Set([
+  'run_started',
   'context_compaction_started',
   'context_compaction_completed',
   'context_compaction_failed',

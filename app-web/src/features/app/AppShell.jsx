@@ -121,7 +121,7 @@ import {
   taskHasAssistantStreamContent,
   taskFirstStreamTimestamp,
   upsertToolCall,
-  } from '../tasks/model/task-runtime.js';
+} from '../tasks/model/task-runtime.js';
 import {
   nextEarlierTaskRuntimeIds,
   pendingTaskRuntimeIds,
@@ -216,6 +216,7 @@ export function AppShell() {
   const projectReorderVersionRef = useRef(0);
   const modeLocationRef = useRef({ chat: null, workflow: null });
   const [busy, setBusy] = useState(false);
+  const [conversationStopState, setConversationStopState] = useState({ pending: false, error: '' });
   // 「当前显示的这份时间线还是工作区快照搭的」——由运行时投影过来（见
   // createConversationRuntime 的 syncDisplayedRuntime）。会话刚打开时快照只有标题和
   // 状态，助手正文还没水合，时间线用加载动画占位。
@@ -798,7 +799,7 @@ export function AppShell() {
     notifyTaskComplete,
     runtimesRef,
     setBusy,
-    setShellSeeded,
+    setShellSeeded, setConversationStopState,
     setToast,
     setWorkspaceState,
     setTaskRuntimeState,
@@ -832,7 +833,7 @@ export function AppShell() {
     dropMissingConversation,
     ensureTaskForEvent,
     updateTaskById,
-    getTaskById,
+    getTaskById, recoverConversationTasks,
     ensureConversationRuntime,
   } = createConversationActivationHandlers({
     API_BASE,
@@ -1042,7 +1043,7 @@ export function AppShell() {
     appendChatProgressText,
     applyConversationSnapshot,
     applyContextUsage,
-    batchRuntimeMutations,
+    batchRuntimeMutations, buildTaskRuntimeRecord,
     applyTerminalTaskState,
     apiFetch,
     buildApiHeaders,
@@ -1064,7 +1065,7 @@ export function AppShell() {
     normalizeContextUsage,
     normalizeTaskStatus,
     normalizeRuntimeEvent,
-    readRuntimeAnswerBuffer,
+    readRuntimeAnswerBuffer, recoverConversationTasks,
     // Late-bound: defined by createDeployHandlers later in the render body.
     removeConversationTaskFromWorkspace: (...args) => deployApiRef.current.removeConversationTaskFromWorkspace?.(...args),
     resolveProviderMeta,
@@ -1198,7 +1199,7 @@ export function AppShell() {
     applyTerminalTaskState,
     busy,
     cancelActiveConversationTask,
-    cancelActiveTask,
+    cancelActiveTask, recoverConversationTasks,
     queueTaskInput,
     chatFinalizedTaskIdsRef,
     conversationDetailToWorkspaceConversation,
@@ -1590,7 +1591,7 @@ export function AppShell() {
     const pendingError = String(pendingTurn?.error || '').trim();
     const pendingTurnVisible = Boolean(pendingTurn
       && !taskRuntimeState.activeTaskId
-      && !(pendingStatus === 'cancelled' && !pendingError && !taskHasAssistantStreamContent(pendingTurn)));
+      && !(pendingStatus === 'cancelled' && !pendingTurn.stopPending && !pendingError && !taskHasAssistantStreamContent(pendingTurn)));
     const orderedTasks = collapseFullTaskAttempts(
       taskRuntimeState.taskOrder.map((taskId) => taskRuntimeState.tasksById[taskId]).filter(Boolean),
       pendingTurnVisible ? pendingTurn : null,
@@ -1732,9 +1733,9 @@ export function AppShell() {
     conversation: currentConversation, options: agentOptions, messages: chatMessages,
     pendingTask: taskRuntimeState.pendingTask, running: currentConversationRunning, queued: queuedDeploy, setWorkspaceState,
   });
-  const submitPending = Boolean(queuedDeploy);
+  const submitPending = Boolean(queuedDeploy || conversationStopState.pending);
 
-  const composerDisabled = uploadState.active
+  const composerDisabled = Boolean(conversationStopState.error) || uploadState.active
     || settingsMode
     || !!conversationError
     || (viewMode !== 'chat' && currentConversationRunning);
@@ -1880,7 +1881,8 @@ export function AppShell() {
 	                    earlierTaskRuntimesPending={pendingEarlierTaskRuntimeIds.length > 0}
 	                    onLoadEarlierTasks={loadEarlierTaskRuntimes}
 	                    composerScopeId={draftConversationRef.current?.composerScopeId || conversationId}
-	                    messages={chatMessages}
+	                    messages={chatMessages} latestTaskId={taskRuntimeState.latestTaskId}
+                        taskActionsPending={Boolean(conversationStopState.pending || conversationStopState.error)} stopError={conversationStopState.error}
 	                    loading={conversationLoading}
 	                    running={currentConversationRunning}
 	                    disabled={composerDisabled}
@@ -1954,7 +1956,7 @@ export function AppShell() {
                       activeTaskText={activeTaskText}
                       running={currentConversationRunning}
                       disabled={composerDisabled}
-                      submitPending={submitPending}
+                      submitPending={submitPending} stopError={conversationStopState.error}
                       idlePlaceholder="Describe the task you want to delegate..."
                       disabledPlaceholder="Agents are currently busy executing..."
                       allowRuntimeInput={false}

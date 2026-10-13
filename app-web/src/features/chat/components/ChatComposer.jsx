@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowUp, BookOpen, Clock, CornerDownLeft, Square, Target } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
+import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
 import { ContextTaskChip } from '../../../shared/ui/ContextTaskChip.jsx';
 import { firstPastedDocument } from '../model/document-paste.js';
@@ -60,6 +61,7 @@ export function ChatComposer({
   running = false,
   disabled = false,
   submitPending = false,
+  stopError = '',
   idlePlaceholder = 'Ask, draft, or delegate...',
   disabledPlaceholder = '',
   allowRuntimeInput = true,
@@ -130,7 +132,7 @@ export function ChatComposer({
   const [waitingOwner, setWaitingOwner] = React.useState(null);
   const waitingForSend = waitingOwner === submissionOwner;
   const submissionContextRef = React.useRef(null);
-  submissionContextRef.current = { owner: submissionOwner, running, disabled, submitPending };
+  submissionContextRef.current = { owner: submissionOwner, running, disabled, submitPending, stopError };
   const submissionMountedRef = React.useRef(false);
   React.useEffect(() => {
     submissionMountedRef.current = true;
@@ -396,7 +398,7 @@ export function ChatComposer({
   }
 
   React.useEffect(() => {
-    if (!running && !submitPending) return undefined;
+    if (!running && !submitPending && !stopError) return undefined;
     function handleEscape(event) {
       if (event.key !== 'Escape' || event.isComposing || event.target.closest?.('[role="dialog"], [role="alertdialog"]')) return;
       event.preventDefault();
@@ -404,7 +406,7 @@ export function ChatComposer({
     }
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [running, submitPending, stopAndRestore]);
+  }, [running, submitPending, stopError, stopAndRestore]);
 
   // 一次被接受的发送会消耗掉输入框里的整份载荷——纠偏指令也一样：它带着同一份图片草稿
   // 进了运行中的任务，图片如果留在这里，就是「同一张图还躺在输入框里等下一次误发」。
@@ -428,7 +430,7 @@ export function ChatComposer({
     e?.preventDefault();
     e?.stopPropagation?.();
     if (Date.now() < suppressSubmitUntilRef.current || submissionRef.current?.owner === submissionOwner) return;
-    if (disabled || submitPending || runtimeInputPending || goalPendingRef.current || !canSubmitPayload) return;
+    if (stopError || disabled || submitPending || runtimeInputPending || goalPendingRef.current || !canSubmitPayload) return;
     const operation = { owner: submissionOwner };
     submissionRef.current = operation;
     setWaitingOwner(submissionOwner);
@@ -446,7 +448,7 @@ export function ChatComposer({
     if ((!running && !goal) || goal?.prompt) {
       try { savedConfig = await configSync.ensureSaved(); } catch { return; } // The save hook reports errors; keep the payload intact.
       const current = submissionContextRef.current;
-      if (!submissionMountedRef.current || current.owner !== owner || current.disabled || current.submitPending || (!running && current.running)) return;
+      if (!submissionMountedRef.current || current.owner !== owner || current.disabled || current.submitPending || current.stopError || (!running && current.running)) return;
       if (currentSelection?.disabled) return;
     }
     if (skillSelectionPendingRef.current) return;
@@ -581,6 +583,8 @@ export function ChatComposer({
     >
       <ComposerBorderBeam active={running || submitPending || hasComposerPayload} />
       {beforeInput}
+      {stopError && <ErrorState variant="inline" title="Stop not verified" detail={stopError}
+        onRetry={stopAndRestore} disabled={submitPending} retryLabel="Stop again" retryHint="Retry stopping and reconcile this conversation" />}
       {pathNotice && <p className="haish-annotation-notice" role="status">{pathNotice}</p>}
       {skillMenuOpen && (
         <div ref={skillMenuRef} className="chat-skill-menu" role="listbox" aria-label="Skills and actions">
@@ -815,6 +819,12 @@ export function ChatComposer({
           {submitPending ? (
             <MetalActionEffect active={sendBeamActive}>
               <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Cancel pending request">
+                <Square className="chat-send-icon chat-stop-icon" fill="currentColor" strokeWidth={0} aria-hidden="true" />
+              </button>
+            </MetalActionEffect>
+          ) : stopError ? (
+            <MetalActionEffect active={sendBeamActive}>
+              <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Stop again">
                 <Square className="chat-send-icon chat-stop-icon" fill="currentColor" strokeWidth={0} aria-hidden="true" />
               </button>
             </MetalActionEffect>

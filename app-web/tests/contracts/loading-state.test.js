@@ -45,11 +45,10 @@ test('Bot chunk loading and task restoration reuse the centered shared loader', 
   assert.match(rule, /place-items:\s*center/);
 });
 
-test('composer configuration saving uses a quiet status next to its control, not a content loader', () => {
+test('composer configuration saving remains silent without a status label or content loader', () => {
   const composer = readFileSync(new URL('../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
-  assert.match(composer, /import \{ ConfigSaveStatus \} from '\.\/ConfigSaveStatus\.jsx';/);
-  assert.match(composer, /<div className="chat-config-control">\s*<ConfigSaveStatus key=\{scopeId\} pending=\{configSync\.pending\}/);
-  assert.doesNotMatch(composer, /<LoadingState|Saving configuration…/);
+  assert.match(composer, /<div className="chat-config-control">/);
+  assert.doesNotMatch(composer, /ConfigSaveStatus|chat-config-save-status|<LoadingState|Saving configuration…|Saving…/);
 });
 
 test('the fallback is centered in the settings pane', () => {

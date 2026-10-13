@@ -141,7 +141,7 @@ test('retries and edits replace the source turn without removing independent wor
   assert.equal(tasks.length, 4);
 });
 
-test('an accepted edit is on screen as the running turn before the server names it', async () => {
+test('an edit is acknowledged on server confirmation without waiting for completion', async () => {
   const source = sourceTurn();
   const harness = createAttemptHarness(source, { hold: true });
   const handlers = createConversationHandlers({
@@ -160,12 +160,13 @@ test('an accepted edit is on screen as the running turn before the server names 
   assert.equal(acknowledged, true, '编辑框必须在服务端接下这一笔时就收工，不能等整段流跑完');
   assert.equal(await edit, true);
   const state = harness.runtime.taskRuntimeState;
-  assert.equal(state.pendingTask.status, 'running');
-  assert.equal(state.pendingTask.displayText, 'Revised message');
-  assert.equal(state.pendingTask.sourceTaskId, source.taskId);
+  assert.equal(state.pendingTask, null);
+  assert.equal(state.tasksById['confirmed-attempt'].status, 'running');
+  assert.equal(state.tasksById['confirmed-attempt'].displayText, 'Revised message');
+  assert.equal(state.tasksById['confirmed-attempt'].sourceTaskId, source.taskId);
   // 旧的取消态（行里那支编辑框）让位给新的运行态：同一个位置不留两轮。
   const projected = collapseFullTaskAttempts(state.taskOrder.map((id) => state.tasksById[id]), state.pendingTask);
-  assert.deepEqual(projected.map((task) => task.taskId), []);
+  assert.deepEqual(projected.map((task) => task.taskId), ['confirmed-attempt']);
   harness.release();
   for (let turn = 0; turn < 60; turn += 1) await Promise.resolve();
   const settled = harness.runtime.taskRuntimeState;
@@ -179,7 +180,11 @@ test('an accepted edit is on screen as the running turn before the server names 
 
 test('a run that dies after it was taken still closes the editor and reports the reason', async () => {
   const source = sourceTurn();
-  const harness = createAttemptHarness(source, { reject: true });
+  const harness = createAttemptHarness(source, { transport: async (_command, onEvent) => {
+    onEvent({ type: 'run_started', task_id: 'accepted-attempt', conversation_id: source.conversationId,
+      source_task_id: source.taskId, user_message_id: source.userMessageId });
+    throw new Error('Synthetic failure after acceptance');
+  } });
   const toasts = [];
   const handlers = createConversationHandlers({
     executeQuest: harness.executeQuest,
@@ -192,9 +197,9 @@ test('a run that dies after it was taken still closes the editor and reports the
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   assert.equal(toasts.length, 1, '接下之后的失败由提示条说出来，不再阻塞编辑框');
-  assert.match(toasts[0][1], /not been sent/);
+  assert.match(toasts[0][1], /failure after acceptance/);
   const state = harness.runtime.taskRuntimeState;
-  assert.deepEqual(state.taskOrder, [source.taskId], '回滚把原来那一轮放回时间线');
+  assert.equal(state.tasksById['accepted-attempt'].status, 'failed');
   assert.equal(state.pendingTask, null);
 });
 

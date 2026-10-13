@@ -151,7 +151,7 @@ async function checkAcceptedEdit() {
   draw();
   await tick();
   check(Boolean(harness.requests.length), 'the resend left the client');
-  check(harness.runtime.taskRuntimeState.pendingTask?.status === 'running', 'the run is still in flight while we look at the page');
+  check(harness.runtime.taskRuntimeState.tasksById['confirmed-attempt']?.status === 'running', 'the confirmed run is still in flight while we look at the page');
   check(!editorNode() && !editorButtons().includes('Sending…'), `the editor is gone the moment the send is taken (buttons: ${editorButtons().join('/') || 'none'})`);
   const userText = userRows().map((row) => row.querySelector('.chat-bubble-text')?.textContent || '');
   check(userRows().length === 1, `exactly one user turn is on screen (${userRows().length})`);

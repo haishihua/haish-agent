@@ -81,6 +81,7 @@ export function createTaskStreamHandlers(ctx) {
     applyContextUsage,
     applyTerminalTaskState,
     batchRuntimeMutations,
+    buildTaskRuntimeRecord,
     chatFinalizedTaskIdsRef,
     conversationId,
     ensureTaskForEvent,
@@ -97,6 +98,7 @@ export function createTaskStreamHandlers(ctx) {
     normalizeTaskStatus,
     normalizeRuntimeEvent,
     removeConversationTaskFromWorkspace,
+    recoverConversationTasks,
     runTaskStream = (command, onEvent) => window.haish.runTaskStream(command, onEvent),
     resolveProviderMeta,
     setComposerAttachment,
@@ -344,6 +346,7 @@ export function createTaskStreamHandlers(ctx) {
         }));
         break;
       case 'run_started':
+        updateTaskRuntimeState((state) => ({ ...state, latestTaskId: taskId }), ownerConvId);
         chatFinalizedTaskIdsRef.current.delete(taskId);
         updateTaskById(taskId, (run) => ({
           ...run,
@@ -710,6 +713,24 @@ export function createTaskStreamHandlers(ctx) {
     if (!runConversationId) {
       throw new Error('conversation is not ready');
     }
+    // A Stop owns this conversation until cancellation and server recovery settle.
+    // Re-read the same task after that barrier; never silently retarget a stale Retry.
+    let stoppingRuntime = getRuntime(runConversationId);
+    while (stoppingRuntime?.stopPromise) {
+      await stoppingRuntime.stopPromise;
+      stoppingRuntime = getRuntime(runConversationId);
+    }
+    if (stoppingRuntime?.stopError) throw new Error(stoppingRuntime.stopError);
+    if (streamRequest?.attempt) {
+      const state = stoppingRuntime?.taskRuntimeState;
+      const sourceId = pendingTask.taskId || pendingTask.id;
+      const replaced = Object.values(state?.tasksById || {}).some((task) =>
+        task.sourceTaskId === sourceId && !task.rerunFromNodeId);
+      if (replaced || (state?.latestTaskId && state.latestTaskId !== sourceId)) {
+        throw new Error('This turn has been replaced or is no longer the latest turn. Retry the current turn instead.');
+      }
+      pendingTask = state?.tasksById?.[sourceId] || pendingTask;
+    }
     const providers = ctx.providerOptions || [];
     const defaultEffort = (provider) => providers.find((item) => item.id === provider)?.defaultReasoningEffort;
     if (streamRequest?.runConfig) {
@@ -784,6 +805,7 @@ export function createTaskStreamHandlers(ctx) {
     }
     // Ensure the runtime exists and prime its run-local state.
     mutateRuntime(runConversationId, (rt) => {
+      rt.runGeneration = (rt.runGeneration || 0) + 1;
       rt.activeRunId = runId;
       rt.cancelledRunIds.delete(runId);
       rt.answerBuffer = '';
@@ -804,8 +826,10 @@ export function createTaskStreamHandlers(ctx) {
       setRuntimeBusy(true, runConversationId);
     }
 
+    let rolledBack = false;
     const rollbackUnconfirmedRerun = () => {
-      if (!rerunningNode && !fullAttempt) return;
+      if (rolledBack || (!rerunningNode && !fullAttempt)) return;
+      rolledBack = true;
       updateTaskRuntimeState((state) => {
         const tasksById = { ...(state.tasksById || {}) };
         delete tasksById[runId];
@@ -819,12 +843,13 @@ export function createTaskStreamHandlers(ctx) {
             : state.pendingTask,
         };
       }, runConversationId);
-      mutateRuntime(runConversationId, (rt) => {
-        if (rt.activeRunId === runId) rt.activeRunId = null;
-      });
-      setRuntimeActiveTaskId(null, runConversationId);
-      setRuntimeFetchController(null, runConversationId);
-      setRuntimeBusy(false, runConversationId);
+      const runtime = getRuntime(runConversationId);
+      if (!runtime?.activeRunId || runtime.activeRunId === runId) {
+        mutateRuntime(runConversationId, (rt) => { rt.activeRunId = null; });
+        setRuntimeActiveTaskId(null, runConversationId);
+        setRuntimeFetchController(null, runConversationId);
+        setRuntimeBusy(false, runConversationId);
+      }
       removeConversationTaskFromWorkspace(runConversationId, runId);
       chatFinalizedTaskIdsRef.current.delete(runId);
       userCancelledTaskIdsRef.current.delete(runId);
@@ -879,10 +904,6 @@ export function createTaskStreamHandlers(ctx) {
 
     const controller = new AbortController();
     setRuntimeFetchController(controller, runConversationId);
-    // 校验收下、状态摆好、请求就要出手：这就是「发出去了」的确认点。全量重发
-    // （编辑 / 重跑）的调用方（时间线上那一行的编辑框）靠它立刻收工，不再等整段流；
-    // 运行过程中的失败由任务行与错误提示负责（见 tasks/model/quest-ack.js）。
-    streamRequest?.onAccepted?.();
     const waitForActiveTaskRelease = () => new Promise((resolve, reject) => {
       if (controller.signal.aborted) {
         reject(new DOMException('Aborted', 'AbortError'));
@@ -945,6 +966,39 @@ export function createTaskStreamHandlers(ctx) {
     const queuedEvents = [];
     let flushTimer = null;
     const runRuntime = getRuntime(runConversationId, { create: true });
+    let settleIdentity;
+    let settleStream;
+    const pendingRun = {
+      runId, pendingTask, taskId: null,
+      streamSettled: new Promise((resolve) => { settleStream = resolve; }),
+      identitySettled: new Promise((resolve) => { settleIdentity = resolve; }),
+      confirmStoppedTask(event) {
+        const taskId = event.task_id;
+        if (!taskId || (event.conversation_id && event.conversation_id !== runConversationId)
+          || getRuntime(runConversationId) !== runRuntime) return;
+        confirmedTaskId = taskId;
+        pendingRun.taskId = taskId;
+        userCancelledTaskIdsRef.current.add(taskId);
+        chatFinalizedTaskIdsRef.current.add(taskId);
+        settleIdentity(taskId);
+        // A background schedule may start while an older Stop is failing.
+        // Track/cancel this request's identity without replacing the newer run.
+        if (runRuntime.activeRunId && runRuntime.activeRunId !== runId) return;
+        updateTaskRuntimeState((state) => {
+          const previous = state.tasksById[taskId];
+          const task = previous || buildTaskRuntimeRecord({ ...event, conversation_id: runConversationId }, pendingTask);
+          const tasksById = { ...state.tasksById, [taskId]: isTerminalTaskStatus(task.status)
+            ? task : applyTerminalTaskState(task, 'cancelled', { aborted: true }) };
+          if (runId !== taskId) delete tasksById[runId];
+          return { ...state, tasksById, latestTaskId: taskId,
+            pendingTask: (state.pendingTask?.taskId || state.pendingTask?.id) === runId ? null : state.pendingTask,
+            activeTaskId: state.activeTaskId === runId || state.activeTaskId === taskId ? null : state.activeTaskId,
+            taskOrder: [...new Set([...state.taskOrder.filter((id) => id !== runId), taskId])],
+          };
+        }, runConversationId);
+      },
+    };
+    mutateRuntime(runConversationId, (rt) => { rt.pendingRun = pendingRun; });
     const flushQueuedEvents = () => {
       if (flushTimer) {
         clearTimeout(flushTimer);
@@ -958,7 +1012,8 @@ export function createTaskStreamHandlers(ctx) {
         batchRuntimeMutations(runConversationId, () => {
           for (const event of batch) {
             if (
-              controller.signal.aborted
+              getRuntime(runConversationId) !== runRuntime
+              || controller.signal.aborted
               || runRuntime.abortRequested
               || runRuntime.activeRunId !== runId
               || runRuntime.cancelledRunIds.has(runId)
@@ -966,7 +1021,10 @@ export function createTaskStreamHandlers(ctx) {
             ) {
               continue;
             }
-            if (event.type === 'run_started' && event.task_id) confirmedTaskId = event.task_id;
+            if (event.type === 'run_started' && event.task_id) {
+              confirmedTaskId = event.task_id;
+              pendingRun.taskId = event.task_id;
+            }
             if (
               event.task_id
               && runRuntime.activeTaskId !== event.task_id
@@ -975,6 +1033,10 @@ export function createTaskStreamHandlers(ctx) {
               setRuntimeActiveTaskId(event.task_id, runConversationId);
             }
             applyRuntimeEvent(event, runConversationId);
+            if (event.type === 'run_started' && event.task_id) {
+              settleIdentity(event.task_id);
+              streamRequest?.onAccepted?.();
+            }
           }
         });
       } finally {
@@ -1009,10 +1071,20 @@ export function createTaskStreamHandlers(ctx) {
           payload: requestBody,
         };
         try {
+          if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
           await runTaskStream(command, (event) => {
-            if (controller.signal.aborted) return;
             const normalized = normalizeRuntimeEvent(event);
-            if (normalized) queueRuntimeEvent(normalized);
+            if (!normalized || (normalized.conversation_id && normalized.conversation_id !== runConversationId)
+              || getRuntime(runConversationId) !== runRuntime) return;
+            // Identity confirmation is control-plane data, not generated content.
+            // Keep it even when Stop has already aborted the local projection.
+            if (normalized.type === 'run_started' && normalized.task_id && !confirmedTaskId
+              && (controller.signal.aborted || runRuntime.cancelledRunIds.has(runId))) {
+              pendingRun.confirmStoppedTask(normalized);
+              return;
+            }
+            if (controller.signal.aborted) return;
+            queueRuntimeEvent(normalized);
           });
           break;
         } catch (error) {
@@ -1052,9 +1124,19 @@ export function createTaskStreamHandlers(ctx) {
           setRuntimeActiveTaskId(null, runConversationId);
         }
       }
+      if (fullAttempt && Number(error?.status) === 409
+        && String(error?.message) === 'Only the latest turn can be retried or edited.') {
+        await recoverConversationTasks(runConversationId, { expectedRuntime: runRuntime });
+      }
       throw error;
     } finally {
       flushQueuedEvents();
+      if (!confirmedTaskId) rollbackUnconfirmedRerun();
+      settleIdentity(confirmedTaskId);
+      settleStream();
+      if (getRuntime(runConversationId)?.pendingRun === pendingRun) {
+        mutateRuntime(runConversationId, (rt) => { rt.pendingRun = null; });
+      }
       const guardRt = getRuntime(runConversationId);
       if (guardRt && guardRt.fetchController === controller) {
         setRuntimeFetchController(null, runConversationId);
@@ -1071,7 +1153,12 @@ export function createTaskStreamHandlers(ctx) {
       if (!event || (event.conversation_id && event.conversation_id !== cid)) return;
       batchRuntimeMutations(cid, () => {
         if (event.type === 'run_started') {
-          mutateRuntime(cid, (runtime) => { runtime.abortRequested = false; runtime.answerBuffer = ''; runtime.activeRunId = `schedule:${message.run_id}`; });
+          mutateRuntime(cid, (runtime) => {
+            runtime.runGeneration = (runtime.runGeneration || 0) + 1;
+            runtime.abortRequested = false;
+            runtime.answerBuffer = '';
+            runtime.activeRunId = `schedule:${message.run_id}`;
+          });
           setRuntimeBusy(true, cid);
         }
         applyRuntimeEvent({ ...event, conversation_id: cid }, cid);

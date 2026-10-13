@@ -3,6 +3,9 @@ import { taskFinalOutputText } from '../../tasks/model/runtime-events.js';
 import { createQuestAck } from '../../tasks/model/quest-ack.js';
 import { createGoalCommandHandler } from './createGoalCommandHandler.js';
 
+// The AbortController ref is shared across renders; so is its request owner.
+const conversationLoadRequests = new WeakMap();
+
 export function createConversationHandlers(ctx) {
   const {
     API_BASE,
@@ -59,7 +62,7 @@ export function createConversationHandlers(ctx) {
     if (runtime.busy || runtime.activeRunId || runtime.fetchController) return true;
     const summaries = Array.isArray(conversation.tasks) ? conversation.tasks : [];
     const state = runtime.taskRuntimeState;
-    if (summaries.length !== state.taskOrder.length) return false;
+    if (!state || summaries.length !== state.taskOrder.length) return false;
     return summaries.every((summary) => {
       const taskId = summary.taskId || summary.id || summary.task_id;
       const task = state.tasksById[taskId];
@@ -112,11 +115,23 @@ export function createConversationHandlers(ctx) {
     if (conversationRuntimeIsCurrent(targetConversationId)) return null;
     conversationDetailAbortRef.current?.abort?.();
     const controller = new AbortController();
+    conversationLoadRequests.set(controller, { conversationId: targetConversationId, activationSeq });
     conversationDetailAbortRef.current = controller;
+    const reportInterruptedLoad = () => {
+      if (isConversationActivationCurrent(activationSeq)
+        && conversationIdRef.current === targetConversationId
+        && conversationDetailAbortRef.current === controller
+        && getRuntime(targetConversationId)?.shellSeeded) {
+        // Keep the shell unhydrated, but never leave a loader without a request.
+        // Navigation cancellation is stale and remains silent.
+        setConversationError('Conversation loading was interrupted. Select this conversation to retry.');
+      }
+    };
     try {
       const detail = await fetchConversationDetail(targetConversationId, { signal: controller.signal });
       if (!isConversationActivationCurrent(activationSeq) || controller.signal.aborted) {
         conversationLoadPerf('detail_discarded', targetConversationId, { aborted: controller.signal.aborted });
+        if (controller.signal.aborted) reportInterruptedLoad();
         return null;
       }
       await activateConversationDetail(detail, {
@@ -126,7 +141,10 @@ export function createConversationHandlers(ctx) {
       });
       return detail;
     } catch (error) {
-      if (controller.signal.aborted || error?.name === 'AbortError') return null;
+      if (controller.signal.aborted || error?.name === 'AbortError') {
+        reportInterruptedLoad();
+        return null;
+      }
       if (!isConversationActivationCurrent(activationSeq)) return null;
       // 404 = 这条记录已经不存在了，是数据不是故障：抹掉它并静默换一个能用的会话，
       // 不要把「会话已删除」当成错误提示弹给用户。
@@ -202,10 +220,21 @@ export function createConversationHandlers(ctx) {
     });
     beginConversationLoadPerf(nextConversationId, 'selection');
     const currentConversationId = conversationIdRef.current || conversationId;
-    if (!nextConversationId || (nextConversationId === currentConversationId && !conversationError)) {
+    const controller = conversationDetailAbortRef?.current;
+    const pendingRequest = controller && conversationLoadRequests.get(controller);
+    const loadingThisConversation = Boolean(
+      pendingRequest && pendingRequest.conversationId === nextConversationId
+      && !controller.signal.aborted
+      && isConversationActivationCurrent(pendingRequest.activationSeq)
+    );
+    const sameConversationReady = nextConversationId === currentConversationId && !conversationError
+      && (loadingThisConversation
+        || draftConversationRef.current?.id === nextConversationId
+        || conversationRuntimeIsCurrent(nextConversationId));
+    if (!nextConversationId || sameConversationReady) {
       conversationLoadPerf('selection_no_request', nextConversationId, {
         shell_seeded: Boolean(getRuntime?.(nextConversationId)?.shellSeeded),
-        pending_request: Boolean(conversationDetailAbortRef?.current),
+        pending_request: loadingThisConversation,
       });
       setWorkspaceState((state) => normalizeWorkspaceOrdering(stampActivation(state)));
       return;
