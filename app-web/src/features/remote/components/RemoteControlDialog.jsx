@@ -231,8 +231,12 @@ export function RemoteControlDialog({ onClose }) {
         publicEndpoint: settingsDraft.publicEndpoint.trim(),
         token: settingsDraft.token.trim(),
       });
-      setSettings(saved);
       setAdapterState(saved);
+      // saveRemoteSettings returns adapter status, not the normalized config.
+      const nextSettings = await window.haish.getRemoteSettings();
+      if (!nextSettings) throw new Error('Remote settings were saved, but could not be read back.');
+      setSettings(nextSettings);
+      setSettingsDraft(settingsToDraft(nextSettings));
       setSettingsOpen(false);
       refreshStatus();
     } catch (nextError) {

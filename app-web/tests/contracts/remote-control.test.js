@@ -58,6 +58,15 @@ test('remote control configures and surfaces the hosted adapter', () => {
   assert.match(mainSource, /stopRemoteAdapter\(\)/);
 });
 
+test('remote save follows the real bridge contract: status and normalized settings are separate', () => {
+  const apiTypes = fs.readFileSync(new URL('../../../src/shared/haish-api.ts', import.meta.url), 'utf8');
+  assert.match(apiTypes, /saveRemoteSettings: \(settings: RemoteSettings\) => Promise<RemoteAdapterState>/);
+  assert.match(apiTypes, /getRemoteSettings: \(\) => Promise<RemoteSettings \| null>/);
+  assert.match(dialogSource, /setAdapterState\(saved\);[\s\S]*await window.haish.getRemoteSettings\(\)/);
+  assert.match(dialogSource, /setSettings\(nextSettings\)/);
+  assert.doesNotMatch(dialogSource, /setSettings\(saved\)/);
+});
+
 test('remote pairing and revoke actions use in-app feedback', () => {
   assert.match(dialogSource, /paired successfully/);
   assert.match(dialogSource, /role="alertdialog"/);
