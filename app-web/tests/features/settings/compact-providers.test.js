@@ -68,8 +68,10 @@ test('Compact local storage excludes secrets but the backend receives them; save
   assert.ok(!serialized.includes('secret-test') && !serialized.includes('oauth-test'));
   const calls = [];
   const handlers = createSettingsHandlers({
-    API_BASE: '', llmSettingsDraft: draft, settingsRecordsDraft: {}, applyLlmSettingsPayloadToDraft,
-    setLlmSettingsDraft() {}, showToast() {},
+    API_BASE: '', llmSettingsDraft: draft, settingsRecordsDraft: {},
+    beginLlmSettingsWrite: () => payload => {
+      if (payload !== undefined) globalThis.window.localStorage.setItem('llm', llmDraftForStorage(applyLlmSettingsPayloadToDraft({}, payload)));
+    }, showToast() {},
     apiFetch: async (url, init) => {
       calls.push(url);
       assert.equal(JSON.parse(init.body).compact.providers[0].api_key, 'secret-test');
@@ -78,6 +80,7 @@ test('Compact local storage excludes secrets but the backend receives them; save
   });
   assert.equal(await handlers.handleSaveSettingsDraft('compact'), true);
   assert.deepEqual(calls, ['/api/settings/llm']);
+  assert.equal(stored.length, 1);
   assert.ok(stored.every(value => !value.includes('secret-test')));
 });
 
@@ -89,8 +92,11 @@ test('Compact toggle saves one enabled provider without changing Vision', async 
   let sent;
   let applied;
   const handlers = createSettingsHandlers({
-    API_BASE: '', llmSettingsDraft: draft, applyLlmSettingsPayloadToDraft,
-    setLlmSettingsDraft: update => { applied = update(draft); }, showToast() {},
+    API_BASE: '', llmSettingsDraft: draft,
+    beginLlmSettingsWrite: baseline => payload => {
+      assert.equal(baseline, draft);
+      if (payload !== undefined) applied = applyLlmSettingsPayloadToDraft(draft, payload);
+    }, showToast() {},
     apiFetch: async (url, init) => {
       assert.equal(url, '/api/settings/llm');
       sent = JSON.parse(init.body);

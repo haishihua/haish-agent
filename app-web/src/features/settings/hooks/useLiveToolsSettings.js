@@ -3,18 +3,39 @@ import { createLiveToolsLoader } from '../model/live-tools-settings.js';
 
 // One loader per visible Settings/workspace context. Page selection is not its
 // identity: switching Skill children must neither abort nor restart discovery.
-export function useLiveToolsSettings({ enabled, contextKey, busy, refreshRef, cache, fetchPayload, onPayload, onState }) {
-  const callbacks = useRef({ fetchPayload, onPayload, onState });
-  callbacks.current = { fetchPayload, onPayload, onState };
+export function useLiveToolsSettings({ enabled, contextKey, busy, refreshRef, cache, records, fetchPayload, onPayload, onState }) {
+  const callbacks = useRef({ records, fetchPayload, onPayload, onState });
+  callbacks.current = { records, fetchPayload, onPayload, onState };
+  const configurationInitialized = useRef(false);
+  const initializationRecords = useRef(null);
+  const pendingWrites = useRef(0);
+  const deferredConfiguration = useRef(null);
   useEffect(() => {
     if (!enabled || busy) return undefined;
     const cached = cache.get(contextKey);
     const loader = createLiveToolsLoader({
       cachedPayload: cached ? { skills: cached } : undefined,
-      fetchPayload: signal => callbacks.current.fetchPayload(signal),
+      fetchPayload: signal => {
+        if (!configurationInitialized.current && !initializationRecords.current) {
+          initializationRecords.current = { records: callbacks.current.records };
+        }
+        return callbacks.current.fetchPayload(signal);
+      },
       onPayload: payload => {
         cache.set(contextKey, payload.skills);
-        callbacks.current.onPayload(payload);
+        // Configuration is initialized once; later focus/workspace/write
+        // refreshes own only inventory, never the MCP or search-key draft.
+        if (!configurationInitialized.current && (payload.mcp || payload.web_search)) {
+          if (pendingWrites.current) {
+            deferredConfiguration.current = { mcp: payload.mcp, web_search: payload.web_search };
+            callbacks.current.onPayload({ skills: payload.skills });
+          } else {
+            configurationInitialized.current = true;
+            callbacks.current.onPayload(payload, initializationRecords.current?.records);
+          }
+        } else {
+          callbacks.current.onPayload({ skills: payload.skills });
+        }
       },
       onState: state => callbacks.current.onState({ ...state, key: contextKey }),
     });
@@ -28,4 +49,22 @@ export function useLiveToolsSettings({ enabled, contextKey, busy, refreshRef, ca
       if (refreshRef.current === refresh) refreshRef.current = null;
     };
   }, [enabled, contextKey, busy, refreshRef, cache]);
+  // Pause first-GET hydration at PUT start, so it cannot look like an edit to
+  // the write's baseline. Success owns initialization; failure releases any
+  // deferred configuration using the original GET baseline to protect edits.
+  return () => {
+    pendingWrites.current += 1;
+    return saved => {
+      pendingWrites.current -= 1;
+      if (saved) {
+        configurationInitialized.current = true;
+        deferredConfiguration.current = null;
+      } else if (!pendingWrites.current && !configurationInitialized.current && deferredConfiguration.current) {
+        const payload = deferredConfiguration.current;
+        deferredConfiguration.current = null;
+        configurationInitialized.current = true;
+        callbacks.current.onPayload(payload, initializationRecords.current?.records);
+      }
+    };
+  };
 }

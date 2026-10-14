@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 
 const editorSource = fs.readFileSync(
   new URL('../../src/features/settings/components/AgentConfigEditor.jsx', import.meta.url),
@@ -12,20 +11,11 @@ const modelSource = fs.readFileSync(
   'utf8',
 );
 
-function readTree(directory) {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) return readTree(full);
-    return /\.(?:js|jsx)$/.test(entry.name) ? [fs.readFileSync(full, 'utf8')] : [];
-  });
-}
-
 test('the MCP list has no server-level 「all tools」 switch left', () => {
-  // 服务器那行只是分组标题；整台服务器一键放行这个入口，整个设置区都不许再出现。
-  assert.doesNotMatch(editorSource, /all tools/i);
-  const settingsTree = readTree(new URL('../../src/features/settings', import.meta.url).pathname);
-  const offenders = settingsTree.filter((source) => /all tools/i.test(source));
-  assert.deepEqual(offenders, []);
+  // MCP server rows are grouping headings, not wholesale toggles. The separate
+  // built-in Tools policy may legitimately expose all/inherited permissions.
+  const mcpBlock = editorSource.slice(editorSource.indexOf('<FieldRow label="MCP tools">'), editorSource.indexOf('<FieldRow label="Skills">'));
+  assert.doesNotMatch(mcpBlock, /all tools/i);
   assert.doesNotMatch(editorSource, /toggleMcpServer/);
   // 服务器名那一行不再挂 Checkbox。
   assert.match(editorSource, /<span className="settings-check-label">\{server\.name\}<\/span>/);

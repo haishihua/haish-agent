@@ -346,14 +346,8 @@ function persistedAuxiliaryRows(section) {
 
 export function applyLlmSettingsPayloadToDraft(previous, payload) {
   if (!payload || typeof payload !== 'object') return previous;
-  const hasBackendConfig = Boolean(
-    payload.chat?.provider
-    || payload.vision?.provider
-    || Array.isArray(payload.vision?.providers)
-    || Array.isArray(payload.compact?.providers)
-    || payload.embedding?.provider
-    || (Array.isArray(payload.profiles) && payload.profiles.length > 0),
-  );
+  const hasBackendConfig = ['chat', 'vision', 'compact', 'embedding', 'profiles']
+    .some(key => Object.hasOwn(payload, key));
   if (!hasBackendConfig) return previous;
   const fallback = createDefaultLlmSettings();
   return {
@@ -364,5 +358,45 @@ export function applyLlmSettingsPayloadToDraft(previous, payload) {
     profiles: Array.isArray(payload.profiles)
       ? payload.profiles.map((profile) => normalizeLlmModelConfig({ ...profile, _persisted: Boolean(profile.id) }))
       : [],
+  };
+}
+
+// Reads and successful writes refresh saved settings, not edits made while
+// the request was pending. Lists reconcile by record id, never by position.
+export function mergeLlmSettingsDraft(current, saved, baseline) {
+  const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  if (same(current, baseline)) return saved;
+  const record = (draft = {}, incoming = {}, before = {}) => {
+    if (draft.id && draft.id !== incoming.id && !same(draft, before)) {
+      return { ...draft, _persisted: false };
+    }
+    return {
+      ...incoming,
+      ...Object.fromEntries(Object.entries(draft).filter(([key, value]) => !same(value, before?.[key]))),
+    };
+  };
+  const rows = (draft = [], incoming = [], before = []) => {
+    const currentById = new Map(draft.map(row => [row.id, row]));
+    const beforeById = new Map(before.map(row => [row.id, row]));
+    const incomingIds = new Set(incoming.map(row => row.id));
+    return [
+      ...incoming.filter(row => !beforeById.has(row.id) || currentById.has(row.id))
+        .map(row => record(currentById.get(row.id), row, beforeById.get(row.id))),
+      ...draft.filter(row => !incomingIds.has(row.id)
+        && (!beforeById.has(row.id) || !same(row, beforeById.get(row.id))))
+        .map(row => ({ ...row, _persisted: false })),
+    ];
+  };
+  const auxiliary = key => ({
+    ...record(current?.[key], saved[key], baseline?.[key]),
+    providers: rows(current?.[key]?.providers, saved[key]?.providers, baseline?.[key]?.providers),
+  });
+  return {
+    ...saved,
+    chat: record(current?.chat, saved.chat, baseline?.chat),
+    embedding: record(current?.embedding, saved.embedding, baseline?.embedding),
+    profiles: rows(current?.profiles, saved.profiles, baseline?.profiles),
+    vision: auxiliary('vision'),
+    compact: auxiliary('compact'),
   };
 }

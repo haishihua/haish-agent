@@ -6,8 +6,8 @@ import React from 'react';
 import {
   DEFAULT_AGENT_TOOL_GROUPS,
   normalizeAgentSettings,
-  toolsForAgentGroups,
-  groupIdsForAgentTools,
+  effectiveAgentTools,
+  toggleAgentToolGroup,
 } from '../../agents/model/agent-settings.js';
 import { FieldRow, SettingsMenuSelect, SettingsToggleRow } from './SettingsPrimitives.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
@@ -62,17 +62,19 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
     skill_policy: { ...(current.skill_policy || {}), ...patch },
   });
   const toolGroups = normalized.tool_groups || DEFAULT_AGENT_TOOL_GROUPS;
-  const allowedTools = Array.isArray(current.tool_policy?.allow) ? current.tool_policy.allow : [];
-  const selectedGroupIds = new Set(groupIdsForAgentTools(allowedTools, toolGroups));
+  const inheritsAllTools = current.tool_policy?.allow === null;
+  const allowedTools = new Set(effectiveAgentTools(current.tool_policy, toolGroups));
+  const groupChecked = group => {
+    const tools = group.tools || [];
+    const count = tools.filter(tool => allowedTools.has(tool)).length;
+    return count === 0 ? false : count === tools.length ? true : 'indeterminate';
+  };
   const baseOptions = normalized.base_profiles.map((profile) => ({
     id: profile.agent_id,
     label: profile.display_name,
   }));
   const toggleGroup = (groupId) => {
-    const next = new Set(selectedGroupIds);
-    if (next.has(groupId)) next.delete(groupId);
-    else next.add(groupId);
-    updateToolPolicy({ allow: toolsForAgentGroups([...next], toolGroups) });
+    updateToolPolicy(toggleAgentToolGroup(current.tool_policy, groupId, toolGroups));
   };
   const skillOptions = (normalized.skills || [])
     .map((item) => ({
@@ -127,10 +129,15 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
         <Textarea value={current.system_prompt || ''} onChange={(event) => update({ system_prompt: event.target.value })} disabled={readOnly} />
       </FieldRow>
       <FieldRow label="Tools">
+        <label className="settings-check-row">
+          <Switch checked={inheritsAllTools} onCheckedChange={() => updateToolPolicy({ allow: inheritsAllTools ? [] : null })} disabled={readOnly} />
+          <span className="settings-check-label">Allow all tools (except denied tools)</span>
+        </label>
+        {inheritsAllTools ? <small>Inherits all tools, including future tools. Changing a group uses an explicit selection.</small> : null}
         <div className="settings-check-grid">
           {toolGroups.map((group) => (
             <label className="settings-check-row" key={group.id} title={group.description}>
-              <Checkbox checked={selectedGroupIds.has(group.id)} onCheckedChange={() => toggleGroup(group.id)} disabled={readOnly} />
+              <Checkbox checked={groupChecked(group)} onCheckedChange={() => toggleGroup(group.id)} disabled={readOnly} />
               <span className="settings-check-label">{group.label}</span>
             </label>
           ))}

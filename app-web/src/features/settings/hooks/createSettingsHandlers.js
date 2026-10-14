@@ -1,5 +1,6 @@
-import { setVisionProviderEnabled, llmDraftForStorage } from '../model/llm-settings.js';
+import { setVisionProviderEnabled } from '../model/llm-settings.js';
 import { withoutStoredSkillInventory } from '../model/live-tools-settings.js';
+import { toolsSettingsPayloadForDraft } from '../model/settings-payload.js';
 
 export function skillAllowPayload(value) {
   return value === null ? null : (Array.isArray(value) ? value : []);
@@ -8,15 +9,15 @@ export function skillAllowPayload(value) {
 export function createSettingsHandlers(ctx) {
   const {
     API_BASE,
-    LLM_SETTINGS_STORAGE_KEY,
+    beginLlmSettingsWrite,
     SETTINGS_RECORDS_STORAGE_KEY,
     WEB_SEARCH_PROVIDER_OPTIONS,
     activeTab,
     skillConversationId,
     invalidateSkillInventory,
+    beginToolsSettingsSave,
     agentCatalogFromSettings,
     agentSettingsDraft,
-    applyLlmSettingsPayloadToDraft,
     applyMemorySettingsPayloadToRecords,
     applyToolsSettingsPayloadToRecords,
     apiFetch,
@@ -35,7 +36,6 @@ export function createSettingsHandlers(ctx) {
     setAgentCatalog,
     setAgentSettingsDraft,
     setSettingsMode,
-    setLlmSettingsDraft,
     setSettingsRecordsDraft,
     setSkillActionBusy,
     setWorkflowSettingsDraft,
@@ -56,52 +56,42 @@ export function createSettingsHandlers(ctx) {
     setSettingsMode((enabled) => !enabled);
   }
 
-  async function handleSaveSettingsDraft(section = '') {
+  async function writeLlmSettings(path, init, failureMessage) {
+    const finish = beginLlmSettingsWrite(llmSettingsDraft);
     try {
-      window.localStorage?.setItem(LLM_SETTINGS_STORAGE_KEY, llmDraftForStorage(llmSettingsDraft));
-      window.localStorage?.setItem(SETTINGS_RECORDS_STORAGE_KEY, JSON.stringify(withoutStoredSkillInventory(settingsRecordsDraft)));
-      const llmResponse = await apiFetch(`${API_BASE}/api/settings/llm`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(llmSettingsDraft),
-      }, { json: false });
-      if (!llmResponse.ok) {
-        const message = await parseResponseMessage(llmResponse, `llm settings save failed: ${llmResponse.status}`);
-        throw new Error(message);
+      const response = await apiFetch(`${API_BASE}${path}`, init, { json: false });
+      if (!response.ok) throw new Error(await parseResponseMessage(response, `${failureMessage}: ${response.status}`));
+      finish(await response.json());
+    } finally {
+      finish();
+    }
+  }
+
+  async function handleSaveSettingsDraft(section) {
+    if (section === 'tools') return handleSaveToolsSettingsDraft();
+    try {
+      if (['llm', 'embedding', 'compact'].includes(section)) {
+        await writeLlmSettings('/api/settings/llm', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(llmSettingsDraft),
+        }, 'llm settings save failed');
+      } else if (section === 'memory') {
+        window.localStorage?.setItem(SETTINGS_RECORDS_STORAGE_KEY, JSON.stringify(withoutStoredSkillInventory(settingsRecordsDraft)));
+        const response = await apiFetch(`${API_BASE}/api/settings/memory`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildMemorySettingsPayload(settingsRecordsDraft)),
+        }, { json: false });
+        if (!response.ok) throw new Error(await parseResponseMessage(response, `memory settings save failed: ${response.status}`));
+        const payload = await response.json();
+        setSettingsRecordsDraft(prev => applyMemorySettingsPayloadToRecords(prev, payload));
+        // 保存后由服务端存的测试结果接手，会话内的临时状态清空。
+        updateSettingsConnectionStatus({ memory: {} });
+      } else {
+        throw new Error('invalid settings save section');
       }
-      const llmPayload = await llmResponse.json();
-      setLlmSettingsDraft((prev) => applyLlmSettingsPayloadToDraft(prev, llmPayload));
-      if (section === 'compact') {
-        showToast('success', 'compact settings saved');
-        return true;
-      }
-      const toolsPayload = buildToolsSettingsPayload(settingsRecordsDraft);
-      const response = await apiFetch(`${API_BASE}/api/settings/tools${skillContextQuery}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(toolsPayload),
-      }, { json: false });
-      if (!response.ok) {
-        const message = await parseResponseMessage(response, `settings save failed: ${response.status}`);
-        throw new Error(message);
-      }
-      const payload = await response.json();
-      invalidateSkillInventory?.();
-      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
-      const memoryResponse = await apiFetch(`${API_BASE}/api/settings/memory`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildMemorySettingsPayload(settingsRecordsDraft)),
-      }, { json: false });
-      if (!memoryResponse.ok) {
-        const message = await parseResponseMessage(memoryResponse, `memory settings save failed: ${memoryResponse.status}`);
-        throw new Error(message);
-      }
-      const memoryPayload = await memoryResponse.json();
-      setSettingsRecordsDraft((prev) => applyMemorySettingsPayloadToRecords(prev, memoryPayload));
-      // 保存后由服务端存的测试结果接手，会话内的临时状态清空。
-      updateSettingsConnectionStatus({ memory: {} });
-      showToast('success', 'settings saved');
+      showToast('success', section === 'compact' ? 'compact settings saved' : 'settings saved');
       return true;
     } catch (error) {
       showToast('error', String(error?.message || error));
@@ -110,6 +100,11 @@ export function createSettingsHandlers(ctx) {
   }
 
   async function handleSaveToolsSettingsDraft(nextRecords = settingsRecordsDraft, successMessage = 'settings saved') {
+    // Row switches submit staged records without publishing them. Compare late
+    // edits with the actual draft, not with that distinct submission payload.
+    const recordsAtRequest = settingsRecordsDraft;
+    const finishToolsSettingsSave = beginToolsSettingsSave?.();
+    let saved = false;
     try {
       window.localStorage?.setItem(SETTINGS_RECORDS_STORAGE_KEY, JSON.stringify(withoutStoredSkillInventory(nextRecords)));
       const toolsPayload = buildToolsSettingsPayload(nextRecords);
@@ -124,12 +119,15 @@ export function createSettingsHandlers(ctx) {
       }
       const payload = await response.json();
       invalidateSkillInventory?.();
-      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
+      setSettingsRecordsDraft(prev => applyToolsSettingsPayloadToRecords(prev, toolsSettingsPayloadForDraft(prev, payload, recordsAtRequest)));
+      saved = true;
       if (successMessage) showToast('success', successMessage);
       return true;
     } catch (error) {
       showToast('error', String(error?.message || error));
       return false;
+    } finally {
+      finishToolsSettingsSave?.(saved);
     }
   }
 
@@ -140,17 +138,10 @@ export function createSettingsHandlers(ctx) {
       if (!['chat', 'vision', 'embedding', 'compact'].includes(scope) || !target) {
         throw new Error('invalid llm provider delete scope');
       }
-      const response = await apiFetch(
-        `${API_BASE}/api/settings/llm/providers/${encodeURIComponent(scope)}/${encodeURIComponent(target)}`,
-        { method: 'DELETE' },
-        { json: false },
+      await writeLlmSettings(
+        `/api/settings/llm/providers/${encodeURIComponent(scope)}/${encodeURIComponent(target)}`,
+        { method: 'DELETE' }, 'provider delete failed',
       );
-      if (!response.ok) {
-        const message = await parseResponseMessage(response, `provider delete failed: ${response.status}`);
-        throw new Error(message);
-      }
-      const payload = await response.json();
-      setLlmSettingsDraft((prev) => applyLlmSettingsPayloadToDraft(prev, payload));
       showToast('success', 'provider deleted');
       return true;
     } catch (error) {
@@ -170,18 +161,11 @@ export function createSettingsHandlers(ctx) {
       [scope]: setVisionProviderEnabled(llmSettingsDraft?.[scope], id, enabled === true),
     };
     try {
-      window.localStorage?.setItem(LLM_SETTINGS_STORAGE_KEY, llmDraftForStorage(nextDraft));
-      const response = await apiFetch(`${API_BASE}/api/settings/llm`, {
+      await writeLlmSettings('/api/settings/llm', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(nextDraft),
-      }, { json: false });
-      if (!response.ok) {
-        const message = await parseResponseMessage(response, `${scope} provider update failed: ${response.status}`);
-        throw new Error(message);
-      }
-      const payload = await response.json();
-      setLlmSettingsDraft((prev) => applyLlmSettingsPayloadToDraft(prev, payload));
+      }, `${scope} provider update failed`);
       showToast('success', `${scope} provider ${enabled ? 'enabled' : 'disabled'}`);
       return true;
     } catch (error) {
@@ -219,7 +203,7 @@ export function createSettingsHandlers(ctx) {
       enabled: current.enabled !== false,
       system_prompt: current.system_prompt || '',
       tool_policy: {
-        allow: withAlwaysAllowedAgentTools(current.tool_policy?.allow),
+        allow: current.tool_policy?.allow === null ? null : withAlwaysAllowedAgentTools(current.tool_policy?.allow),
         deny: Array.isArray(current.tool_policy?.deny) ? current.tool_policy.deny : [],
       },
       mcp_policy: {
@@ -534,7 +518,7 @@ export function createSettingsHandlers(ctx) {
       }, { json: false });
       if (!response.ok) throw new Error(await parseResponseMessage(response, `Skill install failed (${response.status})`));
       const payload = await response.json();
-      setSettingsRecordsDraft(prev => applyToolsSettingsPayloadToRecords(prev, payload));
+      setSettingsRecordsDraft(prev => applyToolsSettingsPayloadToRecords(prev, { skills: payload.skills }));
       showToast('success', 'Skill installed');
       return true;
     } catch (error) {
@@ -560,7 +544,7 @@ export function createSettingsHandlers(ctx) {
         throw new Error(message);
       }
       const payload = await response.json();
-      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
+      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, { skills: payload.skills }));
       showToast('success', enabled ? 'skill enabled' : 'skill disabled');
       return true;
     } catch (error) {
@@ -584,7 +568,7 @@ export function createSettingsHandlers(ctx) {
         throw new Error(message);
       }
       const payload = await response.json();
-      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, payload));
+      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, { skills: payload.skills }));
       showToast('success', 'skill uninstalled');
       return true;
     } catch (error) {

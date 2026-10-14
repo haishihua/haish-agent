@@ -105,7 +105,8 @@ test('production wiring hides stale numbers and rows, fetches without browser ca
   assert.match(page, /open=\{skillsOpen\} onOpenChange=\{setSkillsOpen\}/);
   assert.match(page, /onSkillsExpandedChange\?\.\(skillsVisible\)/);
   assert.match(page, /Retry skill counts/);
-  assert.match(shell, /\{ skills: payload.skills \} : payload/);
+  assert.match(shell, /records: settingsRecordsDraft/);
+  assert.match(shell, /applyToolsSettingsPayloadToRecords\(prev, payload, recordsAtRequest\)/);
   const loaderHook = read('../../../src/features/settings/hooks/useLiveToolsSettings.js');
   assert.match(loaderHook, /window.addEventListener\('focus', refresh\)/);
   assert.match(loaderHook, /\[enabled, contextKey, busy, refreshRef, cache\]/);

@@ -88,11 +88,12 @@ test('failed settings saves return false so the editor keeps its draft open', as
   const notices = [];
   const handlers = createSettingsHandlers({
     API_BASE: '', llmSettingsDraft: { chat: { model: 'draft-model' } }, settingsRecordsDraft: {},
+    beginLlmSettingsWrite: () => payload => { assert.equal(payload, undefined); },
     apiFetch: async () => ({ ok: false, status: 503 }),
     parseResponseMessage: async () => 'Runtime unavailable',
     showToast: (...args) => notices.push(args),
   });
-  assert.equal(await handlers.handleSaveSettingsDraft(), false);
+  assert.equal(await handlers.handleSaveSettingsDraft('llm'), false);
   assert.deepEqual(notices, [['error', 'Runtime unavailable']]);
 });
 

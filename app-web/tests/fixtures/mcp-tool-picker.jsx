@@ -119,7 +119,7 @@ async function main() {
 
   // 1) 「all tools」这一行彻底没了
   check(
-    !/all tools/i.test(document.getElementById('root').textContent),
+    !groups().some(group => /all tools/i.test(group.textContent)),
     'no 「server · all tools」 row is rendered any more',
   );
 

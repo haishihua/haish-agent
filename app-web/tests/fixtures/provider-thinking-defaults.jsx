@@ -90,7 +90,7 @@ async function run() {
     && document.querySelector('.chat-send').disabled, 'Fresh composer starts at high without inventing a provider or model');
   await chooseProvider('First route');
   await until(() => saved.get('fresh')?.reasoning_effort === 'xhigh');
-  check(saved.get('fresh').provider === 'first' && saved.get('fresh').model_id === 'gpt-5.5', 'Provider selection saves the exact Settings model and xhigh together');
+  check(saved.get('fresh').llm_config_id === 'first' && saved.get('fresh').model_id === 'gpt-5.5', 'Provider selection saves the exact Settings model and xhigh together');
   check(document.querySelector('.model-picker-gauge').style.getPropertyValue('--gauge-rotation') === '75deg', 'Configured xhigh displays at the maximum');
   submit(); await until(() => sends.length === 1);
   check(sends[0].provider === 'first' && sends[0].model === 'gpt-5.5' && sends[0].effort === 'xhigh', 'Real composer sends the committed Settings default thinking');
@@ -112,7 +112,7 @@ async function run() {
     if (currentRoute?.provider !== 'first' || currentRoute.reasoningEffort !== 'xhigh') return false;
     try {
       const config = await currentRoute.ensureSaved();
-      return config.provider === 'first' && config.reasoning_effort === 'xhigh';
+      return config.llm_config_id === 'first' && config.reasoning_effort === 'xhigh';
     } catch { return false; } // Loading the selected provider is asynchronous.
   });
   check(document.querySelector('.model-picker-trigger').getAttribute('aria-label').endsWith('xhigh')
@@ -132,7 +132,7 @@ async function run() {
   effortArea().querySelector('[role="radio"][value="xhigh"]').click(); await sleep();
   closeMenu(); await sleep();
   await chooseProvider('Second route');
-  await until(() => saved.get('explicit-null')?.provider === 'second' && saved.get('explicit-null')?.reasoning_effort === 'xhigh');
+  await until(() => saved.get('explicit-null')?.llm_config_id === 'second' && saved.get('explicit-null')?.reasoning_effort === 'xhigh');
   check(saved.get('explicit-null').model_id === 'gpt-5.4', 'A deliberate provider re-selection applies the latest Settings default, not stale null');
   check(errors.length === 0, 'No page errors');
   // Simulate Settings arriving after the saved route; the migration must not freeze high too early.

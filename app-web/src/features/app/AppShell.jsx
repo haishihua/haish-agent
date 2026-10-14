@@ -32,7 +32,8 @@ import {
 } from '../settings/model/settings-payload.js';
 import { API_BASE } from '../../shared/api/base.js';
 import { useLiveToolsSettings } from '../settings/hooks/useLiveToolsSettings.js';
-import { createSkillInventoryCache, isSkillPage } from '../settings/model/skill-inventory.js';
+import { useLlmSettings } from '../settings/hooks/useLlmSettings.js';
+import { createSkillInventoryCache } from '../settings/model/skill-inventory.js';
 import {
   apiFetch,
   buildOwnerScopedStorageKey,
@@ -55,10 +56,7 @@ import {
   DIRECT_AGENT_WORKFLOW_ID,
 } from '../workflow/model/workflow-defaults.js';
 import {
-  LLM_SETTINGS_STORAGE_KEY,
   loadLlmSettingsDraft,
-  applyLlmSettingsPayloadToDraft,
-  runtimeLlmProviderOptions,
 } from '../settings/model/llm-settings.js';
 import {
   SETTINGS_RECORDS_STORAGE_KEY,
@@ -416,7 +414,7 @@ export function AppShell() {
     };
   }, []);
 
-  useLiveToolsSettings({
+  const beginToolsSettingsSave = useLiveToolsSettings({
     enabled: needsToolsSettings,
     contextKey: toolsContextKey,
     busy: skillActionBusy,
@@ -428,9 +426,9 @@ export function AppShell() {
       return response.json();
     },
     onState: setToolsLoadState,
-    onPayload: payload => {
-      setSettingsRecordsDraft(prev => applyToolsSettingsPayloadToRecords(prev,
-        settingsSection !== 'tools' || isSkillPage(settingsSelection.tools) ? { skills: payload.skills } : payload));
+    records: settingsRecordsDraft,
+    onPayload: (payload, recordsAtRequest) => {
+      setSettingsRecordsDraft(prev => applyToolsSettingsPayloadToRecords(prev, payload, recordsAtRequest));
     },
   });
 
@@ -485,18 +483,10 @@ export function AppShell() {
     };
   }, [settingsMode, settingsSection]);
 
-  useEffect(() => {
-    if (!settingsMode || (settingsSection !== 'llm' && settingsSection !== 'embedding')) return undefined;
-    let cancelled = false;
-    apiFetch(`${API_BASE}/api/settings/llm`, { method: 'GET' }, { json: false })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((payload) => {
-        if (cancelled || !payload) return;
-        setLlmSettingsDraft((prev) => applyLlmSettingsPayloadToDraft(prev, payload));
-      })
-      .catch((error) => console.warn('failed to fetch llm settings', error));
-    return () => { cancelled = true; };
-  }, [settingsMode, settingsSection]);
+  const { providerOptions: llmProviderOptions, beginWrite: beginLlmSettingsWrite } = useLlmSettings({
+    draft: llmSettingsDraft, setDraft: setLlmSettingsDraft,
+    settingsOpen: settingsMode && ['llm', 'embedding', 'compact'].includes(settingsSection),
+  });
 
   useEffect(() => {
     if (!settingsMode || settingsSection !== 'memory') return undefined;
@@ -533,7 +523,6 @@ export function AppShell() {
     };
   }, []);
 
-  const llmProviderOptions = useMemo(() => runtimeLlmProviderOptions(llmSettingsDraft), [llmSettingsDraft]);
   const agentOptions = agentState.status === 'ready'
     ? (agentCatalog?.options || APP_DEFAULT_AGENT_OPTIONS)
     : staleAgentCatalog(agentCatalog).options;
@@ -948,19 +937,18 @@ export function AppShell() {
     handleUninstallSkill,
   } = createSettingsHandlers({
     API_BASE,
-    LLM_SETTINGS_STORAGE_KEY,
+    beginLlmSettingsWrite,
     SETTINGS_RECORDS_STORAGE_KEY,
     WEB_SEARCH_PROVIDER_OPTIONS,
     activeTab,
     skillConversationId: conversationId?.startsWith('draft-') ? '' : conversationId || '',
-    invalidateSkillInventory: () => skillInventoryCacheRef.current.invalidate(),
+    invalidateSkillInventory: () => skillInventoryCacheRef.current.invalidate(), beginToolsSettingsSave,
     agentCatalogFromSettings,
     agentSettingsDraft,
-    applyLlmSettingsPayloadToDraft,
     applyMemorySettingsPayloadToRecords,
-    applyToolsSettingsPayloadToRecords: (records, payload) => {
-      if (skillInventoryKeyRef.current === skillInventoryKey) return applyToolsSettingsPayloadToRecords(records, payload);
-      return applyToolsSettingsPayloadToRecords(records, { ...payload, skills: undefined });
+    applyToolsSettingsPayloadToRecords: (records, payload, recordsAtRequest) => {
+      if (skillInventoryKeyRef.current === skillInventoryKey) return applyToolsSettingsPayloadToRecords(records, payload, recordsAtRequest);
+      return applyToolsSettingsPayloadToRecords(records, { ...payload, skills: undefined }, recordsAtRequest);
     },
     apiFetch,
     buildMemorySettingsPayload,
@@ -986,7 +974,6 @@ export function AppShell() {
     },
     setAgentSettingsDraft,
     setSettingsMode,
-    setLlmSettingsDraft,
     setSettingsRecordsDraft,
     setSettingsSection,
     setSkillActionBusy,

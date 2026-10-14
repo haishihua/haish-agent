@@ -276,6 +276,31 @@ export function groupIdsForAgentTools(tools, toolGroups) {
     .map((group) => group.id);
 }
 
+export function effectiveAgentTools(policy, toolGroups = DEFAULT_AGENT_TOOL_GROUPS) {
+  const allowed = policy?.allow === null
+    ? (toolGroups || DEFAULT_AGENT_TOOL_GROUPS).flatMap(group => group.tools || [])
+    : (Array.isArray(policy?.allow) ? policy.allow : []);
+  const denied = new Set(policy?.deny || []);
+  return [...new Set(allowed)].filter(tool => !denied.has(tool));
+}
+
+// Changing a group materializes the current effective selection. Keep unknown
+// tools and other partial groups; only the clicked group is added/removed.
+export function toggleAgentToolGroup(policy, groupId, toolGroups = DEFAULT_AGENT_TOOL_GROUPS) {
+  const groupTools = toolGroups.find(group => group.id === groupId)?.tools || [];
+  const selected = new Set(effectiveAgentTools(policy, toolGroups));
+  const remove = groupTools.length > 0 && groupTools.every(tool => selected.has(tool));
+  for (const tool of groupTools) {
+    if (remove) selected.delete(tool);
+    else selected.add(tool);
+  }
+  return {
+    ...policy,
+    allow: [...selected],
+    deny: remove ? (policy?.deny || []) : (policy?.deny || []).filter(tool => !groupTools.includes(tool)),
+  };
+}
+
 export function createDefaultCustomAgentPayload(agentSettings) {
   const settings = normalizeAgentSettings(agentSettings);
   const base = settings.base_profiles.find((item) => item.agent_id === 'preset.general')?.agent_id

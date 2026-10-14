@@ -205,8 +205,9 @@ export function normalizeWebSearchDraft(value) {
   };
 }
 
-export function applyToolsSettingsPayloadToRecords(records, payload) {
+export function applyToolsSettingsPayloadToRecords(records, payload, recordsAtRequest) {
   if (!payload || typeof payload !== 'object') return records;
+  payload = toolsSettingsPayloadForDraft(records, payload, recordsAtRequest);
   return {
     ...records,
     tools: mergeDefaultRecords(createDefaultSettingsRecords().tools, records?.tools).map((record) => {
@@ -239,6 +240,40 @@ export function applyToolsSettingsPayloadToRecords(records, payload) {
       }
       return record;
     }),
+  };
+}
+
+// A delayed GET/PUT fills untouched fields but cannot erase edits made while
+// it was in flight (especially a newly typed key absent from server readback).
+export function toolsSettingsPayloadForDraft(records, payload, recordsAtRequest) {
+  if (!recordsAtRequest) return payload;
+  const find = (source, id) => source?.tools?.find(record => record.id === id);
+  const currentMcp = find(records, 'tools-mcp');
+  const initialMcp = find(recordsAtRequest, 'tools-mcp');
+  return {
+    ...payload,
+    mcp: initialMcp && currentMcp?.mcp_json !== initialMcp.mcp_json ? undefined : payload.mcp,
+    web_search: payload.web_search ? mergeWebSearchSettings(find(records, 'tools-web')?.web_search,
+      payload.web_search, find(recordsAtRequest, 'tools-web')?.web_search) : undefined,
+  };
+}
+
+function mergeWebSearchSettings(current, incoming, initial) {
+  const saved = normalizeWebSearchDraft(incoming);
+  if (!initial) return saved;
+  const draft = normalizeWebSearchDraft(current);
+  const before = normalizeWebSearchDraft(initial);
+  return {
+    ...saved,
+    enabled: draft.enabled !== before.enabled ? draft.enabled : saved.enabled,
+    mode: draft.mode !== before.mode ? draft.mode : saved.mode,
+    providers: Object.fromEntries(WEB_SEARCH_PROVIDER_OPTIONS.map(({ id }) => [id, {
+      ...saved.providers[id],
+      ...(draft.providers[id].api_key !== before.providers[id].api_key
+        ? { api_key: draft.providers[id].api_key } : {}),
+      ...(draft.providers[id].enabled !== before.providers[id].enabled
+        ? { enabled: draft.providers[id].enabled } : {}),
+    }])),
   };
 }
 

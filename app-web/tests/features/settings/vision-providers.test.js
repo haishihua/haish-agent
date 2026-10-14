@@ -161,10 +161,12 @@ test('toggling a vision provider saves the collapsed draft immediately', async (
   const handlers = createSettingsHandlers({
     API_BASE: '',
     llmSettingsDraft: draft,
-    applyLlmSettingsPayloadToDraft,
+    beginLlmSettingsWrite: baseline => payload => {
+      assert.equal(baseline, draft);
+      if (payload !== undefined) applied = applyLlmSettingsPayloadToDraft(draft, payload);
+    },
     parseResponseMessage: async () => 'update failed',
     showToast: (...args) => notices.push(args),
-    setLlmSettingsDraft: (update) => { applied = update(draft); },
     apiFetch: async (url, init) => {
       assert.equal(url, '/api/settings/llm');
       assert.equal(init.method, 'PUT');
@@ -223,10 +225,9 @@ test('a failed vision toggle keeps the draft and reports the error', async (t) =
   const handlers = createSettingsHandlers({
     API_BASE: '',
     llmSettingsDraft: draft,
-    applyLlmSettingsPayloadToDraft,
+    beginLlmSettingsWrite: () => payload => { assert.equal(payload, undefined, 'failed update must not replace the draft'); },
     parseResponseMessage: async () => 'runtime unavailable',
     showToast: (...args) => notices.push(args),
-    setLlmSettingsDraft: () => assert.fail('failed update must not replace the draft'),
     apiFetch: async () => ({ ok: false, status: 503 }),
   });
 
