@@ -64,5 +64,6 @@ test('run configuration trigger is independent and status/retry stays inside age
   assert.doesNotMatch(trigger, /agentLoading|pickerLoading|loading/);
   assert.match(source, /agentLoading \? <LoadingState label="Loading agents"/);
   assert.match(source, /<ErrorState variant="inline" detail=\{agentError\} onRetry=\{onAgentRetry\}/);
-  assert.match(source, /loading \? <LoadingState label="Loading models"/);
+  assert.match(source, /loading \? \(modelError \? null : <LoadingState label="Loading models"/);
+  assert.match(source, /<ErrorState variant="inline" detail=\{modelError\} onRetry=\{onModelRetry\}/);
 });

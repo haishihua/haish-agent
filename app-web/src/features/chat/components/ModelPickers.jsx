@@ -155,6 +155,9 @@ export function ModelPicker({
   disabled,
   readOnly = false,
   loading = false,
+  modelError = '',
+  modelRefreshing = false,
+  onModelRetry,
   providerValue,
   providerOptions = [],
   onProviderChange,
@@ -419,7 +422,9 @@ export function ModelPicker({
               <div className="model-picker-flyout model-picker-flyout-model" role="listbox" aria-label="model">
                 <div className="model-picker-header">Model</div>
                 <div className="model-picker-list">
-                  {loading ? <LoadingState label="Loading models" role="status" /> : options.length === 0 ? (
+                  {modelError ? <ErrorState variant="inline" detail={modelError} onRetry={onModelRetry}
+                    retrying={modelRefreshing} disabled={disabled || readOnly || modelRefreshing} /> : null}
+                  {loading ? (modelError ? null : <LoadingState label="Loading models" role="status" />) : options.length === 0 && !modelError ? (
                     <div className="model-picker-empty">No models</div>
                   ) : options.map((opt) => {
                     const active = opt.id === value;

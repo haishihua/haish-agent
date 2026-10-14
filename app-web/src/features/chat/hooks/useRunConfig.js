@@ -1,10 +1,11 @@
 import React from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
-import { apiFetch } from '../../../shared/api/client.js';
+import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import { REASONING_EFFORT_OPTIONS, normalizeReasoningEffort } from '../model/run-catalog.js';
 import { migrateExecutionRoute, savedExecutionConfigId } from '../../settings/model/execution-identity.js';
 
 const PROVIDER_MODELS_STORAGE_KEY = 'haish_provider_models_v1';
+export const PROVIDER_MODELS_TIMEOUT_MS = 15_000;
 
 function preferredStorageKeyFromSelectionKey(storageKey) {
   const key = String(storageKey || '').trim();
@@ -109,61 +110,77 @@ function writeProviderModelsCache(requestKey, catalog) {
 }
 
 export function useProviderModels(providerOption) {
-  const providerId = providerOption?.id || '';
   const requestKey = JSON.stringify(providerModelsRequest(providerOption));
-  const fallbackKey = JSON.stringify({
-    models: providerOption?.modelOptions || [],
+  const fallback = normalizeProviderModels({
+    models: [...(providerOption?.modelOptions || []), ...(providerOption?.defaultModelId ? [providerOption.defaultModelId] : [])],
     default_model: providerOption?.defaultModelId || '',
   });
-  const [state, setState] = React.useState({ providerId: '', options: [], defaultModelId: '', loading: false });
+  const [retryCount, setRetryCount] = React.useState(0);
+  const retry = React.useCallback(() => setRetryCount(count => count + 1), []);
+  const [state, setState] = React.useState({ requestKey: '', options: [], defaultModelId: '', refreshing: false, error: '' });
 
   React.useEffect(() => {
     const request = JSON.parse(requestKey);
-    const fallback = normalizeProviderModels(JSON.parse(fallbackKey));
-    if (!providerId || !request) {
-      setState({ providerId: '', options: [], defaultModelId: '', loading: false });
-      return undefined;
-    }
-    let cancelled = false;
-    const controller = new AbortController();
+    if (!request?.llm_config_id) return undefined;
     const cached = readProviderModelsCache(requestKey);
-    setState({ providerId, ...(cached || fallback), loading: true });
-    apiFetch(`${API_BASE}/api/llm/models`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: requestKey,
-      signal: controller.signal,
-    }, { json: false })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`provider models fetch failed: ${response.status}`);
+    const controller = new AbortController();
+    let finished = false;
+    setState(previous => ({
+      ...(previous.requestKey === requestKey ? previous : { ...cached, error: '' }),
+      requestKey, refreshing: true,
+    }));
+    // Own the whole request, including response.json(). Abort alone is not a
+    // deadline: the desktop transport may settle late or ignore cancellation.
+    const finish = (catalog, error = '') => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timer);
+      if (catalog?.options.length) writeProviderModelsCache(requestKey, catalog);
+      setState(previous => ({ ...previous, ...(catalog?.options.length ? catalog : {}), refreshing: false, error }));
+    };
+    const timer = window.setTimeout(() => {
+      finish(null, 'Loading models timed out. Retry to refresh the model list.');
+      controller.abort();
+    }, PROVIDER_MODELS_TIMEOUT_MS);
+    void (async () => {
+      try {
+        const response = await apiFetch(`${API_BASE}/api/llm/models`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: requestKey, signal: controller.signal,
+        }, { json: false });
+        if (finished) return;
+        if (!response.ok) throw new Error(await parseResponseMessage(response, `Model list could not be loaded (${response.status}).`));
         const payload = await response.json();
+        if (finished) return;
         const responseProvider = String(payload?.provider || '').trim();
-        if (responseProvider && responseProvider !== request.provider) {
-          throw new Error(`provider models mismatch: expected ${request.provider}, received ${responseProvider}`);
-        }
-        return normalizeProviderModels(payload);
-      })
-      .then((catalog) => {
-        if (cancelled) return;
-        const resolved = catalog.options.length ? catalog : (cached || fallback);
-        if (catalog.options.length) writeProviderModelsCache(requestKey, catalog);
-        setState({ providerId, ...resolved, loading: false });
-      })
-      .catch((error) => {
-        if (cancelled || error?.name === 'AbortError') return;
-        console.warn('failed to fetch selected provider models', error);
-        setState({ providerId, ...(cached || fallback), loading: false });
-      });
+        if (responseProvider && responseProvider !== request.provider) throw new Error('The model list belongs to a different provider. Retry to refresh it.');
+        if (!Array.isArray(payload?.models)) throw new Error('Invalid model list response. Retry to refresh it.');
+        finish(normalizeProviderModels(payload));
+      } catch (error) {
+        // Only our disposed/timed-out request is ignored. An unexpected active
+        // AbortError must settle the UI just like any other network failure.
+        finish(null, error?.name === 'AbortError' ? 'Model loading was interrupted. Retry to refresh the model list.'
+          : (error?.message || 'Model list could not be loaded. Please retry.'));
+      }
+    })();
     return () => {
-      cancelled = true;
+      finished = true;
+      window.clearTimeout(timer);
       controller.abort();
     };
-  }, [providerId, requestKey, fallbackKey]);
+  }, [requestKey, retryCount]);
 
-  if (state.providerId !== providerId) {
-    return { options: [], defaultModelId: '', loading: Boolean(providerId) };
-  }
-  return state;
+  const matches = state.requestKey === requestKey;
+  const catalog = matches ? state : readProviderModelsCache(requestKey);
+  const available = normalizeProviderModels({
+    models: [...(catalog?.options || []), ...fallback.options],
+    default_model: fallback.defaultModelId || catalog?.defaultModelId || '',
+  });
+  const refreshing = Boolean(providerOption?.id && providerOption?.provider && (matches ? state.refreshing : true));
+  return {
+    ...available, loading: refreshing && available.options.length === 0, refreshing,
+    error: matches ? state.error : '', retry,
+  };
 }
 
 export function resolveRunConfigSelection(storageKey, providerOptions, agentOptions, defaultAgentId) {

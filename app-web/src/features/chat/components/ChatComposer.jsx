@@ -806,6 +806,9 @@ export function ChatComposer({
               providerValue={providerId}
               providerOptions={resolvedProviderOptions}
               onProviderChange={setProviderId}
+              modelError={providerModels.error}
+              modelRefreshing={providerModels.refreshing}
+              onModelRetry={providerModels.retry}
               agentValue={effectiveAgentId}
               agentOptions={resolvedAgentOptions}
               onAgentChange={changeAgent}

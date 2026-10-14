@@ -22,6 +22,11 @@ test('runtime config reuses shared Radix Select instead of native dropdowns', ()
   assert.match(source, /id=\{id\} aria-label=/);
 });
 
+test('historical model fallback keeps display icons for explicit and legacy identities', () => {
+  assert.match(source, /provider: \(value\.llm_config_id \|\| value\.provider\) \? display\.provider : null/);
+  assert.match(source, /value\.model_id && !models\.options\.some\(\(item\) => item\.id === value\.model_id\)/);
+});
+
 test('Workflow picker reuses the same non-native dropdown and only replaces Bot selection', () => {
   assert.match(picker, /shared\/ui\/settings-elements\/ui\/select.tsx/);
   assert.doesNotMatch(picker, /<select\b|<option\b/);
