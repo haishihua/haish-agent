@@ -8,6 +8,7 @@ export function createConversationRuntime(ctx) {
     setBusy,
     setShellSeeded,
     setConversationStopState = () => {},
+    setConversationRetryPending = () => {},
     setWorkspaceState,
     setTaskRuntimeState,
     setToast,
@@ -27,7 +28,9 @@ export function createConversationRuntime(ctx) {
       cancelledRunIds: new Set(),
       abortRequested: false,
       pendingRun: null,
+      pendingRetry: null,
       runGeneration: 0,
+      taskStructureRevision: 0,
       taskRecoveryRequest: null,
       stopPromise: null,
       stopError: null,
@@ -49,11 +52,29 @@ export function createConversationRuntime(ctx) {
 
   // Mutate the runtime that owns this conversation. React state is only a
   // projection of the currently displayed runtime; runtimesRef is authoritative.
-  function mutateRuntime(convId, mutator) {
+  function taskStructureKey(state, taskHydration) {
+    // REST hydration may add full records and update active status before the
+    // detail rebuild. It must NOT hide order/latest/pending changes (e.g. an
+    // independent single-task selection adding a turn during recovery).
+    return JSON.stringify([
+      state?.taskOrder || [], state?.latestTaskId || null,
+      state?.pendingTask?.taskId || state?.pendingTask?.id || null,
+      ...(!taskHydration ? [Object.keys(state?.tasksById || {}).sort(), state?.activeTaskId || null] : []),
+    ]);
+  }
+
+  function mutateRuntime(convId, mutator, { taskHydration = false } = {}) {
     if (!convId) throw new Error('conversation runtime mutation requires a conversation id');
     const rt = getRuntime(convId, { create: true });
+    const previousState = rt.taskRuntimeState;
     const changed = mutator(rt);
     if (changed === false) return rt;
+    // Task state updates are immutable. Buffer/controller-only stream writes
+    // need no history scan; content writes compare only the structural boundary.
+    if (rt.taskRuntimeState !== previousState
+      && taskStructureKey(rt.taskRuntimeState, taskHydration) !== taskStructureKey(previousState, taskHydration)) {
+      rt.taskStructureRevision = (rt.taskStructureRevision || 0) + 1;
+    }
     if (convId === conversationIdRef.current) {
       if (rt.syncBatchDepth > 0) {
         rt.syncBatchPending = true;
@@ -88,6 +109,7 @@ export function createConversationRuntime(ctx) {
     cacheTaskImageAttachments(rt.taskRuntimeState);
     setTaskRuntimeState(rt.taskRuntimeState);
     setBusy(rt.busy);
+    setConversationRetryPending(Boolean(rt.pendingRetry));
     // Stop is a control-plane state, not evidence that a task is still running.
     // Project it explicitly even when the task list and busy flag are unchanged.
     const pending = Boolean(rt.stopPromise);
@@ -195,7 +217,7 @@ export function createConversationRuntime(ctx) {
   // conversation that owns the in-flight stream, even if the user has since
   // switched to a different conversation. When omitted, writes use the stream
   // context (if set) or fall back to the currently-shown conversation.
-  function updateTaskRuntimeState(updater, targetConvId = null) {
+  function updateTaskRuntimeState(updater, targetConvId = null, { taskHydration = false } = {}) {
     const convId = activeRuntimeTargetConvId(targetConvId);
     if (!convId) throw new Error('task runtime update requires a conversation id');
     mutateRuntime(convId, (rt) => {
@@ -203,7 +225,7 @@ export function createConversationRuntime(ctx) {
       if (next === rt.taskRuntimeState) return false;
       rt.taskRuntimeState = next;
       return true;
-    });
+    }, { taskHydration });
   }
 
   function cacheTaskImageAttachments(state) {

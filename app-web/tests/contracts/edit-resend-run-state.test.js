@@ -20,7 +20,7 @@ const ackSource = fs.readFileSync(
 );
 
 function handleRetryTaskBranch() {
-  const start = conversationSource.indexOf('async function handleRetryTask');
+  const start = conversationSource.indexOf('function handleRetryTask');
   assert.ok(start >= 0, 'handleRetryTask must exist');
   return conversationSource.slice(start, conversationSource.indexOf('\n\n  return {', start));
 }

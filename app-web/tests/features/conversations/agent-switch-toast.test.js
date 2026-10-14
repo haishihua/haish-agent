@@ -11,7 +11,7 @@ const shell = read('features/app/AppShell.jsx');
 
 test('Agent-switch impact feedback is an info toast emitted only after the save succeeds', () => {
   const save = hook.indexOf('await sync.flush(serverId, scopeId)');
-  const ownerCheck = hook.indexOf('if (ownerRef.current !== owner)', save);
+  const ownerCheck = hook.indexOf('if (ownerRef.current !== owner || !mountedRef.current)', save);
   const feedback = hook.indexOf("currentRef.current.onToast?.('info', 'Agent switched.");
   assert.ok(save >= 0 && ownerCheck > save && feedback > ownerCheck);
   assert.match(hook, /onToast\?\.\('info', 'Agent switched\. Future tasks will use the new Agent\.'\)/);

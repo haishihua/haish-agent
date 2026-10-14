@@ -215,6 +215,7 @@ export function AppShell() {
   const modeLocationRef = useRef({ chat: null, workflow: null });
   const [busy, setBusy] = useState(false);
   const [conversationStopState, setConversationStopState] = useState({ pending: false, error: '' });
+  const [conversationRetryPending, setConversationRetryPending] = useState(false);
   // 「当前显示的这份时间线还是工作区快照搭的」——由运行时投影过来（见
   // createConversationRuntime 的 syncDisplayedRuntime）。会话刚打开时快照只有标题和
   // 状态，助手正文还没水合，时间线用加载动画占位。
@@ -788,7 +789,7 @@ export function AppShell() {
     notifyTaskComplete,
     runtimesRef,
     setBusy,
-    setShellSeeded, setConversationStopState,
+    setShellSeeded, setConversationStopState, setConversationRetryPending,
     setToast,
     setWorkspaceState,
     setTaskRuntimeState,
@@ -1001,7 +1002,7 @@ export function AppShell() {
     applyConversationSnapshot,
     apiFetch,
     conversationId,
-    conversationIdRef,
+    conversationIdRef, conversationActivationSeqRef,
     draftConversationRef,
     ensureServerConversationForActiveDraft,
     getRuntime,
@@ -1113,8 +1114,7 @@ export function AppShell() {
     buildDeployRequest: (...args) => deployApiRef.current.buildDeployRequest?.(...args),
     conversationError,
     setConversationError,
-    settingsMode,
-    canStartDeployForConversation: (...args) => deployApiRef.current.canStartDeployForConversation?.(...args),
+    settingsMode, canStartDeployForConversation: (...args) => deployApiRef.current.canStartDeployForConversation?.(...args),
     clearDraftConversationState,
     conversationDetailAbortRef,
     conversationId,
@@ -1125,7 +1125,7 @@ export function AppShell() {
     fetchConversationDetail,
     findConversationById,
     findProjectByConversationId,
-    getRuntime,
+    getRuntime, mutateRuntime,
     invalidateConversationActivation,
     isConversationActivationCurrent,
     modeLocationRef,
@@ -1720,7 +1720,7 @@ export function AppShell() {
     conversation: currentConversation, options: agentOptions, messages: chatMessages,
     pendingTask: taskRuntimeState.pendingTask, running: currentConversationRunning, queued: queuedDeploy, setWorkspaceState,
   });
-  const submitPending = Boolean(queuedDeploy || conversationStopState.pending);
+  const submitPending = Boolean(queuedDeploy || conversationStopState.pending || conversationRetryPending);
 
   const composerDisabled = Boolean(conversationStopState.error) || uploadState.active
     || settingsMode
@@ -1869,7 +1869,7 @@ export function AppShell() {
 	                    onLoadEarlierTasks={loadEarlierTaskRuntimes}
 	                    composerScopeId={draftConversationRef.current?.composerScopeId || conversationId}
 	                    messages={chatMessages} latestTaskId={taskRuntimeState.latestTaskId}
-                        taskActionsPending={Boolean(conversationStopState.pending || conversationStopState.error)} stopError={conversationStopState.error}
+                        taskActionsPending={Boolean(conversationStopState.pending || conversationStopState.error || conversationRetryPending)} stopError={conversationStopState.error}
 	                    loading={conversationLoading}
 	                    running={currentConversationRunning}
 	                    disabled={composerDisabled}

@@ -3,7 +3,7 @@ function abortError() {
 }
 
 /**
- * Coalesce overlapping task batches, not just identical arrays. The shared map
+ * Coalesce single-task GETs and overlapping batches. The shared map
  * survives controller recreation on React renders. Each caller owns a lease:
  * cancelling one caller must not abort a request still needed by another.
  */
@@ -13,15 +13,27 @@ export async function fetchCoalescedTaskRuntimeBatch(
   taskIds,
   fetchBatch,
   signal,
+  { requestKind = 'batch', joinBatch = true } = {},
 ) {
   if (signal?.aborted) throw abortError();
   const ids = [...new Set(taskIds.filter(Boolean))];
   if (!ids.length) return [];
-  // Namespace batch entries separately from the single-task polling promises.
-  const keyFor = (id) => JSON.stringify(['task-runtime-batch', conversationId, id]);
-  const missingIds = ids.filter((id) => !fetches.has(keyFor(id)));
+  // Task ids are globally unique. A GET has no conversation in its URL, so
+  // either transport may join that unscoped lease; distinct declared owners
+  // remain isolated and callers validate the returned task's owner.
+  // Confirmation GETs must bypass even another still-pending batch. Keep a
+  // separate key so they cannot replace that batch's entry/cleanup ownership.
+  const keyFor = (id) => JSON.stringify(['task-runtime', conversationId, id, ...(!joinBatch ? ['single-confirmation'] : [])]);
+  const canJoin = (entry, id) => entry?.taskId === id
+    && (!conversationId || !entry.conversationId || entry.conversationId === conversationId)
+    && (joinBatch || entry.group.requestKind === 'single');
+  const entryFor = (id) => {
+    const exact = fetches.get(keyFor(id));
+    return canJoin(exact, id) ? exact : [...fetches.values()].find((entry) => canJoin(entry, id));
+  };
+  const missingIds = ids.filter((id) => !entryFor(id));
   if (missingIds.length) {
-    const group = { controller: new AbortController(), consumers: 0, settled: false };
+    const group = { controller: new AbortController(), consumers: 0, settled: false, requestKind };
     const entries = new Map();
     group.cleanup = () => {
       for (const [key, entry] of entries) {
@@ -40,6 +52,8 @@ export async function fetchCoalescedTaskRuntimeBatch(
     for (const id of missingIds) {
       const key = keyFor(id);
       const entry = {
+        taskId: id,
+        conversationId,
         group,
         promise: request.then((details) => details.find((detail) => detail.normalizedTask.task_id === id)),
       };
@@ -47,7 +61,7 @@ export async function fetchCoalescedTaskRuntimeBatch(
       fetches.set(key, entry);
     }
   }
-  const pending = ids.map((id) => fetches.get(keyFor(id)));
+  const pending = ids.map(entryFor);
   const groups = new Set(pending.map((entry) => entry.group));
   for (const group of groups) group.consumers += 1;
   let released = false;

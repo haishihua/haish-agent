@@ -3,6 +3,7 @@ export function createComposerHandlers(ctx) {
     API_BASE,
     applyConversationSnapshot,
     apiFetch,
+    conversationActivationSeqRef,
     conversationId,
     conversationIdRef,
     draftConversationRef,
@@ -64,6 +65,7 @@ export function createComposerHandlers(ctx) {
   }
 
   async function handleAttachmentSelect(file, selectionId, executionMode = viewModeRef.current || viewMode) {
+    const activationSeq = conversationActivationSeqRef.current;
     let targetConversationId = conversationIdRef.current || conversationId;
     if (file && draftConversationRef.current && (
       !targetConversationId
@@ -75,10 +77,11 @@ export function createComposerHandlers(ctx) {
         targetConversationId = detail?.conversation_id || conversationIdRef.current || targetConversationId;
       } catch (error) {
         console.error('draft conversation create failed', error);
-        showToast('error', String(error?.message || error));
+        if (conversationActivationSeqRef.current === activationSeq) showToast('error', String(error?.message || error));
         return;
       }
     }
+    if (conversationActivationSeqRef.current !== activationSeq) return;
     if (!file || !targetConversationId || String(targetConversationId).startsWith('draft-')) return;
     // 选文件 = 这条会话已经有用户的真实内容：解析成功、失败都算，切走时不能被当成空壳
     // 回收（见 createDraftConversationHandlers 的 markDraftConversationKept）。先落标记
@@ -87,15 +90,28 @@ export function createComposerHandlers(ctx) {
     const uploadController = new AbortController();
     mutateRuntime(targetConversationId, (rt) => {
       rt.abortRequested = false;
+      // Stop clears the transport slot synchronously. Display ownership must
+      // survive that release so this upload can still unlock its own composer.
+      rt.composerUploadController = uploadController;
     });
     setRuntimeFetchController(uploadController, targetConversationId);
-    setComposerAttachment({
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      uploaded: false,
-    });
-    setUploadState({ active: true, fileName: file.name });
+    // Runtime and display ownership are separate; neither grants ownership of
+    // a newer upload in the same conversation (including A → B → A).
+    const ownsRuntime = () => getRuntime(targetConversationId)?.fetchController === uploadController;
+    const ownsDisplay = () => conversationIdRef.current === targetConversationId
+      && conversationActivationSeqRef.current === activationSeq
+      && getRuntime(targetConversationId)?.composerUploadController === uploadController;
+    const canApplyResult = () => ownsDisplay() && ownsRuntime() && !uploadController.signal.aborted
+      && !getRuntime(targetConversationId)?.abortRequested;
+    if (ownsDisplay()) {
+      setComposerAttachment({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        uploaded: false,
+      });
+      setUploadState({ active: true, fileName: file.name });
+    }
     try {
       const payload = await uploadAttachment(
         file,
@@ -113,27 +129,28 @@ export function createComposerHandlers(ctx) {
         title: payload?.attachment?.title || file.name,
         conversationId: payload?.attachment?.conversation_id || targetConversationId,
       };
-      if (conversationIdRef.current === targetConversationId) {
+      if (canApplyResult()) {
         applyConversationSnapshot(payload?.conversation || null);
         setComposerAttachment(nextAttachment);
         showToast('success', `document uploaded: ${String(file.name || '').toLowerCase()}`);
       }
     } catch (error) {
-      if (conversationIdRef.current === targetConversationId) {
-        setComposerAttachment(null);
-      }
-      const targetRuntime = getRuntime(targetConversationId);
-      const uploadAborted = targetRuntime?.abortRequested === true;
-      if (conversationIdRef.current === targetConversationId && !(uploadAborted || error?.name === 'AbortError')) {
+      if (ownsDisplay()) setComposerAttachment(null);
+      if (canApplyResult() && error?.name !== 'AbortError') {
         showToast('error', `upload failed: ${String(file.name || '').toLowerCase()}`);
       }
       throw error;
     } finally {
-      const rt = getRuntime(targetConversationId);
-      if (rt && rt.fetchController === uploadController) {
-        setRuntimeFetchController(null, targetConversationId);
+      // A stopped request still releases its own chrome, but an old request
+      // must never clean up a newer upload or a different activation.
+      if (ownsDisplay()) {
+        if (uploadController.signal.aborted || getRuntime(targetConversationId)?.abortRequested) setComposerAttachment(null);
+        setUploadState({ active: false, fileName: '' });
       }
-      setUploadState({ active: false, fileName: '' });
+      if (ownsRuntime()) setRuntimeFetchController(null, targetConversationId);
+      if (getRuntime(targetConversationId)?.composerUploadController === uploadController) {
+        mutateRuntime(targetConversationId, (rt) => { rt.composerUploadController = null; });
+      }
     }
   }
 

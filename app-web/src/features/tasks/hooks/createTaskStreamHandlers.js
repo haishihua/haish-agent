@@ -748,6 +748,7 @@ export function createTaskStreamHandlers(ctx) {
       await stoppingRuntime.stopPromise;
       stoppingRuntime = getRuntime(runConversationId);
     }
+    if (streamRequest?.preflightSignal?.aborted) throw new Error('Retry was stopped. Your changes have not been sent.');
     if (stoppingRuntime?.stopError) throw new Error(stoppingRuntime.stopError);
     if (streamRequest?.attempt) {
       const state = stoppingRuntime?.taskRuntimeState;
@@ -1183,8 +1184,8 @@ export function createTaskStreamHandlers(ctx) {
       if (message.type !== 'task.event') return;
       const event = normalizeRuntimeEvent(message.event);
       if (!event || (event.conversation_id && event.conversation_id !== cid)) return;
-      batchRuntimeMutations(cid, () => {
       if (!acceptRuntimeEvent(event, cid)) return;
+      batchRuntimeMutations(cid, () => {
         if (event.type === 'run_started') {
           mutateRuntime(cid, (runtime) => {
             runtime.runGeneration = (runtime.runGeneration || 0) + 1;

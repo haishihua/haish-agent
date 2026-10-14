@@ -19,7 +19,7 @@ const report = document.getElementById('checks');
 const checks = [];
 const check = (condition, name) => { if (!condition) throw new Error(name); checks.push(`PASS ${name}`); report.textContent = checks.join('\n'); };
 const tick = () => new Promise(resolve => setTimeout(resolve, 30));
-const base = (agent = 'a') => ({ provider: 'provider', model_id: 'model', reasoning_effort: null, execution_mode: 'chat', use_history: true, agent_id: agent });
+const base = (agent = 'a') => ({ llm_config_id: 'provider', model_id: 'model', reasoning_effort: null, execution_mode: 'chat', use_history: true, agent_id: agent });
 const stored = new Map([['one', base()], ['two', base('c')]]);
 const calls = [];
 let hold = false;
@@ -76,8 +76,8 @@ async function componentChecks() {
         draft="New input" onDraftChange={() => {}}
         onToast={(kind, message) => { componentToasts.push({ kind, message }); showToast(kind, message); }}
         onSend={(...args) => { events.push({ type: 'send', agent: args[5], effort: args[3] }); return true; }}
-        onRetryTask={(id, config) => { events.push({ type: 'retry', agent: config.agentId, effort: config.reasoningEffort }); return true; }}
-        onEditMessage={(id, text, config) => { events.push({ type: 'edit', agent: config.agentId, text, effort: config.reasoningEffort }); return true; }} />
+        onRetryTask={async (id, config) => { const savedConfig = await config.ensureSaved({ background: true }); events.push({ type: 'retry', agent: savedConfig.agent_id, effort: savedConfig.reasoning_effort }); return true; }}
+        onEditMessage={async (id, text, config) => { const savedConfig = await config.ensureSaved({ background: false }); events.push({ type: 'edit', agent: savedConfig.agent_id, text, effort: savedConfig.reasoning_effort }); return true; }} />
       {toast && <AppToast kind={toast.kind} message={toast.message} />}
     </SchedulesContext.Provider></AppTooltipProvider>;
   }
@@ -86,7 +86,14 @@ async function componentChecks() {
     document.querySelector('.model-picker-trigger').click(); await tick();
     document.querySelector('[aria-label="Open agent and model settings"]').click(); await tick();
     document.querySelector('.model-picker-submenu-entry').focus(); await tick();
-    [...document.querySelectorAll('.model-picker-flyout-agent [role="option"]')].find(item => item.textContent.includes(label)).click(); await tick();
+    let option;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      option = [...document.querySelectorAll('.model-picker-flyout-agent [role="option"]')].find(item => item.textContent.includes(label));
+      if (option) break;
+      await tick();
+    }
+    if (!option) throw new Error(`Agent option did not open: ${label}`);
+    option.click(); await tick();
   };
   const composerHeight = document.querySelector('.chat-composer').getBoundingClientRect().height;
   hold = true; await select('Agent B');
@@ -250,7 +257,7 @@ async function modelRuleChecks() {
   const providers = [{ id: 'provider', provider: 'provider', defaultModelId: 'model', modelOptions: ['model'] }];
   let sent = 0, cleared = 0;
   const attachment = { name: 'keep.txt', uploaded: true };
-  for (const [id, config] of [['unconfigured', { ...base(), provider: null, model_id: null }], ['removed', { ...base(), provider: 'removed' }], ['fresh', null]]) {
+  for (const [id, config] of [['unconfigured', { ...base(), llm_config_id: null, model_id: null }], ['removed', { ...base(), llm_config_id: 'removed' }], ['fresh', null]]) {
     if (config) stored.set(id, config); else stored.delete(id);
     function Missing() {
       const [draft, setDraft] = React.useState('Keep my draft');

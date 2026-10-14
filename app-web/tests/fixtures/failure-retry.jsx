@@ -33,11 +33,18 @@ async function until(predicate) {
   throw new Error('Timed out waiting for Retry state');
 }
 const originalFetch = window.fetch;
+let releaseCatalog;
+const catalogs = [];
+let catalogRequests = 0;
+const firstCatalog = new Promise(resolve => { releaseCatalog = resolve; });
 window.fetch = (input, init) => {
   if (String(input).includes('/api/')) {
     if (String(input).endsWith('/api/llm/models')) {
       const request = JSON.parse(init.body);
-      return Promise.resolve(Response.json({ provider: request.provider, models: ['current-model'], default_model: 'current-model' }));
+      catalogRequests += 1;
+      catalogs.push(request.llm_config_id);
+      const response = () => Response.json({ provider: request.provider, models: ['current-model'], default_model: 'current-model' });
+      return catalogRequests === 1 ? firstCatalog.then(response) : Promise.resolve(response());
     }
     if (String(input).includes('/api/approvals/state')) return Promise.resolve(Response.json({ mode: 'smart' }));
     return Promise.reject(new Error('Unexpected API call in offline Retry fixture'));
@@ -45,16 +52,26 @@ window.fetch = (input, init) => {
   return originalFetch(input, init);
 };
 const providers = [{ id: 'current-provider', provider: 'custom', label: 'Synthetic current route',
-  defaultModelId: 'current-model', modelOptions: ['current-model'], defaultReasoningEffort: 'none' }];
+  defaultModelId: 'current-model', modelOptions: ['current-model'], defaultReasoningEffort: 'none' },
+  { id: 'destination-provider', provider: 'custom', label: 'Destination route', defaultModelId: 'destination-model', modelOptions: ['destination-model'] }];
 const source = { taskId: 'source', conversationId: 'retry-conversation', userMessageId: 'original-user',
   requestedProvider: 'old-provider', requestedModelId: 'old-model', requestedReasoningEffort: 'high',
   requestedAgentId: 'agent', title: 'Synthetic input', requestText: 'Synthetic input',
   status: 'failed', error: 'Synthetic original model failure', originViewMode: 'chat', executionMode: 'chat' };
 const route = { llm_config_id: 'current-provider', model_id: 'current-model', reasoning_effort: 'xhigh',
   agent_id: 'agent', execution_mode: 'chat', use_history: true };
-const saved = new Map([[source.conversationId, route], ['blocked-conversation', { ...route, llm_config_id: 'removed-record' }]]);
+const destinationRoute = { ...route, llm_config_id: 'destination-provider', model_id: 'destination-model' };
+const saved = new Map([[source.conversationId, route], ['destination', destinationRoute], ['blocked-conversation', { ...route, llm_config_id: 'removed-record' }]]);
 const saves = [];
-const sync = createRunConfigSync({ get: async id => structuredClone(saved.get(id)), save: async (id, config) => {
+let releaseConfig;
+let configReleased = false;
+const configLoads = [];
+const firstConfig = new Promise(resolve => { releaseConfig = resolve; });
+const sync = createRunConfigSync({ get: async id => {
+  configLoads.push(id);
+  if (id === source.conversationId && !configReleased) await firstConfig;
+  return structuredClone(saved.get(id));
+}, save: async (id, config) => {
   saves.push({ id, config: structuredClone(config) });
   saved.set(id, structuredClone(config));
 } });
@@ -70,7 +87,7 @@ const harness = createAttemptHarness(source, { transport: async (_command, onEve
 } });
 const toasts = [];
 const handlers = createConversationHandlers({ executeQuest: harness.executeQuest,
-  configSync: sync, getRuntime: () => harness.runtime, canStartDeployForConversation: () => true,
+  configSync: sync, getRuntime: () => harness.runtime,
   showToast: (kind, message) => toasts.push([kind, message]) });
 function projectRows() {
   const state = harness.runtime.taskRuntimeState;
@@ -81,12 +98,15 @@ function projectRows() {
       text: task.error || task.answerText, traceTimeline: [] },
   ]);
 }
+let displayedConversation;
 function draw(conversationId = source.conversationId, rows = projectRows(), onRetryTask = (id, config) =>
   handlers.handleRetryTask(harness.runtime.taskRuntimeState.tasksById[id], null, config)) {
+  displayedConversation = conversationId;
   flushSync(() => root.render(<AppTooltipProvider>
     <SchedulesContext.Provider value={{ configSync: sync, currentConversationId: conversationId }}>
       <ChatPanel key={conversationId} conversationId={conversationId} messages={rows} draft="Synthetic draft"
-        running={harness.runtime.busy} onRetryTask={onRetryTask}
+        running={conversationId === source.conversationId && harness.runtime.busy} onRetryTask={onRetryTask}
+        taskActionsPending={conversationId === source.conversationId && Boolean(harness.runtime.pendingRetry)}
         providerOptions={providers} agentOptions={[{ id: 'agent', label: 'Synthetic Agent' }]}
         defaultAgentId="agent" />
     </SchedulesContext.Provider>
@@ -95,13 +115,27 @@ function draw(conversationId = source.conversationId, rows = projectRows(), onRe
 const retry = () => document.querySelector('.chat-message-row.agent .aui-error-state button');
 async function run() {
   draw();
-  await until(() => retry() && !document.querySelector('.chat-send').disabled);
-  // Send readiness can precede the catalog effect's final commit. Let the
-  // mocked response and composer's latest guarded-save handle reach React.
-  await sleep(); await sleep();
-  check(!retry().disabled, 'latest failed turn has an enabled Retry');
+  await until(() => retry());
+  check(!retry().disabled, 'latest failed turn has an enabled Retry even before configuration loads');
   retry().click(); retry()?.click();
-  await until(() => harness.requests.length === 1 && !harness.runtime.busy);
+  await sleep(); await sleep(); await sleep();
+  check(Boolean(document.querySelector('.aui-error-retrying')) && harness.requests.length === 0, 'Retry stays pending while configuration restores; repeated clicks send nothing');
+  check(!document.querySelector('.aui-error-state').textContent.includes('not ready'), 'a slow configuration load does not reject the click');
+  draw('destination', []);
+  await sleep(); await sleep(); await sleep();
+  check(Boolean(harness.runtime.pendingRetry) && harness.requests.length === 0, 'switching away and unmounting the composer does not cancel the original Retry');
+  draw(); await sleep();
+  check(retry().disabled, 'returning while Retry waits cannot start a duplicate');
+  draw('destination', []); await sleep();
+  const originLoads = () => configLoads.filter(id => id === source.conversationId).length;
+  const originCatalogs = () => catalogs.filter(id => id === route.llm_config_id).length;
+  const loadsBeforeRelease = originLoads(), catalogsBeforeRelease = originCatalogs();
+  configReleased = true;
+  releaseConfig();
+  await until(() => harness.requests.length === 1 && !harness.runtime.busy && !harness.runtime.pendingRetry);
+  check(displayedConversation === 'destination' && document.querySelectorAll('.chat-message-row').length === 0, 'Retry finishes under the original conversation without switching the destination display');
+  check(originLoads() === loadsBeforeRelease && originCatalogs() === catalogsBeforeRelease, 'background waiting adds no originating configuration or catalog requests');
+  releaseCatalog();
   draw(); await sleep();
   check(harness.requests.length === 1, 'double click starts exactly one attempt');
   const request = harness.requests[0];
@@ -122,7 +156,9 @@ async function run() {
   check(document.querySelectorAll('.chat-message-row.agent').length === 1, 'successful retry replaces the failed turn without duplicating it');
   const blocked = { id: 'blocked-agent', taskId: 'blocked', role: 'agent', status: 'failed', text: 'Synthetic original failure', traceTimeline: [] };
   let blockedRequests = 0;
-  draw('blocked-conversation', [blocked], () => { blockedRequests += 1; });
+  const blockedHandlers = createConversationHandlers({ getRuntime: () => harness.runtime, showToast: () => {},
+    startDeploy: () => { blockedRequests += 1; } });
+  draw('blocked-conversation', [blocked], (_id, config) => blockedHandlers.handleRetryTask({ taskId: 'blocked', conversationId: 'blocked-conversation', executionMode: 'chat' }, null, config));
   await sleep(); await sleep(); await sleep();
   retry().click();
   await until(() => document.querySelector('.aui-error-detail')?.textContent.includes('unavailable'));

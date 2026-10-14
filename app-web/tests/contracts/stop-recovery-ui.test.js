@@ -11,7 +11,7 @@ const composer = read('features/chat/components/ChatComposer.jsx');
 test('both composer entry points receive explicitly projected Stop failure state', () => {
   assert.match(runtime, /setConversationStopState\(\(current\) =>/);
   assert.match(shell, /setShellSeeded, setConversationStopState,/);
-  assert.match(shell, /const submitPending = Boolean\(queuedDeploy \|\| conversationStopState.pending\)/);
+  assert.match(shell, /const submitPending = Boolean\(queuedDeploy \|\| conversationStopState.pending \|\| conversationRetryPending\)/);
   assert.equal((shell.match(/stopError=\{conversationStopState.error\}/g) || []).length, 2);
   assert.match(panel, /stopError=\{stopError\}/);
   assert.match(panel, /actionsDisabled:.*Boolean\(stopError\)/);

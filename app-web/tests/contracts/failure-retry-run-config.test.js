@@ -30,7 +30,7 @@ function retryMessageBody() {
 }
 
 function handleRetryTaskBranch() {
-  const start = conversationSource.indexOf('async function handleRetryTask');
+  const start = conversationSource.indexOf('function handleRetryTask');
   assert.ok(start >= 0, 'handleRetryTask must exist');
   return conversationSource.slice(start, conversationSource.indexOf('\n\n  return {', start));
 }
@@ -39,8 +39,14 @@ test('failure retry carries the composer run config, not the failed attempt one'
   // Wait for the current commit before retrying; missing overrides use server current selection.
   const retry = retryMessageBody();
   assert.match(retry, /composerRunConfigRef\.current/);
-  assert.match(retry, /await current\?\.ensureSaved\?\.\(\)/);
-  assert.match(retry, /provider: saved\.llm_config_id, modelId: saved\.model_id, reasoningEffort: saved\.reasoning_effort/);
+  assert.match(retry, /const onRetry = rowActionRef\.current\.onRetryTask/);
+  assert.match(retry, /ensureSaved: current\.ensureSaved/);
+  const branch = handleRetryTaskBranch();
+  assert.match(branch, /await runConfig\.ensureSaved\(\{ background: editedMessage === null, signal, timeoutMs \}\)/);
+  assert.match(branch, /waitForAttemptConfigOperation\(configuration, \{ signal, timeoutMs \}\)/);
+  assert.match(branch, /provider: saved\.llm_config_id, modelId: saved\.model_id, reasoningEffort: saved\.reasoning_effort/);
+  assert.match(branch, /if \(editedMessage !== null && !canStartDeployForConversation\?\.\(targetConversationId\)\)/);
+  assert.doesNotMatch(branch, /loadAndActivateConversation/);
 });
 
 test('the retry handoff forwards the config into the task attempt request', () => {

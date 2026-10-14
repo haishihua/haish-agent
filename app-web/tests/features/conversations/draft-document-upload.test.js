@@ -140,6 +140,7 @@ function createHarness({ uploadStatus = 200 } = {}) {
     applyConversationSnapshot: () => {},
     conversationId: null,
     conversationIdRef,
+    conversationActivationSeqRef: { current: 0 },
     draftConversationRef,
     ensureServerConversationForActiveDraft: draftHandlers.ensureServerConversationForActiveDraft,
     getRuntime: () => null,

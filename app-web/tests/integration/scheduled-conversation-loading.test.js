@@ -140,6 +140,8 @@ test('an old recovery response cannot overwrite newer live schedule events', asy
   let resolve;
   h.intercept(() => new Promise((done) => { resolve = done; }));
   const recovering = h.schedule.recover(h.receipt);
+  // Shared GET/batch leases register before dispatching their transport.
+  await new Promise((done) => setImmediate(done));
   h.send({ type: 'run_started', message: 'New run' });
   h.send({ type: 'llm_answer_delta', delta: 'New partial' });
   resolve(Response.json(h.stored[1]));

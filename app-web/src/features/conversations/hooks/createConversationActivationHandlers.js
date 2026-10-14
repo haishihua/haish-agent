@@ -1,5 +1,6 @@
 import { conversationLoadPerf } from '../../../shared/lib/conversation-load-perf.js';
 import { splitTaskRuntimeRestoreOrder } from '../../tasks/model/task-runtime-paging.js';
+import { conversationRuntimeHasLiveTurn } from '../model/runtime-restore-guard.js';
 
 export function createConversationActivationHandlers(ctx) {
   const {
@@ -227,11 +228,7 @@ export function createConversationActivationHandlers(ctx) {
     // Keep a live turn intact while merging any previously unloaded history.
     // Quiescent runtimes rebuild from the ordinary conversation detail.
     const incomingRuntime = getRuntime(restoredConversationId);
-    const incomingHasInflight = Boolean(
-      incomingRuntime
-      && (incomingRuntime.stopPromise || incomingRuntime.activeRunId || incomingRuntime.fetchController
-        || (incomingRuntime.busy && !incomingRuntime.shellSeeded))
-    );
+    const incomingHasInflight = conversationRuntimeHasLiveTurn(incomingRuntime);
     let taskIdsToRestore = [];
 
     if (incomingHasInflight) {
@@ -356,6 +353,7 @@ export function createConversationActivationHandlers(ctx) {
     if (!expectedRuntime || expectedRuntime.activeRunId) return;
     const request = {};
     const generation = expectedRuntime.runGeneration || 0;
+    const structureRevision = expectedRuntime.taskStructureRevision || 0;
     const initialState = expectedRuntime.taskRuntimeState;
     expectedRuntime.taskRecoveryRequest = request;
     // A newer run can start AND finish while the response is in flight. Its
@@ -363,6 +361,7 @@ export function createConversationActivationHandlers(ctx) {
     const isCurrentOwner = () => getRuntime(ownerConvId) === expectedRuntime
       && expectedRuntime.taskRecoveryRequest === request
       && (expectedRuntime.runGeneration || 0) === generation
+      && (expectedRuntime.taskStructureRevision || 0) === structureRevision
       && !expectedRuntime.activeRunId;
     try {
       const detail = await fetchConversationDetail(ownerConvId);
@@ -371,17 +370,33 @@ export function createConversationActivationHandlers(ctx) {
       const tasks = Array.isArray(detail.tasks) ? detail.tasks : [];
       const taskOrder = sortTaskIdsForRestore(tasks);
       const latestTaskId = detail.last_task_id || taskOrder.at(-1) || null;
+      // Do not publish summary-only tasks while their full records are in flight:
+      // that removes the visible trace after Stop and mounts it again on arrival.
+      // Refresh changed, already-displayed history in the same batch as the latest turn.
+      const taskIdsToRestore = [...new Set([latestTaskId, ...tasks.filter((task) => {
+        const previous = initialState.tasksById[task.task_id];
+        return previous && previous.runtimeHydrated !== false
+          && previous.updatedAt !== taskSummaryToRuntimeTask(task).updatedAt;
+      }).map((task) => task.task_id)].filter(Boolean))];
+      if (taskIdsToRestore.length) await restoreTaskRuntimes(taskIdsToRestore, {
+        targetConversationId: ownerConvId, isCurrentActivation: isCurrentOwner,
+      });
+      // Hydration replaces state objects itself. The local structural revision
+      // instead detects deletes, reorder/add/latest/pending changes during BOTH
+      // awaits, preventing the older detail from rebuilding removed history.
+      if (!isCurrentOwner()) return;
       updateTaskRuntimeState((state) => ({ ...state, latestTaskId, taskOrder, pendingTask: null,
         tasksById: Object.fromEntries(tasks.map((task) => {
           const previous = state.tasksById[task.task_id];
           const summary = taskSummaryToRuntimeTask(task, previous?.imageAttachments || []);
-          return [task.task_id, previous?.runtimeHydrated && previous.updatedAt === summary.updatedAt ? previous : summary];
+          // Full records (including independently paged history) can be newer
+          // than the detail fetched before them. Do not downgrade their content.
+          return [task.task_id, previous && previous.runtimeHydrated !== false
+            && (previous.updatedAt === summary.updatedAt
+              || (previous.runtimeHydrated && (previous.updatedAt > summary.updatedAt
+                || taskIdsToRestore.includes(task.task_id)))) ? previous : summary];
         })),
       }), ownerConvId);
-      if (latestTaskId) await restoreTaskRuntimes([latestTaskId], {
-        targetConversationId: ownerConvId, isCurrentActivation: isCurrentOwner,
-      });
-      if (!isCurrentOwner()) return;
       mutateRuntime(ownerConvId, (rt) => {
         const active = Object.values(rt.taskRuntimeState.tasksById).find(isTaskActuallyActive);
         rt.activeTaskId = active?.taskId || null;

@@ -181,6 +181,9 @@ export function ChatComposer({
     sync: schedules?.configSync, conversationId: schedules?.currentConversationId, scopeId,
     loading: modelLoading,
     saveBlockedReason: modelConfigError,
+    validateConfig: (saved) => executionConfigError({ executionMode: saved.execution_mode,
+      provider: saved.llm_config_id, legacyProvider: saved.provider, modelId: saved.model_id,
+      workflow: currentSelection, nodeRuntimeConfigs: saved.node_runtime_configs || {}, providerOptions: resolvedProviderOptions }),
     readOnly: running || submitPending || waitingForSend || goalPending || agentLocked,
     initialAgentId: executionMode === 'chat' ? lockedAgentId : '',
     hasSentMessage,
@@ -803,12 +806,12 @@ export function ChatComposer({
               disabled={runConfigDisabled}
               readOnly={runConfigReadOnly}
               loading={modelLoading}
-              providerValue={providerId}
-              providerOptions={resolvedProviderOptions}
-              onProviderChange={setProviderId}
               modelError={providerModels.error}
               modelRefreshing={providerModels.refreshing}
               onModelRetry={providerModels.retry}
+              providerValue={providerId}
+              providerOptions={resolvedProviderOptions}
+              onProviderChange={setProviderId}
               agentValue={effectiveAgentId}
               agentOptions={resolvedAgentOptions}
               onAgentChange={changeAgent}

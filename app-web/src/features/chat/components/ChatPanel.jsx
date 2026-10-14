@@ -220,20 +220,20 @@ export function ChatPanel({
   const retryMessage = React.useCallback(async (message) => {
     const current = composerRunConfigRef.current;
     if (!current) throw new Error('Wait for the current provider/model configuration before retrying.');
-    const saved = await current?.ensureSaved?.();
-    return rowActionRef.current.onRetryTask?.(message.taskId, saved ? {
-      provider: saved.llm_config_id, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id,
-    } : null);
+    // Capture the originating handler before awaiting. The visible panel can
+    // switch conversations while this operation remains owned by the old one.
+    const onRetry = rowActionRef.current.onRetryTask;
+    return onRetry?.(message.taskId, { ensureSaved: current.ensureSaved });
   }, []);
   const editMessage = React.useCallback(async (text, message) => {
     const current = composerRunConfigRef.current;
     if (!current?.provider || !current.modelId) {
       throw new Error('Select an available provider and model before resending. Your changes have not been sent.');
     }
-    const saved = await current.ensureSaved();
-    return rowActionRef.current.onEditMessage?.(message.taskId, text, {
-      provider: saved.llm_config_id, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id,
-    });
+    // Claim the edit in its source runtime before waiting for configuration,
+    // just like Retry, so Stop can cancel it and navigation cannot retarget it.
+    const onEdit = rowActionRef.current.onEditMessage;
+    return onEdit?.(message.taskId, text, { ensureSaved: current.ensureSaved });
   }, []);
 
   // 批注校验要赶在送出发文之前跑，并把批注快照一起交给 onSend。

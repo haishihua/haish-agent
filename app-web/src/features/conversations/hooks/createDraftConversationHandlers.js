@@ -1,6 +1,7 @@
 import { eventDeltaText } from '../../chat/model/chat-text.js';
 import { compactStreamEvents } from '../../chat/model/stream-events.js';
 import { fetchCoalescedTaskRuntimeBatch } from '../model/task-runtime-requests.js';
+import { conversationRuntimeHasLiveTurn, createTaskRuntimeRestoreGuard } from '../model/runtime-restore-guard.js';
 import {
   forgetDraftConversationId,
   rememberDraftConversationId,
@@ -376,35 +377,56 @@ export function createDraftConversationHandlers(ctx) {
     }
   }
 
-  async function fetchTaskRuntimeDetail(taskId) {
+  async function fetchTaskRuntimeDetail(taskId, targetConversationId = null, signal) {
     if (!taskId) return null;
-    const existing = taskRuntimeFetchesRef.current.get(taskId);
-    if (existing) return existing;
-    const request = (async () => {
-      const cached = taskRuntimeEventCacheRef.current.get(taskId) || null;
-      const cursorQuery = cached?.lastEventId
-        ? `&after_event_id=${encodeURIComponent(cached.lastEventId)}`
-        : '';
-      const response = await apiFetch(`${API_BASE}/api/tasks/${taskId}?event_view=runtime${cursorQuery}`, {
-        method: 'GET',
-      }, { json: false });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        const error = new Error(payload?.detail || `task restore failed: ${response.status}`);
-        error.status = response.status;
-        error.taskId = taskId;
-        throw error;
-      }
-      return normalizeFetchedTaskRuntime(await response.json());
-    })();
-    taskRuntimeFetchesRef.current.set(taskId, request);
+    const fetchSingle = (joinBatch) => fetchCoalescedTaskRuntimeBatch(
+      taskRuntimeFetchesRef.current,
+      targetConversationId,
+      [taskId],
+      async (_ids, sharedSignal) => [await requestTaskRuntimeDetail(taskId, targetConversationId, sharedSignal)],
+      signal,
+      { requestKind: 'single', joinBatch },
+    );
+    let details;
     try {
-      return await request;
-    } finally {
-      if (taskRuntimeFetchesRef.current.get(taskId) === request) {
-        taskRuntimeFetchesRef.current.delete(taskId);
-      }
+      details = await fetchSingle(true);
+    } catch (error) {
+      // Backend batches are all-or-nothing: ANY missing id (or conversation)
+      // returns 404 for the group. It says nothing about this joined task.
+      // Confirm with a GET, bypassing other batches but still sharing GET leases.
+      if (error?.status !== 404 || error.runtimeRequestKind !== 'batch') throw error;
+      details = await fetchSingle(false);
     }
+    const { normalizedTask } = details[0];
+    if (targetConversationId && normalizedTask.conversation_id !== targetConversationId) {
+      throw new Error(`task ${taskId} does not belong to conversation ${targetConversationId}`);
+    }
+    return details[0];
+  }
+
+  async function requestTaskRuntimeDetail(taskId, targetConversationId, signal) {
+    const cached = taskRuntimeEventCacheRef.current.get(taskId) || null;
+    const cursorQuery = cached?.lastEventId
+      ? `&after_event_id=${encodeURIComponent(cached.lastEventId)}`
+      : '';
+    const response = await apiFetch(`${API_BASE}/api/tasks/${taskId}?event_view=runtime${cursorQuery}`, {
+      method: 'GET',
+      signal,
+    }, { json: false });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const error = new Error(payload?.detail || `task restore failed: ${response.status}`);
+      error.status = response.status;
+      error.taskId = taskId;
+      throw error;
+    }
+    const task = await response.json();
+    if (signal.aborted) throw new DOMException('Task runtime loading was cancelled', 'AbortError');
+    if (task.task_id !== taskId) throw new Error('task runtime response returned a different task');
+    if (targetConversationId && task.conversation_id !== targetConversationId) {
+      throw new Error(`task ${taskId} does not belong to conversation ${targetConversationId}`);
+    }
+    return normalizeFetchedTaskRuntime(task);
   }
 
   function normalizeFetchedTaskRuntime(task) {
@@ -426,13 +448,18 @@ export function createDraftConversationHandlers(ctx) {
 
   async function fetchTaskRuntimeBatch(targetConversationId, taskIds, signal) {
     if (!targetConversationId || !taskIds.length) return [];
-    return fetchCoalescedTaskRuntimeBatch(
+    const details = await fetchCoalescedTaskRuntimeBatch(
       taskRuntimeFetchesRef.current,
       targetConversationId,
       taskIds,
       (ids, sharedSignal) => requestTaskRuntimeBatch(targetConversationId, ids, sharedSignal),
       signal,
     );
+    // A joined unscoped GET still has to satisfy this batch caller's owner.
+    if (details.some(({ normalizedTask }) => normalizedTask.conversation_id !== targetConversationId)) {
+      throw new Error(`task batch does not belong to conversation ${targetConversationId}`);
+    }
+    return details;
   }
 
   async function requestTaskRuntimeBatch(targetConversationId, taskIds, signal) {
@@ -455,6 +482,7 @@ export function createDraftConversationHandlers(ctx) {
       const payload = await response.json().catch(() => ({}));
       const error = new Error(payload?.detail || `task batch restore failed: ${response.status}`);
       error.status = response.status;
+      error.runtimeRequestKind = 'batch';
       throw error;
     }
     const payload = await response.json();
@@ -483,8 +511,13 @@ export function createDraftConversationHandlers(ctx) {
     if (!targetConversationId) throw new Error('task restore requires a target conversation');
     if (typeof isCurrentActivation !== 'function') throw new Error('task restore requires an activation guard');
     if (!Array.isArray(taskIds) || taskIds.length === 0 || !isCurrentActivation()) return [];
-    const details = await fetchTaskRuntimeBatch(targetConversationId, taskIds, signal);
+    const canRestore = createTaskRuntimeRestoreGuard(getRuntime, targetConversationId);
+    const restorableIds = taskIds.filter(canRestore);
+    if (!restorableIds.length) return [];
+    const fetchedDetails = await fetchTaskRuntimeBatch(targetConversationId, restorableIds, signal);
     if (signal?.aborted || !isCurrentActivation()) return [];
+    const details = fetchedDetails.filter(({ normalizedTask }) => canRestore(normalizedTask.task_id));
+    if (!details.length) return [];
     updateTaskRuntimeState((state) => {
       const tasksById = { ...state.tasksById };
       let activeTaskId = state.activeTaskId;
@@ -492,11 +525,13 @@ export function createDraftConversationHandlers(ctx) {
         const taskId = normalizedTask.task_id;
         const nextTask = taskDetailToRuntimeTask(normalizedTask, tasksById[taskId] || null);
         tasksById[taskId] = nextTask;
-        if (isTaskActuallyActive(nextTask)) activeTaskId = taskId;
-        else if (activeTaskId === taskId) activeTaskId = null;
+        if (!conversationRuntimeHasLiveTurn(getRuntime?.(targetConversationId))) {
+          if (isTaskActuallyActive(nextTask)) activeTaskId = taskId;
+          else if (activeTaskId === taskId) activeTaskId = null;
+        }
       }
       return { ...state, activeTaskId, tasksById };
-    }, targetConversationId);
+    }, targetConversationId, { taskHydration: true });
     // 表盘：恢复路径拿回来的任务快照就是服务端权威读数（值 + 采样时刻），直接喂给
     // 唯一写入入口——当前会话改表盘、后台会话只落盘，切回去时用的是同一份。
     applyContextUsage(
@@ -512,12 +547,21 @@ export function createDraftConversationHandlers(ctx) {
   async function restoreTaskRuntime(taskId, {
     targetConversationId,
     isCurrentActivation,
+    signal,
   }) {
     if (!targetConversationId) throw new Error('task restore requires a target conversation');
     if (typeof isCurrentActivation !== 'function') throw new Error('task restore requires an activation guard');
     if (!isCurrentActivation()) return;
-    const detail = await fetchTaskRuntimeDetail(taskId);
-    if (!detail || !isCurrentActivation()) return;
+    const canRestore = createTaskRuntimeRestoreGuard(getRuntime, targetConversationId);
+    if (!canRestore(taskId)) return;
+    let detail;
+    try {
+      detail = await fetchTaskRuntimeDetail(taskId, targetConversationId, signal);
+    } catch (error) {
+      if (!isCurrentActivation() || !canRestore(taskId)) return;
+      throw error;
+    }
+    if (signal?.aborted || !detail || !isCurrentActivation() || !canRestore(taskId)) return;
     const { normalizedTask } = detail;
     if (normalizedTask.conversation_id !== targetConversationId) {
       throw new Error(`task ${taskId} does not belong to conversation ${targetConversationId}`);
@@ -527,16 +571,18 @@ export function createDraftConversationHandlers(ctx) {
       const taskOrder = state.taskOrder.includes(taskId) ? state.taskOrder : [...state.taskOrder, taskId];
       return {
         ...state,
-        activeTaskId: isTaskActuallyActive(nextTask)
-          ? taskId
-          : (state.activeTaskId === taskId ? null : state.activeTaskId),
+        activeTaskId: conversationRuntimeHasLiveTurn(getRuntime?.(targetConversationId))
+          ? state.activeTaskId
+          : (isTaskActuallyActive(nextTask)
+            ? taskId
+            : (state.activeTaskId === taskId ? null : state.activeTaskId)),
         taskOrder,
         tasksById: {
           ...state.tasksById,
           [taskId]: nextTask,
         },
       };
-    }, targetConversationId);
+    }, targetConversationId, { taskHydration: true });
     // 同上：任务轮询/单任务恢复也把实测快照喂给表盘（没有读数时不会覆盖现有值）。
     applyContextUsage(
       latestContextUsageFromTasks([normalizedTask], targetConversationId),
@@ -545,7 +591,7 @@ export function createDraftConversationHandlers(ctx) {
     return normalizedTask;
   }
 
-  async function restoreLatestTaskRuntime(taskId, { targetConversationId, isCurrentActivation }) {
+  async function restoreLatestTaskRuntime(taskId, { targetConversationId, isCurrentActivation, signal }) {
     if (!targetConversationId) throw new Error('latest task restore requires a target conversation');
     if (typeof isCurrentActivation !== 'function') throw new Error('latest task restore requires an activation guard');
     if (!taskId) {
@@ -554,6 +600,7 @@ export function createDraftConversationHandlers(ctx) {
     return restoreTaskRuntime(taskId, {
       targetConversationId,
       isCurrentActivation,
+      signal,
     });
   }
 
@@ -563,7 +610,8 @@ export function createDraftConversationHandlers(ctx) {
     });
   }
 
-  async function queueTaskInput(taskId, message, imageAttachments = [], displayMessage = message) {
+  async function queueTaskInput(taskId, message, imageAttachments = [], displayMessage = message, ownerConversationId) {
+    if (!ownerConversationId) throw new Error('task input requires a conversation owner');
     const images = Array.isArray(imageAttachments) ? imageAttachments : [];
     const response = await apiFetch(`${API_BASE}/api/tasks/${taskId}/inputs`, {
       method: 'POST',
@@ -589,6 +637,9 @@ export function createDraftConversationHandlers(ctx) {
     // queue, while the trace above keeps showing the in-flight tool calls.
     // The later `task_input_applied` stream event then flips it to "applied".
     const queuedEvent = payload?.event;
+    if (queuedEvent?.conversation_id && queuedEvent.conversation_id !== ownerConversationId) {
+      throw new Error('task input response returned a different conversation owner');
+    }
     const queuedPayload = queuedEvent?.payload || {};
     if (queuedEvent && taskId) {
       const queuedMessage = String(displayMessage || queuedPayload.message || message || '').trim();
@@ -598,6 +649,17 @@ export function createDraftConversationHandlers(ctx) {
         const task = state?.tasksById?.[taskId];
         if (!task) return state;
         const eventLog = Array.isArray(task.eventLog) ? task.eventLog : [];
+        // Polling or the applied SSE can beat the POST response. Input identity,
+        // not message text, decides whether the optimistic echo already exists.
+        if (eventLog.some((event) => (
+          (queuedEvent.event_id && (event.eventId || event.event_id) === queuedEvent.event_id)
+          || (queuedInputId && (
+            (event.type === 'task_input_queued' && (event.inputId || event.input_id) === queuedInputId)
+            || (event.type === 'task_input_applied' && (event.inputs || []).some(
+              (input) => (input.inputId || input.input_id) === queuedInputId,
+            ))
+          ))
+        ))) return state;
         return {
           ...state,
           tasksById: {
@@ -609,19 +671,20 @@ export function createDraftConversationHandlers(ctx) {
                 ...eventLog,
                 {
                   type: 'task_input_queued',
+                  eventId: queuedEvent.event_id || null,
                   timestamp: queuedEvent.created_at || new Date().toISOString(),
                   inputId: queuedInputId,
                   message: queuedMessage,
                   imageAttachments: queuedImages,
                   status: 'pending',
                   taskId,
-                  conversationId: queuedEvent.conversation_id || null,
+                  conversationId: ownerConversationId,
                 },
               ],
             },
           },
         };
-      });
+      }, ownerConversationId);
     }
     return payload;
   }
@@ -643,6 +706,7 @@ export function createDraftConversationHandlers(ctx) {
   async function stopConversationRuntimeBeforeDelete(nextConversationId, conversationSnapshot = null) {
     if (!nextConversationId) return;
     const targetRuntime = getRuntime(nextConversationId);
+    targetRuntime?.pendingRetry?.controller.abort();
     const taskState = targetRuntime?.taskRuntimeState || null;
     const taskId = targetRuntime?.activeTaskId
       || taskState?.activeTaskId

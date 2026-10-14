@@ -2,6 +2,7 @@ import { beginConversationLoadPerf, conversationLoadPerf } from '../../../shared
 import { taskFinalOutputText } from '../../tasks/model/runtime-events.js';
 import { createQuestAck } from '../../tasks/model/quest-ack.js';
 import { createGoalCommandHandler } from './createGoalCommandHandler.js';
+import { waitForAttemptConfigOperation } from '../model/attempt-run-config.js';
 
 // The AbortController ref is shared across renders; so is its request owner.
 const conversationLoadRequests = new WeakMap();
@@ -687,12 +688,12 @@ export function createConversationHandlers(ctx) {
     if (!response.ok && response.status !== 404) {
       throw new Error(`conversation delete failed: ${response.status}`);
     }
-    const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
-    let fallbackConversation = project.conversations.find((conversation) => (
+    const executionMode = project.executionMode;
+    const fallbackConversation = project.conversations.find((conversation) => (
       conversation.id !== nextConversationId && conversation.executionMode === executionMode
     ));
     if (!fallbackConversation) {
-      const detail = await createConversationInProject(project);
+      const detail = await createConversationInProject(project, undefined, executionMode);
       setWorkspaceState((state) => normalizeWorkspaceOrdering({
         ...state,
         projects: state.projects.map((item) => item.id === projectId ? {
@@ -700,7 +701,12 @@ export function createConversationHandlers(ctx) {
           conversations: item.conversations.filter((conversation) => conversation.id !== nextConversationId),
         } : item),
       }));
-      await activateConversationDetail(detail, { restoreLatest: false });
+      // Keep the replacement in its project even if deletion completed in the
+      // background. Navigation during DELETE or creation owns the selection.
+      setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, false));
+      if (conversationIdRef.current === nextConversationId) {
+        await activateConversationDetail(detail, { restoreLatest: false });
+      }
       return;
     }
     setWorkspaceState((state) => normalizeWorkspaceOrdering({
@@ -710,7 +716,7 @@ export function createConversationHandlers(ctx) {
         conversations: item.conversations.filter((conversation) => conversation.id !== nextConversationId),
       } : item),
     }));
-    if (nextConversationId === conversationId) {
+    if (nextConversationId === conversationIdRef.current) {
       await handleSelectConversation(projectId, fallbackConversation.id);
     }
   }
@@ -882,19 +888,76 @@ export function createConversationHandlers(ctx) {
     await activateConversationDetail(detail, { restoreLatest: false });
   }
 
-  async function handleRetryTask(task, editedMessage = null, runConfig = null) {
+  function handleRetryTask(task, editedMessage = null, runConfig = null) {
     const targetConversationId = task?.conversationId || task?.conversation_id;
-    if (!targetConversationId) throw new Error('Conversation is unavailable. Your changes have not been sent.');
-    if (task?.executionMode !== 'bot') {
-      await ctx.configSync?.waitForSave(targetConversationId);
-      if (!runConfig) {
-        const saved = await ctx.configSync?.load(targetConversationId);
-        runConfig = saved && { provider: saved.llm_config_id, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id };
-      }
-      if (!runConfig?.provider || !runConfig.modelId || !runConfig.agentId) throw new Error('Save the current Agent, provider and model selection before retrying.');
+    if (!targetConversationId) return Promise.reject(new Error('Conversation is unavailable. Your changes have not been sent.'));
+    const runtime = getRuntime?.(targetConversationId, { create: true });
+    const sourceTaskId = task?.taskId || task?.task_id || task?.id;
+    if (runtime?.pendingRetry) {
+      const pending = runtime.pendingRetry;
+      if (pending.sourceTaskId === sourceTaskId && pending.editedMessage === editedMessage) return pending.promise;
+      return Promise.reject(new Error('Another retry or edit is already waiting in this conversation. Your changes have not been sent.'));
     }
+    const controller = new AbortController();
+    // Claim before awaiting configuration. Returning to this conversation and
+    // clicking again joins the same action; navigation never aborts it.
+    const pendingRetry = { controller, promise: null, sourceTaskId, editedMessage };
+    if (runtime) runtime.pendingRetry = pendingRetry;
+    const publish = () => ctx.mutateRuntime?.(targetConversationId, () => {});
+    const run = performRetryTask(task, editedMessage, runConfig, pendingRetry, runtime);
+    pendingRetry.promise = run.catch((error) => {
+      showToast?.('error', String(error?.message || error));
+      throw error;
+    }).finally(() => {
+      if (runtime?.pendingRetry === pendingRetry) {
+        runtime.pendingRetry = null;
+        if (getRuntime(targetConversationId) === runtime) publish();
+      }
+    });
+    publish();
+    return pendingRetry.promise;
+  }
+
+  async function performRetryTask(task, editedMessage, runConfig, pendingRetry, expectedRuntime) {
+    const targetConversationId = task?.conversationId || task?.conversation_id;
+    const checkOwner = () => {
+      if (pendingRetry.controller.signal.aborted) throw new Error('Retry was stopped. Your changes have not been sent.');
+      if (expectedRuntime && getRuntime(targetConversationId) !== expectedRuntime) throw new Error('Conversation is unavailable. Your changes have not been sent.');
+    };
+    const ownedConfig = Boolean(runConfig?.ensureSaved);
+    const timeoutMs = ctx.attemptConfigTimeoutMs ?? 30_000;
+    const signal = pendingRetry.controller.signal;
+    const configuration = (async () => {
+      if (ownedConfig) {
+        const saved = await runConfig.ensureSaved({ background: editedMessage === null, signal, timeoutMs });
+        return saved && { provider: saved.llm_config_id, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id };
+      }
+      if (task?.executionMode !== 'bot') {
+        await ctx.configSync?.waitForSave(targetConversationId);
+        checkOwner();
+        if (!runConfig) {
+          const saved = await ctx.configSync?.load(targetConversationId);
+          return saved && { provider: saved.llm_config_id, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id };
+        }
+      }
+      return runConfig;
+    })();
+    try {
+      runConfig = await waitForAttemptConfigOperation(configuration, { signal, timeoutMs });
+    } catch (error) {
+      // Stop the action's continuation, not the shared load/save request. A late
+      // save must not start another preflight stage after timeout or cancellation.
+      pendingRetry.controller.abort();
+      throw error;
+    }
+    checkOwner();
+    if (task?.executionMode !== 'bot' && (!runConfig?.provider || !runConfig.modelId || !runConfig.agentId)) {
+      throw new Error('Save the current Agent, provider and model selection before retrying.');
+    }
+    if (editedMessage !== null && !canStartDeployForConversation?.(targetConversationId)) throw new Error('Conversation is still loading. Your changes have not been sent.');
     if ((task?.userMessageId || task?.user_message_id) && executeQuest) {
-      if (!canStartDeployForConversation(targetConversationId)) throw new Error('Conversation is still loading. Your changes have not been sent.');
+      // Persisted turns rerun in their own runtime, not necessarily the visible
+      // conversation. executeQuest enforces latest-turn, busy and Stop rules.
       const source = getRuntime(targetConversationId)?.taskRuntimeState?.tasksById?.[task.taskId || task.task_id || task.id] || task;
       // 编辑 / 重跑和输入框发送同一套语义：请求被接下就算发出去了。时间线上那一行的
       // 编辑框立刻收工、这一轮立刻以运行态渲染（新的 attempt 同时顶掉 source turn，
@@ -906,18 +969,10 @@ export function createConversationHandlers(ctx) {
         runConfig: runConfig || null,
         requestId: crypto.randomUUID(),
         onAccepted: ack.accept,
+        preflightSignal: pendingRetry.controller.signal,
       }), (error) => showToast('error', String(error?.message || error)));
     }
-    if (targetConversationId !== conversationIdRef.current) {
-      await loadAndActivateConversation({
-        projectId: findProjectByConversationId(workspaceState, targetConversationId)?.id,
-        conversationId: targetConversationId,
-        restoreLatest: false,
-      });
-    }
     const restoredMode = task?.executionMode === 'bot' ? 'workflow' : 'chat';
-    viewModeRef.current = restoredMode;
-    setViewMode(restoredMode);
     const selectionId = task?.executionMode === 'bot'
       ? task?.requestedWorkflowId
       : runConfig?.agentId;
@@ -932,7 +987,14 @@ export function createConversationHandlers(ctx) {
       task?.displayText || task?.title || '', task?.annotations || [], task?.nodeRuntimeConfigs || {},
     );
     request.targetConversationId = targetConversationId;
-    if (canStartDeployForConversation(targetConversationId)) startDeploy(request, targetConversationId);
+    request.executionMode = restoredMode === 'chat' ? 'chat' : 'bot';
+    request.originViewMode = restoredMode;
+    request.contextTasks = task?.contextTasks || [];
+    request.preflightSignal = pendingRetry.controller.signal;
+    request.agentId = restoredMode === 'chat' ? selectionId : null;
+    request.workflowId = restoredMode === 'workflow' ? selectionId : null;
+    checkOwner();
+    return startDeploy(request, targetConversationId);
   }
 
 

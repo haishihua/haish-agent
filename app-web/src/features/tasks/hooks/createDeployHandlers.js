@@ -103,6 +103,7 @@ export function createDeployHandlers(ctx) {
       return hadQueuedDeploy ? String(queuedRequest?.text || '') : '';
     }
     const targetRuntime = getRuntime(targetConvId, { create: true });
+    targetRuntime?.pendingRetry?.controller.abort();
     if (targetRuntime?.stopPromise) return '';
     const pendingRun = targetRuntime?.pendingRun || null;
     const currentTaskState = targetRuntime?.taskRuntimeState || null;
@@ -361,7 +362,7 @@ export function createDeployHandlers(ctx) {
     }
     pendingTask.requestedReasoningEffort = request.reasoningEffort ?? null;
     pendingTask.requestedProvider = request.providerRequest || '';
-    pendingTask.originViewMode = viewModeRef.current || viewMode;
+    pendingTask.originViewMode = request.originViewMode || viewModeRef.current || viewMode;
     request.pendingTask = pendingTask;
     return pendingTask;
   }
@@ -421,6 +422,7 @@ export function createDeployHandlers(ctx) {
   }
 
   function startDeploy(request, deployConvId, seedDetail = null) {
+    if (request.preflightSignal?.aborted) throw new Error('Retry was stopped. Your changes have not been sent.');
     const error = requestConfigError(request);
     if (error) { showToast('error', error); return false; }
     if (!deployConvId) return;
@@ -626,6 +628,7 @@ export function createDeployHandlers(ctx) {
             request.text,
             request.imageAttachments,
             request.displayText,
+            activeId,
           );
         })
         .then(() => true)

@@ -11,6 +11,7 @@ const { evictInactiveRuntimes } = await import('../../../src/features/conversati
 const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
 const events = await import('../../../src/features/tasks/model/runtime-events.js');
 const workspace = await import('../../../src/features/conversations/model/workspace-state.js');
+const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
 
 function deferred() {
   let resolve;
@@ -31,6 +32,7 @@ function makeHarness({ fetchDetail = async () => Response.json(detail()),
   let stopProjections = 0;
   let recoveries = 0;
   const calls = [];
+  const projections = [];
   const noop = () => {};
   const ctx = {
     ...tasks, ...events, API_BASE: '', providerOptions: [{ id: 'fixture', provider: 'custom' }],
@@ -38,7 +40,7 @@ function makeHarness({ fetchDetail = async () => Response.json(detail()),
     streamTargetConvIdRef: { current: null }, taskImageAttachmentsRef: { current: new Map() },
     chatFinalizedTaskIdsRef: { current: new Set() }, userCancelledTaskIdsRef: { current: new Set() },
     setConversationStopState: (update) => { stopState = update(stopState); stopProjections += 1; },
-    setBusy: noop, setShellSeeded: noop, setTaskRuntimeState: noop,
+    setBusy: noop, setShellSeeded: noop, setTaskRuntimeState: (state) => projections.push(state),
     setWorkspaceState: noop, normalizeWorkspaceOrdering: (state) => state, notifyTaskComplete: noop,
     isTaskActuallyActive: workspace.isTaskActuallyActive, taskUpdatedTimestamp: workspace.taskUpdatedTimestamp,
     timestampValue: workspace.timestampValue, normalizeChatImageRefs: (images) => images,
@@ -79,7 +81,7 @@ function makeHarness({ fetchDetail = async () => Response.json(detail()),
     stream.applyScheduledEvent({ type: 'task.event', schedule_id: 'schedule', run_id: 'scheduled-run',
       conversation_id: 'conversation', event: { task_id: 'scheduled', conversation_id: 'conversation', ...event } });
   }
-  return { ctx, stream, stop, runtime, source, calls, switchTo, prune, schedule, runtimes,
+  return { ctx, stream, stop, runtime, source, calls, projections, switchTo, prune, schedule, runtimes,
     stopState: () => stopState, stopProjections: () => stopProjections, recoveries: () => recoveries };
 }
 
@@ -179,6 +181,113 @@ test('late startup identity survives navigation and cache pressure so the exact 
   finish.resolve();
   await run;
   await barrier;
+});
+
+test('Stop retains the visible trace until the full runtime returns, including live tasks without a hydration marker', async () => {
+  for (const runtimeHydrated of [true, undefined]) {
+    const hydration = deferred();
+    const summary = { ...detail().tasks[0], status: 'cancelled', updated_at: '2026-01-01T00:00:03Z' };
+    const h = makeHarness({
+      fetchDetail: async () => Response.json({ ...detail(), tasks: [summary] }),
+      restore: async (_ids, { isCurrentActivation }) => {
+        await hydration.promise;
+        if (!isCurrentActivation()) return;
+        // Runtime is newer than the preceding conversation summary. That old
+        // summary must not replace the newly fetched trace either.
+        const full = { ...summary, updated_at: '2026-01-01T00:00:04Z', events: [
+          { type: 'agent_progress_delta', message: 'Preserved progress' },
+          { type: 'tool_call_started', call_id: 'call', tool_name: 'read_file' },
+          { type: 'tool_call_completed', call_id: 'call', tool_name: 'read_file' },
+        ] };
+        h.ctx.updateTaskRuntimeState((state) => ({ ...state, tasksById: {
+          ...state.tasksById, source: tasks.taskDetailToRuntimeTask(full, state.tasksById.source),
+        } }), 'conversation');
+      },
+    });
+    const live = { ...h.source, status: 'running', runtimeHydrated, updatedAt: 1,
+      answerText: 'Preserved answer', eventLog: [
+        { type: 'agent_progress_delta', message: 'Preserved progress' },
+        { type: 'tool_call_started', callId: 'call', toolName: 'read_file' },
+      ] };
+    h.runtime.taskRuntimeState.tasksById.source = live;
+    h.runtime.taskRuntimeState.activeTaskId = 'source';
+    h.runtime.activeTaskId = 'source';
+    h.runtime.activeRunId = 'run';
+    h.runtime.busy = true;
+    h.stop.handleStop();
+    const stopped = h.runtime.taskRuntimeState.tasksById.source;
+    const barrier = h.runtime.stopPromise;
+    await tick();
+    assert.equal(h.runtime.taskRuntimeState.tasksById.source, stopped, 'no summary-only intermediate snapshot');
+    hydration.resolve();
+    await barrier;
+    for (const state of h.projections) {
+      const task = state.tasksById.source;
+      assert.deepEqual(buildChatTimeline(task, task.status).items.map((item) => item.kind), ['text', 'tool']);
+    }
+    const restored = h.runtime.taskRuntimeState.tasksById.source;
+    assert.equal(restored.runtimeHydrated, true);
+    assert.equal(restored.eventLog.length, 3, 'the latest full runtime wins over its older summary');
+    assert.equal(restored.updatedAt, Date.parse('2026-01-01T00:00:04Z'));
+  }
+});
+
+test('Stop recovery preserves unchanged live-built history and refreshes changed history without clearing either trace', async () => {
+  const hydration = deferred();
+  let restoredIds;
+  const summaries = ['unchanged', 'changed', 'source'].map(task_id => ({
+    task_id, conversation_id: 'conversation', title: 'Synthetic question', status: 'cancelled',
+    updated_at: '2026-01-01T00:00:03Z',
+  }));
+  const h = makeHarness({
+    fetchDetail: async () => Response.json({ ...detail(), tasks: summaries }),
+    restore: async (ids) => {
+      restoredIds = ids;
+      await hydration.promise;
+      h.ctx.updateTaskRuntimeState((state) => ({ ...state, tasksById: Object.fromEntries(
+        Object.entries(state.tasksById).map(([id, task]) => [id, ids.includes(id)
+          ? tasks.taskDetailToRuntimeTask({ ...summaries.find(summary => summary.task_id === id),
+            events: [{ type: 'agent_progress_delta', message: 'Preserved progress' }] }, task) : task]),
+      ) }), 'conversation');
+    },
+  });
+  const tasksById = Object.fromEntries(summaries.map((summary) => [summary.task_id, {
+    ...h.source, taskId: summary.task_id, status: 'cancelled',
+    updatedAt: summary.task_id === 'changed' ? 1 : Date.parse(summary.updated_at),
+    // No runtimeHydrated property, as in tasks built from a live stream.
+    eventLog: [{ type: 'agent_progress_delta', message: 'Preserved progress' }],
+  }]));
+  h.runtime.taskRuntimeState = { ...h.runtime.taskRuntimeState, taskOrder: Object.keys(tasksById), tasksById };
+  const recovering = h.ctx.recoverConversationTasks('conversation');
+  await tick();
+  assert.deepEqual(restoredIds, ['source', 'changed']);
+  assert.equal(h.runtime.taskRuntimeState.tasksById, tasksById);
+  hydration.resolve();
+  await recovering;
+  assert.equal(h.runtime.taskRuntimeState.tasksById.unchanged, tasksById.unchanged);
+  for (const state of h.projections) {
+    for (const task of Object.values(state.tasksById)) assert.equal(task.eventLog.length, 1);
+  }
+});
+
+test('a failed Stop runtime refresh keeps existing content and exposes the reconciliation error', async () => {
+  const hydration = deferred();
+  const h = makeHarness({ restore: () => hydration.promise });
+  const live = { ...h.source, status: 'running', runtimeHydrated: true,
+    answerText: 'Preserved answer', eventLog: [{ type: 'agent_progress_delta', message: 'Preserved progress' }] };
+  h.runtime.taskRuntimeState.tasksById.source = live;
+  h.runtime.taskRuntimeState.activeTaskId = 'source';
+  h.runtime.activeTaskId = 'source';
+  h.runtime.busy = true;
+  h.stop.handleStop();
+  const stopped = h.runtime.taskRuntimeState.tasksById.source;
+  const barrier = h.runtime.stopPromise;
+  await tick();
+  hydration.reject(new Error('Synthetic runtime fetch failed'));
+  await barrier;
+  assert.equal(h.runtime.taskRuntimeState.tasksById.source, stopped);
+  assert.equal(stopped.answerText, 'Preserved answer');
+  assert.match(h.stopState().error, /verify/);
 });
 
 test('pending run and history requests are pinned independently of busy and Stop state', () => {
