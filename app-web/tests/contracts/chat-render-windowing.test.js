@@ -38,12 +38,17 @@ test('the message list renders a window of rows, not the whole conversation', ()
 test('scrolling to the top pages rows in and keeps the reading position', () => {
   assert.match(panelSource, /if \(hasEarlierRows && shouldGrowRowWindow\(element\.scrollTop, CHAT_ROW_WINDOW_TRIGGER_PX\)\) growEarlierRows\(\);/);
   // 一次滚动会连发好几个事件（上一页还没提交）：只放一页在路上，不然一次就补掉好几页。
-  assert.match(panelSource, /const target = pendingGrowthRef\.current \|\| growRowWindow\(rowWindow, listRows\.length\);\n\s*if \(target <= rowWindow\) return;\n\s*pendingGrowthRef\.current = target;\n\s*captureRowAnchor\(\);\n\s*setRowWindow\(target\);/);
+  assert.match(panelSource, /if \(pendingGrowthRef\.current\) return;\n\s*const target = growRowWindow\(rowWindow, listRows\.length\);\n\s*if \(target <= rowWindow\) return;\n\s*pendingGrowthRef\.current = target;\n\s*captureRowAnchor\(\);\n\s*setRowWindow\(target\);/);
   assert.match(panelSource, /React\.useLayoutEffect\(\(\) => \{\n\s*pendingGrowthRef\.current = 0;\n\s*\}, \[rowWindow\]\);/);
   // 补页把行插在上面：锚点行按原来的屏幕位置放回去；贴着底部时不记锚点（自动跟随负责）。
   assert.match(panelSource, /element\.scrollHeight - element\.scrollTop - element\.clientHeight <= 4\) return;/);
   assert.match(panelSource, /\.find\(\(row\) => row\.getClientRects\(\)\.length && row\.getBoundingClientRect\(\)\.bottom > viewportTop \+ 1\);/);
-  assert.match(panelSource, /element\.scrollTop \+= \(anchor\.node\.getBoundingClientRect\(\)\.top - viewportTop\) - anchor\.offset;/);
+  assert.match(panelSource, /const delta = \(anchor\.node\.getBoundingClientRect\(\)\.top - viewportTop\) - anchor\.offset;\n\s*element\.scrollTop \+= delta;/);
+  // Resolve only the prefix that contributes to the anchor's position. Keep
+  // it laid out through paint, then restore lazy layout, including on cleanup.
+  assert.match(panelSource, /previousVisibility\.push\(\[row, row\.style\.contentVisibility\]\);\n\s*row\.style\.contentVisibility = 'visible';\n\s*if \(row === anchor\.node\) break;/);
+  assert.match(panelSource, /let frame = requestAnimationFrame\(\(\) => \{\n\s*frame = requestAnimationFrame\(\(\) => \{/);
+  assert.match(panelSource, /return \(\) => \{\n\s*cancelAnimationFrame\(frame\);\n\s*for \(const \[row, visibility\] of previousVisibility\) row\.style\.contentVisibility = visibility;/);
   // 窗口比视口还矮时继续补，否则列表滚不动、永远触发不了补页。
   assert.match(panelSource, /element\.scrollHeight <= element\.clientHeight \+ CHAT_ROW_WINDOW_TRIGGER_PX\) growEarlierRows\(\);/);
   // 键盘用户也有入口。
@@ -55,6 +60,15 @@ test('leaving a conversation keeps its rendered rows alive for the trip back', (
   // 切回来不该重新解析窗口里的正文：离开的那组带着 hidden 留在原地，同一个组件、
   // 同一个 key，React 复用 fiber 与 DOM。
   assert.match(panelSource, /if \(leavingGroup && leavingGroup\.conversationId !== conversationId\) \{/);
+  // A native scroll's queued page can be superseded by navigation back to the
+  // same committed count. Owner changes, not only rowWindow commits, release
+  // the growth lock and discard the old owner's reading anchor (DOM fixture).
+  const ownerChange = panelSource.slice(
+    panelSource.indexOf('if (leavingGroup && leavingGroup.conversationId !== conversationId) {'),
+    panelSource.indexOf('rememberRowWindow(rowWindowMemoryRef.current, leavingGroup.conversationId, leavingGroup.count);'),
+  );
+  assert.match(ownerChange, /pendingGrowthRef\.current = 0;/);
+  assert.match(ownerChange, /rowAnchorRef\.current = null;/);
   assert.match(panelSource, /rememberRowWindow\(rowWindowMemoryRef\.current, leavingGroup\.conversationId, leavingGroup\.count\);/);
   assert.match(panelSource, /setKeptGroup\(leavingGroup\);\n\s*setRowWindow\(recallRowWindow\(rowWindowMemoryRef\.current, conversationId\)\);/);
   assert.match(panelSource, /const ChatRowGroup = React\.memo\(function ChatRowGroup\(\{ group, hidden = false \}\) \{/);

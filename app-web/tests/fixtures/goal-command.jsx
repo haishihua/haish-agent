@@ -30,6 +30,7 @@ function Harness() {
   api = { inputRef, draft, setProviders: (value) => flushSync(() => setProviders(value)), setDraft: (text) => flushSync(() => setDraft(text)), setRunning: (value) => flushSync(() => setRunning(value)), setScopeId: (value) => flushSync(() => setScopeId(value)) };
   return <ChatComposer key={scopeId} selectionStorageKey={selectionKey} inputRef={inputRef} scopeId={scopeId} draft={draft} onDraftChange={setDraft}
     providerOptions={providers} agentOptions={[{ id: 'agent', skills: [{ name: 'goal' }, { name: 'Grill-Me' }] }]} defaultAgentId="agent" running={running}
+    history={['Older submitted message']}
     onSend={() => { ordinary++; return true; }} onStop={() => {}}
     onGoalCommand={async (payload) => { calls.push(payload); await sleep(80); return accept; }} />;
 }
@@ -122,7 +123,10 @@ async function run() {
   await sleep(80);
   document.querySelector('[aria-label="Run Goal Loop"]')?.click();
   await sleep(160);
-  check(calls.at(-1)?.runConfig?.provider === 'custom.source' && calls.at(-1)?.runConfig?.model_id === 'gpt-5.5' && calls.at(-1)?.runConfig?.reasoning_effort === 'high', 'Goal snapshots the committed provider/model with normalized high effort');
+  const inheritedConfig = calls.at(-1)?.runConfig;
+  check(inheritedConfig?.llm_config_id === 'source' && !Object.hasOwn(inheritedConfig || {}, 'provider')
+    && inheritedConfig?.model_id === 'gpt-5.5' && inheritedConfig?.reasoning_effort === 'high',
+  `Goal snapshots the committed llm_config_id/model with normalized high effort (${JSON.stringify(inheritedConfig)})`);
   // Use the editor insertion API and native keyboard history, not setDraft,
   // so token-only undo/redo must update the actual send button and route.
   api.setRunning(false);
@@ -160,6 +164,34 @@ async function run() {
     await sleep(160);
     check(calls.length === before + 1 && calls.at(-1)?.prompt === task && ordinary === 0,
       `restored Goal submits exactly once without falling through to Chat (${task || 'bare'})`);
+  }
+  // A selection spanning real text is never a start/end boundary, even
+  // though the preceding Goal/Skill decorator has empty text content.
+  for (const command of ['goal', 'Grill-Me']) {
+    api.setDraft(''); api.setScopeId(`range-${command}`); await sleep(100);
+    api.setDraft(`/${command}`); await sleep(80); key('Tab'); await sleep(80);
+    api.setDraft('Delete selected text'); await sleep(100);
+    const editor = document.querySelector('[contenteditable="true"]');
+    const selectBody = () => {
+      editor.focus();
+      const body = [...editor.querySelectorAll('[data-lexical-text="true"]')].find((node) => node.textContent === 'Delete selected text');
+      if (!body?.firstChild) throw new Error(`Missing ${command} text body`);
+      const range = document.createRange(); range.selectNodeContents(body);
+      const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    };
+    selectBody(); await sleep(40);
+    check(!api.inputRef.current.isSelectionAtStart() && !api.inputRef.current.isSelectionAtEnd(), `${command} range is neither start nor end`);
+    key('ArrowUp'); await sleep(80);
+    check(api.draft === 'Delete selected text' && !editor.textContent.includes('Older submitted message'), `${command} selected text does not enter Up history`);
+    selectBody(); await sleep(40); key('Backspace'); await sleep(100);
+    check(api.draft === '' && document.querySelector(command === 'goal' ? '[data-command-token="goal"]' : '[data-skill-token="Grill-Me"]'),
+      `${command} Backspace deletes selected text rather than removing the token`);
+    window.getSelection().removeAllRanges();
+    check(!api.inputRef.current.isSelectionAtStart() && !api.inputRef.current.isSelectionAtEnd(), `${command} absent selection is not a boundary`);
+    api.inputRef.current.focusAtEnd(); await sleep(80);
+    check(api.inputRef.current.isSelectionAtStart() && api.inputRef.current.isSelectionAtEnd(), `${command} bare token has a valid collapsed boundary`);
+    key('Backspace'); await sleep(80);
+    check(!document.querySelector('[data-command-token], [data-skill-token]'), `${command} collapsed start still removes the token`);
   }
   check(errors.length === 0, `no page errors: ${errors.join(', ')}`);
 }

@@ -260,7 +260,7 @@ test('saving a comment hands focus back to the composer', () => {
   const save = source.match(/const save = \(\) => \{([\s\S]*?)\n {2}\};/);
   assert.ok(save, 'MessageAnnotations must keep its save handler');
   assert.match(save[1], /if \(onSave\(item\) !== false\) \{[^}]*close\(\);[^}]*onSaved\?\.\(\);/);
-  assert.match(source, /onSave, onSaved, onError \}, ref\)/);
+  assert.match(source, /onSave, onSaved, onError, onNavigate \}, ref\)/);
   const panel = readFileSync(new URL('../../../src/features/chat/components/ChatPanel.jsx', import.meta.url), 'utf8');
   assert.match(panel, /onSave=\{saveAnnotation\} onSaved=\{focusComposerInput\}/, 'ChatPanel must wire the post-save focus');
   const focus = panel.match(/const focusComposerInput = React\.useCallback\(\(\) => \{([\s\S]*?)\}, \[\]\);/);

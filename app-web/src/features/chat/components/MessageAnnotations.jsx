@@ -6,7 +6,7 @@ import { scrollToConversationMatch } from '../model/conversation-search.js';
 import './message-annotations.css';
 
 /** Selection is snapshotted before focus moves into the comment editor. */
-export const MessageAnnotations = React.forwardRef(function MessageAnnotations({ listRef, items, drafts, onSave, onSaved, onError }, ref) {
+export const MessageAnnotations = React.forwardRef(function MessageAnnotations({ listRef, items, drafts, onSave, onSaved, onError, onNavigate }, ref) {
   const [selection, setSelection] = React.useState(null);
   const [editor, setEditor] = React.useState(null);
   const [comment, setComment] = React.useState('');
@@ -29,19 +29,20 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
   }, [refs]);
   const edit = React.useCallback((item) => {
     const range = findAnnotationRange(listRef.current, item);
-    if (range) { scrollToConversationMatch(listRef.current, range); anchorTo(range); }
+    if (range) { onNavigate?.(); scrollToConversationMatch(listRef.current, range); anchorTo(range); }
     else refs.setPositionReference(document.activeElement);
     setSelection(null);
     setEditor(item);
     setComment(item.comment);
-  }, [anchorTo, listRef, refs]);
+  }, [anchorTo, listRef, refs, onNavigate]);
   const jump = React.useCallback((item) => {
     const range = findAnnotationRange(listRef.current, item);
     if (!range) { onError('The quoted text could not be located in this conversation.'); return; }
     onError('');
+    onNavigate?.();
     scrollToConversationMatch(listRef.current, range);
     if (globalThis.CSS?.highlights && globalThis.Highlight) CSS.highlights.set('annotation-focus', new Highlight(range));
-  }, [listRef, onError]);
+  }, [listRef, onError, onNavigate]);
   React.useImperativeHandle(ref, () => ({ edit, jump }), [edit, jump]);
 
   React.useEffect(() => {

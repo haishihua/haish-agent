@@ -3,11 +3,16 @@ import React from 'react';
 // Allow fractional scroll offsets without hiding a genuinely available action.
 const SHOW_THRESHOLD = 2;
 
-export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = false, resetKey = '' }) {
+export const ScrollToBottomButton = React.forwardRef(function ScrollToBottomButton({ scrollRef, className = '', autoFollow = false, resetKey = '' }, ref) {
   const [visible, setVisible] = React.useState(false);
   const frameRef = React.useRef(null);
   const followLatestRef = React.useRef(true);
   const autoFollowRef = React.useRef(autoFollow);
+  React.useImperativeHandle(ref, () => ({
+    // Explicit navigation must opt out synchronously, before a queued layout
+    // update or a programmatic scroll event can pull the reader back down.
+    stopFollowing() { followLatestRef.current = false; },
+  }), []);
   React.useLayoutEffect(() => {
     autoFollowRef.current = autoFollow;
     // Search/programmatic navigation relinquishes following. Turning the
@@ -117,4 +122,4 @@ export function ScrollToBottomButton({ scrollRef, className = '', autoFollow = f
       </svg>
     </button>
   );
-}
+});

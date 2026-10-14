@@ -134,6 +134,10 @@ export function ChatPanel({
   // 这是“渲染期调整 state”的标准写法：先读上一轮的组、置空引用，再 setState。
   const leavingGroup = liveGroupRef.current;
   if (leavingGroup && leavingGroup.conversationId !== conversationId) {
+    // Queued growth/reading anchors belong to the conversation being left,
+    // even when the recalled window equals the last committed rowWindow.
+    pendingGrowthRef.current = 0;
+    rowAnchorRef.current = null;
     liveGroupRef.current = null;
     rememberRowWindow(rowWindowMemoryRef.current, leavingGroup.conversationId, leavingGroup.count);
     setKeptGroup(leavingGroup);
@@ -153,11 +157,15 @@ export function ChatPanel({
   const hasEarlierRows = !searchActive && windowedRows.length < listRows.length;
   const [annotationNotice, setAnnotationNotice] = React.useState('');
   const annotationUiRef = React.useRef(null);
+  const scrollNavigationRef = React.useRef(null);
+  const stopFollowingLatest = React.useCallback(() => scrollNavigationRef.current?.stopFollowing(), []);
   // 批注列表拿的是全量批注，但被引用正文所在的行可能落在窗口外（窗口只盖尾部）。
   // 跳转/编辑都要在 DOM 里找到那段原文，所以先把窗口一次补到盖住目标行，提交后再跳；
   // 窗口化之前所有行都在，不存在这一步。
   const pendingAnnotationRef = React.useRef(null);
   const runAnnotationAction = React.useCallback((item, action) => {
+    // Release follow before expanding the row window, not after its resize.
+    stopFollowingLatest();
     const sourceId = item?.source_message_id;
     const index = listRows.findIndex((row) => row.messageId === sourceId || row.id === sourceId);
     const needed = index >= 0 ? rowWindowCovering(index, listRows.length) : 0;
@@ -167,7 +175,7 @@ export function ChatPanel({
       return;
     }
     action(item);
-  }, [listRows, rowWindow]);
+  }, [listRows, rowWindow, stopFollowingLatest]);
   const jumpToAnnotation = React.useCallback((item) => runAnnotationAction(item, (target) => annotationUiRef.current?.jump(target)), [runAnnotationAction]);
   const editAnnotation = React.useCallback((item) => runAnnotationAction(item, (target) => annotationUiRef.current?.edit(target)), [runAnnotationAction]);
   React.useLayoutEffect(() => {
@@ -269,7 +277,8 @@ export function ChatPanel({
   }, []);
   const growEarlierRows = React.useCallback(() => {
     // 一次滚动可能连发好几个事件（上一页还没提交）：只放一页在路上，其余等提交后再说。
-    const target = pendingGrowthRef.current || growRowWindow(rowWindow, listRows.length);
+    if (pendingGrowthRef.current) return;
+    const target = growRowWindow(rowWindow, listRows.length);
     if (target <= rowWindow) return;
     pendingGrowthRef.current = target;
     captureRowAnchor();
@@ -282,10 +291,30 @@ export function ChatPanel({
     const anchor = rowAnchorRef.current;
     rowAnchorRef.current = null;
     const element = listRef.current;
-    if (!anchor || !element || !anchor.node.isConnected) return;
+    if (!anchor || !element || !anchor.node.isConnected || !anchor.node.getClientRects().length) return;
+    // A prepend changes which content-visibility:auto rows Chrome lays out.
+    // Resolve only the prefix that determines the reading anchor's position;
+    // estimates replaced after this correction must not shift it a second time.
+    // Keep these boxes through a paint so `auto` remembers their measured sizes.
+    const previousVisibility = [];
+    for (const row of element.querySelectorAll('.chat-row-group:not([hidden]) .chat-message-row')) {
+      previousVisibility.push([row, row.style.contentVisibility]);
+      row.style.contentVisibility = 'visible';
+      if (row === anchor.node) break;
+    }
     const viewportTop = element.getBoundingClientRect().top;
-    element.scrollTop += (anchor.node.getBoundingClientRect().top - viewportTop) - anchor.offset;
-  }, [rowWindow]);
+    const delta = (anchor.node.getBoundingClientRect().top - viewportTop) - anchor.offset;
+    element.scrollTop += delta;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        for (const [row, visibility] of previousVisibility) row.style.contentVisibility = visibility;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      for (const [row, visibility] of previousVisibility) row.style.contentVisibility = visibility;
+    };
+  }, [rowWindow, conversationId]);
   React.useLayoutEffect(() => {
     // Loading 占位不是正文：等真实消息挂载后再测高度，避免等待详情时把窗口补到全量。
     if (loading) return;
@@ -405,7 +434,7 @@ export function ChatPanel({
           <ApprovalInline conversationId={conversationId} />
         </div>
         {!loading && messages.length > 0 ? (
-          <ScrollToBottomButton scrollRef={listRef} autoFollow={!searchActive} resetKey={`${conversationId || ''}:${sendScrollKey}`} />
+          <ScrollToBottomButton ref={scrollNavigationRef} scrollRef={listRef} autoFollow={!searchActive} resetKey={`${conversationId || ''}:${sendScrollKey}`} />
         ) : null}
       </div>
       <ChatComposer
@@ -459,7 +488,7 @@ export function ChatPanel({
         onRunConfigChange={handleComposerRunConfig}
         contextUsage={contextUsage}
       />
-      <MessageAnnotations key={conversationId || 'draft'} ref={annotationUiRef} listRef={listRef}
+      <MessageAnnotations key={conversationId || 'draft'} ref={annotationUiRef} onNavigate={stopFollowingLatest} listRef={listRef}
         items={highlightedAnnotations} drafts={annotationDrafts} onSave={saveAnnotation} onSaved={focusComposerInput} onError={setAnnotationNotice} />
       <ImagePreviewOverlay image={previewImage} onClose={closeImagePreview} />
     </section>

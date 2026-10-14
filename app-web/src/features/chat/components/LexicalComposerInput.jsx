@@ -122,12 +122,12 @@ function $composerValue() {
   return composePathReferenceDraft(root.getTextContent(), $getState(root, composerReferenceState));
 }
 
-function selectionHasContent(rootElement, direction) {
-  const domSelection = window.getSelection();
+function selectionAtBoundary(rootElement, direction) {
+  const domSelection = rootElement?.ownerDocument.defaultView?.getSelection();
   if (!rootElement || !domSelection || !domSelection.isCollapsed || !domSelection.anchorNode) return false;
-  if (!rootElement.contains(domSelection.anchorNode)) return false;
+  if (!rootElement.contains(domSelection.anchorNode) || !rootElement.contains(domSelection.focusNode)) return false;
 
-  const range = document.createRange();
+  const range = rootElement.ownerDocument.createRange();
   range.selectNodeContents(rootElement);
   if (direction === 'before') {
     range.setEnd(domSelection.anchorNode, domSelection.anchorOffset);
@@ -135,8 +135,9 @@ function selectionHasContent(rootElement, direction) {
     range.setStart(domSelection.anchorNode, domSelection.anchorOffset);
   }
   const fragment = range.cloneContents();
-  fragment.querySelectorAll?.('.chat-skill-token-host, [data-skill-token], [data-command-token]').forEach((node) => node.remove());
-  return Boolean(fragment.textContent || fragment.querySelector?.('br'));
+  // Ignore Lexical's caret placeholder, but keep real user line breaks.
+  fragment.querySelectorAll?.('.chat-skill-token-host, [data-skill-token], [data-command-token], [data-lexical-managed-linebreak]').forEach((node) => node.remove());
+  return !(fragment.textContent || fragment.querySelector?.('br'));
 }
 
 function ComposerController({ value, selectedSkill, selectedCommand, disabled, maxLength, onChange, onTokenChange, onReferencesChange, apiRef }) {
@@ -216,10 +217,10 @@ function ComposerController({ value, selectedSkill, selectedCommand, disabled, m
         editor.focus();
       },
       isSelectionAtStart() {
-        return !selectionHasContent(editor.getRootElement(), 'before');
+        return selectionAtBoundary(editor.getRootElement(), 'before');
       },
       isSelectionAtEnd() {
-        return !selectionHasContent(editor.getRootElement(), 'after');
+        return selectionAtBoundary(editor.getRootElement(), 'after');
       },
     };
     return () => {

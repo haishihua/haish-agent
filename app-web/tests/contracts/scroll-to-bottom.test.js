@@ -125,6 +125,28 @@ test('streaming follows the bottom but preserves even a small upward scroll', ()
   assert.equal(element.scrollTop, element.scrollHeight - VIEWPORT_HEIGHT);
   assert.equal(visible, false);
 
+  // Invoke the public navigation API with a resize already queued while at
+  // the bottom. No wheel/key gesture accompanies a quote's programmatic jump.
+  const navigationBody = source.match(/React\.useImperativeHandle\(ref, \(\) => \(\{([\s\S]*?)\}\), \[\]\);/)[1];
+  const navigation = new Function('followLatestRef', `return ({${navigationBody}});`)(followLatestRef);
+  resize();
+  navigation.stopFollowing();
+  element.scrollTop = 100;
+  listeners.get('scroll')();
+  element.scrollHeight += growth;
+  resize(); flush();
+  assert.equal(element.scrollTop, 100, 'explicit quote navigation releases pending auto-follow synchronously');
+  assert.equal(visible, true);
+  resize(); flush();
+  assert.equal(element.scrollTop, 100, 'subsequent layout frames keep the old quote in view');
+  const latestBody = source.match(/const scrollToLatest = \(\) => \{([\s\S]*?)\n {2}\};/)[1];
+  element.scrollTo = ({ top }) => { element.scrollTop = top; };
+  new Function('followLatestRef', 'scrollRef', latestBody)(followLatestRef, { current: element });
+  listeners.get('scroll')(); flush();
+  element.scrollHeight += growth;
+  resize(); flush();
+  assert.equal(element.scrollTop, element.scrollHeight - VIEWPORT_HEIGHT, 'latest button restores follow after explicit navigation');
+
   const smallUpwardScroll = 20;
   resize(); // Already queued when the user scrolls away.
   listeners.get('wheel')({ deltaY: -smallUpwardScroll });

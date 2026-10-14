@@ -18,7 +18,7 @@ import { flushSync } from 'react-dom';
 import { ChatPanel } from '../../src/features/chat/components/ChatPanel.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import { collectConversationMatches } from '../../src/features/chat/model/conversation-search.js';
-import { CHAT_ROW_WINDOW_INITIAL, CHAT_ROW_WINDOW_PAGE } from '../../src/features/chat/model/chat-row-window.js';
+import { CHAT_ROW_WINDOW_INITIAL, CHAT_ROW_WINDOW_PAGE, CHAT_ROW_WINDOW_TRIGGER_PX } from '../../src/features/chat/model/chat-row-window.js';
 import '../../styles/chat.css';
 
 window.__pageErrors = [];
@@ -75,7 +75,7 @@ const panel = (conversationId, messages) => (
 );
 
 const listNode = () => document.querySelector('.chat-message-list');
-const rows = () => [...document.querySelectorAll('.chat-message-row')];
+const rows = () => [...document.querySelectorAll('.chat-row-group:not([hidden]) .chat-message-row')];
 const scrolledToBottom = () => {
   const element = listNode();
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 2;
@@ -106,29 +106,50 @@ async function main() {
   // 用户没有真的动手滚的时候，应用是一路跟着最新一条走的（ScrollToBottomButton 的
   // followLatest 只在 wheel / 键盘 / 指针手势下才关闭）：所以先补一个向上的 wheel，
   // 才等于“用户正在往上读”。否则行一变就被拽回底部。
-  listNode().dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true }));
-  listNode().scrollTop = 320;
-  const anchorBefore = firstVisibleRow();
-  const anchorId = anchorBefore?.dataset.messageId;
-  const listTop = listNode().getBoundingClientRect().top;
-  const trace = (label) => {
-    const node = document.querySelector(`[data-message-id="${anchorId}"]`);
-    const list = listNode();
-    const contentOffset = (element) => (element ? Math.round(list.scrollTop + element.getBoundingClientRect().top - list.getBoundingClientRect().top) : 'gone');
-    return [label, rows().length, Math.round(list.scrollTop), Math.round(list.scrollHeight), contentOffset(node),
-      contentOffset(document.querySelector('[data-row-group="alpha"] .chat-message-row'))];
-  };
-  const traceSteps = [trace('before')];
-  listNode().dispatchEvent(new Event('scroll', { bubbles: true }));
-  traceSteps.push(trace('sync'));
-  const anchorOffset = () => {
-    const node = document.querySelector(`[data-message-id="${anchorId}"]`);
-    return node ? Math.abs(node.getBoundingClientRect().top - listTop) : Number.POSITIVE_INFINITY;
-  };
-  await waitFor(() => rows().length === CHAT_ROW_WINDOW_INITIAL + CHAT_ROW_WINDOW_PAGE && anchorOffset() <= 2);
-  traceSteps.push(trace('settled'));
-  check(rows().length === CHAT_ROW_WINDOW_INITIAL + CHAT_ROW_WINDOW_PAGE, `scrolling into the trigger distance pages in ${CHAT_ROW_WINDOW_PAGE} more rows (now ${rows().length})`);
-  check(anchorOffset() <= 2, `paging rows in leaves the row you were reading at the same screen position (${JSON.stringify(traceSteps)})`);
+  // Cover synthetic delivery (the original aligned-row case) and native
+  // delivery while the top row is only partially visible. An estimated
+  // content-visibility box must not change our reading anchor after commit.
+  async function checkPagingAnchor(scrollTop, synthetic) {
+    listNode().dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true }));
+    listNode().scrollTop = scrollTop;
+    const anchorBefore = firstVisibleRow();
+    const anchorId = anchorBefore?.dataset.messageId;
+    const listTop = listNode().getBoundingClientRect().top;
+    const beforeOffset = anchorBefore?.getBoundingClientRect().top - listTop;
+    const trace = (label) => {
+      const node = document.querySelector(`[data-message-id="${anchorId}"]`);
+      const list = listNode();
+      const contentOffset = (element) => (element ? Math.round(list.scrollTop + element.getBoundingClientRect().top - list.getBoundingClientRect().top) : 'gone');
+      return [label, rows().length, Math.round(list.scrollTop), Math.round(list.scrollHeight), contentOffset(node)];
+    };
+    const traceSteps = [trace('before')];
+    if (synthetic) listNode().dispatchEvent(new Event('scroll', { bubbles: true }));
+    const anchorOffset = () => {
+      const node = document.querySelector(`[data-message-id="${anchorId}"]`);
+      return node ? node.getBoundingClientRect().top - listTop : Number.POSITIVE_INFINITY;
+    };
+    // Wait for the commit, not for the assertion itself to happen to go green.
+    await waitFor(() => rows().length === CHAT_ROW_WINDOW_INITIAL + CHAT_ROW_WINDOW_PAGE);
+    let held = Math.abs(anchorOffset() - beforeOffset) <= 2;
+    for (let frame = 0; frame < 6; frame += 1) {
+      await tick();
+      traceSteps.push(trace(`frame-${frame}`));
+      held &&= Math.abs(anchorOffset() - beforeOffset) <= 2;
+    }
+    check(rows().length === CHAT_ROW_WINDOW_INITIAL + CHAT_ROW_WINDOW_PAGE,
+      `scrolling into the trigger distance pages in ${CHAT_ROW_WINDOW_PAGE} more rows (now ${rows().length})`);
+    // Retain the original aligned-row assertion as well as the actual delta.
+    check(held && (!synthetic || Math.abs(anchorOffset()) <= 2),
+      `paging rows in leaves the row you were reading at the same screen position (${synthetic ? 'synthetic' : 'native partial'} ${JSON.stringify(traceSteps)})`);
+    check(rows().every((row) => !row.style.contentVisibility), 'paging restores lazy row layout after measuring its anchor');
+  }
+  await checkPagingAnchor(320, true);
+  render(panel('paging-partial', conversation('paging-partial')));
+  await tick();
+  await tick();
+  await checkPagingAnchor(280, false);
+  render(panel('alpha', messagesAlpha));
+  await tick();
 
   for (let page = 0; page < TURNS && document.querySelector('.chat-earlier-rows'); page += 1) {
     const before = rows().length;
@@ -166,6 +187,70 @@ async function main() {
   check(Boolean(document.querySelector('[data-row-group="beta"][hidden]')), 'beta is the one kept hidden now');
   check(scrolledToBottom(), 'coming back lands on the latest message');
 
+  // A native scroll queues A's next page at continuous-event priority. Navigate
+  // in that very event, after React's onScroll but before its page commits.
+  // B recalls 24, equal to the last committed window: a [rowWindow]-only
+  // reset never runs and A's pending 48 must not block either B paging path.
+  async function checkQueuedGrowthNavigation(mode) {
+    const a = `queued-${mode}-a`;
+    const b = `queued-${mode}-b`;
+    const messagesA = conversation(a);
+    const messagesB = conversation(b);
+    render(panel(b, messagesB));
+    for (let frame = 0; frame < 3; frame += 1) await tick();
+    check(rows().length === CHAT_ROW_WINDOW_INITIAL, `${mode} race: B remembers the initial window`);
+    render(panel(a, messagesA));
+    for (let frame = 0; frame < 3; frame += 1) await tick();
+    const element = listNode();
+    const aTail = rows().at(-1);
+    let navigation = null;
+    // Registered after React's non-delegated scroll listener. No dispatched
+    // scroll event or timer navigation: the browser delivers this from scrollTop.
+    const navigateOnNativeScroll = (event) => {
+      if (!event.isTrusted || element.scrollTop > CHAT_ROW_WINDOW_TRIGGER_PX) return;
+      element.removeEventListener('scroll', navigateOnNativeScroll);
+      navigation = { trusted: event.isTrusted, before: rows().length, owner: rows().at(-1)?.dataset.messageId };
+      render(panel(b, messagesB));
+      navigation.after = rows().length;
+    };
+    element.addEventListener('scroll', navigateOnNativeScroll);
+    element.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true }));
+    element.scrollTop = 280;
+    await waitFor(() => navigation !== null);
+    element.removeEventListener('scroll', navigateOnNativeScroll);
+    check(navigation?.trusted && navigation.before === CHAT_ROW_WINDOW_INITIAL && navigation.owner === messagesA.at(-1).id,
+      `${mode} race: native A scroll navigates in the same event before A's page commits`);
+    for (let frame = 0; frame < 6; frame += 1) await tick();
+    check(listNode() === element, `${mode} race: navigation reuses ChatPanel's scroll DOM, not a remount`);
+    check(navigation?.after === CHAT_ROW_WINDOW_INITIAL && rows().length === CHAT_ROW_WINDOW_INITIAL && rows().at(-1)?.dataset.messageId === messagesB.at(-1).id,
+      `${mode} race: B stays at its remembered ${CHAT_ROW_WINDOW_INITIAL} after A's queued update settles`);
+    check(scrolledToBottom(), `${mode} race: A's reading anchor does not move B away from latest`);
+
+    if (mode === 'scroll') {
+      element.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true }));
+      element.scrollTop = 280; // Native B scroll must still be allowed to grow.
+    } else {
+      document.querySelector('.chat-earlier-rows button')?.click();
+    }
+    await waitFor(() => rows().length === CHAT_ROW_WINDOW_INITIAL + CHAT_ROW_WINDOW_PAGE);
+    for (let frame = 0; frame < 6; frame += 1) await tick();
+    check(rows().length === CHAT_ROW_WINDOW_INITIAL + CHAT_ROW_WINDOW_PAGE,
+      `${mode} race: B can still load ${CHAT_ROW_WINDOW_INITIAL + CHAT_ROW_WINDOW_PAGE} rows via ${mode}`);
+    check(rows().every((row) => !row.style.contentVisibility), `${mode} race: B restores lazy row layout across paint`);
+
+    render(panel(a, messagesA));
+    for (let frame = 0; frame < 3; frame += 1) await tick();
+    check(rows().length === CHAT_ROW_WINDOW_INITIAL && rows().at(-1) === aTail && scrolledToBottom(),
+      `${mode} race: returning to A reuses its committed window and lands at latest`);
+    document.querySelector('.chat-earlier-rows button')?.click();
+    await waitFor(() => rows().length === CHAT_ROW_WINDOW_INITIAL + CHAT_ROW_WINDOW_PAGE);
+    for (let frame = 0; frame < 6; frame += 1) await tick();
+    check(rows().length === CHAT_ROW_WINDOW_INITIAL + CHAT_ROW_WINDOW_PAGE && rows().every((row) => !row.style.contentVisibility),
+      `${mode} race: A can page normally after returning`);
+  }
+  await checkQueuedGrowthNavigation('scroll');
+  await checkQueuedGrowthNavigation('button');
+
   // 保存的批注草稿引用的是老轮次：窗口只盖最近 24 行，跳转前必须先把窗口补到盖住那一行
   // （窗口化之前所有行都在，不存在这一步）。否则 MessageAnnotations 在 DOM 里找不到原文，
   // 会报「引用的原文找不到」。
@@ -194,9 +279,29 @@ async function main() {
   check(Boolean(jumpChip), 'the saved comment draft offers a way back to its quote');
   jumpChip?.click();
   await waitFor(() => visibleInList(quotedSource()));
+  for (let frame = 0; frame < 6; frame += 1) await tick();
   check(Boolean(quotedSource()), `jumping to a quote outside the window pages it in (now ${groupRows('gamma').length} rows)`);
   check(visibleInList(quotedSource()), 'the quoted row ends up inside the reading area');
   check(!document.querySelector('.haish-annotation-notice')?.textContent.trim(), 'the jump does not report a missing quote');
+  // A jump is explicit user navigation even though no wheel/keyboard event
+  // happens on the scroll container. Later output must not reclaim follow.
+  const tail = [...messagesGamma, { id: 'gamma-live', taskId: 'gamma-live', role: 'agent', status: 'running', text: 'Streaming tail '.repeat(80) }];
+  render(panel('gamma', tail));
+  for (let frame = 0; frame < 6; frame += 1) await tick();
+  check(visibleInList(quotedSource()) && !scrolledToBottom(), 'new output keeps the quoted row visible after programmatic jump');
+  document.querySelector('[aria-label="Scroll to latest message"]')?.click();
+  await waitFor(scrolledToBottom);
+  check(scrolledToBottom(), 'return-to-latest button still works after a quote jump');
+  document.querySelector('[aria-label^="Edit comment "]')?.click();
+  await waitFor(() => Boolean(document.querySelector('[aria-label="Comment on selected text"]')));
+  for (let frame = 0; frame < 6; frame += 1) await tick();
+  check(visibleInList(quotedSource()) && !scrolledToBottom(), 'editing a quote from latest also releases follow across layout frames');
+  document.querySelector('.haish-annotation-editor-actions button')?.click();
+  document.querySelector('[aria-label="Scroll to latest message"]')?.click();
+  await waitFor(scrolledToBottom);
+  render(panel('gamma', [...tail, { id: 'gamma-next', role: 'agent', status: 'running', text: 'More streaming output '.repeat(100) }]));
+  for (let frame = 0; frame < 6; frame += 1) await tick();
+  check(scrolledToBottom(), 'returning to latest restores automatic follow for new output');
   window.localStorage.clear();
   check(window.__pageErrors.length === 0, `no page errors (${window.__pageErrors.join(' | ')})`);
 }
