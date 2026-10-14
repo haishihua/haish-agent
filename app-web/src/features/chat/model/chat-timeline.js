@@ -489,13 +489,13 @@ export function buildChatTimeline(task, taskStatus) {
   };
   const appendToolProgress = (toolItem, event, state = '') => {
     if (!toolItem || !event) return;
-    const summary = toolProgressSummary(event);
+    const summary = event.type === 'sub_agent_answer_delta' ? eventDeltaText(event) : toolProgressSummary(event);
     if (!summary) return;
     const progressEvents = Array.isArray(toolItem.progressEvents)
       ? toolItem.progressEvents
       : [];
     const last = progressEvents[progressEvents.length - 1];
-    if (last && last.type === event.type && last.summary === summary) return;
+    if (event.type !== 'sub_agent_answer_delta' && last && last.type === event.type && last.summary === summary) return;
     progressEvents.push({
       id: `${toolItem.id}-${event.type}-${progressEvents.length}`,
       type: event.type,
@@ -508,7 +508,7 @@ export function buildChatTimeline(task, taskStatus) {
       toolResponse: event.toolResponse || event.tool_response || null,
       toolOutput: event.toolOutput || event.tool_output || '',
       summary,
-      message: event.message || '',
+      message: event.type === 'sub_agent_answer_delta' ? summary : event.message || '',
       inputSummary: event.inputSummary || '',
       outputSummary: event.outputSummary || '',
       timestamp: event.timestamp || null,
@@ -520,22 +520,6 @@ export function buildChatTimeline(task, taskStatus) {
     if (!parentCallId) return;
     const toolItem = toolItemsByCallId.get(parentCallId);
     if (!toolItem) return;
-    if (event?.type === 'sub_agent_answer_delta') {
-      const progressEvents = Array.isArray(toolItem.progressEvents)
-        ? toolItem.progressEvents
-        : [];
-      const summary = toolProgressSummary(event);
-      if (!summary) return;
-      const last = progressEvents[progressEvents.length - 1];
-      if (last && last.type === event.type) {
-        last.summary = appendAnswerDelta(last.summary, summary);
-        last.message = appendAnswerDelta(last.message, event.message || summary);
-        last.toolOutput = appendAnswerDelta(last.toolOutput, event.toolOutput || event.tool_output || '');
-        last.timestamp = event.timestamp || last.timestamp || null;
-        toolItem.progressEvents = progressEvents;
-        return;
-      }
-    }
     appendToolProgress(toolItem, event, state);
   };
   const subAgentProgressState = (type) => {

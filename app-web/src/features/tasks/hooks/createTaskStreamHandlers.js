@@ -1,4 +1,5 @@
 import { appendStreamEvent, mergeAdjacentStreamEvent } from '../../chat/model/stream-events.js';
+import { createRuntimeEventIngest } from '../../chat/model/event-identity.js';
 import { executionConfigError } from '../../workflow/model/execution-config.js';
 import { normalizeReasoningEffort } from '../../chat/model/run-catalog.js';
 import { nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest } from '../../workflow/model/node-runtime-config.js';
@@ -17,6 +18,8 @@ const ACTIVE_TASK_CONFLICT_WAIT_MS = 500;
 
 const realtimeRequestId = () => globalThis.crypto?.randomUUID?.()
   || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+const RUNTIME_EVENT_INGESTS = new WeakMap();
 
 export function workflowNodeStartedState(event) {
   return {
@@ -129,18 +132,43 @@ export function createTaskStreamHandlers(ctx) {
     getTaskById(taskId, targetConvId)?.originViewMode === 'chat'
   );
 
+  const acceptRuntimeEvent = (event, ownerConvId) => {
+    const runtime = getRuntime(ownerConvId, { create: true });
+    let tasks = RUNTIME_EVENT_INGESTS.get(runtime);
+    if (!tasks) {
+      tasks = new Map();
+      RUNTIME_EVENT_INGESTS.set(runtime, tasks);
+    }
+    const taskId = event.task_id || runtime.activeRunId;
+    const eventLog = getTaskById(taskId, ownerConvId)?.eventLog;
+    let ingest = tasks.get(taskId);
+    if (!ingest) {
+      ingest = { accept: createRuntimeEventIngest(eventLog), eventLog };
+      tasks.set(taskId, ingest);
+    } else if (ingest.eventLog !== eventLog) {
+      // A history restore can replace the log while the consumer is alive.
+      // Seed that snapshot once; our own appends keep this pointer current.
+      for (const previous of eventLog || []) ingest.accept(previous);
+      ingest.eventLog = eventLog;
+    }
+    return ingest.accept(event);
+  };
+
   const appendTaskEvent = (taskId, event, ownerConvId) => {
     updateTaskById(taskId, (task) => {
       const runtimeEvent = runtimeEventToLog(event);
+      const eventLog = appendStreamEvent(task.eventLog, {
+        ...runtimeEvent,
+        workflowNodeId: runtimeEvent.workflowNodeId
+          || task.workflowRun?.current_node_id
+          || null,
+      });
+      const ingest = RUNTIME_EVENT_INGESTS.get(getRuntime(ownerConvId))?.get(taskId);
+      if (ingest) ingest.eventLog = eventLog;
       return {
         ...task,
         loopIndex: Math.max(task.loopIndex || 0, event.loop_index || 0),
-        eventLog: appendStreamEvent(task.eventLog, {
-          ...runtimeEvent,
-          workflowNodeId: runtimeEvent.workflowNodeId
-            || task.workflowRun?.current_node_id
-            || null,
-        }),
+        eventLog,
       };
     }, ownerConvId);
   };
@@ -1083,7 +1111,11 @@ export function createTaskStreamHandlers(ctx) {
               pendingRun.confirmStoppedTask(normalized);
               return;
             }
-            if (controller.signal.aborted) return;
+            if (controller.signal.aborted || runRuntime.abortRequested
+              || runRuntime.activeRunId !== runId || runRuntime.cancelledRunIds.has(runId)) return;
+            // Never combine an already-seen fragment with a fresh one: once
+            // text is merged, the identities alone cannot split partial replay.
+            if (!acceptRuntimeEvent(normalized, runConversationId)) return;
             queueRuntimeEvent(normalized);
           });
           break;
@@ -1152,6 +1184,7 @@ export function createTaskStreamHandlers(ctx) {
       const event = normalizeRuntimeEvent(message.event);
       if (!event || (event.conversation_id && event.conversation_id !== cid)) return;
       batchRuntimeMutations(cid, () => {
+      if (!acceptRuntimeEvent(event, cid)) return;
         if (event.type === 'run_started') {
           mutateRuntime(cid, (runtime) => {
             runtime.runGeneration = (runtime.runGeneration || 0) + 1;

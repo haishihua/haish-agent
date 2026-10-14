@@ -58,8 +58,8 @@ async function checkRows() {
     render(<ChatPanel conversationId="streaming-regression" messages={[...history, ...comments, latest]} running={latest.streaming}
       providerOptions={[{ id: 'fixture', provider: 'fixture', defaultModelId: model, modelOptions: [model] }]}
       onForkMessage={(message) => { calls.push(['fork', committedVersion, message.id]); return true; }}
-      onRetryTask={(taskId, runConfig) => { calls.push(['retry', committedVersion, taskId, runConfig]); return true; }}
-      onEditMessage={(taskId, text, config) => { calls.push(['edit', committedVersion, taskId, text, config]); return true; }} />);
+      onRetryTask={async (taskId, runConfig) => { const savedConfig = await runConfig.ensureSaved({ background: true }); calls.push(['retry', committedVersion, taskId, { modelId: savedConfig.model_id }]); return true; }}
+      onEditMessage={async (taskId, text, config) => { const savedConfig = await config.ensureSaved({ background: false }); calls.push(['edit', committedVersion, taskId, text, { modelId: savedConfig.model_id }]); return true; }} />);
   };
   draw();
   await tick();

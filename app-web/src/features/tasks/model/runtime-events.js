@@ -1,4 +1,5 @@
 import { stripChatImageAugmentation, eventDeltaText } from '../../chat/model/chat-text.js';
+import { deduplicateRuntimeEvents } from '../../chat/model/event-identity.js';
 export const STREAM_EVENT_BATCH_MS = 32;
 
 export const CHAT_FINAL_FOLLOWUP_EVENT_TYPES = new Set([
@@ -190,9 +191,9 @@ export function normalizeRuntimeEvent(raw) {
 
 export function normalizeRuntimeEvents(events) {
   if (!Array.isArray(events)) return [];
-  return events
+  return deduplicateRuntimeEvents(events
     .map((event) => normalizeRuntimeEvent(event))
-    .filter(Boolean);
+    .filter(Boolean));
 }
 
 export function runtimeEventToLog(event) {
@@ -200,6 +201,7 @@ export function runtimeEventToLog(event) {
   return {
     type: event.type,
     eventId: event.event_id || null,
+    ...(event.deltaEventIds ? { deltaEventIds: event.deltaEventIds } : {}),
     timestamp: event.timestamp,
     callId: event.call_id || null,
     parentCallId: event.parent_call_id || event.parentCallId || null,

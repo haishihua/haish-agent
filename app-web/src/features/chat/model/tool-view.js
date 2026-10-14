@@ -278,7 +278,7 @@ function buildToolStreamAnswerText(item) {
   const events = Array.isArray(item.progressEvents) ? item.progressEvents : [];
   return events
     .filter((event) => event?.type === 'sub_agent_answer_delta')
-    .map((event) => String(event.message || event.summary || '').trimEnd())
+    .map((event) => String(event.message || event.summary || ''))
     .filter(Boolean)
     .join('');
 }
@@ -364,7 +364,8 @@ export function buildSubAgentTimelineItems(view) {
   events.forEach((event, index) => {
     const type = String(event?.type || '');
     if (type === 'sub_agent_answer_delta' || type === 'sub_agent_progress_delta') {
-      const value = subAgentEventText(event);
+      const value = type === 'sub_agent_answer_delta'
+        ? String(event.message || event.summary || '') : subAgentEventText(event);
       if (value) textBuffer += value;
       return;
     }
