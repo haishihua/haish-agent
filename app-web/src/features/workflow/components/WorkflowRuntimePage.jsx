@@ -18,12 +18,13 @@ import {
 import { WorkflowApprovalInline } from '../../approvals/components/ApprovalOverlay.jsx';
 import { buildChatTimeline } from '../../chat/model/chat-timeline.js';
 import { workflowNodeAgentName } from '../../chat/model/assistant-name.js';
-import { normalizeTaskStatus, taskFirstStreamTimestamp } from '../../tasks/model/task-runtime.js';
+import { isTerminalTaskStatus, normalizeTaskStatus, taskFirstStreamTimestamp } from '../../tasks/model/task-runtime.js';
+import { isTaskSettled } from '../../conversations/model/conversation-status.js';
+import { workflowRuntimeDisplayStatus, workflowRuntimeNodeStatus } from '../model/runtime-status.js';
 import { workflowApprovalInput } from '../model/workflow-approval-markdown.js';
 import {
   layoutRuntimeWorkflow,
   mergeWorkflowNodeAttempts,
-  workflowApprovalDecisionStatus,
   workflowArrangementPositions,
   workflowNodeOutcomesFromEvents,
   workflowResultForAttempt,
@@ -86,57 +87,6 @@ const DETAIL_NODE_TYPES = new Set(['agent', 'llm', 'tool', 'human_approval']);
 
 function workflowIdentity(workflow) {
   return String(workflow?.workflow_id || workflow?.id || '').trim();
-}
-
-function nodeStatus(
-  node,
-  run,
-  taskStatus = '',
-  activeEventNodeIds = new Set(),
-  eventNodeOutcomes = new Map(),
-  traversedLoopNodeIds = new Set(),
-) {
-  const result = run?.nodes?.[node.id];
-  const approvalDecision = workflowApprovalDecisionStatus(node, result);
-  const normalized = normalizeTaskStatus(result?.status || '');
-  const runStatus = normalizeTaskStatus(run?.status || '');
-  const normalizedTaskStatus = normalizeTaskStatus(taskStatus);
-  const activeFromEvents = activeEventNodeIds.has(String(node.id));
-  const eventOutcome = eventNodeOutcomes.get(String(node.id));
-  if (normalizedTaskStatus === 'cancelled' && run?.current_node_id === node.id) {
-    return 'cancelled';
-  }
-  if (run?.current_node_id === node.id && normalizeTaskStatus(run?.status || '') === 'waiting_input') {
-    return 'waiting_input';
-  }
-  if (
-    run?.current_node_id === node.id
-    && node.type === 'human_approval'
-    && (runStatus === 'waiting_approval' || runStatus === 'approval')
-  ) {
-    return 'approval';
-  }
-  // The event stream reaches the UI before workflow_run.current_node_id is
-  // always persisted. An unfinished node attempt is the live source of truth.
-  if (activeFromEvents) {
-    if (runStatus === 'waiting_input' || normalizedTaskStatus === 'waiting_input') return 'waiting_input';
-    if (node.type === 'human_approval' && (runStatus === 'approval' || runStatus === 'waiting_approval')) return 'approval';
-    if ((run?.status && ['running', 'queued'].includes(runStatus)) || ['running', 'queued'].includes(normalizedTaskStatus)) return 'running';
-  }
-  if (approvalDecision) return approvalDecision;
-  if (eventOutcome && eventOutcome !== 'running') return eventOutcome;
-  if (normalized === 'cancelled') return 'cancelled';
-  if (runStatus === 'cancelled' && run?.current_node_id === node.id) {
-    return 'cancelled';
-  }
-  if (normalized === 'waiting_input') return 'waiting_input';
-  if (result?.success === false || normalized === 'failed') return 'failed';
-  if (run?.current_node_id === node.id && (!result || normalized === 'running' || normalized === 'queued')) {
-    return node.type === 'human_approval' ? 'approval' : 'running';
-  }
-  if (result) return normalized === 'cancelled' ? 'cancelled' : 'done';
-  if (node.type === 'loop' && traversedLoopNodeIds.has(String(node.id))) return 'done';
-  return 'pending';
 }
 
 const NODE_TYPES = { workflowNode: WorkflowFlowNode };
@@ -276,7 +226,7 @@ function timestampMs(value) {
 
 function NodeConversation({ node, task, attempt, result, status, running, showApproval, onRetry, agentName = '', pendingInput = null }) {
   const scopedTask = React.useMemo(() => attemptTask(task, attempt, result), [attempt, result, task]);
-  const timelineStatus = running ? 'running' : normalizeTaskStatus(result?.status || status);
+  const timelineStatus = running ? 'running' : normalizeTaskStatus(isTerminalTaskStatus(result?.status) ? result.status : status);
   const timeline = React.useMemo(
     () => buildChatTimeline(scopedTask, timelineStatus),
     [scopedTask, timelineStatus],
@@ -434,7 +384,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
           result={workflowResultForAttempt(attempt, latestResult, isLatestAttempt, attemptNumber)}
           status={status}
           running={isLatestAttempt && (status === 'running' || status === 'waiting_input' || status === 'approval')}
-          showApproval={isLatestAttempt}
+          showApproval={isLatestAttempt && status === 'approval' && !isTaskSettled(task)}
           onRetry={isLatestAttempt && canRetry ? retryLatest : null}
           agentName={agentName}
           pendingInput={isLatestAttempt && attention?.status === 'waiting_input' ? attention.request : null}
@@ -619,7 +569,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     const configs = JSON.parse(nodeConfigKey);
     const providers = JSON.parse(providerCatalogKey);
     return (workflow?.nodes || []).map((node) => {
-    const status = String(node.id) === attentionNodeId ? attentionStatus : nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds);
+    const status = String(node.id) === attentionNodeId ? attentionStatus : workflowRuntimeNodeStatus(node, run, task, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds);
     const id = String(node.id);
     const layoutMeta = layout.meta.get(id);
     const runtimeDetailAvailable = canOpenNodeDetail(node);
@@ -650,8 +600,8 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
   React.useEffect(() => { setNodes((current) => reconcileRuntimeFlowNodes(current, layoutNodes)); }, [layoutNodes, setNodes]);
   const nodeById = React.useMemo(() => new Map((workflow?.nodes || []).map((node) => [String(node.id), node])), [workflow?.nodes]);
   const statusById = React.useMemo(
-    () => new Map((workflow?.nodes || []).map((node) => [String(node.id), nodeStatus(node, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)])),
-    [activeEventNodeIds, eventNodeOutcomes, run, task?.status, traversedLoopNodeIds, workflow?.nodes],
+    () => new Map((workflow?.nodes || []).map((node) => [String(node.id), workflowRuntimeNodeStatus(node, run, task, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)])),
+    [activeEventNodeIds, eventNodeOutcomes, run, task, traversedLoopNodeIds, workflow?.nodes],
   );
   const selectedTransitions = React.useMemo(() => controlEvents
     .filter((event) => event.type === 'workflow_edge_selected')
@@ -710,7 +660,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     ? workflowNodeAgentName(selectedNode, agentOptions)
     : '';
   const selectedStatus = selectedNodeId === attentionNodeId && attentionStatus ? attentionStatus : selectedNode
-    ? nodeStatus(selectedNode, run, task?.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)
+    ? workflowRuntimeNodeStatus(selectedNode, run, task, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)
     : 'pending';
   React.useEffect(() => {
     const previous = previousSelectionRef.current;
@@ -747,9 +697,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     followApprovalBranchRef.current = '';
     setSelectedNodeId(nextNodeId);
   }, [canOpenNodeDetail, nodeById, selectedNodeId, task?.eventLog]);
-  const displayRunStatus = normalizeTaskStatus(task?.status) === 'cancelled'
-    ? 'cancelled'
-    : normalizeTaskStatus(run?.status);
+  const displayRunStatus = run ? workflowRuntimeDisplayStatus(task) : '';
   const clampDetailWidth = React.useCallback((width) => {
     const availableWidth = layoutRef.current?.getBoundingClientRect().width || window.innerWidth;
     return Math.round(Math.max(360, Math.min(width, availableWidth - 360)));

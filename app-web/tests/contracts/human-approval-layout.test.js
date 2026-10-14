@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+globalThis.window = { HAISH_API_BASE: '' };
+const { workflowRuntimeNodeStatus } = await import('../../src/features/workflow/model/runtime-status.js');
 import {
   normalizeWorkflowApprovalMarkdown,
   workflowApprovalInput,
@@ -67,7 +69,12 @@ test('workflow approval nodes reuse the approval card without a duplicate assist
   assert.match(overlaySource, /resolved=\{!activeRequest\}/);
   assert.match(overlaySource, /key=\{displayRequest\.request_id\}/);
   assert.match(overlaySource, /setBusy\(''\);\s*approvalStore\.remove\(requestId\)/);
-  assert.match(runtimeSource, /runStatus === 'waiting_approval'/);
+  assert.match(runtimeSource, /workflowRuntimeNodeStatus\(node, run, task,/);
+  assert.equal(workflowRuntimeNodeStatus(
+    { id: 'review', type: 'human_approval' },
+    { status: 'waiting_approval', current_node_id: 'review', nodes: {} },
+    { status: 'running' },
+  ), 'approval');
   assert.doesNotMatch(runtimeSource, /if \(node\.type === 'human_approval'\) \{\s*return showApproval/);
 });
 

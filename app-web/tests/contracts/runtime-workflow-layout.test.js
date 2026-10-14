@@ -16,6 +16,10 @@ const runtimeSource = fs.readFileSync(
   new URL('../../src/features/workflow/components/WorkflowRuntimePage.jsx', import.meta.url),
   'utf8',
 );
+const statusSource = fs.readFileSync(
+  new URL('../../src/features/workflow/model/runtime-status.js', import.meta.url),
+  'utf8',
+);
 const editorSource = fs.readFileSync(
   new URL('../../src/features/settings/components/WorkflowConfigEditor.jsx', import.meta.url),
   'utf8',
@@ -251,13 +255,13 @@ test('runtime details use executed node data and real workflow transitions', () 
   assert.match(runtimeSource, /workflowEdgeAppearance\(edge, \{\s*active,/);
   assert.match(runtimeSource, /const active = latestSelected/);
   assert.doesNotMatch(runtimeSource, /const active = targetStatus === 'running'/);
-  assert.match(runtimeSource, /normalizedTaskStatus === 'cancelled'/);
-  assert.match(runtimeSource, /if \(eventOutcome && eventOutcome !== 'running'\) return eventOutcome;/);
+  assert.match(statusSource, /if \(isTaskSettled\(task\)\)/);
+  assert.match(statusSource, /if \(eventOutcome && eventOutcome !== 'running'\) return eventOutcome;/);
   assert.match(runtimeSource, /function activeNodeIdsFromEvents\(eventLog\)/);
   assert.match(runtimeSource, /if \(event\.type === 'workflow_node_started'\) active\.add\(nodeId\);/);
   assert.match(runtimeSource, /if \(event\.type === 'workflow_node_finished'\) active\.delete\(nodeId\);/);
-  assert.match(runtimeSource, /if \(activeFromEvents\)[\s\S]*?return 'running';/);
-  assert.match(runtimeSource, /nodeStatus\(selectedNode, run, task\?\.status, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds\)/);
+  assert.match(statusSource, /if \(activeFromEvents\)[\s\S]*?isTaskLive\(task\)/);
+  assert.match(runtimeSource, /workflowRuntimeNodeStatus\(selectedNode, run, task, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds\)/);
 
   const edge = runtimeEventToLog({
     type: 'workflow_edge_selected',
@@ -315,8 +319,8 @@ test('completed approval nodes preserve their explicit decision', () => {
   );
   assert.equal(workflowApprovalDecisionStatus({ type: 'agent' }, { decision: 'rejected' }), '');
   assert.ok(
-    runtimeSource.indexOf('if (approvalDecision) return approvalDecision;')
-      < runtimeSource.indexOf("if (normalized === 'cancelled') return 'cancelled';"),
+    statusSource.indexOf('if (approvalDecision) return approvalDecision;')
+      < statusSource.indexOf("if (normalized === 'cancelled') return 'cancelled';"),
   );
 });
 
@@ -394,10 +398,10 @@ test('a new loop attempt never reuses tool calls from the previous attempt', () 
 });
 
 test('current approval waiting state wins over an older rejected decision', () => {
-  const cancelledTaskCheck = runtimeSource.indexOf("normalizedTaskStatus === 'cancelled'");
-  const waitingCheck = runtimeSource.indexOf("runStatus === 'waiting_approval'");
-  const decisionCheck = runtimeSource.indexOf('if (approvalDecision) return approvalDecision;');
-  assert.ok(cancelledTaskCheck >= 0 && cancelledTaskCheck < waitingCheck);
+  const settledCheck = statusSource.indexOf('if (isTaskSettled(task))');
+  const waitingCheck = statusSource.indexOf("runStatus === 'waiting_approval'");
+  const decisionCheck = statusSource.lastIndexOf('if (approvalDecision) return approvalDecision;');
+  assert.ok(settledCheck >= 0 && settledCheck < waitingCheck);
   assert.ok(waitingCheck >= 0 && waitingCheck < decisionCheck);
   assert.match(runtimeSource, /className="workflow-detail-history"/);
   assert.match(runtimeSource, /className="workflow-detail-attempt-label workflow-detail-history-summary"/);
@@ -443,7 +447,7 @@ test('secondary loop nodes normalize their top input and retry output to one han
 
 test('only the latest approval attempt binds to the live approval request', () => {
   assert.match(runtimeSource, /allowLiveRequest=\{showApproval\}/);
-  assert.match(runtimeSource, /showApproval=\{isLatestAttempt\}/);
+  assert.match(runtimeSource, /showApproval=\{isLatestAttempt && status === 'approval' && !isTaskSettled\(task\)\}/);
 });
 
 test('approval decisions follow the next executed detail node', () => {

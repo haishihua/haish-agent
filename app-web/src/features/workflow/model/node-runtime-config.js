@@ -29,14 +29,16 @@ export function workflowNodeRuntimeConfig(node, task, configs = {}, readOnly = f
     reasoning_effort: task?.requestedReasoningEffort ?? null,
   } : {};
   let value = { ...defaults };
-  for (const config of [node?.runtime_config || {}, configs[node?.id] || {}]) {
+  // An executed route replaces the requested identity before legacy migration;
+  // otherwise a requested llm_config_id would mask an actual provider snapshot.
+  for (const config of [node?.runtime_config || {}, configs[node?.id] || {}, ...(readOnly ? [task?.workflowRun?.nodes?.[node?.id]?.runtime_config || {}] : [])]) {
     if (config.llm_config_id || config.provider) {
       value.model_id = ''; delete value.reasoning_effort;
       delete value.llm_config_id; delete value.provider;
     }
     value = { ...value, ...config };
   }
-  return migrateExecutionRoute({ ...value, ...(readOnly ? task?.workflowRun?.nodes?.[node?.id]?.runtime_config : {}) }, providerOptions);
+  return migrateExecutionRoute(value, providerOptions);
 }
 
 export function nodeRuntimeConfigRequest(config = {}, providerOptions = []) {

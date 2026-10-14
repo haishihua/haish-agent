@@ -24,8 +24,12 @@ const initialTask = {
   workflowRun: { status: 'running', current_node_id: 'model', nodes: { worker: result('## Result\n\n节点详情应与画布节点保持配色一致。\n\n- Retain real execution content\n- Keep input, response and trace together'), model: { status: 'running' } } },
   eventLog: [{ type: 'workflow_node_started', workflowNodeId: 'model', nodeInput: 'Verify the worker result.', timestamp }],
 };
-const inheritedConfig = { provider: 'custom.source', model_id: 'gpt-5.5', reasoning_effort: 'high' };
-const providers = [{ id: 'source', requestProvider: 'custom.source', provider: 'openai', label: 'Source Provider', defaultModelId: 'gpt-5.5', modelOptions: [{ id: 'gpt-5.5' }] }];
+const inheritedConfig = { llm_config_id: 'source', model_id: 'gpt-5.5', reasoning_effort: 'high' };
+// Execution identity is the saved Settings record ID; only frozen aliases may migrate legacy provider values.
+const providers = [
+  { id: 'source', requestProvider: 'source', legacySelectors: ['custom.source'], provider: 'openai', label: 'Source Provider', defaultModelId: 'gpt-5.5', modelOptions: [{ id: 'gpt-5.5' }] },
+  { id: 'executed', requestProvider: 'executed', provider: 'openai', label: 'Executed Provider', defaultModelId: 'actual-model', modelOptions: [{ id: 'actual-model' }] },
+];
 window.fetch = async () => new Response(JSON.stringify({ models: [{ id: 'gpt-5.5' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 function Fixture() {
   const [task, setTask] = React.useState(initialTask);
@@ -123,12 +127,33 @@ const select = async (id) => { document.querySelector(`.react-flow__node[data-id
   [...document.querySelectorAll('[role="tab"]')].find((tab) => tab.textContent === 'Runtime Config').click(); await tick();
   window.__setRuntimeTask((t) => ({ ...t, eventLog: [...t.eventLog, { type: 'text_delta', delta: 'checking', workflowNodeId: 'worker' }] })); await tick();
   check(selectedTab() === 'Runtime Config', 'Streaming does not override an explicit tab choice');
-  const configShown = (model, effort) => document.querySelector('[aria-label="Node provider"]')?.textContent.includes('Source Provider')
-    && document.querySelector('[aria-label="Node model"]')?.textContent.includes(model)
-    && document.querySelector('[aria-label="Node thinking level"]')?.textContent.toLowerCase().includes(effort);
-  check(configShown('gpt-5.5', 'high') && [...panel().querySelectorAll('[role="combobox"]')].every((item) => item.disabled), 'Running node displays inherited Provider, Model and Reasoning effort before completion');
-  window.__setRuntimeTask((t) => ({ ...t, workflowRun: { ...t.workflowRun, nodes: { worker: { ...t.workflowRun.nodes.worker, runtime_config: { ...inheritedConfig, model_id: 'actual-model', reasoning_effort: 'low' } } } } })); await tick();
-  check(configShown('actual-model', 'low'), 'Read-only runtime config prefers the actual executed snapshot over requested values');
+  const configShown = (provider, model, effort) => panel().querySelector('[aria-label="Node provider"]')?.textContent.trim() === provider
+    && panel().querySelector('[aria-label="Node model"]')?.textContent.trim() === model
+    && panel().querySelector('[aria-label="Node thinking level"]')?.textContent.trim().toLowerCase() === effort;
+  const configLocked = () => {
+    const fields = [...panel().querySelectorAll('.workflow-runtime-config [role="combobox"]')];
+    return fields.length === 3 && fields.every((item) => item.disabled);
+  };
+  check(configShown('Source Provider', 'gpt-5.5', 'high') && configLocked(), 'Running node displays inherited Provider, Model and Reasoning effort before completion');
+  const executedConfig = { llm_config_id: 'executed', model_id: 'actual-model', reasoning_effort: 'low' };
+  const setExecutedConfig = async (config) => {
+    window.__setRuntimeTask((t) => ({ ...t, workflowRun: { ...t.workflowRun, nodes: { worker: { ...t.workflowRun.nodes.worker, runtime_config: config } } } }));
+    await tick();
+  };
+  await setExecutedConfig(executedConfig);
+  check(configShown('Executed Provider', 'actual-model', 'low') && configLocked(), 'Read-only runtime config prefers the actual executed snapshot over requested values');
+  const legacyConfig = { provider: 'custom.source', model_id: 'legacy-model', reasoning_effort: 'medium' };
+  await setExecutedConfig(legacyConfig);
+  check(configShown('Source Provider', 'legacy-model', 'medium') && configLocked(), 'Frozen legacy provider alias resolves to the saved Settings record');
+  const unresolvedConfig = { provider: 'custom.unmapped', model_id: 'unmapped-model', reasoning_effort: 'xhigh' };
+  await setExecutedConfig(unresolvedConfig);
+  check(configShown('custom.unmapped', 'unmapped-model', 'xhigh') && configLocked(), 'Unmapped legacy provider stays visible instead of borrowing a same-brand record');
+  const invalidIdConfig = { llm_config_id: 'custom.source', model_id: 'invalid-id-model', reasoning_effort: 'high' };
+  await setExecutedConfig(invalidIdConfig);
+  check(configShown('custom.source', 'invalid-id-model', 'high') && configLocked(), 'An explicit record ID cannot use the legacy alias migration path');
+  check(JSON.stringify(window.__runtimeTask.nodeRuntimeConfigs.worker) === JSON.stringify(inheritedConfig)
+    && JSON.stringify(window.__runtimeTask.workflowRun.nodes.worker.runtime_config) === JSON.stringify(invalidIdConfig), 'Read-only display preserves requested and executed configuration snapshots');
+  await setExecutedConfig(executedConfig);
   panel().querySelector('.workflow-detail-close').click(); await tick();
   document.querySelector('.react-flow__node[data-id="worker"]').dispatchEvent(new MouseEvent('click', { bubbles: true })); await tick(500);
   check(selectedTab() === 'Run Result', 'Opening a running Agent defaults to Run Result');

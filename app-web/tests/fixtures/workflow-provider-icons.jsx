@@ -9,8 +9,11 @@ window.fetch = async () => new Response(JSON.stringify({ provider: 'openai', mod
 function Fixture() {
   return <div style={{ width: 450, padding: 20 }}>
     <div id="snapshot"><WorkflowRuntimeConfig value={{ provider: 'openai', model_id: 'gpt-6.1-sol', reasoning_effort: 'high' }} providerOptions={providers} readOnly onChange={() => changes++} /></div>
-    <div id="editable"><WorkflowRuntimeConfig value={{ provider: 'profile-a', model_id: 'gpt-6.1-sol', reasoning_effort: 'high' }} providerOptions={providers} onChange={() => changes++} /></div>
+    <div id="editable"><WorkflowRuntimeConfig value={{ llm_config_id: 'profile-a', model_id: 'gpt-6.1-sol', reasoning_effort: 'high' }} providerOptions={providers} onChange={() => changes++} /></div>
     <div id="removed"><WorkflowRuntimeConfig value={{ provider: 'removed-profile', model_id: 'custom-model' }} readOnly onChange={() => changes++} /></div>
+    <div id="record-snapshot"><WorkflowRuntimeConfig value={{ llm_config_id: 'profile-a', model_id: 'saved-model' }} providerOptions={providers} readOnly onChange={() => changes++} /></div>
+    <div id="removed-record"><WorkflowRuntimeConfig value={{ llm_config_id: 'removed-profile', model_id: 'custom-model' }} readOnly onChange={() => changes++} /></div>
+    <div id="model-only"><WorkflowRuntimeConfig value={{ model_id: 'orphan-model' }} readOnly onChange={() => changes++} /></div>
     <div id="empty"><WorkflowRuntimeConfig /></div>
   </div>;
 }
@@ -28,10 +31,13 @@ const visibleIcon = (element) => {
   for (let i = 0; i < 40 && !trigger('snapshot', 'Node provider'); i++) await tick();
   await tick(500);
   check(trigger('snapshot', 'Node provider').textContent.trim() === 'OpenAI', 'Historical brand key shows OpenAI instead of unavailable');
-  for (const id of ['snapshot', 'editable', 'removed']) {
+  for (const id of ['snapshot', 'editable', 'removed', 'record-snapshot', 'removed-record']) {
     check(visibleIcon(trigger(id, 'Node provider')) && visibleIcon(trigger(id, 'Node model')), `${id}: both closed fields retain icons`);
   }
   check(trigger('snapshot', 'Node model').textContent.includes('gpt-6.1-sol'), 'Historical model stays unchanged');
+  check(trigger('record-snapshot', 'Node provider').textContent.trim() === 'Source Provider' && trigger('record-snapshot', 'Node model').textContent.includes('saved-model'), 'Exact saved record keeps its identity and historical model outside the current catalog');
+  check(trigger('removed-record', 'Node provider').textContent.trim() === 'removed-profile' && trigger('removed-record', 'Node model').querySelector('.settings-provider-icon-custom'), 'Deleted record retains its identity and generic model icon');
+  check(!trigger('model-only', 'Node model').querySelector('.settings-provider-icon'), 'A model without a provider identity does not invent a brand');
   check([...document.querySelectorAll('#snapshot [role="combobox"]')].every((item) => item.disabled), 'Historical fields remain read-only');
   check(!trigger('empty', 'Node provider').querySelector('.settings-provider-icon'), 'Empty provider keeps plain placeholder');
   const provider = trigger('editable', 'Node provider');
