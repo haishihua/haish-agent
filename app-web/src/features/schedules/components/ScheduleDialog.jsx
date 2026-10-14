@@ -52,23 +52,25 @@ function RunHistory({ id, api, revision }) {
   const [more, setMore] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
-  const alive = React.useRef(true);
+  const generation = React.useRef(0);
   React.useEffect(() => {
-    alive.current = true;
-    let cancelled = false;
-    setBusy(true);
+    const current = ++generation.current;
+    // An offset belongs to this first-page snapshot, never to a refreshed history.
+    setRuns([]); setMore(false); setError(''); setBusy(true);
     api.runs(id).then((rows) => {
-      if (!cancelled) { setRuns(rows); setMore(rows.length === 50); setError(''); }
-    }).catch((failure) => { if (!cancelled) setError(failure.message); }).finally(() => { if (!cancelled) setBusy(false); });
-    return () => { cancelled = true; alive.current = false; };
+      if (current === generation.current) { setRuns(rows); setMore(rows.length === 50); }
+    }).catch((failure) => { if (current === generation.current) setError(failure.message); }).finally(() => { if (current === generation.current) setBusy(false); });
+    return () => { generation.current += 1; };
   }, [id, api, revision]);
   async function loadMore() {
+    if (busy || !more) return;
+    const current = generation.current;
     setBusy(true);
     try {
       const rows = await api.runs(id, runs.length);
-      if (alive.current) { setRuns((previous) => [...previous, ...rows]); setMore(rows.length === 50); }
-    } catch (failure) { if (alive.current) setError(failure.message); }
-    finally { if (alive.current) setBusy(false); }
+      if (current === generation.current) { setRuns((previous) => [...previous, ...rows]); setMore(rows.length === 50); setError(''); }
+    } catch (failure) { if (current === generation.current) setError(failure.message); }
+    finally { if (current === generation.current) setBusy(false); }
   }
   return <div className="schedule-history" aria-label="Run history">
     {error && <ErrorState variant="inline" detail={error} />}

@@ -33,14 +33,15 @@ export function useSchedulesState({ api = schedulesApi, onRuntimeEvent, onRecove
         setLoading(false);
         await Promise.all(snapshot.filter((job) => job.last_run?.task_id).map(recover));
       } catch (failure) {
-        if (alive) { setError(String(failure.message || failure)); setLoading(false); }
+        if (alive && number === requestNumber) { setError(String(failure.message || failure)); setLoading(false); }
       }
     }
     const stop = subscribe((message) => {
       if (!alive) return;
-      revision += 1;
-      if (message.type === 'schedule.resync') { refresh(); return; }
+      if (message.type === 'schedule.resync') { revision += 1; refresh(); return; }
       if (message.type === 'schedule.event') {
+        // Content deltas still reach the runtime, but cannot invalidate a schedule snapshot.
+        if (message.event.schedule || message.event.run || message.event.action === 'deleted') revision += 1;
         itemsRef.current = applyScheduleEvent(itemsRef.current, message);
         setItems(itemsRef.current);
         // Run metadata may precede the task stream; recover only its terminal receipt.
@@ -54,6 +55,7 @@ export function useSchedulesState({ api = schedulesApi, onRuntimeEvent, onRecove
         }
         catch (failure) { setError(failure.message); }
       } else if (message.type === 'task.end') {
+        revision += 1;
         refresh();
       }
     });
