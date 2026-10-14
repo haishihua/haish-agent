@@ -4,13 +4,26 @@
 
 ## 自动测试
 
+- 模型目录加载：`features/chat/provider-models-loading.test.js` 覆盖缓存/已保存列表后台刷新、首次无目录加载、请求与正文 15 秒期限、AbortError 收尾、显式重试、Provider/endpoint 归属及卸载取消。`fixtures/provider-models-loading.html` 使用真实 ModelPicker、ChatComposer 和 WorkflowRuntimeConfig 验证选项不被 Loading 隐藏、超时错误/重试、迟到结果隔离，以及后台刷新期间保留原路由发送；网络与存储全为离线内存桩。
+
+- Provider 启动与缓存同步：`features/settings/llm-settings-lifecycle.test.js` 运行生产 Hook、AppShell 参数和保存处理器，覆盖陈旧缓存启动恢复、成功响应脱敏回写、GET/保存/删除竞态、草稿与执行快照隔离、编辑保留、启停、缓存失败及有限启动重试。`fixtures/llm-settings-lifecycle.html` 用真实 React 编辑器和 ChatComposer 验证启动发送、未保存编辑、保存后重挂载发送和真删除拒发；使用内存存储与离线传输，不修改真实配置或调用模型。
+
+- 前端审查回归：`features/settings/section-save-routing.test.js`、`agent-tool-policy.test.js` 与 `tools-settings-lifecycle.test.js` 覆盖分段保存、可空工具权限、首次 GET / PUT 竞争及真实 AppShell 草稿接线；`fixtures/settings-draft-safety.html`、`remote-settings-bridge.html` 用离线桥验证表单和保存后重开。
+- 异步归属回归：`features/conversations/runtime-restore-regressions.test.js`、`task-runtime-single-batch.test.js` 覆盖远端运行轮询、本地流保护、混合 batch 404 单独确认及 Stop 恢复期间删除/独立分页水合；`features/chat/composer-upload-ownership.test.js` 组合实际 Stop 验证上传 UI 解锁和迟到结果隔离。
+- 流式与 DOM 回归：`features/chat/stream-event-identity.test.js`、`features/tasks/sub-agent-replay-pipeline.test.js` 验证四类 delta 身份保留、重放与真实重复文本、10,000 事件线性处理；`fixtures/goal-command.html` 覆盖非折叠选区，`chat-render-window.html` 覆盖批注导航、原生滚动补页及多帧阅读锚点稳定。
+- 定时与工作流回归：`fixtures/schedules-runtime-races.html`、`workflow-terminal-receipt.html` 覆盖内容流不阻挡列表、分页 generation 与终态优先；`workflow-runtime-detail.html`、`workflow-provider-icons.html` 验证实际执行身份和历史模型图标。以上夹具使用离线桩，不调用模型或修改真实业务数据；浏览器检查不包含在 `npm test` 内。
+
+- 取消恢复与配置等待回归：`stop-recovery-lifecycle.test.js` 验证回拉完整执行记录前不发布空摘要，失败保留原内容、历史流记录不被降级、完整记录不会被较旧摘要覆盖；`background-retry.test.js` 验证侧栏重试等待保存/加载时 Stop 及时释放、统一 30 秒期限、迟到结果不发送，以及编辑重发在等待保存前登记取消归属、切会话不误投。`run-config-save-guard.test.js` 验证编辑的前台配置等待响应取消但不取消共用保存请求。均使用模拟请求，不操作真实任务。
+
+- `features/conversations/background-retry.test.js` 与 `run-config-save-guard.test.js` 覆盖 Retry 的原会话后台归属：配置恢复/保存中切会话或卸载仍继续，返回后重复点击合并为一次；不借用目标会话配置、不抢回页面、不淘汰等待中的 runtime，保留 30 秒期限、真实失败、明确 Stop、latest-turn 校验和服务端确认。`fixtures/failure-retry.html` 使用生产 ChatPanel、配置 hook、Retry 与离线传输验证 A→B→A→B 后只提交到 A；模型目录刷新不阻挡有效已保存路由。不调用真实模型或改写真会话。
+
 - `features/chat/sub-agent-terminal.test.js` 与 `features/chat/terminal-tools.test.js` 覆盖主/子 Agent 共用终端归并：同 session 的查询、输入和中断更新原 Shell，独立命令及不同 Agent 隔离，逐调用输出去重但保留各轮相同日志，保留运行/退出/失败状态；历史重建走相同规则。`fixtures/tool-cards.html` 用生产嵌套卡片验证多轮查询不新增卡、不重置展开状态、独立命令失败不串卡及最终退出与输出正确显示，全程离线。
 
 - `features/tasks/stop-recovery-lifecycle.test.js` 组合生产 runtime、Stop、流事件与缓存回收，覆盖停止失败不冒充运行中、页面清理后仍可再次停止、跨会话投影隔离、停止/收尾/恢复期间不可淘汰及成功后恢复淘汰；历史恢复使用请求归属与单调 run generation，覆盖新手动/定时任务已启动又结束、详情与正文迟到、恢复请求乱序和失败重试。`fixtures/retry-stop-race.html` 另验证实际错误卡、“Stop again”按钮、拒发/禁编辑及成功后恢复 Send。均为离线数据，不调用模型或改写真会话。
 
 - `features/tasks/retry-stop-race.test.js` 覆盖 Retry 启动前/确认后 Stop、迟到启动保留真实任务 ID、取消先于任务注册时精确补停、旧流收尾与服务端历史恢复屏障、后续 Retry/send 等待、启动拒绝不误确认、latest-turn 409 只刷新不自动改投、恢复失败拒发及跨会话隔离。夹具与生产共用即时事件/批处理常量，不调用模型或改写真实会话。`fixtures/retry-stop-race.html` 通过生产 ChatPanel 点击 Retry 和 Stop，验证早停旧卡不复现、迟到内容被丢弃、真实任务保留及收尾期间动作禁用。
 
-- `features/chat/config-save-status.test.js` 与 `fixtures/conversation-agent-switch.html` 覆盖静默配置保存：快速及慢速保存均不显示 `Saving…` 或加载提示，不撑高输入区；后台保存不禁用发送，点击后等待统一保存屏障、防重复提交，使用实际保存值。保存失败保留草稿和附件、只报一次错误；等待期间新输入的文字保留；切会话/卸载不启动旧请求。API/保存为离线夹具，不调用真实模型或修改已有会话；加 `?save-status` 可单独运行配置保存组件的 13 项 DOM 检查。
+- `features/chat/config-save-status.test.js` 与 `fixtures/conversation-agent-switch.html` 覆盖静默配置保存：快速及慢速保存均不显示 `Saving…` 或加载提示，不撑高输入区；后台保存不禁用发送，点击后等待统一保存屏障、防重复提交，使用实际保存值。保存失败保留草稿和附件、只报一次错误；等待期间新输入的文字保留；普通 Send 在切会话/卸载后不启动旧请求，已点击 Retry 则按原会话继续。API/保存为离线夹具，不调用真实模型或修改已有会话；加 `?save-status` 可单独运行配置保存组件的 13 项 DOM 检查。
 
 - `features/chat/send-blocked-tooltip.test.js` 锁住发送配置校验与展示位置：缺 provider/model、provider 失效、Agent 停用或 Bot 节点缺配置时，原因只放在禁用发送按钮的共享 tooltip，不作为输入框内常驻提示或占位文案。`fixtures/send-blocked-tooltip.html` 使用生产 ChatComposer/PortalTooltip 与离线保存器，检查输入区悬停不弹提示、按钮区域悬停/移开、键盘可达、拒发保留草稿及配置修正后提示消失、正常发送仍可用；不调用模型或写真实会话。
 
