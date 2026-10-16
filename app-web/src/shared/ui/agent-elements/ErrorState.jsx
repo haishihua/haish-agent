@@ -23,19 +23,11 @@ export function ErrorState({
 }) {
   const inline = variant === 'inline';
   const classes = ['aui-error-state', inline ? 'is-inline' : '', className].filter(Boolean).join(' ');
-  if (retrying) {
-    return (
-      <div data-slot="error-state" role="status" className={`${classes} aui-error-retrying`}>
-        <RefreshCwIcon size={inline ? 13 : 14} aria-hidden="true" />
-        <span>Retrying</span>
-      </div>
-    );
-  }
   // Inline cards are plain status text unless the caller hands in a retry handler; the
   // chat card always keeps the button so the reason a retry is unavailable stays
   // discoverable on hover.
   const showRetry = !inline || Boolean(onRetry);
-  const retryTitle = retryHint
+  const retryTitle = retrying ? 'Retrying' : retryHint
     || (!onRetry ? 'Only the latest failed turn can be retried' : disabled ? 'Wait for the current task to finish' : 'Retry');
   return (
     <div data-slot="error-state" role="alert" className={classes}>
@@ -45,7 +37,8 @@ export function ErrorState({
         {detail ? <p className="aui-error-detail">{detail}</p> : null}
       </div>
       {showRetry ? (
-        <button type="button" onClick={onRetry} disabled={disabled || !onRetry} title={retryTitle}>
+        <button type="button" onClick={onRetry} disabled={disabled || !onRetry || retrying}
+          aria-busy={Boolean(retrying)} aria-label={retrying ? `Retrying: ${retryLabel}` : undefined} title={retryTitle}>
           <RefreshCwIcon size={12} aria-hidden="true" />{retryLabel}
         </button>
       ) : null}

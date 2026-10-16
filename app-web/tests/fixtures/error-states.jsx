@@ -53,7 +53,7 @@ function App() {
       </section>
       <section id="retrying">
         <p className="fixture-label">⑥ 重试中</p>
-        <ErrorState title="Task failed" detail="ignored while retrying" retrying onRetry={() => {}} />
+        <ErrorState title="Task failed" detail="Original failure stays visible" retrying onRetry={() => {}} />
       </section>
       <section id="screen-stale" className="fixture-frame">
         <p className="fixture-label">⑦ 崩溃屏：陈旧分片</p>
@@ -119,8 +119,12 @@ function runChecks() {
     `${chatCard.getBoundingClientRect().top - chatBody.getBoundingClientRect().bottom}`);
 
   const retrying = document.querySelector('#retrying .aui-error-state');
-  check('重试中是 status 而不是 alert',
-    retrying?.getAttribute('role') === 'status' && /Retrying/.test(retrying?.textContent || ''),
+  check('重试中保留错误卡，只在 Retry 按钮内显示 loading',
+    retrying?.getAttribute('role') === 'alert'
+      && retrying.querySelector('.aui-error-detail')?.textContent === 'Original failure stays visible'
+      && retrying.querySelector('button')?.getAttribute('aria-busy') === 'true'
+      && retrying.querySelector('button')?.disabled
+      && retrying.querySelector('button')?.textContent === 'Retry',
     `${retrying?.getAttribute('role')} / ${retrying?.textContent}`);
 
   const staleScreen = document.querySelector('#screen-stale .aui-error-screen');

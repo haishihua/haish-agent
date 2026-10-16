@@ -17,19 +17,14 @@
   color: #f87171; font-family: inherit; font-size: 12px; font-weight: 500; line-height: 16px;
   white-space: nowrap; cursor: pointer; transition: background-color 150ms;
 }
-.aui-error-state button:hover:not(:disabled) { background: rgb(239 68 68 / 10%); }
-.aui-error-state button:disabled { opacity: .5; cursor: default; }
-.aui-error-state button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
-.aui-error-retrying { align-items: center; padding: 0; background: transparent; color: rgb(218 221 239 / 55%); }
-.aui-error-retrying svg { color: rgb(218 221 239 / 45%); animation: aui-error-spin 1s linear infinite; }
-.aui-error-retrying span {
-  background: linear-gradient(110deg, currentColor 35%, #daddef 50%, currentColor 65%);
-  background-size: 200% 100%; background-clip: text; -webkit-text-fill-color: transparent;
-  animation: aui-error-shimmer 2s linear infinite;
+@media (hover: hover) and (pointer: fine) {
+  .aui-error-state button:hover:not(:disabled) { background: rgb(239 68 68 / 10%); }
 }
+.aui-error-state button:disabled { opacity: .5; cursor: default; }
+.aui-error-state button:focus-visible { box-shadow: 0 0 0 2px currentColor; }
+.aui-error-state button[aria-busy="true"] svg { animation: aui-error-spin 1s linear infinite; }
 @keyframes aui-error-enter { from { opacity: 0; } to { opacity: 1; } }
 @keyframes aui-error-spin { to { transform: rotate(360deg); } }
-@keyframes aui-error-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
 /* Inline density: settings sheets, dialogs and row-level failures. Same red card,
    tighter padding, sized to its content so it also survives flex rows (the MCP tool
@@ -66,5 +61,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .aui-error-state, .aui-error-retrying svg, .aui-error-retrying span { animation: none; }
+  .aui-error-state, .aui-error-state button[aria-busy="true"] svg { animation: none; }
 }

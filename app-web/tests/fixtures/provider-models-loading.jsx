@@ -106,7 +106,7 @@ async function run() {
   check(!isLoading() && flyout().querySelector('[role="alert"]')?.textContent.includes('timed out'), 'Hung request leaves Loading at its deadline with a clear error');
   check(flyout().querySelector('[data-slot="error-state"] button')?.textContent.includes('Retry'), 'The model flyout offers its own Retry button');
   flyout().querySelector('[data-slot="error-state"] button').click(); await sleep();
-  check(requests.length === 4 && flyout().textContent.includes('Retrying'), 'Retry starts exactly one new request and shows retry progress');
+  check(requests.length === 4 && flyout().querySelector('.aui-error-state button[aria-busy="true"]')?.disabled, 'Retry starts exactly one new request and shows progress in the original button');
   await respond(3, ['recovered-empty']);
   check(!isLoading() && !flyout().querySelector('[role="alert"]') && choices()[0]?.textContent.includes('recovered-empty'), 'Successful retry restores the menu and clears its error');
   choices()[0].click(); await sleep();
