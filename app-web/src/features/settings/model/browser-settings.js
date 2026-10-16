@@ -31,7 +31,6 @@ export function browserStatusMeta(state) {
   if (!state) return { label: 'Checking…', tone: 'muted', loading: true };
   if (state.setup_running && state.step === 'check') return { label: 'Checking', tone: 'muted', loading: true };
   if (state.setup_running && state.step === 'repair') return { label: 'Repairing', tone: 'muted', loading: true };
-  if (state.paused) return { label: 'Paused', tone: 'muted' };
   if (state.sync_running || state.status === 'syncing') return { label: 'Importing', tone: 'muted', loading: true };
   if (state.setup_running) return { label: state.step === 'waiting_allow' ? 'Waiting for Chrome' : state.step === 'dependencies' ? 'Installing' : 'Setting up', tone: 'muted', loading: true };
   if (state.initial_import_error) return { label: 'Import stopped', tone: 'warning' };
@@ -56,7 +55,6 @@ export function browserStatusMeta(state) {
 export function browserSetupHeading(state) {
   if (state?.step === 'check') return state.setup_running || !state.error_code ? 'Dependency check' : 'Dependency check failed';
   if (state?.step === 'repair') return state.setup_running || !state.error_code ? 'Dependency repair' : 'Dependency repair failed';
-  if (state?.paused) return 'Browser paused';
   if (state?.initial_import_error) return 'Import stopped';
   if (state?.initial_import_complete && !state?.error_code && !state?.setup_running) return 'Browser status';
   if (state?.sync_running || state?.status === 'syncing') return 'Initial import';

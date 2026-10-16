@@ -3,7 +3,7 @@ import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
-import { ArrowRight, Check, ChevronRight, PanelsTopLeft, Info, LoaderCircle, Monitor, Power, Pause, Play, ShieldCheck, Wrench } from 'lucide-react';
+import { ArrowRight, Check, ChevronRight, PanelsTopLeft, Info, LoaderCircle, Monitor, Power, ShieldCheck, Wrench } from 'lucide-react';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import { Badge } from '../../../shared/ui/settings-elements/ui/badge.tsx';
 import { Checkbox } from '../../../shared/ui/settings-elements/ui/checkbox.tsx';
@@ -64,15 +64,14 @@ export function BrowserConfigEditor({ onToast }) {
   const showConsent = state && !running && dependency.consent;
   const runtimeIssue = state ? dependency.issue || '' : '';
   const blocked = busy || Boolean(error);
-  const primaryDisabled = blocked || (dependency.consent && (!consent || (!state?.initial_import_error && mismatch && !replace)))
-    || (!state?.initial_import_complete && !state?.initial_import_error && state?.paused);
+  const primaryDisabled = blocked || (dependency.consent && (!consent || (!state?.initial_import_error && mismatch && !replace)));
   return <div className="settings-content-modern browser-settings">
     <div className="settings-page-heading"><h1>Browser</h1></div>
     <section className="browser-settings-surface" aria-labelledby="browser-sync-title">
       <Item className="browser-feature-heading">
         <ItemMedia variant="icon"><PanelsTopLeft size={18} /></ItemMedia>
         <ItemContent><ItemTitle><h2 id="browser-sync-title">Haish Browser</h2></ItemTitle><ItemDescription>Import logins once. Maintain them here afterward.</ItemDescription></ItemContent>
-        <Badge variant="secondary" className={`browser-status ${status.tone}`} role="status">{status.loading ? <LoaderCircle size={12} className="settings-spin" aria-hidden="true" /> : status.tone === 'success' ? <Check size={12} aria-hidden="true" /> : state?.paused ? <Pause size={12} aria-hidden="true" /> : status.tone === 'warning' ? <Info size={12} aria-hidden="true" /> : null}<span className="browser-status-label">{status.label}</span></Badge>
+        <Badge variant="secondary" className={`browser-status ${status.tone}`} role="status">{status.loading ? <LoaderCircle size={12} className="settings-spin" aria-hidden="true" /> : status.tone === 'success' ? <Check size={12} aria-hidden="true" /> : status.tone === 'warning' ? <Info size={12} aria-hidden="true" /> : null}<span className="browser-status-label">{status.label}</span></Badge>
       </Item>
       <div className="browser-feature-body">
         <div className="browser-connection" aria-label="One-time local login import">
@@ -92,13 +91,10 @@ export function BrowserConfigEditor({ onToast }) {
         </Field>}
       </div>}
       <div className="browser-settings-actions">
-        <span className="browser-action-hint"><ShieldCheck size={14} />{state?.enabled && state?.paused ? 'Automation paused' : running ? (syncing ? 'Importing logins once' : maintenance ? 'Logins and browser selection stay unchanged' : state?.step === 'waiting_allow' ? 'Click Allow in Chrome' : 'Keep Haish open during setup') : state?.enabled ? 'Account sessions stay on this device' : state?.initial_import_complete ? 'Saved logins stay in Haish Browser' : 'macOS only'}</span>
+        <span className="browser-action-hint"><ShieldCheck size={14} />{running ? (syncing ? 'Importing logins once' : maintenance ? 'Logins and browser selection stay unchanged' : state?.step === 'waiting_allow' ? 'Click Allow in Chrome' : 'Keep Haish open during setup') : state?.enabled ? 'Account sessions stay on this device' : state?.initial_import_complete ? 'Saved logins stay in Haish Browser' : 'macOS only'}</span>
         <div className={`browser-action-buttons${state?.enabled && !running && !showConsent ? ' browser-maintenance-actions' : ''}`}>
           {running ? <Button variant="outline" size="sm" disabled={busy} onClick={() => action('cancel')}>{pendingAction === 'cancel' ? 'Cancelling…' : maintenance ? 'Cancel' : syncing ? 'Cancel import' : 'Cancel setup'}</Button> : <>
-            {state && (state.enabled || state.paused) && <PortalTooltip text={state.paused ? 'Resume automation' : 'Pause automation'} position="above" multiline>
-              <Button variant="outline" size="sm" disabled={blocked} onClick={() => { const name = state.paused ? 'resume' : 'pause'; action(name); }}>{state.paused ? <Play size={14} /> : <Pause size={14} />}{state.paused ? 'Resume' : 'Pause'}</Button>
-            </PortalTooltip>}
-            {state?.enabled && <PortalTooltip text="Use personal Chrome" position="above" multiline>
+            {state?.enabled && <PortalTooltip text="Use original Chrome connection for new calls" position="above" multiline>
               <Button variant="outline" size="sm" disabled={blocked} onClick={() => action('disable')}><Power size={14} />{pendingAction === 'disable' ? 'Disabling…' : 'Disable'}</Button>
             </PortalTooltip>}
             {state && dependency.action && dependency.action !== 'check' && <Button size="sm" disabled={primaryDisabled} onClick={() => action(dependency.action)}>{busy && <LoaderCircle size={14} className="settings-spin" />}{busy ? 'Starting…' : dependency.label}</Button>}
@@ -118,8 +114,8 @@ export function BrowserConfigEditor({ onToast }) {
         </dl>}
         <div><h3>Permissions</h3><p>Grant macOS permissions when prompted; click Allow yourself in Chrome. Haish won’t restart personal Chrome.</p></div>
         <div><h3>Import scope</h3><p>Initial import copies Cookies only, not local storage or IndexedDB. Logins saved directly in Haish Browser stay in its profile; some sites may still need login.</p></div>
-        <div><h3>Login maintenance</h3><p>No further sync after import. Sign in or out directly in Haish Browser. Pause before manual use; already issued operations may still finish. Pause does not remove automation startup attributes; some sites may still reject sign-in.</p></div>
-        <div><h3>Browser access</h3><p>Disabled by default. Enabled: a separate, visible browser with a persistent profile. Opens on a browser call or first setup, stays open between tasks, and closes with Haish. Manual exit waits for the next call to reopen. No fallback to personal Chrome. Disabled: your original connection; saved logins remain.</p></div>
+        <div><h3>Login maintenance</h3><p>No further sync after import. Sign in or out directly in Haish Browser. Disable before manual use; already dispatched operations may still finish. Disabling does not change Chrome’s startup attributes; some sites may still reject sign-in.</p></div>
+        <div><h3>Browser access</h3><p>Disabled by default. Enabled: a separate, visible browser with a persistent profile. Opens on a browser call or first setup, stays open between tasks, and closes with Haish. Manual exit waits for the next call to reopen. No fallback to personal Chrome. Disabled: new calls use your original Chrome connection, not Haish Browser. This does not disable the browser tool or close the window; saved logins remain.</p></div>
       </div></CollapsibleContent>
     </Collapsible>
   </div>;

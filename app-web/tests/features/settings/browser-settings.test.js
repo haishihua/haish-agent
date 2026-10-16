@@ -69,22 +69,21 @@ test('setup headings identify the actual stage instead of blaming Chrome authori
 
 test('maintenance actions share outlined buttons, icons and equal-size layout', () => {
   const maintenance = editor.slice(editor.indexOf('<div className={`browser-action-buttons'), editor.indexOf('</section>'));
-  assert.equal((maintenance.match(/variant="outline" size="sm"/g) || []).length, 3); // cancel, pause/resume, disable
-  for (const icon of ['Power', 'Pause', 'Play']) assert.ok(maintenance.includes(`<${icon} size={14}`));
+  assert.equal((maintenance.match(/variant="outline" size="sm"/g) || []).length, 2); // cancel, disable
+  assert.ok(maintenance.includes('<Power size={14}'));
   assert.ok(!maintenance.includes('Wrench'));
   assert.ok(!maintenance.includes('variant="ghost"'));
   const css = fs.readFileSync(new URL('../../../src/features/settings/settings.css', import.meta.url), 'utf8');
-  assert.match(css, /\.browser-maintenance-actions \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.browser-maintenance-actions \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /\.browser-maintenance-actions \[data-slot="button"\] \{[^}]*height: 32px;[^}]*border: 1px solid/);
 });
 
-test('Pause, Resume and Disable explain their distinct effects through shared tooltips without renaming buttons', () => {
+test('Disable explains original-route selection without disabling the entire browser tool', () => {
   assert.match(editor, /import \{ PortalTooltip \} from/);
-  assert.match(editor, /<PortalTooltip text=\{state.paused \? 'Resume automation' : 'Pause automation'\} position="above" multiline>/);
-  assert.match(editor, /<PortalTooltip text="Use personal Chrome" position="above" multiline>/);
-  assert.match(editor, /\{state.paused \? 'Resume' : 'Pause'\}/);
+  assert.match(editor, /<PortalTooltip text="Use original Chrome connection for new calls" position="above" multiline>/);
   assert.match(editor, /\{pendingAction === 'disable' \? 'Disabling…' : 'Disable'\}/);
-  assert.ok(!editor.includes('Already issued operations may still finish.'));
+  assert.match(editor, /This does not disable the browser tool or close the window/);
+  assert.match(editor, /already dispatched operations may still finish/);
   const fixture = fs.readFileSync(new URL('../../fixtures/browser-settings.jsx', import.meta.url), 'utf8');
   assert.match(fixture, /<AppTooltipProvider>/);
 });
@@ -132,7 +131,7 @@ test('keep-logins/disable feedback and action failures release busy state', asyn
   }
 });
 
-test('initial import shows progress without repeat sync and supports pause', () => {
+test('initial import shows progress and cancellation without repeat sync', () => {
   assert.deepEqual(browserStatusMeta({ status: 'syncing', sync_running: true }), { label: 'Importing', tone: 'muted', loading: true });
   assert.equal(browserSetupHeading({ step: 'manual_sync', status: 'syncing', sync_running: true }), 'Initial import');
   assert.equal(browserSetupHeading({ step: 'manual_sync', status: 'needs_repair' }), 'Initial import failed');
@@ -140,8 +139,6 @@ test('initial import shows progress without repeat sync and supports pause', () 
   assert.match(editor, /Cancel import/);
   assert.ok(!editor.includes("action('sync')"));
   assert.match(editor, /No further sync after import/);
-  assert.match(editor, /const name = state.paused \? 'resume' : 'pause'/);
-  assert.equal(browserStatusMeta({ paused: true }).label, 'Paused');
   assert.equal(browserSetupHeading({ initial_import_error: true }), 'Import stopped');
 });
 
@@ -234,7 +231,7 @@ test('first setup labels and maintenance status do not conflate installation, se
   assert.equal(browserStatusMeta({ ...first, managed_dependency_status: 'unverified', dependency_status: 'compatible' }).label, 'Needs check');
   assert.equal(browserStatusMeta({ ...first, dependency_status: 'compatible', managed_dependency_status: 'compatible' }).label, 'Not set up');
   for (const [step, label, heading] of [['check', 'Checking', 'Dependency check'], ['repair', 'Repairing', 'Dependency repair']]) {
-    assert.equal(browserStatusMeta({ paused: true, setup_running: true, step }).label, label);
+    assert.equal(browserStatusMeta({ setup_running: true, step }).label, label);
     assert.equal(browserSetupHeading({ setup_running: true, step }), heading);
     assert.equal(browserSetupHeading({ step }), heading);
     assert.equal(browserSetupHeading({ step, error_code: 'setup_failed' }), `${heading} failed`);
@@ -244,7 +241,7 @@ test('first setup labels and maintenance status do not conflate installation, se
 test('Check and Enable do not inherit checked installation consent in their request', async () => {
   const actionBody = editor.slice(editor.indexOf('const action = async (name) => {') + 'const action = async (name) => {'.length, editor.indexOf('\n  const mismatch'));
   const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
-  for (const name of ['check', 'enable', 'disable', 'pause', 'repair', 'install']) {
+  for (const name of ['check', 'enable', 'disable', 'repair', 'install']) {
     let payload;
     const action = makeAction(async (url, options) => { payload = JSON.parse(options.body); return { ok: true, json: async () => ({}) }; }, '', () => {}, true, true, () => {}, () => {}, () => {}, () => {}, () => {}, () => {});
     await action(name);
@@ -253,23 +250,19 @@ test('Check and Enable do not inherit checked installation consent in their requ
   }
 });
 
-test('Pause and Resume remain simple dispatch controls without mode switching or automatic priority', () => {
-  const state = { enabled: true, paused: true, initial_import_complete: true, dependency_status: 'compatible', managed_dependency_status: 'compatible' };
-  assert.deepEqual(browserDependencyAction(state), { label: '', action: null });
-  assert.equal(browserStatusMeta(state).label, 'Paused');
-  assert.equal(browserSetupHeading(state), 'Browser paused');
-  assert.equal(browserStatusMeta({ ...state, setup_running: true, step: 'check' }).label, 'Checking');
-  assert.equal(browserSetupHeading({ ...state, setup_running: true, step: 'check' }), 'Dependency check');
+test('Browser only has Enable/Disable selection; removed controls have no state or UI mappings', () => {
+  const model = fs.readFileSync(new URL('../../../src/features/settings/model/browser-settings.js', import.meta.url), 'utf8');
+  for (const removed of ['state.paused', 'state?.paused', "action('pause')", "action('resume')", '<Pause', '<Play', 'Resume automation', 'Pause automation']) {
+    assert.ok(!editor.includes(removed));
+    assert.ok(!model.includes(removed));
+  }
   for (const removed of ['mode_switch_running', 'control_mode', 'auto_yielded', 'foreground_unknown', 'active_browser_calls', 'AlertDialog', 'Manual login']) assert.ok(!editor.includes(removed));
-  assert.match(editor, /state && \(state.enabled \|\| state.paused\)/);
-  assert.match(editor, /Pause does not remove automation startup attributes/);
-  assert.match(editor, /action\(name\)/);
 });
 
-test('Pause/Resume requests do not confirm restart, install or shared-runtime replacement', async () => {
+test('Enable/Disable requests do not confirm restart, install or shared-runtime replacement', async () => {
   const actionBody = editor.slice(editor.indexOf('const action = async (name) => {') + 'const action = async (name) => {'.length, editor.indexOf('\n  const mismatch'));
   const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
-  for (const name of ['pause', 'resume']) {
+  for (const name of ['enable', 'disable']) {
     let payload;
     const action = makeAction(async (url, options) => { payload = JSON.parse(options.body); return { ok: true, json: async () => ({}) }; }, '', () => {}, true, true, () => {}, () => {}, () => {}, () => {}, () => {}, () => {});
     await action(name);

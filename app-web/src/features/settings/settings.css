@@ -209,7 +209,7 @@
   .browser-action-hint { display: flex; align-items: center; gap: 6px; color: var(--muted-foreground); font-size: 11px; }
   .browser-action-buttons { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
   .browser-action-buttons [data-slot="button"] { width: auto; flex-shrink: 0; white-space: nowrap; font-size: 12px; }
-  .browser-maintenance-actions { display: grid; flex-shrink: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(100%, 280px); }
+  .browser-maintenance-actions { display: grid; flex-shrink: 0; grid-template-columns: minmax(0, 1fr); width: min(100%, 140px); }
   .browser-maintenance-actions [data-slot="button"] { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 32px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 6px; box-shadow: none; line-height: 20px; }
   .browser-maintenance-actions [data-slot="button"] > svg { width: 14px; height: 14px; }
   .browser-setup-status { display: flex; align-items: flex-start; gap: 10px; padding: 14px 22px; border-top: 1px solid #ffffff0b; color: #a9bedf; background: #7399da08; }

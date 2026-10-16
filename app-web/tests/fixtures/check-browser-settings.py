@@ -1,7 +1,7 @@
 """Synthetic Browser UI only. Start fixture Vite on 5187; no real Settings API."""
 from playwright.sync_api import sync_playwright
 
-STATES = ['first', 'prepared', 'setup', 'install', 'ready', 'paused', 'missing',
+STATES = ['first', 'prepared', 'setup', 'install', 'ready', 'missing',
           'update', 'mismatch', 'retry', 'disabled', 'imported', 'empty', 'importing',
           'unverified', 'checking', 'repairing', 'stopped', 'checkFailed']
 
@@ -29,6 +29,8 @@ with sync_playwright() as p:
             for state in STATES:
                 open_state(state)
                 assert not writes()
+                assert page.get_by_role('button', name='Pause', exact=True).count() == 0
+                assert page.get_by_role('button', name='Resume', exact=True).count() == 0
                 assert page.locator('.browser-runtime-summary').count() == 0  # Details collapsed.
                 assert page.get_by_role('button', name='Check browser', exact=True).count() == 0
                 info = page.evaluate('''() => {
@@ -54,8 +56,8 @@ with sync_playwright() as p:
                 if state in labels:
                     assert labels[state] in info['buttons'], info
                 if state in ['ready', 'imported', 'empty']:
-                    assert info['buttons'] == ['Pause', 'Disable'], info
-                if state in ['ready', 'disabled', 'unverified', 'checkFailed', 'paused']:
+                    assert info['buttons'] == ['Disable'], info
+                if state in ['ready', 'disabled', 'unverified', 'checkFailed']:
                     assert page.get_by_role('checkbox').count() == 0, state
                 page.get_by_role('button', name='Details', exact=True).click()
                 expected_check = 'Checking…' if state == 'checking' else 'Check browser'
@@ -70,9 +72,7 @@ with sync_playwright() as p:
         for width in [1100, 390]:
             page.set_viewport_size({'width': width, 'height': 820})
             for state, label, expected in [
-                ('ready', 'Pause', 'Pause automation'),
-                ('ready', 'Disable', 'Use personal Chrome'),
-                ('paused', 'Resume', 'Resume automation'),
+                ('ready', 'Disable', 'Use original Chrome connection for new calls'),
             ]:
                 for interaction in ['hover', 'keyboard']:
                     open_state(state)
@@ -105,14 +105,14 @@ with sync_playwright() as p:
                     print('PASS action tooltip', width, state, label, interaction)
 
         page.set_viewport_size({'width': 1100, 'height': 820})
-        for state, label, action in [('ready', 'Pause', 'pause'), ('paused', 'Resume', 'resume'), ('ready', 'Disable', 'disable')]:
+        for state, label, action in [('ready', 'Disable', 'disable')]:
             open_state(state)
             page.get_by_role('button', name=label, exact=True).click()
             assert page.get_by_role('alertdialog').count() == 0
             expect_write(action)
             print('PASS unified action dispatch', action)
 
-        for state in ['ready', 'unverified', 'disabled', 'paused', 'checkFailed']:
+        for state in ['ready', 'unverified', 'disabled', 'checkFailed']:
             open_state(state)
             page.get_by_role('button', name='Details', exact=True).click()
             assert not writes()
