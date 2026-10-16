@@ -43,7 +43,7 @@ function FinalAnswerMarkdown({ source, streaming, sourceMessageId }) {
   );
 }
 
-function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, onRetry, onFork, onEdit, onAnnotationJump, actionsDisabled = false, forceTraceOpen = false }) {
+function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, onRetry, onFork, onEdit, onAnnotationJump, actionsDisabled = false, forceTraceOpen = false, retryPending = false }) {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState('');
   const [actionBusy, setActionBusy] = React.useState(false);
@@ -206,7 +206,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
             <EditMessage value={draft} onValueChange={setDraft} busy={actionBusy} disabled={actionsDisabled}
               onCancel={() => { setEditing(false); setActionError(''); }} onSave={() => perform(() => onEdit(draft, message))} />
           ) : isAgent && message.status === 'failed' ? (
-            <ErrorState title="Task failed" detail={[message.text, actionError].filter(Boolean).join('\n')} retrying={actionBusy}
+            <ErrorState title="Task failed" detail={[message.text, actionError].filter(Boolean).join('\n')} retrying={actionBusy || retryPending}
               disabled={actionsDisabled} onRetry={onRetry ? () => perform(() => onRetry(message)) : undefined} />
           ) : isAgent ? (
             <FinalAnswerMarkdown source={message.text} streaming={message.streaming} sourceMessageId={message.status === 'done' ? message.messageId : undefined} />
@@ -273,6 +273,7 @@ export const ChatMessageRow = React.memo(
     && previous.onEdit === next.onEdit
     && previous.onAnnotationJump === next.onAnnotationJump
     && previous.actionsDisabled === next.actionsDisabled
+    && previous.retryPending === next.retryPending
     && previous.forceTraceOpen === next.forceTraceOpen
   ),
 );

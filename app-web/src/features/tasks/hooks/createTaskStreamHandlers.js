@@ -7,6 +7,7 @@ import { usableWorkflowSnapshot } from '../../workflow/model/workflow-snapshot.j
 import { stripInjectedSkillInstruction } from '../../chat/model/chat-text.js';
 import { runtimeEventToLog } from '../model/runtime-events.js';
 import { contextUsageFromRuntimeEvent } from '../../chat/model/context-usage.js';
+import { waitForAttemptConfigOperation } from '../../conversations/model/attempt-run-config.js';
 
 // 后端在会话上持“一次只能跑一个任务”的占用锁，锁直到上一轮 stream 收尾
 // 才释放。用户点“停止”后立刻编辑重发时，上一轮可能还在收尾（最长几秒）→ 409。
@@ -808,6 +809,7 @@ export function createTaskStreamHandlers(ctx) {
         id: runId,
         taskId: runId,
         sourceTaskId,
+        awaitingRetryConfirmation: streamRequest?.attempt === 'rerun',
         sourceRunId: pendingTask.workflowRun?.run_id || null,
         rerunFromNodeId: streamRequest.rerunNodeId || null,
         title: fullAttempt && streamRequest.message != null ? streamRequest.message : pendingTask.title,
@@ -1158,8 +1160,23 @@ export function createTaskStreamHandlers(ctx) {
         }
       }
       if (fullAttempt && Number(error?.status) === 409
-        && String(error?.message) === 'Only the latest turn can be retried or edited.') {
-        await recoverConversationTasks(runConversationId, { expectedRuntime: runRuntime });
+        && ['Only the latest turn can be retried or edited.', 'Task is not eligible for this operation.']
+          .includes(String(error?.message))) {
+        const recoveryController = new AbortController();
+        const signal = streamRequest?.preflightSignal;
+        const abortRecovery = () => recoveryController.abort();
+        signal?.addEventListener('abort', abortRecovery, { once: true });
+        if (signal?.aborted) abortRecovery();
+        try {
+          await waitForAttemptConfigOperation(
+            recoverConversationTasks(runConversationId, { expectedRuntime: runRuntime, signal: recoveryController.signal }),
+            { signal: recoveryController.signal, timeoutMs: ctx.attemptConfigTimeoutMs ?? 30_000,
+              timeoutMessage: 'Timed out refreshing task status. Nothing was retried. Please try again.' },
+          );
+        } finally {
+          recoveryController.abort();
+          signal?.removeEventListener('abort', abortRecovery);
+        }
       }
       throw error;
     } finally {

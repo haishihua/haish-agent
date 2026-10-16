@@ -8,7 +8,11 @@
 //
 // Only pass a pending turn that is actually rendering (AppShell decides that).
 export function collapseFullTaskAttempts(tasks, pendingTurn = null) {
-  const attempts = pendingTurn && !pendingTurn.rerunFromNodeId ? [pendingTurn, ...tasks] : tasks;
+  // Manual Retry keeps the original failure/button until run_started. Stop
+  // still owns its pending attempt and must not reveal the old failed turn.
+  const pendingReplacesSource = pendingTurn && !pendingTurn.rerunFromNodeId
+    && (!pendingTurn.awaitingRetryConfirmation || pendingTurn.stopPending);
+  const attempts = pendingReplacesSource ? [pendingTurn, ...tasks] : tasks;
   const replaced = new Set(attempts
     .filter((task) => !task.rerunFromNodeId)
     .map((task) => task.sourceTaskId)

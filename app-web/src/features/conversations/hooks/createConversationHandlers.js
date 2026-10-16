@@ -906,6 +906,7 @@ export function createConversationHandlers(ctx) {
     const publish = () => ctx.mutateRuntime?.(targetConversationId, () => {});
     const run = performRetryTask(task, editedMessage, runConfig, pendingRetry, runtime);
     pendingRetry.promise = run.catch((error) => {
+      controller.abort();
       showToast?.('error', String(error?.message || error));
       throw error;
     }).finally(() => {
@@ -958,10 +959,38 @@ export function createConversationHandlers(ctx) {
     if ((task?.userMessageId || task?.user_message_id) && executeQuest) {
       // Persisted turns rerun in their own runtime, not necessarily the visible
       // conversation. executeQuest enforces latest-turn, busy and Stop rules.
-      const source = getRuntime(targetConversationId)?.taskRuntimeState?.tasksById?.[task.taskId || task.task_id || task.id] || task;
-      // 编辑 / 重跑和输入框发送同一套语义：请求被接下就算发出去了。时间线上那一行的
-      // 编辑框立刻收工、这一轮立刻以运行态渲染（新的 attempt 同时顶掉 source turn，
-      // 见 chat/model/task-attempts.js）；只有启动前被拦下的失败回到调用方。
+      const sourceId = task.taskId || task.task_id || task.id;
+      // A closed renderer connection is not proof that the server task failed.
+      // Reconcile the originating conversation before rerun, without activating
+      // it or silently changing the source to a newer turn.
+      if (editedMessage === null && expectedRuntime) {
+        while (expectedRuntime.stopPromise) {
+          await waitForAttemptConfigOperation(expectedRuntime.stopPromise, { signal, timeoutMs,
+            timeoutMessage: 'Still waiting for Stop to be verified. Nothing was retried.' });
+          checkOwner();
+        }
+        if (expectedRuntime.stopError) throw new Error(expectedRuntime.stopError);
+      }
+      if (editedMessage === null && ctx.recoverConversationTasks && expectedRuntime
+        && !expectedRuntime.activeRunId && !expectedRuntime.fetchController) {
+        const detail = await waitForAttemptConfigOperation(
+          ctx.recoverConversationTasks(targetConversationId, { expectedRuntime, signal }),
+          { signal, timeoutMs, timeoutMessage: 'Timed out refreshing task status. Nothing was retried. Please try again.' },
+        );
+        checkOwner();
+        if (!detail) throw new Error('Task state changed while refreshing. Nothing was retried. Please try again.');
+        const state = expectedRuntime.taskRuntimeState;
+        if (state.latestTaskId !== sourceId || !state.tasksById[sourceId]) {
+          throw new Error('This turn is no longer the latest turn. The conversation has been refreshed.');
+        }
+        // The restored answer/running/cancelled state replaces the stale failure
+        // card. A successful refresh needs no second error or duplicate run.
+        if (state.tasksById[sourceId].status !== 'failed') return true;
+      }
+      const source = getRuntime(targetConversationId)?.taskRuntimeState?.tasksById?.[sourceId] || task;
+      // Both actions settle when accepted, not when the stream finishes. Editing
+      // keeps its immediate pending projection; Retry keeps the original error
+      // button until the server confirms the replacement attempt.
       const ack = createQuestAck();
       return ack.follow(executeQuest(source, targetConversationId, {
         attempt: editedMessage == null ? 'rerun' : 'edit',

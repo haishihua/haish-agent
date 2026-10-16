@@ -115,6 +115,35 @@ function harness(records = [task('history'), task('latest', 'running')]) {
   return { ctx, requests, respond, seed, activate, selectTask, settleDisplayed, schedule, removed, loadEarlierTaskRuntimes };
 }
 
+for (const status of ['done', 'running', 'cancelled', 'failed']) {
+  test(`Retry preflight uses real detail/batch hydration to replace a newer local failure with server ${status}`, async () => {
+    const record = { ...task('latest', 'failed'), user_message_id: 'original-user' };
+    const h = harness([record]);
+    const runtime = h.seed();
+    const source = { ...runtime.taskRuntimeState.tasksById.latest, status: 'failed',
+      error: 'Local runtime connection closed.', updatedAt: Date.now(), runtimeHydrated: true };
+    runtime.taskRuntimeState.tasksById.latest = source;
+    let dispatches = 0;
+    const handlers = createConversationHandlers({ ...h.ctx, executeQuest: async (_task, _owner, request) => {
+      dispatches += 1; request.onAccepted();
+    } });
+    const retry = handlers.handleRetryTask(source, null, { provider: 'fixture', modelId: 'model', agentId: 'agent' });
+    await tick();
+    assert.equal(h.requests[0].options.method, 'GET');
+    const actual = { ...record, status, error: status === 'failed' ? 'Actual server failure' : null };
+    h.respond(0, detail([actual]));
+    await tick();
+    assert.ok(h.requests[1].url.endsWith('/tasks/runtime'));
+    h.respond(1, [actual]);
+    assert.equal(await retry, true);
+    assert.equal(runtime.taskRuntimeState.tasksById.latest.status, status);
+    assert.equal(runtime.taskRuntimeState.tasksById.latest.error, actual.error);
+    assert.equal(runtime.taskRuntimeState.tasksById.latest.runtimeHydrated, true);
+    assert.equal(dispatches, status === 'failed' ? 1 : 0);
+    assert.equal(h.ctx.conversationIdRef.current, 'other');
+  });
+}
+
 test('ordinary selection hydrates a remote running task and repeated restoreLatest polls reach done', async () => {
   const h = harness();
   const runtime = await h.activate();

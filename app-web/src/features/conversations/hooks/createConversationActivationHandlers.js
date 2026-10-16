@@ -349,7 +349,7 @@ export function createConversationActivationHandlers(ctx) {
 
   // Reconcile task history without activating a conversation or touching the
   // displayed conversation's attachments, selection or workspace directory.
-  async function recoverConversationTasks(ownerConvId, { expectedRuntime = getRuntime(ownerConvId) } = {}) {
+  async function recoverConversationTasks(ownerConvId, { expectedRuntime = getRuntime(ownerConvId), signal } = {}) {
     if (!expectedRuntime || expectedRuntime.activeRunId) return;
     const request = {};
     const generation = expectedRuntime.runGeneration || 0;
@@ -358,13 +358,13 @@ export function createConversationActivationHandlers(ctx) {
     expectedRuntime.taskRecoveryRequest = request;
     // A newer run can start AND finish while the response is in flight. Its
     // generation never rolls back to idle; request identity also orders retries.
-    const isCurrentOwner = () => getRuntime(ownerConvId) === expectedRuntime
+    const isCurrentOwner = () => !signal?.aborted && getRuntime(ownerConvId) === expectedRuntime
       && expectedRuntime.taskRecoveryRequest === request
       && (expectedRuntime.runGeneration || 0) === generation
       && (expectedRuntime.taskStructureRevision || 0) === structureRevision
       && !expectedRuntime.activeRunId;
     try {
-      const detail = await fetchConversationDetail(ownerConvId);
+      const detail = await fetchConversationDetail(ownerConvId, { signal });
       if (!isCurrentOwner() || expectedRuntime.taskRuntimeState !== initialState) return;
       if (detail.conversation_id !== ownerConvId) throw new Error('Conversation recovery returned a different owner.');
       const tasks = Array.isArray(detail.tasks) ? detail.tasks : [];
@@ -379,7 +379,7 @@ export function createConversationActivationHandlers(ctx) {
           && previous.updatedAt !== taskSummaryToRuntimeTask(task).updatedAt;
       }).map((task) => task.task_id)].filter(Boolean))];
       if (taskIdsToRestore.length) await restoreTaskRuntimes(taskIdsToRestore, {
-        targetConversationId: ownerConvId, isCurrentActivation: isCurrentOwner,
+        targetConversationId: ownerConvId, isCurrentActivation: isCurrentOwner, signal,
       });
       // Hydration replaces state objects itself. The local structural revision
       // instead detects deletes, reorder/add/latest/pending changes during BOTH

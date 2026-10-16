@@ -56,7 +56,7 @@ function harness({ transport, configSync, configTimeoutMs } = {}) {
   Object.assign(ctx, createConversationRuntime(ctx));
   ctx.showToast = (...args) => toasts.push(args);
   Object.assign(ctx, createConversationActivationHandlers(ctx));
-  ctx.recoverConversationTasks = async () => {};
+  ctx.recoverConversationTasks = async (id) => ({ conversation_id: id });
   Object.assign(ctx, createTaskStreamHandlers(ctx));
   const source = { taskId: 'source-A', conversationId: 'A', userMessageId: 'user-A', title: 'Origin question',
     status: 'failed', executionMode: 'chat', originViewMode: 'chat', requestedProvider: route.llm_config_id, requestedModelId: route.model_id };

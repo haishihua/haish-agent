@@ -1097,7 +1097,7 @@ export function AppShell() {
     handleRetryTask,
     handleForkMessage,
   } = createConversationHandlers({
-    executeQuest, workflowById, workflowSettingsDraft, setSelectedWorkflowId, configSync, providerOptions: llmProviderOptions,
+    executeQuest, recoverConversationTasks, workflowById, workflowSettingsDraft, setSelectedWorkflowId, configSync, providerOptions: llmProviderOptions,
     API_BASE,
     DEFAULT_SESSION_NAME,
     activateConversationDetail,
@@ -1577,6 +1577,7 @@ export function AppShell() {
     const pendingStatus = pendingTurn ? normalizeTaskStatus(pendingTurn.status) : '';
     const pendingError = String(pendingTurn?.error || '').trim();
     const pendingTurnVisible = Boolean(pendingTurn
+      && (!pendingTurn.awaitingRetryConfirmation || pendingTurn.stopPending)
       && !taskRuntimeState.activeTaskId
       && !(pendingStatus === 'cancelled' && !pendingTurn.stopPending && !pendingError && !taskHasAssistantStreamContent(pendingTurn)));
     const orderedTasks = collapseFullTaskAttempts(
@@ -1870,6 +1871,7 @@ export function AppShell() {
 	                    composerScopeId={draftConversationRef.current?.composerScopeId || conversationId}
 	                    messages={chatMessages} latestTaskId={taskRuntimeState.latestTaskId}
                         taskActionsPending={Boolean(conversationStopState.pending || conversationStopState.error || conversationRetryPending)} stopError={conversationStopState.error}
+                        retryPendingTaskId={conversationRetryPending ? getRuntime(conversationId)?.pendingRetry?.sourceTaskId : null}
 	                    loading={conversationLoading}
 	                    running={currentConversationRunning}
 	                    disabled={composerDisabled}

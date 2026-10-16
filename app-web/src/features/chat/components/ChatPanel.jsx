@@ -38,6 +38,7 @@ const ChatRowGroup = React.memo(function ChatRowGroup({ group, hidden = false })
           onPreviewImage={group.onPreviewImage}
           onAnnotationJump={group.onAnnotationJump}
           actionsDisabled={group.actionsDisabled}
+          retryPending={Boolean(row.taskId && row.taskId === group.retryPendingTaskId)}
           onFork={row.role === 'agent' && row.status === 'done' && row.messageId ? group.onForkMessage : null}
           onEdit={row.role === 'user' && row.status === 'cancelled' && row.taskId === group.lastTaskId ? group.onEditMessage : null}
           onRetry={row.role === 'agent' && row.status === 'failed' && row.taskId && row.taskId === group.lastTaskId ? group.onRetryTask : null}
@@ -60,6 +61,7 @@ export function ChatPanel({
   disabled = false,
   latestTaskId = null,
   taskActionsPending = false,
+  retryPendingTaskId = null,
   submitPending = false,
   stopError = '',
   onSend,
@@ -385,12 +387,13 @@ export function ChatPanel({
     forceTraceOpen: searchActive,
     actionsDisabled: running || submitPending || taskActionsPending || Boolean(stopError),
     lastTaskId: latestTaskId || messages.at(-1)?.taskId,
+    retryPendingTaskId,
     onForkMessage: forkMessage,
     onRetryTask: retryMessage,
     onEditMessage: editMessage,
     onPreviewImage: openImagePreview,
     onAnnotationJump: jumpToAnnotation,
-  }), [conversationId, windowedRows, rowWindow, annotationNumbers, searchActive, running, submitPending, latestTaskId, taskActionsPending, stopError, messages, forkMessage, retryMessage, editMessage, openImagePreview, jumpToAnnotation]);
+  }), [conversationId, windowedRows, rowWindow, annotationNumbers, searchActive, running, submitPending, latestTaskId, taskActionsPending, retryPendingTaskId, stopError, messages, forkMessage, retryMessage, editMessage, openImagePreview, jumpToAnnotation]);
   // 下一次会话切换时，这一份就是被留在原地的那个分组。
   liveGroupRef.current = liveGroup;
   const composerInputRef = React.useRef(null);

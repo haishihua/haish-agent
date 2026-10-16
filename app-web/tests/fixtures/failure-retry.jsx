@@ -8,6 +8,8 @@ import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import { SchedulesContext } from '../../src/features/schedules/hooks/useSchedules.js';
 import { createRunConfigSync } from '../../src/features/conversations/model/run-config-sync.js';
 import { createConversationHandlers } from '../../src/features/conversations/hooks/createConversationHandlers.js';
+import { createConversationActivationHandlers } from '../../src/features/conversations/hooks/createConversationActivationHandlers.js';
+import { sortTaskIdsForRestore, taskSummaryToRuntimeTask, taskDetailToRuntimeTask } from '../../src/features/tasks/model/task-runtime.js';
 import { collapseFullTaskAttempts } from '../../src/features/chat/model/task-attempts.js';
 import { createAttemptHarness } from './task-attempt-runtime.js';
 import '../../styles.css';
@@ -76,9 +78,13 @@ const sync = createRunConfigSync({ get: async id => {
   saved.set(id, structuredClone(config));
 } });
 let transportCount = 0;
+let releaseStart;
+const startup = new Promise(resolve => { releaseStart = resolve; });
+let restoreStatus = 'failed';
 const harness = createAttemptHarness(source, { transport: async (_command, onEvent) => {
   transportCount += 1;
   const id = `attempt-${transportCount}`;
+  if (transportCount === 1) await startup;
   const start = { task_id: id, conversation_id: source.conversationId, user_message_id: source.userMessageId,
     source_task_id: transportCount === 1 ? source.taskId : `attempt-${transportCount - 1}` };
   onEvent({ ...start, type: 'run_started', message: source.title });
@@ -86,8 +92,26 @@ const harness = createAttemptHarness(source, { transport: async (_command, onEve
   onEvent({ ...start, type: 'run_finished', status: 'done', task: { ...start, title: source.title, status: 'done', answer_text: 'Synthetic recovered reply' } });
 } });
 const toasts = [];
+const serverRecord = id => ({ task_id: id, conversation_id: source.conversationId,
+  user_message_id: source.userMessageId, title: source.title, status: restoreStatus,
+  error: restoreStatus === 'failed' ? source.error : null, answer_text: restoreStatus === 'done' ? 'Recovered server answer' : '',
+  execution_mode: 'chat', updated_at: '2026-01-01T00:00:00Z', events: [] });
+const recovery = createConversationActivationHandlers({ getRuntime: () => harness.runtime, API_BASE: '',
+  apiFetch: async () => {
+    const id = harness.runtime.taskRuntimeState.latestTaskId || source.taskId;
+    return Response.json({ conversation_id: source.conversationId, last_task_id: id, tasks: [serverRecord(id)] });
+  },
+  sortTaskIdsForRestore, taskSummaryToRuntimeTask,
+  restoreTaskRuntimes: async (ids, options) => {
+    if (!options.isCurrentActivation()) return;
+    for (const id of ids) harness.runtime.taskRuntimeState.tasksById[id] = taskDetailToRuntimeTask(serverRecord(id));
+  },
+  updateTaskRuntimeState: update => { harness.runtime.taskRuntimeState = update(harness.runtime.taskRuntimeState); },
+  mutateRuntime: (_id, update) => update(harness.runtime), isTaskActuallyActive: task => task.status === 'running',
+  flushRuntimeTasksToWorkspace: () => {},
+});
 const handlers = createConversationHandlers({ executeQuest: harness.executeQuest,
-  configSync: sync, getRuntime: () => harness.runtime,
+  configSync: sync, getRuntime: () => harness.runtime, recoverConversationTasks: recovery.recoverConversationTasks,
   showToast: (kind, message) => toasts.push([kind, message]) });
 function projectRows() {
   const state = harness.runtime.taskRuntimeState;
@@ -106,6 +130,7 @@ function draw(conversationId = source.conversationId, rows = projectRows(), onRe
     <SchedulesContext.Provider value={{ configSync: sync, currentConversationId: conversationId }}>
       <ChatPanel key={conversationId} conversationId={conversationId} messages={rows} draft="Synthetic draft"
         running={conversationId === source.conversationId && harness.runtime.busy} onRetryTask={onRetryTask}
+        retryPendingTaskId={conversationId === source.conversationId && harness.runtime.pendingRetry?.editedMessage === null ? harness.runtime.pendingRetry.sourceTaskId : null}
         taskActionsPending={conversationId === source.conversationId && Boolean(harness.runtime.pendingRetry)}
         providerOptions={providers} agentOptions={[{ id: 'agent', label: 'Synthetic Agent' }]}
         defaultAgentId="agent" />
@@ -117,24 +142,42 @@ async function run() {
   draw();
   await until(() => retry());
   check(!retry().disabled, 'latest failed turn has an enabled Retry even before configuration loads');
+  const originalCard = retry().closest('.aui-error-state');
+  const originalButton = retry();
+  const originalHeight = originalCard.getBoundingClientRect().height;
   retry().click(); retry()?.click();
   await sleep(); await sleep(); await sleep();
-  check(Boolean(document.querySelector('.aui-error-retrying')) && harness.requests.length === 0, 'Retry stays pending while configuration restores; repeated clicks send nothing');
+  check(retry() === originalButton && originalCard === retry().closest('.aui-error-state')
+    && retry().disabled && retry().getAttribute('aria-busy') === 'true' && harness.requests.length === 0,
+    'Retry spins inside the existing button while configuration restores; repeated clicks send nothing');
+  check(originalCard.textContent.includes(source.error) && originalCard.textContent.includes('Task failed')
+    && originalCard.getBoundingClientRect().height === originalHeight && !document.querySelector('.aui-error-retrying'),
+    'Retry keeps the original error and card height without a separate loading row');
   check(!document.querySelector('.aui-error-state').textContent.includes('not ready'), 'a slow configuration load does not reject the click');
   draw('destination', []);
   await sleep(); await sleep(); await sleep();
   check(Boolean(harness.runtime.pendingRetry) && harness.requests.length === 0, 'switching away and unmounting the composer does not cancel the original Retry');
   draw(); await sleep();
-  check(retry().disabled, 'returning while Retry waits cannot start a duplicate');
+  check(retry().disabled && retry().getAttribute('aria-busy') === 'true', 'returning while Retry waits keeps the original button loading and cannot start a duplicate');
   draw('destination', []); await sleep();
   const originLoads = () => configLoads.filter(id => id === source.conversationId).length;
   const originCatalogs = () => catalogs.filter(id => id === route.llm_config_id).length;
   const loadsBeforeRelease = originLoads(), catalogsBeforeRelease = originCatalogs();
   configReleased = true;
   releaseConfig();
-  await until(() => harness.requests.length === 1 && !harness.runtime.busy && !harness.runtime.pendingRetry);
-  check(displayedConversation === 'destination' && document.querySelectorAll('.chat-message-row').length === 0, 'Retry finishes under the original conversation without switching the destination display');
+  await until(() => harness.requests.length === 1);
   check(originLoads() === loadsBeforeRelease && originCatalogs() === catalogsBeforeRelease, 'background waiting adds no originating configuration or catalog requests');
+  draw(); await sleep();
+  check(retry().getAttribute('aria-busy') === 'true' && retry().disabled, 'Retry remains loading on its original button until server confirmation');
+  check(document.querySelector('.aui-error-detail')?.textContent.includes(source.error)
+    && document.querySelectorAll('.chat-message-row.agent').length === 1,
+    'Waiting for run_started keeps the original failed row, not a new loading attempt');
+  draw('destination', []); await sleep();
+  const loadsBeforeStart = originLoads(), catalogsBeforeStart = originCatalogs();
+  releaseStart();
+  await until(() => !harness.runtime.busy && !harness.runtime.pendingRetry);
+  check(displayedConversation === 'destination' && document.querySelectorAll('.chat-message-row').length === 0, 'Retry finishes under the original conversation without switching the destination display');
+  check(originLoads() === loadsBeforeStart && originCatalogs() === catalogsBeforeStart, 'background stream startup adds no originating configuration or catalog requests');
   releaseCatalog();
   draw(); await sleep();
   check(harness.requests.length === 1, 'double click starts exactly one attempt');
@@ -154,6 +197,17 @@ async function run() {
   draw(); await sleep();
   check(harness.runtime.taskRuntimeState.tasksById['attempt-2'].status === 'done', 'a second click retries the failed attempt successfully');
   check(document.querySelectorAll('.chat-message-row.agent').length === 1, 'successful retry replaces the failed turn without duplicating it');
+  restoreStatus = 'done';
+  harness.runtime.taskRuntimeState = { ...harness.runtime.taskRuntimeState,
+    taskOrder: [source.taskId], latestTaskId: source.taskId, tasksById: { [source.taskId]: { ...source, error: 'Local runtime connection closed.' } } };
+  draw(); await sleep();
+  retry().click();
+  await until(() => !harness.runtime.pendingRetry);
+  draw(); await sleep();
+  check(harness.requests.length === 2 && document.body.textContent.includes('Recovered server answer')
+    && !document.querySelector('.chat-message-row.agent .aui-error-state'),
+    'Retry of a connection-only failure restores the completed server answer without another run or eligibility error');
+  check(!toasts.some(([, text]) => text.includes('not eligible')), 'State recovery does not emit the obsolete eligibility toast');
   const blocked = { id: 'blocked-agent', taskId: 'blocked', role: 'agent', status: 'failed', text: 'Synthetic original failure', traceTimeline: [] };
   let blockedRequests = 0;
   const blockedHandlers = createConversationHandlers({ getRuntime: () => harness.runtime, showToast: () => {},

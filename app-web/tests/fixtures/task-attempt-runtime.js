@@ -4,7 +4,7 @@ import { createConversationActivationHandlers } from '../../src/features/convers
 import { applyTerminalTaskState, buildTaskRuntimeRecord } from '../../src/features/tasks/model/task-runtime.js';
 import { CHAT_FINAL_FOLLOWUP_EVENT_TYPES, STREAM_EVENT_BATCH_MS, STREAM_IMMEDIATE_EVENT_TYPES } from '../../src/features/tasks/model/runtime-events.js';
 
-export function createAttemptHarness(source, { reject = false, hold = false, transport = null, recover = null } = {}) {
+export function createAttemptHarness(source, { reject = false, hold = false, transport = null, recover = null, attemptConfigTimeoutMs } = {}) {
   // reject=true：每次都 409（模拟“上一轮永远没收尾”）；reject=N：前 N 次 409。
   // hold=true：请求发出后把流挂住，直到 release()——用来观察“已被接下、还没跑完”那一档。
   let remainingRejections = reject === true ? Number.POSITIVE_INFINITY : (Number.isFinite(reject) ? reject : 0);
@@ -35,6 +35,7 @@ export function createAttemptHarness(source, { reject = false, hold = false, tra
     buildApiHeaders: () => ({}),
     // 测试里不要真的等 10s：只重试 2 次、每次 1ms。
     activeTaskConflictRetry: { maxWaits: 2, waitMs: 1 },
+    attemptConfigTimeoutMs,
     normalizeRuntimeEvent: (event) => event,
     normalizeTaskStatus: (status) => status,
     normalizeChatImageRefs: (images) => images,

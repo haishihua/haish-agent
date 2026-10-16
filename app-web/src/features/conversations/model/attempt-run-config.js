@@ -1,7 +1,8 @@
 // Bound the whole configuration preflight, including sidebar loads and saves.
 // Cancelling an action must not cancel a shared configuration save; only stop
 // waiting for it. Settlement handlers also consume any late request rejection.
-export function waitForAttemptConfigOperation(operation, { timeoutMs = 30_000, signal } = {}) {
+export function waitForAttemptConfigOperation(operation, { timeoutMs = 30_000, signal,
+  timeoutMessage = 'Timed out waiting for conversation configuration. Your changes have not been sent. Please try again.' } = {}) {
   return new Promise((resolve, reject) => {
     let timer;
     const finish = (callback, value) => {
@@ -13,7 +14,7 @@ export function waitForAttemptConfigOperation(operation, { timeoutMs = 30_000, s
     Promise.resolve(operation).then(value => finish(resolve, value), error => finish(reject, error));
     if (signal?.aborted) { onAbort(); return; }
     signal?.addEventListener('abort', onAbort, { once: true });
-    timer = setTimeout(() => finish(reject, new Error('Timed out waiting for conversation configuration. Your changes have not been sent. Please try again.')), timeoutMs);
+    timer = setTimeout(() => finish(reject, new Error(timeoutMessage)), timeoutMs);
   });
 }
 

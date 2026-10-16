@@ -75,7 +75,7 @@ const stop = createDeployHandlers({ applyTerminalTaskState, conversationIdRef: {
 function draw() {
   const state = runtime.taskRuntimeState;
   const tasks = collapseFullTaskAttempts(state.taskOrder.map((id) => state.tasksById[id]), state.pendingTask);
-  if (state.pendingTask) tasks.push(state.pendingTask);
+  if (state.pendingTask && (!state.pendingTask.awaitingRetryConfirmation || state.pendingTask.stopPending)) tasks.push(state.pendingTask);
   const rows = tasks.flatMap((task) => [
     { id: `${task.taskId}-user`, taskId: task.taskId, role: 'user', status: task.status, text: task.title },
     { id: `${task.taskId}-agent`, taskId: task.taskId, role: 'agent', status: task.status, text: task.error || task.answerText || '', streaming: task.status === 'running', traceTimeline: [] },
