@@ -81,8 +81,11 @@ async function run() {
       check(Math.abs(a.left - closed.left) < 0.5 && Math.abs(a.top - closed.top) < 0.5, 'Opening the fan never moves the trigger out from under the pointer');
       const [left, right] = options().map(button => button.getBoundingClientRect());
       const center = box => box.left + box.width / 2;
-      check(Math.abs(center(a) - (center(left) + center(right)) / 2) <= 8.5 && center(left) < center(a) && center(a) < center(right), 'Full Access stays between the two symmetric upper options (8px left-edge nudge)');
+      check(Math.abs(center(a) - (center(left) + center(right)) / 2) <= 8.5 && center(left) < center(a) && center(a) < center(right), 'Full Access stays between the two upper circles (menu nudged 8px right)');
       check(Math.abs(left.top - right.top) < 1, 'Upper options retain the same height');
+      // 两个上排圆是一对：贴得太近会连成一颗，离得太远又会散成两个卫星。
+      const seam = right.left - (left.left + left.width);
+      check(seam >= 5 && seam <= 12, `${width}px: the two upper circles stay a snug pair (seam ${seam.toFixed(1)}px)`);
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await sleep(30);
       check(options().length === 0, 'Escape closes menu');

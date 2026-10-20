@@ -494,8 +494,8 @@
     width: 96px;
     height: 67px;
     background:
-        radial-gradient(circle at 19px 19px, rgba(36, 43, 58, 0.8) 0 18px, transparent 19px),
-        radial-gradient(circle at 77px 19px, rgba(36, 43, 58, 0.8) 0 18px, transparent 19px),
+        radial-gradient(circle at calc(50% - 30px) 15px, rgba(36, 43, 58, 0.8) 0 18px, transparent 19px),
+        radial-gradient(circle at calc(50% + 16px) 15px, rgba(36, 43, 58, 0.8) 0 18px, transparent 19px),
         radial-gradient(ellipse at 50% 48px, rgba(29, 35, 48, 0.68) 0 23px, transparent 25px);
     filter: blur(5px);
     opacity: 0;
@@ -527,12 +527,13 @@
 }
 
 /* Positions are static: opening must never send the circles flying or move the trigger. */
+/* 左边那颗（第一个备选）留在原位，只把右边那颗往左拉近：中心距 46px、缝 8px。 */
 .approval-mode-option-1 {
     transform: translate(calc(-50% - 30px), calc(-50% - 48px));
 }
 
 .approval-mode-option-2 {
-    transform: translate(calc(-50% + 30px), calc(-50% - 48px));
+    transform: translate(calc(-50% + 16px), calc(-50% - 48px));
 }
 
 @media (hover: hover) and (pointer: fine) {

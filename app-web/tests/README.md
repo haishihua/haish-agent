@@ -101,7 +101,7 @@
 | [mcp-tool-picker.html](fixtures/mcp-tool-picker.html) | Agent MCP tools 逐条选择、旧授权迁移、未勾选但可用的列表、无服务器/全空清单/全部停用时单条空状态、无空服务器标题及连接错误保留。 |
 | [scheduled-tasks.html](fixtures/scheduled-tasks.html) | 共用 slash 面板及 Clock、无会话选择器、复用 Radix 非原生下拉/月历与时分输入、跨月/方向键/Escape/焦点返回、编辑保留时间、保存失败重试只绑定一次、固定模型且不执行、侧栏常驻提醒与运行灯不重叠、管理不切会话、暂停/历史/确认删除及实时刷新；离线 fixture 不调用模型。 |
 | [workflow-node-config.html](fixtures/workflow-node-config.html) | Provider / Model / Thinking 及底部 Workflow 复用共享 Radix 非原生 Select，紧凑 12px 字号与整行均分双 Tab（1px 选中底线，无尾部空白）、深色菜单、Portal 防裁剪、方向键/Enter/Escape/焦点返回与外部点击关闭；Workflow 独立灰色节点连线图标（不复用仪表盘）、无文字/无边框入口、展开不留图标外框、灰色菜单选中项无嵌套描边、当前名称提示、菜单切换及运行中锁定；Tab 与配置卡片 8px 间距和紧凑内边距；未执行 Agent 节点可配置；节点选择独立、持久化、历史任务恢复、任务/账号/Workflow 隔离、运行中只读、移除 default 菜单项并用选择提示和独立清空动作替代；Bot 去掉 context 和 model picker 且保留 Workflow 入口、无需隐藏全局模型即可发送；Chat 原入口保留。 |
-| [approval-picker-boundary.html](fixtures/approval-picker-boundary.html) | 生产模式选择器：聊天 / Workflow、240 / 360 / 640px 动画边界及命中测试；Smart / Strict 切换带会话 ID，双会话模式独立、切回恢复、失败可见且回退、新草稿创建会话后保存、只读明确禁用。 |
+| [approval-picker-boundary.html](fixtures/approval-picker-boundary.html) | 生产模式选择器：聊天 / Workflow、240 / 360 / 640px 动画边界及命中测试；Smart / Strict 切换带会话 ID，双会话模式独立、切回恢复、失败可见且回退、新草稿创建会话后保存、只读明确禁用；上排两颗圆是一对——左边那颗原位不动（`-30px`，第一个备选），只把右边那颗往左拉到 `+16px`，中心距 46px、缝 8px（`seam` 断言 5～12px，改前是 22px 的两颗“卫星”）。 |
 | [approval-decisions.html](fixtures/approval-decisions.html) | 生产审批卡：Once / Remember 按钮可点击、发送正确 decision、成功后卡片消失，其他会话审批不展示；离线桩不批准真实请求。 |
 | [settings-agent-count.html](fixtures/settings-agent-count.html) | 展开 Automation 即加载 Agent 总数，不用先点 Agent；加载前不显示默认 1，统计系统预设及自定义（含禁用项），切换 Agent / Workflow 不重复请求；计数与加载提示共用固定右侧列，长标题、三位数字及选中状态不改变对齐；`#checks[data-result]` 输出 11 项检查。 |
 | [conversation-search.html](fixtures/conversation-search.html) | 关键词 Range、跨标签匹配、精确跳转和滚动条标记 |
