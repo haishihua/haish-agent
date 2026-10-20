@@ -4,7 +4,6 @@ import { normalizeReasoningEffort } from '../../chat/model/run-catalog.js';
 import { nodeReasoningOptions } from '../model/node-reasoning-options.js';
 import { runtimeProviderDisplay } from '../model/runtime-provider-display.js';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
-import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { ProviderIcon } from '../../settings/components/settings-ui.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../../shared/ui/settings-elements/ui/select.tsx';
 
@@ -46,12 +45,12 @@ export function WorkflowRuntimeConfig({ value = {}, providerOptions = [], readOn
         ...((value.llm_config_id || value.provider) && !provider ? [{ id: value.llm_config_id || value.provider, label: display.label, provider: display.provider }] : []),
         ...providerOptions.map((item) => ({ id: item.id, label: item.label || item.id, provider: item.provider || 'custom' })),
       ] }} />
-      <ConfigSelect label="Model" value={value.model_id || ''} disabled={readOnly || !provider || models.loading} onChange={(next) => patch({ model_id: next })} options={{ ariaLabel: 'Node model', placeholder: models.loading ? 'Loading models…' : 'Select model', items: [
+      <ConfigSelect label="Model" value={value.model_id || ''} disabled={readOnly || !provider} onChange={(next) => patch({ model_id: next })} options={{ ariaLabel: 'Node model', placeholder: 'Select model', items: [
         ...(value.model_id && !models.options.some((item) => item.id === value.model_id) ? [{ id: value.model_id, label: value.model_id, provider: (value.llm_config_id || value.provider) ? display.provider : null }] : []),
         ...models.options.map((item) => ({ id: item.id, label: item.label || item.id, provider: display.provider })),
       ] }} />
-      {models.error ? <ErrorState variant="inline" detail={models.error} onRetry={readOnly ? undefined : models.retry}
-        retrying={models.refreshing} disabled={readOnly || models.refreshing} /> : null}
+      {/* Model catalog refresh failures stay off this dock for the same reason as the picker:
+          the last known list stays selectable instead of turning discovery into an error banner. */}
       <ConfigSelect label="Reasoning effort" value={effort} disabled={readOnly} onChange={(next) => patch({ reasoning_effort: next })} options={{ ariaLabel: 'Node thinking level', placeholder: 'Select thinking level', items: efforts }} />
     </section>
   );

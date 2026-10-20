@@ -291,13 +291,15 @@ test('storage exceptions never prevent live discovery or erase the configured de
   assert.equal(h.result.error, '');
 });
 
-test('production UI wires model error/retry without mixing it with Agent failure or execution identity', () => {
+test('background model refresh failures stay silent and keep the last known catalog', () => {
   const composer = readFileSync(new URL('../../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
   const picker = readFileSync(new URL('../../../src/features/chat/components/ModelPickers.jsx', import.meta.url), 'utf8');
   const workflow = readFileSync(new URL('../../../src/features/workflow/components/WorkflowRuntimeConfig.jsx', import.meta.url), 'utf8');
-  assert.match(composer, /modelError=\{providerModels.error\}/);
-  assert.match(composer, /onModelRetry=\{providerModels.retry\}/);
-  assert.match(picker, /detail=\{modelError\} onRetry=\{onModelRetry\}/);
-  assert.match(workflow, /detail=\{models.error\} onRetry=\{readOnly \? undefined : models.retry\}/);
+  assert.doesNotMatch(composer, /modelError=|modelRefreshing=|onModelRetry=/);
+  assert.doesNotMatch(picker, /modelError|modelRefreshing|onModelRetry/);
+  assert.doesNotMatch(workflow, /models\.error|models\.retry/);
+  assert.match(picker, /\{options\.length === 0 \? \(/);
+  assert.doesNotMatch(picker, /LoadingState label="Loading models"/);
+  assert.doesNotMatch(workflow, /Loading models…/);
   assert.doesNotMatch(source, /setProviderId\(.*defaultModelId|setModelId\(.*defaultModelId/);
 });

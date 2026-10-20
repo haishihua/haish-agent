@@ -155,9 +155,6 @@ export function ModelPicker({
   disabled,
   readOnly = false,
   loading = false,
-  modelError = '',
-  modelRefreshing = false,
-  onModelRetry,
   providerValue,
   providerOptions = [],
   onProviderChange,
@@ -173,8 +170,6 @@ export function ModelPicker({
   const [open, setOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [activeSubmenu, setActiveSubmenu] = React.useState(null);
-  const leaveTimerRef = React.useRef(null);
-  React.useEffect(() => () => window.clearTimeout(leaveTimerRef.current), []);
   const rootRef = React.useRef(null);
   const current = options.find((o) => o.id === value) || (value ? { id: value, label: value } : null);
   const currentProvider = providerOptions.find((o) => o.id === providerValue) || null;
@@ -256,16 +251,6 @@ export function ModelPicker({
     <div
       className={`model-picker run-config-picker ${open ? 'is-open' : ''} ${readOnly ? 'is-readonly' : ''}`}
       ref={rootRef}
-      onMouseEnter={() => window.clearTimeout(leaveTimerRef.current)}
-      onMouseLeave={() => {
-        if (!open || !menuOpen) return;
-        window.clearTimeout(leaveTimerRef.current);
-        leaveTimerRef.current = window.setTimeout(() => {
-          setOpen(false);
-          setMenuOpen(false);
-          setActiveSubmenu(null);
-        }, 180);
-      }}
     >
       <PortalTooltip text={open ? '' : runConfigLabel} position="above">
         {triggerButton}
@@ -364,7 +349,7 @@ export function ModelPicker({
                           onClick={() => {
                             if (agentChangeDisabled || opt.unavailable) return;
                             onAgentChange?.(opt.id);
-                            setOpen(false);
+                            // 选完 agent 只收起子菜单，运行配置面板留着，接着就能选 provider/model。
                             setActiveSubmenu(null);
                           }}
                         >
@@ -422,9 +407,9 @@ export function ModelPicker({
               <div className="model-picker-flyout model-picker-flyout-model" role="listbox" aria-label="model">
                 <div className="model-picker-header">Model</div>
                 <div className="model-picker-list">
-                  {modelError ? <ErrorState variant="inline" detail={modelError} onRetry={onModelRetry}
-                    retrying={modelRefreshing} disabled={disabled || readOnly || modelRefreshing} /> : null}
-                  {loading ? (modelError ? null : <LoadingState label="Loading models" role="status" />) : options.length === 0 && !modelError ? (
+                  {/* A failed or pending catalog refresh stays silent: the last known list keeps
+                      working and the next refresh happens on provider change or reopen. */}
+                  {options.length === 0 ? (
                     <div className="model-picker-empty">No models</div>
                   ) : options.map((opt) => {
                     const active = opt.id === value;

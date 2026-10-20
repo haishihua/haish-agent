@@ -4,7 +4,7 @@
 
 ## 自动测试
 
-- 模型目录加载：`features/chat/provider-models-loading.test.js` 覆盖缓存/已保存列表后台刷新、首次无目录加载、请求与正文 15 秒期限、AbortError 收尾、显式重试、Provider/endpoint 归属及卸载取消。`fixtures/provider-models-loading.html` 使用真实 ModelPicker、ChatComposer 和 WorkflowRuntimeConfig 验证选项不被 Loading 隐藏、超时错误/重试、迟到结果隔离，以及后台刷新期间保留原路由发送；网络与存储全为离线内存桩。
+- 模型目录加载：`features/chat/provider-models-loading.test.js` 覆盖缓存/已保存列表后台刷新、首次无目录加载、请求与正文 15 秒期限、AbortError 收尾、Provider/endpoint 归属及卸载取消；后台刷新失败只保留上次目录，不再进入界面。`fixtures/provider-models-loading.html` 使用真实 ModelPicker、ChatComposer 和 WorkflowRuntimeConfig 验证选项不被 Loading 隐藏、刷新失败静默保留原列表（无错误卡与重试按钮）、迟到结果隔离，以及后台刷新期间保留原路由发送；网络与存储全为离线内存桩。
 
 - Provider 启动与缓存同步：`features/settings/llm-settings-lifecycle.test.js` 运行生产 Hook、AppShell 参数和保存处理器，覆盖陈旧缓存启动恢复、成功响应脱敏回写、GET/保存/删除竞态、草稿与执行快照隔离、编辑保留、启停、缓存失败及有限启动重试。`fixtures/llm-settings-lifecycle.html` 用真实 React 编辑器和 ChatComposer 验证启动发送、未保存编辑、保存后重挂载发送和真删除拒发；使用内存存储与离线传输，不修改真实配置或调用模型。
 

@@ -23,9 +23,13 @@ test('provider and model selection do not dismiss the settings menu', () => {
   }
 });
 
-test('leaving the menu has a cancellable delay and Escape remains available', () => {
-  assert.match(source, /onMouseEnter=\{\(\) => window\.clearTimeout\(leaveTimerRef\.current\)\}/);
-  assert.match(source, /onMouseLeave=\{\(\) => \{/);
-  assert.match(source, /leaveTimerRef\.current = window\.setTimeout/);
+test('the open menu is dismissed only by an explicit action, never by the pointer leaving', () => {
+  // 子菜单开在面板右侧：它一收起，光标就落在面板外，浏览器立刻在根节点上派发 mouseleave。
+  // 旧的 mouseenter/mouseleave + 180ms 计时器因此会把用户正在选的主面板关掉——
+  // 实际现象就是「选完 agent 面板直接消失」。关闭只留显式动作。
+  assert.doesNotMatch(source, /leaveTimer/);
+  assert.doesNotMatch(source, /onMouseLeave/);
+  assert.match(source, /if \(rootRef\.current && !rootRef\.current\.contains\(event\.target\)\)/);
   assert.match(source, /event\.key === 'Escape'/);
+  assert.match(source, /aria-expanded=\{open\}/);
 });

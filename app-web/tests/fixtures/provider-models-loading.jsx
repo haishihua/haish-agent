@@ -28,7 +28,7 @@ Object.defineProperty(window, 'localStorage', { configurable: true, value: {
   getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)), removeItem: key => storage.delete(key),
 } });
 window.fetch = (url, init = {}) => {
-  if (String(url).endsWith('/api/llm/models')) return new Promise((resolve, reject) => requests.push({ init, resolve, reject }));
+  if (String(url).endsWith('/api/llm/models')) return new Promise((resolve, reject) => requests.push({ init, resolve, reject, settled: false }));
   if (String(url).includes('/api/approvals/state')) return Promise.resolve(Response.json({ mode: 'smart' }));
   errors.push(`Unexpected request: ${url}`);
   return Promise.reject(new Error('Only fixture requests are allowed'));
@@ -48,7 +48,7 @@ function PickerFixture() {
   const models = useProviderModels(providers.find(item => item.id === providerId));
   control = { models, providerId, model };
   return <AppTooltipProvider><ModelPicker value={model} onChange={setModel} reasoningEffort="high" onReasoningChange={() => {}}
-    options={models.options} loading={models.loading} modelError={models.error} modelRefreshing={models.refreshing} onModelRetry={models.retry}
+    options={models.options} loading={models.loading}
     providerValue={providerId} providerOptions={providers} onProviderChange={id => { setProviderId(id); setModel(providers.find(item => item.id === id).defaultModelId); }}
     agentValue="a" agentOptions={agents} /></AppTooltipProvider>;
 }
@@ -71,6 +71,8 @@ const check = (ok, label) => { if (!ok) throw new Error(label); checks.push(`PAS
 const flyout = () => document.querySelector('.model-picker-flyout-model');
 const choices = () => [...document.querySelectorAll('.model-picker-model-option')];
 const isLoading = () => Boolean(flyout()?.querySelector('[data-slot="generation-loader"]'));
+const errorCards = () => [...document.querySelectorAll('[data-slot="error-state"]')];
+const pending = () => requests.map((request, index) => request.settled ? -1 : index).filter(index => index >= 0);
 async function open(submenu = 'model') {
   if (!document.querySelector('.model-picker-trigger').getAttribute('aria-expanded').includes('true')) {
     document.querySelector('.model-picker-trigger').click(); await sleep();
@@ -85,7 +87,15 @@ async function chooseProvider(id) {
   [...document.querySelectorAll('.model-picker-flyout-provider [role="option"]')].find(item => item.textContent.includes(providers.find(p => p.id === id).label)).click();
   await open('model');
 }
-async function respond(index, models) { requests[index].resolve(Response.json({ provider: 'custom', models, default_model: models[0] || '' })); await sleep(80); }
+async function respond(index, models) {
+  requests[index].settled = true;
+  requests[index].resolve(Response.json({ provider: 'custom', models, default_model: models[0] || '' }));
+  await sleep(80);
+}
+async function rejectRequest(index, error) {
+  requests[index].settled = true;
+  requests[index].reject(error); await sleep(80);
+}
 async function expire() { const [id, callback] = deadlines.entries().next().value; deadlines.delete(id); callback(); await sleep(80); }
 function closeMenu() { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); }
 async function run() {
@@ -101,48 +111,52 @@ async function run() {
   check(choices().some(item => item.textContent.includes('remote-b')) && !choices().some(item => item.textContent.includes('late-a')), 'Late A response cannot leak into B menu');
 
   await chooseProvider('empty-route');
-  check(isLoading() && choices().length === 0, 'A provider without any cached or saved models shows initial Loading');
+  check(choices().length === 0 && !isLoading() && flyout().textContent.includes('No models'), 'An empty catalog shows the empty list immediately, never a Loading state');
   await expire();
-  check(!isLoading() && flyout().querySelector('[role="alert"]')?.textContent.includes('timed out'), 'Hung request leaves Loading at its deadline with a clear error');
-  check(flyout().querySelector('[data-slot="error-state"] button')?.textContent.includes('Retry'), 'The model flyout offers its own Retry button');
-  flyout().querySelector('[data-slot="error-state"] button').click(); await sleep();
-  check(requests.length === 4 && flyout().querySelector('.aui-error-state button[aria-busy="true"]')?.disabled, 'Retry starts exactly one new request and shows progress in the original button');
-  await respond(3, ['recovered-empty']);
-  check(!isLoading() && !flyout().querySelector('[role="alert"]') && choices()[0]?.textContent.includes('recovered-empty'), 'Successful retry restores the menu and clears its error');
-  choices()[0].click(); await sleep();
-  check(control.model === 'recovered-empty', 'Recovered model can be selected');
-  await respond(2, ['late-timeout']);
-  check(!choices().some(item => item.textContent.includes('late-timeout')), 'Timed-out response cannot replace the retry result');
+  check(!isLoading() && !errorCards().length && !flyout().querySelector('[role="alert"]') && flyout().textContent.includes('No models'),
+    'A hung refresh ends on the same empty list: no error card, no Retry button, no spinner');
+  check(requests.length === 3, 'A silent deadline never starts an extra request');
+  check(!flyout().querySelector('button[aria-busy="true"]'), 'The flyout keeps no spinning Retry affordance after a silent failure');
 
   await chooseProvider('route-a');
   const aborted = new Error('fixture active abort'); aborted.name = 'AbortError';
-  requests[4].reject(aborted); await sleep(80);
-  check(!isLoading() && flyout().querySelector('[role="alert"]')?.textContent.includes('interrupted') && choices().length === 2,
-    'Unexpected AbortError ends loading while keeping usable saved models');
+  await rejectRequest(3, aborted);
+  check(!isLoading() && !errorCards().length && choices().length === 2, 'Unexpected AbortError ends loading while keeping usable saved models');
+  await respond(2, ['late-timeout']);
+  check(!choices().some(item => item.textContent.includes('late-timeout')), 'Timed-out response cannot leak into the menu afterwards');
   closeMenu();
   root.render(<PickerFixture key="remount" />);
-  await until(() => requests.length === 6);
+  await until(() => requests.length === 5);
   await chooseProvider('route-b');
   check(choices().some(item => item.textContent.includes('remote-b')) && !isLoading(), 'Remount and return to a provider use its cache without blocking Loading');
 
   closeMenu();
   root.render(<ComposerFixture key="composer" />);
-  await until(() => requests.length === 8 && document.querySelector('.chat-send') && !document.querySelector('.chat-send').disabled);
+  await until(() => document.querySelector('.chat-send') && !document.querySelector('.chat-send').disabled);
   document.querySelector('form.chat-composer').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   await until(() => sends.length === 1);
   check(sends[0].provider === 'route-a' && sends[0].model === 'saved-a' && sends[0].effort === 'xhigh', 'Real composer sends the exact saved route while model discovery is unresolved');
-  await open(); await expire();
-  check(flyout().querySelector('[role="alert"]') && choices().length === 2, 'Production composer wires the model error and cached choices to its menu');
-  flyout().querySelector('[data-slot="error-state"] button').click(); await sleep();
-  await respond(8, ['new-a']);
-  check(!flyout().querySelector('[role="alert"]') && choices().some(item => item.textContent.includes('new-a')), 'Production composer Retry refreshes only models and clears the error');
+  await open();
+  await expire();
+  check(!errorCards().length && !flyout().querySelector('[role="alert"]') && choices().length === 2,
+    'A failed refresh in the production composer stays silent and keeps the saved choices');
+  const latest = pending().at(-1);
+  await respond(latest, ['new-a']);
+  check(!errorCards().length && !choices().some(item => item.textContent.includes('new-a')),
+    'A response that already hit its deadline cannot update the menu');
+  await chooseProvider('route-b');
+  const switched = pending().at(-1);
+  await respond(switched, ['composer-remote-b']);
+  check(!errorCards().length && choices().some(item => item.textContent.includes('composer-remote-b')),
+    'Switching provider in the production composer still refreshes the list, with no error state');
   closeMenu();
 
   root.render(<WorkflowRuntimeConfig value={{ llm_config_id: 'route-a', model_id: 'saved-a', reasoning_effort: 'xhigh' }} providerOptions={providers} onChange={() => {}} />);
-  await until(() => requests.length === 10 && document.querySelector('[aria-label="Node model"]'));
+  await until(() => pending().length > 0 && document.querySelector('[aria-label="Node model"]'));
   check(!document.querySelector('[aria-label="Node model"]').disabled, 'Workflow model selector remains usable during background discovery');
   await expire();
-  check(document.querySelector('.workflow-runtime-config [role="alert"]') && document.querySelector('.workflow-runtime-config [data-slot="error-state"] button'), 'Workflow shares the deadline error and explicit Retry');
+  check(!document.querySelector('.workflow-runtime-config [data-slot="error-state"]') && !document.querySelector('.workflow-runtime-config [role="alert"]'),
+    'A failed workflow refresh shows no error banner');
   check(errors.length === 0, 'No page errors or unexpected API requests');
 }
 run().catch(error => checks.push(`FAIL ${error.stack || error}`)).finally(() => {

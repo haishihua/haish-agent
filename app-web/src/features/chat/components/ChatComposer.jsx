@@ -806,9 +806,6 @@ export function ChatComposer({
               disabled={runConfigDisabled}
               readOnly={runConfigReadOnly}
               loading={modelLoading}
-              modelError={providerModels.error}
-              modelRefreshing={providerModels.refreshing}
-              onModelRetry={providerModels.retry}
               providerValue={providerId}
               providerOptions={resolvedProviderOptions}
               onProviderChange={setProviderId}
