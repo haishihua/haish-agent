@@ -36,6 +36,24 @@ test('ask_user form is declarative and never mounted by the legacy overlay', () 
   assert.doesNotMatch(overlaySource, /createRoot|insertBefore|MutationObserver|haish:mount-approval-overlay/);
 });
 
+test('MCP server elicitation reuses the ask_user card on the chat timeline', () => {
+  // MCP 提问不挂在 ask_user 节点上：事件时间轴的 callId 与提问的 tool_call_id 不是
+  // 同一套编号，所以按 origin='mcp' + task_id 在时间轴里挂同一张卡片。
+  assert.match(timelineSource, /const fromMcp = \(request\) => \{/);
+  assert.match(timelineSource, /return origin \? origin === 'mcp' : !askUserActive;/);
+  assert.match(timelineSource, /const mcpUserInputs = useMcpPendingUserInputs\(/);
+  assert.match(timelineSource, /\{mcpUserInputs\.map\(\(request\) => \(/);
+  assert.match(timelineSource, /taskId=\{request\.task_id \|\| taskId\}/);
+  // 子代理面板会再嵌一层时间轴，同一张卡不能在那里重复出现。
+  assert.match(timelineSource, /mcpUserInput=\{false\}/);
+  // ask_user 自己的挂载判据不变。
+  assert.match(timelineSource, /\{isAskUser \? \(/);
+  // 等回答时节点不再显示“运行中”，改成等你回答。
+  assert.match(timelineSource, /const awaitingItemId = mcpUserInputs\.length \? lastActiveToolItemId\(safeItems\) : '';/);
+  assert.match(timelineSource, /awaitingInput=\{item\.id === awaitingItemId\}/);
+  assert.match(timelineSource, /statusLabel=\{awaitingInput && !approvalRequest \? 'Waiting for your answer' : undefined\}/);
+});
+
 test('ask_user option state stays inside the main React tree with square controls', () => {
   assert.match(formSource, /const \[drafts, setDrafts\] = React\.useState\(\{\}\);/);
   assert.match(formSource, /onChange=\{\(\) => toggleSelection\(question, label\)\}/);

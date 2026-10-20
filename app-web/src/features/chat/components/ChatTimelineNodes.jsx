@@ -24,8 +24,54 @@ import { resolveAgentActivity } from '../model/chat-timeline.js';
 import { useConversationWaitState } from '../../conversations/hooks/useConversationRunState.js';
 import { ToolApprovalCard, useToolApprovalRequests } from '../../approvals/components/ApprovalOverlay.jsx';
 import { placeToolApprovals } from '../../approvals/model/approval-placement.js';
+import { approvalStore } from '../../approvals/model/approval-store.js';
 
 const ToolApprovalsContext = React.createContext(new Map());
+
+// MCP 服务端提问和 ask_user 共用同一张卡片，但它不挂在 ask_user 节点上：
+// 事件时间轴的 callId 是运行时生成的，和提问携带的模型侧 tool_call_id 不是同一套
+// 编号，没法稳定挂到具体节点，所以按 task_id + origin 在时间轴末尾挂卡片。
+function useMcpPendingUserInputs(taskId, conversationId, askUserActive) {
+  const [requests, setRequests] = React.useState([]);
+  const signatureRef = React.useRef('');
+  React.useEffect(() => {
+    signatureRef.current = '';
+    // 只接管本任务（或本会话）的请求，避免把别的会话的提问挂到这里。
+    const owns = (request) => {
+      if (!request) return false;
+      if (taskId) return String(request.task_id || '') === String(taskId);
+      if (conversationId) return String(request.conversation_id || '') === String(conversationId);
+      return false;
+    };
+    // 本版后端会带 origin；旧后端没有这个字段时，只要当前时间轴没有 ask_user
+    // 卡片在认领，这条提问就只可能来自 MCP 服务端。
+    const fromMcp = (request) => {
+      const origin = String(request?.origin || '');
+      return origin ? origin === 'mcp' : !askUserActive;
+    };
+    return approvalStore.subscribeInputs((pending) => {
+      const next = (Array.isArray(pending) ? pending : []).filter(
+        (request) => fromMcp(request) && owns(request),
+      );
+      const signature = next.map((request) => String(request?.request_id || '')).join('|');
+      if (signature === signatureRef.current) return;
+      signatureRef.current = signature;
+      setRequests(next);
+    });
+  }, [askUserActive, conversationId, taskId]);
+  return requests;
+}
+
+// 正在等 MCP 回答时，把最后一个还在跑的工具节点标成“等你回答”，别继续显示运行中。
+function lastActiveToolItemId(items) {
+  let found = '';
+  for (const item of Array.isArray(items) ? items : []) {
+    if (item?.kind === 'tool' && isActiveToolStatus(item.status || 'pending')) found = item.id;
+    if (Array.isArray(item?.tools)) found = lastActiveToolItemId(item.tools) || found;
+    if (Array.isArray(item?.children)) found = lastActiveToolItemId(item.children) || found;
+  }
+  return found;
+}
 
 export function resolveToolIconClass(toolName, defaultClass) {
   const name = String(toolName || '').toLowerCase();
@@ -374,7 +420,7 @@ function ChatProcessConversation({ view, conversationId, taskId }) {
       return (
         <ChatSubAgentCollapsible maxHeight={420}>
           <ChatAgentTimeline items={subTimelineItems} streaming={view.isRunning}
-            conversationId={conversationId} taskId={taskId} />
+            conversationId={conversationId} taskId={taskId} mcpUserInput={false} />
         </ChatSubAgentCollapsible>
       );
     }
@@ -400,7 +446,7 @@ function ChatProcessConversation({ view, conversationId, taskId }) {
         </ChatSubAgentCollapsible>
       );
     }
-    return <ChatAgentTimeline streaming={view.isRunning} conversationId={conversationId} taskId={taskId} />;
+    return <ChatAgentTimeline streaming={view.isRunning} conversationId={conversationId} taskId={taskId} mcpUserInput={false} />;
   };
   const showSub = hasSubTimeline || hasStreamAnswer || hasStream || hasFinal || view.isRunning;
   return (
@@ -445,7 +491,9 @@ function ChatProcessConversation({ view, conversationId, taskId }) {
   );
 }
 
-export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', askUserActive = false }) {
+export function ChatTimelineToolNode({
+  item, conversationId = '', taskId = '', askUserActive = false, awaitingInput = false,
+}) {
   const approvalRequest = React.useContext(ToolApprovalsContext).get(item.id);
   const isAskUser = String(item.toolName || '').toLowerCase() === 'ask_user';
   const status = item.status || 'pending';
@@ -456,7 +504,7 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
   const view = buildToolView(item);
   const heading = toolCardHeading(item, view);
   const isSkill = view.mode === 'skill';
-  const displayStatus = approvalRequest ? 'approval' : view.failed ? 'failed' : status;
+  const displayStatus = approvalRequest || awaitingInput ? 'approval' : view.failed ? 'failed' : status;
   const skillStatus = ['done', 'completed'].includes(displayStatus) ? 'Loaded'
     : displayStatus === 'failed' ? 'Load failed' : displayStatus === 'cancelled' ? 'Cancelled' : 'Loading';
   // 默认折叠：shell/terminal 卡片不自动展开，用户点击头部才展开查看输出。
@@ -502,6 +550,7 @@ export function ChatTimelineToolNode({ item, conversationId = '', taskId = '', a
         <ToolStatus status={displayStatus} label={skillStatus} />
       </div> : <ToolCall label={approvalRequest ? `${item.toolName} · Awaiting approval` : heading.label}
         query={approvalRequest ? '' : heading.query} status={displayStatus} open={open} onOpenChange={setOpen} expandable={hasBody}
+        statusLabel={awaitingInput && !approvalRequest ? 'Waiting for your answer' : undefined}
         icon={<span className={`ico ${iconClass}`} />}>
           {view.mode !== 'read' ? <ChatTimelineToolBody view={view} conversationId={conversationId} taskId={taskId} /> : null}
           {view.mode === 'read' &&
@@ -550,6 +599,7 @@ function ChatTimelineToolGroup({
   conversationId = '',
   taskId = '',
   askUserActive = false,
+  awaitingItemId = '',
 }) {
   const [open, setOpen] = React.useState(false);
   const approvals = React.useContext(ToolApprovalsContext);
@@ -577,6 +627,7 @@ function ChatTimelineToolGroup({
               conversationId={conversationId}
               taskId={taskId}
               askUserActive={askUserActive}
+              awaitingInput={tool.id === awaitingItemId}
             />
       )} />
   );
@@ -668,6 +719,9 @@ export function ChatAgentTimeline({
   conversationId = '',
   taskId = '',
   onPreviewImage,
+  // 子代理面板会嵌一层 ChatAgentTimeline（同一个 task），不能在里面再挂一张
+  // 提问卡片，否则同一张卡会重复出现。
+  mcpUserInput = true,
 }) {
   const safeItems = React.useMemo(() => Array.isArray(items) ? items : [], [items]);
   const approvalRequests = useToolApprovalRequests(conversationId);
@@ -675,13 +729,21 @@ export function ChatAgentTimeline({
   const todos = Array.isArray(latestTodos) && latestTodos.length > 0 ? latestTodos : null;
   const retrying = safeItems.some((item) => item.metaType === 'llm_retry' && item.status === 'running');
   const activeAskUserItemId = selectActiveAskUserItemId(safeItems, streaming);
+  // MCP 服务端提问与 ask_user 同卡片，但请求自己带 task_id / tool_call_id，
+  // 所以每张卡片直接用请求自身的编号定位，不依赖时间轴节点能否对上。
+  const mcpUserInputs = useMcpPendingUserInputs(
+    mcpUserInput ? taskId : '',
+    mcpUserInput ? conversationId : '',
+    Boolean(activeAskUserItemId),
+  );
+  const awaitingItemId = mcpUserInputs.length ? lastActiveToolItemId(safeItems) : '';
   // 「在等人」只有一份来源：会话状态判据（后端实时快照）。
   const waitState = useConversationWaitState(conversationId);
   const activity = resolveAgentActivity(safeItems, streaming, waitState.state);
   // Empty timeline + done + no todos = nothing to show.
   // Empty timeline + streaming = activity indicator carries the "alive" hint.
   // Has todos = always show the panel even if there are no other items.
-  if (!safeItems.length && !streaming && !todos) return null;
+  if (!safeItems.length && !streaming && !todos && !mcpUserInputs.length) return null;
   return (
     <ToolApprovalsContext.Provider value={toolApprovals}>
     <div className={`chat-timeline ${streaming ? 'streaming' : 'done'}`}>
@@ -702,6 +764,7 @@ export function ChatAgentTimeline({
               conversationId={conversationId}
               taskId={taskId}
               askUserActive={item.id === activeAskUserItemId}
+              awaitingInput={item.id === awaitingItemId}
             />
           );
         }
@@ -713,6 +776,7 @@ export function ChatAgentTimeline({
               conversationId={conversationId}
               taskId={taskId}
               askUserActive={false}
+              awaitingItemId={awaitingItemId}
             />
           );
         }
@@ -726,6 +790,15 @@ export function ChatAgentTimeline({
         }
         return null;
       })}
+      {mcpUserInputs.map((request) => (
+        <AskUserInlineForm
+          key={request.request_id}
+          toolCallId={request.tool_call_id || ''}
+          conversationId={conversationId}
+          taskId={request.task_id || taskId}
+          active
+        />
+      ))}
       {activity && !retrying ? (
         <div className={`chat-timeline-activity state-${activity.state}`} role="status" aria-live="polite">
           <ActivityOrb
