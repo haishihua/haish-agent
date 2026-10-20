@@ -145,6 +145,33 @@ test('stop rolls back local in-flight bookkeeping and still cancels through the 
   assert.equal(calls.flushed, 1);
 });
 
+test('cancelling a turn whose connection never established keeps the text out of the composer', () => {
+  // 回归现场：消息发出去了但还没拿到 task_id（连接尚未建立），取消后这条 turn 被标成
+  // cancelled 留在时间线上，同时又把文字回填到输入框——同一句话出现两次。
+  const runtime = emptyRuntime();
+  runtime.busy = true;
+  runtime.activeRunId = 'run-pending';
+  runtime.pendingRun = {
+    runId: 'run-pending',
+    taskId: null,
+    streamSettled: Promise.resolve(),
+    identitySettled: Promise.resolve(null),
+  };
+  runtime.taskRuntimeState = {
+    activeTaskId: null,
+    pendingTask: { id: 'run-pending', title: '现在没有直接可以发布草稿的cli命令', status: 'running', updatedAt: 2 },
+    taskOrder: [],
+    tasksById: {},
+  };
+  const { handlers, runtime: rt, calls } = createHarness({ runtime });
+  const restoreText = handlers.handleStop();
+  assert.equal(restoreText, '');
+  // 时间线上那一行还在（可直接编辑重发），所以不再回填输入框。
+  assert.equal(rt.taskRuntimeState.pendingTask?.status, 'cancelled');
+  assert.equal(rt.taskRuntimeState.pendingTask?.stopPending, true);
+  assert.deepEqual(calls.cancelConversation, ['conv-1']);
+});
+
 test('a draft conversation stop only restores the queued text and stays local', () => {
   const queuedDeploy = { text: 'unsent message', targetConversationId: 'draft-1' };
   const { handlers, calls } = createHarness({

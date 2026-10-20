@@ -258,7 +258,11 @@ export function createDeployHandlers(ctx) {
       // must not overwrite the server-owned task list with an empty one.
       if (hasLocalBookkeeping) flushRuntimeTasksToWorkspace(targetConvId);
     }
-    return taskId ? '' : restoreText;
+    // 这一轮已经在时间线上（已落地任务，或连接还没建立、被标成 cancelled 的 pending turn）
+    // 时，停止不再把用户消息塞回输入框：消息就在上面，重发走那一行的编辑。
+    const turnStaysVisible = Boolean(taskId)
+      || Boolean(pendingTask && pendingRun && !pendingRun.taskId);
+    return turnStaysVisible ? '' : restoreText;
   }
 
   function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, selectionId, providerRequest, displayText = text, annotations = [], nodeRuntimeConfigs = {}) {
