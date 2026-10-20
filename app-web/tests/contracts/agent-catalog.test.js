@@ -188,7 +188,7 @@ test('approval mode uses a compact icon orbit with copy moved to tooltips', () =
   assert.match(modelPickersSource, /text=\{approvalHint\(opt\)\}/);
   assert.match(modelPickersSource, /approval-mode-option-\$\{index \+ 1\}/);
   assert.doesNotMatch(modelPickersSource, /className="approval-mode-label"/);
-  assert.match(fs.readFileSync(new URL('../../styles/modals.css', import.meta.url), 'utf8'), /@keyframes approval-mode-left-in/);
+  assert.match(fs.readFileSync(new URL('../../styles/modals.css', import.meta.url), 'utf8'), /@keyframes approval-mode-fade-in/);
 });
 
 test('send and stop actions share the chromatic metal circle effect', () => {

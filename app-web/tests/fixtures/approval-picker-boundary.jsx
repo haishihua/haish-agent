@@ -78,10 +78,10 @@ async function run() {
       await sleep(260);
       check(inside() && reachable(), `${width}px: both option circles fully visible and not covered by sidebar`);
       const a = trigger().getBoundingClientRect();
-      check(Math.abs(a.left - closed.left - 8) < 1, 'Expanded group moves only 8px without reserving toolbar space');
+      check(Math.abs(a.left - closed.left) < 0.5 && Math.abs(a.top - closed.top) < 0.5, 'Opening the fan never moves the trigger out from under the pointer');
       const [left, right] = options().map(button => button.getBoundingClientRect());
       const center = box => box.left + box.width / 2;
-      check(Math.abs(center(a) - (center(left) + center(right)) / 2) < 1 && center(left) < center(a) && center(a) < center(right), 'Full Access stays centered between the two symmetric upper options');
+      check(Math.abs(center(a) - (center(left) + center(right)) / 2) <= 8.5 && center(left) < center(a) && center(a) < center(right), 'Full Access stays between the two symmetric upper options (8px left-edge nudge)');
       check(Math.abs(left.top - right.top) < 1, 'Upper options retain the same height');
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await sleep(30);
