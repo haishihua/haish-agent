@@ -19,6 +19,7 @@ import {
   ChatTimelineCollapsed,
   ChatTimelineElapsedPill,
 } from './ChatTimelineNodes.jsx';
+import { ChatImageThumb } from './ChatImageThumb.jsx';
 
 const IMAGE_COPY_MAX_BYTES = 10 * 1024 * 1024;
 const IMAGE_COPY_MAX_PIXELS = 16 * 1024 * 1024;
@@ -136,21 +137,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
         <div className="chat-message-images" aria-label="Attached images">
           {messageImages.map((img, idx) => (
             <div key={img.image_id || `${idx}`} className="chat-message-image">
-              <button
-                type="button"
-                className="chat-message-image-button"
-                onClick={() => onPreviewImage?.({
-                  src: img.previewUrl || img.path,
-                  title: img.name || img.path || 'Attached image',
-                })}
-                aria-label="Preview attached image"
-              >
-                {img.previewUrl ? (
-                  <img src={img.previewUrl} alt="" draggable={false} />
-                ) : (
-                  <span className="chat-message-image-fallback" aria-hidden="true">▦</span>
-                )}
-              </button>
+              <ChatImageThumb image={img} onPreview={onPreviewImage} />
             </div>
           ))}
         </div>

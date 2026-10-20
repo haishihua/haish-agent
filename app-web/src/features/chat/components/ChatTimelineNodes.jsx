@@ -5,6 +5,7 @@ import { ToolTimeline } from '../../../shared/ui/agent-elements/ToolTimeline.jsx
 import { WebSearch } from '../../../shared/ui/agent-elements/WebSearch.jsx';
 import { Bot, LoaderCircle, Sparkles } from 'lucide-react';
 import { BrowserToolDetail } from './BrowserToolDetail.jsx';
+import { ChatImageThumb } from './ChatImageThumb.jsx';
 import { VisionToolDetail } from './VisionToolDetail.jsx';
 import { toolCardHeading } from '../model/tool-presentation.js';
 import { ActivityOrb } from './ActivityOrb.jsx';
@@ -687,17 +688,7 @@ export function ChatTimelineUserInputNode({ item, onPreviewImage }) {
           <div className="chat-message-images chat-timeline-user-input-images" aria-label="Attached images">
             {images.map((image, index) => (
               <div key={image.image_id || image.path || index} className="chat-message-image">
-                <button
-                  type="button"
-                  className="chat-message-image-button"
-                  onClick={() => onPreviewImage?.({
-                    src: image.previewUrl || image.path,
-                    title: image.name || image.path || 'Attached image',
-                  })}
-                  aria-label="Preview attached image"
-                >
-                  {image.previewUrl ? <img src={image.previewUrl} alt="" draggable={false} /> : null}
-                </button>
+                <ChatImageThumb image={image} onPreview={onPreviewImage} />
               </div>
             ))}
           </div>

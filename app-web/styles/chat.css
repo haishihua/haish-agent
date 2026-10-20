@@ -541,6 +541,36 @@
     font-size: 22px;
 }
 
+/* 历史图片的文件已从 runtime state 里消失时，预览接口返回 404。
+   这里给出明确的失效占位，而不是浏览器默认的碎图图标。 */
+.chat-message-image-button.is-unavailable {
+    cursor: default;
+}
+
+.chat-message-image-unavailable {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    height: 100%;
+    min-height: 54px;
+    padding: 8px;
+    color: rgba(255, 255, 255, 0.52);
+    font-size: 11px;
+    line-height: 1.25;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.03);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+    border-radius: inherit;
+}
+
+.chat-message-image-unavailable > svg {
+    flex-shrink: 0;
+    opacity: 0.75;
+}
+
 .chat-bubble {
     max-width: min(680px, 72%);
     min-width: 0;
@@ -741,6 +771,13 @@
 .user-speaker-meta .chat-message-image-fallback {
     width: 100%;
     height: 54px;
+}
+
+.user-speaker-meta .chat-message-image-unavailable {
+    gap: 3px;
+    padding: 4px;
+    font-size: 9px;
+    letter-spacing: 0.01em;
 }
 
 .chat-message-row.user .message-shell ~ .chat-message-actions {
