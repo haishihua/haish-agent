@@ -1877,7 +1877,7 @@ export function AppShell() {
                         ensureApprovalConversation={ensureServerConversationForActiveDraft}
 	                    earlierTaskRuntimesPending={pendingEarlierTaskRuntimeIds.length > 0}
 	                    onLoadEarlierTasks={loadEarlierTaskRuntimes}
-	                    composerScopeId={draftConversationRef.current?.composerScopeId || conversationId}
+	                    composerScopeId={draftConversationRef.current?.id === conversationId ? draftConversationRef.current.composerScopeId : conversationId}
 	                    messages={chatMessages} latestTaskId={taskRuntimeState.latestTaskId}
                         taskActionsPending={Boolean(conversationStopState.pending || conversationStopState.error || conversationRetryPending)} stopError={conversationStopState.error}
                         retryPendingTaskId={conversationRetryPending ? getRuntime(conversationId)?.pendingRetry?.sourceTaskId : null}
@@ -1946,7 +1946,7 @@ export function AppShell() {
                       executionMode="bot"
                       onToast={showToast}
                       scheduleNodeRuntimeConfigs={nodeConfigSelection.conversationConfigs} onRestoreNodeConfigs={nodeConfigSelection.restore}
-                      scopeId={draftConversationRef.current?.composerScopeId || conversationId}
+                      scopeId={draftConversationRef.current?.id === conversationId ? draftConversationRef.current.composerScopeId : conversationId}
                       draft={chatDraft}
                       onDraftChange={setChatDraft}
                       onSend={(...args) => handleDeploy(...args.slice(0, 9), args[9] ?? botNodeConfigs)}

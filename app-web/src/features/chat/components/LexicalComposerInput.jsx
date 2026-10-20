@@ -222,6 +222,12 @@ function ComposerController({ value, selectedSkill, selectedCommand, disabled, m
       isSelectionAtEnd() {
         return selectionAtBoundary(editor.getRootElement(), 'after');
       },
+      // 编辑器里到底有没有 token，不依赖上层 state：两者失步时用户还得能删掉它。
+      hasSkillToken() {
+        let present = false;
+        editor.getEditorState().read(() => { present = Boolean($nodesOfType(SkillTokenNode)[0]); });
+        return present;
+      },
     };
     return () => {
       apiRef.current = null;
@@ -273,6 +279,7 @@ export const LexicalComposerInput = React.forwardRef(function LexicalComposerInp
     insertText: (text) => apiRef.current?.insertText(text),
     isSelectionAtStart: () => apiRef.current?.isSelectionAtStart() ?? false,
     isSelectionAtEnd: () => apiRef.current?.isSelectionAtEnd() ?? false,
+    hasSkillToken: () => apiRef.current?.hasSkillToken() ?? false,
   }), []);
 
   const initialConfig = React.useMemo(() => ({

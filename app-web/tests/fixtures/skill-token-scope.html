@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>skill token scope fixture</title>
+    <style>
+      body { margin: 0; font: 13px/1.5 system-ui, sans-serif; background: #0b0f16; color: #e6edf7; }
+      #checks { position: fixed; right: 8px; top: 8px; max-width: 46ch; white-space: pre-wrap; font: 11px/1.45 ui-monospace, monospace; color: #8fb9ff; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <pre id="checks"></pre>
+    <script>
+      window.__errs = [];
+      window.addEventListener('error', (event) => window.__errs.push(String((event.error && event.error.stack) || event.message)));
+      window.addEventListener('unhandledrejection', (event) => window.__errs.push('rejected: ' + String((event.reason && event.reason.stack) || event.reason)));
+    </script>
+    <script type="module" src="./skill-token-scope.jsx"></script>
+  </body>
+</html>

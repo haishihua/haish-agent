@@ -12,6 +12,7 @@ import {
   withSelectedSkillInstruction,
 } from '../../agents/model/agent-settings.js';
 import { formatContextUsageLabel } from '../../../shared/lib/message-format.js';
+import { BoundedCache } from '../../../shared/lib/bounded-cache.js';
 import { contextSectorPath } from '../../../shared/lib/context-usage-ring.js';
 import {
   usePersistentRunConfig,
@@ -110,7 +111,24 @@ export function ChatComposer({
   const [runtimeInputPending, setRuntimeInputPending] = React.useState(false);
   const [goalPending, setGoalPending] = React.useState(false);
   const goalPendingRef = React.useRef(false);
-  const [selectedSkillName, setSelectedSkillName] = React.useState('');
+  const [skillSelection, setSkillSelection] = React.useState({ scope: '', name: '' });
+  // Skill 选择按「会话」缓存：切走再切回来要跟草稿文字一样原样回来。
+  // 但也不能跟着 composer scope 走——draft 的 scope 按项目固定（为了留住未发文本），
+  // 换到同一项目里的另一张新会话时，上一张的 skill token 不能跟过去。
+  const skillScopeId = conversationId || scopeId;
+  const skillScopeIdRef = React.useRef(skillScopeId);
+  skillScopeIdRef.current = skillScopeId;
+  const skillByConversationRef = React.useRef(null);
+  if (!skillByConversationRef.current) skillByConversationRef.current = new BoundedCache(50);
+  const selectedSkillName = skillSelection.scope === skillScopeId
+    ? skillSelection.name
+    : (skillByConversationRef.current.get(skillScopeId) || '');
+  const setSelectedSkillName = React.useCallback((name) => {
+    const scope = skillScopeIdRef.current;
+    if (name) skillByConversationRef.current.set(scope, name);
+    else skillByConversationRef.current.delete(scope);
+    setSkillSelection({ scope, name });
+  }, []);
   const [goalSelected, setGoalSelected] = React.useState(false);
   const [skillMenuIndex, setSkillMenuIndex] = React.useState(0);
   const [skillMenuDismissed, setSkillMenuDismissed] = React.useState(false);
@@ -210,15 +228,14 @@ export function ChatComposer({
       agentId: effectiveAgentId, ensureSaved: configSync.ensureSaved });
   });
 
-  // The logical composer scope remains stable while a local draft receives its
-  // server id, and changes only when the user actually switches conversations.
+  // Switching conversations restores that conversation's own skill choice;
+  // only the transient menu/pending state is dropped.
   React.useEffect(() => {
-    setSelectedSkillName('');
-    selectedSkillNameRef.current = '';
+    selectedSkillNameRef.current = selectedSkillName;
     skillSelectionPendingRef.current = false;
     setSkillMenuDismissed(false);
     setGoalSelected(false);
-  }, [scopeId]);
+  }, [skillScopeId, selectedSkillName]);
 
   React.useEffect(() => {
     if (executionMode !== 'chat' || !onGoalCommand) setGoalSelected(false);
@@ -234,7 +251,7 @@ export function ChatComposer({
       selectedSkillNameRef.current = '';
       skillSelectionPendingRef.current = false;
     }
-  }, [resolvedSkills, selectedSkillName]);
+  }, [resolvedSkills, selectedSkillName, setSelectedSkillName]);
 
   const [, refreshImages] = React.useReducer((value) => value + 1, 0);
   const localImageDrafts = React.useRef(new Map());
@@ -437,7 +454,12 @@ export function ChatComposer({
     e?.preventDefault();
     e?.stopPropagation?.();
     if (Date.now() < suppressSubmitUntilRef.current || submissionRef.current?.owner === submissionOwner) return;
-    if (stopError || disabled || submitPending || runtimeInputPending || goalPendingRef.current || !canSubmitPayload) return;
+    if (stopError || disabled || submitPending || runtimeInputPending || goalPendingRef.current) return;
+    if (!canSubmitPayload) {
+      // 只选了 skill、还没写内容：不要静默吞掉回车。
+      if (selectedSkill) setPathNotice('Type a message after the skill, then press Enter.');
+      return;
+    }
     const operation = { owner: submissionOwner };
     submissionRef.current = operation;
     setWaitingOwner(submissionOwner);
@@ -712,7 +734,7 @@ export function ChatComposer({
             if (
               event.key === 'Backspace'
               && !event.nativeEvent.isComposing
-              && (selectedSkill || selectedCommand)
+              && (selectedSkill || selectedCommand || inputRef.current?.hasSkillToken?.())
               && inputRef.current?.isSelectionAtStart()
             ) {
               event.preventDefault();
