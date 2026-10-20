@@ -17,10 +17,13 @@ const cases = {
   checkFailed: { ...installed, error_code: 'managed_browser_check_failed', step: 'check', message: 'Browser dependency check failed. No tools were installed.' },
   setup: { ...installed, setup_running: true, step: 'verify', message: 'Verifying browser connection…' },
   install: { ...installed, setup_running: true, step: 'dependencies', message: 'Installing browser dependencies…' },
-  ready: installed,
-  imported: { ...installed, last_sync: '2026-10-09T08:00:00Z', cookie_count: 752 },
-  empty: { ...installed, last_sync: '2026-10-09T08:00:00Z', cookie_count: 0 },
-  importing: { ...installed, initial_import_complete: false, sync_running: true, status: 'syncing' },
+  ready: { ...installed, replace_available: true },
+  imported: { ...installed, replace_available: true, last_sync: '2026-10-09T08:00:00Z', cookie_count: 752 },
+  empty: { ...installed, replace_available: true, last_sync: '2026-10-09T08:00:00Z', cookie_count: 0 },
+  importing: { ...installed, initial_import_complete: false, sync_running: true, status: 'syncing', sync_mode: 'import' },
+  replacing: { ...installed, replace_available: false, sync_running: true, status: 'syncing', step: 'manual_sync', sync_mode: 'replace', message: 'Replacing Haish browser Cookies…' },
+  replaced: { ...installed, replace_available: true, last_sync: '2026-10-09T08:00:00Z', cookie_count: 752, last_operation: { mode: 'replace', at: '2026-10-09T08:00:00Z', cookie_count: 752 } },
+  replaceFailed: { ...installed, replace_available: true, status: 'needs_repair', error_code: 'replace_failed', message: 'Login replacement did not finish.' },
   missing: { ...installed, managed_dependency_status: 'missing' },
   update: { ...installed, managed_dependency_status: 'version_mismatch' },
   retry: { ...installed, error_code: 'managed_browser_install_failed' },
@@ -40,6 +43,7 @@ window.fetch = async (url, init = {}) => {
     if (action === 'repair') current = { ...current, setup_running: true, step: 'repair', message: 'Repairing browser dependencies…' };
     if (action === 'install') current = { ...current, setup_running: true, step: 'dependencies', message: 'Preparing browser setup…' };
     if (action === 'keep_existing_logins') current = { ...current, initial_import_complete: true, initial_import_error: false };
+    if (action === 'replace_logins') current = { ...current, replace_available: false, sync_running: true, status: 'syncing', step: 'manual_sync', sync_mode: 'replace', message: 'Waiting for a fresh Cookie export…' };
   }
   return new Response(JSON.stringify(current), { headers: { 'Content-Type': 'application/json' } });
 };

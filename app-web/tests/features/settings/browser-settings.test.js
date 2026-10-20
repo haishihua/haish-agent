@@ -19,7 +19,8 @@ test('opening Browser settings only reads state; consent and version replacement
   const effect = editor.slice(editor.indexOf('useEffect(() =>'), editor.indexOf('const action ='));
   assert.ok(effect.includes('/api/settings/tools/browser'));
   assert.ok(!effect.includes("method: 'POST'"));
-  assert.match(editor, /confirmed: needsConsent && consent, allow_replace: needsConsent && replace/);
+  assert.match(editor, /confirmed = name === 'replace_logins' \|\| \(needsConsent && consent\)/);
+  assert.match(editor, /allow_replace: needsConsent && replace/);
   assert.match(editor, /dependency.consent && \(!consent \|\| \(!state\?\.initial_import_error && mismatch && !replace\)\)/);
   assert.match(editor, /response.status === 404/);
   assert.match(editor, /controller.abort\(\)/);
@@ -55,7 +56,7 @@ test('Browser has a window icon distinct from Web Search and concise primary cop
   assert.ok(!primary.includes('Setup prepares missing dependencies'));
   assert.match(primary, /Install browser-use and Playwright/);
   assert.match(primary, /Stable Chrome must already be installed/);
-  assert.match(primary, /Import logins once/);
+  assert.match(primary, /Import once, replace manually/);
 });
 
 test('setup headings identify the actual stage instead of blaming Chrome authorization', () => {
@@ -67,15 +68,26 @@ test('setup headings identify the actual stage instead of blaming Chrome authori
   assert.match(editor, /browserSetupHeading\(state\)/);
 });
 
-test('maintenance actions share outlined buttons, icons and equal-size layout', () => {
+test('maintenance buttons sit on one row and replacement confirms in a second step', () => {
   const maintenance = editor.slice(editor.indexOf('<div className={`browser-action-buttons'), editor.indexOf('</section>'));
-  assert.equal((maintenance.match(/variant="outline" size="sm"/g) || []).length, 2); // cancel, disable
   assert.ok(maintenance.includes('<Power size={14}'));
+  assert.ok(maintenance.includes('<RefreshCw size={14}'));
   assert.ok(!maintenance.includes('Wrench'));
   assert.ok(!maintenance.includes('variant="ghost"'));
+  // The resting Replace button only opens the confirmation dialog; one call site dispatches it.
+  assert.ok(maintenance.includes('setConfirmReplace(true)'));
+  assert.equal((maintenance.match(/action\('replace_logins'\)/g) || []).length, 0);
+  assert.equal((editor.match(/action\('replace_logins'\)/g) || []).length, 1);
   const css = fs.readFileSync(new URL('../../../src/features/settings/settings.css', import.meta.url), 'utf8');
-  assert.match(css, /\.browser-maintenance-actions \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /\.browser-maintenance-actions \{[^}]*display: flex;[^}]*justify-content: flex-end;[^}]*gap: 8px;/);
+  assert.ok(!css.includes('grid-template-columns: minmax(0, 1fr)'));
   assert.match(css, /\.browser-maintenance-actions \[data-slot="button"\] \{[^}]*height: 32px;[^}]*border: 1px solid/);
+  // Confirmation is the shared animated dialog, so the row keeps no inline confirm styling.
+  assert.ok(!css.includes('.browser-action-confirm'));
+  assert.ok(!css.includes('browser-replace-confirm'));
+  assert.match(editor, /import \{ AnimateDialog \} from/);
+  assert.match(editor, /<AnimateDialog open=\{Boolean\(confirmReplace && canReplace\)\} danger/);
+  assert.match(editor, /className="haish-dialog-actions"/);
 });
 
 test('Disable explains original-route selection without disabling the entire browser tool', () => {
@@ -115,13 +127,13 @@ test('Browser action feedback is wired to the existing app toast, not panel noti
 
 test('keep-logins/disable feedback and action failures release busy state', async () => {
   const actionBody = editor.slice(editor.indexOf('const action = async (name) => {') + 'const action = async (name) => {'.length, editor.indexOf('\n  const mismatch'));
-  const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
+  const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'setConfirmReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
   for (const [name, ok] of [['keep_existing_logins', true], ['disable', true], ['repair', false]]) {
     const events = [];
     const next = { enabled: name !== 'disable' };
     const action = makeAction(async () => ({ ok, json: async () => next }), '', async () => 'Browser configuration failed.', false, false,
       value => events.push(['busy', value]), value => events.push(['pending', value]), value => events.push(['state', value]),
-      () => {}, () => {}, (kind, message) => events.push(['toast', kind, message]));
+      () => {}, () => {}, () => {}, (kind, message) => events.push(['toast', kind, message]));
     await action(name);
     const toast = events.find(event => event[0] === 'toast');
     assert.equal(toast[1], ok ? 'success' : 'error');
@@ -138,7 +150,7 @@ test('initial import shows progress and cancellation without repeat sync', () =>
   assert.match(editor, /const running = state\?\.setup_running \|\| syncing/);
   assert.match(editor, /Cancel import/);
   assert.ok(!editor.includes("action('sync')"));
-  assert.match(editor, /No further sync after import/);
+  assert.match(editor, /No automatic sync after import/);
   assert.equal(browserSetupHeading({ initial_import_error: true }), 'Import stopped');
 });
 
@@ -240,10 +252,10 @@ test('first setup labels and maintenance status do not conflate installation, se
 
 test('Check and Enable do not inherit checked installation consent in their request', async () => {
   const actionBody = editor.slice(editor.indexOf('const action = async (name) => {') + 'const action = async (name) => {'.length, editor.indexOf('\n  const mismatch'));
-  const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
+  const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'setConfirmReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
   for (const name of ['check', 'enable', 'disable', 'repair', 'install']) {
     let payload;
-    const action = makeAction(async (url, options) => { payload = JSON.parse(options.body); return { ok: true, json: async () => ({}) }; }, '', () => {}, true, true, () => {}, () => {}, () => {}, () => {}, () => {}, () => {});
+    const action = makeAction(async (url, options) => { payload = JSON.parse(options.body); return { ok: true, json: async () => ({}) }; }, '', () => {}, true, true, () => {}, () => {}, () => {}, () => {}, () => {}, () => {}, () => {});
     await action(name);
     const needsConsent = ['install', 'repair'].includes(name);
     assert.deepEqual(payload, { action: name, confirmed: needsConsent, allow_replace: needsConsent });
@@ -261,13 +273,35 @@ test('Browser only has Enable/Disable selection; removed controls have no state 
 
 test('Enable/Disable requests do not confirm restart, install or shared-runtime replacement', async () => {
   const actionBody = editor.slice(editor.indexOf('const action = async (name) => {') + 'const action = async (name) => {'.length, editor.indexOf('\n  const mismatch'));
-  const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
+  const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'setConfirmReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
   for (const name of ['enable', 'disable']) {
     let payload;
-    const action = makeAction(async (url, options) => { payload = JSON.parse(options.body); return { ok: true, json: async () => ({}) }; }, '', () => {}, true, true, () => {}, () => {}, () => {}, () => {}, () => {}, () => {});
+    const action = makeAction(async (url, options) => { payload = JSON.parse(options.body); return { ok: true, json: async () => ({}) }; }, '', () => {}, true, true, () => {}, () => {}, () => {}, () => {}, () => {}, () => {}, () => {});
     await action(name);
     assert.deepEqual(payload, { action: name, confirmed: false, allow_replace: false });
   }
+});
+
+test('manual replacement confirms after the click instead of requiring a pre-checkbox', async () => {
+  assert.ok(!editor.includes('browser-login-replace-consent'));
+  assert.ok(!editor.includes('Replace all Haish Browser logins'));
+  assert.match(editor, /const \[confirmReplace, setConfirmReplace\] = useState\(false\)/);
+  assert.match(editor, /open=\{Boolean\(confirmReplace && canReplace\)\}/);
+  assert.match(editor, /title="Replace Haish Browser logins"/);
+  assert.match(editor, /Copy the current personal Chrome Cookies over the Haish Browser profile\./);
+  assert.match(editor, /onClick=\{\(\) => setConfirmReplace\(true\)\}/);
+  assert.match(editor, /onClick=\{\(\) => setConfirmReplace\(false\)\}/);
+  assert.equal((editor.match(/action\('replace_logins'\)/g) || []).length, 1);
+  assert.equal(browserStatusMeta({ sync_running: true, sync_mode: 'replace' }).label, 'Replacing');
+  assert.equal(browserSetupHeading({ sync_running: true, sync_mode: 'replace' }), 'Replacing logins');
+  assert.equal(browserSetupHeading({ status: 'needs_repair', error_code: 'replace_failed' }), 'Login replacement failed');
+  const actionBody = editor.slice(editor.indexOf('const action = async (name) => {') + 'const action = async (name) => {'.length, editor.indexOf('\n  const mismatch'));
+  const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'setConfirmReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
+  let payload;
+  const action = makeAction(async (url, options) => { payload = JSON.parse(options.body); return { ok: true, json: async () => ({}) }; }, '', () => {}, false, false, () => {}, () => {}, () => {}, () => {}, () => {}, () => {}, () => {});
+  await action('replace_logins');
+  // The click that opens the confirmation sends nothing; the confirmed click always reports confirmed.
+  assert.deepEqual(payload, { action: 'replace_logins', confirmed: true, allow_replace: false });
 });
 
 test('unknown sync statistics are not displayed as an empty persisted browser', () => {

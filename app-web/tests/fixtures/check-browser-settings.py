@@ -3,7 +3,8 @@ from playwright.sync_api import sync_playwright
 
 STATES = ['first', 'prepared', 'setup', 'install', 'ready', 'missing',
           'update', 'mismatch', 'retry', 'disabled', 'imported', 'empty', 'importing',
-          'unverified', 'checking', 'repairing', 'stopped', 'checkFailed']
+          'unverified', 'checking', 'repairing', 'stopped', 'checkFailed',
+          'replacing', 'replaced', 'replaceFailed']
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True, channel='chrome')
@@ -56,13 +57,22 @@ with sync_playwright() as p:
                 if state in labels:
                     assert labels[state] in info['buttons'], info
                 if state in ['ready', 'imported', 'empty']:
-                    assert info['buttons'] == ['Disable'], info
-                if state in ['ready', 'disabled', 'unverified', 'checkFailed']:
+                    assert info['buttons'] == ['Disable', 'Replace logins'], info
+                    # Disable and Replace logins share one row instead of stacking.
+                    boxes = page.evaluate('''() => [...document.querySelectorAll('.browser-maintenance-actions button')]
+                      .map(e => { const r = e.getBoundingClientRect(); return {left: r.x, right: r.right, center: r.y + r.height / 2}; })''')
+                    assert len(boxes) == 2, (width, state, boxes)
+                    assert abs(boxes[0]['center'] - boxes[1]['center']) < 0.5, (width, state, boxes)
+                    assert boxes[0]['right'] <= boxes[1]['left'], (width, state, boxes)
+                if state in ['disabled', 'unverified', 'checkFailed']:
+                    assert page.get_by_role('checkbox').count() == 0, state
+                # Replacement is confirmed by a click, so it never pre-checks a box.
+                if state in ['ready', 'imported', 'empty', 'replaced']:
                     assert page.get_by_role('checkbox').count() == 0, state
                 page.get_by_role('button', name='Details', exact=True).click()
                 expected_check = 'Checking…' if state == 'checking' else 'Check browser'
                 assert page.get_by_role('button', name=expected_check, exact=True).count() == 1
-                assert page.locator('.browser-runtime-summary').count() == (state in ['imported', 'empty']), state
+                assert page.locator('.browser-runtime-summary').count() == (state in ['imported', 'empty', 'replaced']), state
                 assert not page.evaluate('document.documentElement.scrollWidth>innerWidth'), (width, state)
                 assert not writes()  # Expanding Details never probes.
                 if width == 1100 and state in ['ready', 'first', 'unverified']:
@@ -118,7 +128,7 @@ with sync_playwright() as p:
             assert not writes()
             page.get_by_role('button', name='Check browser', exact=True).click()
             expect_write('check')
-            assert page.get_by_role('checkbox').count() == 0
+            assert page.get_by_role('checkbox').count() == 0, state
             print('PASS one-click check', state)
         open_state('disabled')
         page.get_by_role('button', name='Enable', exact=True).click()
@@ -138,6 +148,28 @@ with sync_playwright() as p:
             button.click()
             expect_write(action, confirmed=True)
             print('PASS consent dispatch', state)
+        open_state('imported')
+        assert page.get_by_role('checkbox').count() == 0
+        replace_button = page.get_by_role('button', name='Replace logins', exact=True)
+        assert not replace_button.is_disabled()
+        replace_button.click()
+        # The first click only opens the confirmation dialog; it must not dispatch.
+        dialog = page.get_by_role('alertdialog')
+        dialog.wait_for()
+        assert writes() == []
+        assert 'Copy the current personal Chrome Cookies over the Haish Browser profile.' in dialog.inner_text()
+        assert not page.evaluate('document.documentElement.scrollWidth>innerWidth')
+        dialog.get_by_role('button', name='Cancel', exact=True).click()
+        page.wait_for_function("!document.querySelector('[role=alertdialog]')")
+        assert writes() == []
+        page.get_by_role('button', name='Replace logins', exact=True).click()
+        dialog = page.get_by_role('alertdialog')
+        dialog.wait_for()
+        dialog.get_by_role('button', name='Replace logins', exact=True).click()
+        expect_write('replace_logins', confirmed=True)
+        page.get_by_role('button', name='Cancel replacement', exact=True).wait_for()
+        print('PASS dialog login replacement dispatch')
+
         open_state('mismatch')
         button = page.get_by_role('button', name='Update dependencies', exact=True)
         page.locator('#browser-sync-consent').click()
