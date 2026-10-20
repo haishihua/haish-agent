@@ -85,6 +85,15 @@ const api: HaishDesktopApi = {
       reject(error);
     });
   }),
+  onSettingsEvent: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, message: Record<string, unknown>) => callback(message);
+    ipcRenderer.on('runtime:settings-event', listener);
+    ipcRenderer.send('runtime:settings-subscribe');
+    return () => {
+      ipcRenderer.removeListener('runtime:settings-event', listener);
+      ipcRenderer.send('runtime:settings-unsubscribe');
+    };
+  },
   onScheduleEvent: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, message: Record<string, unknown>) => callback(message);
     ipcRenderer.on('runtime:schedule-event', listener);

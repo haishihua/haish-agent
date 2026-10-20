@@ -50,7 +50,7 @@ test('点一下 = 改这一台的 enabled 后走和 Save 同一条保存路径�
   assert.match(toggleBlock, /setMcpServerEnabled\(parsed\.value, name, enabled\)/);
   assert.match(
     toggleBlock,
-    /onSaveTools\(patchedRecords\(\{ mcp_json,[^)]*\), enabled \? `\$\{name\} enabled` : `\$\{name\} disabled`\)/,
+    /onSaveTools\(patchedRecords\(\{ mcp_json,[^)]*\), enabled \? `\$\{name\} enabled` : `\$\{name\} disabled`, 'mcp'\)/,
   );
   assert.match(toggleBlock, /saved === false\) throw new Error\(`MCP server \$\{name\} was not updated\.`\)/);
   // JSON 坏着的时候不许写盘：点一下先给原因，草稿原样留着。

@@ -84,6 +84,15 @@
   .settings-content-modern { max-width: 1120px; margin: auto; padding: 24px 28px; }
   .settings-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
   .settings-page-heading h1 { font-size: 25px; line-height: 1.3; font-weight: 600; letter-spacing: -.5px; }
+  /* Secondary page action: a quiet 32px pill that sits next to a 25px heading without
+     shouting. Default shadcn outline renders a blocky 14px box that fights the heading. */
+  .settings-heading-action { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 11px; border: 1px solid var(--control-border); border-radius: 7px; background: transparent; color: #9aa7bc; box-shadow: none; font-size: 12px; line-height: 20px; transition: color .16s var(--ease-snappy), background-color .16s var(--ease-snappy), border-color .16s var(--ease-snappy); }
+  .settings-heading-action > svg { display: block; width: 14px; height: 14px; flex: 0 0 14px; }
+  .settings-heading-action:disabled { color: #7b8598; }
+  @media (hover: hover) and (pointer: fine) {
+    .settings-heading-action:hover { color: #dfe7f5; background: #ffffff0a; border-color: #4a5160; }
+  }
+  .settings-skill-actions { display: flex; align-items: center; gap: 8px; }
   .settings-search-modern { display: flex; align-items: center; gap: 9px; width: min(360px, 100%); height: 36px; padding: 0 11px; border: 1px solid var(--control-border); border-radius: 7px; color: #8d9ab0; background: var(--control); margin-bottom: 16px; }
   .settings-provider-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
   .settings-provider-toolbar .settings-search-modern { min-width: 0; flex: 0 1 360px; margin-bottom: 0; }

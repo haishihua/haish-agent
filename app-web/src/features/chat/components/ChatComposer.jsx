@@ -225,7 +225,11 @@ export function ChatComposer({
   }, [executionMode, onGoalCommand]);
 
   React.useEffect(() => {
-    if (selectedSkillName && !resolvedSkills.some((skill) => skill.name === selectedSkillName)) {
+    // 后台重读 agent 目录时 skills 会短暂为空，刷新失败也会为空；这两种情况都不能把用户
+    // 已选的 skill token 静默清掉（清掉后这条消息就不带 skill 指令了）。只有拿到当前 agent
+    // 的真实列表、且里面确实没有它时才清。
+    if (selectedSkillName && resolvedSkills.length
+      && !resolvedSkills.some((skill) => skill.name === selectedSkillName)) {
       setSelectedSkillName('');
       selectedSkillNameRef.current = '';
       skillSelectionPendingRef.current = false;

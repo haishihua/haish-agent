@@ -141,6 +141,7 @@ export type HaishDesktopApi = {
   getPathForFile: (file: File) => string;
   runTaskStream: (command: RealtimeTaskCommand, onEvent: (event: Record<string, unknown>) => void) => Promise<void>;
   onScheduleEvent: (callback: (event: Record<string, unknown>) => void) => () => void;
+  onSettingsEvent: (callback: (event: Record<string, unknown>) => void) => () => void;
   onApprovalEvent: (callback: (event: Record<string, unknown>) => void) => () => void;
   resolveApproval: (
     approvalKind: 'tool' | 'workflow' | 'user_input' | 'browser_runtime' | 'computer_runtime',

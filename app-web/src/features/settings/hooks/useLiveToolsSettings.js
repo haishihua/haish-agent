@@ -1,9 +1,10 @@
+import { hasSettingsVersion } from '../../../shared/lib/settings-sync.js';
 import { useEffect, useRef } from 'react';
 import { createLiveToolsLoader } from '../model/live-tools-settings.js';
 
 // One loader per visible Settings/workspace context. Page selection is not its
 // identity: switching Skill children must neither abort nor restart discovery.
-export function useLiveToolsSettings({ enabled, contextKey, busy, refreshRef, cache, records, fetchPayload, onPayload, onState }) {
+export function useLiveToolsSettings({ enabled, contextKey, busy, refreshRef, cache, records, fetchPayload, onPayload, onState, refreshEpoch = 0, pageKey = '' }) {
   const callbacks = useRef({ records, fetchPayload, onPayload, onState });
   callbacks.current = { records, fetchPayload, onPayload, onState };
   const configurationInitialized = useRef(false);
@@ -23,9 +24,12 @@ export function useLiveToolsSettings({ enabled, contextKey, busy, refreshRef, ca
       },
       onPayload: payload => {
         cache.set(contextKey, payload.skills);
-        // Configuration is initialized once; later focus/workspace/write
-        // refreshes own only inventory, never the MCP or search-key draft.
-        if (!configurationInitialized.current && (payload.mcp || payload.web_search)) {
+        // Versioned runtimes reconcile saved configuration without erasing
+        // drafts. Old runtimes retain inventory-only refresh after hydration.
+        if (hasSettingsVersion(payload, 'mcp')) {
+          configurationInitialized.current = true;
+          callbacks.current.onPayload(payload);
+        } else if (!configurationInitialized.current && (payload.mcp || payload.web_search)) {
           if (pendingWrites.current) {
             deferredConfiguration.current = { mcp: payload.mcp, web_search: payload.web_search };
             callbacks.current.onPayload({ skills: payload.skills });
@@ -48,7 +52,7 @@ export function useLiveToolsSettings({ enabled, contextKey, busy, refreshRef, ca
       window.removeEventListener('focus', refresh);
       if (refreshRef.current === refresh) refreshRef.current = null;
     };
-  }, [enabled, contextKey, busy, refreshRef, cache]);
+  }, [enabled, contextKey, busy, refreshRef, cache, refreshEpoch, pageKey]);
   // Pause first-GET hydration at PUT start, so it cannot look like an edit to
   // the write's baseline. Success owns initialization; failure releases any
   // deferred configuration using the original GET baseline to protect edits.

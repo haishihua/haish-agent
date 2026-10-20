@@ -1,3 +1,4 @@
+import { reconcileSettings, copySettingsResponse, hasSettingsVersion } from '../../../shared/lib/settings-sync.js';
 import { setVisionProviderEnabled } from '../model/llm-settings.js';
 import { withoutStoredSkillInventory } from '../model/live-tools-settings.js';
 import { toolsSettingsPayloadForDraft } from '../model/settings-payload.js';
@@ -99,7 +100,7 @@ export function createSettingsHandlers(ctx) {
     }
   }
 
-  async function handleSaveToolsSettingsDraft(nextRecords = settingsRecordsDraft, successMessage = 'settings saved') {
+  async function handleSaveToolsSettingsDraft(nextRecords = settingsRecordsDraft, successMessage = 'settings saved', resource) {
     // Row switches submit staged records without publishing them. Compare late
     // edits with the actual draft, not with that distinct submission payload.
     const recordsAtRequest = settingsRecordsDraft;
@@ -107,7 +108,7 @@ export function createSettingsHandlers(ctx) {
     let saved = false;
     try {
       window.localStorage?.setItem(SETTINGS_RECORDS_STORAGE_KEY, JSON.stringify(withoutStoredSkillInventory(nextRecords)));
-      const toolsPayload = buildToolsSettingsPayload(nextRecords);
+      const toolsPayload = buildToolsSettingsPayload(nextRecords, resource);
       const response = await apiFetch(`${API_BASE}/api/settings/tools${skillContextQuery}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -119,7 +120,7 @@ export function createSettingsHandlers(ctx) {
       }
       const payload = await response.json();
       invalidateSkillInventory?.();
-      setSettingsRecordsDraft(prev => applyToolsSettingsPayloadToRecords(prev, toolsSettingsPayloadForDraft(prev, payload, recordsAtRequest)));
+      setSettingsRecordsDraft(prev => applyToolsSettingsPayloadToRecords(prev, hasSettingsVersion(payload) ? payload : toolsSettingsPayloadForDraft(prev, payload, recordsAtRequest)));
       saved = true;
       if (successMessage) showToast('success', successMessage);
       return true;
@@ -176,7 +177,8 @@ export function createSettingsHandlers(ctx) {
 
   function applyAgentSettingsPayload(payload) {
     const normalized = normalizeAgentSettings(payload);
-    setAgentSettingsDraft(normalized);
+    if (hasSettingsVersion(payload)) setAgentSettingsDraft(previous => reconcileSettings('agents', previous, normalized, payload));
+    else setAgentSettingsDraft(normalized);
     setAgentCatalog(agentCatalogFromSettings(normalized));
     return normalized;
   }
@@ -304,7 +306,8 @@ export function createSettingsHandlers(ctx) {
 
   function applyWorkflowSettingsPayload(payload) {
     const normalized = normalizeWorkflowSettings(payload);
-    setWorkflowSettingsDraft(normalized);
+    if (hasSettingsVersion(payload)) setWorkflowSettingsDraft(previous => reconcileSettings('workflows', previous, normalized, payload));
+    else setWorkflowSettingsDraft(normalized);
     return normalized;
   }
 
@@ -518,7 +521,7 @@ export function createSettingsHandlers(ctx) {
       }, { json: false });
       if (!response.ok) throw new Error(await parseResponseMessage(response, `Skill install failed (${response.status})`));
       const payload = await response.json();
-      setSettingsRecordsDraft(prev => applyToolsSettingsPayloadToRecords(prev, { skills: payload.skills }));
+      setSettingsRecordsDraft(prev => applyToolsSettingsPayloadToRecords(prev, copySettingsResponse(payload, { skills: payload.skills })));
       showToast('success', 'Skill installed');
       return true;
     } catch (error) {
@@ -544,7 +547,7 @@ export function createSettingsHandlers(ctx) {
         throw new Error(message);
       }
       const payload = await response.json();
-      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, { skills: payload.skills }));
+      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, copySettingsResponse(payload, { skills: payload.skills })));
       showToast('success', enabled ? 'skill enabled' : 'skill disabled');
       return true;
     } catch (error) {
@@ -568,7 +571,7 @@ export function createSettingsHandlers(ctx) {
         throw new Error(message);
       }
       const payload = await response.json();
-      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, { skills: payload.skills }));
+      setSettingsRecordsDraft((prev) => applyToolsSettingsPayloadToRecords(prev, copySettingsResponse(payload, { skills: payload.skills })));
       showToast('success', 'skill uninstalled');
       return true;
     } catch (error) {

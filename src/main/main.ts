@@ -92,6 +92,7 @@ const realtimeCommandWaiters = new Map<string, CommandWaiter>();
 const realtimeTaskOwners = new Map<string, number>();
 const realtimeApprovalSubscribers = new Set<number>();
 const realtimeScheduleSubscribers = new Set<number>();
+const realtimeSettingsSubscribers = new Set<number>();
 
 const scheduledTaskActivity = createScheduledTaskActivity();
 let scheduleActivityTimer: NodeJS.Timeout | null = null;
@@ -156,6 +157,12 @@ function handleRealtimeMessage(event: MessageEvent): void {
     else waiter.reject(Object.assign(new Error(String(message.detail || 'Runtime command failed.')), { status: message.status }));
     return;
   }
+  if (message.type === 'settings.event' || message.type === 'settings.resync') {
+    for (const subscriberId of realtimeSettingsSubscribers) {
+      sendToWebContents(subscriberId, 'runtime:settings-event', message);
+    }
+    return;
+  }
   if (message.type === 'schedule.event' || message.schedule_id) {
     scheduledTaskActivity.handle(message);
     for (const subscriberId of realtimeScheduleSubscribers) {
@@ -189,6 +196,9 @@ async function ensureRealtimeSocket(): Promise<WebSocket> {
       socket.addEventListener('open', () => {
         opened = true;
         realtimeSocket = socket;
+        for (const subscriberId of realtimeSettingsSubscribers) {
+          sendToWebContents(subscriberId, 'runtime:settings-event', { type: 'settings.resync' });
+        }
         for (const subscriberId of realtimeScheduleSubscribers) {
           sendToWebContents(subscriberId, 'runtime:schedule-event', { type: 'schedule.resync' });
         }
@@ -577,6 +587,21 @@ ipcMain.handle('runtime:command', async (event, command: RealtimeMessage) => {
     }
     throw error;
   }
+});
+ipcMain.on('runtime:settings-subscribe', (event) => {
+  const sender = new URL(event.senderFrame?.url || 'about:blank');
+  if (sender.protocol !== 'haish:' || sender.hostname !== 'app') return;
+  const senderId = event.sender.id;
+  if (!realtimeSettingsSubscribers.has(senderId)) {
+    event.sender.once('destroyed', () => realtimeSettingsSubscribers.delete(senderId));
+  }
+  realtimeSettingsSubscribers.add(senderId);
+  ensureRealtimeSocket().then(() => {
+    if (realtimeSettingsSubscribers.has(senderId)) sendToWebContents(senderId, 'runtime:settings-event', { type: 'settings.resync' });
+  }).catch(() => scheduleRealtimeReconnect());
+});
+ipcMain.on('runtime:settings-unsubscribe', (event) => {
+  realtimeSettingsSubscribers.delete(event.sender.id);
 });
 ipcMain.on('runtime:approval-subscribe', (event) => {
   const sender = new URL(event.senderFrame?.url || 'about:blank');

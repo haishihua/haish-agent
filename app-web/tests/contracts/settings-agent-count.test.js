@@ -18,7 +18,7 @@ test('Agent navigation counts presets and custom agents, including disabled agen
 
 test('expanding Automation triggers full settings loading before entering Agent', () => {
   assert.match(shell, /const needsAgentSettings = settingsMode && \(automationExpanded \|\| \['agent', 'workflow'\]\.includes\(settingsSection\)\)/);
-  assert.match(shell, /if \(!needsAgentSettings\) return undefined;[\s\S]*?fetchAgentSettingsPayload\(\)[\s\S]*?applyAgentSettingsPayload\(payload\)[\s\S]*?setAgentSettingsReady\(true\)[\s\S]*?\}, \[needsAgentSettings\]\)/);
+  assert.match(shell, /if \(!needsAgentSettings\) return undefined;[\s\S]*?fetchAgentSettingsPayload\(\)[\s\S]*?applyAgentSettingsPayload\(payload\)[\s\S]*?setAgentSettingsReady\(true\)[\s\S]*?\}, \[needsAgentSettings, settingsSync\.epochs\.agents\]\)/);
   assert.match(shell, /onAutomationExpandedChange=\{setAutomationExpanded\}/);
   assert.match(page, /onAutomationExpandedChange\?\.\(automationOpen\)/);
   assert.match(page, /\(\) => onAutomationExpandedChange\?\.\(false\)/);

@@ -1,3 +1,4 @@
+import { reconcileSettings, copySettingsResponse, hasSettingsVersion, settingsResponseIsCurrent } from '../../../shared/lib/settings-sync.js';
 import {
   DEFAULT_MCP_CONFIG_JSON,
   WEB_SEARCH_PROVIDER_OPTIONS,
@@ -207,20 +208,22 @@ export function normalizeWebSearchDraft(value) {
 
 export function applyToolsSettingsPayloadToRecords(records, payload, recordsAtRequest) {
   if (!payload || typeof payload !== 'object') return records;
-  payload = toolsSettingsPayloadForDraft(records, payload, recordsAtRequest);
+  const response = payload;
+  if (!hasSettingsVersion(payload)) payload = toolsSettingsPayloadForDraft(records, payload, recordsAtRequest);
   return {
     ...records,
     tools: mergeDefaultRecords(createDefaultSettingsRecords().tools, records?.tools).map((record) => {
-      if (record.id === 'tools-mcp' && payload.mcp) {
+      if (record.id === 'tools-mcp' && payload.mcp && settingsResponseIsCurrent(response, 'mcp')) {
         return {
           ...record,
           mcp_path: payload.mcp.path || record.mcp_path || '',
           mcp_error: payload.mcp.error || '',
           mcp_status: '',
-          mcp_json: JSON.stringify(payload.mcp.config || { servers: {} }, null, 2),
+          mcp_json: reconcileSettings('mcp', record.mcp_json, JSON.stringify(payload.mcp.config || { servers: {} }, null, 2), response),
         };
       }
-      if (record.id === 'tools-skills' && payload.skills) {
+      if (record.id === 'tools-skills' && payload.skills && settingsResponseIsCurrent(response, 'skills')) {
+        reconcileSettings('skills', record.skills, payload.skills.items || [], response);
         return {
           ...record,
           skills: Array.isArray(payload.skills.items) ? payload.skills.items : [],
@@ -235,7 +238,7 @@ export function applyToolsSettingsPayloadToRecords(records, payload, recordsAtRe
       if (record.id === 'tools-web' && payload.web_search) {
         return {
           ...record,
-          web_search: normalizeWebSearchDraft(payload.web_search),
+          web_search: reconcileSettings('web_search', record.web_search, normalizeWebSearchDraft(payload.web_search), response),
         };
       }
       return record;
@@ -250,12 +253,12 @@ export function toolsSettingsPayloadForDraft(records, payload, recordsAtRequest)
   const find = (source, id) => source?.tools?.find(record => record.id === id);
   const currentMcp = find(records, 'tools-mcp');
   const initialMcp = find(recordsAtRequest, 'tools-mcp');
-  return {
+  return copySettingsResponse(payload, {
     ...payload,
     mcp: initialMcp && currentMcp?.mcp_json !== initialMcp.mcp_json ? undefined : payload.mcp,
     web_search: payload.web_search ? mergeWebSearchSettings(find(records, 'tools-web')?.web_search,
       payload.web_search, find(recordsAtRequest, 'tools-web')?.web_search) : undefined,
-  };
+  });
 }
 
 function mergeWebSearchSettings(current, incoming, initial) {
@@ -284,17 +287,32 @@ export function applyMemorySettingsPayloadToRecords(records, payload) {
     ...records,
     memory: mergeKnownDefaultRecords(createDefaultSettingsRecords().memory, records?.memory).map((record) => (
       record.id === 'memory-qdrant'
-        ? { ...record, enabled, endpoint: qdrant.url, qdrant }
+        ? reconcileSettings('memory', record, { ...record, enabled, endpoint: qdrant.url, qdrant }, payload)
         : record
     )),
   };
 }
 
-export function buildToolsSettingsPayload(records) {
+export function buildToolsSettingsPayload(records, resource) {
   const tools = Array.isArray(records?.tools) ? records.tools : [];
   const mcp = tools.find((item) => item.id === 'tools-mcp');
   const skills = tools.find((item) => item.id === 'tools-skills');
   const webRecord = tools.find((item) => item.id === 'tools-web');
+  if (resource === 'mcp') {
+    const parsed = parseJsonSafe(mcp?.mcp_json || DEFAULT_MCP_CONFIG_JSON);
+    if (!parsed.ok) throw new Error(`MCP JSON is invalid: ${parsed.error}`);
+    return { mcp: { config: parsed.value } };
+  }
+  if (resource === 'web_search') {
+    const web = normalizeWebSearchDraft(webRecord?.web_search);
+    return { web_search: {
+      enabled: web.enabled !== false, mode: web.mode,
+      providers: Object.fromEntries(WEB_SEARCH_PROVIDER_OPTIONS.map(({ id }) => [id, {
+        enabled: web.providers[id]?.enabled !== false,
+        ...(String(web.providers[id]?.api_key || '').trim() ? { api_key: String(web.providers[id].api_key).trim() } : {}),
+      }])),
+    } };
+  }
   const parsedMcp = parseJsonSafe(mcp?.mcp_json || DEFAULT_MCP_CONFIG_JSON);
   if (!parsedMcp.ok) {
     throw new Error(`MCP JSON is invalid: ${parsedMcp.error}`);
@@ -304,7 +322,7 @@ export function buildToolsSettingsPayload(records) {
   for (const provider of WEB_SEARCH_PROVIDER_OPTIONS) {
     const draft = web.providers[provider.id] || {};
     providers[provider.id] = {
-      enabled: true,
+      enabled: draft.enabled !== false,
       ...(String(draft.api_key || '').trim() ? { api_key: String(draft.api_key).trim() } : {}),
     };
   }
@@ -317,8 +335,8 @@ export function buildToolsSettingsPayload(records) {
         .filter(Boolean),
     } }),
     web_search: {
-      enabled: true,
-      mode: 'hybrid',
+      enabled: web.enabled !== false,
+      mode: web.mode,
       providers,
     },
   };

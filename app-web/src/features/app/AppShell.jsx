@@ -32,6 +32,8 @@ import {
 } from '../settings/model/settings-payload.js';
 import { API_BASE } from '../../shared/api/base.js';
 import { useLiveToolsSettings } from '../settings/hooks/useLiveToolsSettings.js';
+import { useSettingsSynchronization } from '../settings/hooks/useSettingsSynchronization.js';
+import { copySettingsResponse } from '../../shared/lib/settings-sync.js';
 import { useLlmSettings } from '../settings/hooks/useLlmSettings.js';
 import { createSkillInventoryCache } from '../settings/model/skill-inventory.js';
 import {
@@ -261,6 +263,7 @@ export function AppShell() {
   const needsAgentSettings = settingsMode && (automationExpanded || ['agent', 'workflow'].includes(settingsSection));
   const [llmSettingsDraft, setLlmSettingsDraft] = useState(() => loadLlmSettingsDraft());
   const [settingsRecordsDraft, setSettingsRecordsDraft] = useState(() => loadSettingsRecordsDraft());
+  const settingsSync = useSettingsSynchronization({ records: settingsRecordsDraft, llm: llmSettingsDraft, agents: agentSettingsDraft, workflows: workflowSettingsDraft });
   // 测试结果的权威副本随已保存的连接一起存（后端）。这里只放本轮会话的临时状态。
   const [settingsConnectionStatus, setSettingsConnectionStatus] = useState({ memory: {} });
   const [settingsSelection, setSettingsSelection] = useState(() => ({
@@ -367,6 +370,7 @@ export function AppShell() {
     return contextUsageTracker.reset(conversationIdValue);
   }
 
+  // agent/skill 目录只在换 workspace、重试或下一次任务开始时重读，focus/设置事件不重读。
   useEffect(() => {
     const workspaceQuery = localWorkspace.path
       ? `?workspace_path=${encodeURIComponent(localWorkspace.path)}`
@@ -413,10 +417,12 @@ export function AppShell() {
       cancelled = true;
       if (retryTimer) window.clearTimeout(retryTimer);
     };
-  }, []);
+  }, [settingsSync.epochs.workflows]);
 
   const beginToolsSettingsSave = useLiveToolsSettings({
     enabled: needsToolsSettings,
+    refreshEpoch: (settingsSync.epochs.mcp || 0) + (settingsSync.epochs.web_search || 0) + (settingsSync.epochs.skills || 0),
+    pageKey: settingsSelection.tools?.startsWith('tools-skills') ? 'skills' : settingsSelection.tools,
     contextKey: toolsContextKey,
     busy: skillActionBusy,
     refreshRef: toolsRefreshRef,
@@ -458,7 +464,7 @@ export function AppShell() {
       cancelled = true;
       if (retryTimer) window.clearTimeout(retryTimer);
     };
-  }, [needsAgentSettings]);
+  }, [needsAgentSettings, settingsSync.epochs.agents]);
   useEffect(() => {
     if (!settingsMode || settingsSection !== 'workflow') return undefined;
     let cancelled = false;
@@ -482,11 +488,12 @@ export function AppShell() {
       cancelled = true;
       if (retryTimer) window.clearTimeout(retryTimer);
     };
-  }, [settingsMode, settingsSection]);
+  }, [settingsMode, settingsSection, settingsSync.epochs.workflows]);
 
   const { providerOptions: llmProviderOptions, beginWrite: beginLlmSettingsWrite } = useLlmSettings({
     draft: llmSettingsDraft, setDraft: setLlmSettingsDraft,
     settingsOpen: settingsMode && ['llm', 'embedding', 'compact'].includes(settingsSection),
+    refreshEpoch: settingsSync.epochs.llm,
   });
 
   useEffect(() => {
@@ -500,7 +507,7 @@ export function AppShell() {
       })
       .catch((error) => console.warn('failed to fetch memory settings', error));
     return () => { cancelled = true; };
-  }, [settingsMode, settingsSection]);
+  }, [settingsMode, settingsSection, settingsSync.epochs.memory]);
 
   useEffect(() => {
     let cleanup = null;
@@ -949,7 +956,7 @@ export function AppShell() {
     applyMemorySettingsPayloadToRecords,
     applyToolsSettingsPayloadToRecords: (records, payload, recordsAtRequest) => {
       if (skillInventoryKeyRef.current === skillInventoryKey) return applyToolsSettingsPayloadToRecords(records, payload, recordsAtRequest);
-      return applyToolsSettingsPayloadToRecords(records, { ...payload, skills: undefined }, recordsAtRequest);
+      return applyToolsSettingsPayloadToRecords(records, copySettingsResponse(payload, { ...payload, skills: undefined }), recordsAtRequest);
     },
     apiFetch,
     buildMemorySettingsPayload,
@@ -1179,7 +1186,7 @@ export function AppShell() {
     canStartDeployForConversation,
     failPendingDeploy,
     startDeploy,
-    handleDeploy,
+    handleDeploy: deployTask,
   } = createDeployHandlers({
     uploadChatImage, providerOptions: llmProviderOptions,
     APP_DEFAULT_AGENT_OPTIONS,
@@ -1239,6 +1246,8 @@ export function AppShell() {
     workspaceStateWithConversationDetail,
     workspaceStateWithTouchedConversation,
   });
+  // 下一次任务开始时才重读 agent/skill 目录（不在后台抢当前选择）。
+  const handleDeploy = React.useCallback((...args) => { setAgentRetry((attempt) => attempt + 1); return deployTask(...args); }, [deployTask]);
   deployApiRef.current = {
     buildDeployRequest,
     canStartDeployForConversation,

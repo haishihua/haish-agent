@@ -24,7 +24,8 @@ test('inventory hook, rather than selected tools page, owns initialization versu
   assert.match(shell, /invalidateSkillInventory: [^\n]+beginToolsSettingsSave,/);
   assert.match(handlers, /beginToolsSettingsSave\?\.\(\)/);
   assert.match(handlers, /finally\s*\{\s*finishToolsSettingsSave\?\.\(saved\)/);
-  assert.doesNotMatch(localWiring, /settingsSection|settingsSelection/);
+  assert.match(localWiring, /pageKey: settingsSelection\.tools\?\.startsWith\('tools-skills'\) \? 'skills' : settingsSelection\.tools/);
+  assert.match(hook, /hasSettingsVersion\(payload, 'mcp'\)/);
   assert.match(hook, /configurationInitialized\.current = true/);
   assert.match(hook, /onPayload\(\{ skills: payload.skills \}\)/);
 });

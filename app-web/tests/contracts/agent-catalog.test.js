@@ -171,6 +171,33 @@ test('selected skill renders as an inline Lexical token inside the composer', ()
   assert.match(composerSource, /async function submit\(e\)[\s\S]*if \(skillSelectionPendingRef\.current\) return/);
 });
 
+test('background catalog reads keep the picked skill token and only run for the next task', () => {
+  // 已选的 skill 不能因为列表短暂为空（重读中/刷新失败）被静默清掉，只有拿到当前 agent
+  // 的真实列表且里面确实没有它时才清。
+  assert.match(
+    composerSource,
+    /if \(selectedSkillName && resolvedSkills\.length\s*\n\s*&& !resolvedSkills\.some\(\(skill\) => skill\.name === selectedSkillName\)\)/,
+  );
+  // agent/skill 目录不在 focus、也不在设置事件里重读：重读时机只有换 workspace、重试、下一次任务。
+  assert.match(appShellSource, /\}, \[localWorkspace\.path, agentContextKey, agentRetry\]\);/);
+  assert.doesNotMatch(appShellSource, /agentRetry, settingsSync\.epochs/);
+  assert.match(appShellSource, /handleDeploy: deployTask/);
+  assert.match(appShellSource, /setAgentRetry\(\(attempt\) => attempt \+ 1\); return deployTask\(\.\.\.args\);/);
+});
+
+test('picking an agent keeps the run-config menu open so provider/model can follow', () => {
+  const start = modelPickersSource.indexOf('onAgentChange?.(opt.id);');
+  assert.ok(start > 0);
+  const afterPick = modelPickersSource.slice(start, start + 240);
+  // 选完 agent 只收起 agent 子菜单，不关整个运行配置面板。
+  assert.match(afterPick, /setActiveSubmenu\(null\)/);
+  assert.doesNotMatch(afterPick, /setOpen\(false\)/);
+  // 光标离开不能自动收起面板：子菜单就在面板右侧，它一收，光标就落到面板外，
+  // 旧的 mouseleave + 180ms 计时器会把用户正在选的主面板直接关掉。
+  assert.doesNotMatch(modelPickersSource, /leaveTimer/);
+  assert.doesNotMatch(modelPickersSource, /onMouseLeave/);
+});
+
 test('run configuration progressively reveals thinking before agent and model settings', () => {
   assert.match(modelPickersSource, /<svg className=\{`model-picker-gauge /);
   assert.match(modelPickersSource, /model-picker-quick thinking-/);

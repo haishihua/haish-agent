@@ -109,7 +109,7 @@ test('production wiring hides stale numbers and rows, fetches without browser ca
   assert.match(shell, /applyToolsSettingsPayloadToRecords\(prev, payload, recordsAtRequest\)/);
   const loaderHook = read('../../../src/features/settings/hooks/useLiveToolsSettings.js');
   assert.match(loaderHook, /window.addEventListener\('focus', refresh\)/);
-  assert.match(loaderHook, /\[enabled, contextKey, busy, refreshRef, cache\]/);
+  assert.match(loaderHook, /\[enabled, contextKey, busy, refreshRef, cache, refreshEpoch, pageKey\]/);
   assert.doesNotMatch(loaderHook, /settingsSelection|settingsSection/);
   assert.doesNotMatch(page, /tab === 'tools-skills' \?/);
   assert.match(editor, /skillsPane && toolsSettingsState.status !== 'ready'/);

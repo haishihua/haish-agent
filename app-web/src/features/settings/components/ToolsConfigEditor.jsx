@@ -54,10 +54,10 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
       if (!parsed.ok) throw new Error(parsed.error);
       if (!onSaveTools) throw new Error('Saving MCP settings is not available from here.');
       const mcp_json = JSON.stringify(setMcpServerEnabled(parsed.value, name, enabled), null, 2);
-      const saved = await onSaveTools(patchedRecords({ mcp_json, mcp_error: '', mcp_status: '' }), enabled ? `${name} enabled` : `${name} disabled`);
+      const saved = await onSaveTools(patchedRecords({ mcp_json, mcp_error: '', mcp_status: '' }), enabled ? `${name} enabled` : `${name} disabled`, 'mcp');
       if (saved === false) throw new Error(`MCP server ${name} was not updated.`);
     });
-    return <div className="settings-content-modern"><div className="settings-page-heading"><h1>MCP servers</h1></div><div className="mcp-workspace">
+    return <div className="settings-content-modern"><div className="settings-page-heading"><h1>MCP servers</h1><Button variant="ghost" size="sm" className="settings-heading-action" disabled={Boolean(busy || toolsSettingsState.refreshing)} onClick={onRefreshTools}><RefreshCw size={14} aria-hidden="true" className={toolsSettingsState.refreshing ? 'settings-spin' : undefined} />Refresh</Button></div><div className="mcp-workspace">
       {servers.length > 0 && <div className="mcp-servers-surface"><div className="mcp-server-columns" aria-hidden="true"><span /><span>Server</span><span>Transport</span><span>Status</span></div><ItemGroup className="mcp-server-list">{servers.map(([name, server]) => {
         const enabled = mcpServerEnabled(server);
         return <Item key={name} className="mcp-server-row"><Server size={16} /><span className="mcp-server-name">{name}</span><span className="mcp-server-transport">{typeof server?.transport === 'string' ? server.transport : 'stdio'}</span><span className="mcp-server-state"><span className={`mcp-server-status ${enabled ? '' : 'is-disabled'}`}><span className="mcp-status-dot" />{enabled ? 'Enabled' : 'Disabled'}</span><Switch className="mcp-server-switch" aria-label={`${enabled ? 'Disable' : 'Enable'} MCP server ${name}`} checked={enabled} onCheckedChange={next => toggleServer(name, next)} disabled={Boolean(busy)} /></span></Item>;
@@ -66,7 +66,7 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
         <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => { if (!isEmptyMcpConfigDraft(json)) { setError('Template can only fill an empty MCP config.'); return; } setError(''); update({ mcp_json: MCP_CONFIG_TEMPLATE_JSON, mcp_error: '', mcp_status: '' }); }}>Template</Button>
         <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => { if (!parsed.ok) { setError(parsed.error); return; } setError(''); update({ mcp_json: JSON.stringify(parsed.value, null, 2), mcp_error: '', mcp_status: '' }); }}>Format</Button>
         <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('validate', validate)}>{busy === 'validate' ? 'Validating…' : 'Validate'}</Button>
-        <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', async () => { await validate(); const next = patchedRecords({ mcp_json: JSON.stringify(parsed.value, null, 2), mcp_error: '', mcp_status: '' }); onRecordsChange(next); if (await onSaveTools?.(next, 'MCP config saved and reloaded') !== false) update({ mcp_status: 'Saved and MCP reloaded.' }); })}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>
+        <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', async () => { await validate(); const next = patchedRecords({ mcp_json: JSON.stringify(parsed.value, null, 2), mcp_error: '', mcp_status: '' }); if (await onSaveTools?.(next, 'MCP config saved and reloaded', 'mcp') !== false) update({ mcp_status: 'Saved and MCP reloaded.' }); })}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>
       </div></div><Textarea className="mcp-json" aria-label="MCP configuration JSON" value={json} disabled={Boolean(busy)} onChange={event => { setError(''); update({ mcp_json: event.target.value, mcp_error: '', mcp_status: '' }); }} spellCheck={false} wrap="off" /></div>
       {(error || current.mcp_error) && <ErrorState variant="inline" detail={error || current.mcp_error} />}{!error && current.mcp_status && <p className="settings-inline-success" role="status">{current.mcp_status}</p>}
     </div></div>;
@@ -84,7 +84,7 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
   const providerDraft = provider ? web.providers[provider.id] || {} : {};
   const patchProvider = patch => update({ web_search: normalizeWebSearchDraft({ ...web, providers: { ...web.providers, [provider.id]: { ...providerDraft, ...patch } } }) });
   const saveProvider = async () => {
-    const saved = await onSaveTools?.(patchedRecords({ web_search: web }), 'Search provider saved');
+    const saved = await onSaveTools?.(patchedRecords({ web_search: web }), 'Search provider saved', 'web_search');
     if (saved !== false) setEditing(null);
   };
   if (skillsPane && toolsSettingsState.status !== 'ready') {
@@ -95,7 +95,7 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
     </div>;
   }
   return <div className={`settings-tools-modern ${editing ? 'with-editor' : ''}`}><div className={`settings-content-modern ${skillsPane ? 'settings-skills-content' : ''}`}>
-    <div className="settings-page-heading"><h1>{skillsPane ? `Skills · ${skillTab === 'builtin' ? 'Built-in' : skillTab === 'global' ? 'Global' : 'Project'}` : 'Search providers'}</h1>{skillsPane && <div className="settings-skill-actions">{onRefreshTools && <Button variant="outline" size="sm" disabled={Boolean(skillActionBusy || toolsSettingsState.refreshing)} onClick={onRefreshTools}><RefreshCw size={16} aria-hidden="true" className={toolsSettingsState.refreshing ? 'settings-spin' : undefined} />Refresh</Button>}{skillTab !== 'builtin' && current.skill_can_install !== false && <Button size="sm" disabled={Boolean(skillActionBusy)} onClick={() => { setEditing(null); setInstalling(true); }}><Plus size={16} />Install skill</Button>}</div>}</div>
+    <div className="settings-page-heading"><h1>{skillsPane ? `Skills · ${skillTab === 'builtin' ? 'Built-in' : skillTab === 'global' ? 'Global' : 'Project'}` : 'Search providers'}</h1>{skillsPane && <div className="settings-skill-actions">{onRefreshTools && <Button variant="ghost" size="sm" className="settings-heading-action" disabled={Boolean(skillActionBusy || toolsSettingsState.refreshing)} onClick={onRefreshTools}><RefreshCw size={14} aria-hidden="true" className={toolsSettingsState.refreshing ? 'settings-spin' : undefined} />Refresh</Button>}{skillTab !== 'builtin' && current.skill_can_install !== false && <Button size="sm" disabled={Boolean(skillActionBusy)} onClick={() => { setEditing(null); setInstalling(true); }}><Plus size={16} />Install skill</Button>}</div>}</div>
     {skillsPane && <><div className="settings-skill-context">
       <p>{skillTab === 'builtin' ? 'Included with Haish.' : skillTab === 'global' ? 'Installed packages and user-level Codex skills, shared across projects.' : <>Project skills · <strong>{current.skill_workspace || 'Current workspace'}</strong></>}</p>
       <p>Enablement is shared across projects by skill name. Agent access also follows its role permissions.</p>

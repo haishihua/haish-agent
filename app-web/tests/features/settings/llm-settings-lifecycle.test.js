@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { reconcileSettings, hasSettingsVersion, resetSettingsSync, trackSettingsDraft } from '../../../src/shared/lib/settings-sync.js';
 import { createSettingsHandlers } from '../../../src/features/settings/hooks/createSettingsHandlers.js';
 import {
   LLM_SETTINGS_STORAGE_KEY, applyLlmSettingsPayloadToDraft, llmDraftForStorage,
@@ -24,6 +25,7 @@ const json = value => JSON.parse(JSON.stringify(value));
 // Execute the production hook, AppShell arguments, API client and handlers.
 // Only React slots and the transport/storage are replaced; no real API runs.
 function harness(t, initial, cache = new Map()) {
+  resetSettingsSync();
   const previousWindow = globalThis.window;
   const previousFetch = globalThis.fetch;
   if (initial !== undefined) cache.set(LLM_SETTINGS_STORAGE_KEY, llmDraftForStorage(initial));
@@ -80,6 +82,7 @@ function harness(t, initial, cache = new Map()) {
   };
   const useLlmSettings = vm.runInNewContext(`${hookSource}\nuseLlmSettings;`, {
     useState, useRef, useMemo, useCallback, useEffect, API_BASE: '', apiFetch, parseResponseMessage, AbortController,
+    reconcileSettings, hasSettingsVersion,
     LLM_SETTINGS_STORAGE_KEY, applyLlmSettingsPayloadToDraft, llmDraftForStorage, loadLlmSettingsDraft,
     mergeLlmSettingsDraft, runtimeLlmProviderOptions, window, console: { warn() {} },
   });
@@ -88,7 +91,8 @@ function harness(t, initial, cache = new Map()) {
     if (stopped) return;
     cursor = 0;
     effects = [];
-    const args = vm.runInNewContext(`(${hookArguments})`, { llmSettingsDraft: draft, setLlmSettingsDraft: setDraft, settingsMode, settingsSection });
+    trackSettingsDraft('llm', draft);
+    const args = vm.runInNewContext(`(${hookArguments})`, { llmSettingsDraft: draft, setLlmSettingsDraft: setDraft, settingsMode, settingsSection, settingsSync: { epochs: {} } });
     result = useLlmSettings(args);
     effects.forEach(effect => effect());
   }
@@ -110,8 +114,9 @@ function harness(t, initial, cache = new Map()) {
       API_BASE: '', llmSettingsDraft: draft, beginLlmSettingsWrite: result.beginWrite,
       apiFetch, parseResponseMessage, showToast: (...args) => notices.push(args),
     }),
-    resolve: async (index, value, status = 200) => {
-      requests[index].resolve({ ok: status >= 200 && status < 300, status, json: async () => value });
+    resolve: async (index, value, status = 200, version) => {
+      requests[index].resolve({ ok: status >= 200 && status < 300, status,
+        headers: new Headers(version ? { 'x-haish-settings-versions': JSON.stringify({ llm: version }) } : {}), json: async () => value });
       await settled();
     },
     retry: () => { const [id, timer] = timers.entries().next().value; timers.delete(id); timer.callback(); },
@@ -119,6 +124,29 @@ function harness(t, initial, cache = new Map()) {
     routeError: (provider = 'saved-route', modelId = 'saved-model') => executionConfigError({ provider, modelId, providerOptions: result.providerOptions }),
   };
 }
+
+test('versioned runtime refreshes saved models but keeps dirty editor out of execution and saves its stale draft anyway', async t => {
+  const h = harness(t, normalized(payload()));
+  await h.resolve(0, payload(), 200, 'e:0');
+  h.open();
+  await h.resolve(1, payload('external'), 200, 'e:1');
+  assert.equal(h.draft.chat.model, 'external');
+  assert.equal(h.options[0].defaultModelId, 'external');
+  h.edit(draft => ({ ...draft, chat: { ...draft.chat, model: 'my edit' } }));
+  h.close();
+  await h.resolve(2, payload('external-new'), 200, 'e:2');
+  assert.equal(h.draft.chat.model, 'my edit');
+  assert.equal(h.options[0].defaultModelId, 'external-new');
+  const before = h.requests.length;
+  const saving = h.handlers().handleSaveSettingsDraft('llm');
+  await settled();
+  assert.equal(h.requests[before].init.method, 'PUT');
+  // 旧草稿不拦保存：不带前置版本号，按最后写入生效。
+  assert.equal(h.requests[before].init.headers['If-Haish-Settings-Match'], undefined);
+  await h.resolve(before, payload('my edit'));
+  assert.equal(await saving, true);
+  assert.equal(h.notices.at(-1)[0], 'success');
+});
 
 test('startup restores a saved provider from stale unpersisted cache without opening Settings', async t => {
   const stale = payload();

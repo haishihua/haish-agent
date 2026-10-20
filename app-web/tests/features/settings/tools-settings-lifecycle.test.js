@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { hasSettingsVersion, resetSettingsSync, copySettingsResponse } from '../../../src/shared/lib/settings-sync.js';
 import { createSettingsHandlers } from '../../../src/features/settings/hooks/createSettingsHandlers.js';
 import { createLiveToolsLoader } from '../../../src/features/settings/model/live-tools-settings.js';
 import { createSkillInventoryCache } from '../../../src/features/settings/model/skill-inventory.js';
@@ -28,6 +29,7 @@ const settled = () => new Promise(resolve => setImmediate(resolve));
 // Run the production hook and loader with deterministic React ref/effect slots,
 // then route production handlers through the same draft setter as AppShell.
 function harness(t, initial = createDefaultSettingsRecords()) {
+  resetSettingsSync();
   const previousWindow = globalThis.window;
   const listeners = new Map();
   const stored = [];
@@ -48,7 +50,7 @@ function harness(t, initial = createDefaultSettingsRecords()) {
       slots[index] = { deps, cleanup: effect() };
     });
   };
-  const useLiveToolsSettings = vm.runInNewContext(`${hookSource}\nuseLiveToolsSettings;`, { useRef, useEffect, createLiveToolsLoader, window });
+  const useLiveToolsSettings = vm.runInNewContext(`${hookSource}\nuseLiveToolsSettings;`, { useRef, useEffect, createLiveToolsLoader, window, hasSettingsVersion });
   const cache = createSkillInventoryCache();
   const refreshRef = { current: null };
   const requests = [];
@@ -62,7 +64,7 @@ function harness(t, initial = createDefaultSettingsRecords()) {
   // Execute the actual AppShell callbacks, not lookalike test wrappers.
   const onPayload = vm.runInNewContext(`(${payloadSource})`, { setSettingsRecordsDraft, applyToolsSettingsPayloadToRecords });
   const applyReadback = vm.runInNewContext(`(${applySource})`, {
-    skillInventoryKey: 'fixture-workspace', skillInventoryKeyRef: { current: 'fixture-workspace' }, applyToolsSettingsPayloadToRecords,
+    skillInventoryKey: 'fixture-workspace', skillInventoryKeyRef: { current: 'fixture-workspace' }, applyToolsSettingsPayloadToRecords, copySettingsResponse,
   });
   function render() {
     cursor = 0;
@@ -307,7 +309,7 @@ test('production AppShell readback wrapper forwards the request baseline in curr
   });
   for (const currentKey of ['at-request', 'switched-workspace']) {
     const applyReadback = vm.runInNewContext(`(${applySource})`, {
-      skillInventoryKey: 'at-request', skillInventoryKeyRef: { current: currentKey }, applyToolsSettingsPayloadToRecords,
+      skillInventoryKey: 'at-request', skillInventoryKeyRef: { current: currentKey }, applyToolsSettingsPayloadToRecords, copySettingsResponse,
     });
     const payload = snapshot({ servers: { saved: {} } }, 'request-workspace-inventory', true);
     const untouched = applyReadback(initial, payload, initial);

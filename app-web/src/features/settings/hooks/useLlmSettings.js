@@ -1,3 +1,4 @@
+import { reconcileSettings, hasSettingsVersion } from '../../../shared/lib/settings-sync.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
@@ -12,7 +13,7 @@ import {
 
 // Execution reads saved settings. The editor's unsaved fields are a separate
 // draft; neither a background GET nor a successful PUT may erase newer edits.
-export function useLlmSettings({ draft, setDraft, settingsOpen }) {
+export function useLlmSettings({ draft, setDraft, settingsOpen, refreshEpoch = 0 }) {
   const [saved, setSaved] = useState(loadLlmSettingsDraft);
   const savedRef = useRef(saved);
   savedRef.current = saved;
@@ -38,7 +39,9 @@ export function useLlmSettings({ draft, setDraft, settingsOpen }) {
     if (!Object.hasOwn(normalized, 'profiles')) throw new Error('Invalid model configuration response.');
     savedRef.current = normalized;
     setSaved(normalized);
-    current.current.setDraft(previous => mergeLlmSettingsDraft(previous, normalized, baseline));
+    current.current.setDraft(previous => hasSettingsVersion(payload, 'llm')
+      ? reconcileSettings('llm', previous, normalized, payload)
+      : mergeLlmSettingsDraft(previous, normalized, baseline));
     try {
       window.localStorage?.setItem(LLM_SETTINGS_STORAGE_KEY, llmDraftForStorage(normalized));
     } catch {
@@ -85,7 +88,7 @@ export function useLlmSettings({ draft, setDraft, settingsOpen }) {
   useEffect(() => {
     void refresh();
     return cancelRead;
-  }, [settingsOpen, refresh, cancelRead]);
+  }, [settingsOpen, refreshEpoch, refresh, cancelRead]);
 
   const beginWrite = useCallback((baseline) => {
     cancelRead();
