@@ -100,9 +100,9 @@ test('path presentation derives a basename and type hint without modifying the s
   assert.equal(localPathReference('~/project/README').kindLabel, 'FILE');
   assert.equal(localPathReference('./src/index.js').kindLabel, 'JS');
   assert.equal(localPathReference('../folder/').kindLabel, 'FOLDER');
-  assert.equal(localPathReference('/repo/.git').kindLabel, 'FOLDER');
-  assert.equal(localPathReference('/repo/.config.json').kindLabel, 'JSON');
-  assert.equal(localPathReference('/repo/.env').kindLabel, 'FILE');
+  assert.equal(localPathReference('/Users/test/repo/.git').kindLabel, 'FOLDER');
+  assert.equal(localPathReference('/Users/test/repo/.config.json').kindLabel, 'JSON');
+  assert.equal(localPathReference('/Users/test/repo/.env').kindLabel, 'FILE');
   assert.equal(localPathReference('src/components/Button.jsx').kindLabel, 'JSX');
 });
 
@@ -121,6 +121,28 @@ test('branch names, versions and prose with a slash stay body text instead of be
     // 两层判定必须同口径：模型说不是引用，气泡就一个字都不能搬走。
     assert.equal(localPathReference(value), null, value);
     assert.deepEqual(splitPathReferenceDraft(value), { text: value, references: [] }, value);
+  }
+});
+
+test('interface routes and bare root-relative words stay body text instead of FOLDER cards', () => {
+  // 截图里的回归：直接粘一条接口路径（`/api/pwdAuth`），旧判定只看「以斜杠开头」，
+  // 正文被抠空、只剩一张写着 `pwdAuth / FOLDER` 的卡片。
+  for (const value of ['/api/pwdAuth', '/api/v1/pwdAuth', '/crm/pwdAuth', '/pwdAuth/verify', '/pwdAuth/', '/unknown']) {
+    assert.equal(localPathReference(value), null, value);
+    assert.deepEqual(splitPathReferenceDraft(value), { text: value, references: [] }, value);
+  }
+  // 真实根目录、带引号或 file:// 的显式路径不受这层限制；末段像文件的根路径也照旧。
+  for (const [value, kindLabel] of [
+    ['/Users/test/projects/haish-agent-core', 'FOLDER'],
+    ['/Volumes/Ext/project', 'FOLDER'],
+    ['/opt/homebrew/bin', 'FOLDER'],
+    ['/tmp/', 'FOLDER'],
+    ['/tmp/file.txt', 'TXT'],
+    ['file:///data/report.txt', 'TXT'],
+    ['"/api/pwdAuth"', 'FOLDER'],
+  ]) {
+    assert.equal(localPathReference(value).kindLabel, kindLabel, value);
+    assert.deepEqual(splitPathReferenceDraft(value), { text: '', references: [value] }, value);
   }
 });
 

@@ -21,12 +21,17 @@ window.__pageErrors = [];
 window.addEventListener('error', (event) => window.__pageErrors.push(String(event.message || event.error)));
 window.addEventListener('unhandledrejection', (event) => window.__pageErrors.push('rejection: ' + String(event.reason)));
 
+// 截图里那条回归：直接粘一个接口路径 `/api/pwdAuth`，旧判定只看「以斜杠开头、形状无歧义」，
+// 于是把正文抠空、只剩一张写着 `pwdAuth / FOLDER` 的卡片。现在未加引号的 `/xxx` 必须从真实
+// 文件系统根开始（`/Users`、`/tmp`、`/Volumes`…）或末段像文件；接口路由与裸词原样留在正文。
 const PROJECT_PATH = '/Users/zhanruitao/py-project/haish-agent-core';
 const API_PATH = `${PROJECT_PATH}/src/app/api.py`;
 
 const CASES = [
   { id: 'reported', text: '那就把修复分支合并到release/20260917' },
   { id: 'branch', text: 'release/20260917' },
+  { id: 'api-route', text: '/api/pwdAuth' },
+  { id: 'api-route-prose', text: '/api/v1/pwdAuth 帮我加个校验' },
   { id: 'project', text: PROJECT_PATH },
   { id: 'relative-file', text: 'src/main/main.ts' },
   { id: 'path-plus-prose', text: `${API_PATH} 帮我看看这个文件` },
@@ -58,9 +63,10 @@ const chips = (id) => [...row(id).querySelectorAll('.chat-message-files .compose
 const bodyText = (id) => {
   const body = row(id).querySelector('.chat-bubble-text');
   if (!body) return '';
-  // innerText 要排版：后台标签页里 Chromium 直接给空串（文档 hidden 时不排版），
-  // 那就退回 textContent —— 本用例的正文没有软换行，两者等价。
-  const text = body.innerText || (document.visibilityState === 'hidden' ? body.textContent : '');
+  // innerText 要排版：后台标签页（文档 hidden）与滚动窗口外的行（`.chat-message-row` 带
+  // `content-visibility: auto`）Chromium 都给空串，那就退回 textContent ——
+  // 本用例的正文没有软换行，两者等价。
+  const text = body.innerText || body.textContent || '';
   return String(text || '').trim();
 };
 const bodyHidden = (id) => Boolean(row(id).querySelector('.message-speech-body')?.hidden);
@@ -72,7 +78,7 @@ const frame = () => new Promise((resolve) => setTimeout(resolve, 16));
 // Streamdown 在 effect 里解析正文：模块求值那一刻 innerText 还是空的。先等正文落地
 // （最多 5s，后台标签页的定时器会被拖到 ~1s 一次），再多等一拍让 innerText 有排版。
 // 用 setTimeout 而不是 rAF：后台标签页 rAF 不跑，页面会永远停在 Running checks…。
-const bodiesPainted = () => ['reported', 'branch', 'path-plus-prose']
+const bodiesPainted = () => ['reported', 'branch', 'api-route', 'api-route-prose', 'path-plus-prose']
   .every((id) => bodyText(id).length > 0);
 
 async function settle() {
@@ -84,7 +90,7 @@ async function settle() {
 async function runChecks() {
   results.length = 0;
   await settle();
-  for (const id of ['reported', 'branch']) {
+  for (const id of ['reported', 'branch', 'api-route', 'api-route-prose']) {
     const expected = CASES.find((entry) => entry.id === id).text;
     check(`${id}: no path card is invented`, chips(id).length === 0, JSON.stringify(chips(id)));
     check(`${id}: the sentence stays in the bubble`, bodyText(id) === expected, JSON.stringify(bodyText(id)));
