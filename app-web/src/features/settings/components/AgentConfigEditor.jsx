@@ -7,13 +7,56 @@ import {
   DEFAULT_AGENT_TOOL_GROUPS,
   normalizeAgentSettings,
   effectiveAgentTools,
+  groupPresetTools,
   toggleAgentToolGroup,
 } from '../../agents/model/agent-settings.js';
 import { FieldRow, SettingsMenuSelect, SettingsToggleRow } from './SettingsPrimitives.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { mcpToolPickerServers, mcpToolSelected, toggleMcpToolSelection } from '../model/mcp-tool-selection.js';
+import {
+  Boxes,
+  Brain,
+  ChevronDown,
+  ChevronUp,
+  Compass,
+  Eye,
+  FileText,
+  Globe,
+  Image as ImageIcon,
+  ListChecks,
+  Lock,
+  MessageCircleQuestion,
+  SquarePen,
+  Terminal,
+  Users,
+} from 'lucide-react';
+
+// 预设 agent 只读面板：工具按运行时给的 tool_groups 归组，每组一个图标 + 计数。
+// 没归到任何组的工具落到 Other，不让它们凭空消失。
+const TOOL_GROUP_ICONS = {
+  workspace_read: FileText,
+  file_edits: SquarePen,
+  terminal: Terminal,
+  browser: Compass,
+  user_input: MessageCircleQuestion,
+  web: Globe,
+  memory: Brain,
+  vision: Eye,
+  image: ImageIcon,
+  planning: ListChecks,
+  sub_agent: Users,
+};
+
+function toolGroupIcon(groupId) {
+  const Icon = TOOL_GROUP_ICONS[groupId] || Boxes;
+  return <Icon size={13} strokeWidth={1.7} aria-hidden="true" />;
+}
+
+// 预设面板默认只露出一小把技能名，其余收起来，避免 30+ chip 堆成一面墙。
+const SKILL_PREVIEW_COUNT = 8;
 
 export function AgentConfigEditor({ selectedId, settings, onSettingsChange, readOnly = false }) {
+  const [skillsExpanded, setSkillsExpanded] = React.useState(false);
   const normalized = normalizeAgentSettings(settings);
   const current = normalized.custom.find((item) => item.agent_id === selectedId) || null;
   if (!current) {
@@ -23,26 +66,80 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
       .map((skill) => String(skill?.name || skill || '').trim())
       .filter(Boolean);
     const effectiveTools = (preset.effective_tools || []).map(String).filter(Boolean);
-    const renderReadOnlyList = (items, emptyLabel) => (
-      <div className="settings-check-grid">
-        {items.map((item) => (
-          <div className="settings-check-row" key={item}>
-            <span className="settings-check-label">{item}</span>
-          </div>
-        ))}
-        {!items.length ? <small>{emptyLabel}</small> : null}
-      </div>
-    );
+    const sections = groupPresetTools(effectiveTools, normalized.tool_groups || DEFAULT_AGENT_TOOL_GROUPS);
+    const skillsOverflow = effectiveSkills.length > SKILL_PREVIEW_COUNT;
+    const visibleSkills = skillsExpanded || !skillsOverflow
+      ? effectiveSkills
+      : effectiveSkills.slice(0, SKILL_PREVIEW_COUNT);
     return (
-      <div className="settings-editor-form settings-agent-form">
-        <FieldRow label="Name">
-          <Input value={preset.display_name || ''} disabled />
-        </FieldRow>
-        <FieldRow label="Description">
-          <Textarea value={preset.description || ''} disabled />
-        </FieldRow>
-        <FieldRow label="Tools">{renderReadOnlyList(effectiveTools, 'No tools.')}</FieldRow>
-        <FieldRow label="Skills">{renderReadOnlyList(effectiveSkills, 'No skills.')}</FieldRow>
+      <div className="settings-editor-form settings-agent-form preset-agent-form">
+        <div className="preset-agent-note">
+          <span className="preset-agent-note-icon" aria-hidden="true"><Lock size={12} strokeWidth={1.8} /></span>
+          <div className="preset-agent-note-body">
+            <span className="preset-agent-note-title">Built-in preset</span>
+            <span className="preset-agent-note-text">Read-only. Create your own agent to change its tools, skills or instructions.</span>
+          </div>
+        </div>
+        <dl className="preset-meta">
+          <div className="preset-meta-row">
+            <dt>Name</dt>
+            <dd>{preset.display_name || 'Untitled preset'}</dd>
+          </div>
+          <div className="preset-meta-row">
+            <dt>Description</dt>
+            <dd>{preset.description || 'No description.'}</dd>
+          </div>
+        </dl>
+        <section className="preset-caps" aria-label="Tools">
+          <header className="preset-caps-head">
+            <h3 className="preset-caps-title">Tools</h3>
+            <span className="preset-caps-count">{effectiveTools.length}</span>
+            <span className="preset-caps-aside">Grouped by capability</span>
+          </header>
+          {sections.length ? (
+            <div className="preset-tool-groups">
+              {sections.map((section) => (
+                <div className="preset-tool-group" key={section.id}>
+                  <span className="preset-tool-group-icon" aria-hidden="true">{toolGroupIcon(section.id)}</span>
+                  <span className="preset-tool-group-body">
+                    <span className="preset-tool-group-label">{section.label}</span>
+                    <span className="preset-tool-group-desc">{section.description || 'Enabled for this preset.'}</span>
+                  </span>
+                  <span className="preset-tool-group-count">{section.tools.length}</span>
+                </div>
+              ))}
+            </div>
+          ) : <p className="preset-caps-empty">No tools.</p>}
+        </section>
+        <section className="preset-caps" aria-label="Skills">
+          <header className="preset-caps-head">
+            <h3 className="preset-caps-title">Skills</h3>
+            <span className="preset-caps-count">{effectiveSkills.length}</span>
+            <span className="preset-caps-aside">Enabled for this preset</span>
+          </header>
+          {effectiveSkills.length ? (
+            <>
+              <div className="preset-skills">
+                {visibleSkills.map((skill) => (
+                  <span className="preset-skill-chip" key={skill}>{skill}</span>
+                ))}
+              </div>
+              {skillsOverflow ? (
+                <button
+                  type="button"
+                  className="preset-skills-toggle"
+                  onClick={() => setSkillsExpanded((prev) => !prev)}
+                  aria-expanded={skillsExpanded}
+                >
+                  {skillsExpanded ? 'Show less' : `Show all ${effectiveSkills.length}`}
+                  {skillsExpanded
+                    ? <ChevronUp size={12} strokeWidth={1.9} aria-hidden="true" />
+                    : <ChevronDown size={12} strokeWidth={1.9} aria-hidden="true" />}
+                </button>
+              ) : null}
+            </>
+          ) : <p className="preset-caps-empty">No skills.</p>}
+        </section>
       </div>
     );
   }

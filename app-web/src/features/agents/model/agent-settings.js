@@ -284,6 +284,37 @@ export function effectiveAgentTools(policy, toolGroups = DEFAULT_AGENT_TOOL_GROU
   return [...new Set(allowed)].filter(tool => !denied.has(tool));
 }
 
+// 只读预设面板：把实际生效的工具按 runtime 的 tool_groups 分组。
+// 组内顺序跟着组的定义走（稳定、语义相近的工具挨在一起），不属于任何组的
+// 工具落进 Other——它们是真的启用了，不能悄悄从界面上消失。
+export function groupPresetTools(tools, toolGroups = DEFAULT_AGENT_TOOL_GROUPS) {
+  const groups = Array.isArray(toolGroups) && toolGroups.length ? toolGroups : DEFAULT_AGENT_TOOL_GROUPS;
+  const enabled = new Set((Array.isArray(tools) ? tools : []).map(String).filter(Boolean));
+  const claimed = new Set();
+  const sections = [];
+  for (const group of groups) {
+    const owned = (group.tools || []).filter((tool) => enabled.has(tool) && !claimed.has(tool));
+    for (const tool of owned) claimed.add(tool);
+    if (!owned.length) continue;
+    sections.push({
+      id: group.id,
+      label: group.label || group.id,
+      description: group.description || '',
+      tools: owned,
+    });
+  }
+  const other = [...enabled].filter((tool) => !claimed.has(tool));
+  if (other.length) {
+    sections.push({
+      id: 'other',
+      label: 'Other tools',
+      description: 'Tools this preset enables outside the built-in groups.',
+      tools: other,
+    });
+  }
+  return sections;
+}
+
 // Changing a group materializes the current effective selection. Keep unknown
 // tools and other partial groups; only the clicked group is added/removed.
 export function toggleAgentToolGroup(policy, groupId, toolGroups = DEFAULT_AGENT_TOOL_GROUPS) {

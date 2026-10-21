@@ -128,6 +128,39 @@
   .settings-new-editor [data-slot="sheet-title"] { min-width: 0; font-size: 19px; font-weight: 550; overflow-wrap: anywhere; }
   .settings-editor-scroll { padding: 24px; overflow: auto; flex: 1; min-height: 0; }
   .settings-new-editor .settings-editor-form { display: flex; flex-direction: column; grid-template-columns: none; padding: 0; gap: 20px; overflow: visible; }
+  /* Read-only preset agents: capabilities read as grouped chips, not a bare two-column
+     dump of tool identifiers. Groups/icons come from the runtime tool_groups payload. */
+  .preset-agent-form { gap: 22px; }
+  .preset-agent-note { display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border: 1px solid #ffffff0f; border-radius: 9px; background: #ffffff05; }
+  .preset-agent-note-icon { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex: 0 0 22px; border-radius: 6px; background: #ffffff0a; color: #a2b2c9; }
+  .preset-agent-note-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .preset-agent-note-title { color: #dfe7f5; font-size: 12px; font-weight: 550; }
+  .preset-agent-note-text { color: #93a0b6; font-size: 11px; line-height: 1.5; }
+  .preset-meta { display: flex; flex-direction: column; gap: 9px; margin: 0; }
+  .preset-meta-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: start; gap: 10px; }
+  .preset-meta-row > dt { color: #8896ab; font-size: 11px; line-height: 1.6; }
+  .preset-meta-row > dd { margin: 0; color: #d6dfee; font-size: 12.5px; line-height: 1.6; overflow-wrap: anywhere; }
+  .preset-caps { display: flex; flex-direction: column; gap: 10px; }
+  .preset-caps-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .preset-caps-title { margin: 0; color: #e7eef9; font-size: 13px; font-weight: 550; line-height: 1.4; letter-spacing: .01em; }
+  .preset-caps-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 6px; border-radius: 999px; background: #ffffff0d; color: #a8b6cc; font-size: 10px; font-variant-numeric: tabular-nums; }
+  .preset-caps-aside { margin-left: auto; color: #7f8ca1; font-size: 10px; }
+  .preset-caps-empty { margin: 0; color: var(--muted-foreground); font-size: 11px; }
+  .preset-tool-groups { border: 1px solid #ffffff0c; border-radius: 9px; background: var(--control); overflow: hidden; }
+  .preset-tool-group { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: start; gap: 10px; padding: 11px 12px; }
+  .preset-tool-group + .preset-tool-group { border-top: 1px solid #ffffff08; }
+  .preset-tool-group-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-top: 1px; border-radius: 5px; background: #ffffff0a; color: #8fa6c8; }
+  .preset-tool-group-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .preset-tool-group-label { color: #d7e0ee; font-size: 12.5px; font-weight: 500; line-height: 1.4; }
+  .preset-tool-group-desc { color: #8a97ac; font-size: 11px; line-height: 1.5; }
+  .preset-tool-group-count { align-self: start; margin-top: 1px; min-width: 16px; color: #8391a7; font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
+  .preset-skills { display: flex; flex-wrap: wrap; gap: 5px; }
+  .preset-skill-chip { display: inline-flex; align-items: center; max-width: 100%; padding: 3px 8px; border: 1px solid #8aa6cf26; border-radius: 5px; background: #6f8fc014; color: #c7d3e6; font-size: 11px; line-height: 16px; overflow-wrap: anywhere; }
+  .preset-skills-toggle { display: inline-flex; align-items: center; gap: 3px; margin-top: 7px; padding: 2px 6px; border: 0; border-radius: 5px; background: transparent; color: #8fa1bb; font: inherit; font-size: 11px; line-height: 16px; cursor: pointer; transition: color .15s ease, background-color .15s ease; }
+  .preset-skills-toggle:focus-visible { outline: 2px solid #6f8fc080; outline-offset: 1px; }
+  @media (hover: hover) and (pointer: fine) {
+    .preset-skills-toggle:hover { background: #ffffff0a; color: #b9c8de; }
+  }
   .settings-field-modern { display: flex; flex-direction: column; gap: 8px; }
   [data-slot="field-label"] { font-size: 12px; font-weight: 500; }
   [data-slot="field-description"] { font-size: 11px; line-height: 1.6; color: var(--muted-foreground); }
