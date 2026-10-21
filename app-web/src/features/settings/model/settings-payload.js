@@ -29,12 +29,12 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
     if (!config?.provider) return 'Provider';
     return runtimeProviderLabel(config);
   };
-  if (activeSubtab === 'vision' || activeSubtab === 'compact') {
+  if (activeSubtab === 'vision' || activeSubtab === 'compact' || activeSubtab === 'image') {
     return (draft[activeSubtab]?.providers || []).map((provider) => ({
       id: provider.id,
       title: titleForConfig(provider),
       provider: provider.provider,
-      kind: activeSubtab === 'compact' ? 'Compact Provider' : 'Vision Provider',
+      kind: activeSubtab === 'compact' ? 'Compact Provider' : (activeSubtab === 'image' ? 'Image Provider' : 'Vision Provider'),
       summary: provider.model || 'not set',
       protected: true,
       canDelete: true,
@@ -365,6 +365,8 @@ export function buildMemorySettingsPayload(records) {
 export function getSelectedLlmConfig(draft, selectedId) {
   const visionProvider = (draft?.vision?.providers || []).find((item) => item.id === selectedId);
   if (visionProvider) return visionProvider;
+  const imageProvider = (draft?.image?.providers || []).find((item) => item.id === selectedId);
+  if (imageProvider) return imageProvider;
   const compactProvider = (draft?.compact?.providers || []).find((item) => item.id === selectedId);
   if (compactProvider) return compactProvider;
   if (selectedId === 'embedding') return draft.embedding;
@@ -378,6 +380,17 @@ export function updateSelectedLlmConfig(onDraftChange, selectedId, patch) {
     if (selectedId === 'embedding') return { ...prev, embedding: { ...prev.embedding, ...patch } };
     if ((prev.compact?.providers || []).some((item) => item.id === selectedId)) {
       return { ...prev, compact: { ...prev.compact, providers: prev.compact.providers.map(item => item.id === selectedId ? { ...item, ...patch } : item) } };
+    }
+    if ((prev.image?.providers || []).some((item) => item.id === selectedId)) {
+      return {
+        ...prev,
+        image: {
+          ...prev.image,
+          providers: prev.image.providers.map((item) => (
+            item.id === selectedId ? { ...item, ...patch } : item
+          )),
+        },
+      };
     }
     if ((prev.vision?.providers || []).some((item) => item.id === selectedId)) {
       return {

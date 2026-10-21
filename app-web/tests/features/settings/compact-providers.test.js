@@ -47,7 +47,7 @@ test('Compact retains its four generic thinking efforts for every model', () => 
 test('Compact editor shares Chat selector, removes On/Off and preserves effort on model change', () => {
   const source = readFileSync(new URL('../../../src/features/settings/components/LlmConfigEditor.jsx', import.meta.url), 'utf8');
   assert.ok(source.includes('const effortOptions = SETTINGS_REASONING_OPTIONS;'));
-  assert.ok(source.includes("const showEffort = !isVisionProvider && selectedId !== 'embedding';"));
+  assert.ok(source.includes("const showEffort = !isVisionProvider && !isImageProvider && selectedId !== 'embedding';"));
   assert.ok(!source.includes('compactThinkingOptions'));
   assert.ok(!source.includes('label="Thinking"'));
   assert.ok(!source.includes('Enable compact provider'));

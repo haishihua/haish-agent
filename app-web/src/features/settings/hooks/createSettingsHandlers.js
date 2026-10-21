@@ -1,5 +1,5 @@
 import { reconcileSettings, copySettingsResponse, hasSettingsVersion } from '../../../shared/lib/settings-sync.js';
-import { setVisionProviderEnabled } from '../model/llm-settings.js';
+import { setImageProviderEnabled, setVisionProviderEnabled } from '../model/llm-settings.js';
 import { withoutStoredSkillInventory } from '../model/live-tools-settings.js';
 import { toolsSettingsPayloadForDraft } from '../model/settings-payload.js';
 
@@ -136,7 +136,7 @@ export function createSettingsHandlers(ctx) {
     try {
       const scope = String(providerType || '').trim().toLowerCase();
       const target = String(entryId || '').trim() || scope;
-      if (!['chat', 'vision', 'embedding', 'compact'].includes(scope) || !target) {
+      if (!['chat', 'vision', 'image', 'embedding', 'compact'].includes(scope) || !target) {
         throw new Error('invalid llm provider delete scope');
       }
       await writeLlmSettings(
@@ -153,13 +153,16 @@ export function createSettingsHandlers(ctx) {
 
   async function handleToggleLlmProvider(entryId, enabled) {
     const id = String(entryId || '').trim();
-    const scope = (llmSettingsDraft?.compact?.providers || []).some(item => item.id === id) ? 'compact' : 'vision';
+    const scope = (llmSettingsDraft?.compact?.providers || []).some(item => item.id === id) ? 'compact'
+      : ((llmSettingsDraft?.image?.providers || []).some(item => item.id === id) ? 'image' : 'vision');
     const providers = llmSettingsDraft?.[scope]?.providers || [];
     if (!id || !providers.some((item) => item.id === id)) return false;
     // 服务端同样会收敛成“至多一条启用”；本地先收敛，避免界面短暂出现两条开启。
     const nextDraft = {
       ...llmSettingsDraft,
-      [scope]: setVisionProviderEnabled(llmSettingsDraft?.[scope], id, enabled === true),
+      [scope]: scope === 'image'
+        ? setImageProviderEnabled(llmSettingsDraft?.[scope], id, enabled === true)
+        : setVisionProviderEnabled(llmSettingsDraft?.[scope], id, enabled === true),
     };
     try {
       await writeLlmSettings('/api/settings/llm', {
@@ -413,8 +416,9 @@ export function createSettingsHandlers(ctx) {
     const config = getSelectedLlmConfig(llmSettingsDraft, selectedId);
     if (!config?.provider) return;
     const isVisionProvider = (llmSettingsDraft?.vision?.providers || []).some((item) => item.id === selectedId);
+    const isImageProvider = (llmSettingsDraft?.image?.providers || []).some((item) => item.id === selectedId);
     const isCompactProvider = (llmSettingsDraft?.compact?.providers || []).some(item => item.id === selectedId);
-    const providerType = selectedId === 'embedding' ? 'embedding' : isCompactProvider ? 'compact' : isVisionProvider ? 'vision' : 'chat';
+    const providerType = selectedId === 'embedding' ? 'embedding' : isCompactProvider ? 'compact' : isImageProvider ? 'image' : isVisionProvider ? 'vision' : 'chat';
     try {
       const response = await apiFetch(`${API_BASE}/api/llm/test`, {
         method: 'POST',

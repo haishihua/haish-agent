@@ -111,13 +111,13 @@ export function runtimeProviderLabel(config) {
 }
 
 export function runtimeLlmProviderOptions(draft) {
-  const records = [draft?.chat, draft?.embedding, ...(draft?.profiles || []), ...(draft?.vision?.providers || []), ...(draft?.compact?.providers || [])];
+  const records = [draft?.chat, draft?.embedding, ...(draft?.profiles || []), ...(draft?.vision?.providers || []), ...(draft?.image?.providers || []), ...(draft?.compact?.providers || [])];
   const idCounts = new Map();
   for (const record of records) {
     const id = String(record?.id || '').trim();
     if (record?.provider && id) idCounts.set(id, (idCounts.get(id) || 0) + 1);
   }
-  const reserved = new Set([...LLM_PROVIDER_OPTIONS.map(item => item.id), 'auto', 'chat', 'vision', 'compact', 'embedding']);
+  const reserved = new Set([...LLM_PROVIDER_OPTIONS.map(item => item.id), 'auto', 'chat', 'vision', 'image', 'compact', 'embedding']);
   const rows = [
     draft?.chat,
     ...(Array.isArray(draft?.profiles) ? draft.profiles : []),
@@ -263,6 +263,76 @@ export function setVisionProviderEnabled(vision, entryId, enabled) {
   };
 }
 
+// Image providers reuse the Vision list shape (at most one enabled) but carry no
+// `mode`: it would have no runtime consumer. Only OpenAI-compatible endpoints
+// expose /images/generations, so the editor offers just these two providers.
+export const IMAGE_PROVIDER_IDS = ['openai', 'custom'];
+
+function normalizeImageProvider(entry, index = 0) {
+  const source = entry && typeof entry === 'object' ? entry : {};
+  const provider = normalizeLlmProviderId(source.provider);
+  const authMode = String(source.auth_mode || '').trim().toLowerCase().replace(/-/g, '_');
+  return {
+    ...source,
+    id: String(source.id || '').trim() || `image-${index + 1}`,
+    _persisted: source.id ? source._persisted : false,
+    enabled: source.enabled === true,
+    provider,
+    auth_mode: authMode || 'api_key',
+    custom_provider: String(source.custom_provider || '').trim(),
+    name: String(source.name || source.custom_provider || '').trim(),
+    model: String(source.model || '').trim(),
+    base_url: String(source.base_url || '').trim(),
+    model_options: Array.isArray(source.model_options) ? source.model_options : [],
+  };
+}
+
+// Accepts the canonical {providers} shape plus a legacy single-object draft.
+export function normalizeImageDraft(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  let rows;
+  if (Array.isArray(source.providers)) {
+    rows = source.providers;
+  } else if (source.provider) {
+    const legacy = { ...source };
+    delete legacy.enabled;
+    delete legacy.providers;
+    rows = [legacy];
+  } else {
+    rows = [];
+  }
+  const providers = [];
+  let active = false;
+  const legacyRows = !Array.isArray(source.providers);
+  rows.forEach((row, index) => {
+    const hasFlag = Boolean(row) && typeof row === 'object' && row.enabled !== undefined;
+    const requested = hasFlag ? row.enabled === true : (legacyRows && Boolean(row?.provider));
+    const entry = normalizeImageProvider(row, index);
+    const enabled = requested && !active;
+    active = active || enabled;
+    providers.push({ ...entry, enabled });
+  });
+  return { providers };
+}
+
+export function createImageProviderDraft() {
+  return {
+    ...createVisionProviderDraft(),
+    id: `image-${Date.now()}`,
+    provider: 'openai',
+  };
+}
+
+// Enabling one provider releases the others; disabling leaves the rest alone.
+export function setImageProviderEnabled(image, entryId, enabled) {
+  const source = image && typeof image === 'object' ? image : {};
+  const providers = (Array.isArray(source.providers) ? source.providers : []).map((item) => {
+    if (item.id === entryId) return { ...item, enabled: enabled === true };
+    return enabled === true ? { ...item, enabled: false } : item;
+  });
+  return { ...source, providers };
+}
+
 export function normalizeCompactDraft(value) {
   const sources = (Array.isArray(value?.providers) ? value.providers : []).filter(row => row && typeof row === 'object' && row.provider);
   const normalized = normalizeVisionDraft({ providers: sources });
@@ -297,6 +367,9 @@ function createDefaultLlmSettings() {
       mode: 'auto',
       providers: [],
     },
+    image: {
+      providers: [],
+    },
     embedding: {
       enabled: false,
       provider: 'custom',
@@ -329,6 +402,7 @@ export function loadLlmSettingsDraft() {
     const draft = {
       chat: normalizeLlmModelConfig({ ...fallback.chat, ...(stored?.chat || {}) }),
       vision: normalizeVisionDraft(stored?.vision),
+      image: normalizeImageDraft(stored?.image),
       compact: normalizeCompactDraft(stored?.compact),
       embedding: { ...fallback.embedding, ...(stored?.embedding || {}) },
       profiles: Array.isArray(stored?.profiles) ? stored.profiles : [],
@@ -346,13 +420,14 @@ function persistedAuxiliaryRows(section) {
 
 export function applyLlmSettingsPayloadToDraft(previous, payload) {
   if (!payload || typeof payload !== 'object') return previous;
-  const hasBackendConfig = ['chat', 'vision', 'compact', 'embedding', 'profiles']
+  const hasBackendConfig = ['chat', 'vision', 'image', 'compact', 'embedding', 'profiles']
     .some(key => Object.hasOwn(payload, key));
   if (!hasBackendConfig) return previous;
   const fallback = createDefaultLlmSettings();
   return {
     chat: normalizeLlmModelConfig({ ...fallback.chat, ...(payload.chat || {}), _persisted: Boolean(payload.chat?.id) }),
     vision: normalizeVisionDraft(persistedAuxiliaryRows(payload.vision)),
+    image: normalizeImageDraft(persistedAuxiliaryRows(payload.image)),
     compact: normalizeCompactDraft(persistedAuxiliaryRows(payload.compact)),
     embedding: { ...fallback.embedding, ...(payload.embedding || {}), _persisted: Boolean(payload.embedding?.id) },
     profiles: Array.isArray(payload.profiles)
@@ -397,6 +472,7 @@ export function mergeLlmSettingsDraft(current, saved, baseline) {
     embedding: record(current?.embedding, saved.embedding, baseline?.embedding),
     profiles: rows(current?.profiles, saved.profiles, baseline?.profiles),
     vision: auxiliary('vision'),
+    image: auxiliary('image'),
     compact: auxiliary('compact'),
   };
 }

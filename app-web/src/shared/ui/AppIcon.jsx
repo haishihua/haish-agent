@@ -21,6 +21,7 @@ import {
   GitBranch,
   GitFork,
   Globe2,
+  Image as ImageIcon,
   Layers3,
   LoaderCircle,
   LockKeyhole,
@@ -77,6 +78,8 @@ const ICONS = {
   format: ScanText,
   'git-branch': GitBranch,
   globe: Globe2,
+  // 图片生成（llm.image）的入口：描边相框，和 eye（看）区分开。
+  image: ImageIcon,
   layers: Layers3,
   loader: LoaderCircle,
   lock: LockKeyhole,

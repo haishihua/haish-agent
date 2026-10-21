@@ -21,7 +21,7 @@ import {
   createLlmProfile,
   connectionBadgeMeta,
 } from '../model/settings-payload.js';
-import { createVisionProviderDraft, createCompactProviderDraft } from '../model/llm-settings.js';
+import { createVisionProviderDraft, createCompactProviderDraft, createImageProviderDraft } from '../model/llm-settings.js';
 import {
   SettingsTooltipIconButton,
   ConnectionBrandIcon,
@@ -141,7 +141,7 @@ export function SettingsPage({
     ? activeSubtab
     : (items.some((item) => item.id === selectedConfigId) ? selectedConfigId : (items[0]?.id || ''));
   const listTitle = activeSection === 'llm'
-    ? (activeSubtab === 'vision' ? 'Vision' : 'Chat')
+    ? (activeSubtab === 'vision' ? 'Vision' : (activeSubtab === 'image' ? 'Image' : 'Chat'))
     : sectionMeta.label;
   // 单条目段（Memory / Embedding）不需要搜索框。
   const hideSettingsSearch = activeSection === 'memory' || activeSection === 'embedding';
@@ -187,7 +187,16 @@ export function SettingsPage({
     if (draft.section === 'llm') {
       // Vision 是多条 provider 列表：取消新建时按 id 移除这一条。
       const isVisionDraft = (llmDraft.vision?.providers || []).some((item) => item.id === draft.id);
-      if (isVisionDraft) {
+      const isImageDraft = (llmDraft.image?.providers || []).some((item) => item.id === draft.id);
+      if (isImageDraft) {
+        onLlmDraftChange((prev) => ({
+          ...prev,
+          image: {
+            ...prev.image,
+            providers: (prev.image?.providers || []).filter((item) => item.id !== draft.id),
+          },
+        }));
+      } else if (isVisionDraft) {
         onLlmDraftChange((prev) => ({
           ...prev,
           vision: {
@@ -204,7 +213,10 @@ export function SettingsPage({
         }));
       }
       if (selectionBySection.llmConfig === draft.id) {
-        if (isVisionDraft) {
+        if (isImageDraft) {
+          const fallback = (llmDraft.image?.providers || []).find((item) => item.id !== draft.id);
+          selectItem(fallback?.id || '');
+        } else if (isVisionDraft) {
           const fallback = (llmDraft.vision?.providers || []).find((item) => item.id !== draft.id);
           selectItem(fallback?.id || '');
         } else {
@@ -318,6 +330,19 @@ export function SettingsPage({
           },
         }));
         onSelectionChange((prev) => ({ ...prev, llm: 'vision', llmConfig: provider.id }));
+        openEditor('llm', provider.id, 'new');
+        return;
+      }
+      if (activeSubtab === 'image') {
+        const provider = createImageProviderDraft();
+        onLlmDraftChange((prev) => ({
+          ...prev,
+          image: {
+            ...prev.image,
+            providers: [...(prev.image?.providers || []), provider],
+          },
+        }));
+        onSelectionChange((prev) => ({ ...prev, llm: 'image', llmConfig: provider.id }));
         openEditor('llm', provider.id, 'new');
         return;
       }

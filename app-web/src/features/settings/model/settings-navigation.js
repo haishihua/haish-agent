@@ -39,6 +39,7 @@ export const SETTINGS_SUBTABS = {
   llm: [
     { id: 'chat', label: 'Chat' },
     { id: 'vision', label: 'Vision' },
+    { id: 'image', label: 'Image' },
   ],
   tools: [
     { id: 'tools-mcp', label: 'MCP' },

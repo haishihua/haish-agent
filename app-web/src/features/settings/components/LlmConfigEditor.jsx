@@ -16,6 +16,7 @@ import {
   LLM_OAUTH_CALLBACK_PROVIDERS,
   SETTINGS_REASONING_OPTIONS,
   SETTINGS_LLM_PROVIDER_OPTIONS,
+  IMAGE_PROVIDER_IDS,
   formatAuthModeLabel,
   nextProviderDraft,
   uniqueModelChoices,
@@ -38,9 +39,10 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
   const provider = getLlmProvider(config.provider);
   // Vision 是多条 provider 列表：每条都可独立编辑，启用状态由同一套开关控制。
   const isVisionProvider = (draft?.vision?.providers || []).some((item) => item.id === selectedId);
+  const isImageProvider = (draft?.image?.providers || []).some((item) => item.id === selectedId);
   const isCompactProvider = (draft?.compact?.providers || []).some(item => item.id === selectedId);
   const effortOptions = SETTINGS_REASONING_OPTIONS;
-  const showEffort = !isVisionProvider && selectedId !== 'embedding';
+  const showEffort = !isVisionProvider && !isImageProvider && selectedId !== 'embedding';
   const [modelChoices, setModelChoices] = useState(() => llmEditorModelChoices(config));
   const [oauthStartError, setOauthStartError] = useState('');
   const [oauthStartPending, setOauthStartPending] = useState(false);
@@ -50,9 +52,12 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
   const [modelCatalogError, setModelCatalogError] = useState('');
   const disabled = readOnly || (selectedId === 'embedding' && !draft.embedding?.enabled);
   const showProviderNameField = config.provider === 'custom';
-  const showAuthModeField = provider.authModes.length > 1;
+  const providerAuthModes = isImageProvider
+    ? provider.authModes.filter((mode) => mode !== 'oauth')
+    : provider.authModes;
+  const showAuthModeField = providerAuthModes.length > 1;
   const showApiKeyField = config.auth_mode === 'api_key';
-  const showOAuthFields = config.auth_mode === 'oauth' && LLM_OAUTH_UI_PROVIDERS.has(config.provider);
+  const showOAuthFields = !isImageProvider && config.auth_mode === 'oauth' && LLM_OAUTH_UI_PROVIDERS.has(config.provider);
   const showOAuthCallbackLogin = showOAuthFields && LLM_OAUTH_CALLBACK_PROVIDERS.has(config.provider);
   const oauthFlowPending = oauthStartPending || oauthFlowStatus === 'pending' || oauthFlowStatus === 'exchanging';
   const oauthModelCatalogReady = Boolean(config.oauth_configured);
@@ -255,6 +260,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
 
   return (
     <div className="settings-editor-form settings-llm-form">
+      {/* Image 的开关只在列表行上：编辑面板再放一个就是同一件事两处入口。 */}
       {isVisionProvider && (
         <SettingsToggleRow
           label="Enable vision provider"
@@ -266,7 +272,9 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       <FieldRow label="Provider">
         <SettingsMenuSelect
           value={config.provider}
-          options={SETTINGS_LLM_PROVIDER_OPTIONS.map((item) => ({ id: item.id, label: item.label }))}
+          options={(isImageProvider
+            ? SETTINGS_LLM_PROVIDER_OPTIONS.filter((item) => IMAGE_PROVIDER_IDS.includes(item.id))
+            : SETTINGS_LLM_PROVIDER_OPTIONS).map((item) => ({ id: item.id, label: item.label }))}
           onChange={changeProvider}
           disabled={disabled}
           header="provider"
@@ -286,7 +294,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       <FieldRow label="Auth Mode">
         <SettingsMenuSelect
           value={config.auth_mode}
-          options={provider.authModes.map((mode) => ({ id: mode, label: formatAuthModeLabel(mode) }))}
+          options={providerAuthModes.map((mode) => ({ id: mode, label: formatAuthModeLabel(mode) }))}
           onChange={(authMode) => {
             setOauthStartError('');
             setOauthFlowId('');

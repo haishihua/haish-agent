@@ -21,6 +21,7 @@ const { useState, useEffect, useRef } = React;
 export const SETTINGS_SUBTAB_ICONS = {
   chat: 'message',
   vision: 'eye',
+  image: 'image',
   embedding: 'layers',
   'tools-mcp': 'nodes',
   'tools-skills': 'wrench',
