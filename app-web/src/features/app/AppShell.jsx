@@ -1601,8 +1601,9 @@ export function AppShell() {
       const live = isTaskLive(task) && !settled.has(String(task.taskId || task.id || ''));
       const agentName = agentNameFor(task);
       const cachedRows = rowCache.get(task);
-      // catalog 是异步到的：名字也会变，所以名字一起比，不能只比 live。
-      if (cachedRows && cachedRows.live === live && cachedRows.agentName === agentName) {
+      // catalog 是异步到的：名字也会变，所以名字一起比，不能只比 live。conversationId 同理：
+      // 它决定最终回答里的图片能不能拼出预览地址，缓存的行带着空 id 就永远不出图。
+      if (cachedRows && cachedRows.live === live && cachedRows.agentName === agentName && cachedRows.conversationId === conversationId) {
         rows.push(...cachedRows.rows);
         continue;
       }
@@ -1679,7 +1680,7 @@ export function AppShell() {
           firstTokenAt: taskFirstStreamTimestamp(task),
         });
       }
-      rowCache.set(task, { rows: taskRows, live, agentName });
+      rowCache.set(task, { rows: taskRows, live, agentName, conversationId });
       rows.push(...taskRows);
     }
     if (pendingTurnVisible) {

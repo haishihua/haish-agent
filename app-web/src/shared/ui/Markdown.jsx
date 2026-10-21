@@ -5,6 +5,7 @@ import { remarkHardBreaks } from '../lib/remark-hard-breaks.js';
 import { hasJsonBlock, remarkJsonBlock } from '../lib/remark-json-block.js';
 import { remarkImagePaths } from '../lib/remark-image-paths.js';
 import { isChatImagePreviewUrl } from '../api/chat-image.js';
+import { PATH_IMAGE_RETRY_DELAYS_MS, withRetryParam } from '../lib/markdown-image-retry.js';
 import { localFileHref, localFilePath, openLocalFile } from '../lib/local-file-link.js';
 import { MarkdownBlockCode } from './deferred-code-block.jsx';
 import '../../../styles/markdown.css';
@@ -80,24 +81,46 @@ function MarkdownLink({ href, children, className, node, title, ...rest }) {
 
 const MARKDOWN_COMPONENTS = { ...CODE_COMPONENTS, a: MarkdownLink };
 
-// 最终回答里的图片多半指向本机路径（见 remark-image-paths.js）：文件被清理、
-// 或路径不在这条会话的允许范围内时，预览接口 403/404，浏览器画出碎图标。这里退回
-// 到原始的路径文本：信息量至少和改动前一样，不会凭空多一个坏图标。
+// 最终回答里的图片多半指向本机路径（见 remark-image-paths.js），页面靠预览接口把字节
+// 取回来。渲染交给浏览器原生 `<img>`：它只有「加载成功 / 加载失败」两种结局，不会像
+// `fetch()`→blob 那样在请求迟迟不返回时永远停在 loading 上（那会在答案里留一块永远
+// 不消失的占位）。加载失败就换一个带 `haish_retry` 的地址重试（运行时刚起、或本轮
+// 任务还没登记 artifact root 时，第一次失败会自己好），两轮都失败才退回原始路径文本。
 function MarkdownPathImage({ node, src, alt, title, ...rest }) {
-  const [failed, setFailed] = React.useState(false);
   const original = String(title || '');
-  if (failed && original) {
-    return <span className="haish-markdown-image-path">{original}</span>;
+  const [attempt, setAttempt] = React.useState(0);
+  const [failed, setFailed] = React.useState(false);
+  const retryTimer = React.useRef(0);
+  React.useEffect(() => {
+    // 换一张图（src 变了）必须从头加载，不能继承上一张的结论。
+    setAttempt(0);
+    setFailed(false);
+    return () => {
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      retryTimer.current = 0;
+    };
+  }, [src]);
+  const handleError = React.useCallback(() => {
+    if (attempt >= PATH_IMAGE_RETRY_DELAYS_MS.length) {
+      setFailed(true);
+      return;
+    }
+    retryTimer.current = setTimeout(
+      () => setAttempt((value) => value + 1),
+      PATH_IMAGE_RETRY_DELAYS_MS[attempt],
+    );
+  }, [attempt]);
+  if (!src) {
+    return original ? <span className="haish-markdown-image-path" data-preview-failed="missing-src">{original}</span> : null;
   }
-  return (
-    <img
-      {...rest}
-      src={src}
-      alt={alt}
-      title={title}
-      onError={original ? () => setFailed(true) : undefined}
-    />
-  );
+  if (failed && original) {
+    return (
+      <span className="haish-markdown-image-path" data-preview-failed={`img-error:${attempt}`}>{original}</span>
+    );
+  }
+  // 路径只用来在失败时当文本退回，不挂在 `title` 上：悬停弹一条绝对路径没什么用，
+  // 而且会把本地目录结构摊到屏幕上。
+  return <img {...rest} src={withRetryParam(src, attempt)} alt={alt} onError={handleError} />;
 }
 const PATH_IMAGE_COMPONENTS = { ...MARKDOWN_COMPONENTS, img: MarkdownPathImage };
 

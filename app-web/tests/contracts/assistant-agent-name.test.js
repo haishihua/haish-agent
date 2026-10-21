@@ -22,9 +22,10 @@ test('every assistant row carries the agent that ran that turn', () => {
   assert.match(shellSource, /const agentNameFor = \(task\) => assistantNameForTask\(task, currentConversation, agentOptions\);/);
   assert.match(shellSource, /^\s+agentName,$/m);
   assert.match(shellSource, /agentName: agentNameFor\(pendingTurn\),/);
-  // catalog 异步到达时名字会变，缓存不能只比 live。
-  assert.match(shellSource, /if \(cachedRows && cachedRows\.live === live && cachedRows\.agentName === agentName\) \{/);
-  assert.match(shellSource, /rowCache\.set\(task, \{ rows: taskRows, live, agentName \}\);/);
+  // catalog 异步到达时名字会变，缓存不能只比 live；会话 id 也是缓存键的一部分
+  // （最终回答的图片要靠它拼预览地址）。
+  assert.match(shellSource, /if \(cachedRows && cachedRows\.live === live && cachedRows\.agentName === agentName && cachedRows\.conversationId === conversationId\) \{/);
+  assert.match(shellSource, /rowCache\.set\(task, \{ rows: taskRows, live, agentName, conversationId \}\);/);
   assert.match(shellSource, /\}, \[agentOptions, conversationId, currentConversation, settledRuntimeTaskIds, taskRuntimeState\]\);/);
 });
 
