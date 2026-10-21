@@ -7,6 +7,7 @@ import type {
   HaishDesktopApi,
   LocalProject,
   LocalRuntimeState,
+  OpenPathResult,
   ReadFileResult,
   RemoteAdapterState,
   RemoteDevice,
@@ -57,6 +58,8 @@ const api: HaishDesktopApi = {
     ipcRenderer.invoke('fs:list-directory', projectId, relativePath) as Promise<FileEntry[]>,
   readFile: (projectId: string, relativePath: string) =>
     ipcRenderer.invoke('fs:read-file', projectId, relativePath) as Promise<ReadFileResult>,
+  openLocalPath: (absolutePath: string) =>
+    ipcRenderer.invoke('fs:open-path', absolutePath) as Promise<OpenPathResult>,
   copyImage: (dataUrl: string) => ipcRenderer.invoke('clipboard:write-image', dataUrl) as Promise<boolean>,
   readToolScreenshot: (imagePath: string, taskId: string) =>
     ipcRenderer.invoke('tool:read-screenshot', imagePath, taskId) as Promise<string>,

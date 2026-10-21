@@ -90,8 +90,17 @@ test('leaving a conversation keeps its rendered rows alive for the trip back', (
 test('code blocks only ask for highlighting when they reach the viewport', () => {
   // streamdown 的代码块 body 在 useEffect 里调 highlight()，和可见性无关：497 个块
   // 会在挂载那一帧全部跑一遍 shiki 分词。门加在 `pre` 这一层，块级代码先占位。
-  assert.match(markdownSource, /const MARKDOWN_COMPONENTS = \{ pre: MarkdownBlockCode \};/);
-  assert.match(markdownSource, /components=\{MARKDOWN_COMPONENTS\}/);
+  // `pre` 仍然只挂一个模块级常量；链接组件（本机文件 → shell）从它展开，
+  // 两份 components 都不在 render 里拼新对象。
+  assert.match(markdownSource, /const CODE_COMPONENTS = \{ pre: MarkdownBlockCode \};/);
+  assert.match(markdownSource, /const MARKDOWN_COMPONENTS = \{ \.\.\.CODE_COMPONENTS, a: MarkdownLink \};/);
+  // 最终回答那条路径会额外换掉 `img`（本机路径 → 预览图，失败退回原文），但必须
+  // 从 MARKDOWN_COMPONENTS 展开，`pre` 的延迟门不能丢。
+  assert.match(
+    markdownSource,
+    /const PATH_IMAGE_COMPONENTS = \{ \.\.\.MARKDOWN_COMPONENTS, img: MarkdownPathImage \};/,
+  );
+  assert.match(markdownSource, /components=\{components\}/);
   assert.match(deferredSource, /export function MarkdownBlockCode\(\{ children \}\) \{/);
   assert.match(deferredSource, /React\.cloneElement\(children, \{ 'data-block': 'true' \}\)/);
   assert.match(deferredSource, /const observer = new IntersectionObserver\(\(entries\) => \{/);

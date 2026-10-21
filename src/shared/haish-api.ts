@@ -23,6 +23,9 @@ export type ReadFileResult = {
   encoding: 'utf8';
 };
 
+/** Result of handing an absolute path to the OS default application. */
+export type OpenPathResult = { ok: true } | { ok: false; error: string };
+
 export type LocalRuntimeStatus = 'idle' | 'starting' | 'ready' | 'failed' | 'stopped';
 
 export type LocalRuntimeState = {
@@ -136,6 +139,8 @@ export type HaishDesktopApi = {
   listProjects: () => Promise<LocalProject[]>;
   listDirectory: (projectId: string, relativePath?: string) => Promise<FileEntry[]>;
   readFile: (projectId: string, relativePath: string) => Promise<ReadFileResult>;
+  /** Open an absolute path with the OS default application (Finder double-click). */
+  openLocalPath: (absolutePath: string) => Promise<OpenPathResult>;
   readToolScreenshot: (imagePath: string, taskId: string) => Promise<string>;
   copyImage: (dataUrl: string) => Promise<boolean>;
   getPathForFile: (file: File) => string;

@@ -1,6 +1,6 @@
 import { isTaskLive, isTaskSettled } from './conversation-status.js';
 import { stripChatImageAugmentation } from '../../chat/model/chat-text.js';
-import { API_BASE } from '../../../shared/api/base.js';
+import { chatImagePreviewUrl } from '../../../shared/api/chat-image.js';
 import {
   WORKSPACE_STORAGE_KEY,
   CONVERSATION_STORAGE_KEY,
@@ -209,16 +209,6 @@ export function titleFromTaskText(text, maxLength = 48) {
   return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
-
-function chatImagePreviewUrl(ref, conversationId) {
-  const existing = String(ref?.previewUrl || '').trim();
-  if (existing) return existing;
-  const path = String(ref?.path || '').trim();
-  if (!path || !conversationId) return '';
-  if (/^(blob:|data:|https?:|file:)/i.test(path)) return path;
-  const params = new URLSearchParams({ image_path: path });
-  return `${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}/messages/images/preview?${params.toString()}`;
-}
 
 export function normalizeChatImageRefs(refs, conversationId) {
   return (Array.isArray(refs) ? refs : [])

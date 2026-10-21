@@ -24,7 +24,10 @@ test('assistant answers keep the default soft-break rendering', () => {
     chatMessageRow.indexOf('function FinalAnswerMarkdown'),
     chatMessageRow.indexOf('function ChatMessageRowComponent'),
   );
-  assert.match(finalAnswer, /<Markdown source=\{text\} \/>/, 'the answer body must render without hardBreaks');
+  // The answer body may pass an image-path resolver (local paths in model prose
+  // become preview images), but never hardBreaks.
+  assert.match(finalAnswer, /<Markdown source=\{text\} imagePathResolver=\{imagePathResolver\} \/>/,
+    'the answer body must render without hardBreaks');
   assert.doesNotMatch(finalAnswer, /hardBreaks/);
 });
 

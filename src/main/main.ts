@@ -20,6 +20,7 @@ import type {
   DirectoryPickResult,
   FileEntry,
   LocalProject,
+  OpenPathResult,
   ReadFileResult,
   RemoteAdapterState,
   RemoteDevice,
@@ -740,6 +741,18 @@ ipcMain.handle('fs:read-file', async (_event, projectId: string, relativePath: s
     content: await fs.readFile(target, 'utf8'),
     encoding: 'utf8',
   };
+});
+
+// Markdown answers link to files this machine produced. Opening one is always a
+// user click and always the OS default application (the same thing a Finder
+// double-click does); the renderer never reads the target itself.
+ipcMain.handle('fs:open-path', async (_event, target: string): Promise<OpenPathResult> => {
+  const value = typeof target === 'string' ? target.trim() : '';
+  if (!value || value.includes('\0') || /[\r\n]/.test(value) || !path.isAbsolute(value)) {
+    return { ok: false, error: 'Only absolute local paths can be opened.' };
+  }
+  const error = await shell.openPath(value);
+  return error ? { ok: false, error: `Could not open ${value}: ${error}` } : { ok: true };
 });
 
 app

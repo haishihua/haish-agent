@@ -14,6 +14,7 @@ import {
   formatMessageClock,
 } from '../../../shared/lib/message-format.js';
 import { copyTextToClipboard } from '../../../shared/lib/clipboard.js';
+import { chatImagePreviewUrl } from '../../../shared/api/chat-image.js';
 import {
   ChatAgentTimeline,
   ChatTimelineCollapsed,
@@ -33,13 +34,13 @@ function blobToDataUrl(blob) {
   });
 }
 
-function FinalAnswerMarkdown({ source, streaming, sourceMessageId }) {
+function FinalAnswerMarkdown({ source, streaming, sourceMessageId, imagePathResolver }) {
   const text = String(source || '');
 
   if (!text || streaming) return null;
   return (
     <div className="chat-bubble-text" data-annotation-source={sourceMessageId}>
-      {Markdown ? <Markdown source={text} /> : text}
+      {Markdown ? <Markdown source={text} imagePathResolver={imagePathResolver} /> : text}
     </div>
   );
 }
@@ -133,6 +134,15 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
     ? message.images.filter((img) => img && (img.previewUrl || img.path))
     : [];
 
+  // Model answers report artifacts as local paths (`/…/artifacts/images/x.png`).
+  // The preview endpoint re-checks each path against this conversation's roots,
+  // so the resolver only has to build the URL.
+  const resolveImagePath = React.useMemo(() => {
+    const conversationId = String(message.conversationId || '');
+    if (!conversationId) return null;
+    return (path) => chatImagePreviewUrl({ path }, conversationId) || null;
+  }, [message.conversationId]);
+
   const imageAttachments = messageImages.length > 0 ? (
         <div className="chat-message-images" aria-label="Attached images">
           {messageImages.map((img, idx) => (
@@ -196,7 +206,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
             <ErrorState title="Task failed" detail={[message.text, actionError].filter(Boolean).join('\n')} retrying={actionBusy || retryPending}
               disabled={actionsDisabled} onRetry={onRetry ? () => perform(() => onRetry(message)) : undefined} />
           ) : isAgent ? (
-            <FinalAnswerMarkdown source={message.text} streaming={message.streaming} sourceMessageId={message.status === 'done' ? message.messageId : undefined} />
+            <FinalAnswerMarkdown source={message.text} streaming={message.streaming} sourceMessageId={message.status === 'done' ? message.messageId : undefined} imagePathResolver={resolveImagePath} />
           ) : bodyText ? (
             <div className="chat-bubble-text">
               {(isUser || message.markdown) && Markdown

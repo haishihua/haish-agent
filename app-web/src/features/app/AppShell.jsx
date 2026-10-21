@@ -34,6 +34,7 @@ import { API_BASE } from '../../shared/api/base.js';
 import { useLiveToolsSettings } from '../settings/hooks/useLiveToolsSettings.js';
 import { useSettingsSynchronization } from '../settings/hooks/useSettingsSynchronization.js';
 import { copySettingsResponse } from '../../shared/lib/settings-sync.js';
+import { useLocalFileLinks } from './hooks/useLocalFileLinks.js';
 import { useLlmSettings } from '../settings/hooks/useLlmSettings.js';
 import { createSkillInventoryCache } from '../settings/model/skill-inventory.js';
 import {
@@ -819,7 +820,7 @@ export function AppShell() {
     showToast,
   };
 
-
+  useLocalFileLinks(localWorkspace.path, showToast);
 
   const {
     applyConversationSnapshot,

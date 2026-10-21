@@ -3,6 +3,9 @@ import { cjk } from '@streamdown/cjk';
 import { defaultRehypePlugins, defaultRemarkPlugins, Streamdown } from 'streamdown';
 import { remarkHardBreaks } from '../lib/remark-hard-breaks.js';
 import { hasJsonBlock, remarkJsonBlock } from '../lib/remark-json-block.js';
+import { remarkImagePaths } from '../lib/remark-image-paths.js';
+import { isChatImagePreviewUrl } from '../api/chat-image.js';
+import { localFileHref, localFilePath, openLocalFile } from '../lib/local-file-link.js';
 import { MarkdownBlockCode } from './deferred-code-block.jsx';
 import '../../../styles/markdown.css';
 
@@ -37,16 +40,84 @@ const HARD_BREAK_REMARK_PLUGINS = [...STREAMDOWN_REMARK_PLUGINS, remarkHardBreak
 // 代码块按视口渲染（见 deferred-code-block.jsx）：挂载时只铺等高的纯文本占位，
 // 块接近视口才挂真正的代码块——高亮插件是在那里的 useEffect 里按块跑 shiki 的。
 // 常量身份也重要：Streamdown 的 memo 会按引用比 components。
-const MARKDOWN_COMPONENTS = { pre: MarkdownBlockCode };
+const CODE_COMPONENTS = { pre: MarkdownBlockCode };
+const LINK_CLASS = 'wrap-anywhere font-medium text-primary underline';
+
+// 答案里的链接指向本机文件时，点击必须去打开那个文件，而不是让渲染层导航走：
+// `file://`、绝对路径、`sandbox:` 和相对路径都先解析成绝对路径（见
+// shared/lib/local-file-link.js），再交给桌面端用系统默认应用打开。
+// 解析不出来的目标保持原来的普通链接行为（http(s) 等）。
+function MarkdownLink({ href, children, className, node, title, ...rest }) {
+  const value = String(href || '');
+  const classes = className ? `${LINK_CLASS} ${className}` : LINK_CLASS;
+  if (value === 'streamdown:incomplete-link') {
+    return <span className="wrap-anywhere font-medium" data-incomplete="true" data-streamdown="link">{children}</span>;
+  }
+  const target = localFilePath(value);
+  if (!target) {
+    return <a {...rest} className={classes} data-streamdown="link" href={href} rel="noreferrer" target="_blank" title={title}>{children}</a>;
+  }
+  return (
+    <a
+      {...rest}
+      className={classes}
+      data-local-file="true"
+      data-streamdown="link"
+      href={href}
+      rel="noreferrer"
+      title={title || target}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openLocalFile(value).then((result) => {
+          if (result.ok) return;
+          window.dispatchEvent(new CustomEvent('haish:toast', { detail: { kind: 'error', message: result.error } }));
+        });
+      }}
+    >{children}</a>
+  );
+}
+
+const MARKDOWN_COMPONENTS = { ...CODE_COMPONENTS, a: MarkdownLink };
+
+// 最终回答里的图片多半指向本机路径（见 remark-image-paths.js）：文件被清理、
+// 或路径不在这条会话的允许范围内时，预览接口 403/404，浏览器画出碎图标。这里退回
+// 到原始的路径文本：信息量至少和改动前一样，不会凭空多一个坏图标。
+function MarkdownPathImage({ node, src, alt, title, ...rest }) {
+  const [failed, setFailed] = React.useState(false);
+  const original = String(title || '');
+  if (failed && original) {
+    return <span className="haish-markdown-image-path">{original}</span>;
+  }
+  return (
+    <img
+      {...rest}
+      src={src}
+      alt={alt}
+      title={title}
+      onError={original ? () => setFailed(true) : undefined}
+    />
+  );
+}
+const PATH_IMAGE_COMPONENTS = { ...MARKDOWN_COMPONENTS, img: MarkdownPathImage };
 
 function safeMarkdownUrl(url, key) {
   const value = String(url || '').trim();
   if (/^https?:/i.test(value)) return value;
-  if (key === 'href' && /^(?:mailto:|file:|#)/i.test(value)) return value;
+  // Generated pictures live on disk and are served back through the conversation
+  // preview endpoint (see remark-image-paths.js); that relative URL is the only
+  // non-http `src` this renderer accepts.
+  if (key === 'src' && isChatImagePreviewUrl(value)) return value;
+  if (key === 'href') {
+    if (/^(?:mailto:|#)/i.test(value)) return value;
+    // Local targets keep a real `file://` href so the anchor stays a link (and a
+    // middle-click still lands on the file); MarkdownLink intercepts the click.
+    return localFileHref(value) || null;
+  }
   return null;
 }
 
-export function Markdown({ source, streaming = false, hardBreaks = false }) {
+export function Markdown({ source, streaming = false, hardBreaks = false, imagePathResolver = null }) {
   const text = String(source || '');
   const [code, setCode] = React.useState(null);
   const [mermaid, setMermaid] = React.useState(null);
@@ -56,10 +127,17 @@ export function Markdown({ source, streaming = false, hardBreaks = false }) {
   const hasMermaid = /(?:`{3,}|~{3,})mermaid\b/i.test(text);
   // User-authored text keeps the line structure it was typed with; assistant
   // answers stay plain CommonMark, where a single newline is a soft break.
-  const remarkPlugins = React.useMemo(
-    () => (hardBreaks ? HARD_BREAK_REMARK_PLUGINS : REMARK_PLUGINS),
-    [hardBreaks],
-  );
+  // Model prose often carries the picture as a plain local path; when the caller
+  // can resolve such paths to a preview URL, the remark plugin swaps them for real
+  // images. The resolver identity is stable per conversation, so this plugin array
+  // keeps a stable identity too (Streamdown memoizes on it).
+  const remarkPlugins = React.useMemo(() => {
+    const base = hardBreaks ? HARD_BREAK_REMARK_PLUGINS : REMARK_PLUGINS;
+    if (typeof imagePathResolver !== 'function') return base;
+    return [...base, [remarkImagePaths, { resolveImage: imagePathResolver }]];
+  }, [hardBreaks, imagePathResolver]);
+  // 只有能解析本机路径的调用方（最终回答）才换 img 组件，其他地方的图片渲染不变。
+  const components = typeof imagePathResolver === 'function' ? PATH_IMAGE_COMPONENTS : MARKDOWN_COMPONENTS;
 
   React.useEffect(() => {
     if (!hasCode || code) return undefined;
@@ -106,7 +184,7 @@ export function Markdown({ source, streaming = false, hardBreaks = false }) {
         remarkPlugins={remarkPlugins}
         rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
         plugins={plugins}
-        components={MARKDOWN_COMPONENTS}
+        components={components}
         codeBlockMaxHeight={320}
         // 表格不给高度上限（上游默认 300px）：答案里的表就是正文的一部分，被限高后会变成
         // 一个自带滚动条的盒子——macOS 的浮层滚动条平时不显示，用户看到的是「表格缺了几行」，
