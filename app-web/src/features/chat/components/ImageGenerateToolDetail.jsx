@@ -11,6 +11,13 @@ const ImageGenerationEffect = lazy(
   () => import('img-fx').then((module) => ({ default: module.ImageGeneration })),
 );
 const PRESET = 'pixels-organic';
+// The app chrome is dark-only (`--bg: #0a0d15`), but img-fx defaults to
+// `theme="auto"`, which resolves through `matchMedia('(prefers-color-scheme: dark)')`
+// — the *OS* theme, not the app's. On a Mac in Light mode that picked the light
+// tuning: a near-white mosaic in the middle of a dark chat.
+const EFFECT_THEME = 'dark';
+// Same surface as the card, so the shader's contrast logic stays in dark territory.
+const EFFECT_CARD_BG = '#0a0d15';
 // If the effect never manages to show the picture (no WebGL, slow chunk, shader
 // failure) the card falls back to the plain image instead of hiding it forever.
 const FX_WATCHDOG_MS = 4000;
@@ -101,6 +108,8 @@ export function ImageGenerateToolDetail({ view, conversationId }) {
             key={running ? 'loading' : previewUrl}
             ref={effectRef}
             preset={PRESET}
+            theme={EFFECT_THEME}
+            cardBg={EFFECT_CARD_BG}
             images={running ? undefined : [revealTarget || previewUrl]}
             className="aui-imagegen-frame"
           >

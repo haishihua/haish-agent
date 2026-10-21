@@ -7,13 +7,16 @@
   margin: 2px 0 6px;
 }
 
-/* img-fx sizes its wrapper to the child, so the 320px lives on the child. */
+/* img-fx sizes its wrapper to the child, so the 320px lives on the child.
+   The surface is the app's dark card colour: the effect is passed theme="dark"
+   (see ImageGenerateToolDetail), and a pale frame behind it made the whole card
+   read as a white block in the dark chat. */
 .aui-imagegen-frame {
   width: 320px;
   height: 320px;
   border-radius: 20px;
   overflow: hidden;
-  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  background: var(--bg, #0a0d15);
 }
 
 .aui-imagegen-image,
@@ -25,16 +28,18 @@
   object-fit: cover;
 }
 
-/* Sits under the mosaic shader while the request is still running. */
+/* Sits under the mosaic shader while the request is still running. Dark on
+   purpose: before the canvas paints (chunk load, WebGL init) this is what the
+   user sees, and a light placeholder is a white flash in a dark chat. */
 .aui-imagegen-loader {
-  background: linear-gradient(135deg, rgba(120, 130, 255, 0.16), rgba(80, 200, 190, 0.12));
+  background: linear-gradient(135deg, #0d1018, #101720);
 }
 
 .aui-imagegen-broken {
   background: repeating-linear-gradient(
     45deg,
-    rgba(127, 127, 127, 0.08) 0 8px,
-    rgba(127, 127, 127, 0.14) 8px 16px
+    rgba(127, 127, 127, 0.10) 0 8px,
+    rgba(127, 127, 127, 0.16) 8px 16px
   );
 }
 
