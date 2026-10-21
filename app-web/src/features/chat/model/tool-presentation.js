@@ -78,6 +78,13 @@ function browserText(value, tail = false) {
   return tail ? `… output truncated …\n${text.slice(-8000)}` : `${text.slice(0, 8000)}\n… truncated …`;
 }
 
+function browserVisibleText(value, tail = false) {
+  const text = browserText(value, tail);
+  // The CLI's phase markers leave blank stderr lines after marker removal.
+  // Whitespace-only output is not user-visible diagnostic content.
+  return text.trim() ? text : '';
+}
+
 export function browserPresentation(item) {
   const input = object(item.toolInput);
   const response = object(item.toolResponse || item.toolOutput);
@@ -90,7 +97,7 @@ export function browserPresentation(item) {
     url: safeToolUrl(data.url || object(response.subject).url || input.url),
     code: browserText(input.code),
     stdout: browserText(data.stdout || artifacts.stdout, true),
-    stderr: browserText(data.stderr || artifacts.stderr, true),
+    stderr: browserVisibleText(data.stderr, true) || browserVisibleText(artifacts.stderr, true),
     error: browserText(object(response.error).message || response.summary),
   };
 }

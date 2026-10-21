@@ -18,6 +18,7 @@ export function BrowserToolDetail({ screenshot, url, code, stdout, stderr, error
     return () => { active = false; };
   }, [screenshot, taskId]);
   const failureMessage = toolFailed ? error || 'Browser action failed.' : '';
+  const visibleStderr = typeof stderr === 'string' && stderr.trim() ? stderr : '';
   const emptyMessage = cancelled ? 'Browser action cancelled.' : running ? 'Running browser action…'
     : !code && !screenshot ? 'No output returned.' : '';
   return <ComputerUse url={url}>
@@ -33,12 +34,12 @@ export function BrowserToolDetail({ screenshot, url, code, stdout, stderr, error
         <summary className="aui-browser-section-label"><ChevronRight size={12} className="aui-tool-chevron" aria-hidden="true" />Output</summary>
         <pre className="aui-browser-output" tabIndex={0}>{stdout}</pre>
       </details>}
-      {stderr && <section className="aui-browser-section is-stderr" aria-label="Browser standard error">
+      {visibleStderr && <section className="aui-browser-section is-stderr" aria-label="Browser standard error">
         <div className="aui-browser-section-label">Standard error</div>
-        <pre className="aui-browser-output" tabIndex={0}>{stderr}</pre>
+        <pre className="aui-browser-output" tabIndex={0}>{visibleStderr}</pre>
       </section>}
       {failureMessage && <p className="aui-browser-result is-error" role="status">{failureMessage}</p>}
-      {!stdout && !stderr && !failureMessage && emptyMessage && <p className="aui-browser-result" role="status">{emptyMessage}</p>}
+      {!stdout && !visibleStderr && !failureMessage && emptyMessage && <p className="aui-browser-result" role="status">{emptyMessage}</p>}
     </div>
   </ComputerUse>;
 }

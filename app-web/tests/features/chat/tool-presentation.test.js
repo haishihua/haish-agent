@@ -193,3 +193,15 @@ test('browser output keeps real stderr and failure messages with bounded code an
   assert.match(view.browser.code, /^long code/);
   assert.match(view.browser.stdout, /last output$/);
 });
+
+test('browser whitespace-only stderr is hidden and real artifact stderr is retained', () => {
+  const clean = buildToolView({ toolName: 'browser_use', status: 'done', toolInput: { code: 'print("ok")' }, toolResponse: {
+    status: 'ok', data: { stdout: 'ok', stderr: '\n\n\n\n' },
+  } });
+  assert.equal(clean.browser.stderr, '');
+
+  const fallback = buildToolView({ toolName: 'browser_use', status: 'done', toolInput: { code: 'print("ok")' }, toolResponse: {
+    status: 'ok', data: { stderr: '\n  \t' }, artifacts: { stderr: 'Permission denied' },
+  } });
+  assert.equal(fallback.browser.stderr, 'Permission denied');
+});
