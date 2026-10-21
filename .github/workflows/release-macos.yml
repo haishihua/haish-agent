@@ -30,7 +30,7 @@ on:
         description: "Exact core commit SHA for reproducible builds"
         type: string
         required: true
-        default: "49fca338c50f0d68716f7999b2ab65ca68dca533"
+        default: "13b841b61d51d36a72c19cea3205902468fe05ea"
 
 permissions:
   contents: write
