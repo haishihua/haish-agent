@@ -1,0 +1,47 @@
+/* Generated-image card. No captions: the tool row already says what ran, so the
+   body is only the picture (or the reason it is missing). */
+.aui-imagegen {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 2px 0 6px;
+}
+
+/* img-fx sizes its wrapper to the child, so the 320px lives on the child. */
+.aui-imagegen-frame {
+  width: 320px;
+  height: 320px;
+  border-radius: 20px;
+  overflow: hidden;
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+}
+
+.aui-imagegen-image,
+.aui-imagegen-loader {
+  display: block;
+  width: 320px;
+  height: 320px;
+  border-radius: 20px;
+  object-fit: cover;
+}
+
+/* Sits under the mosaic shader while the request is still running. */
+.aui-imagegen-loader {
+  background: linear-gradient(135deg, rgba(120, 130, 255, 0.16), rgba(80, 200, 190, 0.12));
+}
+
+.aui-imagegen-broken {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(127, 127, 127, 0.08) 0 8px,
+    rgba(127, 127, 127, 0.14) 8px 16px
+  );
+}
+
+.aui-imagegen-error {
+  margin: 0;
+  max-width: 560px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--danger, #e5484d);
+}

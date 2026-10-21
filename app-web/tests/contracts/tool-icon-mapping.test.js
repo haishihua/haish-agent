@@ -23,6 +23,17 @@ test('ask_user gets a dedicated icon instead of the mcp magic wand', () => {
   assert.doesNotMatch(rule[1], /magic-wand|skill\.png|tool\.png/);
 });
 
+test('image_generate reuses the Settings → Image framed-glyph icon', () => {
+  // 生图卡片曾经落回 ico-tool 的通用工具图标；现在与 Settings 里的 Image
+  // 分组共用同一枚 lucide `image` 相框。
+  const resolve = timelineSource.match(/export function resolveToolIconClass[\s\S]*?\n\}/)[0];
+  assert.match(resolve, /if \(name === 'image_generate'\) \{\s*\/\/[\s\S]*?return 'ico-image-generate';/);
+  const rule = baseStyles.match(/\.ico-image-generate\s*\{([^}]+)\}/);
+  assert.ok(rule, '.ico-image-generate must be declared in base.css');
+  assert.match(rule[1], /url\("\.\.\/assets\/ui\/icons\/image-generate\.svg"\)/);
+  assert.ok(fs.existsSync(new URL('../../assets/ui/icons/image-generate.svg', import.meta.url)));
+});
+
 test('every resolveToolIconClass return value is a real base.css icon class', () => {
   const resolve = timelineSource.match(/export function resolveToolIconClass[\s\S]*?\n\}/)[0];
   const classes = [...resolve.matchAll(/return '(ico-[a-z0-9-]+)';/g)].map((match) => match[1]);

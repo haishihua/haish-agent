@@ -7,6 +7,7 @@ import { Bot, LoaderCircle, Sparkles } from 'lucide-react';
 import { BrowserToolDetail } from './BrowserToolDetail.jsx';
 import { ChatImageThumb } from './ChatImageThumb.jsx';
 import { VisionToolDetail } from './VisionToolDetail.jsx';
+import { ImageGenerateToolDetail } from './ImageGenerateToolDetail.jsx';
 import { toolCardHeading } from '../model/tool-presentation.js';
 import { ActivityOrb } from './ActivityOrb.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
@@ -90,6 +91,11 @@ export function resolveToolIconClass(toolName, defaultClass) {
   }
   if (name === 'image_describe') {
     return 'ico-image-describe';
+  }
+  if (name === 'image_generate') {
+    // 与 Settings → Image 分组同一枚相框图标；不显式匹配会落回 ico-tool 的
+    // 通用工具图标，和“生图”这件事对不上。
+    return 'ico-image-generate';
   }
   if (name === 'browser_use' || name === 'browser') {
     return 'ico-browser';
@@ -199,6 +205,7 @@ function ChatTimelineToolBody({ view, conversationId, taskId }) {
     return <TerminalDetail view={view} />;
   }
   if (view.mode === 'process') {
+    if (view.isImageGen) return <ImageGenerateToolDetail view={view} conversationId={conversationId} />;
     return view.isVision ? <VisionToolDetail view={view} />
       : <ChatProcessConversation view={view} conversationId={conversationId} taskId={taskId} />;
   }

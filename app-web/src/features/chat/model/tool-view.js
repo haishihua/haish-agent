@@ -27,6 +27,7 @@ const TOOL_PROCESS_NAMES = new Set([
   'vision_analyze',
   'visual_inspect',
   'image_describe',
+  'image_generate',
 ]);
 const TOOL_BLOCK_LIMIT = 16000;
 const TOOL_SHELL_TAIL_LINES = 80;
@@ -221,6 +222,23 @@ function firstToolDisplayValue(...values) {
 
 function isRawToolResponseText(value) {
   return String(value || '').trimStart().startsWith('TOOL_RESPONSE');
+}
+
+// The backend publishes generated images under artifacts.images[].path; the
+// preview endpoint turns that path into a URL the renderer can load.
+function firstGeneratedImagePath(toolResponse) {
+  const response = toolPlainObject(toolResponse);
+  const artifacts = toolPlainObject(response.artifacts);
+  const raw = artifacts.images;
+  const candidates = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+  for (const entry of candidates) {
+    if (typeof entry === 'string' && entry.trim()) return entry.trim();
+    if (entry && typeof entry === 'object') {
+      const value = entry.path || entry.url || entry.artifact_path;
+      if (value) return String(value).trim();
+    }
+  }
+  return '';
 }
 
 function isVisualProcessTool(name) {
@@ -583,6 +601,8 @@ function extractProcessChatMeta(item, name) {
     input.instructions,
   );
   const isVision = isVisualProcessTool(name);
+  const isImageGen = name === 'image_generate';
+  const generatedImagePath = isImageGen ? firstGeneratedImagePath(item.toolResponse) : '';
   const mediaPath = isVision
     ? firstToolDisplayValue(input.media_path, input.image_path, input.path, input.image, input.file)
     : '';
@@ -594,6 +614,8 @@ function extractProcessChatMeta(item, name) {
     mediaPath: mediaPath ? String(mediaPath) : '',
     visionMode: visionMode ? String(visionMode) : '',
     isVision,
+    isImageGen,
+    generatedImagePath,
   };
 }
 
@@ -639,6 +661,8 @@ export function buildToolView(item) {
       mediaPath: chatMeta.mediaPath,
       visionMode: chatMeta.visionMode,
       isVision: chatMeta.isVision,
+      isImageGen: chatMeta.isImageGen,
+      generatedImagePath: chatMeta.generatedImagePath,
       failed: isToolFailure(item),
       error: compactToolValue(toolPlainObject(response.error).message || response.summary, TOOL_BLOCK_LIMIT),
       cancelled: item.status === 'cancelled',

@@ -393,6 +393,14 @@ svg {
     height: 14px;
 }
 
+/* image_generate 用与 Settings 里 Image 分组同一枚相框图标（lucide `image`）。 */
+.ico-image-generate {
+    -webkit-mask-image: url("../assets/ui/icons/image-generate.svg");
+    mask-image: url("../assets/ui/icons/image-generate.svg");
+    width: 14px;
+    height: 14px;
+}
+
 .ico-terminal {
     -webkit-mask-image: url("../assets/ui/icons/terminal.png");
     mask-image: url("../assets/ui/icons/terminal.png");
