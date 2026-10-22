@@ -914,15 +914,73 @@
     font-family: var(--conversation-font);
 }
 
+/* 流式正文（IncrementalText 的纯文本）和它定稿后 Markdown 渲染的是同一段话，
+   排版必须完全一致：`.haish-markdown` 的正文段是 14px / line-height 1.5 +
+   -webkit-font-smoothing: antialiased。这里原来写的是 1.65 + 默认平滑——字号没变，
+   但行距差了 2.1px、笔画也略重，定稿那一刻整段会「缩」一下，看起来就像字号变了。
+   同步成 Markdown 的值后，流式与定稿逐行同位。 */
 .chat-timeline-text {
     position: relative;
-    padding: 2px 0;
+    padding: 0;
     color: rgba(222, 229, 246, 0.92);
     font-family: var(--conversation-font);
     font-size: 14px;
-    line-height: 1.65;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+/* 时间轴正文按 Markdown 渲染后，块级元素的默认外边距会把「正文 → 工具卡片」的距离
+   从 8px（.chat-timeline 的 gap）摸到 20px 以上：段落 12px + 最后一个 heading 的
+   6px 都会算进来。这里把首/尾块的外边距归零，行内叙述的上下留白只由 flex gap
+   决定，和改动前一样紧凑。 */
+.chat-timeline-text > .haish-markdown {
+    margin-block: 0;
+}
+
+.chat-timeline-text .haish-markdown > div > :first-child {
+    margin-block-start: 0;
+}
+
+.chat-timeline-text .haish-markdown > div > :last-child {
+    margin-block-end: 0;
+}
+
+/* 叙述文字和它下面那组工具是同一次动作：工具行自带的 32px 点击区里已经有 ~6px
+   空档，再叠 8px 的 flex gap 就像凭空空了一行。紧跟在文字后面的那一行把间距收到
+   4px，其他行间关系不动。 */
+.chat-timeline-text + .aui-tool-timeline,
+.chat-timeline-text + .chat-tool-node {
+    margin-top: -4px;
+}
+
+/* 工具行第一列是展开箭头。按钮自带 7px 左内边距，lucide 的 ChevronRight 在 13px
+   画布里还有 8/24（≈4.33px）的字形留白——stroke 2 + round cap 之后笔画最左沿落在
+   8/24 处——两段加起来让箭头比正文多缩进 12px。这里去掉按钮左内边距，再按字形留白
+   把箭头挪回正文首字那一列，最后往右挪半个首字宽（正文 14px，首字中心在 7px；箭头
+   字形中心本来在画布 6.5px 处，所以再走 4.833px），让箭头刚好对准首字中间。
+   箭头右侧的 8px 间距和按钮 7px 右内边距保持不变；只动时间轴顶层行，展开卡片内部
+   的子行保持原有缩进。 */
+.chat-timeline > .aui-tool-timeline > .aui-tool-trigger,
+.chat-timeline > .chat-tool-node > .aui-tool-call > .aui-tool-trigger {
+    padding-left: 0;
+}
+
+/* 负外边距是为箭头列让出的缩进，它决定卡片内容从哪里开始：这个值不要单独改。 */
+.chat-timeline > .aui-tool-timeline > .aui-tool-trigger > .aui-tool-chevron,
+.chat-timeline > .aui-tool-timeline > .aui-tool-trigger > .aui-tool-chevron-space,
+.chat-timeline > .chat-tool-node > .aui-tool-call > .aui-tool-trigger > .aui-tool-chevron,
+.chat-timeline > .chat-tool-node > .aui-tool-call > .aui-tool-trigger > .aui-tool-chevron-space {
+    margin-left: -4.333px;
+}
+
+/* 对准首字中间只挪箭头的绘制位置（relative offset 不参与排版），工具卡片本身
+   ——图标、标题、命令胶囊和它们之间的间距——一点不动。 */
+.chat-timeline > .aui-tool-timeline > .aui-tool-trigger > .aui-tool-chevron,
+.chat-timeline > .chat-tool-node > .aui-tool-call > .aui-tool-trigger > .aui-tool-chevron {
+    position: relative;
+    left: 4.833px;
 }
 
 .chat-timeline-text.streaming::after,
@@ -2055,6 +2113,11 @@
     -webkit-backdrop-filter: blur(7px);
 }
 
+/* 拖拽平移中不误触背景关闭（点一下才算点背景，按下拖动不算）。 */
+.image-preview-backdrop.is-dragging {
+    cursor: grabbing;
+}
+
 .image-preview-toolbar {
     position: fixed;
     top: 16px;
@@ -2077,6 +2140,8 @@
     justify-content: center;
     cursor: pointer;
     box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+    /* 叠在亮色图片上也要可读：一圈深色描边压住底图。 */
+    outline: 0.5px solid rgba(0, 0, 0, 0.45);
     transition: background .14s ease, transform .14s ease;
 }
 
@@ -2105,15 +2170,34 @@
 }
 
 .image-preview-stage {
-    max-width: calc(100vw - 160px);
-    max-height: calc(100vh - 170px);
+    /* 舞台占满整个视口（再用 max 收一圈边），图片在里面 contain 居中。舞台
+       必须是整屏大：它是拖拽的命中区，也是放大后裁剪框；若缩成图片大小，
+       放大会被裁进 contain 小盒子里。这组上限也是 ImagePreviewOverlay 计算
+       contain 尺寸的依据（它读的就是这里的 computed max-width / max-height），
+       改成别的值时两边要一起改。 */
+    width: 100%;
+    height: 100%;
+    max-width: calc(100vw - 48px);
+    max-height: calc(100vh - 48px);
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    /* 放大后的溢出改由拖拽平移控制，不再出滚动条。 */
+    overflow: hidden;
     border-radius: 12px;
+    cursor: grab;
+    touch-action: none;
+}
+
+.image-preview-backdrop.is-dragging .image-preview-stage {
+    cursor: grabbing;
+}
+
+/* 拖拽中不选中文本/图标；图片本身也一直不可选中。 */
+.image-preview-stage.is-dragging,
+.image-preview-stage img {
+    -webkit-user-drag: none;
+    user-select: none;
 }
 
 .image-preview-stage::-webkit-scrollbar {
@@ -2123,12 +2207,20 @@
 }
 
 .image-preview-stage img {
-    max-width: min(92vw, 1440px);
-    max-height: calc(100vh - 170px);
+    /* 尺寸由组件按 contain 算好后内联给死；这里只兜底，值必须跟舞台上限一致，
+       否则内联尺寸会被再裁一次、把画面挤变形。 */
+    flex: 0 0 auto;
+    max-width: calc(100vw - 48px);
+    max-height: calc(100vh - 48px);
     object-fit: contain;
     transform-origin: center center;
-    transition: transform .12s ease;
+    /* 平移/缩放直接跟随指针，不做过渡；只有缩放条按钮的变化足够小，不需要
+       动画补偿。若要恢复过渡，必须只对按钮触发的缩放开，拖拽时会被 transition
+       拖慢跟手。 */
+    transition: none;
     user-select: none;
+    will-change: transform;
+    pointer-events: none;
 }
 
 .image-preview-zoom {
@@ -2145,6 +2237,8 @@
     align-items: center;
     gap: 8px;
     box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+    /* 叠在亮色图片上也要可读：一圈深色描边压住底图。 */
+    outline: 0.5px solid rgba(0, 0, 0, 0.45);
 }
 
 .image-preview-zoom button {
@@ -2158,6 +2252,22 @@
     font-size: 22px;
     line-height: 1;
     cursor: pointer;
+}
+
+/* 百分比可点击（回 100%），样式上仍和普通读数一致，避免误导成主要控件。 */
+.image-preview-zoom span[role='button'] {
+    min-width: 52px;
+    text-align: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    border-radius: 10px;
+    padding: 4px 6px;
+}
+
+.image-preview-zoom span[role='button']:hover {
+    background: rgba(255, 255, 255, 0.14);
 }
 
 .image-preview-zoom button:hover {

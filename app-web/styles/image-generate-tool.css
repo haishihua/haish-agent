@@ -19,6 +19,17 @@
   background: var(--bg, #0a0d15);
 }
 
+.aui-imagegen-frame[data-previewable='true'],
+.aui-imagegen-image[data-previewable='true'] {
+  cursor: zoom-in;
+}
+
+.aui-imagegen-frame[data-previewable='true']:focus-visible,
+.aui-imagegen-image[data-previewable='true']:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.9);
+  outline-offset: 3px;
+}
+
 .aui-imagegen-image,
 .aui-imagegen-loader {
   display: block;
@@ -35,12 +46,14 @@
   background: linear-gradient(135deg, #0d1018, #101720);
 }
 
-.aui-imagegen-broken {
-  background: repeating-linear-gradient(
-    45deg,
-    rgba(127, 127, 127, 0.10) 0 8px,
-    rgba(127, 127, 127, 0.16) 8px 16px
-  );
+.aui-imagegen-path {
+  margin: 0;
+  max-width: 560px;
+  font-family: var(--code-font, ui-monospace, SFMono-Regular, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(150, 160, 175, 0.95);
+  overflow-wrap: anywhere;
 }
 
 .aui-imagegen-error {

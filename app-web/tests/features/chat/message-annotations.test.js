@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { appShellSource } from '../../helpers/shell-source.js';
 import { annotationError, annotationRectFitsRow, createAnnotationMessageSelector, locateAnnotation, numberAnnotations, readAnnotationDraft, visibleAnnotationDrafts, withoutAcknowledgedAnnotations, writeAnnotationDraft } from '../../../src/features/chat/model/message-annotations.js';
 
 const quote = { id: 'q1', source_message_id: 'a1', text: 'gray', comment: 'Use #282828', start: 5, end: 9, prefix: 'dark ', suffix: ' background' };
 
 test('AppShell forwards the full composer payload and send result, including annotations', async () => {
   // Exercise the actual JSX binding: testing the deploy handler alone missed the dropped ninth argument.
-  const shell = readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
+  const shell = appShellSource();
   const binding = shell.match(/<ChatPanel\b[\s\S]*?\bonSend=\{([^\n]+)\}/);
   assert.ok(binding, 'ChatPanel must have an onSend binding');
   for (const payload of [

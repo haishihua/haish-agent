@@ -7,19 +7,53 @@ import { localImageFileName, normalizeLocalImagePath, segmentLocalImagePaths } f
 // not code.
 const SKIP_CHILDREN = new Set(['code', 'html', 'math', 'inlineMath']);
 
-function imageNode(url, path) {
-  return { type: 'image', url, alt: localImageFileName(path), title: path };
+// 这个插件只把“路径”变成“带标记的图片节点”，不负责算出预览地址：
+// 预览地址依赖这条消息属于哪个会话，是每个 Markdown 实例自己的事。
+//
+// 为什么不能把 resolveImage 作为插件选项传进来（曾经就是那么写的）：
+// streamdown 用一个模块级缓存复用 unified processor，key 是
+// `插件名 + JSON.stringify(选项)`，而 JSON.stringify({resolveImage: 函数}) 恒等于
+// `{}` —— 于是全页所有 Markdown 共用第一个实例的 resolver，所有图片都按第一个
+// 渲染行的会话去取，落到别人会话就是 403（真实故障）。渲染期的事只能在组件里做。
+const IMAGE_MARKER_PREFIX = 'haish-image:';
+
+/** `haish-image:<origin>:<encodeURIComponent(path)>` */
+export function imageMarker(path, origin = 'prose') {
+  return `${IMAGE_MARKER_PREFIX}${origin}:${encodeURIComponent(path)}`;
 }
 
-function tryImage(value, resolveImage) {
+/** 解析 {@link imageMarker} 生成的地址；不是标记就返回 null。 */
+export function parseImageMarker(url) {
+  const text = String(url || '');
+  if (!text.startsWith(IMAGE_MARKER_PREFIX)) return null;
+  const rest = text.slice(IMAGE_MARKER_PREFIX.length);
+  const split = rest.indexOf(':');
+  if (split <= 0) return null;
+  const origin = rest.slice(0, split);
+  if (!['prose', 'code', 'image'].includes(origin)) return null;
+  try {
+    return { origin, path: decodeURIComponent(rest.slice(split + 1)) };
+  } catch {
+    return null;
+  }
+}
+
+function imageNode(path, source) {
+  return {
+    type: 'image',
+    url: imageMarker(path, source),
+    alt: localImageFileName(path),
+    title: path,
+  };
+}
+
+function tryImage(value, source) {
   const path = normalizeLocalImagePath(value);
   if (!path) return null;
-  const url = resolveImage(path);
-  if (!url) return null;
-  return imageNode(url, path);
+  return imageNode(path, source);
 }
 
-function rewriteChildren(node, resolveImage) {
+function rewriteChildren(node) {
   const children = Array.isArray(node.children) ? node.children : null;
   if (!children) return;
   const next = [];
@@ -39,15 +73,13 @@ function rewriteChildren(node, resolveImage) {
           next.push({ ...child, value: segment.value });
           continue;
         }
-        const image = tryImage(segment.path, resolveImage);
-        // The endpoint rejects paths outside this conversation; when it cannot
-        // be resolved the path stays visible text instead of a broken image.
-        next.push(image || { ...child, value: segment.value });
+        // 取不到预览地址时由组件把原路径原样显示回去（见 MarkdownPathImage）。
+        next.push(tryImage(segment.path, 'prose') || { ...child, value: segment.value });
       }
       continue;
     }
     if (child.type === 'inlineCode') {
-      const image = tryImage(child.value, resolveImage);
+      const image = tryImage(child.value, 'code');
       if (image) {
         next.push(image);
         continue;
@@ -55,28 +87,27 @@ function rewriteChildren(node, resolveImage) {
     }
     if (child.type === 'image') {
       const path = normalizeLocalImagePath(child.url);
-      const url = path ? resolveImage(path) : '';
-      if (url) {
-        next.push({ ...child, url, title: child.title || path });
+      if (path) {
+        next.push({ ...child, url: imageMarker(path, 'image'), title: child.title || path });
         continue;
       }
     }
-    if (!SKIP_CHILDREN.has(child.type)) rewriteChildren(child, resolveImage);
+    if (!SKIP_CHILDREN.has(child.type)) rewriteChildren(child);
     next.push(child);
   }
   node.children = next;
 }
 
 /**
- * Remark plugin: render local image paths in model prose as real images.
+ * Remark plugin: turn local image paths in model prose into image nodes.
  *
- * `resolveImage(path)` returns the URL to load (or `''` to leave the path as
- * text). Applied to finished answers only — a half-streamed path would rewrite
- * itself on every token.
+ * The node only carries the path (as a marker URL); the preview URL is built by
+ * `MarkdownPathImage` at render time, from the conversation the row belongs to.
+ * Applied to finished answers only — a half-streamed path would rewrite itself on
+ * every token.
  */
-export function remarkImagePaths({ resolveImage } = {}) {
+export function remarkImagePaths() {
   return (tree) => {
-    if (typeof resolveImage !== 'function') return;
-    rewriteChildren(tree, resolveImage);
+    rewriteChildren(tree);
   };
 }

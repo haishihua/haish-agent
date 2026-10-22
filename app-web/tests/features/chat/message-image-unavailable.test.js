@@ -4,7 +4,11 @@ import { readFileSync } from 'node:fs';
 
 const thumb = readFileSync(new URL('../../../src/features/chat/components/ChatImageThumb.jsx', import.meta.url), 'utf8');
 const row = readFileSync(new URL('../../../src/features/chat/components/ChatMessageRow.jsx', import.meta.url), 'utf8');
-const timeline = readFileSync(new URL('../../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url), 'utf8');
+// 纠偏行在 nodes/UserInputNode.jsx（缩略图的 import 也在那里）。
+const timeline = [
+  readFileSync(new URL('../../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../src/features/chat/components/nodes/UserInputNode.jsx', import.meta.url), 'utf8'),
+].join('\n');
 const css = readFileSync(new URL('../../../styles/chat.css', import.meta.url), 'utf8');
 
 test('a chat image whose file is gone degrades to a labelled placeholder instead of a broken <img>', () => {
@@ -25,7 +29,7 @@ test('both user message bodies and timeline inputs use the shared thumbnail', ()
   assert.match(row, /import \{ ChatImageThumb \} from '\.\/ChatImageThumb\.jsx';/);
   assert.match(row, /<ChatImageThumb image=\{img\} onPreview=\{onPreviewImage\} \/>/);
   assert.doesNotMatch(row, /<img src=\{img\.previewUrl\}/);
-  assert.match(timeline, /import \{ ChatImageThumb \} from '\.\/ChatImageThumb\.jsx';/);
+  assert.match(timeline, /import \{ ChatImageThumb \} from '\.\.?\/ChatImageThumb\.jsx';/);
   assert.match(timeline, /<ChatImageThumb image=\{image\} onPreview=\{onPreviewImage\} \/>/);
   assert.doesNotMatch(timeline, /<img src=\{image\.previewUrl\}/);
 });

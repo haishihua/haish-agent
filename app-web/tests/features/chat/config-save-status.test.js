@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const read = (path) => fs.readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
 const source = read('src/features/chat/components/ChatComposer.jsx');
+const sendControlsSource = read('src/features/chat/components/composer/SendControls.jsx');
 const css = read('styles/chat.css');
 
 test('background configuration saving has no composer status label or leftover styles', () => {
@@ -12,7 +13,7 @@ test('background configuration saving has no composer status label or leftover s
 });
 
 test('background saving alone never disables Send; submit keeps the commit barrier', () => {
-  const send = source.match(/<button type="submit"[^>]*aria-label=\{goal \? 'Run Goal Loop' : 'Send'\}/)?.[0];
+  const send = sendControlsSource.match(/<button type="submit"[^>]*aria-label=\{goal \? 'Run Goal Loop' : 'Send'\}/)?.[0];
   assert.ok(send);
   assert.doesNotMatch(send, /configSync\.pending/);
   assert.match(send, /waitingForSend/);

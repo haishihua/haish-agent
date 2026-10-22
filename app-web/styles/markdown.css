@@ -272,3 +272,124 @@
     color: rgba(150, 160, 175, 0.95);
     overflow-wrap: anywhere;
 }
+
+/* 取图期间先摆一个和生图卡同尺寸、同圆角、同底色的框，图到了就地换成图片。
+   框是 320×320、图本身有 420px 上限，所以两者不会在同一个位置跳尺寸。 */
+.haish-markdown-image {
+    position: relative;
+    /* 和加载好了的图片一样占一整行（`img` 本身是 block、最宽 420px）：
+       同一句话里的文字会自然排到框下面，不变成「图在 口 里」。 */
+    display: block;
+    margin: 8px 0;
+}
+
+.haish-markdown-image[data-phase='loading'],
+.haish-markdown-image[data-phase='slow'] {
+    width: 320px;
+    height: 320px;
+}
+
+/* 图片一直在文档流里加载，只是还没显形：等到 onLoad 才淡入，不会先闪一下空白框。 */
+.haish-markdown-image[data-phase='loading'] .haish-markdown-image-img,
+.haish-markdown-image[data-phase='slow'] .haish-markdown-image-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.haish-markdown-image[data-phase='loaded'] .haish-markdown-image-img {
+    /* 外层已经给了上下间距，里面再给一次会变成双重空隙。 */
+    margin: 0;
+    opacity: 1;
+    transition: opacity 220ms ease-out;
+}
+
+/* 已解码的图复用聊天现有的图片预览：点击/回车打开同一套浮层。 */
+.haish-markdown-image-img[data-previewable='true'] {
+    cursor: zoom-in;
+}
+
+.haish-markdown-image-img[data-previewable='true']:focus-visible {
+    outline: 2px solid rgba(125, 211, 252, 0.9);
+    outline-offset: 3px;
+}
+
+/* 动效和生图卡同一套：img-fx 的 `pixels-organic` 马赛克（共享模块
+   shared/lib/image-generation-effect.js）。框本身只管几何，画面由着色器出。 */
+.haish-markdown-image-frame {
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    overflow: hidden;
+    background: #0a0d15;
+    /* 深色聊天里一块纯暗容易读成“一个润”，描一道极淡的边把框立住。 */
+    box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.14);
+    pointer-events: none;
+}
+
+.haish-markdown-image-mosaic {
+    width: 320px;
+    height: 320px;
+    border-radius: 20px;
+    overflow: hidden;
+}
+
+/* 着色器首帧之前（chunk 还在下载、WebGL 刚初始化）盖的底色，和生图卡一致。
+   显式给 320：img-fx 是按孩子尺寸定画布大小的，百分比在这里算不出确定值。 */
+.haish-markdown-image-loader {
+    display: block;
+    width: 320px;
+    height: 320px;
+    background: linear-gradient(135deg, #0d1018, #101720);
+}
+
+/* 图到了：框和上面的马赛克一起淡出，图片本身已经在下面淡入，
+   两者叠着交接，不会先黑一下再出图。 */
+.haish-markdown-image-frame.is-leaving {
+    animation: haish-markdown-image-frame-out 260ms ease-out forwards;
+}
+
+@keyframes haish-markdown-image-frame-out {
+    to {
+        opacity: 0;
+    }
+}
+
+/* 加载时间过长时才给重试按钮；明确失败已经退回路径，不再显示这个按钮。 */
+.haish-markdown-image-retry {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    transform: translate(-50%, -50%);
+    border-radius: 999px;
+    border: 1px solid rgba(150, 160, 175, 0.45);
+    background: rgba(26, 31, 44, 0.94);
+    color: inherit;
+    cursor: pointer;
+    transition: background 140ms ease-out, border-color 140ms ease-out, transform 140ms ease-out;
+}
+
+.haish-markdown-image-retry:hover {
+    border-color: rgba(176, 186, 204, 0.7);
+    background: rgba(36, 43, 60, 0.96);
+}
+
+.haish-markdown-image-retry:active {
+    transform: translate(-50%, -50%) scale(0.94);
+}
+
+.haish-markdown-image-retry:focus-visible {
+    border-color: rgba(105, 200, 246, 0.55);
+    box-shadow: 0 0 0 1px rgba(105, 200, 246, 0.55);
+    outline: none;
+}

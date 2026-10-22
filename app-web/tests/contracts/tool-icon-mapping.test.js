@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+// 图标映射在 nodes/shared.js（工具节点与时间线共用）。
 const timelineSource = fs.readFileSync(
-  new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url),
+  new URL('../../src/features/chat/components/nodes/shared.js', import.meta.url),
   'utf8',
 );
 const baseStyles = fs.readFileSync(new URL('../../styles/base.css', import.meta.url), 'utf8');

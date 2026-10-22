@@ -9,7 +9,7 @@ import { stripInjectedSkillInstruction } from '../../src/features/chat/model/cha
 // assistant answer keeps plain CommonMark so streamed markdown is untouched.
 const chatMessageRow = readFileSync(new URL('../../src/features/chat/components/ChatMessageRow.jsx', import.meta.url), 'utf8');
 const markdown = readFileSync(new URL('../../src/shared/ui/Markdown.jsx', import.meta.url), 'utf8');
-const appShell = readFileSync(new URL('../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
+const rowBuilder = readFileSync(new URL('../../src/features/app/model/chat-rows.js', import.meta.url), 'utf8');
 
 test('user bubbles opt into hard line breaks', () => {
   assert.match(
@@ -25,18 +25,18 @@ test('assistant answers keep the default soft-break rendering', () => {
     chatMessageRow.indexOf('function ChatMessageRowComponent'),
   );
   // The answer body may pass an image-path resolver (local paths in model prose
-  // become preview images), but never hardBreaks.
-  assert.match(finalAnswer, /<Markdown source=\{text\} imagePathResolver=\{imagePathResolver\} \/>/,
+  // become preview images) plus a preview click handler, but never hardBreaks.
+  assert.match(finalAnswer, /<Markdown source=\{text\} imagePathResolver=\{imagePathResolver\}(?: onPreviewImage=\{onPreviewImage\})?(?: pathImages=\{pathImages\})? \/>/,
     'the answer body must render without hardBreaks');
   assert.doesNotMatch(finalAnswer, /hardBreaks/);
 });
 
 test('an edited-and-resent message keeps its line structure in the user row', () => {
-  // Edit-and-resend starts a new full attempt: AppShell builds its user row from
-  // `task.displayText ?? task.title`, which is the persisted prompt for both a
-  // normal send and a resend. Nothing in that path may fold the typed lines.
+  // Edit-and-resend starts a new full attempt: the row builder (model/chat-rows.js)
+  // builds its user row from `task.displayText ?? task.title`, which is the persisted
+  // prompt for both a normal send and a resend. Nothing in that path may fold the typed lines.
   assert.match(
-    appShell,
+    rowBuilder,
     /role: 'user',\s*\n\s*text: stripInjectedSkillInstruction\(task\.displayText \?\? task\.title\),/,
     'resend rows must reuse the same user row text as normal sends',
   );

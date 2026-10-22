@@ -1,9 +1,7 @@
 import React from 'react';
-import { ArrowUp, BookOpen, Clock, CornerDownLeft, Square, Target } from 'lucide-react';
+import { BookOpen, Clock, CornerDownLeft, Target } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
-import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
-import { ContextTaskChip } from '../../../shared/ui/ContextTaskChip.jsx';
 import { firstPastedDocument } from '../model/document-paste.js';
 import { composePathReferenceDraft, splitPathReferenceDraft, transferredLocalPaths } from '../model/path-references.js';
 import {
@@ -21,18 +19,25 @@ import {
 import { DEFAULT_AGENT_OPTIONS } from '../model/run-catalog.js';
 import { executionConfigError } from '../../workflow/model/execution-config.js';
 import { nodeRuntimeConfigsForWorkflow } from '../../workflow/model/node-runtime-config.js';
+import { ApprovalModePicker } from './ModelPickers.jsx';
+import { AttachmentChips } from './composer/AttachmentChips.jsx';
+import { ComposerToolbar } from './composer/ComposerToolbar.jsx';
+import { SendControls } from './composer/SendControls.jsx';
 import {
-  ApprovalModePicker,
-  ModelPicker,
-} from './ModelPickers.jsx';
+  EMPTY_ANNOTATIONS,
+  EMPTY_HISTORY,
+  EMPTY_SKILLS,
+  PATH_LIMIT_NOTICE,
+  pastedImageFiles,
+  promptAfterSkillToken,
+} from './composer/shared.js';
 import { useConversationRunConfig } from '../../conversations/hooks/useConversationRunConfig.js';
 import { useSchedules } from '../../schedules/hooks/useSchedules.js';
 import { scheduleInvocation, scheduleMenuItems } from '../../schedules/model/schedule.js';
 import { useComposerHistory } from '../hooks/useComposerHistory.js';
 import { LexicalComposerInput } from './LexicalComposerInput.jsx';
-import { WorkflowPicker } from './WorkflowPicker.jsx';
 import { GOAL_COMMAND, goalInvocation, goalMenuItems } from '../model/goal-command.js';
-import { ComposerBorderBeam, MetalActionEffect } from '../../../shared/ui/MotionEffects.jsx';
+import { ComposerBorderBeam } from '../../../shared/ui/MotionEffects.jsx';
 
 /**
  * 输入框只有这一套：聊天详情和工作流运行时（Task Delegation）共用本组件。
@@ -46,9 +51,6 @@ const CHAT_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
 const CHAT_IMAGE_ACCEPTED_MIME = new Set([
   'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
 ]);
-const EMPTY_SKILLS = [];
-const EMPTY_HISTORY = [];
-const EMPTY_ANNOTATIONS = [];
 
 export function ChatComposer({
   scopeId,
@@ -159,12 +161,13 @@ export function ChatComposer({
   const [pathNotice, setPathNotice] = React.useState('');
   React.useEffect(() => setPathNotice(''), [scopeId, draft]);
 
-  const { providerId, legacyProvider, setProviderId, modelId, setModelId, agentId, setAgentId, reasoningEffort, setReasoningEffort, restoreConfig } = usePersistentRunConfig({
+  const runConfig = usePersistentRunConfig({
     selectionStorageKey,
     providerOptions: resolvedProviderOptions,
     agentOptions: resolvedAgentOptions,
     defaultAgentId: resolvedDefaultAgentId,
   });
+  const { providerId, legacyProvider, modelId, agentId, reasoningEffort, restoreConfig } = runConfig;
   const effectiveAgentId = agentId;
   const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
   const resolvedSkills = currentSelection?.skills || EMPTY_SKILLS;
@@ -186,7 +189,6 @@ export function ChatComposer({
   const canUploadDocuments = currentSelection?.canUploadDocuments === true;
   const currentProvider = resolvedProviderOptions.find((item) => item.id === providerId);
   const providerModels = useProviderModels(executionMode === 'bot' ? null : currentProvider);
-  const activeModelOptions = providerModels.options;
   const modelLoading = providerModels.loading;
   const providerRequest = currentProvider?.id || '';
   const providerConfigured = Boolean(currentProvider && providerRequest);
@@ -304,11 +306,7 @@ export function ChatComposer({
   }
 
   function handleComposerPaste(event) {
-    const items = Array.from(event.clipboardData?.items || []);
-    const imageFiles = items
-      .filter((it) => it.kind === 'file' && (it.type || '').toLowerCase().startsWith('image/'))
-      .map((it) => it.getAsFile())
-      .filter(Boolean);
+    const imageFiles = pastedImageFiles(event.clipboardData);
 
     if (imageFiles.length === 0) {
       const clipboard = event.clipboardData;
@@ -349,7 +347,7 @@ export function ChatComposer({
   function insertLocalPaths(text) {
     if (disabled) return;
     if (!inputRef.current?.insertText(text)) {
-      setPathNotice('The reference exceeds the message limit (5,000 characters). Shorten the draft and try again.');
+      setPathNotice(PATH_LIMIT_NOTICE);
     }
   }
 
@@ -574,7 +572,7 @@ export function ChatComposer({
       event?.preventDefault?.(); event?.stopPropagation?.();
       if (skill.name === 'goal') {
         if (disabled || submitPending || goalPendingRef.current) return;
-        const prompt = composerContent.text.match(/^\s*\/[a-z0-9-]*(?:\s+([\s\S]*))?$/i)?.[1] || '';
+        const prompt = promptAfterSkillToken(composerContent.text);
         setGoalSelected(true);
         setSelectedSkillName('');
         selectedSkillNameRef.current = '';
@@ -589,7 +587,7 @@ export function ChatComposer({
     }
     event?.preventDefault?.();
     event?.stopPropagation?.();
-    const prompt = composerContent.text.match(/^\s*\/[a-z0-9-]*(?:\s+([\s\S]*))?$/i)?.[1] || '';
+    const prompt = promptAfterSkillToken(composerContent.text);
     setGoalSelected(false);
     selectedSkillNameRef.current = skill.name;
     skillSelectionPendingRef.current = !prompt.trim() && !composerContent.references.length;
@@ -657,53 +655,17 @@ export function ChatComposer({
           }}
           onRemoveCommand={() => { setGoalSelected(false); setSkillMenuDismissed(false); }}
           attachments={(composerImages.length > 0 || attachment || contextTask) && (
-            <>
-              {contextTask && (
-                <ContextTaskChip task={contextTask} onClear={onClearContextTask} disabled={disabled} />
-              )}
-              {attachment && (
-                <AttachmentFileChip attachment={attachment} uploading={uploading} onClear={clearFile} />
-              )}
-              {composerImages.length > 0 && (
-                <div className="chat-composer-images" aria-label="Pasted images">
-                  {composerImages.map((img) => (
-                    <PortalTooltip
-                      key={img.id}
-                      text={img.error || (img.uploading ? 'Uploading...' : (img.file?.name || 'image'))}
-                      position="above"
-                    >
-                      <div
-                        className={`chat-composer-image-chip ${img.uploading ? 'is-uploading' : ''} ${img.error ? 'has-error' : ''}`}
-                      >
-                        <button
-                          type="button"
-                          className="chat-composer-image-preview-button"
-                          onClick={() => onPreviewImage?.({
-                            src: img.previewUrl || img.path,
-                            title: img.file?.name || img.path || 'Pasted image',
-                          })}
-                          disabled={!img.previewUrl && !img.path}
-                          aria-label="Preview pasted image"
-                        >
-                          {img.previewUrl ? (
-                            <img src={img.previewUrl} alt="" draggable={false} />
-                          ) : (
-                            <span className="chat-composer-image-fallback" aria-hidden="true">!</span>
-                          )}
-                        </button>
-                        {img.uploading && <span className="chat-composer-image-spinner" aria-hidden="true" />}
-                        <button
-                          type="button"
-                          className="chat-composer-image-remove"
-                          onClick={() => removeComposerImage(img.id)}
-                          aria-label="Remove image"
-                        >×</button>
-                      </div>
-                    </PortalTooltip>
-                  ))}
-                </div>
-              )}
-            </>
+            <AttachmentChips
+              contextTask={contextTask}
+              onClearContextTask={onClearContextTask}
+              disabled={disabled}
+              attachment={attachment}
+              uploading={uploading}
+              onClearFile={clearFile}
+              images={composerImages}
+              onRemoveImage={removeComposerImage}
+              onPreviewImage={onPreviewImage}
+            />
           )}
           onRemoveSkill={() => {
             selectedSkillNameRef.current = '';
@@ -729,7 +691,7 @@ export function ChatComposer({
             setSkillMenuIndex(0);
           }}
           onPaste={handleComposerPaste}
-          onPathLimit={() => setPathNotice('The reference exceeds the message limit (5,000 characters). Shorten the draft and try again.')}
+          onPathLimit={() => setPathNotice(PATH_LIMIT_NOTICE)}
           onKeyDown={(event) => {
             if (
               event.key === 'Backspace'
@@ -823,66 +785,30 @@ export function ChatComposer({
             </button>
           </PortalTooltip> : null}
           <div className="chat-config-control">
-            {executionMode === 'bot' ? <WorkflowPicker value={effectiveAgentId} options={resolvedAgentOptions} disabled={runConfigReadOnly || runConfigDisabled} onChange={setAgentId} /> : <ModelPicker
-              value={modelId}
-              reasoningEffort={reasoningEffort}
-              options={activeModelOptions}
-              onChange={setModelId}
-              onReasoningChange={setReasoningEffort}
-              disabled={runConfigDisabled}
-              readOnly={runConfigReadOnly}
-              loading={modelLoading}
-              providerValue={providerId}
+            <ComposerToolbar
+              executionMode={executionMode}
+              runConfig={runConfig}
+              providerModels={providerModels}
               providerOptions={resolvedProviderOptions}
-              onProviderChange={setProviderId}
-              agentValue={effectiveAgentId}
-              agentOptions={resolvedAgentOptions}
-              onAgentChange={changeAgent}
-              agentLoading={agentLoading}
-              agentError={agentError}
-              onAgentRetry={onAgentRetry}
-              agentLocked={agentLocked}
-              agentLockedReason={agentLockedReason}
-            />}
+              agent={{
+                value: effectiveAgentId, options: resolvedAgentOptions, onChange: changeAgent,
+                loading: agentLoading, error: agentError, onRetry: onAgentRetry,
+                locked: agentLocked, lockedReason: agentLockedReason,
+              }}
+              readOnly={runConfigReadOnly}
+              configDisabled={runConfigDisabled}
+            />
           </div>
-          {submitPending ? (
-            <MetalActionEffect active={sendBeamActive}>
-              <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Cancel pending request">
-                <Square className="chat-send-icon chat-stop-icon" fill="currentColor" strokeWidth={0} aria-hidden="true" />
-              </button>
-            </MetalActionEffect>
-          ) : stopError ? (
-            <MetalActionEffect active={sendBeamActive}>
-              <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Stop again">
-                <Square className="chat-send-icon chat-stop-icon" fill="currentColor" strokeWidth={0} aria-hidden="true" />
-              </button>
-            </MetalActionEffect>
-          ) : running && allowRuntimeInput && hasComposerPayload && !pendingCommentCount ? (
-            // Running + user typed a mid-run instruction: replace Stop with Send,
-            // so Stop and Send never appear side by side. Sending clears the
-            // draft and the button flips back to Stop.
-            <MetalActionEffect active={sendBeamActive}>
-              <button type="submit" className="chat-send" disabled={disabled || waitingForSend || runtimeInputPending || goalPending || !canSubmitPayload} aria-label={goal ? 'Run Goal Loop' : 'Add instruction'}>
-                <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
-              </button>
-            </MetalActionEffect>
-          ) : running ? (
-            <MetalActionEffect active={sendBeamActive}>
-              <button type="button" className="chat-send stop" onMouseDown={handleStopPress} onKeyDown={handleStopKey} aria-label="Stop">
-                <Square className="chat-send-icon chat-stop-icon" fill="currentColor" strokeWidth={0} aria-hidden="true" />
-              </button>
-            </MetalActionEffect>
-          ) : (
-            <PortalTooltip text={sendBlockedReason} position="above">
-              <span className="chat-send-tooltip-trigger" tabIndex={sendBlockedReason ? 0 : undefined}>
-                <MetalActionEffect active={sendBeamActive}>
-                  <button type="submit" className="chat-send" disabled={disabled || waitingForSend || goalPending || !configSync.ready || currentSelection?.disabled || !canSubmitPayload || Boolean((!goal || goal.prompt) && modelConfigError)} aria-busy={waitingForSend} aria-label={goal ? 'Run Goal Loop' : 'Send'}>
-                    <ArrowUp className="chat-send-icon" strokeWidth={2.3} aria-hidden="true" />
-                  </button>
-                </MetalActionEffect>
-              </span>
-            </PortalTooltip>
-          )}
+          <SendControls
+            sendState={{
+              submitPending, stopError, running, allowRuntimeInput, hasComposerPayload,
+              pendingCommentCount, disabled, waitingForSend, runtimeInputPending, goalPending,
+              canSubmitPayload, sendBeamActive, modelConfigError, goal, sendBlockedReason,
+              configSync, currentSelection,
+            }}
+            onStopPress={handleStopPress}
+            onStopKey={handleStopKey}
+          />
         </div>
       </div>
     </form>

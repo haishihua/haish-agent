@@ -9,6 +9,7 @@ import { stripInjectedSkillInstruction } from '../model/chat-text.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
 import { localPathReference, splitPathReferenceDraft } from '../model/path-references.js';
+import { normalizeLocalImagePath } from '../../../shared/lib/local-image-path.js';
 import {
   formatElapsedDuration,
   formatMessageClock,
@@ -21,26 +22,18 @@ import {
   ChatTimelineElapsedPill,
 } from './ChatTimelineNodes.jsx';
 import { ChatImageThumb } from './ChatImageThumb.jsx';
+import { ImagePreviewOverlay } from '../../../shared/ui/ImagePreviewOverlay.jsx';
 
-const IMAGE_COPY_MAX_BYTES = 10 * 1024 * 1024;
-const IMAGE_COPY_MAX_PIXELS = 16 * 1024 * 1024;
+// 预览浮层已抽到 shared/ui，聊天附件、Markdown 插图、生图卡共用一份实现。
+export { ImagePreviewOverlay };
 
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error || new Error('Image encoding failed'));
-    reader.readAsDataURL(blob);
-  });
-}
-
-function FinalAnswerMarkdown({ source, streaming, sourceMessageId, imagePathResolver }) {
+function FinalAnswerMarkdown({ source, streaming, sourceMessageId, imagePathResolver, onPreviewImage, pathImages = true }) {
   const text = String(source || '');
 
   if (!text || streaming) return null;
   return (
     <div className="chat-bubble-text" data-annotation-source={sourceMessageId}>
-      {Markdown ? <Markdown source={text} imagePathResolver={imagePathResolver} /> : text}
+      {Markdown ? <Markdown source={text} imagePathResolver={imagePathResolver} onPreviewImage={onPreviewImage} pathImages={pathImages} /> : text}
     </div>
   );
 }
@@ -90,7 +83,8 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
   // 名字来自每轮任务的实际 Agent，而非会话当前默认选择。
   // AppShell 从任务/会话记录里解析；拿不到历史 agent 记录的旧任务才退回 Assistant。
   const agentName = String(message.agentName || '').trim();
-  const visibleText = isUser ? stripInjectedSkillInstruction(message.text) : message.text;
+  const answerText = message.text;
+  const visibleText = isUser ? stripInjectedSkillInstruction(message.text) : answerText;
   const userContent = React.useMemo(() => isUser ? splitPathReferenceDraft(visibleText) : null, [isUser, visibleText]);
   const bodyText = userContent ? userContent.text : visibleText;
   const [copied, setCopied] = React.useState(false);
@@ -133,15 +127,38 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
   const messageImages = Array.isArray(message.images)
     ? message.images.filter((img) => img && (img.previewUrl || img.path))
     : [];
+  // 最终回答的图片来自任务自己的结构化绑定，不从正文路径推断图片内容；
+  // 正文只负责给出结构化路径的插入位置。旧任务没有这个字段时保持原行为。
+  const answerImages = React.useMemo(() => {
+    if (!isAgent || !Array.isArray(message.answerImages)) return [];
+    return message.answerImages
+      .filter((img) => img && (img.previewUrl || img.path))
+      .map((img) => ({
+        ...img,
+        previewUrl: img.previewUrl || chatImagePreviewUrl(img, message.conversationId),
+      }));
+  }, [isAgent, message.answerImages, message.conversationId]);
+  // 结构化回答图片的路径是唯一可信的路径：最终回答正文里出现它时，Markdown
+  // 插件会把它就地替换成图片，不再额外追加到答案尾部。正文里其他图片路径
+  // （例如模型抄错的历史路径）不解析，保留原路径文本。
+  const answerImagePathSet = React.useMemo(
+    () => new Set(answerImages.map((img) => normalizeLocalImagePath(img.path)).filter(Boolean)),
+    [answerImages],
+  );
 
-  // Model answers report artifacts as local paths (`/…/artifacts/images/x.png`).
-  // The preview endpoint re-checks each path against this conversation's roots,
-  // so the resolver only has to build the URL.
+  // Model answers report artifacts as local paths. The preview endpoint re-checks
+  // each path against this conversation's roots, so the resolver only has to build
+  // the URL. 作用域始终取这一行自己的 conversationId；拿不到时不发请求，回退原文。
   const resolveImagePath = React.useMemo(() => {
     const conversationId = String(message.conversationId || '');
-    if (!conversationId) return null;
-    return (path) => chatImagePreviewUrl({ path }, conversationId) || null;
-  }, [message.conversationId]);
+    return (path) => {
+      if (!conversationId) return null;
+      if (answerImages.length > 0 && !answerImagePathSet.has(normalizeLocalImagePath(path))) {
+        return null;
+      }
+      return chatImagePreviewUrl({ path }, conversationId) || null;
+    };
+  }, [message.conversationId, answerImages.length, answerImagePathSet]);
 
   const imageAttachments = messageImages.length > 0 ? (
         <div className="chat-message-images" aria-label="Attached images">
@@ -206,7 +223,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
             <ErrorState title="Task failed" detail={[message.text, actionError].filter(Boolean).join('\n')} retrying={actionBusy || retryPending}
               disabled={actionsDisabled} onRetry={onRetry ? () => perform(() => onRetry(message)) : undefined} />
           ) : isAgent ? (
-            <FinalAnswerMarkdown source={message.text} streaming={message.streaming} sourceMessageId={message.status === 'done' ? message.messageId : undefined} imagePathResolver={resolveImagePath} />
+            <FinalAnswerMarkdown source={answerText} streaming={message.streaming} sourceMessageId={message.status === 'done' ? message.messageId : undefined} imagePathResolver={resolveImagePath} onPreviewImage={onPreviewImage} />
           ) : bodyText ? (
             <div className="chat-bubble-text">
               {(isUser || message.markdown) && Markdown
@@ -274,129 +291,3 @@ export const ChatMessageRow = React.memo(
     && previous.forceTraceOpen === next.forceTraceOpen
   ),
 );
-
-export function ImagePreviewOverlay({ image, onClose }) {
-  const [scale, setScale] = React.useState(1);
-  const [copied, setCopied] = React.useState(false);
-  const copyTimerRef = React.useRef(null);
-  const imageElementRef = React.useRef(null);
-  const src = image?.src || '';
-  const title = image?.title || 'image';
-
-  React.useEffect(() => {
-    if (!image) return undefined;
-    setScale(1);
-    setCopied(false);
-    function handleKeyDown(event) {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose?.();
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [image, onClose]);
-
-  React.useEffect(() => () => {
-    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-  }, []);
-
-  if (!image || !src) return null;
-
-  function adjustScale(delta) {
-    setScale((value) => Math.max(0.25, Math.min(3, Number((value + delta).toFixed(2)))));
-  }
-
-  async function copyImage() {
-    try {
-      const imageElement = imageElementRef.current;
-      await imageElement?.decode?.().catch(() => undefined);
-      const width = Number(imageElement?.naturalWidth) || 0;
-      const height = Number(imageElement?.naturalHeight) || 0;
-      if (!width || !height || width * height > IMAGE_COPY_MAX_PIXELS) {
-        throw new Error('Image dimensions are too large to copy safely');
-      }
-      const response = await fetch(src);
-      if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
-      const blob = await response.blob();
-      if (blob.size > IMAGE_COPY_MAX_BYTES) throw new Error('Image file is too large to copy safely');
-      const dataUrl = await blobToDataUrl(blob);
-      const ok = await window.haish?.copyImage?.(dataUrl);
-      if (!ok) return;
-      setCopied(true);
-      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = setTimeout(() => setCopied(false), 1200);
-    } catch (error) {
-      console.error('image copy failed', error);
-    }
-  }
-
-  function downloadImage() {
-    const link = document.createElement('a');
-    link.href = src;
-    link.download = String(title).split('/').pop() || 'image';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
-
-  return (
-    <div
-      className="image-preview-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Image preview"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose?.();
-      }}
-    >
-      <div className="image-preview-toolbar" aria-label="Image preview actions">
-        <PortalTooltip text={copied ? 'Copied' : 'Copy'} position="below">
-          <button type="button" className={`image-preview-action ${copied ? 'copied' : ''}`} onClick={copyImage} aria-label={copied ? 'Image copied' : 'Copy image'}>
-            {copied ? (
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m5 12 4 4 10-10" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="8" y="8" width="11" height="11" rx="2" />
-                <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
-              </svg>
-            )}
-          </button>
-        </PortalTooltip>
-        <PortalTooltip text="Download" position="below">
-          <button type="button" className="image-preview-action" onClick={downloadImage} aria-label="Download image">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 3v10" />
-            <path d="m7 9 5 5 5-5" />
-            <path d="M5 20h14" />
-          </svg>
-          </button>
-        </PortalTooltip>
-        <PortalTooltip text="Close" position="below">
-          <button type="button" className="image-preview-action image-preview-close" onClick={onClose} aria-label="Close preview">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M18 6 6 18" />
-            <path d="m6 6 12 12" />
-            </svg>
-          </button>
-        </PortalTooltip>
-      </div>
-      <div className="image-preview-stage">
-        <img
-          ref={imageElementRef}
-          src={src}
-          alt=""
-          draggable={false}
-          style={{ transform: `scale(${scale})` }}
-        />
-      </div>
-      <div className="image-preview-zoom" aria-label="Image zoom controls">
-        <button type="button" onClick={() => adjustScale(-0.1)} aria-label="Zoom out">-</button>
-        <span>{Math.round(scale * 100)}%</span>
-        <button type="button" onClick={() => adjustScale(0.1)} aria-label="Zoom in">+</button>
-      </div>
-    </div>
-  );
-}

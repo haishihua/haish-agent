@@ -14,6 +14,10 @@ const composerSource = fs.readFileSync(
   new URL('../../src/features/chat/components/ChatComposer.jsx', import.meta.url),
   'utf8',
 );
+const sendControlsSource = fs.readFileSync(
+  new URL('../../src/features/chat/components/composer/SendControls.jsx', import.meta.url),
+  'utf8',
+);
 const deploySource = fs.readFileSync(
   new URL('../../src/features/tasks/hooks/createDeployHandlers.js', import.meta.url),
   'utf8',
@@ -22,7 +26,7 @@ const deploySource = fs.readFileSync(
 test('runtime input accepts image-only payloads without a queued toast', () => {
   assert.doesNotMatch(composerSource, /if \(!file \|\| running\) return/);
   assert.match(composerSource, /onSend\?\.\(submittedText, null, sendModelId, reasoningEffort, readyImages/);
-  assert.match(composerSource, /running && allowRuntimeInput && hasComposerPayload/);
+  assert.match(sendControlsSource, /running && allowRuntimeInput && hasComposerPayload/);
   // 聊天详情只负责摆消息：输入框自己的状态和发送判定不能又抄一份。
   assert.doesNotMatch(chatPanelSource, /readyImages|hasComposerPayload|sendBeamActive/);
   assert.match(deploySource, /queueTaskInput\([\s\S]*?runningTaskId,[\s\S]*?request\.text,[\s\S]*?request\.imageAttachments,[\s\S]*?request\.displayText/);

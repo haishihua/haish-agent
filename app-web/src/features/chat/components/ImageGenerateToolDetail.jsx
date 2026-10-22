@@ -1,23 +1,20 @@
-import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { chatImagePreviewUrl } from '../../../shared/api/chat-image.js';
+import {
+  IMAGE_EFFECT_CARD_BG,
+  IMAGE_EFFECT_PRESET,
+  IMAGE_EFFECT_THEME,
+  ImageGenerationEffect,
+} from '../../../shared/lib/image-generation-effect.js';
 import { prefersReducedMotion } from '../../../shared/lib/reduced-motion.js';
+import { loadedChatImage, rememberLoadedChatImage } from '../../../shared/lib/chat-image-cache.js';
 import '../../../../styles/image-generate-tool.css';
 
-// Generated images are revealed with img-fx (https://libraries.dev/image): a
-// churning pixel mosaic that dissolves into the finished picture. The effect is
-// code-split because it pulls in WebGL (three.js) and only ever runs for this
-// one tool card.
-const ImageGenerationEffect = lazy(
-  () => import('img-fx').then((module) => ({ default: module.ImageGeneration })),
-);
-const PRESET = 'pixels-organic';
-// The app chrome is dark-only (`--bg: #0a0d15`), but img-fx defaults to
-// `theme="auto"`, which resolves through `matchMedia('(prefers-color-scheme: dark)')`
-// — the *OS* theme, not the app's. On a Mac in Light mode that picked the light
-// tuning: a near-white mosaic in the middle of a dark chat.
-const EFFECT_THEME = 'dark';
-// Same surface as the card, so the shader's contrast logic stays in dark territory.
-const EFFECT_CARD_BG = '#0a0d15';
+// 生成结果用 img-fx 的马赛克揭幕（preset / 主题常量在 shared/lib/image-generation-effect.js，
+// 最终回答里的图片在用同一套）：WebGL chunk 懒加载，只在真的需要时拉下来。
+const PRESET = IMAGE_EFFECT_PRESET;
+const EFFECT_THEME = IMAGE_EFFECT_THEME;
+const EFFECT_CARD_BG = IMAGE_EFFECT_CARD_BG;
 // If the effect never manages to show the picture (no WebGL, slow chunk, shader
 // failure) the card falls back to the plain image instead of hiding it forever.
 const FX_WATCHDOG_MS = 4000;
@@ -26,7 +23,7 @@ const FX_WATCHDOG_MS = 4000;
 // animation, and must not pull the WebGL chunk again.
 const REVEALED_SOURCES = new Set();
 
-export function ImageGenerateToolDetail({ view, conversationId }) {
+export function ImageGenerateToolDetail({ view, conversationId, onPreviewImage }) {
   const effectRef = useRef(null);
   const [imageReady, setImageReady] = useState(false);
   const [imageBroken, setImageBroken] = useState(false);
@@ -38,13 +35,23 @@ export function ImageGenerateToolDetail({ view, conversationId }) {
   // Sticky: once this card owns the dissolve, later re-renders of the same
   // message must not tear the animation down.
   const [revealTarget, setRevealTarget] = useState('');
+  const markImageBroken = () => {
+    setImageReady(false);
+    setImageBroken(true);
+  };
 
   const failed = Boolean(view?.failed);
   const cancelled = Boolean(view?.cancelled);
   const running = Boolean(view?.isRunning) && !failed && !cancelled;
   const alt = String(view?.task || '').trim() || 'Generated image';
-  const previewUrl = chatImagePreviewUrl({ path: view?.generatedImagePath }, conversationId);
-  const showEffect = !failed && (running || (Boolean(revealTarget) && !fxFailed));
+  const imagePath = String(view?.generatedImagePath || '');
+  const previewUrl = chatImagePreviewUrl({ path: imagePath }, conversationId);
+  const showEffect = !failed && !imageBroken && (running || (Boolean(revealTarget) && !fxFailed));
+  const canPreview = Boolean(previewUrl) && !running && !failed && !imageBroken && typeof onPreviewImage === 'function';
+  const openPreview = () => {
+    if (!canPreview) return;
+    onPreviewImage({ src: previewUrl, title: alt });
+  };
 
   // Claim the one allowed play for this image, then keep it for the lifetime of
   // the card. A reopen (or a re-render) never claims again.
@@ -62,10 +69,19 @@ export function ImageGenerateToolDetail({ view, conversationId }) {
       return undefined;
     }
     let active = true;
+    setImageBroken(false);
+    const cached = loadedChatImage(previewUrl);
+    setImageReady(Boolean(cached));
+    if (cached) return undefined;
     const image = new Image();
-    image.onload = () => { if (active) setImageReady(true); };
+    const ready = () => {
+      void rememberLoadedChatImage(previewUrl, image);
+      if (active) setImageReady(true);
+    };
+    image.onload = ready;
     image.onerror = () => { if (active) setImageBroken(true); };
     image.src = previewUrl;
+    if (image.complete && image.naturalWidth > 0) ready();
     return () => {
       active = false;
       image.onload = null;
@@ -99,7 +115,7 @@ export function ImageGenerateToolDetail({ view, conversationId }) {
           fallback={
             running
               ? <div className="aui-imagegen-frame" aria-hidden="true" />
-              : <img className="aui-imagegen-image" src={previewUrl} alt={alt} />
+              : <img className="aui-imagegen-image" src={previewUrl} alt={alt} onError={markImageBroken} onClick={canPreview ? openPreview : undefined} data-previewable={canPreview ? 'true' : undefined} />
           }
         >
           <ImageGenerationEffect
@@ -112,18 +128,28 @@ export function ImageGenerateToolDetail({ view, conversationId }) {
             cardBg={EFFECT_CARD_BG}
             images={running ? undefined : [revealTarget || previewUrl]}
             className="aui-imagegen-frame"
+            onClick={canPreview ? openPreview : undefined}
+            onKeyDown={canPreview ? (event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              openPreview();
+            } : undefined}
+            role={canPreview ? 'button' : undefined}
+            tabIndex={canPreview ? 0 : undefined}
+            aria-label={canPreview ? (alt || 'Preview generated image') : undefined}
+            data-previewable={canPreview ? 'true' : undefined}
           >
             {running
               ? <div className="aui-imagegen-loader" aria-hidden="true" />
-              : <img className="aui-imagegen-image" src={previewUrl} alt={alt} />}
+              : <img className="aui-imagegen-image" src={previewUrl} alt={alt} onError={markImageBroken} />}
           </ImageGenerationEffect>
         </Suspense>
       ) : running ? (
         <div className="aui-imagegen-frame aui-imagegen-loader" aria-hidden="true" />
       ) : previewUrl && !imageBroken ? (
-        <img className="aui-imagegen-image" src={previewUrl} alt={alt} />
-      ) : imageBroken ? (
-        <div className="aui-imagegen-frame aui-imagegen-broken" aria-hidden="true" />
+        <img className="aui-imagegen-image" src={previewUrl} alt={alt} onError={markImageBroken} onClick={canPreview ? openPreview : undefined} data-previewable={canPreview ? 'true' : undefined} />
+      ) : imagePath ? (
+        <p className="aui-imagegen-path">{imagePath}</p>
       ) : null}
     </div>
   );
