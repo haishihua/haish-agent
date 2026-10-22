@@ -15,10 +15,20 @@ const editorSource = fs.readFileSync(
   new URL('../../src/features/settings/components/WorkflowConfigEditor.jsx', import.meta.url),
   'utf8',
 );
-const runtimeSource = fs.readFileSync(
-  new URL('../../src/features/workflow/components/WorkflowRuntimePage.jsx', import.meta.url),
+const runtimePartSource = (path) => fs.readFileSync(
+  new URL(`../../src/features/workflow/components/${path}`, import.meta.url),
   'utf8',
 );
+const runtimePageSource = runtimePartSource('WorkflowRuntimePage.jsx');
+const runtimeSource = [
+  'WorkflowRuntimePage.jsx',
+  'runtime/node-attempts.js',
+  'runtime/WorkflowNodeConversation.jsx',
+  'runtime/WorkflowNodeAttempts.jsx',
+  'runtime/WorkflowNodeDetailHead.jsx',
+  'runtime/WorkflowDetailResizer.jsx',
+  'runtime/WorkflowCanvasOverlays.jsx',
+].map(runtimePartSource).join('\n');
 const flowNodeSource = fs.readFileSync(
   new URL('../../src/features/workflow/components/WorkflowFlowNode.jsx', import.meta.url),
   'utf8',
@@ -231,7 +241,7 @@ test('edges have one appearance and one motion layer for both pages', () => {
   assert.match(runtimeSource, /edgeTypes=\{EDGE_TYPES\}/);
   assert.match(editorSource, /workflowEdgeAppearance\(edge, \{\s*active: isSelected,/);
   assert.match(runtimeSource, /workflowEdgeAppearance\(edge, \{\s*active,/);
-  assert.match(runtimeSource, /traversed,/);
+  assert.match(runtimePageSource, /traversed,/);
   // 两层画法：glow 只糊自己那一层（blur 5px），核心线永远是清晰的——不许给核心线加 filter；
   // 动效（沿线流动亮斑）也只在基础层写一次，运行层不再留一份，老的虚线流动已经删掉。
   assert.match(baseStyles, /\.workflow-canvas \.workflow-edge-glow \{\n {4}filter: blur\(3px\);/);
@@ -252,7 +262,7 @@ test('the canvas background, dot grid and edge roles stay in the shared layer', 
   assert.match(baseStyles, /\.workflow-canvas \{[^}]*radial-gradient\(ellipse at 15% 35%, rgba\(22, 87, 92, 0\.055\), transparent 52%\)/);
   // dot grid 很淡，而且两页同一个值（配置页与运行页各写一次、必须一致）。
   assert.match(editorSource, /<Background gap=\{30\} size=\{1\.2\} color="rgba\(150, 184, 240, 0\.07\)" \/>/);
-  assert.match(runtimeSource, /<Background gap=\{30\} size=\{1\.2\} color="rgba\(150, 184, 240, 0\.07\)" \/>/);
+  assert.match(runtimePageSource, /<Background gap=\{30\} size=\{1\.2\} color="rgba\(150, 184, 240, 0\.07\)" \/>/);
   assert.doesNotMatch(editorSource, /rgba\(176, 206, 255, 0\.07\)/);
   assert.doesNotMatch(runtimeSource, /rgba\(176, 206, 255, 0\.07\)/);
   // 边标签的文案（Need retry / Max retries）只在分支元数据里给一份。

@@ -7,6 +7,10 @@ const editorSource = fs.readFileSync(
   new URL('../../src/features/settings/components/WorkflowConfigEditor.jsx', import.meta.url),
   'utf8',
 );
+const nodeFieldsSource = fs.readFileSync(
+  new URL('../../src/features/settings/components/workflow-editor/NodeFields.jsx', import.meta.url),
+  'utf8',
+);
 const flowNodeSource = fs.readFileSync(
   new URL('../../src/features/workflow/components/WorkflowFlowNode.jsx', import.meta.url),
   'utf8',
@@ -16,10 +20,10 @@ test('workflow editor exposes approval and loop branch ports with an optional lo
   assert.match(flowNodeSource, /human_approval: \['approved', 'rejected'\]/);
   assert.match(flowNodeSource, /loop: \['retry', 'exhausted'\]/);
   assert.match(editorSource, /baseType === 'loop'/);
-  assert.match(editorSource, /selectedNode\.type === 'loop'/);
+  assert.match(nodeFieldsSource, /selectedNode\.type === 'loop'/);
   assert.match(editorSource, /max_loops: 3/);
-  assert.match(editorSource, /label: 'Unlimited'/);
-  assert.match(editorSource, /max_loops: value === 'unlimited' \? null : 3/);
+  assert.match(nodeFieldsSource, /label: 'Unlimited'/);
+  assert.match(nodeFieldsSource, /max_loops: value === 'unlimited' \? null : 3/);
   assert.doesNotMatch(editorSource, /max_attempts/);
 });
 

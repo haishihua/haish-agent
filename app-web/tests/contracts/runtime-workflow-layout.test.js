@@ -10,18 +10,33 @@ import {
   workflowToolCallsForAttempt,
   workflowTraversedLoopNodeIds,
 } from '../../src/features/workflow/model/runtime-workflow-layout.js';
+import { appShellSource as readAppShellSource } from '../helpers/shell-source.js';
 import { runtimeEventToLog } from '../../src/features/tasks/model/runtime-events.js';
+import { taskStreamHandlerSource } from '../helpers/handler-source.js';
 
-const runtimeSource = fs.readFileSync(
-  new URL('../../src/features/workflow/components/WorkflowRuntimePage.jsx', import.meta.url),
+const runtimePartSource = (path) => fs.readFileSync(
+  new URL(`../../src/features/workflow/components/${path}`, import.meta.url),
   'utf8',
 );
+const runtimeSource = [
+  'WorkflowRuntimePage.jsx',
+  'runtime/node-attempts.js',
+  'runtime/WorkflowNodeConversation.jsx',
+  'runtime/WorkflowNodeAttempts.jsx',
+  'runtime/WorkflowNodeDetailHead.jsx',
+  'runtime/WorkflowDetailResizer.jsx',
+  'runtime/WorkflowCanvasOverlays.jsx',
+].map(runtimePartSource).join('\n');
 const statusSource = fs.readFileSync(
   new URL('../../src/features/workflow/model/runtime-status.js', import.meta.url),
   'utf8',
 );
 const editorSource = fs.readFileSync(
   new URL('../../src/features/settings/components/WorkflowConfigEditor.jsx', import.meta.url),
+  'utf8',
+);
+const dropCanvasSource = fs.readFileSync(
+  new URL('../../src/features/settings/components/workflow-editor/WorkflowDropCanvas.jsx', import.meta.url),
   'utf8',
 );
 const flowNodeSource = fs.readFileSync(
@@ -48,12 +63,11 @@ const baseStyles = fs.readFileSync(
   new URL('../../styles/base.css', import.meta.url),
   'utf8',
 );
-const taskStreamSource = fs.readFileSync(
-  new URL('../../src/features/tasks/hooks/createTaskStreamHandlers.js', import.meta.url),
-  'utf8',
-);
-const appShellSource = fs.readFileSync(
-  new URL('../../src/features/app/AppShell.jsx', import.meta.url),
+const taskStreamSource = taskStreamHandlerSource();
+const appShellSource = readAppShellSource();
+// 时间线行（traceTimeline 等）在 model/chat-rows.js 里装配。
+const rowBuilderSource = fs.readFileSync(
+  new URL('../../src/features/app/model/chat-rows.js', import.meta.url),
   'utf8',
 );
 
@@ -197,8 +211,8 @@ test('the editor keeps edges attached while nodes are dragged and the runtime st
   // 改图（拖排布）只在配置页发生：运行页不可拖，也不写回位置。
   assert.match(runtimeSource, /nodesDraggable=\{false\}/);
   assert.doesNotMatch(runtimeSource, /onNodeDragStop/);
-  assert.match(editorSource, /useNodesState\(nodes\)/);
-  assert.match(editorSource, /draggedNodePositionsRef\.current\.get\(node\.id\)/);
+  assert.match(dropCanvasSource, /useNodesState\(nodes\)/);
+  assert.match(dropCanvasSource, /draggedNodePositionsRef\.current\.get\(node\.id\)/);
   assert.doesNotMatch(editorSource, /currentById/);
 });
 
@@ -241,8 +255,8 @@ test('live traces stay visible while their tool cards remain collapsed', () => {
   // trace into standalone user bubbles / per-segment agent rows — the whole
   // exchange stays inside one assistant bubble, with the correction rendered
   // inline by the timeline.
-  assert.doesNotMatch(appShellSource, /traceOpen: !isLast && streaming/);
-  assert.match(appShellSource, /traceTimeline: timelineItems,/);
+  assert.doesNotMatch(rowBuilderSource, /traceOpen: !isLast && streaming/);
+  assert.match(rowBuilderSource, /traceTimeline: timelineItems,/);
   assert.match(chatTimelineSource, /item\.kind === 'user_input'/);
   assert.match(chatTimelineSource, /ChatTimelineUserInputNode/);
 });

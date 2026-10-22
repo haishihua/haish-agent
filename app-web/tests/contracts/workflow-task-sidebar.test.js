@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { taskStreamHandlerSource } from '../helpers/handler-source.js';
 import {
   isTaskLive,
   isTaskSettled,
@@ -28,15 +29,15 @@ const {
 const { getTaskPillMeta } = await import('../../src/features/tasks/model/task-pill.js');
 const projectNodeSource = fs.readFileSync(new URL('../../src/features/conversations/components/ProjectNode.jsx', import.meta.url), 'utf8');
 const taskCardsSource = fs.readFileSync(new URL('../../src/features/conversations/components/ConversationTaskCards.jsx', import.meta.url), 'utf8');
-const appShellSource = fs.readFileSync(new URL('../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
+const appShellSource = [
+  fs.readFileSync(new URL('../../src/features/app/AppShell.jsx', import.meta.url), 'utf8'),
+  fs.readFileSync(new URL('../../src/features/app/hooks/useShellHandlers.js', import.meta.url), 'utf8'),
+].join('\n');
 const deployHandlersSource = fs.readFileSync(
   new URL('../../src/features/tasks/hooks/createDeployHandlers.js', import.meta.url),
   'utf8',
 );
-const streamHandlersSource = fs.readFileSync(
-  new URL('../../src/features/tasks/hooks/createTaskStreamHandlers.js', import.meta.url),
-  'utf8',
-);
+const streamHandlersSource = taskStreamHandlerSource();
 
 test('workflow sidebar flattens conversation storage into newest-first task rows', () => {
   const entries = projectWorkflowTasks({

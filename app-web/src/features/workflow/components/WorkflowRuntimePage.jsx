@@ -2,9 +2,7 @@ import React from 'react';
 import { WorkflowRuntimeConfig } from './WorkflowRuntimeConfig.jsx';
 import { workflowNodeRuntimeConfig } from '../model/node-runtime-config.js';
 import { approvalStore } from '../../approvals/model/approval-store.js';
-import { AskUserInlineForm } from '../../chat/components/AskUserInlineForm.jsx';
 import { workflowAttentionRequest } from '../model/workflow-attention.js';
-import { agentIconNameForAgentId } from '../../agents/model/agent-settings.js';
 import { workflowControlEvents } from '../model/workflow-control-events.js';
 import { reconcileRuntimeFlowNodes } from '../model/runtime-flow-nodes.js';
 import {
@@ -12,33 +10,17 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
-  useReactFlow,
-  useStore,
 } from '@xyflow/react';
-import { WorkflowApprovalInline } from '../../approvals/components/ApprovalOverlay.jsx';
-import { buildChatTimeline } from '../../chat/model/chat-timeline.js';
 import { workflowNodeAgentName } from '../../chat/model/assistant-name.js';
-import { isTerminalTaskStatus, normalizeTaskStatus, taskFirstStreamTimestamp } from '../../tasks/model/task-runtime.js';
-import { isTaskSettled } from '../../conversations/model/conversation-status.js';
+import { normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
 import { workflowRuntimeDisplayStatus, workflowRuntimeNodeStatus } from '../model/runtime-status.js';
-import { workflowApprovalInput } from '../model/workflow-approval-markdown.js';
 import {
   layoutRuntimeWorkflow,
-  mergeWorkflowNodeAttempts,
   workflowArrangementPositions,
   workflowNodeOutcomesFromEvents,
-  workflowResultForAttempt,
-  workflowToolCallsForAttempt,
   workflowTraversedLoopNodeIds,
 } from '../model/runtime-workflow-layout.js';
 import { useWorkflowCanvasWidth } from '../hooks/useWorkflowCanvasWidth.js';
-import {
-  typeLabelForWorkflowNode,
-  workflowArgumentsText,
-  workflowInputDisplayText,
-} from '../model/workflow-catalog.js';
-import { ChatMessageRow } from '../../chat/components/ChatMessageRow.jsx';
-import { ChatTimelineChevron } from '../../chat/components/ChatTimelineNodes.jsx';
 import { ScrollToBottomButton } from '../../../shared/ui/ScrollToBottomButton.jsx';
 import { workflowRouteHandles, workflowUsedSideHandles } from '../model/workflow-canvas-editing.js';
 import { useWorkflowCanvasPreferences } from '../hooks/useWorkflowCanvasPreferences.js';
@@ -54,19 +36,13 @@ import {
   workflowNodePorts,
   workflowNodeAccent,
 } from './WorkflowFlowNode.jsx';
+import { nodeAttempts, visibleNodeAttempts } from './runtime/node-attempts.js';
+import { WorkflowNodeDetailHead } from './runtime/WorkflowNodeDetailHead.jsx';
+import { WorkflowNodeAttempts } from './runtime/WorkflowNodeAttempts.jsx';
+import { WorkflowDetailResizer } from './runtime/WorkflowDetailResizer.jsx';
+import { FitWorkflow, RuntimeSelectionLink } from './runtime/WorkflowCanvasOverlays.jsx';
 
 const EMPTY_OPTIONS = [];
-
-const NODE_ICON = {
-  start: 'play',
-  agent: 'workflow-agent',
-  llm: 'workflow-llm',
-  tool: 'workflow-tool',
-  condition: 'workflow-condition',
-  human_approval: 'workflow-approval',
-  loop: 'workflow-loop',
-  output: 'circle-check',
-};
 
 const STATUS_COPY = {
   pending: 'Waiting',
@@ -92,41 +68,6 @@ function workflowIdentity(workflow) {
 const NODE_TYPES = { workflowNode: WorkflowFlowNode };
 const EDGE_TYPES = { workflowEdge: WorkflowCanvasEdge };
 
-function FitWorkflow({ workflowKey, detailOpen, layoutKey }) {
-  const { fitView } = useReactFlow();
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => {
-      fitView({ ...workflowFitOptions(workflowKey.split(':')[0], WORKFLOW_FIT_OPTIONS), duration: 220 });
-    }, 40);
-    return () => window.clearTimeout(timer);
-  }, [detailOpen, fitView, layoutKey, workflowKey]);
-  return null;
-}
-
-// Screen-space link follows pan/zoom and the measured node, without changing graph topology.
-function RuntimeSelectionLink({ nodeId }) {
-  const node = useStore((state) => state.nodeLookup.get(nodeId));
-  const transform = useStore((state) => state.transform);
-  const width = useStore((state) => state.width);
-  const height = useStore((state) => state.height);
-  const uid = React.useId().replace(/:/g, '');
-  if (!node?.measured?.width || !width) return null;
-  const [tx, ty, zoom] = transform;
-  const position = node.internals.positionAbsolute;
-  const x = (position.x + node.measured.width) * zoom + tx;
-  const y = (position.y + (node.measured.height || 64) / 2) * zoom + ty;
-  if (x < 0 || x > width || y < 0 || y > height) return null;
-  const endY = 64;
-  const bend = x + (width - x) * 0.55;
-  return (
-    <svg className="workflow-selection-link" width="100%" height="100%" aria-hidden="true">
-      <defs><linearGradient id={uid} x1="0" x2="1"><stop stopColor="var(--workflow-detail-accent)" stopOpacity="0.12" /><stop offset="1" stopColor="var(--workflow-detail-accent)" stopOpacity="0.38" /></linearGradient></defs>
-      <path d={`M ${x} ${y} C ${bend} ${y}, ${width - 40} ${endY + 20}, ${width} ${endY - 16} L ${width} ${endY + 16} C ${width - 40} ${endY + 36}, ${bend} ${y + 8}, ${x} ${y} Z`} fill={`url(#${uid})`} />
-      <path d={`M ${x} ${y} C ${bend} ${y}, ${width - 40} ${endY + 20}, ${width} ${endY}`} fill="none" stroke="var(--workflow-detail-accent)" strokeOpacity="0.65" />
-    </svg>
-  );
-}
-
 function eventNodeId(event) {
   return String(event?.workflowNodeId || event?.workflow_node_id || event?.nodeId || event?.node_id || '');
 }
@@ -145,172 +86,8 @@ function activeNodeIdsFromEvents(eventLog) {
   return active;
 }
 
-function nodeAttempts(task, nodeId) {
-  const attempts = [];
-  let active = null;
-  for (const event of Array.isArray(task?.eventLog) ? task.eventLog : []) {
-    const directNodeId = eventNodeId(event);
-    if (event.type === 'workflow_node_started' && directNodeId === nodeId) {
-      active = {
-        id: `${nodeId}-${attempts.length + 1}`,
-        events: [event],
-        startedAt: event.timestamp || null,
-        finishedAt: null,
-      };
-      attempts.push(active);
-      continue;
-    }
-    if (!active) continue;
-    if (directNodeId && directNodeId !== nodeId) continue;
-    active.events.push(event);
-    if (event.type === 'workflow_node_finished' && directNodeId === nodeId) {
-      active.finishedAt = event.timestamp || null;
-      active = null;
-    }
-  }
-  const result = task?.workflowRun?.nodes?.[nodeId] || null;
-  const persisted = Array.isArray(task?.workflowRun?.node_attempts?.[nodeId])
-    ? task.workflowRun.node_attempts[nodeId]
-    : [];
-  const merged = mergeWorkflowNodeAttempts(persisted, attempts, nodeId);
-  if (!merged.length && result) {
-    merged.push({ id: `${nodeId}-1`, events: [], result, startedAt: result.started_at || null, finishedAt: result.finished_at || null });
-  }
-  return merged;
-}
-
-function attemptTask(task, attempt, result) {
-  const events = attempt?.events || [];
-  return {
-    ...task,
-    eventLog: events.filter((event) => !event.type?.startsWith('workflow_')),
-    toolCalls: workflowToolCallsForAttempt(task?.toolCalls, events),
-    answerText: result?.summary || '',
-  };
-}
-
-function detailText(value, fallback = '') {
-  if (value == null || value === '') return fallback;
-  if (typeof value === 'string') return value;
-  return workflowArgumentsText(value);
-}
-
-function nodeConversationInputValue(node, attempt, result) {
-  const startedEvent = attempt?.events?.find((event) => event.type === 'workflow_node_started');
-  const inputEvent = node.type === 'tool'
-    ? attempt?.events?.find((event) => (
-      event?.toolInput != null
-      || event?.inputSummary
-      || event?.value != null
-      || event?.json != null
-    )) || startedEvent
-    : startedEvent;
-  return inputEvent?.nodeInput
-    ?? inputEvent?.toolInput
-    ?? inputEvent?.inputSummary
-    ?? inputEvent?.value
-    ?? inputEvent?.json
-    ?? inputEvent?.message
-    ?? result?.input
-    ?? result?.prompt
-    ?? (result?.arguments != null ? { tool_name: result?.tool_name || node.tool_name, arguments: result.arguments } : null)
-    ?? result?.reviewed_input
-    ?? '';
-}
-
-function timestampMs(value) {
-  if (typeof value === 'number') return value;
-  const parsed = Date.parse(String(value || ''));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function NodeConversation({ node, task, attempt, result, status, running, showApproval, onRetry, agentName = '', pendingInput = null }) {
-  const scopedTask = React.useMemo(() => attemptTask(task, attempt, result), [attempt, result, task]);
-  const timelineStatus = running ? 'running' : normalizeTaskStatus(isTerminalTaskStatus(result?.status) ? result.status : status);
-  const timeline = React.useMemo(
-    () => buildChatTimeline(scopedTask, timelineStatus),
-    [scopedTask, timelineStatus],
-  );
-  const timelineItems = React.useMemo(
-    () => (Array.isArray(timeline?.items) ? timeline.items : []),
-    [timeline?.items],
-  );
-  const resultText = detailText(result?.error || result?.summary || result?.text || result?.output);
-  const inputValue = React.useMemo(
-    () => nodeConversationInputValue(node, attempt, result),
-    [attempt, node, result],
-  );
-  const inputText = React.useMemo(() => workflowInputDisplayText(inputValue), [inputValue]);
-  const createdAt = timestampMs(attempt?.startedAt || result?.started_at || task?.createdAt);
-  const completedAt = running
-    ? null
-    : timestampMs(attempt?.finishedAt || result?.finished_at || task?.completedAt) || null;
-  const inputMessage = React.useMemo(() => ({
-    id: `${node.id}-${attempt?.id || 'pending'}-user`,
-    role: 'user',
-    text: inputText,
-    markdown: true,
-    status: timelineStatus,
-    createdAt,
-    completedAt,
-  }), [attempt?.id, completedAt, createdAt, inputText, node.id, timelineStatus]);
-  const assistantMessage = React.useMemo(() => ({
-    id: `${node.id}-${attempt?.id || 'pending'}-agent`,
-    taskId: task?.taskId || '',
-    conversationId: task?.conversationId || '',
-    role: 'agent',
-    // 回复气泡署名节点配置里的 agent；非 agent 节点没名字，气泡显示 "Assistant"。
-    agentName,
-    text: running ? '' : resultText,
-    traceTimeline: timelineItems,
-    traceLatestTodos: timeline?.latestTodos || null,
-    status: timelineStatus,
-    streaming: running,
-    createdAt,
-    completedAt,
-    firstTokenAt: taskFirstStreamTimestamp(scopedTask),
-  }), [agentName, attempt?.id, completedAt, createdAt, node.id, resultText, running, scopedTask, task?.conversationId, task?.taskId, timeline?.latestTodos, timelineItems, timelineStatus]);
-  const hasAskUser = (items) => items.some((item) => (
-    String(item.toolName || '').toLowerCase() === 'ask_user'
-    || hasAskUser(item.children || item.tools || [])
-  ));
-  const showAssistant = node.type !== 'human_approval'
-    ? running || Boolean(resultText) || timelineItems.length > 0
-    : Boolean(resultText) || timelineItems.length > 0;
-
-  if (node.type === 'human_approval') {
-    const reviewedInput = workflowApprovalInput(inputValue);
-    const resolvedRequest = status === 'approval' && showApproval ? null : {
-      request_id: `${task?.taskId || 'task'}-${node.id}-${attempt?.id || 'attempt'}`,
-      title: reviewedInput?.title || node.label || 'Approval required',
-      summaryText: reviewedInput?.summaryText || inputText || resultText,
-      attempt: result?.attempt || result?.structured?.attempt || 1,
-      decision: result?.decision || result?.structured?.decision || 'cancelled',
-      feedback: result?.feedback || result?.structured?.feedback || '',
-    };
-    return (
-      <WorkflowApprovalInline
-        nodeId={node.id}
-        taskId={task?.taskId || ''}
-        conversationId={task?.conversationId || ''}
-        allowLiveRequest={showApproval}
-        resolvedRequest={resolvedRequest}
-        onRetry={onRetry}
-        createdAt={createdAt}
-        completedAt={completedAt}
-      />
-    );
-  }
-
-  return (
-    <>
-      {inputText ? <ChatMessageRow message={inputMessage} /> : null}
-      {showAssistant ? <ChatMessageRow message={assistantMessage} onRetry={onRetry} /> : null}
-      {pendingInput && !hasAskUser(timelineItems) ? <AskUserInlineForm taskId={task?.taskId} conversationId={task?.conversationId} toolCallId={pendingInput.tool_call_id || ''} active /> : null}
-    </>
-  );
-}
-
+// 面板 = 头部（WorkflowNodeDetailHead）+ 执行列表（WorkflowNodeAttempts）+ 拖拽条
+// （WorkflowDetailResizer）。这里只留页签/折叠/滚动这些必须跨子组件存活的状态。
 function NodeDetail({ node, task, run, status, attention = null, onClose, onResize, onResizeBy, onRetry, agentName = '', agentOptions = [], providerOptions = [], runtimeConfig = {}, onRuntimeConfigChange, configReadOnly = false }) {
   const detailBodyRef = React.useRef(null);
   const [historyOpen, setHistoryOpen] = React.useState(false);
@@ -351,15 +128,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
   };
   const attempts = React.useMemo(() => nodeAttempts(task, node.id), [node.id, task]);
   const latestResult = run?.nodes?.[node.id] || null;
-  const visibleAttempts = attempts.length > 0
-    ? attempts
-    : (latestResult ? [{
-        id: `${node.id}-persisted`,
-        startedAt: latestResult.started_at,
-        finishedAt: latestResult.finished_at,
-        events: [],
-      }] : []);
-  const historicalAttempts = visibleAttempts.slice(0, -1);
+  const visibleAttempts = visibleNodeAttempts(attempts, latestResult, node.id);
   const latestAttempt = visibleAttempts.at(-1) || null;
   const canRetry = onRetry
     && ['done', 'failed', 'cancelled'].includes(normalizeTaskStatus(task?.status))
@@ -367,110 +136,38 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
     && ['agent', 'llm', 'tool', 'human_approval'].includes(node.type);
   const retryLatest = React.useCallback(() => onRetry?.(node.id), [node.id, onRetry]);
 
-  const renderAttempt = (attempt, index, isLatestAttempt) => {
-    const attemptNumber = attempt?.result?.attempt || index + 1;
-    return (
-      <section className={`workflow-detail-attempt${isLatestAttempt ? ' is-latest' : ''}`} key={attempt?.id || `${node.id}-${index}`}>
-        {!isLatestAttempt ? (
-          <div className="workflow-detail-attempt-label">
-            Attempt #{attemptNumber}
-          </div>
-        ) : null}
-        {attempt?.result?.runtime_config ? <p className="workflow-runtime-actual-config">Executed with {attempt.result.runtime_config.model_id || 'provider default'} · thinking {attempt.result.runtime_config.reasoning_effort || 'Unspecified'}</p> : null}
-        <NodeConversation
-          node={node}
-          task={task}
-          attempt={attempt}
-          result={workflowResultForAttempt(attempt, latestResult, isLatestAttempt, attemptNumber)}
-          status={status}
-          running={isLatestAttempt && (status === 'running' || status === 'waiting_input' || status === 'approval')}
-          showApproval={isLatestAttempt && status === 'approval' && !isTaskSettled(task)}
-          onRetry={isLatestAttempt && canRetry ? retryLatest : null}
-          agentName={agentName}
-          pendingInput={isLatestAttempt && attention?.status === 'waiting_input' ? attention.request : null}
-        />
-      </section>
-    );
-  };
-
   return (
     <aside className={`workflow-detail-panel is-${status}${isAgent ? ' has-runtime-tabs' : ''}`} data-node-id={node.id} aria-label={`${node.label || node.id} execution details`}>
-      <div
-        className="workflow-detail-resizer"
-        role="separator"
-        aria-label="Resize node execution details"
-        aria-orientation="vertical"
-        tabIndex={0}
-        onPointerDown={(event) => {
-          event.preventDefault();
-          event.currentTarget.setPointerCapture(event.pointerId);
-          onResize?.(event.clientX);
-        }}
-        onPointerMove={(event) => {
-          if (event.currentTarget.hasPointerCapture(event.pointerId)) onResize?.(event.clientX);
-        }}
-        onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
-        onPointerCancel={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
-        onKeyDown={(event) => {
-          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-          event.preventDefault();
-          onResizeBy?.(event.key === 'ArrowLeft' ? 24 : -24);
-        }}
+      <WorkflowDetailResizer onResize={onResize} onResizeBy={onResizeBy} />
+      <WorkflowNodeDetailHead
+        node={node}
+        status={status}
+        statusCopy={STATUS_COPY[status] || status}
+        isAgent={isAgent}
+        agentOptions={agentOptions}
+        detailTab={detailTab}
+        tabId={tabId}
+        selectTab={selectTab}
+        onClose={onClose}
       />
-      <header className="workflow-detail-head">
-        <span className="workflow-detail-icon" aria-hidden="true">
-          <AppIcon name={node.type === 'agent' ? agentIconNameForAgentId(node.agent_id, agentOptions) : NODE_ICON[node.type] || 'box'} size={26} />
-        </span>
-        <span className="workflow-detail-heading">
-          <span className="workflow-detail-name"><strong>{node.label || typeLabelForWorkflowNode(node.type)}</strong></span>
-          <span className="workflow-detail-subtitle"><i className={`workflow-detail-status-dot is-${status}`} aria-hidden="true" />{typeLabelForWorkflowNode(node.type)} · {isAgent && status === 'pending' ? 'Ready' : STATUS_COPY[status] || status}</span>
-        </span>
-        <button type="button" className="workflow-detail-close" onClick={onClose} aria-label="Close node details">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
-        </button>
-      </header>
-
-      {isAgent ? <div className="workflow-detail-tabs" role="tablist" aria-label="Node details">
-        {['config', 'result'].map((tab) => <button key={tab} type="button" role="tab" id={`${tabId}-${tab}-tab`} aria-controls={`${tabId}-panel`} aria-selected={detailTab === tab} tabIndex={detailTab === tab ? 0 : -1} onClick={() => selectTab(tab)} onKeyDown={(event) => {
-          if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-            event.preventDefault();
-            const next = event.key === 'Home' ? 'config' : event.key === 'End' ? 'result' : tab === 'config' ? 'result' : 'config';
-            selectTab(next);
-            document.getElementById(`${tabId}-${next}-tab`)?.focus();
-          }
-        }}>{tab === 'config' ? 'Runtime Config' : 'Run Result'}</button>)}
-      </div> : null}
       <div className="workflow-detail-scroll-region">
         <div ref={detailBodyRef} className={`workflow-detail-body chat-message-list${showResult ? '' : ' is-config'}`} aria-live="polite" role={isAgent ? 'tabpanel' : undefined} id={isAgent ? `${tabId}-panel` : undefined} aria-labelledby={isAgent ? `${tabId}-${detailTab}-tab` : undefined}>
           {isAgent && !showResult ? <WorkflowRuntimeConfig value={runtimeConfig} providerOptions={providerOptions} readOnly={configReadOnly} onChange={onRuntimeConfigChange} /> : null}
-          {showResult ? <>
-          {status === 'waiting_input' ? (
-            <div className="workflow-detail-waiting" role="status">
-              <AppIcon name="message" size={18} />
-              <span><strong>Waiting for your input</strong><small>Answer the question below to continue this node.</small></span>
-            </div>
+          {showResult ? (
+            <WorkflowNodeAttempts
+              node={node}
+              task={task}
+              attempts={attempts}
+              latestResult={latestResult}
+              status={status}
+              attention={attention}
+              agentName={agentName}
+              canRetry={canRetry}
+              retryLatest={retryLatest}
+              historyOpen={historyOpen}
+              onHistoryToggle={setHistoryOpen}
+            />
           ) : null}
-          {historicalAttempts.length ? (
-            <details
-              className="workflow-detail-history"
-              open={historyOpen}
-              onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
-            >
-              <summary className="workflow-detail-attempt-label workflow-detail-history-summary">
-                <span className="workflow-detail-history-trigger">
-                  <span>Previous attempts ({historicalAttempts.length})</span>
-                  <ChatTimelineChevron open={historyOpen} />
-                </span>
-              </summary>
-              {historicalAttempts.map((attempt, index) => renderAttempt(attempt, index, false))}
-            </details>
-          ) : null}
-          {latestAttempt ? renderAttempt(latestAttempt, visibleAttempts.length - 1, true) : attention ? (
-            <NodeConversation node={node} task={task} status={status} running showApproval agentName={agentName} pendingInput={attention.status === 'waiting_input' ? attention.request : null} />
-          ) : (
-            <div className="workflow-detail-empty" role="status">{status === 'running' ? 'Waiting for this node’s first event…' : 'No execution content recorded for this node.'}</div>
-          )}
-          </> : null}
         </div>
         {showResult ? <ScrollToBottomButton
           scrollRef={detailBodyRef}
