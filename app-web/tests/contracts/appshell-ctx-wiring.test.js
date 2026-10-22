@@ -94,13 +94,27 @@ function topLevelEntries(objectSource) {
   return entries;
 }
 
-const appShell = stripComments(
+const appShell = stripComments([
   readFileSync(new URL('../../src/features/app/AppShell.jsx', import.meta.url), 'utf8'),
-);
+  readFileSync(new URL('../../src/features/app/hooks/useShellHandlers.js', import.meta.url), 'utf8'),
+].join('\n'));
+
+// 只认装配调用点：`function createX({` 是函数定义（参数表），递进来的 ctx 不在那里。
+function ctxCallIndex(factoryName) {
+  const needle = `${factoryName}({`;
+  const hits = [];
+  for (let index = appShell.indexOf(needle); index !== -1; index = appShell.indexOf(needle, index + 1)) {
+    const head = appShell.slice(Math.max(0, index - 24), index);
+    if (/[\w$]/.test(head.slice(-1))) continue; // 更长标识符的一部分，不是这个工厂
+    if (/\bfunction\s+$/.test(head)) continue; // 定义，不是调用点
+    hits.push(index);
+  }
+  assert.equal(hits.length, 1, `${factoryName} 在 shell 实现里应当恰好有一个 ctx 装配调用点（找到 ${hits.length} 个）`);
+  return hits[0];
+}
 
 function providedKeys(factoryName) {
-  const callIndex = appShell.indexOf(`${factoryName}({`);
-  assert.ok(callIndex >= 0, `${factoryName} 在 AppShell 里找不到调用点`);
+  const callIndex = ctxCallIndex(factoryName);
   const braceIndex = appShell.indexOf('{', callIndex);
   const end = matchBrace(appShell, braceIndex);
   assert.ok(end > braceIndex, `${factoryName} 的 ctx 字面量没有闭合`);
@@ -133,7 +147,7 @@ test('the draft handlers get the context-usage feed used by the restore paths', 
   assert.ok(provided.has('applyContextUsage'));
   assert.ok(provided.has('latestContextUsageFromTasks'));
   const draftHandlers = readFileSync(
-    new URL('../../src/features/conversations/hooks/createDraftConversationHandlers.js', import.meta.url),
+    new URL('../../src/features/conversations/hooks/draft-handlers/task-runtime-restore.js', import.meta.url),
     'utf8',
   );
   // 缺口确实落在恢复路径上：两个 restore 函数都拿它们喂表盘。

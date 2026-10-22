@@ -1,8 +1,8 @@
-import { beginConversationLoadPerf, conversationLoadPerf } from '../../../shared/lib/conversation-load-perf.js';
 import { taskFinalOutputText } from '../../tasks/model/runtime-events.js';
-import { createQuestAck } from '../../tasks/model/quest-ack.js';
 import { createGoalCommandHandler } from './createGoalCommandHandler.js';
-import { waitForAttemptConfigOperation } from '../model/attempt-run-config.js';
+import { createConversationCrudHandlers } from './conversation-handlers/crud.js';
+import { createConversationMessageHandlers } from './conversation-handlers/messages.js';
+import { createConversationRestoreHandlers } from './conversation-handlers/restore.js';
 
 // The AbortController ref is shared across renders; so is its request owner.
 const conversationLoadRequests = new WeakMap();
@@ -56,797 +56,87 @@ export function createConversationHandlers(ctx) {
     workspaceStateWithConversationDetail,
   } = ctx;
 
-  function conversationRuntimeIsCurrent(targetConversationId) {
-    const conversation = findConversationById(workspaceState, targetConversationId);
-    const runtime = getRuntime(targetConversationId);
-    if (!conversation || !runtime || runtime.shellSeeded) return false;
-    if (runtime.busy || runtime.activeRunId || runtime.fetchController) return true;
-    const summaries = Array.isArray(conversation.tasks) ? conversation.tasks : [];
-    const state = runtime.taskRuntimeState;
-    if (!state || summaries.length !== state.taskOrder.length) return false;
-    return summaries.every((summary) => {
-      const taskId = summary.taskId || summary.id || summary.task_id;
-      const task = state.tasksById[taskId];
-      // Deferred execution logs do not make an otherwise current summary stale.
-      return Boolean(
-        task
-        && taskUpdatedTimestamp(task) === taskUpdatedTimestamp(summary)
-      );
-    });
-  }
+  // restore ⇄ crud 互相调用，装配期互不可见：用一次延迟绑定打通，点击时两者都是成品。
+  let crudHandlers = null;
+  const addConversation = (projectId) => crudHandlers.handleAddConversation(projectId);
 
-  async function restoreProjectsFromBackend(error, fallbackState) {
-    showToast('error', error?.message || 'project update failed');
-    try {
-      const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
-      const response = await apiFetch(
-        `${API_BASE}/api/projects?execution_mode=${executionMode}&summary_only=true`,
-        { method: 'GET' },
-      );
-      if (!response.ok) throw new Error(`project reload failed: ${response.status}`);
-      const payload = await response.json();
-      const projects = Array.isArray(payload?.projects) ? payload.projects : [];
-      setWorkspaceState((state) => replaceWorkspaceModeFromProjects(
-        executionMode,
-        projects,
-        state,
-      ));
-    } catch (reloadError) {
-      if (fallbackState) setWorkspaceState(fallbackState);
-      console.warn('project reload failed:', reloadError);
-    }
-  }
+  const restoreHandlers = createConversationRestoreHandlers({
+    activateConversationDetail,
+    activateConversationShell,
+    clearDraftConversationState,
+    conversationDetailAbortRef,
+    conversationError,
+    conversationId,
+    conversationIdRef,
+    draftConversationRef,
+    dropMissingConversation,
+    fetchConversationDetail,
+    findConversationById,
+    findProjectByConversationId,
+    getRuntime,
+    invalidateConversationActivation,
+    isConversationActivationCurrent,
+    modeLocationRef,
+    normalizeWorkspaceOrdering,
+    openDraftConversation,
+    setActiveTab,
+    setConversationError,
+    setSettingsMode,
+    setViewMode,
+    setWorkspaceState,
+    settingsMode,
+    showToast,
+    taskUpdatedTimestamp,
+    viewModeRef,
+    workspaceState,
+    addConversation,
+    conversationLoadRequests,
+  });
 
-  async function loadAndActivateConversation({
-    projectId,
-    conversationId: targetConversationId,
-    activationSeq = invalidateConversationActivation(),
-    switchShell = true,
-    restoreLatest = true,
-  }) {
-    if (!targetConversationId) throw new Error('conversation activation requires a conversation id');
-    setConversationError('');
-    // Cached runtimes skip detail hydration, so selection must move with the shell.
-    setWorkspaceState((state) => (
-      state.activeProjectId === projectId && state.activeConversationId === targetConversationId
-        ? state
-        : { ...state, activeProjectId: projectId, activeConversationId: targetConversationId }
-    ));
-    if (switchShell) activateConversationShell(projectId, targetConversationId);
-    if (conversationRuntimeIsCurrent(targetConversationId)) return null;
-    conversationDetailAbortRef.current?.abort?.();
-    const controller = new AbortController();
-    conversationLoadRequests.set(controller, { conversationId: targetConversationId, activationSeq });
-    conversationDetailAbortRef.current = controller;
-    const reportInterruptedLoad = () => {
-      if (isConversationActivationCurrent(activationSeq)
-        && conversationIdRef.current === targetConversationId
-        && conversationDetailAbortRef.current === controller
-        && getRuntime(targetConversationId)?.shellSeeded) {
-        // Keep the shell unhydrated, but never leave a loader without a request.
-        // Navigation cancellation is stale and remains silent.
-        setConversationError('Conversation loading was interrupted. Select this conversation to retry.');
-      }
-    };
-    try {
-      const detail = await fetchConversationDetail(targetConversationId, { signal: controller.signal });
-      if (!isConversationActivationCurrent(activationSeq) || controller.signal.aborted) {
-        conversationLoadPerf('detail_discarded', targetConversationId, { aborted: controller.signal.aborted });
-        if (controller.signal.aborted) reportInterruptedLoad();
-        return null;
-      }
-      await activateConversationDetail(detail, {
-        activationSeq,
-        restoreLatest,
-        signal: controller.signal,
-      });
-      return detail;
-    } catch (error) {
-      if (controller.signal.aborted || error?.name === 'AbortError') {
-        reportInterruptedLoad();
-        return null;
-      }
-      if (!isConversationActivationCurrent(activationSeq)) return null;
-      // 404 = 这条记录已经不存在了，是数据不是故障：抹掉它并静默换一个能用的会话，
-      // 不要把「会话已删除」当成错误提示弹给用户。
-      if (error?.status === 404) {
-        await recoverMissingConversation(projectId, targetConversationId);
-        return null;
-      }
-      // Keep the shell unhydrated for retries, but stop its loading placeholder.
-      setConversationError(String(error?.message || error));
-      throw error;
-    } finally {
-      if (conversationDetailAbortRef.current === controller) {
-        conversationDetailAbortRef.current = null;
-      }
-    }
-  }
+  crudHandlers = createConversationCrudHandlers({
+    API_BASE,
+    activateConversationDetail,
+    apiFetch,
+    applyConversationSnapshot,
+    buildApiHeaders,
+    conversationId,
+    conversationIdRef,
+    conversationReorderChainsRef,
+    conversationReorderVersionsRef,
+    createDefaultProject,
+    fetchConversationDetail,
+    findConversationById,
+    invalidateConversationActivation,
+    isConversationActivationCurrent,
+    normalizeWorkspaceOrdering,
+    openDraftConversation,
+    projectReorderChainRef,
+    projectReorderVersionRef,
+    replaceWorkspaceModeFromProjects,
+    setWorkspaceState,
+    showToast,
+    stopConversationRuntimeBeforeDelete,
+    viewModeRef,
+    workspaceState,
+    workspaceStateWithConversationDetail,
+    selectConversation: restoreHandlers.handleSelectConversation,
+  });
 
-  // 会话没了（列表轮询发现当前会话消失，或恢复时拿到 404）：换一个能接手的，没有就
-  // 开一个空白对话。「点了一行已删会话」和「正在看的会话被删掉」走的是同一条路。
-  async function handleConversationRemoved({ projectId = null, conversationId: fallbackConversationId = null } = {}) {
-    if (fallbackConversationId) {
-      await handleSelectConversation(projectId, fallbackConversationId);
-      return;
-    }
-    if (projectId) openDraftConversation(projectId);
-  }
-
-  // 会话在服务端已经没了：本地抹掉它；如果它正是当前选中的会话，就静默换一个能用的
-  // （同项目优先，没有别的会话就开一个空白对话）。全程不弹错误提示。
-  async function recoverMissingConversation(projectId, missingConversationId) {
-    const recovery = dropMissingConversation(missingConversationId, { projectId });
-    if (!recovery?.wasSelected || !recovery.projectId) return null;
-    try {
-      await handleConversationRemoved({
-        projectId: recovery.projectId,
-        conversationId: recovery.fallbackConversationId,
-      });
-    } catch (error) {
-      console.warn('conversation fallback after a missing conversation failed', error);
-    }
-    return recovery;
-  }
-
-  async function handleSelectConversation(projectId, nextConversationId) {
-    // Leaving an unsent draft discards it without creating a list entry.
-    if (
-      draftConversationRef.current
-      && nextConversationId
-      && draftConversationRef.current.id !== nextConversationId
-    ) {
-      clearDraftConversationState({ clearComposer: true });
-    }
-    // Activation expands the project only. Conversation task lists are now
-    // user-driven via the conversation icon, so selecting a conversation no
-    // longer opens its tasks by default.
-    const stampActivation = (state) => ({
-      ...state,
-      activeProjectId: projectId,
-      activeConversationId: nextConversationId,
-      projects: state.projects.map((project) => {
-        if (project.id !== projectId) return project;
-        const projectWithExpanded = { ...project, userExpanded: true, chatConversationsExpanded: true };
-        if (!nextConversationId) return projectWithExpanded;
-        return {
-          ...projectWithExpanded,
-          conversations: project.conversations.map((conversation) => (
-            conversation.id === nextConversationId
-              ? { ...conversation, userExpanded: false }
-              : conversation
-          )),
-        };
-      }),
-    });
-    beginConversationLoadPerf(nextConversationId, 'selection');
-    const currentConversationId = conversationIdRef.current || conversationId;
-    const controller = conversationDetailAbortRef?.current;
-    const pendingRequest = controller && conversationLoadRequests.get(controller);
-    const loadingThisConversation = Boolean(
-      pendingRequest && pendingRequest.conversationId === nextConversationId
-      && !controller.signal.aborted
-      && isConversationActivationCurrent(pendingRequest.activationSeq)
-    );
-    const sameConversationReady = nextConversationId === currentConversationId && !conversationError
-      && (loadingThisConversation
-        || draftConversationRef.current?.id === nextConversationId
-        || conversationRuntimeIsCurrent(nextConversationId));
-    if (!nextConversationId || sameConversationReady) {
-      conversationLoadPerf('selection_no_request', nextConversationId, {
-        shell_seeded: Boolean(getRuntime?.(nextConversationId)?.shellSeeded),
-        pending_request: loadingThisConversation,
-      });
-      setWorkspaceState((state) => normalizeWorkspaceOrdering(stampActivation(state)));
-      return;
-    }
-    const requestSeq = invalidateConversationActivation();
-    setWorkspaceState((state) => normalizeWorkspaceOrdering(stampActivation(state)));
-    await loadAndActivateConversation({
-      projectId,
-      conversationId: nextConversationId,
-      activationSeq: requestSeq,
-    });
-  }
-
-  async function handleSelectProject(projectId) {
-    const project = workspaceState.projects.find((item) => item.id === projectId);
-    const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
-    const firstConversation = project?.conversations.find((item) => item.executionMode === executionMode);
-    if (firstConversation) {
-      await handleSelectConversation(projectId, firstConversation.id);
-      return;
-    }
-    await handleAddConversation(projectId);
-  }
-
-  function handleToggleProject(projectId) {
-    // Persist the user's explicit intent via `userExpanded`. The displayed
-    // `expanded` is recomputed by withDefaultExpansion; we flip relative to
-    // the currently displayed value so the click does what the user sees.
-    setWorkspaceState((state) => normalizeWorkspaceOrdering({
-      ...state,
-      projects: state.projects.map((project) => (
-        project.id === projectId ? { ...project, userExpanded: !project.expanded } : project
-      )),
-    }));
-  }
-
-  function handleToggleConversationTasks(projectId, nextConversationId) {
-    setWorkspaceState((state) => normalizeWorkspaceOrdering({
-      ...state,
-      projects: state.projects.map((project) => project.id === projectId ? {
-        ...project,
-        conversations: project.conversations.map((conversation) => (
-          conversation.id === nextConversationId ? { ...conversation, tasksExpanded: !conversation.tasksExpanded } : conversation
-        )),
-      } : project),
-    }));
-  }
-
-  function handleToggleProjectConversations(projectId, workflowTaskMode = false) {
-    const expandedKey = workflowTaskMode ? 'workflowTasksExpanded' : 'chatConversationsExpanded';
-    setWorkspaceState((state) => normalizeWorkspaceOrdering({
-      ...state,
-      projects: state.projects.map((project) => project.id === projectId ? {
-        ...project,
-        [expandedKey]: !project[expandedKey],
-      } : project),
-    }));
-  }
-
-  function handlePinConversation(projectId, conversationId) {
-    // Compute new pin state from current workspace so we can sync to backend
-    const currentConversation = findConversationById(workspaceState, conversationId);
-    const newPinned = !(currentConversation?.pinned ?? false);
-
-    setWorkspaceState((state) => normalizeWorkspaceOrdering({
-      ...state,
-      projects: state.projects.map((project) => project.id === projectId ? {
-        ...project,
-        conversations: project.conversations.map((conversation) => (
-          conversation.id === conversationId
-            ? { ...conversation, pinned: newPinned }
-            : conversation
-        )),
-      } : project),
-    }));
-
-    apiFetch(`${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}`, {
-      method: 'PATCH',
-      headers: buildApiHeaders(),
-      body: JSON.stringify({ pinned: newPinned }),
-    }).then((response) => {
-      if (!response.ok) throw new Error(`conversation pin failed: ${response.status}`);
-    }).catch((error) => {
-      setWorkspaceState((state) => normalizeWorkspaceOrdering({
-        ...state,
-        projects: state.projects.map((project) => project.id === projectId ? {
-          ...project,
-          conversations: project.conversations.map((conversation) => (
-            conversation.id === conversationId
-              ? { ...conversation, pinned: !newPinned }
-              : conversation
-          )),
-        } : project),
-      }));
-      showToast('error', error.message || 'conversation pin failed');
-    });
-  }
-
-  function handleReorderConversations(projectId, sourceId, targetId, position) {
-    const manualOrderAt = Date.now();
-    setWorkspaceState((state) => {
-      const previousState = state;
-      const sourcePinned = Boolean(
-        state.projects
-          .find((project) => project.id === projectId)
-          ?.conversations.find((conversation) => conversation.id === sourceId)?.pinned,
-      );
-      const nextState = normalizeWorkspaceOrdering({
-        ...state,
-        projects: state.projects.map((project) => {
-          if (project.id !== projectId) return project;
-          const conversations = [...project.conversations];
-          const sourceIdx = conversations.findIndex((c) => c.id === sourceId);
-          if (sourceIdx === -1) return project;
-          const [moved] = conversations.splice(sourceIdx, 1);
-          let insertIdx;
-          if (targetId === null) {
-            const sameGroupIndexes = conversations.flatMap((conversation, index) => (
-              Boolean(conversation.pinned) === sourcePinned ? [index] : []
-            ));
-            insertIdx = sameGroupIndexes.length
-              ? sameGroupIndexes[sameGroupIndexes.length - 1] + 1
-              : (sourcePinned ? 0 : conversations.length);
-          } else {
-            const target = conversations.find((conversation) => conversation.id === targetId);
-            if (!target || Boolean(target.pinned) !== sourcePinned) {
-              conversations.splice(sourceIdx, 0, moved);
-              return project;
-            }
-            const adjustedTargetIdx = conversations.findIndex((c) => c.id === targetId);
-            if (adjustedTargetIdx === -1) { conversations.splice(sourceIdx, 0, moved); return project; }
-            insertIdx = position === 'after' ? adjustedTargetIdx + 1 : adjustedTargetIdx;
-          }
-          conversations.splice(insertIdx, 0, moved);
-          let groupIndex = 0;
-          return {
-            ...project,
-            conversations: conversations.map((conversation) => (
-              Boolean(conversation.pinned) === sourcePinned
-                ? { ...conversation, sortOrder: groupIndex++, manualOrderAt }
-                : conversation
-            )),
-          };
-        }),
-      });
-
-      // Serialize requests per project so rapid drags reach the backend in user order.
-      const project = nextState.projects.find((p) => p.id === projectId);
-      if (project) {
-        const conversationIds = project.conversations
-          .filter((conversation) => Boolean(conversation.pinned) === sourcePinned)
-          .map((conversation) => conversation.id);
-        const requestVersion = (conversationReorderVersionsRef.current.get(projectId) || 0) + 1;
-        conversationReorderVersionsRef.current.set(projectId, requestVersion);
-        const previousChain = conversationReorderChainsRef.current.get(projectId) || Promise.resolve();
-        const request = previousChain
-          .catch(() => undefined)
-          .then(async () => {
-            const response = await apiFetch(
-              `${API_BASE}/api/projects/${encodeURIComponent(projectId)}/conversations/reorder`,
-              {
-                method: 'PATCH',
-                headers: buildApiHeaders(),
-                body: JSON.stringify({
-                  conversation_ids: conversationIds,
-                  pinned: sourcePinned,
-                }),
-              },
-            );
-            if (!response.ok) throw new Error(`conversation reorder failed: ${response.status}`);
-          });
-        conversationReorderChainsRef.current.set(projectId, request);
-        request.catch((error) => {
-          if (conversationReorderVersionsRef.current.get(projectId) !== requestVersion) return;
-          restoreProjectsFromBackend(error, previousState);
-        }).finally(() => {
-          if (conversationReorderChainsRef.current.get(projectId) === request) {
-            conversationReorderChainsRef.current.delete(projectId);
-          }
-        });
-      }
-
-      return nextState;
-    });
-  }
-
-  function handlePinProject(projectId) {
-    // Compute new pin state from current workspace so we can sync to backend
-    const currentProject = workspaceState.projects.find((p) => p.id === projectId);
-    const newPinned = !(currentProject?.pinned ?? false);
-
-    setWorkspaceState((state) => normalizeWorkspaceOrdering({
-      ...state,
-      projects: state.projects.map((project) => (
-        project.id === projectId
-          ? { ...project, pinned: newPinned }
-          : project
-      )),
-    }));
-
-    apiFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
-      method: 'PATCH',
-      headers: buildApiHeaders(),
-      body: JSON.stringify({ pinned: newPinned }),
-    }).then((response) => {
-      if (!response.ok) throw new Error(`project pin failed: ${response.status}`);
-    }).catch((error) => {
-      setWorkspaceState((state) => normalizeWorkspaceOrdering({
-        ...state,
-        projects: state.projects.map((project) => (
-          project.id === projectId ? { ...project, pinned: !newPinned } : project
-        )),
-      }));
-      showToast('error', error.message || 'project pin failed');
-    });
-  }
-
-  // 项目改名跟会话改名同一条路子：先落服务端，再把落定的名字写回工作区；
-  // 失败直接抛给对话框显示，本地名字保持原样（不做乐观改名再回滚）。
-  async function handleRenameProject(projectId, name) {
-    const trimmed = String(name || '').trim();
-    if (!trimmed) return;
-    const response = await apiFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
-      method: 'PATCH',
-      headers: buildApiHeaders(),
-      body: JSON.stringify({ name: trimmed }),
-    });
-    if (!response.ok) {
-      throw new Error(`project rename failed: ${response.status}`);
-    }
-    const summary = await response.json();
-    const nextName = String(summary?.name || trimmed);
-    setWorkspaceState((state) => ({
-      ...state,
-      projects: state.projects.map((project) => (
-        project.id === projectId
-          // workspaceLabel 是名字的第一顺位回退（草稿会话、目录标签都用它），跟着一起改，
-          // 只有系统项目（Default project）没有目录标签，保持 null。
-          ? { ...project, name: nextName, workspaceLabel: project.type === 'system' ? null : nextName }
-          : project
-      )),
-    }));
-  }
-
-  function handleReorderProjects(sourceId, targetId, position) {
-    setWorkspaceState((state) => {
-      const previousState = state;
-      const sourceProject = state.projects.find((project) => project.id === sourceId);
-      const targetProject = targetId
-        ? state.projects.find((project) => project.id === targetId)
-        : null;
-      const sourcePinned = Boolean(sourceProject?.pinned);
-      if (
-        !sourceProject
-        || (targetProject && targetProject.executionMode !== sourceProject.executionMode)
-        || (targetProject && Boolean(targetProject.pinned) !== sourcePinned)
-      ) {
-        return state;
-      }
-      const nextState = normalizeWorkspaceOrdering({
-        ...state,
-        projects: (() => {
-          const projects = [...state.projects];
-          const sourceIdx = projects.findIndex((p) => p.id === sourceId);
-          if (sourceIdx === -1) return state.projects;
-          const [moved] = projects.splice(sourceIdx, 1);
-          let insertIdx;
-          if (targetId === null) {
-            const sameGroupIndexes = projects.flatMap((project, index) => (
-              Boolean(project.pinned) === sourcePinned ? [index] : []
-            ));
-            insertIdx = sameGroupIndexes.length
-              ? sameGroupIndexes[sameGroupIndexes.length - 1] + 1
-              : (sourcePinned ? 0 : projects.length);
-          } else {
-            const adjustedTargetIdx = projects.findIndex((p) => p.id === targetId);
-            if (adjustedTargetIdx === -1) { projects.splice(sourceIdx, 0, moved); return state.projects; }
-            insertIdx = position === 'after' ? adjustedTargetIdx + 1 : adjustedTargetIdx;
-          }
-          projects.splice(insertIdx, 0, moved);
-          return projects.map((project, index) => ({
-            ...project,
-            sortOrder: index,
-          }));
-        })(),
-      });
-      const requestVersion = projectReorderVersionRef.current + 1;
-      projectReorderVersionRef.current = requestVersion;
-      projectReorderChainRef.current = projectReorderChainRef.current
-        .catch(() => undefined)
-        .then(async () => {
-          const response = await apiFetch(`${API_BASE}/api/projects/reorder`, {
-            method: 'PATCH',
-            headers: buildApiHeaders(),
-            body: JSON.stringify({
-              execution_mode: sourceProject.executionMode,
-              project_ids: nextState.projects
-                .filter((project) => project.executionMode === sourceProject.executionMode)
-                .map((project) => project.id),
-            }),
-          });
-          if (!response.ok) throw new Error(`project reorder failed: ${response.status}`);
-        });
-      projectReorderChainRef.current.catch((error) => {
-        if (projectReorderVersionRef.current !== requestVersion) return;
-        restoreProjectsFromBackend(error, previousState);
-      });
-      return nextState;
-    });
-  }
-
-  async function createConversationInProject(project, title, executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot') {
-    if (!project?.id || project.executionMode !== executionMode) {
-      throw new Error('Conversation execution mode must match project execution mode.');
-    }
-    const createResponse = await apiFetch(`${API_BASE}/api/conversations`, {
-      method: 'POST',
-      headers: buildApiHeaders(),
-      body: JSON.stringify({ title, execution_mode: executionMode, project_id: project.id }),
-    });
-    if (!createResponse.ok) {
-      throw new Error(`conversation create failed: ${createResponse.status}`);
-    }
-    let detail = await createResponse.json();
-    if (project?.workspacePath && !detail.workspace_path) {
-      const updateResponse = await apiFetch(`${API_BASE}/api/conversations/${detail.conversation_id}`, {
-        method: 'PATCH',
-        headers: buildApiHeaders(),
-        body: JSON.stringify({ workspace_path: project.workspacePath }),
-      });
-      if (!updateResponse.ok) {
-        throw new Error(`conversation workspace assignment failed: ${updateResponse.status}`);
-      }
-      detail = await updateResponse.json();
-    }
-    return detail;
-  }
-
-  async function handleAddConversation(projectId) {
-    // Open a local blank chat only. The sidebar entry appears when the user
-    // actually sends the first message (see materializeDraftConversationForSend).
-    openDraftConversation(projectId);
-  }
-
-  async function handleAddProject() {
-    const requestSeq = invalidateConversationActivation();
-    if (window.haish?.pickProjectDirectory) {
-      const pickResult = await window.haish.pickProjectDirectory();
-      if (pickResult?.canceled || !pickResult?.project) {
-        showToast('info', 'workspace selection cancelled');
-        return;
-      }
-      const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
-      const projectResponse = await apiFetch(`${API_BASE}/api/projects`, {
-        method: 'POST',
-        headers: buildApiHeaders(),
-        body: JSON.stringify({
-          name: pickResult.project.name,
-          workspace_path: pickResult.project.rootPath,
-          execution_mode: executionMode,
-        }),
-      });
-      if (!projectResponse.ok) {
-        throw new Error(`project create failed: ${projectResponse.status}`);
-      }
-      const project = await projectResponse.json();
-      setWorkspaceState((state) => normalizeWorkspaceOrdering({
-        ...state,
-        projects: state.projects.some((item) => item.id === project.project_id)
-          ? state.projects
-          : [{
-              id: project.project_id,
-              type: 'custom',
-              executionMode: project.execution_mode,
-              name: project.name,
-              workspacePath: project.workspace_path,
-              workspaceLabel: project.name,
-              removable: true,
-              createdAt: project.created_at || null,
-              updatedAt: project.updated_at || null,
-              pinned: Boolean(project.pinned),
-              sortOrder: typeof project.sort_order === 'number' ? project.sort_order : 0,
-              chatConversationsExpanded: false,
-              workflowTasksExpanded: false,
-              hiddenModes: [],
-              conversations: [],
-            },
-            ...state.projects.map((item) => ({
-              ...item,
-              sortOrder: (item.sortOrder ?? 0) + 1,
-            }))],
-      }));
-      const detail = await createConversationInProject({
-        id: project.project_id,
-        type: 'custom',
-        executionMode: project.execution_mode,
-        name: project.name,
-        workspacePath: project.workspace_path,
-        workspaceLabel: project.name,
-      });
-      if (!isConversationActivationCurrent(requestSeq)) return;
-      await activateConversationDetail(detail, { restoreLatest: false });
-      showToast('success', `local workspace set: ${pickResult.project.name}`);
-      return;
-    }
-    const createResponse = await apiFetch(`${API_BASE}/api/conversations`, {
-      method: 'POST',
-      headers: buildApiHeaders(),
-      body: JSON.stringify({
-        execution_mode: viewModeRef.current === 'chat' ? 'chat' : 'bot',
-      }),
-    });
-    if (!createResponse.ok) {
-      throw new Error(`project conversation create failed: ${createResponse.status}`);
-    }
-    const created = await createResponse.json();
-    const pickResponse = await apiFetch(`${API_BASE}/api/conversations/${created.conversation_id}/workspace/pick`, {
-      method: 'POST',
-    });
-    if (pickResponse.status === 409) {
-      await apiFetch(`${API_BASE}/api/conversations/${created.conversation_id}`, {
-        method: 'DELETE',
-      });
-      showToast('info', 'workspace selection cancelled');
-      return;
-    }
-    if (!pickResponse.ok) {
-      throw new Error(`workspace pick failed: ${pickResponse.status}`);
-    }
-    const detail = await pickResponse.json();
-    if (!detail.workspace_path) {
-      await apiFetch(`${API_BASE}/api/conversations/${created.conversation_id}`, {
-        method: 'DELETE',
-      });
-      showToast('info', 'workspace selection cancelled');
-      return;
-    }
-    if (!isConversationActivationCurrent(requestSeq)) return;
-    await activateConversationDetail(detail, { restoreLatest: false });
-  }
-
-  async function handleDeleteConversation(projectId, nextConversationId) {
-    const project = workspaceState.projects.find((item) => item.id === projectId);
-    if (!project) return;
-    const conversationToDelete = project.conversations.find((conversation) => conversation.id === nextConversationId) || null;
-    await stopConversationRuntimeBeforeDelete(nextConversationId, conversationToDelete);
-    const response = await apiFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
-      method: 'DELETE',
-    });
-    if (!response.ok && response.status !== 404) {
-      throw new Error(`conversation delete failed: ${response.status}`);
-    }
-    const executionMode = project.executionMode;
-    const fallbackConversation = project.conversations.find((conversation) => (
-      conversation.id !== nextConversationId && conversation.executionMode === executionMode
-    ));
-    if (!fallbackConversation) {
-      const detail = await createConversationInProject(project, undefined, executionMode);
-      setWorkspaceState((state) => normalizeWorkspaceOrdering({
-        ...state,
-        projects: state.projects.map((item) => item.id === projectId ? {
-          ...item,
-          conversations: item.conversations.filter((conversation) => conversation.id !== nextConversationId),
-        } : item),
-      }));
-      // Keep the replacement in its project even if deletion completed in the
-      // background. Navigation during DELETE or creation owns the selection.
-      setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, false));
-      if (conversationIdRef.current === nextConversationId) {
-        await activateConversationDetail(detail, { restoreLatest: false });
-      }
-      return;
-    }
-    setWorkspaceState((state) => normalizeWorkspaceOrdering({
-      ...state,
-      projects: state.projects.map((item) => item.id === projectId ? {
-        ...item,
-        conversations: item.conversations.filter((conversation) => conversation.id !== nextConversationId),
-      } : item),
-    }));
-    if (nextConversationId === conversationIdRef.current) {
-      await handleSelectConversation(projectId, fallbackConversation.id);
-    }
-  }
-
-  async function handleRenameConversation(projectId, nextConversationId, title) {
-    const trimmed = String(title || '').trim();
-    if (!trimmed) return;
-    const response = await apiFetch(`${API_BASE}/api/conversations/${nextConversationId}`, {
-      method: 'PATCH',
-      headers: buildApiHeaders(),
-      body: JSON.stringify({ title: trimmed }),
-    });
-    if (!response.ok) {
-      throw new Error(`conversation rename failed: ${response.status}`);
-    }
-    const detail = await response.json();
-    setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, false));
-    if (nextConversationId === conversationId) {
-      applyConversationSnapshot(detail);
-    }
-  }
-
-  async function handleRemoveProject(projectId) {
-    const project = workspaceState.projects.find((item) => item.id === projectId);
-    if (!project?.removable) return;
-    const executionMode = project.executionMode;
-    const conversationsToRemove = project.conversations;
-    await Promise.all(conversationsToRemove.map((item) => stopConversationRuntimeBeforeDelete(item.id, item)));
-    await Promise.all(conversationsToRemove.map(async (item) => {
-      const response = await apiFetch(`${API_BASE}/api/conversations/${item.id}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok && response.status !== 404) {
-        throw new Error(`conversation delete failed: ${response.status}`);
-      }
-    }));
-    const projectResponse = await apiFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
-      method: 'DELETE',
-    });
-    if (!projectResponse.ok && projectResponse.status !== 404) {
-      throw new Error(`project delete failed: ${projectResponse.status}`);
-    }
-    const nextState = normalizeWorkspaceOrdering({
-      ...workspaceState,
-      projects: workspaceState.projects.filter((item) => item.id !== projectId),
-      activeProjectId: null,
-      activeConversationId: null,
-    });
-    setWorkspaceState(nextState);
-    const defaultProject = nextState.projects.find((item) => (
-      item.type === 'system' && item.executionMode === executionMode
-    )) || createDefaultProject(executionMode);
-    const fallbackConversation = defaultProject.conversations[0];
-    if (fallbackConversation) {
-      const detail = await fetchConversationDetail(fallbackConversation.id);
-      await activateConversationDetail(detail);
-    } else {
-      const detail = await createConversationInProject(defaultProject);
-      await activateConversationDetail(detail, { restoreLatest: false });
-    }
-  }
-
-  function handleToggleViewMode() {
-    const requestSeq = invalidateConversationActivation();
-    conversationDetailAbortRef.current?.abort?.();
-    conversationDetailAbortRef.current = null;
-    const currentViewMode = viewModeRef.current === 'chat' ? 'chat' : 'workflow';
-    const nextViewMode = currentViewMode === 'chat' ? 'workflow' : 'chat';
-    const nextExecutionMode = nextViewMode === 'chat' ? 'chat' : 'bot';
-    const currentConversation = findConversationById(workspaceState, conversationIdRef.current);
-    const outgoingProject = findProjectByConversationId(workspaceState, conversationIdRef.current);
-    if (currentConversation && outgoingProject) {
-      modeLocationRef.current[currentViewMode] = {
-        projectId: outgoingProject.id,
-        conversationId: currentConversation.id,
-      };
-    }
-
-    viewModeRef.current = nextViewMode;
-    setViewMode(nextViewMode);
-    setActiveTab('dashboard');
-    if (settingsMode) setSettingsMode(false);
-
-    const rememberedLocation = modeLocationRef.current[nextViewMode];
-    const rememberedConversation = rememberedLocation?.conversationId
-      ? findConversationById(workspaceState, rememberedLocation.conversationId)
-      : null;
-    const rememberedProject = rememberedConversation?.executionMode === nextExecutionMode
-      ? findProjectByConversationId(workspaceState, rememberedConversation.id)
-      : null;
-    const matchingPathProject = workspaceState.projects.find((project) => (
-      project.executionMode === nextExecutionMode
-      && project.workspacePath === outgoingProject?.workspacePath
-    ));
-    const currentProject = rememberedProject
-      || matchingPathProject
-      || workspaceState.projects.find((project) => (
-        project.type === 'system' && project.executionMode === nextExecutionMode
-      ));
-    if (!currentProject) {
-      throw new Error(`Missing ${nextExecutionMode} project in workspace state.`);
-    }
-    const matchingConversation = rememberedProject
-      ? rememberedConversation
-      : currentProject.conversations.find(
-          (conversation) => conversation.executionMode === nextExecutionMode,
-        );
-    if (!matchingConversation) {
-      openDraftConversation(currentProject.id);
-      return;
-    }
-
-    const targetConversationId = matchingConversation.id;
-    modeLocationRef.current[nextViewMode] = {
-      projectId: currentProject.id,
-      conversationId: targetConversationId,
-    };
-    activateConversationShell(currentProject.id, targetConversationId);
-    const activationPromise = loadAndActivateConversation({
-      projectId: currentProject.id,
-      conversationId: targetConversationId,
-      activationSeq: requestSeq,
-      switchShell: false,
-    });
-    void activationPromise.catch((error) => {
-      if (!isConversationActivationCurrent(requestSeq)) return;
-      console.error('mode conversation activation failed', error);
-      showToast('error', String(error?.message || error));
-    });
-  }
+  const messageHandlers = createConversationMessageHandlers({
+    API_BASE,
+    activateConversationDetail,
+    apiFetch,
+    buildApiHeaders,
+    buildDeployRequest,
+    canStartDeployForConversation,
+    executeQuest,
+    getRuntime,
+    setWorkspaceState,
+    showToast,
+    startDeploy,
+    workspaceStateWithConversationDetail,
+    ctx,
+  });
 
   function handleOpenTaskReport(task) {
     const restoredMode = task?.executionMode === 'bot' ? 'workflow' : 'chat';
@@ -877,178 +167,28 @@ export function createConversationHandlers(ctx) {
     });
   }
 
-  async function handleForkMessage(message) {
-    const response = await apiFetch(`${API_BASE}/api/conversations/${message.conversationId}/fork`, {
-      method: 'POST', headers: buildApiHeaders(),
-      body: JSON.stringify({ from_message_id: message.messageId }),
-    });
-    const detail = await response.json();
-    if (!response.ok) throw new Error(detail.detail || 'Cannot fork conversation.');
-    setWorkspaceState((state) => workspaceStateWithConversationDetail(state, detail, true));
-    await activateConversationDetail(detail, { restoreLatest: false });
-  }
-
-  function handleRetryTask(task, editedMessage = null, runConfig = null) {
-    const targetConversationId = task?.conversationId || task?.conversation_id;
-    if (!targetConversationId) return Promise.reject(new Error('Conversation is unavailable. Your changes have not been sent.'));
-    const runtime = getRuntime?.(targetConversationId, { create: true });
-    const sourceTaskId = task?.taskId || task?.task_id || task?.id;
-    if (runtime?.pendingRetry) {
-      const pending = runtime.pendingRetry;
-      if (pending.sourceTaskId === sourceTaskId && pending.editedMessage === editedMessage) return pending.promise;
-      return Promise.reject(new Error('Another retry or edit is already waiting in this conversation. Your changes have not been sent.'));
-    }
-    const controller = new AbortController();
-    // Claim before awaiting configuration. Returning to this conversation and
-    // clicking again joins the same action; navigation never aborts it.
-    const pendingRetry = { controller, promise: null, sourceTaskId, editedMessage };
-    if (runtime) runtime.pendingRetry = pendingRetry;
-    const publish = () => ctx.mutateRuntime?.(targetConversationId, () => {});
-    const run = performRetryTask(task, editedMessage, runConfig, pendingRetry, runtime);
-    pendingRetry.promise = run.catch((error) => {
-      controller.abort();
-      showToast?.('error', String(error?.message || error));
-      throw error;
-    }).finally(() => {
-      if (runtime?.pendingRetry === pendingRetry) {
-        runtime.pendingRetry = null;
-        if (getRuntime(targetConversationId) === runtime) publish();
-      }
-    });
-    publish();
-    return pendingRetry.promise;
-  }
-
-  async function performRetryTask(task, editedMessage, runConfig, pendingRetry, expectedRuntime) {
-    const targetConversationId = task?.conversationId || task?.conversation_id;
-    const checkOwner = () => {
-      if (pendingRetry.controller.signal.aborted) throw new Error('Retry was stopped. Your changes have not been sent.');
-      if (expectedRuntime && getRuntime(targetConversationId) !== expectedRuntime) throw new Error('Conversation is unavailable. Your changes have not been sent.');
-    };
-    const ownedConfig = Boolean(runConfig?.ensureSaved);
-    const timeoutMs = ctx.attemptConfigTimeoutMs ?? 30_000;
-    const signal = pendingRetry.controller.signal;
-    const configuration = (async () => {
-      if (ownedConfig) {
-        const saved = await runConfig.ensureSaved({ background: editedMessage === null, signal, timeoutMs });
-        return saved && { provider: saved.llm_config_id, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id };
-      }
-      if (task?.executionMode !== 'bot') {
-        await ctx.configSync?.waitForSave(targetConversationId);
-        checkOwner();
-        if (!runConfig) {
-          const saved = await ctx.configSync?.load(targetConversationId);
-          return saved && { provider: saved.llm_config_id, modelId: saved.model_id, reasoningEffort: saved.reasoning_effort, agentId: saved.agent_id };
-        }
-      }
-      return runConfig;
-    })();
-    try {
-      runConfig = await waitForAttemptConfigOperation(configuration, { signal, timeoutMs });
-    } catch (error) {
-      // Stop the action's continuation, not the shared load/save request. A late
-      // save must not start another preflight stage after timeout or cancellation.
-      pendingRetry.controller.abort();
-      throw error;
-    }
-    checkOwner();
-    if (task?.executionMode !== 'bot' && (!runConfig?.provider || !runConfig.modelId || !runConfig.agentId)) {
-      throw new Error('Save the current Agent, provider and model selection before retrying.');
-    }
-    if (editedMessage !== null && !canStartDeployForConversation?.(targetConversationId)) throw new Error('Conversation is still loading. Your changes have not been sent.');
-    if ((task?.userMessageId || task?.user_message_id) && executeQuest) {
-      // Persisted turns rerun in their own runtime, not necessarily the visible
-      // conversation. executeQuest enforces latest-turn, busy and Stop rules.
-      const sourceId = task.taskId || task.task_id || task.id;
-      // A closed renderer connection is not proof that the server task failed.
-      // Reconcile the originating conversation before rerun, without activating
-      // it or silently changing the source to a newer turn.
-      if (editedMessage === null && expectedRuntime) {
-        while (expectedRuntime.stopPromise) {
-          await waitForAttemptConfigOperation(expectedRuntime.stopPromise, { signal, timeoutMs,
-            timeoutMessage: 'Still waiting for Stop to be verified. Nothing was retried.' });
-          checkOwner();
-        }
-        if (expectedRuntime.stopError) throw new Error(expectedRuntime.stopError);
-      }
-      if (editedMessage === null && ctx.recoverConversationTasks && expectedRuntime
-        && !expectedRuntime.activeRunId && !expectedRuntime.fetchController) {
-        const detail = await waitForAttemptConfigOperation(
-          ctx.recoverConversationTasks(targetConversationId, { expectedRuntime, signal }),
-          { signal, timeoutMs, timeoutMessage: 'Timed out refreshing task status. Nothing was retried. Please try again.' },
-        );
-        checkOwner();
-        if (!detail) throw new Error('Task state changed while refreshing. Nothing was retried. Please try again.');
-        const state = expectedRuntime.taskRuntimeState;
-        if (state.latestTaskId !== sourceId || !state.tasksById[sourceId]) {
-          throw new Error('This turn is no longer the latest turn. The conversation has been refreshed.');
-        }
-        // The restored answer/running/cancelled state replaces the stale failure
-        // card. A successful refresh needs no second error or duplicate run.
-        if (state.tasksById[sourceId].status !== 'failed') return true;
-      }
-      const source = getRuntime(targetConversationId)?.taskRuntimeState?.tasksById?.[sourceId] || task;
-      // Both actions settle when accepted, not when the stream finishes. Editing
-      // keeps its immediate pending projection; Retry keeps the original error
-      // button until the server confirms the replacement attempt.
-      const ack = createQuestAck();
-      return ack.follow(executeQuest(source, targetConversationId, {
-        attempt: editedMessage == null ? 'rerun' : 'edit',
-        message: editedMessage,
-        runConfig: runConfig || null,
-        requestId: crypto.randomUUID(),
-        onAccepted: ack.accept,
-        preflightSignal: pendingRetry.controller.signal,
-      }), (error) => showToast('error', String(error?.message || error)));
-    }
-    const restoredMode = task?.executionMode === 'bot' ? 'workflow' : 'chat';
-    const selectionId = task?.executionMode === 'bot'
-      ? task?.requestedWorkflowId
-      : runConfig?.agentId;
-    const request = buildDeployRequest(
-      task?.title || '',
-      task?.attachment || null,
-      task?.executionMode === 'bot' ? (runConfig?.modelId || task?.requestedModelId || '') : runConfig.modelId,
-      task?.executionMode === 'bot' ? (runConfig && Object.hasOwn(runConfig, 'reasoningEffort') ? runConfig.reasoningEffort : task?.requestedReasoningEffort ?? null) : runConfig.reasoningEffort,
-      task?.imageAttachments || [],
-      selectionId,
-      task?.executionMode === 'bot' ? (runConfig?.provider || task?.requestedProvider || '') : runConfig.provider,
-      task?.displayText || task?.title || '', task?.annotations || [], task?.nodeRuntimeConfigs || {},
-    );
-    request.targetConversationId = targetConversationId;
-    request.executionMode = restoredMode === 'chat' ? 'chat' : 'bot';
-    request.originViewMode = restoredMode;
-    request.contextTasks = task?.contextTasks || [];
-    request.preflightSignal = pendingRetry.controller.signal;
-    request.agentId = restoredMode === 'chat' ? selectionId : null;
-    request.workflowId = restoredMode === 'workflow' ? selectionId : null;
-    checkOwner();
-    return startDeploy(request, targetConversationId);
-  }
-
-
   return {
-    handleGoalCommand: createGoalCommandHandler({ ...ctx, createConversationInProject }),
-    handleSelectConversation,
-    handleConversationRemoved,
-    handleSelectProject,
-    handleToggleProject,
-    handleToggleConversationTasks,
-    handleToggleProjectConversations,
-    handlePinConversation,
-    handleReorderConversations,
-    handlePinProject,
-    handleRenameProject,
-    handleReorderProjects,
-    createConversationInProject,
-    handleAddConversation,
-    handleAddProject,
-    handleDeleteConversation,
-    handleRenameConversation,
-    handleRemoveProject,
-    handleToggleViewMode,
+    handleGoalCommand: createGoalCommandHandler({ ...ctx, createConversationInProject: crudHandlers.createConversationInProject }),
+    handleSelectConversation: restoreHandlers.handleSelectConversation,
+    handleConversationRemoved: restoreHandlers.handleConversationRemoved,
+    handleSelectProject: restoreHandlers.handleSelectProject,
+    handleToggleProject: restoreHandlers.handleToggleProject,
+    handleToggleConversationTasks: restoreHandlers.handleToggleConversationTasks,
+    handleToggleProjectConversations: restoreHandlers.handleToggleProjectConversations,
+    handlePinConversation: crudHandlers.handlePinConversation,
+    handleReorderConversations: crudHandlers.handleReorderConversations,
+    handlePinProject: crudHandlers.handlePinProject,
+    handleRenameProject: crudHandlers.handleRenameProject,
+    handleReorderProjects: crudHandlers.handleReorderProjects,
+    createConversationInProject: crudHandlers.createConversationInProject,
+    handleAddConversation: crudHandlers.handleAddConversation,
+    handleAddProject: crudHandlers.handleAddProject,
+    handleDeleteConversation: crudHandlers.handleDeleteConversation,
+    handleRenameConversation: crudHandlers.handleRenameConversation,
+    handleRemoveProject: crudHandlers.handleRemoveProject,
+    handleToggleViewMode: restoreHandlers.handleToggleViewMode,
     handleOpenTaskReport,
-    handleRetryTask,
-    handleForkMessage,
+    handleRetryTask: messageHandlers.handleRetryTask,
+    handleForkMessage: messageHandlers.handleForkMessage,
   };
 }

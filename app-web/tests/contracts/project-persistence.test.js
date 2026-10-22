@@ -1,11 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { conversationHandlerSource } from '../helpers/handler-source.js';
 
-const handlersSource = fs.readFileSync(
-  new URL('../../src/features/conversations/hooks/createConversationHandlers.js', import.meta.url),
-  'utf8',
-);
+const handlersSource = conversationHandlerSource();
 const activationHandlersSource = fs.readFileSync(
   new URL('../../src/features/conversations/hooks/createConversationActivationHandlers.js', import.meta.url),
   'utf8',

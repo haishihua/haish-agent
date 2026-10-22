@@ -6,10 +6,11 @@ const overlaySource = fs.readFileSync(
   new URL('../../src/features/approvals/components/ApprovalOverlay.jsx', import.meta.url),
   'utf8',
 );
-const timelineSource = fs.readFileSync(
-  new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url),
-  'utf8',
-);
+// 节点按类型分文件：工具节点本体在 ChatTimelineNodes.jsx，图标映射在 nodes/shared.js。
+const timelineSource = [
+  fs.readFileSync(new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url), 'utf8'),
+  fs.readFileSync(new URL('../../src/features/chat/components/nodes/shared.js', import.meta.url), 'utf8'),
+].join('\n');
 const storeSource = fs.readFileSync(
   new URL('../../src/features/approvals/model/approval-store.js', import.meta.url),
   'utf8',

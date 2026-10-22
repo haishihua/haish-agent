@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createConversationHandlers } from '../../../src/features/conversations/hooks/createConversationHandlers.js';
+import { appShellSource } from '../../helpers/shell-source.js';
 
 // 项目改名：双击项目行 → 改名对话框 → PATCH /api/projects/<id>。
 // 这里驱动生产 handler，只把 apiFetch / setWorkspaceState 换成替身。
@@ -95,7 +96,7 @@ test('the double-click rename gesture is wired from the row to the handler', () 
   const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8');
   const projectNode = read('../../../src/features/conversations/components/ProjectNode.jsx');
   const panel = read('../../../src/features/conversations/components/ConversationsPanel.jsx');
-  const appShell = read('../../../src/features/app/AppShell.jsx');
+  const appShell = appShellSource();
 
   const dblClickStart = projectNode.indexOf('onDoubleClick={');
   const dblClickBlock = projectNode.slice(dblClickStart, projectNode.indexOf('onKeyDown={', dblClickStart));

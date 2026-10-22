@@ -1,17 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { conversationHandlerSource, taskStreamHandlerSource } from '../helpers/handler-source.js';
 
-const streamSource = fs.readFileSync(
-  new URL('../../src/features/tasks/hooks/createTaskStreamHandlers.js', import.meta.url),
-  'utf8',
-);
-const conversationSource = fs.readFileSync(
-  new URL('../../src/features/conversations/hooks/createConversationHandlers.js', import.meta.url),
-  'utf8',
-);
-const appShellSource = fs.readFileSync(
-  new URL('../../src/features/app/AppShell.jsx', import.meta.url),
+const streamSource = taskStreamHandlerSource();
+const conversationSource = conversationHandlerSource();
+// pending 那一轮的可见性判据与顶掉逻辑在 model/chat-rows.js。
+const rowBuilderSource = fs.readFileSync(
+  new URL('../../src/features/app/model/chat-rows.js', import.meta.url),
   'utf8',
 );
 const ackSource = fs.readFileSync(
@@ -50,14 +46,14 @@ test('editing and rerunning a turn keep the editor in charge, not the run', () =
 test('the turn an accepted edit replaces yields at the same moment', () => {
   // 旧的取消态（连同里面那支编辑框）和新一轮的运行态不能同时占位：pendingTurn 一在
   // 时间线上渲染，被它顶掉的那一轮就让位（见 chat/model/task-attempts.js）。
-  assert.match(appShellSource, /const pendingTurn = taskRuntimeState\.pendingTask;/);
-  assert.match(appShellSource, /const pendingTurnVisible = Boolean\(pendingTurn/);
-  assert.match(appShellSource, /pendingTurnVisible \? pendingTurn : null,/);
-  assert.match(appShellSource, /const orderedTasks = collapseFullTaskAttempts\(\n\s*taskRuntimeState\.taskOrder\.map/);
+  assert.match(rowBuilderSource, /const pendingTurn = taskRuntimeState\.pendingTask;/);
+  assert.match(rowBuilderSource, /const pendingTurnVisible = Boolean\(pendingTurn/);
+  assert.match(rowBuilderSource, /pendingTurnVisible \? pendingTurn : null,/);
+  assert.match(rowBuilderSource, /const orderedTasks = collapseFullTaskAttempts\(\n\s*taskRuntimeState\.taskOrder\.map/);
   // 同一份可见性判据同时管「渲染 pending 那一轮」和「顶掉 source turn」，两处不会走散。
-  assert.match(appShellSource, /if \(pendingTurnVisible\) \{\n\s*\/\/ 服务端还没接下这一笔/);
-  assert.match(appShellSource, /id: `\$\{pendingTurn\.id \|\| 'pending'\}-user`/);
-  assert.match(appShellSource, /id: `\$\{pendingTurn\.id \|\| 'pending'\}-agent`/);
-  assert.doesNotMatch(appShellSource, /if \(taskRuntimeState\.pendingTask && !taskRuntimeState\.activeTaskId\) \{/,
+  assert.match(rowBuilderSource, /if \(pendingTurnVisible\) \{\n\s*\/\/ 服务端还没接下这一笔/);
+  assert.match(rowBuilderSource, /id: `\$\{pendingTurn\.id \|\| 'pending'\}-user`/);
+  assert.match(rowBuilderSource, /id: `\$\{pendingTurn\.id \|\| 'pending'\}-agent`/);
+  assert.doesNotMatch(rowBuilderSource, /if \(taskRuntimeState\.pendingTask && !taskRuntimeState\.activeTaskId\) \{/,
     'the pending row gate must be shared with the collapse');
 });

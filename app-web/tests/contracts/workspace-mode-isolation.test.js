@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import { conversationHandlerSource } from '../helpers/handler-source.js';
 
 const storedValues = new Map();
 
@@ -19,10 +19,7 @@ const {
   replaceWorkspaceModeFromProjects,
   saveWorkspaceState,
 } = await import('../../src/features/conversations/model/workspace-state.js');
-const handlerSource = fs.readFileSync(
-  new URL('../../src/features/conversations/hooks/createConversationHandlers.js', import.meta.url),
-  'utf8',
-);
+const handlerSource = conversationHandlerSource();
 const ownerId = 'owner-a';
 
 test('project removal deletes every conversation in the typed project', () => {

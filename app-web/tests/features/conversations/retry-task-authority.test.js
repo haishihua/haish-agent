@@ -250,7 +250,12 @@ test('Retry loading stays within the original error button and the page wires se
   assert.match(source, /aria-busy=\{Boolean\(retrying\)\}/);
   assert.match(css, /button\[aria-busy="true"\] svg/);
   assert.doesNotMatch(css, /aui-error-shimmer|aui-error-retrying/);
-  const shell = readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
+  const shell = [
+    readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('../../../src/features/app/hooks/useShellHandlers.js', import.meta.url), 'utf8'),
+  ].join('\n'); // handlers 装配在 hook 里
+  // pending 那一轮的失败态在 model/chat-rows.js 里拼行。
+  const rowBuilder = readFileSync(new URL('../../../src/features/app/model/chat-rows.js', import.meta.url), 'utf8');
   assert.match(shell, /createConversationHandlers\(\{\s*executeQuest, recoverConversationTasks,/);
-  assert.match(shell, /!pendingTurn\.awaitingRetryConfirmation \|\| pendingTurn\.stopPending/);
+  assert.match(rowBuilder, /!pendingTurn\.awaitingRetryConfirmation \|\| pendingTurn\.stopPending/);
 });

@@ -58,6 +58,11 @@ const timelineNodesSource = readFileSync(
   new URL('../../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url),
   'utf8',
 );
+// settled / live / streaming 在 model/chat-rows.js 里算。
+const rowBuilderSource = readFileSync(
+  new URL('../../../src/features/app/model/chat-rows.js', import.meta.url),
+  'utf8',
+);
 const panelStyles = readFileSync(new URL('../../../styles/panels.css', import.meta.url), 'utf8');
 
 const runningTask = (taskId, extra = {}) => ({ taskId, status: 'running', ...extra });
@@ -299,9 +304,9 @@ test('the message panel reads the same judge for streaming and for the activity 
   // currentConversation.tasks 是合并出来的，不能拿来判——它会藏掉目录的落地标记。
   assert.match(appShellSource, /const directoryConversation = useMemo\(\n\s+\(\) => findConversationById\(workspaceState, conversationId\),\n\s+\[conversationId, workspaceState\],\n\s+\);/);
   assert.match(appShellSource, /const settledRuntimeTaskIds = useMemo\(\(\) => settledTaskIds\(\[\n\s+\.\.\.taskRuntimeState\.taskOrder\.map\(\(taskId\) => taskRuntimeState\.tasksById\[taskId\]\),\n\s+\.\.\.\(directoryConversation\?\.tasks \|\| \[\]\),\n\s+\]\), \[directoryConversation, taskRuntimeState\]\);/);
-  assert.match(appShellSource, /const settled = settledRuntimeTaskIds;/);
-  assert.match(appShellSource, /const live = isTaskLive\(task\) && !settled\.has\(String\(task\.taskId \|\| task\.id \|\| ''\)\);/);
-  assert.match(appShellSource, /const streaming = live;/);
+  assert.match(rowBuilderSource, /const settled = settledRuntimeTaskIds;/);
+  assert.match(rowBuilderSource, /const live = isTaskLive\(task\) && !settled\.has\(String\(task\.taskId \|\| task\.id \|\| ''\)\);/);
+  assert.match(rowBuilderSource, /const streaming = live;/);
   assert.match(appShellSource, /const currentConversationRunState = useConversationRunState\(\{/);
   assert.match(appShellSource, /const currentConversationActive = isRunStateLive\(currentConversationRunState\.state\);/);
   // 活动文案的「在等人」也来自同一份快照，不再看 ask_user 卡片在不在飞。
@@ -312,7 +317,7 @@ test('the message panel reads the same judge for streaming and for the activity 
 test('a copy that is behind while the turn already settled gets rebuilt instead of rendered around', () => {
   // 用户报的问题：「任务完成了，怎么连字都没有」：侧边栏拿着服务端列表拷贝说收工，面板手上
   // 那份本地运行时拷贝却停在半路（没正文、没 completedAt），于是渲染成「已完成却没有正文」
-  // 的空气泡。标准做法是把这份拷贝补齐（丢掉游标全量重放，和「切走再切回」同一条 restore
+  // 的空气泡。标准做法是把这份拷贝补齐（沿用事件游标做增量重建，和「切走再切回」同一条 restore
   // 路径）——不给行加任何「正在加载」之类的兜底渲染。
   // 要重建的名单现算（重建过的记在 ref 里，effect 跑的时候读到的才是最新的那份）：
   // 只发一页，而且已经重建过的那几条不再占名额——它们一直排在最前面，更早的半路拷贝就
@@ -324,8 +329,15 @@ test('a copy that is behind while the turn already settled gets rebuilt instead 
   assert.match(appShellSource, /\}, \[conversationId, settledRuntimeTaskIds, taskRuntimeState\]\);/);
   assert.match(pagingSource, /export function staleTaskRuntimeIds\(\n\s+taskOrder,\n\s+tasksById,\n\s+settledIds,\n\s+\{ attemptedIds = null, limit = STALE_TASK_RUNTIME_REBUILD_LIMIT \} = \{\},\n\)/);
   assert.match(pagingSource, /!isTaskSettled\(task\) && !attempted\.has\(taskId\)/);
-  // 过期游标必须丢：这份拷贝的游标可能对不上服务端文件，重建按全量走。
-  assert.match(appShellSource, /for \(const taskId of pending\) \{\n\s+taskRuntimeEventCacheRef\.current\.delete\(taskId\);\n\s+rebuild\(taskId\);\n\s+\}/);
+  // 重建保留游标：load_after 遇到对不上的游标会自己退化成全量回放（events_delta=false，
+  // 客户端整份替换），所以保留游标永远不会丢数据；而游标对得上时重建只传增量。
+  // 主动删游标等于「每次重建都把几 MB 的整份事件重推一遍」。
+  assert.match(appShellSource, /for \(const taskId of pending\) \{\n\s+rebuild\(taskId\);\n\s+\}/);
+  assert.doesNotMatch(
+    appShellSource,
+    /taskRuntimeEventCacheRef\.current\.delete\(taskId\);\n\s+rebuild\(taskId\);/,
+    '重建必须沿用事件游标，否则每次重建都是全量重放',
+  );
   // 重建走的是和「切走再切回来」同一条 restore 路径（从 runtimeApiRef 取，effect 里不留旧闭包）。
   assert.match(appShellSource, /await runtime\.restoreLatestTaskRuntime\(taskId, \{/);
   assert.match(appShellSource, /const isCurrentActivation = \(\) => conversationIdRef\.current === conversationId\n\s+&& runtime\.isConversationActivationCurrent\(activationSeq\);/);

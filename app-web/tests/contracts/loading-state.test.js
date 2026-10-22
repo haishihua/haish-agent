@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { appShellSource } from '../helpers/shell-source.js';
 
 // Regression: the settings pane used to fall back to a bare
 // `<div role="status">Loading settings…</div>` — unstyled body text parked in the
@@ -9,7 +10,7 @@ import { readFileSync } from 'node:fs';
 // centered in the pane. The label keeps the existing wording but must use the app's
 // body font (`--conversation-font`, the chat text face), because `body` itself is
 // the pixel font `Zpix` and inheriting would render the label as blocky bitmap text.
-const appShell = readFileSync(new URL('../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
+const appShell = appShellSource();
 const loaderSource = readFileSync(new URL('../../src/shared/ui/agent-elements/LoadingState.jsx', import.meta.url), 'utf8');
 const loaderStyles = readFileSync(new URL('../../src/shared/ui/agent-elements/loading-state.css', import.meta.url), 'utf8');
 const shellStyles = readFileSync(new URL('../../styles/app-shell.css', import.meta.url), 'utf8');

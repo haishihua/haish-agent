@@ -12,6 +12,10 @@ const editorSource = fs.readFileSync(
   new URL('../../src/features/settings/components/WorkflowConfigEditor.jsx', import.meta.url),
   'utf8',
 );
+const nodeFieldsSource = fs.readFileSync(
+  new URL('../../src/features/settings/components/workflow-editor/NodeFields.jsx', import.meta.url),
+  'utf8',
+);
 const flowNodeSource = fs.readFileSync(
   new URL('../../src/features/workflow/components/WorkflowFlowNode.jsx', import.meta.url),
   'utf8',
@@ -19,18 +23,27 @@ const flowNodeSource = fs.readFileSync(
 const overlaySource = fs.readFileSync(new URL('../../src/features/approvals/components/ApprovalOverlay.jsx', import.meta.url), 'utf8');
 const approvalApiSource = fs.readFileSync(new URL('../../src/features/approvals/api/approvals.js', import.meta.url), 'utf8');
 const approvalStoreSource = fs.readFileSync(new URL('../../src/features/approvals/model/approval-store.js', import.meta.url), 'utf8');
-const runtimeSource = fs.readFileSync(
-  new URL('../../src/features/workflow/components/WorkflowRuntimePage.jsx', import.meta.url),
+const runtimePartSource = (path) => fs.readFileSync(
+  new URL(`../../src/features/workflow/components/${path}`, import.meta.url),
   'utf8',
 );
+const runtimeSource = [
+  'WorkflowRuntimePage.jsx',
+  'runtime/node-attempts.js',
+  'runtime/WorkflowNodeConversation.jsx',
+  'runtime/WorkflowNodeAttempts.jsx',
+  'runtime/WorkflowNodeDetailHead.jsx',
+  'runtime/WorkflowDetailResizer.jsx',
+  'runtime/WorkflowCanvasOverlays.jsx',
+].map(runtimePartSource).join('\n');
 
 test('workflow editor exposes a configurable human approval node', () => {
   assert.match(flowNodeSource, /human_approval: \{ icon: 'workflow-approval' \}/);
   assert.match(editorSource, /baseType === 'human_approval'/);
-  assert.match(editorSource, /selectedNode\.type === 'human_approval'/);
+  assert.match(nodeFieldsSource, /selectedNode\.type === 'human_approval'/);
   assert.match(editorSource, /summaryText: '\{\{input\.message\}\}'/);
-  assert.match(editorSource, /title="Review content"/);
-  assert.match(editorSource, /<WorkflowOutputContract node=\{selectedNode\} \/>/);
+  assert.match(nodeFieldsSource, /title="Review content"/);
+  assert.match(nodeFieldsSource, /<WorkflowOutputContract node=\{selectedNode\} \/>/);
 });
 
 test('workflow approval card submits through its own realtime command and requires rejection feedback', () => {

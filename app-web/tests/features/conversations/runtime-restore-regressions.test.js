@@ -77,13 +77,15 @@ function harness(records = [task('history'), task('latest', 'running')]) {
   ctx.removeConversationTaskFromWorkspace = (owner, id) => removed.push([owner, id]);
   // Execute the page's actual history/deletion callbacks, not separate test implementations.
   const shell = readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
-  const earlierSource = shell.match(/ {2}const loadEarlierTaskRuntimes = async \(targetConversationId\) => \{[\s\S]*?\n {2}\};/);
+  // 历史回调 / 删除回调在 hooks/useShellHandlers.js 里定义。
+  const shellHandlers = readFileSync(new URL('../../../src/features/app/hooks/useShellHandlers.js', import.meta.url), 'utf8');
+  const earlierSource = shellHandlers.match(/ {2}const loadEarlierTaskRuntimes = async \(targetConversationId\) => \{[\s\S]*?\n {2}\};/);
   assert.ok(earlierSource, 'execute the actual page history callback');
   const pagingCtx = { ...ctx, nextEarlierTaskRuntimeIds };
   const loadEarlierTaskRuntimes = new Function(...Object.keys(pagingCtx),
     `${earlierSource[0]}\nreturn loadEarlierTaskRuntimes;`)(...Object.values(pagingCtx));
   const removeSource = shell.slice(shell.indexOf('  function removeMissingTask('), shell.indexOf('  const panelWorkspaceState'));
-  const deleteSource = shell.slice(shell.indexOf('  async function handleDeleteWorkflowTask('), shell.indexOf('  useEffect(() => {', shell.indexOf('  async function handleDeleteWorkflowTask(')));
+  const deleteSource = shellHandlers.slice(shellHandlers.indexOf('  async function handleDeleteWorkflowTask('), shellHandlers.indexOf('  const loadEarlierTaskRuntimes = async'));
   const deletionCtx = { ...ctx, viewedWorkflowTask: null, clearTaskCompletionNotice: (value) => value };
   const deletion = new Function(...Object.keys(deletionCtx), `${removeSource}\n${deleteSource}\nreturn { removeMissingTask, handleDeleteWorkflowTask };`)(...Object.values(deletionCtx));
   Object.assign(ctx, deletion);

@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createConversationRuntime } from '../../../src/features/conversations/hooks/createConversationRuntime.js';
+import { appShellSource } from '../../helpers/shell-source.js';
 
 const read = (path) => readFileSync(new URL(`../../../src/${path}`, import.meta.url), 'utf8');
 const hook = read('features/conversations/hooks/useConversationRunConfig.js');
 const composer = read('features/chat/components/ChatComposer.jsx');
 const panel = read('features/chat/components/ChatPanel.jsx');
-const shell = read('features/app/AppShell.jsx');
+const shell = appShellSource();
 
 test('Agent-switch impact feedback is an info toast emitted only after the save succeeds', () => {
   const save = hook.indexOf('await sync.flush(serverId, scopeId)');

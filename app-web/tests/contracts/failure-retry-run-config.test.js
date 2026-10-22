@@ -1,23 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { conversationHandlerSource, taskStreamHandlerSource } from '../helpers/handler-source.js';
+import { appShellSource as readAppShellSource } from '../helpers/shell-source.js';
 
 const chatPanelSource = fs.readFileSync(
   new URL('../../src/features/chat/components/ChatPanel.jsx', import.meta.url),
   'utf8',
 );
-const appShellSource = fs.readFileSync(
-  new URL('../../src/features/app/AppShell.jsx', import.meta.url),
-  'utf8',
-);
-const conversationSource = fs.readFileSync(
-  new URL('../../src/features/conversations/hooks/createConversationHandlers.js', import.meta.url),
-  'utf8',
-);
-const streamSource = fs.readFileSync(
-  new URL('../../src/features/tasks/hooks/createTaskStreamHandlers.js', import.meta.url),
-  'utf8',
-);
+const appShellSource = readAppShellSource();
+const conversationSource = conversationHandlerSource();
+const streamSource = taskStreamHandlerSource();
 const runConfigSource = fs.readFileSync(
   new URL('../../src/features/chat/hooks/useRunConfig.js', import.meta.url),
   'utf8',
