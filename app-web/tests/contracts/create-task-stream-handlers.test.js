@@ -1,18 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import { eventDeltaText } from '../../src/features/chat/model/chat-text.js';
+import { taskStreamHandlerSource } from '../helpers/handler-source.js';
 import {
   mergeQueuedStreamDelta,
   workflowNodeFinishedState,
   workflowNodeStartedState,
 } from '../../src/features/tasks/hooks/createTaskStreamHandlers.js';
 
-const handlerSource = fs.readFileSync(new URL('../../src/features/tasks/hooks/createTaskStreamHandlers.js', import.meta.url), 'utf8');
+const handlerSource = taskStreamHandlerSource();
 
 function eventCaseSource(type, nextType) {
   const start = handlerSource.indexOf(`case '${type}'`);
   const end = handlerSource.indexOf(`case '${nextType}'`, start + 1);
+  assert.ok(start >= 0, `case '${type}' is missing from the task stream handler cluster`);
+  assert.ok(
+    end > start,
+    `case '${nextType}' must follow case '${type}', otherwise the slice below spans the whole cluster`,
+  );
   return handlerSource.slice(start, end);
 }
 
@@ -50,8 +55,12 @@ test('final_answer does not mark chat tasks done before run_finished', () => {
 });
 
 test('run_finished releases the local run so remote tasks can be polled', () => {
-  const start = handlerSource.indexOf("case 'run_finished'");
-  const runFinishedCase = handlerSource.slice(start, handlerSource.indexOf('\n      default:', start));
+  // run_finished 的投影在 task-stream/run-events.js 里。
+  const start = handlerSource.indexOf('export function handleRunFinished');
+  assert.ok(start >= 0, 'handleRunFinished must exist');
+  const end = handlerSource.indexOf('\n}\n', start);
+  assert.ok(end > start, 'handleRunFinished 的函数体必须有结束标记（找不到时切片会退化成到全文末尾，断言就恒真了）');
+  const runFinishedCase = handlerSource.slice(start, end);
   assert.match(runFinishedCase, /runtime\.activeRunId = null/);
 });
 

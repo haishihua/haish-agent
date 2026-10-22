@@ -277,6 +277,7 @@ export function buildTaskRuntimeRecord(event, pendingTask) {
       model: null,
     } : null,
     answerText: '',
+    answerImages: [],
     chatStreamText: '',
     toolCalls: [],
     eventLog: [],
@@ -342,6 +343,11 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = []) {
       model: task.model || null,
     } : null,
     answerText: task.answer_text || '',
+    // 最终回答自带的图片：由任务终态绑定，前端不再从正文/时间线猜。
+    answerImages: normalizeChatImageRefs(
+      task.answer_images || task.answerImages || [],
+      task.conversation_id,
+    ),
     // 服务端实测的上下文输入量快照（值 + 采样时刻）：表盘读数的权威来源之一，
     // 归一任务时必须带过去，否则轮询/恢复回来的任务看不到读数。
     contextUsedTokens: task.context_used_tokens ?? null,
@@ -402,6 +408,7 @@ export function runtimeTaskToQuest(task) {
     executionMode: task.executionMode,
     workflowRun: task.workflowRun || null,
     answerText: task.answerText || '',
+    answerImages: task.answerImages || [],
     chatStreamText: task.chatStreamText || '',
     error: task.error || null,
   };

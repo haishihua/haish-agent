@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { appShellSource as readAppShellSource } from '../../helpers/shell-source.js';
 
 globalThis.window = {
   localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
@@ -86,10 +87,7 @@ const projectNodeSource = fs.readFileSync(
   new URL('../../../src/features/conversations/components/ProjectNode.jsx', import.meta.url),
   'utf8',
 );
-const appShellSource = fs.readFileSync(
-  new URL('../../../src/features/app/AppShell.jsx', import.meta.url),
-  'utf8',
-);
+const appShellSource = readAppShellSource();
 const conversationHandlersSource = fs.readFileSync(
   new URL('../../../src/features/conversations/hooks/createConversationHandlers.js', import.meta.url),
   'utf8',

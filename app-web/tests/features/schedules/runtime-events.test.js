@@ -50,9 +50,15 @@ test('scheduled stream writes answers, task records and busy state only to its o
   assert.equal(runtime.activeRunId, 'schedule:r');
   assert.equal(runtime.abortRequested, false);
   send({ type: 'final_answer', content: 'Final answer' });
-  send({ type: 'run_finished', status: 'done', task: { task_id: 't', conversation_id: 'scheduled', title: 'Review', status: 'done', execution_mode: 'chat' } });
+  send({ type: 'run_finished', status: 'done', task: {
+    task_id: 't', conversation_id: 'scheduled', title: 'Review', status: 'done', execution_mode: 'chat',
+    answer_text: 'Persisted corrected answer',
+    answer_images: [{ image_id: 'answer-0', path: '/runtime/conversations/scheduled/images/gen.png' }],
+  } });
   assert.equal(runtime.taskRuntimeState.tasksById.t.status, 'done');
-  assert.equal(runtime.taskRuntimeState.tasksById.t.answerText, 'Final answer');
+  // 终态落盘正文优先于先到的 final_answer：图片固化会改写路径。
+  assert.equal(runtime.taskRuntimeState.tasksById.t.answerText, 'Persisted corrected answer');
+  assert.equal(runtime.taskRuntimeState.tasksById.t.answerImages[0].path, '/runtime/conversations/scheduled/images/gen.png');
   assert.equal(runtime.busy, false);
   assert.equal(runtime.activeRunId, null);
   assert.equal(runtimes.has('currently-open'), false);

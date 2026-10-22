@@ -14,6 +14,7 @@ async function loadModule(name) {
 const { createScheduledTaskActivity } = await loadModule('scheduled-task-activity');
 const { createAppSleepGuard } = await loadModule('app-sleep-guard');
 const source = fs.readFileSync(new URL('../../../src/main/main.ts', import.meta.url), 'utf8');
+const realtimeSource = fs.readFileSync(new URL('../../../src/main/realtime-client.ts', import.meta.url), 'utf8');
 const taskEvent = (id, type = 'run_started') => ({ type: 'task.event', schedule_id: 'schedule', run_id: id, event: { type } });
 const runEvent = (id, status) => ({ type: 'schedule.event', event: { action: 'run_updated', run: { id, status } } });
 
@@ -26,14 +27,15 @@ function fixture(blockerId = 42) {
 }
 
 function runMainSection(text, globals) {
-  const compiled = ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  // 切片里可能出现 `export function ...`：在 VM 里当普通声明执行即可。
+  const compiled = ts.transpileModule(text.replace(/^export /gm, ''), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   const context = vm.createContext(globals);
   vm.runInContext(compiled, context);
   return context;
 }
 
 function lifecycleFixture({ gotTheLock = true, platform = 'darwin' } = {}) {
-  const { guard, calls, activity } = fixture();
+  const { guard, calls } = fixture();
   const handlers = new Map();
   let ready;
   const app = {
@@ -42,6 +44,7 @@ function lifecycleFixture({ gotTheLock = true, platform = 'darwin' } = {}) {
     on: (name, handler) => handlers.set(name, handler),
     quit: () => calls.push('quit'),
   };
+  let realtimeStopped = false;
   const context = runMainSection(source.slice(source.indexOf('app\n  .whenReady()')), {
     app, appSleepGuard: guard, gotTheLock, process: { platform }, console,
     applyDockIcon: () => {}, setupAppUpdater: () => {},
@@ -49,13 +52,12 @@ function lifecycleFixture({ gotTheLock = true, platform = 'darwin' } = {}) {
     ensureRemoteAdapter: async () => {}, runtimePaths: () => ({}),
     registerWebProtocol: () => {}, createWindow: () => calls.push('window'), stopDockAttention: () => {},
     BrowserWindow: { getAllWindows: () => [] },
-    realtimeReconnectTimer: null, scheduleActivityTimer: null,
-    clearTimeout, clearInterval, scheduledTaskActivity: activity,
-    realtimeTaskOwners: new Map(), realtimeSocket: null,
+    // 实时通道的收尾在 realtime-client.ts，这里只验证 before-quit 真的调到了它。
+    stopRealtimeClient: () => { realtimeStopped = true; },
     stopLocalRuntime: async () => {}, stopRemoteAdapter: async () => {},
   });
   const quit = () => handlers.get('before-quit')({ preventDefault: () => calls.push('preventDefault') });
-  return { context, calls, handlers, ready, quit };
+  return { context, calls, handlers, ready, quit, realtimeStopped: () => realtimeStopped };
 }
 
 test('app guard is idle before ready and start/stop are idempotent, including blocker id zero', () => {
@@ -71,7 +73,7 @@ test('app guard is idle before ready and start/stop are idempotent, including bl
 });
 
 test('main acquires on ready without tasks and keeps the blocker after macOS windows close', async () => {
-  const { calls, handlers, ready, quit } = lifecycleFixture();
+  const { calls, handlers, ready, quit, realtimeStopped } = lifecycleFixture();
   assert.deepEqual(calls, []);
   ready();
   await new Promise((resolve) => setImmediate(resolve));
@@ -82,6 +84,7 @@ test('main acquires on ready without tasks and keeps the blocker after macOS win
   quit();
   quit();
   assert.deepEqual(calls, ['start', 'window', 'window', 'preventDefault', ['stop', 42]]);
+  assert.equal(realtimeStopped(), true, 'quit must tear the realtime channel down');
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(calls.at(-1), 'quit');
   assert.match(source, /powerSaveBlocker\.start\('prevent-app-suspension'\)/);
@@ -189,7 +192,7 @@ test('main handles scheduled activity without renderer subscribers or changes to
   const { activity, calls, guard } = fixture();
   guard.start();
   const forwarded = [];
-  const handler = source.slice(source.indexOf('function handleRealtimeMessage('), source.indexOf('async function ensureRealtimeSocket('));
+  const handler = realtimeSource.slice(realtimeSource.indexOf('function handleRealtimeMessage('), realtimeSource.indexOf('async function ensureRealtimeSocket('));
   const context = runMainSection(handler, {
     scheduledTaskActivity: activity, appSleepGuard: guard,
     realtimeScheduleSubscribers: new Set(), realtimeTaskOwners: new Map(),
@@ -202,22 +205,27 @@ test('main handles scheduled activity without renderer subscribers or changes to
   assert.equal(activity.size, 0);
   assert.deepEqual(calls, ['start']);
   assert.deepEqual(forwarded, []);
-  const disconnect = source.slice(source.indexOf('function failRealtimeConnection('), source.indexOf('function scheduleRealtimeReconnect('));
+  const disconnect = realtimeSource.slice(realtimeSource.indexOf('function failRealtimeConnection('), realtimeSource.indexOf('function scheduleRealtimeReconnect('));
   assert.doesNotMatch(disconnect, /scheduledTaskActivity\.clear/);
-  const reconnect = source.slice(source.indexOf('function scheduleRealtimeReconnect('), source.indexOf('function handleRealtimeMessage('));
+  const reconnect = realtimeSource.slice(realtimeSource.indexOf('function scheduleRealtimeReconnect('), realtimeSource.indexOf('function handleRealtimeMessage('));
   assert.doesNotMatch(reconnect, /Subscribers\.size/);
-  assert.match(source, /setInterval\(\(\) => void refreshScheduleActivity\(\), 15_000\)/);
-  assert.match(source, /realtimeSocket !== socket/);
+  assert.match(realtimeSource, /setInterval\(\(\) => void refreshScheduleActivity\(\), 15_000\)/);
+  assert.match(realtimeSource, /realtimeSocket !== socket/);
   assert.match(source.slice(source.indexOf('app\n  .whenReady()')), /ensureRealtimeSocket\(\)/);
-  assert.match(source.slice(source.indexOf("app.on('before-quit'")), /scheduledTaskActivity\.clear\(\)/);
+  assert.match(source.slice(source.indexOf("app.on('before-quit'")), /stopRealtimeClient\(\)/);
+  // 定时任务活动必须在退出时清空：清空写在 realtime-client 的 stopRealtimeClient 里。
+  assert.match(
+    realtimeSource.slice(realtimeSource.indexOf('export function stopRealtimeClient(')),
+    /scheduledTaskActivity\.clear\(\)/,
+  );
 });
 
 test('ordinary task completion and runtime disconnect leave the app blocker active', () => {
   const { guard, calls } = fixture();
   guard.start();
-  const owners = new Map([['manual', 1]]);
+  const owners = new Map([['manual', { ownerId: 1, taskId: 'task-1' }]]);
   const messages = [];
-  const context = runMainSection(source.slice(source.indexOf('function failRealtimeConnection('), source.indexOf('async function ensureRealtimeSocket(')), {
+  const context = runMainSection(realtimeSource.slice(realtimeSource.indexOf('function failRealtimeConnection('), realtimeSource.indexOf('async function ensureRealtimeSocket(')), {
     appSleepGuard: guard, scheduledTaskActivity: createScheduledTaskActivity(),
     realtimeTaskOwners: owners, realtimeCommandWaiters: new Map(),
     realtimeScheduleSubscribers: new Set(), realtimeApprovalSubscribers: new Set(),
@@ -225,9 +233,12 @@ test('ordinary task completion and runtime disconnect leave the app blocker acti
   });
   context.handleRealtimeMessage({ data: JSON.stringify({ type: 'task.end', request_id: 'manual' }) });
   assert.equal(owners.size, 0);
-  owners.set('disconnected', 1);
+  // 断线不再把在跑的任务判死：既不合成 task.error 给渲染层，也不清空登记。
+  // 任务在服务端继续跑，重连成功后由 task.attach 重新挂上（之前这里会把每一条
+  // 在跑的流判成 503 失败，任务在用户眼里就是“失败了”）。
+  owners.set('disconnected', { ownerId: 2, taskId: 'task-2' });
   context.failRealtimeConnection();
-  assert.equal(owners.size, 0);
-  assert.equal(messages.length, 2);
+  assert.equal(owners.size, 1);
+  assert.equal(messages.length, 1);
   assert.deepEqual(calls, ['start']);
 });

@@ -1,15 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { taskStreamHandlerSource } from '../../helpers/handler-source.js';
+import { appShellSource as readAppShellSource } from '../../helpers/shell-source.js';
 
 const resultDialogSource = fs.readFileSync(new URL('../../../src/shared/ui/ResultDialog.jsx', import.meta.url), 'utf8');
 const appIconSource = fs.readFileSync(new URL('../../../src/shared/ui/AppIcon.jsx', import.meta.url), 'utf8');
 const contextChipSource = fs.readFileSync(new URL('../../../src/shared/ui/ContextTaskChip.jsx', import.meta.url), 'utf8');
 const chatComposerSource = fs.readFileSync(new URL('../../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
-const appShellSource = fs.readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
+const attachmentChipsSource = fs.readFileSync(new URL('../../../src/features/chat/components/composer/AttachmentChips.jsx', import.meta.url), 'utf8');
+const appShellSource = [
+  readAppShellSource(),
+  fs.readFileSync(new URL('../../../src/features/app/hooks/useShellHandlers.js', import.meta.url), 'utf8'),
+].join('\n');
 const conversationHandlersSource = fs.readFileSync(new URL('../../../src/features/conversations/hooks/createConversationHandlers.js', import.meta.url), 'utf8');
 const deployHandlersSource = fs.readFileSync(new URL('../../../src/features/tasks/hooks/createDeployHandlers.js', import.meta.url), 'utf8');
-const streamHandlersSource = fs.readFileSync(new URL('../../../src/features/tasks/hooks/createTaskStreamHandlers.js', import.meta.url), 'utf8');
+const streamHandlersSource = taskStreamHandlerSource();
 const taskRuntimeSource = fs.readFileSync(new URL('../../../src/features/tasks/model/task-runtime.js', import.meta.url), 'utf8');
 const chatTimelineSource = fs.readFileSync(new URL('../../../src/features/chat/model/chat-timeline.js', import.meta.url), 'utf8');
 const taskCardsSource = fs.readFileSync(new URL('../../../src/features/conversations/components/ConversationTaskCards.jsx', import.meta.url), 'utf8');
@@ -65,9 +71,9 @@ test('输入框上的标签复用文件附件芯片的皮', () => {
   assert.match(contextChipSource, /className="composer-file-remove"/);
   assert.match(contextChipSource, /Remove context task/);
   assert.match(chatCss, /\.composer-file-chip\.is-context-task\s*\{/);
-  assert.match(chatComposerSource, /import \{ ContextTaskChip \}/);
+  assert.match(attachmentChipsSource, /import \{ ContextTaskChip \}/);
   assert.match(chatComposerSource, /composerImages\.length > 0 \|\| attachment \|\| contextTask/);
-  assert.match(chatComposerSource, /<ContextTaskChip task=\{contextTask\} onClear=\{onClearContextTask\}/);
+  assert.match(attachmentChipsSource, /<ContextTaskChip task=\{contextTask\} onClear=\{onClearContextTask\}/);
   // 只有工作流那侧的输入框接这枚标签，聊天侧不接（聊天没有这号入口）。
   assert.equal((appShellSource.match(/contextTask=\{contextTask\}/g) || []).length, 1);
   assert.match(appShellSource, /onClearContextTask=\{\(\) => setContextTask\(null\)\}/);
