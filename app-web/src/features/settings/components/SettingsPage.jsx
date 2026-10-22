@@ -472,8 +472,6 @@ export function SettingsPage({
           onDraftChange={onLlmDraftChange}
           readOnly={readOnly}
           refreshModels={mode !== 'detail'}
-          onToggleVisionProvider={toggleLlmProvider}
-          toggleBusy={Boolean(llmToggleBusy)}
         />
       ) : (
         <div className="settings-empty">Click Add to create a configuration.</div>

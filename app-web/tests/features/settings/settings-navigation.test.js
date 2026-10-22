@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { createSettingsHandlers } from '../../../src/features/settings/hooks/createSettingsHandlers.js';
+import { appShellSource } from '../../helpers/shell-source.js';
 
-const shell = readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
+const shell = appShellSource();
 
 test('first Settings entry retains the default Providers / Chat tab', () => {
   assert.match(shell, /\[settingsSection, setSettingsSection\] = useState\('llm'\)/);

@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { configItemsForSection } from '../../src/features/settings/model/settings-payload.js';
 
-const shell = fs.readFileSync(new URL('../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
+import { appShellSource as readAppShellSource } from '../helpers/shell-source.js';
+
+const shell = readAppShellSource();
 const page = fs.readFileSync(new URL('../../src/features/settings/components/SettingsPage.jsx', import.meta.url), 'utf8');
 
 test('Agent navigation counts presets and custom agents, including disabled agents', () => {

@@ -20,13 +20,15 @@ import {
   WORKFLOW_NODE_OUTPUT_FIELDS,
 } from '../../src/features/workflow/model/workflow-defaults.js';
 import { normalizeWorkflowSettings } from '../../src/features/workflow/model/workflow-catalog.js';
+import { appShellSource as readAppShellSource } from '../helpers/shell-source.js';
 
-const appShellSource = fs.readFileSync(
-  new URL('../../src/features/app/AppShell.jsx', import.meta.url),
-  'utf8',
-);
+const appShellSource = [
+  readAppShellSource(),
+  fs.readFileSync(new URL('../../src/features/app/hooks/useShellHandlers.js', import.meta.url), 'utf8'),
+].join('\n');
 const chatPanelSource = fs.readFileSync(new URL('../../src/features/chat/components/ChatPanel.jsx', import.meta.url), 'utf8');
 const composerSource = fs.readFileSync(new URL('../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
+const sendControlsSource = fs.readFileSync(new URL('../../src/features/chat/components/composer/SendControls.jsx', import.meta.url), 'utf8');
 const modelPickersSource = fs.readFileSync(new URL('../../src/features/chat/components/ModelPickers.jsx', import.meta.url), 'utf8');
 const motionEffectsSource = fs.readFileSync(new URL('../../src/shared/ui/MotionEffects.jsx', import.meta.url), 'utf8');
 const chatStyles = fs.readFileSync(new URL('../../styles/chat.css', import.meta.url), 'utf8');
@@ -223,7 +225,7 @@ test('send and stop actions share the chromatic metal circle effect', () => {
   assert.match(motionEffectsSource, /variant="circle"[\s\S]*preset="chromatic"[\s\S]*theme="dark"/);
   assert.match(motionEffectsSource, /strength=\{1\}/);
   assert.doesNotMatch(motionEffectsSource, /children\.props\.disabled/);
-  assert.match(composerSource, /<MetalActionEffect active=\{sendBeamActive\}>[\s\S]*chat-send-icon/);
+  assert.match(sendControlsSource, /<MetalActionEffect active=\{sendBeamActive\}>[\s\S]*chat-send-icon/);
   // 发送/停止按钮只有输入框那一份（聊天详情不再自己画一个）。
   assert.doesNotMatch(chatPanelSource, /chat-send-icon/);
 });

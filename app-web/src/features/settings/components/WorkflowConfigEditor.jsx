@@ -6,8 +6,6 @@ import {
   ReactFlowProvider,
   applyEdgeChanges,
   useReactFlow,
-  useNodesState,
-  ViewportPortal,
 } from '@xyflow/react';
 import {
   normalizeWorkflowNode,
@@ -15,17 +13,9 @@ import {
   normalizeWorkflowSettings,
   workflowById,
   typeLabelForWorkflowNode,
-  workflowSchemaFields,
   workflowVariableCatalog,
-  workflowArgumentsText,
-  workflowParameterEntries,
-  workflowTemplateWithParameterAliases,
-  reconcileWorkflowParameterTemplate,
   DEFAULT_WORKFLOW_OUTPUT_MAPPING,
   DEFAULT_WORKFLOW_OUTPUT_SCHEMA,
-  workflowOutputMappingEntries,
-  workflowVariableTypeForValue,
-  buildWorkflowOutputPatch,
   placeAddedWorkflowNode,
   placeDroppedWorkflowNode,
 } from '../../workflow/model/workflow-catalog.js';
@@ -43,37 +33,27 @@ import {
   saveWorkflowLayout,
   savedWorkflowLayout,
 } from '../../workflow/model/workflow-layout-store.js';
-import { workflowSnapPosition, workflowRouteHandles, workflowRouteKey, workflowReconnectRoute, workflowUsedSideHandles } from '../../workflow/model/workflow-canvas-editing.js';
+import { workflowRouteHandles, workflowRouteKey, workflowReconnectRoute, workflowUsedSideHandles } from '../../workflow/model/workflow-canvas-editing.js';
 import { useWorkflowCanvasPreferences } from '../../workflow/hooks/useWorkflowCanvasPreferences.js';
 import { saveWorkflowCanvasPreferences, workflowFitOptions } from '../../workflow/model/workflow-canvas-preferences.js';
 import { WorkflowCanvasControls } from '../../workflow/components/WorkflowCanvasControls.jsx';
 import { useWorkflowCanvasWidth } from '../../workflow/hooks/useWorkflowCanvasWidth.js';
+import { EditorToolbar } from './workflow-editor/EditorToolbar.jsx';
+import { NodeFields } from './workflow-editor/NodeFields.jsx';
+import { NodeInspector } from './workflow-editor/NodeInspector.jsx';
 import {
-  FieldRow,
-  SettingsMenuSelect,
-  SettingsTooltipIconButton,
-} from './settings-ui.jsx';
-import {
-  WorkflowVariableSelect,
-  WorkflowParameterEditor,
-  WorkflowTemplateTextarea,
-  WorkflowSchemaList,
-  WorkflowOutputContract,
-} from './WorkflowFormControls.jsx';
-import { WorkflowAgentDetails } from './WorkflowAgentDetails.jsx';
-import { WorkflowNodeHeading, WorkflowDetailSection, WorkflowDetailSelect } from './WorkflowNodeDetails.jsx';
-import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
-import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
+  addWorkflowEdge,
+  canConnectWorkflowNodes,
+  workflowEdgeId,
+} from './workflow-editor/shared.js';
+import { WorkflowDropCanvas } from './workflow-editor/WorkflowDropCanvas.jsx';
 import {
   WORKFLOW_FIT_OPTIONS,
-  WORKFLOW_BRANCH_META,
   WORKFLOW_BRANCHES,
   WorkflowCanvasEdge,
   WorkflowFlowNode,
-  workflowNodeAccent,
   workflowEdgeAppearance,
   workflowFeedbackTargetIds,
-  workflowNodeMeta,
   workflowNodePorts,
 } from '../../workflow/components/WorkflowFlowNode.jsx';
 
@@ -86,7 +66,6 @@ const ReactFlowNS = {
   applyEdgeChanges,
   useReactFlow,
 };
-const WORKFLOW_NODE_DRAG_TYPE = 'application/x-haish-workflow-node';
 
 function WorkflowCanvasFitView({ workflowKey, workflowId }) {
   const { fitView } = useReactFlow();
@@ -99,186 +78,8 @@ function WorkflowCanvasFitView({ workflowKey, workflowId }) {
   return null;
 }
 
-function WorkflowDropCanvas({
-  nodes,
-  workflowKey,
-  layoutRevision,
-  canvasNodesRef,
-  onNodesChange,
-  onNodeDragStart,
-  onNodeDragStop,
-  draggedNodeType,
-  onDropNode,
-  onDropTargetChange,
-  children,
-  ...props
-}) {
-  const { screenToFlowPosition, getNodes, getInternalNode, getZoom } = useReactFlow();
-  const [snapPreview, setSnapPreview] = useState(null);
-  const snapFor = (node, event, draggedNodes) => event.altKey || draggedNodes?.length > 1 ? null
-    : workflowSnapPosition(node, getNodes(), props.edges, { zoom: getZoom(), internalNode: getInternalNode });
-  const [canvasNodes, setCanvasNodes, onCanvasNodesChange] = useNodesState(nodes);
-  const [dropPreview, setDropPreview] = useState(null);
-  const isNodeDraggingRef = useRef(false);
-  const draggedNodePositionsRef = useRef(new Map());
-  const previousWorkflowKeyRef = useRef(workflowKey);
-  const previousLayoutRevisionRef = useRef(layoutRevision);
-  const isWorkflowNodeDrag = (event) => (
-    Array.from(event.dataTransfer?.types || []).includes(WORKFLOW_NODE_DRAG_TYPE)
-  );
-
-  useEffect(() => {
-    if (canvasNodesRef) canvasNodesRef.current = canvasNodes;
-  }, [canvasNodes, canvasNodesRef]);
-
-  useEffect(() => {
-    // 换工作流、或排布被存下/重置（layoutRevision 变）：画布不再记着上次拖到哪，回到传进来的位置。
-    const resetPositions = previousWorkflowKeyRef.current !== workflowKey
-      || previousLayoutRevisionRef.current !== layoutRevision;
-    if (resetPositions) draggedNodePositionsRef.current.clear();
-    previousWorkflowKeyRef.current = workflowKey;
-    previousLayoutRevisionRef.current = layoutRevision;
-    if (isNodeDraggingRef.current) return;
-    setCanvasNodes(nodes.map((node) => {
-      const draggedPosition = draggedNodePositionsRef.current.get(node.id);
-      return draggedPosition ? { ...node, position: draggedPosition } : node;
-    }));
-  }, [layoutRevision, nodes, setCanvasNodes, workflowKey]);
-
-  useEffect(() => {
-    if (!draggedNodeType) setDropPreview(null);
-  }, [draggedNodeType]);
-
-  const previewNode = dropPreview
-    ? {
-      id: '__workflow_drop_preview__',
-      type: 'workflowNode',
-      position: dropPreview.position,
-      data: {
-        workflowNode: {
-          id: '__workflow_drop_preview__',
-          type: dropPreview.type,
-          label: typeLabelForWorkflowNode(dropPreview.type),
-        },
-        agentIconName: dropPreview.type === 'agent' ? 'workflow-agent' : undefined,
-        dropPreview: true,
-      },
-      draggable: false,
-      selectable: false,
-      connectable: false,
-      focusable: false,
-      className: 'workflow-drop-preview-node',
-    }
-    : null;
-
-  return (
-    <ReactFlow
-      {...props}
-      nodes={previewNode ? [...canvasNodes, previewNode] : canvasNodes}
-      onNodesChange={(changes) => {
-        onCanvasNodesChange(changes);
-        const persistedChanges = changes.filter((change) => change.type === 'remove');
-        if (persistedChanges.length) onNodesChange?.(persistedChanges);
-      }}
-      onNodeDragStart={(event, node, draggedNodes) => {
-        isNodeDraggingRef.current = true;
-        onNodeDragStart?.(event, node, draggedNodes);
-      }}
-      onNodeDrag={(event, node, draggedNodes) => {
-        setSnapPreview(snapFor(node, event, draggedNodes));
-      }}
-      onNodeDragStop={(event, node, draggedNodes) => {
-        const snap = snapFor(node, event, draggedNodes);
-        const landed = { ...node, position: snap?.position || node.position };
-        const landedNodes = (draggedNodes || [node]).map((item) => item.id === node.id ? landed : item);
-        for (const item of landedNodes) draggedNodePositionsRef.current.set(item.id, item.position);
-        draggedNodePositionsRef.current.set(node.id, landed.position);
-        setCanvasNodes((current) => current.map((item) => item.id === node.id ? { ...item, position: landed.position } : item));
-        setSnapPreview(null);
-        isNodeDraggingRef.current = false;
-        onNodeDragStop?.(event, landed, landedNodes);
-      }}
-      onDragEnter={(event) => {
-        if (!isWorkflowNodeDrag(event)) return;
-        event.preventDefault();
-        onDropTargetChange(true);
-      }}
-      onDragOver={(event) => {
-        if (!isWorkflowNodeDrag(event)) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'copy';
-        onDropTargetChange(true);
-        const flowPosition = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-        const previewPosition = placeDroppedWorkflowNode(
-          [],
-          { id: '__workflow_drop_preview__' },
-          flowPosition,
-        ).position;
-        setDropPreview((current) => (
-          current?.type === draggedNodeType
-          && current.position.x === previewPosition.x
-          && current.position.y === previewPosition.y
-            ? current
-            : { type: draggedNodeType, position: previewPosition }
-        ));
-      }}
-      onDragLeave={(event) => {
-        if (event.currentTarget.contains(event.relatedTarget)) return;
-        onDropTargetChange(false);
-        setDropPreview(null);
-      }}
-      onDrop={(event) => {
-        const nodeType = event.dataTransfer?.getData(WORKFLOW_NODE_DRAG_TYPE);
-        if (!nodeType) return;
-        event.preventDefault();
-        onDropTargetChange(false);
-        setDropPreview(null);
-        onDropNode(nodeType, screenToFlowPosition({ x: event.clientX, y: event.clientY }));
-      }}
-    >
-      {children}
-      {snapPreview?.guides.length ? (
-        <ViewportPortal>
-          <svg className="workflow-snap-guides" aria-hidden="true">
-            <rect x={snapPreview.position.x} y={snapPreview.position.y} width={snapPreview.width} height={snapPreview.height} rx={14} />
-            {snapPreview.guides.map((guide) => <line key={guide.axis}
-              x1={guide.axis === 'x' ? guide.value : guide.start} y1={guide.axis === 'y' ? guide.value : guide.start}
-              x2={guide.axis === 'x' ? guide.value : guide.end} y2={guide.axis === 'y' ? guide.value : guide.end} />)}
-          </svg>
-        </ViewportPortal>
-      ) : null}
-    </ReactFlow>
-  );
-}
-
 const WORKFLOW_REACT_FLOW_NODE_TYPES = { workflowNode: WorkflowFlowNode };
 const WORKFLOW_REACT_FLOW_EDGE_TYPES = { workflowEdge: WorkflowCanvasEdge };
-
-function canConnectWorkflowNodes(source, target) {
-  return Boolean(source && target && source.id !== target.id && source.type !== 'output' && target.type !== 'start');
-}
-
-function workflowEdgeId(edge) {
-  return `${edge?.from || ''}:${edge?.branch || ''}->${edge?.to || ''}`;
-}
-
-function addWorkflowEdge(edges, from, to, branch = '') {
-  if (!from || !to || from === to) return edges;
-  const normalizedBranch = branch === 'default' ? 'false' : branch;
-  if (edges.some((edge) => (
-    edge.from === from
-    && edge.to === to
-    && (edge.branch || '') === normalizedBranch
-  ))) return edges;
-  if (WORKFLOW_BRANCH_META[normalizedBranch]) {
-    return [
-      ...edges.filter((edge) => !(edge.from === from && edge.branch === normalizedBranch)),
-      { from, to, branch: normalizedBranch },
-    ];
-  }
-  if (edges.some((edge) => edge.from === from && edge.to === to && !edge.branch)) return edges;
-  return [...edges, { from, to }];
-}
 
 export function WorkflowConfigEditor({
   selectedId,
@@ -346,9 +147,6 @@ export function WorkflowConfigEditor({
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
   const selectedEdge = edges.find((edge) => workflowEdgeId(edge) === selectedEdgeId) || null;
   const availableVariables = workflowVariableCatalog(workflow, selectedNodeId);
-  const typeOptions = normalized.node_types
-    .filter((item) => item.id !== 'output')
-    .map((item) => ({ id: item.id, label: item.label }));
 
   const updateWorkflow = (patch) => {
     if (!isEditable) return;
@@ -591,353 +389,6 @@ export function WorkflowConfigEditor({
     setSelectedEdgeId('');
   };
 
-  const renderNodeFields = () => {
-    if (!selectedNode) return null;
-    if (selectedNode.type === 'start') {
-      return (
-        <>
-          <WorkflowSchemaList
-            title="Inputs"
-            fields={workflowSchemaFields(selectedNode.input_schema || workflow.input_schema)}
-          />
-          <WorkflowOutputContract node={selectedNode} />
-        </>
-      );
-    }
-    const parameterEntries = workflowParameterEntries(selectedNode.parameters);
-    const renderInputParameters = (templateKey, templateValue, children) => (
-      <WorkflowParameterEditor
-        key={selectedNode.id}
-        parameters={parameterEntries}
-        variables={availableVariables}
-        disabled={!isEditable}
-        onChange={(parameters) => updateNode(selectedNode.id, {
-          parameters,
-          [templateKey]: reconcileWorkflowParameterTemplate(
-            templateValue,
-            parameterEntries,
-            parameters,
-          ),
-        })}
-      >
-        {children}
-      </WorkflowParameterEditor>
-    );
-    if (selectedNode.type === 'agent') {
-      return <WorkflowAgentDetails key={selectedNode.id} node={selectedNode} agentOptions={agentOptions}
-        variables={availableVariables} disabled={!isEditable}
-        onChange={(patch) => updateNode(selectedNode.id, patch)} />;
-    }
-    if (selectedNode.type === 'llm') {
-      const prompt = selectedNode.prompt || '{{input.message}}';
-      return (
-        <>
-          {renderInputParameters('prompt', prompt, (
-            <WorkflowTemplateTextarea
-              title="Prompt"
-              value={workflowTemplateWithParameterAliases(prompt, parameterEntries)}
-              disabled={!isEditable}
-              rows={6}
-              showVariables={false}
-              embedded
-              onChange={(value) => updateNode(selectedNode.id, {
-                prompt: workflowTemplateWithParameterAliases(value, parameterEntries),
-              })}
-            />
-          ))}
-          <FieldRow label="response format">
-            <SettingsMenuSelect
-              className="workflow-menu-select"
-              value={selectedNode.response_format || 'text'}
-              options={[
-                { id: 'text', label: 'Text' },
-                { id: 'json_object', label: 'JSON object' },
-              ]}
-              onChange={(response_format) => updateNode(selectedNode.id, { response_format })}
-              disabled={!isEditable}
-            />
-          </FieldRow>
-          <WorkflowOutputContract node={selectedNode} />
-        </>
-      );
-    }
-    if (selectedNode.type === 'tool') {
-      const argumentsValue = selectedNode.arguments ?? { query: '{{input.message}}' };
-      return (
-        <>
-          <FieldRow label="tool name">
-            <SettingsMenuSelect
-              className="workflow-menu-select"
-              value={selectedNode.tool_name || ''}
-              options={toolOptions}
-              onChange={(tool_name) => updateNode(selectedNode.id, { tool_name })}
-              disabled={!isEditable}
-              placeholder="Select a tool"
-              header="project tools"
-            />
-          </FieldRow>
-          {renderInputParameters('arguments', argumentsValue, (
-            <WorkflowTemplateTextarea
-              title="Arguments JSON"
-              hint="Objects and arrays render variables recursively."
-              value={workflowArgumentsText(workflowTemplateWithParameterAliases(argumentsValue, parameterEntries))}
-              disabled={!isEditable}
-              rows={6}
-              showVariables={false}
-              embedded
-              onChange={(value) => updateNode(selectedNode.id, {
-                arguments: workflowTemplateWithParameterAliases(value, parameterEntries),
-              })}
-            />
-          ))}
-          <WorkflowOutputContract node={selectedNode} />
-        </>
-      );
-    }
-    if (selectedNode.type === 'condition') {
-      const expression = selectedNode.expression || '';
-      return (
-        <>
-          <WorkflowDetailSection title="Condition" icon="workflow-condition" className="workflow-control-section">
-            <div className="workflow-control-fields">
-              <WorkflowTemplateTextarea
-                title="Expression"
-                hint="Supports equals, not equals, contains, exists, and truthiness."
-                value={workflowTemplateWithParameterAliases(expression, parameterEntries)}
-                variables={availableVariables}
-                disabled={!isEditable}
-                rows={3}
-                compact
-                placeholder="{{nodes.worker.success}} == true"
-                onChange={(value) => updateNode(selectedNode.id, {
-                  expression: workflowTemplateWithParameterAliases(value, parameterEntries),
-                })}
-              />
-            </div>
-          </WorkflowDetailSection>
-          {parameterEntries.length ? renderInputParameters('expression', expression, null) : null}
-        </>
-      );
-    }
-    if (selectedNode.type === 'human_approval') {
-      const approvalInput = selectedNode.input && typeof selectedNode.input === 'object' && !Array.isArray(selectedNode.input)
-        ? selectedNode.input
-        : {};
-      return (
-        <>
-          <WorkflowDetailSection title="Approval request" icon="workflow-approval" className="workflow-control-section">
-          <div className="workflow-control-fields">
-          <div className="workflow-control-field">
-            <label className="workflow-control-label" htmlFor={`workflow-approval-title-${selectedNode.id}`}>Approval title</label>
-            <input
-              id={`workflow-approval-title-${selectedNode.id}`}
-              aria-label="Approval title"
-              value={approvalInput.title || ''}
-              disabled={!isEditable}
-              placeholder={selectedNode.label || 'Approval required'}
-              onChange={(event) => updateNode(selectedNode.id, {
-                input: { ...approvalInput, title: event.target.value },
-              })}
-            />
-          </div>
-          <WorkflowTemplateTextarea
-            title="Review content"
-            hint="Content the user must approve or reject."
-            value={approvalInput.summaryText || ''}
-            variables={availableVariables}
-            disabled={!isEditable}
-            rows={4}
-            compact
-            placeholder="Select or describe the upstream result to review"
-            onChange={(summaryText) => updateNode(selectedNode.id, {
-              input: { ...approvalInput, summaryText },
-            })}
-          />
-          </div>
-          </WorkflowDetailSection>
-        </>
-      );
-    }
-    if (selectedNode.type === 'loop') {
-      const unlimited = selectedNode.max_loops === null;
-      return (
-        <>
-          <WorkflowDetailSection title="Retry policy" icon="workflow-loop">
-          <div className="workflow-detail-fields workflow-retry-policy">
-            <WorkflowDetailSelect label="Rerun limit" icon="retry"
-              value={unlimited ? 'unlimited' : 'limited'}
-              options={[
-                { id: 'limited', label: 'Limited' },
-                { id: 'unlimited', label: 'Unlimited' },
-              ]}
-              disabled={!isEditable}
-              onChange={(value) => updateNode(selectedNode.id, {
-                max_loops: value === 'unlimited' ? null : 3,
-              })}
-            />
-          {!unlimited ? (
-            <div className="workflow-detail-select settings-field">
-              <label className="workflow-detail-select-label" htmlFor={`workflow-max-reruns-${selectedNode.id}`}>
-                <AppIcon name="database" size={16} /><span className="workflow-detail-select-text">Maximum reruns</span>
-              </label>
-              <div className="workflow-detail-select-value">
-              {!isEditable ? <span className="workflow-detail-select-static">{selectedNode.max_loops || 3}</span> : <input
-                id={`workflow-max-reruns-${selectedNode.id}`}
-                aria-describedby={`workflow-retry-hint-${selectedNode.id}`}
-                type="number"
-                min="1"
-                step="1"
-                value={selectedNode.max_loops || 3}
-                disabled={!isEditable}
-                onChange={(event) => updateNode(selectedNode.id, {
-                  max_loops: Math.max(1, Number.parseInt(event.target.value || '1', 10)),
-                })}
-              />
-              }
-              </div>
-            </div>
-          ) : null}
-          <p className="workflow-detail-hint" id={`workflow-retry-hint-${selectedNode.id}`}>
-            {unlimited ? 'Retry until successful or stopped manually.' : 'When the limit is reached, follow Exhausted to End and fail the workflow.'}
-          </p>
-          </div>
-          </WorkflowDetailSection>
-        </>
-      );
-    }
-    if (selectedNode.type === 'output') {
-      const outputMode = selectedNode.output_mode || (selectedNode.output_mapping ? 'json_object' : 'text');
-      const outputEntries = workflowOutputMappingEntries(selectedNode);
-      const updateOutputEntries = (entries) => updateNode(selectedNode.id, buildWorkflowOutputPatch(entries));
-      return (
-        <>
-            <WorkflowDetailSelect label="Response type" icon="format"
-              value={outputMode}
-              options={[
-                { id: 'text', label: 'Text' },
-                { id: 'json_object', label: 'Structured JSON' },
-              ]}
-              onChange={(mode) => {
-                if (mode === 'json_object') {
-                  updateNode(selectedNode.id, buildWorkflowOutputPatch(outputEntries));
-                  return;
-                }
-                updateNode(selectedNode.id, {
-                  output_mode: 'text',
-                  output: selectedNode.output || outputEntries[0]?.value || '{{input.message}}',
-                  output_mapping: undefined,
-                });
-              }}
-              disabled={!isEditable}
-            />
-          {outputMode === 'json_object' ? (
-            <WorkflowDetailSection key={selectedNode.id} title="Outputs" icon="git-branch" collapsible
-              className="workflow-output-mapping workflow-detail-mapping"
-              action={isEditable ? (
-                  <button
-                    type="button"
-                    className="workflow-json-add"
-                    onClick={() => updateOutputEntries([
-                      ...outputEntries,
-                      { key: `field_${outputEntries.length + 1}`, value: '', type: 'string' },
-                    ])}
-                  >
-                    <AppIcon name="plus" size={14} />Add Field
-                  </button>
-                ) : null}>
-              <div className="workflow-output-mapping-table" aria-label="output">
-                <div className="workflow-output-mapping-row is-header">
-                  <span>Name</span>
-                  <span>Type</span>
-                  <span>Value</span>
-                  <span className="workflow-output-mapping-action-col" aria-hidden="true" />
-                </div>
-                {outputEntries.map((entry, index) => (
-                  <div className="workflow-output-mapping-row" key={index}>
-                    <input
-                      className="workflow-output-mapping-name"
-                      aria-label="Output field name"
-                      value={entry.key}
-                      disabled={!isEditable}
-                      placeholder="field name"
-                      onChange={(event) => {
-                        const key = event.target.value;
-                        const next = outputEntries.map((item, itemIndex) => (
-                          itemIndex === index ? { ...item, key } : item
-                        ));
-                        updateOutputEntries(next);
-                      }}
-                    />
-                    <SettingsMenuSelect
-                      className="workflow-menu-select workflow-output-mapping-type"
-                      value={entry.type || 'any'}
-                      options={[
-                        { id: 'string', label: 'string' },
-                        { id: 'number', label: 'number' },
-                        { id: 'boolean', label: 'boolean' },
-                        { id: 'object', label: 'object' },
-                        { id: 'array', label: 'array' },
-                        { id: 'any', label: 'any' },
-                      ]}
-                      disabled={!isEditable}
-                      onChange={(type) => {
-                        const next = outputEntries.map((item, itemIndex) => (
-                          itemIndex === index ? { ...item, type } : item
-                        ));
-                        updateOutputEntries(next);
-                      }}
-                    />
-                    <div className="workflow-output-mapping-value">
-                      <WorkflowVariableSelect
-                        value={entry.value}
-                        variables={availableVariables}
-                        disabled={!isEditable}
-                        onChange={(value) => {
-                          const nextType = workflowVariableTypeForValue(value, availableVariables);
-                          const next = outputEntries.map((item, itemIndex) => (
-                            itemIndex === index
-                              ? { ...item, value, type: nextType === 'any' ? (item.type || 'any') : nextType }
-                              : item
-                          ));
-                          updateOutputEntries(next);
-                        }}
-                      />
-                    </div>
-                    {isEditable ? (
-                      <button
-                        type="button"
-                        className="workflow-json-delete workflow-output-mapping-delete"
-                        aria-label={`delete ${entry.key || 'field'}`}
-                        onClick={() => updateOutputEntries(outputEntries.filter((_, itemIndex) => itemIndex !== index))}
-                      >
-                        <AppIcon name="delete" size={14} />
-                      </button>
-                    ) : (
-                      <span className="workflow-output-mapping-action-col" aria-hidden="true" />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </WorkflowDetailSection>
-          ) : (
-            <WorkflowDetailSection key={selectedNode.id} title="Outputs" icon="git-branch" collapsible>
-              <WorkflowTemplateTextarea
-                title="Final text"
-                unframed
-                value={selectedNode.output || '{{input.message}}'}
-                variables={availableVariables}
-                disabled={!isEditable}
-                rows={6}
-                onChange={(output) => updateNode(selectedNode.id, { output_mode: 'text', output })}
-              />
-            </WorkflowDetailSection>
-          )}
-        </>
-      );
-    }
-    return null;
-  };
-
   const showNodePanel = Boolean(selectedNode);
   const clampedNodePanelWidth = Math.max(280, Math.min(720, Math.round(nodePanelWidth || 340)));
 
@@ -980,55 +431,21 @@ export function WorkflowConfigEditor({
       style={showNodePanel ? { '--workflow-node-panel-width': `${clampedNodePanelWidth}px` } : undefined}
     >
       <div className="workflow-builder">
-        {/* 工具条只在“能改内容”或“能保存”时才需要：系统预设（只读但排布可拖）没有它——
-            那行 Layout 说明整块删掉，排布反馈挂画布右上角。 */}
-        {isEditable || canSave ? (
-          <div className="workflow-toolbar">
-            <div className="workflow-toolbar-actions">
-              {isEditable ? (
-                <div className="workflow-toolbar-add-group" role="group" aria-label="Add node">
-                  {typeOptions.map((type) => {
-                    const meta = workflowNodeMeta(type.id);
-                    return (
-                      <PortalTooltip key={type.id} text={`Add ${type.label}`} position="below">
-                        <button
-                          type="button"
-                          className={`workflow-toolbar-button workflow-toolbar-add is-${type.id}${draggedNodeType === type.id ? ' is-dragging' : ''}`}
-                          draggable
-                          onDragStart={(event) => {
-                            event.dataTransfer.setData(WORKFLOW_NODE_DRAG_TYPE, type.id);
-                            event.dataTransfer.setData('text/plain', type.id);
-                            event.dataTransfer.effectAllowed = 'copy';
-                            setDraggedNodeType(type.id);
-                          }}
-                          onDragEnd={() => {
-                            setDraggedNodeType('');
-                            setIsCanvasDropTarget(false);
-                          }}
-                          onClick={() => addNode(type.id)}
-                        >
-                          <span className="workflow-toolbar-add-icon" aria-hidden="true">
-                            <AppIcon name={meta.icon} size={16} />
-                          </span>
-                          <span>{type.label}</span>
-                        </button>
-                      </PortalTooltip>
-                    );
-                  })}
-                </div>
-              ) : null}
-              {isEditable && selectedEdge ? (
-                <SettingsTooltipIconButton label="Delete connection" icon="delete" danger iconSize={18}
-                  onClick={() => deleteEdge(selectedEdgeId)} />
-              ) : null}
-            </div>
-            {canSave ? (
-              <div className="workflow-toolbar-end">
-                <SettingsTooltipIconButton label="Save" icon="save" iconSize={20} onClick={onSave} />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <EditorToolbar
+          isEditable={isEditable}
+          canSave={canSave}
+          nodeTypes={normalized.node_types}
+          draggedNodeType={draggedNodeType}
+          hasSelectedEdge={Boolean(selectedEdge)}
+          onNodeDragStart={setDraggedNodeType}
+          onNodeDragEnd={() => {
+            setDraggedNodeType('');
+            setIsCanvasDropTarget(false);
+          }}
+          onAddNode={addNode}
+          onDeleteEdge={() => deleteEdge(selectedEdgeId)}
+          onSave={onSave}
+        />
         <div ref={canvasRef} className={`workflow-canvas${isCanvasDropTarget ? ' is-node-drag-over' : ''}`}>
           {ReactFlowCanvas ? (
             <ReactFlowProvider>
@@ -1110,34 +527,19 @@ export function WorkflowConfigEditor({
         </div>
       </div>
       {showNodePanel ? (
-        <div className="workflow-node-panel workflow-agent-detail workflow-node-detail"
-          style={{ '--workflow-detail-accent': workflowNodeAccent(selectedNode.type) }}>
-          <div
-            className="workflow-node-panel-resizer"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize detail panel"
-            aria-valuemin={280}
-            aria-valuemax={720}
-            aria-valuenow={clampedNodePanelWidth}
-            onPointerDown={startNodePanelResize}
-          />
-          <div className="workflow-node-panel-head">
-            <WorkflowNodeHeading node={selectedNode} agentOptions={agentOptions} />
-            {isEditable && selectedNode && !['start', 'output'].includes(selectedNode.type) ? (
-              <SettingsTooltipIconButton
-                label="Delete"
-                icon="delete"
-                danger
-                iconSize={18}
-                className="workflow-node-panel-delete"
-                onClick={() => deleteNode(selectedNode.id)}
-              />
-            ) : null}
-
-          </div>
-          {renderNodeFields()}
-        </div>
+        <NodeInspector
+          selectedNode={selectedNode}
+          agentOptions={agentOptions}
+          isEditable={isEditable}
+          panelWidth={clampedNodePanelWidth}
+          onResizeStart={startNodePanelResize}
+          onDelete={() => deleteNode(selectedNode.id)}
+        >
+          <NodeFields selectedNode={selectedNode} workflowInputSchema={workflow.input_schema}
+            agentOptions={agentOptions} toolOptions={toolOptions}
+            availableVariables={availableVariables} isEditable={isEditable}
+            updateNode={updateNode} />
+        </NodeInspector>
       ) : null}
     </div>
   );

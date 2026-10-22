@@ -96,7 +96,11 @@ test('todo panel consumes todo_updated instead of tool response artifacts', () =
 });
 
 test('todo uses a static current arrow and a real completion-ratio header', () => {
-  const component = fs.readFileSync(new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url), 'utf8');
+  // todo 面板在 nodes/TodoNode.jsx（从 ChatTimelineNodes re-export）。
+  const component = [
+    fs.readFileSync(new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url), 'utf8'),
+    fs.readFileSync(new URL('../../src/features/chat/components/nodes/TodoNode.jsx', import.meta.url), 'utf8'),
+  ].join('\n');
   const stylesheet = fs.readFileSync(new URL('../../styles/chat.css', import.meta.url), 'utf8');
   const currentIconRule = stylesheet.match(/\.chat-todo-icon\.in-progress \{[^}]*\}/)?.[0] || '';
 

@@ -51,7 +51,9 @@ test('Compact editor shares Chat selector, removes On/Off and preserves effort o
   assert.ok(!source.includes('compactThinkingOptions'));
   assert.ok(!source.includes('label="Thinking"'));
   assert.ok(!source.includes('Enable compact provider'));
-  assert.ok(source.includes('{isVisionProvider && (\n        <SettingsToggleRow'));
+  // vision / compact / image 的启用开关都只在列表行上，编辑面板不重复。
+  assert.ok(!source.includes('Enable vision provider'));
+  assert.ok(!source.includes('<SettingsToggleRow'));
   assert.ok(source.includes('update({ model });'));
   assert.ok(source.includes('update({ model: event.target.value })'));
   assert.ok(!source.includes('update(addCustomModelId(configRef.current, modelIdInput))'));

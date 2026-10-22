@@ -97,12 +97,13 @@ test('saved image providers survive the payload round-trip', () => {
   assert.deepEqual(merged.image.providers.map((entry) => entry.model), ['img-1', 'draft-only']);
 });
 
-// 列表行已经有开关，编辑面板再放一个是同一件事两处入口。
+// 列表行已经有开关，编辑面板再放一个是同一件事两处入口；vision 与 image 同规矩。
 test('the image editor leaves the enable switch to the list row', () => {
   const source = readFileSync(
     new URL('../../../src/features/settings/components/LlmConfigEditor.jsx', import.meta.url),
     'utf8',
   );
   assert.ok(!source.includes('Enable image provider'), 'image 编辑面板不再自带启用开关');
-  assert.ok(source.includes('label="Enable vision provider"'), 'vision 面板保持原样');
+  assert.ok(!source.includes('Enable vision provider'), 'vision 编辑面板不再自带启用开关');
+  assert.ok(!source.includes('onToggleVisionProvider'), '编辑面板不再透传启用开关回调');
 });

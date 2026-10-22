@@ -12,7 +12,10 @@ import { setMcpServerEnabled } from '../../../src/features/settings/model/mcp-se
 
 const hookSource = readFileSync(new URL('../../../src/features/settings/hooks/useLiveToolsSettings.js', import.meta.url), 'utf8')
   .replace(/^import .*;\n/gm, '').replace(/\bexport /g, '');
-const shellSource = readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
+const shellSource = [
+  readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../src/features/app/hooks/useShellHandlers.js', import.meta.url), 'utf8'),
+].join('\n');
 const applyStart = shellSource.indexOf('    applyToolsSettingsPayloadToRecords: ') + '    applyToolsSettingsPayloadToRecords: '.length;
 const applySource = shellSource.slice(applyStart, shellSource.indexOf('\n    apiFetch,', applyStart)).trim().replace(/,$/, '');
 const payloadStart = shellSource.indexOf('    onPayload: ', shellSource.indexOf(' = useLiveToolsSettings({')) + '    onPayload: '.length;

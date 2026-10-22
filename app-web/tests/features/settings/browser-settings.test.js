@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { SETTINGS_SUBTABS } from '../../../src/features/settings/model/settings-navigation.js';
 import { createDefaultSettingsRecords } from '../../../src/features/settings/model/settings-records.js';
 import { buildToolsSettingsPayload } from '../../../src/features/settings/model/settings-payload.js';
+import { appShellSource } from '../../helpers/shell-source.js';
 import { browserDependencyAction, browserStatusMeta, browserSetupHeading, hasBrowserImportSummary, formatBrowserSyncTime, formatBrowserCookieCount } from '../../../src/features/settings/model/browser-settings.js';
 
 const editor = fs.readFileSync(new URL('../../../src/features/settings/components/BrowserConfigEditor.jsx', import.meta.url), 'utf8');
@@ -112,7 +113,7 @@ test('healthy runtime does not repeat the Enabled badge with another Ready statu
 });
 
 test('Browser action feedback is wired to the existing app toast, not panel notices', () => {
-  const shell = fs.readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
+  const shell = appShellSource();
   const settings = fs.readFileSync(new URL('../../../src/features/settings/components/SettingsPage.jsx', import.meta.url), 'utf8');
   assert.match(shell.slice(shell.indexOf('<SettingsPage'), shell.indexOf('</React.Suspense>', shell.indexOf('<SettingsPage'))), /onToast=\{showToast\}/);
   assert.match(settings.slice(settings.indexOf('<ToolsConfigEditor'), settings.indexOf("if (section === 'agent')", settings.indexOf('<ToolsConfigEditor'))), /onToast=\{onToast\}/);

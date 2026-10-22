@@ -215,8 +215,10 @@ test('real API client releases failed/non-JSON writes and sends the accepted pre
 
 test('desktop forwards settings events and reconnect invalidations without forwarding settings data', () => {
   const main = readFileSync(new URL('../../../../src/main/main.ts', import.meta.url), 'utf8');
+  const realtime = readFileSync(new URL('../../../../src/main/realtime-client.ts', import.meta.url), 'utf8');
   const preload = readFileSync(new URL('../../../../src/preload/preload.ts', import.meta.url), 'utf8');
-  assert.match(main, /message.type === 'settings.event'/);
+  // 实时消息的分发在 realtime-client.ts，重连后的 settings.resync 仍由 main.ts 的订阅发送。
+  assert.match(realtime, /message.type === 'settings.event'/);
   assert.match(main, /runtime:settings-event', \{ type: 'settings.resync' \}/);
   assert.match(preload, /onSettingsEvent:/);
 });

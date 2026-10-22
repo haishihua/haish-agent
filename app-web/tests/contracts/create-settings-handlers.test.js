@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { skillAllowPayload } from '../../src/features/settings/hooks/createSettingsHandlers.js';
+import { conversationHandlerSource } from '../helpers/handler-source.js';
 
 const appShellSource = fs.readFileSync(
   new URL('../../src/features/app/AppShell.jsx', import.meta.url),
@@ -11,10 +12,7 @@ const activationSource = fs.readFileSync(
   new URL('../../src/features/conversations/hooks/createConversationActivationHandlers.js', import.meta.url),
   'utf8',
 );
-const conversationHandlersSource = fs.readFileSync(
-  new URL('../../src/features/conversations/hooks/createConversationHandlers.js', import.meta.url),
-  'utf8',
-);
+const conversationHandlersSource = conversationHandlerSource();
 
 test('skill allow payload preserves all, none, and explicit selections', () => {
   assert.equal(skillAllowPayload(null), null);

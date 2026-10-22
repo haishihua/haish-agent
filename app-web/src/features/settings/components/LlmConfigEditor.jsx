@@ -29,12 +29,12 @@ import {
   llmEditorModelChoices,
   llmProviderRequestPayload,
 } from '../model/settings-payload.js';
-import { FieldRow, SecretKeyField, SettingsMenuSelect, ProviderIcon, SettingsToggleRow } from './SettingsPrimitives.jsx';
+import { FieldRow, SecretKeyField, SettingsMenuSelect, ProviderIcon } from './SettingsPrimitives.jsx';
 import { ModelSelectorRoot, ModelSelectorTrigger, ModelSelectorValue, ModelSelectorContent, ModelSelectorSearch, ModelSelectorList, ModelSelectorEffort } from '../../../shared/ui/settings-elements/assistant-ui/model-selector.tsx';
 
 const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
-export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = false, refreshModels = false, onToggleVisionProvider, toggleBusy = false }) {
+export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = false, refreshModels = false }) {
   const config = getSelectedLlmConfig(draft, selectedId);
   const provider = getLlmProvider(config.provider);
   // Vision 是多条 provider 列表：每条都可独立编辑，启用状态由同一套开关控制。
@@ -260,15 +260,6 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
 
   return (
     <div className="settings-editor-form settings-llm-form">
-      {/* Image 的开关只在列表行上：编辑面板再放一个就是同一件事两处入口。 */}
-      {isVisionProvider && (
-        <SettingsToggleRow
-          label="Enable vision provider"
-          checked={config.enabled === true}
-          disabled={readOnly || Boolean(toggleBusy)}
-          onCheckedChange={(enabled) => onToggleVisionProvider?.(selectedId, enabled)}
-        />
-      )}
       <FieldRow label="Provider">
         <SettingsMenuSelect
           value={config.provider}

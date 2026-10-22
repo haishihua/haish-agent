@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+import { appShellSource as readAppShellSource } from '../helpers/shell-source.js';
+
 const read = (path) => fs.readFileSync(new URL(`../../src/${path}`, import.meta.url), 'utf8');
 const composer = read('features/chat/components/ChatComposer.jsx');
 const input = read('features/chat/components/LexicalComposerInput.jsx');
-const shell = read('features/app/AppShell.jsx');
+const shell = readAppShellSource();
 
 test('the selected skill belongs to one conversation, not to the composer draft scope', () => {
   // draft 的 composer scope 是按项目固定的（未发文本要留住），所以换到同一项目里的另一张

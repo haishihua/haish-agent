@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { withoutStoredSkillInventory, createLiveToolsLoader } from '../../../src/features/settings/model/live-tools-settings.js';
 import { loadSettingsRecordsDraft } from '../../../src/features/settings/model/settings-records.js';
 import { applyToolsSettingsPayloadToRecords, buildToolsSettingsPayload } from '../../../src/features/settings/model/settings-payload.js';
+import { appShellSource } from '../../helpers/shell-source.js';
 
 const payload = count => ({ skills: { items: Array.from({ length: count }, (_, n) => ({ name: `skill-${n}` })) } });
 const deferred = () => {
@@ -93,7 +94,7 @@ test('disposed requests do not update state, including failed requests', async (
 
 test('production wiring hides stale numbers and rows, fetches without browser cache, and preserves non-skill drafts', () => {
   const read = path => fs.readFileSync(new URL(path, import.meta.url), 'utf8');
-  const shell = read('../../../src/features/app/AppShell.jsx');
+  const shell = appShellSource();
   const page = read('../../../src/features/settings/components/SettingsPage.jsx');
   const editor = read('../../../src/features/settings/components/ToolsConfigEditor.jsx');
   const handlers = read('../../../src/features/settings/hooks/createSettingsHandlers.js');
