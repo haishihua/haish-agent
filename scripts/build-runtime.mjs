@@ -246,8 +246,10 @@ function main() {
     'certifi',
     runtimeLauncherPath,
   ]);
-  for (const name of ['settings-manager', 'grill-with-docs', 'grilling', 'domain-modeling',
-    'handoff', 'to-spec', 'to-tickets', 'implement-spec', 'tdd', 'code-review']) {
+  // Core ships settings-manager as the only bundled preset (core 2a18319); the
+  // former goal presets are user-installed Skills and nothing here may require
+  // them by name again.
+  for (const name of ['settings-manager']) {
     const skillFile = path.join(runtimeRoot, 'bin', 'haish-runtime', '_internal', 'haish_agent_core', 'skills', name, 'SKILL.md');
     if (!fs.existsSync(skillFile)) throw new Error(`Frozen runtime is missing preset: ${name}`);
   }
