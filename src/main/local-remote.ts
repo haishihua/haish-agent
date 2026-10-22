@@ -1,7 +1,8 @@
-import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import type {
   RemoteAdapterState,
   RemoteSettings,
@@ -39,6 +40,7 @@ const RESTART_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000];
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const execFileAsync = promisify(execFile);
 // dist-electron/main/local-remote.js -> repo root
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const DEV_REMOTE_DIR = path.join(PROJECT_ROOT, 'build', BUNDLED_DIR);
@@ -50,7 +52,9 @@ let stopping = false;
 let restartTimer: NodeJS.Timeout | null = null;
 let restartAttempts = 0;
 let lastPaths: RemotePaths | null = null;
-let cachedOwnGroupId: number | null = null;
+// Set when the adapter became ready; used to tell "crashed right away" apart
+// from "ran fine and then died", so a crash loop backs off instead of spinning.
+let readyAt = 0;
 
 export function remoteAdapterOrigin(): string {
   return ORIGIN;
@@ -99,17 +103,6 @@ function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
   } catch {
     // Already gone.
   }
-}
-
-function ownProcessGroupId(): number {
-  if (cachedOwnGroupId !== null) return cachedOwnGroupId;
-  try {
-    const value = Number(execFileSync('ps', ['-p', String(process.pid), '-o', 'pgid='], { encoding: 'utf8' }).trim());
-    cachedOwnGroupId = Number.isInteger(value) && value > 0 ? value : process.pid;
-  } catch {
-    cachedOwnGroupId = process.pid;
-  }
-  return cachedOwnGroupId;
 }
 
 async function stopProcessGroup(pid: number, graceMs: number): Promise<void> {
@@ -260,6 +253,14 @@ async function fetchRemoteStatus(timeoutMs: number): Promise<RemoteStatusPayload
   return response.json() as Promise<RemoteStatusPayload>;
 }
 
+async function probeRemoteStatus(timeoutMs: number): Promise<RemoteStatusPayload | null> {
+  try {
+    return await fetchRemoteStatus(timeoutMs);
+  } catch {
+    return null;
+  }
+}
+
 async function waitForRemoteAdapter(timeoutMs: number): Promise<RemoteStatusPayload> {
   const startedAt = Date.now();
   let lastError: unknown = null;
@@ -277,10 +278,27 @@ async function waitForRemoteAdapter(timeoutMs: number): Promise<RemoteStatusPayl
   throw lastError instanceof Error ? lastError : new Error('The remote adapter did not become ready.');
 }
 
-function readPidRecord(userDataPath: string): number | null {
+type PidRecord = {
+  pid: number;
+  /** The app instance that started this adapter; kept so a second instance can
+   *  tell a live adapter from an orphan. */
+  ownerPid: number | null;
+};
+
+function readPidRecord(userDataPath: string): PidRecord | null {
   try {
-    const pid = Number(fs.readFileSync(pidPath(userDataPath), 'utf8').trim());
-    return Number.isInteger(pid) && pid > 0 ? pid : null;
+    const raw = fs.readFileSync(pidPath(userDataPath), 'utf8').trim();
+    if (!raw) return null;
+    if (raw.startsWith('{')) {
+      const parsed = JSON.parse(raw) as { pid?: unknown; ownerPid?: unknown };
+      const pid = Number(parsed.pid);
+      const ownerPid = Number(parsed.ownerPid);
+      if (!Number.isInteger(pid) || pid <= 0) return null;
+      return { pid, ownerPid: Number.isInteger(ownerPid) && ownerPid > 0 ? ownerPid : null };
+    }
+    // Older builds wrote a bare pid with no owner recorded.
+    const pid = Number(raw);
+    return Number.isInteger(pid) && pid > 0 ? { pid, ownerPid: null } : null;
   } catch {
     return null;
   }
@@ -289,7 +307,11 @@ function readPidRecord(userDataPath: string): number | null {
 function writePidRecord(userDataPath: string, pid: number): void {
   try {
     fs.mkdirSync(userDataPath, { recursive: true });
-    fs.writeFileSync(pidPath(userDataPath), `${pid}\n`, { encoding: 'utf8', mode: 0o600 });
+    fs.writeFileSync(
+      pidPath(userDataPath),
+      `${JSON.stringify({ pid, ownerPid: process.pid })}\n`,
+      { encoding: 'utf8', mode: 0o600 },
+    );
   } catch (error) {
     console.error('[local-remote] Failed to write the adapter pid file:', error);
   }
@@ -303,44 +325,43 @@ function removePidRecord(userDataPath: string): void {
   }
 }
 
-// Only processes whose command line runs our adapter binary are killed, so
-// unrelated processes are never signalled. The scan — not the pid file — is the
-// source of truth: after a `kill -9` the PyInstaller bootloader can die while
-// its app child keeps running as an orphan, still holding port 8766.
-function findLingeringAdapterGroups(): number[] {
-  if (process.platform !== 'darwin' && process.platform !== 'linux') return [];
-  let output: string;
+// Only a *stale* adapter is stopped here, and "stale" is decided by ownership:
+// the pid record names the app instance that started it, so a second running
+// instance leaves a live adapter alone instead of killing it (two instances
+// used to reap each other's adapter once a second, forever). The command line is
+// re-checked before signalling, because pids get recycled.
+async function commandLineOf(pid: number): Promise<string | null> {
   try {
-    output = execFileSync('ps', ['-axo', 'pid=,pgid=,command='], { encoding: 'utf8' });
+    const { stdout } = await execFileAsync('ps', ['-p', String(pid), '-o', 'command=']);
+    return String(stdout).trim() || null;
   } catch {
-    return [];
+    return null;
   }
-  const ownGroup = ownProcessGroupId();
-  const groups = new Set<number>();
-  for (const line of output.split('\n')) {
-    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/);
-    if (!match) continue;
-    const pid = Number(match[1]);
-    const pgid = Number(match[2]);
-    const command = match[3];
-    if (!command.includes(ADAPTER_COMMAND_MARKER) || !command.includes(' serve')) continue;
-    if (pid === process.pid || pgid === ownGroup) continue;
-    groups.add(pgid > 0 ? pgid : pid);
-  }
-  return [...groups];
 }
 
 async function reapStaleAdapter(paths: RemotePaths): Promise<void> {
-  const groups = new Set<number>(findLingeringAdapterGroups());
-  const recorded = readPidRecord(paths.userDataPath);
-  if (recorded !== null && (processAlive(recorded) || processGroupAlive(recorded)) && !groups.has(recorded)) {
-    groups.add(recorded);
+  const record = readPidRecord(paths.userDataPath);
+  if (!record) return;
+  const { pid, ownerPid } = record;
+  if (ownerPid !== null && ownerPid !== process.pid && processAlive(ownerPid)) {
+    return;
   }
+  if (pid === process.pid) {
+    removePidRecord(paths.userDataPath);
+    return;
+  }
+  if (!processAlive(pid) && !processGroupAlive(pid)) {
+    removePidRecord(paths.userDataPath);
+    return;
+  }
+  const command = await commandLineOf(pid);
+  if (command && !command.includes(ADAPTER_COMMAND_MARKER)) {
+    removePidRecord(paths.userDataPath);
+    return;
+  }
+  console.log(`[local-remote] stopping a remote adapter left behind by a previous run (process group ${pid})`);
+  await stopProcessGroup(pid, SHUTDOWN_GRACE_MS);
   removePidRecord(paths.userDataPath);
-  for (const group of groups) {
-    console.log(`[local-remote] stopping a remote adapter left behind by a previous run (process group ${group})`);
-    await stopProcessGroup(group, SHUTDOWN_GRACE_MS);
-  }
 }
 
 function scheduleRestart(reason: string): void {
@@ -375,6 +396,15 @@ export async function refreshRemoteAdapterState(): Promise<RemoteAdapterState> {
     };
   } catch {
     // Keep the last known snapshot; the exit handler owns failure reporting.
+    // An adopted adapter has no exit handler here, so a dead shared adapter is
+    // reported (and taken over) on the next ensureRemoteAdapter call.
+    if (state.adopted) {
+      state = {
+        status: 'failed',
+        origin: ORIGIN,
+        message: 'The shared remote adapter stopped responding.',
+      };
+    }
   }
   return state;
 }
@@ -384,7 +414,7 @@ export async function ensureRemoteAdapter(
   settings?: RemoteSettings | null,
 ): Promise<RemoteAdapterState> {
   lastPaths = paths;
-  if (state.status === 'ready' && child && child.exitCode === null) {
+  if (state.status === 'ready' && (state.adopted === true || (child && child.exitCode === null))) {
     return state;
   }
   if (startPromise) {
@@ -392,59 +422,85 @@ export async function ensureRemoteAdapter(
   }
 
   startPromise = (async () => {
-    const resolvedSettings = settings === undefined ? readRemoteSettings(paths.userDataPath) : settings;
-    const binaries = locateBinaries(paths);
-    await reapStaleAdapter(paths);
-    state = { status: 'starting', origin: ORIGIN };
-
-    const spawned = spawn(binaries.adapter, [
-      'serve', '--host', '127.0.0.1', '--port', String(REMOTE_ADAPTER_PORT),
-    ], {
-      cwd: path.dirname(binaries.adapter),
-      env: adapterEnv(binaries, resolvedSettings),
-      // Own process group: see signalProcessGroup above.
-      detached: true,
-    });
-    child = spawned;
-    spawned.stdout?.on('data', (chunk) => {
-      console.log(`[haish-remote] ${String(chunk).trimEnd()}`);
-    });
-    spawned.stderr?.on('data', (chunk) => {
-      console.error(`[haish-remote] ${String(chunk).trimEnd()}`);
-    });
-    spawned.on('exit', (code, signal) => {
-      if (child !== spawned) return;
-      child = null;
-      if (spawned.pid !== undefined) removePidRecord(paths.userDataPath);
-      const message = `The remote adapter exited${code === null ? '' : ` with code ${code}`}${signal ? ` (${signal})` : ''}.`;
-      if (stopping) {
-        state = { status: 'stopped', origin: ORIGIN };
-        return;
-      }
-      state = { status: 'failed', origin: ORIGIN, message };
-      scheduleRestart(message);
-    });
-    if (spawned.pid !== undefined) writePidRecord(paths.userDataPath, spawned.pid);
-
     try {
-      const payload = await waitForRemoteAdapter(START_TIMEOUT_MS);
-      restartAttempts = 0;
-      state = {
-        status: 'ready',
-        origin: ORIGIN,
-        pid: spawned.pid,
-        version: payload.version,
-        runtimeOnline: payload.runtime_online,
-        tunnel: payload.tunnel,
-      };
-      return state;
-    } catch (error) {
-      const message = String((error as Error)?.message || error);
-      if (spawned.pid !== undefined) await stopProcessGroup(spawned.pid, 3_000);
-      if (child === spawned) child = null;
-      removePidRecord(paths.userDataPath);
-      state = { status: 'failed', origin: ORIGIN, message };
-      throw new Error(`The remote adapter failed to start: ${message}`);
+      // Another instance (the packaged app next to a dev build) may already
+      // serve port 8766. Adopt that process instead of replacing it: killing it
+      // is what turned two running instances into a once-per-second restart
+      // loop, and it also spares the PyInstaller unpack on every cycle.
+      const shared = child === null ? await probeRemoteStatus(STATUS_TIMEOUT_MS) : null;
+      if (shared) {
+        readyAt = Date.now();
+        restartAttempts = 0;
+        state = {
+          status: 'ready',
+          origin: ORIGIN,
+          adopted: true,
+          version: shared.version,
+          runtimeOnline: shared.runtime_online,
+          tunnel: shared.tunnel,
+        };
+        return state;
+      }
+
+      const resolvedSettings = settings === undefined ? readRemoteSettings(paths.userDataPath) : settings;
+      const binaries = locateBinaries(paths);
+      await reapStaleAdapter(paths);
+      state = { status: 'starting', origin: ORIGIN };
+
+      const spawned = spawn(binaries.adapter, [
+        'serve', '--host', '127.0.0.1', '--port', String(REMOTE_ADAPTER_PORT),
+      ], {
+        cwd: path.dirname(binaries.adapter),
+        env: adapterEnv(binaries, resolvedSettings),
+        // Own process group: see signalProcessGroup above.
+        detached: true,
+      });
+      child = spawned;
+      spawned.stdout?.on('data', (chunk) => {
+        console.log(`[haish-remote] ${String(chunk).trimEnd()}`);
+      });
+      spawned.stderr?.on('data', (chunk) => {
+        console.error(`[haish-remote] ${String(chunk).trimEnd()}`);
+      });
+      spawned.on('exit', (code, signal) => {
+        if (child !== spawned) return;
+        child = null;
+        if (spawned.pid !== undefined) removePidRecord(paths.userDataPath);
+        // Only a process that stayed up counts as recovery; a crash loop keeps
+        // its attempt count and backs off instead of restarting every second.
+        if (readyAt && Date.now() - readyAt >= 15_000) restartAttempts = 0;
+        readyAt = 0;
+        const message = `The remote adapter exited${code === null ? '' : ` with code ${code}`}${signal ? ` (${signal})` : ''}.`;
+        if (stopping) {
+          state = { status: 'stopped', origin: ORIGIN };
+          return;
+        }
+        state = { status: 'failed', origin: ORIGIN, message };
+        scheduleRestart(message);
+      });
+      if (spawned.pid !== undefined) writePidRecord(paths.userDataPath, spawned.pid);
+
+      try {
+        const payload = await waitForRemoteAdapter(START_TIMEOUT_MS);
+        readyAt = Date.now();
+        restartAttempts = 0;
+        state = {
+          status: 'ready',
+          origin: ORIGIN,
+          pid: spawned.pid,
+          version: payload.version,
+          runtimeOnline: payload.runtime_online,
+          tunnel: payload.tunnel,
+        };
+        return state;
+      } catch (error) {
+        const message = String((error as Error)?.message || error);
+        if (spawned.pid !== undefined) await stopProcessGroup(spawned.pid, 3_000);
+        if (child === spawned) child = null;
+        removePidRecord(paths.userDataPath);
+        state = { status: 'failed', origin: ORIGIN, message };
+        throw new Error(`The remote adapter failed to start: ${message}`);
+      }
     } finally {
       startPromise = null;
     }
@@ -469,9 +525,12 @@ export async function stopRemoteAdapter(): Promise<void> {
     restartTimer = null;
   }
   const spawned = child;
-  const pid = spawned?.pid ?? state.pid;
+  // Only ever stop the process this instance started. `state.pid` may name an
+  // adapter adopted from another running instance, and quitting must not kill it.
+  const pid = spawned?.pid;
   child = null;
   startPromise = null;
+  readyAt = 0;
   if (pid) await stopProcessGroup(pid, SHUTDOWN_GRACE_MS);
   if (lastPaths) removePidRecord(lastPaths.userDataPath);
   state = { status: 'stopped', origin: ORIGIN };

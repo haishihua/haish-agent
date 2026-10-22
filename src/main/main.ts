@@ -10,7 +10,6 @@ import {
   protocol,
   shell,
 } from 'electron';
-import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { proxyResponse } from './proxy-response.js';
 import fs from 'node:fs/promises';
@@ -47,7 +46,26 @@ import {
   writeRemoteSettings,
 } from './local-remote.js';
 import { createAppSleepGuard } from './app-sleep-guard.js';
-import { createScheduledTaskActivity } from './scheduled-task-activity.js';
+import {
+  addApprovalSubscriber,
+  addScheduleSubscriber,
+  addSettingsSubscriber,
+  configureRealtimeClient,
+  ensureRealtimeSocket,
+  forgetTaskStreamOwner,
+  hasScheduleSubscriber,
+  hasSettingsSubscriber,
+  refreshApprovalSnapshot,
+  registerTaskStreamOwner,
+  removeApprovalSubscriber,
+  removeScheduleSubscriber,
+  removeSettingsSubscriber,
+  scheduleRealtimeReconnect,
+  sendRealtimeCommand,
+  sendToWebContents,
+  stopRealtimeClient,
+  type RealtimeMessage,
+} from './realtime-client.js';
 import { readToolScreenshot } from './tool-screenshot.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -79,25 +97,12 @@ const runtimePaths = () => ({
   isPackaged: app.isPackaged && !devMode,
 });
 
-type RealtimeMessage = Record<string, unknown> & { type?: string; request_id?: string };
-type CommandWaiter = {
-  resolve: (value: Record<string, unknown>) => void;
-  reject: (error: Error) => void;
-  timer: NodeJS.Timeout;
-};
-
-let realtimeSocket: WebSocket | null = null;
-let realtimeSocketPromise: Promise<WebSocket> | null = null;
-let realtimeReconnectTimer: NodeJS.Timeout | null = null;
-const realtimeCommandWaiters = new Map<string, CommandWaiter>();
-const realtimeTaskOwners = new Map<string, number>();
-const realtimeApprovalSubscribers = new Set<number>();
-const realtimeScheduleSubscribers = new Set<number>();
-const realtimeSettingsSubscribers = new Set<number>();
-
-const scheduledTaskActivity = createScheduledTaskActivity();
-let scheduleActivityTimer: NodeJS.Timeout | null = null;
-let scheduleActivityRefreshing = false;
+// 实时通道（socket、重连、命令等待、直播流登记）在 realtime-client.ts；这里只把 app 生命周期
+// 持有的两件事交给它：runtime 地址解析、退出标志。
+configureRealtimeClient({
+  runtimeBaseUrl: async () => (await ensureLocalRuntime(runtimePaths())).baseUrl,
+  isRuntimeStopping: () => runtimeStopInFlight,
+});
 
 // 应用启动后持续防止自动系统休眠，空闲/关窗时也保持本地定时任务可执行。
 // 屏幕仍可熄灭、锁屏，不阻止手动睡眠或合盖；真正退出应用时释放。
@@ -105,179 +110,6 @@ const appSleepGuard = createAppSleepGuard({
   start: () => powerSaveBlocker.start('prevent-app-suspension'),
   stop: (blockerId) => powerSaveBlocker.stop(blockerId),
 });
-
-function realtimeSocketUrl(baseUrl: string): string {
-  const url = new URL('/api/events/ws', baseUrl);
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  return url.toString();
-}
-
-function sendToWebContents(id: number, channel: string, payload: unknown): void {
-  const target = BrowserWindow.getAllWindows().map((item) => item.webContents).find((item) => item.id === id);
-  if (target && !target.isDestroyed()) target.send(channel, payload);
-}
-
-function failRealtimeConnection(detail = 'Local runtime connection closed.'): void {
-  const error = new Error(detail);
-  for (const waiter of realtimeCommandWaiters.values()) {
-    clearTimeout(waiter.timer);
-    waiter.reject(error);
-  }
-  realtimeCommandWaiters.clear();
-  for (const [requestId, ownerId] of realtimeTaskOwners) {
-    sendToWebContents(ownerId, 'runtime:task-message', {
-      type: 'task.error', request_id: requestId, status: 503, detail,
-    });
-  }
-  realtimeTaskOwners.clear();
-}
-
-function scheduleRealtimeReconnect(): void {
-  // Scheduled execution outlives renderer windows; always reconnect until quit.
-  if (runtimeStopInFlight || realtimeReconnectTimer) return;
-  realtimeReconnectTimer = setTimeout(() => {
-    realtimeReconnectTimer = null;
-    ensureRealtimeSocket().catch(() => scheduleRealtimeReconnect());
-  }, 1_000);
-}
-
-function handleRealtimeMessage(event: MessageEvent): void {
-  let message: RealtimeMessage;
-  try {
-    message = JSON.parse(String(event.data)) as RealtimeMessage;
-  } catch {
-    return;
-  }
-  const requestId = String(message.request_id || '');
-  if (message.type === 'command.result') {
-    const waiter = realtimeCommandWaiters.get(requestId);
-    if (!waiter) return;
-    clearTimeout(waiter.timer);
-    realtimeCommandWaiters.delete(requestId);
-    if (message.ok) waiter.resolve((message.result as Record<string, unknown>) || { ok: true });
-    else waiter.reject(Object.assign(new Error(String(message.detail || 'Runtime command failed.')), { status: message.status }));
-    return;
-  }
-  if (message.type === 'settings.event' || message.type === 'settings.resync') {
-    for (const subscriberId of realtimeSettingsSubscribers) {
-      sendToWebContents(subscriberId, 'runtime:settings-event', message);
-    }
-    return;
-  }
-  if (message.type === 'schedule.event' || message.schedule_id) {
-    scheduledTaskActivity.handle(message);
-    for (const subscriberId of realtimeScheduleSubscribers) {
-      sendToWebContents(subscriberId, 'runtime:schedule-event', message);
-    }
-    return;
-  }
-  if (message.type === 'task.event' || message.type === 'task.error' || message.type === 'task.end') {
-    const ownerId = realtimeTaskOwners.get(requestId);
-    if (ownerId) sendToWebContents(ownerId, 'runtime:task-message', message);
-    if (message.type === 'task.end') {
-      realtimeTaskOwners.delete(requestId);
-    }
-    return;
-  }
-  if (message.type === 'approval.event') {
-    for (const subscriberId of realtimeApprovalSubscribers) {
-      sendToWebContents(subscriberId, 'runtime:approval-event', message.event);
-    }
-  }
-}
-
-async function ensureRealtimeSocket(): Promise<WebSocket> {
-  if (realtimeSocket?.readyState === WebSocket.OPEN) return realtimeSocket;
-  if (realtimeSocketPromise) return realtimeSocketPromise;
-  realtimeSocketPromise = (async () => {
-    const runtime = await ensureLocalRuntime(runtimePaths());
-    return new Promise<WebSocket>((resolve, reject) => {
-      const socket = new WebSocket(realtimeSocketUrl(runtime.baseUrl));
-      let opened = false;
-      socket.addEventListener('open', () => {
-        opened = true;
-        realtimeSocket = socket;
-        for (const subscriberId of realtimeSettingsSubscribers) {
-          sendToWebContents(subscriberId, 'runtime:settings-event', { type: 'settings.resync' });
-        }
-        for (const subscriberId of realtimeScheduleSubscribers) {
-          sendToWebContents(subscriberId, 'runtime:schedule-event', { type: 'schedule.resync' });
-        }
-        resolve(socket);
-        if (scheduleActivityTimer) clearInterval(scheduleActivityTimer);
-        scheduleActivityTimer = setInterval(() => void refreshScheduleActivity(), 15_000);
-        void refreshScheduleActivity();
-      });
-      socket.addEventListener('message', handleRealtimeMessage);
-      socket.addEventListener('error', () => {
-        if (!opened) reject(new Error('Could not connect to the local runtime event socket.'));
-      });
-      socket.addEventListener('close', () => {
-        if (realtimeSocket === socket) realtimeSocket = null;
-        if (!opened) reject(new Error('Local runtime event socket closed before connecting.'));
-        if (scheduleActivityTimer) clearInterval(scheduleActivityTimer);
-        scheduleActivityTimer = null;
-        // Unlike manual streams, scheduled executions survive socket loss.
-        failRealtimeConnection();
-        scheduleRealtimeReconnect();
-      });
-    });
-  })().finally(() => {
-    realtimeSocketPromise = null;
-  });
-  return realtimeSocketPromise;
-}
-
-async function refreshScheduleActivity(): Promise<void> {
-  const socket = realtimeSocket;
-  if (runtimeStopInFlight || scheduleActivityRefreshing || socket?.readyState !== WebSocket.OPEN) return;
-  scheduleActivityRefreshing = true;
-  const snapshot = scheduledTaskActivity.beginSnapshot();
-  try {
-    const result = await sendRealtimeCommand({ type: 'schedule.activity.snapshot', request_id: randomUUID() }, 10_000);
-    if (runtimeStopInFlight || realtimeSocket !== socket) return;
-    snapshot.apply(result.run_ids);
-  } catch (error) {
-    if (!runtimeStopInFlight) console.warn('[realtime] failed to refresh schedule activity', error);
-  } finally {
-    snapshot.cancel();
-    scheduleActivityRefreshing = false;
-  }
-}
-
-async function sendRealtimeCommand(command: RealtimeMessage, timeoutMs = 16 * 60_000): Promise<Record<string, unknown>> {
-  const requestId = String(command.request_id || '');
-  if (!requestId) throw new Error('Realtime command request_id is required.');
-  const socket = await ensureRealtimeSocket();
-  return new Promise<Record<string, unknown>>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      realtimeCommandWaiters.delete(requestId);
-      reject(new Error('Runtime command timed out.'));
-    }, timeoutMs);
-    realtimeCommandWaiters.set(requestId, { resolve, reject, timer });
-    try {
-      socket.send(JSON.stringify(command));
-    } catch (error) {
-      clearTimeout(timer);
-      realtimeCommandWaiters.delete(requestId);
-      reject(error instanceof Error ? error : new Error(String(error)));
-    }
-  });
-}
-
-async function refreshApprovalSnapshot(subscriberId: number): Promise<void> {
-  const result = await sendRealtimeCommand({
-    type: 'approval.snapshot',
-    request_id: randomUUID(),
-  });
-  if (!realtimeApprovalSubscribers.has(subscriberId)) return;
-  const state = result.state;
-  if (!state || typeof state !== 'object') throw new Error('Runtime returned an invalid approval snapshot.');
-  sendToWebContents(subscriberId, 'runtime:approval-event', {
-    type: 'approval_snapshot',
-    state,
-  });
-}
 
 // Electron 默认会调 macOS Keychain 给 SafeStorage 派密钥，启动时会弹"允许访问钥匙串"
 // 的系统对话框。我们没有用 safeStorage 存任何敏感数据，所以把 password-store 切到
@@ -578,13 +410,13 @@ ipcMain.handle('runtime:command', async (event, command: RealtimeMessage) => {
   if (sender.protocol !== 'haish:' || sender.hostname !== 'app') throw new Error('Untrusted runtime command');
   const requestId = String(command?.request_id || '');
   if (command?.type === 'task.start') {
-    realtimeTaskOwners.set(requestId, event.sender.id);
+    registerTaskStreamOwner(requestId, event.sender.id);
   }
   try {
     return await sendRealtimeCommand(command);
   } catch (error) {
     if (command?.type === 'task.start') {
-      realtimeTaskOwners.delete(requestId);
+      forgetTaskStreamOwner(requestId);
     }
     throw error;
   }
@@ -593,43 +425,43 @@ ipcMain.on('runtime:settings-subscribe', (event) => {
   const sender = new URL(event.senderFrame?.url || 'about:blank');
   if (sender.protocol !== 'haish:' || sender.hostname !== 'app') return;
   const senderId = event.sender.id;
-  if (!realtimeSettingsSubscribers.has(senderId)) {
-    event.sender.once('destroyed', () => realtimeSettingsSubscribers.delete(senderId));
+  if (!hasSettingsSubscriber(senderId)) {
+    event.sender.once('destroyed', () => removeSettingsSubscriber(senderId));
   }
-  realtimeSettingsSubscribers.add(senderId);
+  addSettingsSubscriber(senderId);
   ensureRealtimeSocket().then(() => {
-    if (realtimeSettingsSubscribers.has(senderId)) sendToWebContents(senderId, 'runtime:settings-event', { type: 'settings.resync' });
+    if (hasSettingsSubscriber(senderId)) sendToWebContents(senderId, 'runtime:settings-event', { type: 'settings.resync' });
   }).catch(() => scheduleRealtimeReconnect());
 });
 ipcMain.on('runtime:settings-unsubscribe', (event) => {
-  realtimeSettingsSubscribers.delete(event.sender.id);
+  removeSettingsSubscriber(event.sender.id);
 });
 ipcMain.on('runtime:approval-subscribe', (event) => {
   const sender = new URL(event.senderFrame?.url || 'about:blank');
   if (sender.protocol !== 'haish:' || sender.hostname !== 'app') return;
   const senderId = event.sender.id;
-  realtimeApprovalSubscribers.add(senderId);
-  event.sender.once('destroyed', () => realtimeApprovalSubscribers.delete(senderId));
+  addApprovalSubscriber(senderId);
+  event.sender.once('destroyed', () => removeApprovalSubscriber(senderId));
   refreshApprovalSnapshot(senderId).catch((error) => {
     console.warn('[realtime] failed to refresh approval snapshot', error);
     scheduleRealtimeReconnect();
   });
 });
 ipcMain.on('runtime:approval-unsubscribe', (event) => {
-  realtimeApprovalSubscribers.delete(event.sender.id);
+  removeApprovalSubscriber(event.sender.id);
 });
 ipcMain.on('runtime:schedule-subscribe', (event) => {
   const sender = new URL(event.senderFrame?.url || 'about:blank');
   if (sender.protocol !== 'haish:' || sender.hostname !== 'app') return;
   const senderId = event.sender.id;
-  realtimeScheduleSubscribers.add(senderId);
-  event.sender.once('destroyed', () => realtimeScheduleSubscribers.delete(senderId));
+  addScheduleSubscriber(senderId);
+  event.sender.once('destroyed', () => removeScheduleSubscriber(senderId));
   ensureRealtimeSocket().then(() => {
-    if (realtimeScheduleSubscribers.has(senderId)) sendToWebContents(senderId, 'runtime:schedule-event', { type: 'schedule.resync' });
+    if (hasScheduleSubscriber(senderId)) sendToWebContents(senderId, 'runtime:schedule-event', { type: 'schedule.resync' });
   }).catch(() => scheduleRealtimeReconnect());
 });
 ipcMain.on('runtime:schedule-unsubscribe', (event) => {
-  realtimeScheduleSubscribers.delete(event.sender.id);
+  removeScheduleSubscriber(event.sender.id);
 });
 ipcMain.handle('tool:read-screenshot', async (event, imagePath: string, taskId: string): Promise<string> => {
   const sender = new URL(event.senderFrame?.url || 'about:blank');
@@ -794,13 +626,9 @@ app.on('before-quit', (event) => {
   }
   runtimeStopInFlight = true;
   event.preventDefault();
-  if (realtimeReconnectTimer) clearTimeout(realtimeReconnectTimer);
-  if (scheduleActivityTimer) clearInterval(scheduleActivityTimer);
-  scheduledTaskActivity.clear();
-  realtimeTaskOwners.clear();
+  // 实时通道整体收尾（重连定时器、15 秒快照、直播流登记、socket），细节在 realtime-client。
+  stopRealtimeClient();
   appSleepGuard.stop();
-  realtimeSocket?.close();
-  realtimeSocket = null;
   for (const window of BrowserWindow.getAllWindows()) {
     window.destroy();
   }

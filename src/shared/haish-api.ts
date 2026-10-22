@@ -65,6 +65,9 @@ export type RemoteAdapterState = {
   status: RemoteAdapterStatus;
   origin: string;
   pid?: number;
+  /** True when this instance is using an adapter another running instance
+   *  started, so it must not stop or replace it. */
+  adopted?: boolean;
   version?: string;
   runtimeOnline?: boolean;
   tunnel?: RemoteTunnelState;

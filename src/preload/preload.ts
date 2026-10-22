@@ -70,6 +70,9 @@ const api: HaishDesktopApi = {
       if (message.request_id !== requestId) return;
       if (message.type === 'task.event') {
         onEvent(message.event as Record<string, unknown>);
+      } else if (message.type === 'resync_required') {
+        // 背压丢事件的控制面提示（不是失败）：原样交给渲染层按游标补一次。
+        onEvent({ ...message });
       } else if (message.type === 'task.error') {
         cleanup();
         const detail = typeof message.detail === 'string'
