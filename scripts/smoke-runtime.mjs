@@ -84,8 +84,21 @@ export async function smokeRuntime(executable, { timeoutMs = 120_000, logPath } 
       owner = projects.owner_id;
     }
     await getJson('/api/schedules');
+    // Health alone missed the 0.0.32 frozen-binding regression: build the real
+    // tools so a broken facade namespace fails the build instead of the user.
+    const tools = await getJson('/api/diagnostics/tools');
+    const toolReport = tools?.tools ?? {};
+    const names = Object.keys(toolReport);
+    if (!tools?.ok || names.length === 0) throw new Error('Runtime tool self-check reported no tools');
+    for (const name of names) {
+      if (!(toolReport[name]?.description_chars > 0)) {
+        throw new Error(`Runtime tool ${name} exposes an empty description`);
+      }
+    }
     if (exited) throw launchError;
-    console.log('[runtime-smoke] health, chat/bot projects and schedules passed.');
+    console.log(
+      `[runtime-smoke] health, chat/bot projects, schedules and ${names.length} tool(s) passed.`,
+    );
   } catch (error) {
     throw new Error(`${error.message}\n${output}`, { cause: error });
   } finally {

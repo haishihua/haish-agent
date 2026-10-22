@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { smokeRuntime } from '../smoke-runtime.mjs';
 
-for (const mode of ['ok', '503', 'owner', 'exit', 'timeout', 'invalid']) {
+for (const mode of ['ok', '503', 'owner', 'exit', 'timeout', 'invalid', 'notools', 'emptydesc']) {
   test(`runtime gate: ${mode}`, async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'haish-smoke-test-'));
     const exe = path.join(dir, 'runtime');
@@ -23,7 +23,10 @@ http.createServer((req, res) => {
   }
   res.end(JSON.stringify(req.url.includes('/api/projects')
     ? {owner_id: '${mode}' === 'owner' ? req.url : 'test', projects: '${mode}' === 'invalid' ? null : []}
-    : {ok: true}));
+    : req.url.includes('/api/diagnostics/tools')
+      ? {ok: '${mode}' !== 'notools', tools: '${mode}' === 'notools' ? {}
+        : {browser_use: {description_chars: '${mode}' === 'emptydesc' ? 0 : 40, parameters: 3}}}
+      : {ok: true}));
 }).listen(port, '127.0.0.1');`;
     writeFileSync(exe, `#!${process.execPath}\n${body}\n`);
     chmodSync(exe, 0o755);
@@ -31,7 +34,8 @@ http.createServer((req, res) => {
     try {
       const run = smokeRuntime(exe, { timeoutMs: mode === 'timeout' ? 250 : 3_000, logPath });
       const patterns = {503: /HTTP 503/, owner: /Inconsistent project owner_id/,
-        exit: /croniter/, timeout: /timed out/, invalid: /Invalid chat project/};
+        exit: /croniter/, timeout: /timed out/, invalid: /Invalid chat project/,
+        notools: /tool self-check reported no tools/, emptydesc: /empty description/};
       if (mode === 'ok') await run;
       else await assert.rejects(run, patterns[mode]);
       assert.ok(existsSync(logPath));

@@ -249,9 +249,13 @@ build and then rebuild again for publication.
 
 The release fails closed if the complete core `[app]` dependency graph is missing
 or incompatible, if the frozen runtime cannot start, or if health, chat/bot
-project lists, or schedules fail. Startup checks run both before packaging and
-against the runtime inside the final `.app`, using temporary state and no developer
-credentials. These gates must pass before any GitHub Release upload.
+project lists, schedules, or the tool self-check fail. Startup checks run both
+before packaging and against the runtime inside the final `.app`, using
+temporary state and no developer credentials. The tool self-check
+(`GET /api/diagnostics/tools`) builds the real `browser_use` and `image_generate`
+Tools, because health alone cannot see a frozen-only binding regression
+(core `docs/bugfix/frozen-runtime-binding.md`). These gates must pass before any
+GitHub Release upload.
 
 #### 3. Verify and report publication
 
