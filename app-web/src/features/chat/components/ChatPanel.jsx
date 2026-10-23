@@ -1,6 +1,9 @@
 import React from 'react';
 import { PenguinCards } from './PenguinCards.jsx';
 import { ConversationSearch } from './ConversationSearch.jsx';
+import { ConversationMap } from './ConversationMap.jsx';
+import { conversationMapEntries } from '../model/conversation-map.js';
+import { chatImagePreviewUrl } from '../../../shared/api/chat-image.js';
 import { MessageAnnotations } from './MessageAnnotations.jsx';
 import { QuoteBlock } from '../../../shared/ui/agent-elements/Quote.jsx';
 import { useAnnotationDraft } from '../hooks/useAnnotationDraft.js';
@@ -18,6 +21,10 @@ import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx
 import { ChatComposer } from './ChatComposer.jsx';
 // Prefetch execution records as their summary rows approach the viewport.
 const EARLIER_TASKS_SCROLL_TRIGGER_PX = 160;
+// 跳转落点要能居中：窗口若刚好只盖住目标行，它永远贴在顶部，scrollTop 只能是 0。
+// 一次多带几行上文，目标才有可滚动的上方空间；目标很靠上时窗口仍会盖到会话开头，
+// 但这只发生在一次显式跳转，不会随滚动反复扩窗。
+const MAP_JUMP_CONTEXT_ROWS = 8;
 
 // 一个会话的行组。rows 是某一刻的“活”快照（连批注编号、禁用态、回调一起），整组渲染成
 // 一个 flex 列。离开的会话那一组会带着 hidden 留在原地——同一个组件、同一个 key，
@@ -94,6 +101,7 @@ export function ChatPanel({
   onEditMessage,
   onLoadEarlierTasks,
   earlierTaskRuntimesPending = false,
+  earlierTaskRuntimeIds,
 }) {
   const [localDraft, setLocalDraft] = React.useState('');
   const [searchActive, setSearchActive] = React.useState(false);
@@ -157,10 +165,32 @@ export function ChatPanel({
   // estimates here would shift the reader even though all rows are retained.
   const retainSearchLayout = searchActive || searchExpanded;
   const hasEarlierRows = !searchActive && windowedRows.length < listRows.length;
-  const [annotationNotice, setAnnotationNotice] = React.useState('');
   const annotationUiRef = React.useRef(null);
   const scrollNavigationRef = React.useRef(null);
-  const stopFollowingLatest = React.useCallback(() => scrollNavigationRef.current?.stopFollowing(), []);
+  // 分页只跟着「人真的在往上翻」走：初次布局、补页后的锚点校正、流式重排都会
+  // 产生 scroll 事件，不能把它们当成用户已经翻到历史顶部。
+  const scrollIntentAtRef = React.useRef(-Infinity);
+  const navigationIntentAtRef = React.useRef(-Infinity);
+  const markScrollIntent = React.useCallback(() => { scrollIntentAtRef.current = performance.now(); }, []);
+  const stopFollowingLatest = React.useCallback(() => {
+    navigationIntentAtRef.current = performance.now();
+    scrollNavigationRef.current?.stopFollowing();
+  }, []);
+  // 手势意图属于当前会话：切走后不能把上一个会话的时间戳带进新会话的首次布局。
+  React.useLayoutEffect(() => {
+    scrollIntentAtRef.current = -Infinity;
+    navigationIntentAtRef.current = -Infinity;
+  }, [conversationId]);
+  const mapEntries = React.useMemo(() => conversationMapEntries(messages, chatImagePreviewUrl), [messages]);
+  const revealMapTurn = React.useCallback((id) => {
+    stopFollowingLatest();
+    const index = listRows.findIndex((row) => String(row.id) === id);
+    if (index < 0) return;
+    rowAnchorRef.current = null;
+    pendingGrowthRef.current = 0;
+    const cover = Math.max(0, index - MAP_JUMP_CONTEXT_ROWS);
+    setRowWindow((count) => Math.max(count, rowWindowCovering(cover, listRows.length)));
+  }, [listRows, stopFollowingLatest]);
   // 批注列表拿的是全量批注，但被引用正文所在的行可能落在窗口外（窗口只盖尾部）。
   // 跳转/编辑都要在 DOM 里找到那段原文，所以先把窗口一次补到盖住目标行，提交后再跳；
   // 窗口化之前所有行都在，不存在这一步。
@@ -190,8 +220,8 @@ export function ChatPanel({
     const exists = annotationSnapshots.some((draft) => draft.id === item.id);
     const next = exists ? annotationSnapshots.map((draft) => draft.id === item.id ? item : draft) : [...annotationSnapshots, item];
     const error = annotationError(next);
-    setAnnotationNotice(error);
-    if (error) return false;
+    // 拒绝就是一次动作失败：走全局 toast（warn），输入框上方不再挂常驻 banner。
+    if (error) { onToast?.('warn', error); return false; }
     updateAnnotations((previous) => previous.some((draft) => draft.id === item.id)
       ? previous.map((draft) => draft.id === item.id ? item : draft)
       : [...previous, item]);
@@ -202,7 +232,6 @@ export function ChatPanel({
       .map((item) => ({ item, index: annotationNumbers.get(item.id), key: `${m.messageId || m.id}:${item.id}` }))),
     ...annotationDrafts.map((item) => ({ item, index: annotationNumbers.get(item.id), key: `draft:${item.id}` })),
   ], [annotationMessages, annotationDrafts, annotationNumbers]);
-  React.useEffect(() => setAnnotationNotice(''), [conversationId]);
 
   // Collect user messages for ArrowUp history navigation (most recent first).
   const userMessageHistory = React.useMemo(() => {
@@ -225,7 +254,17 @@ export function ChatPanel({
   React.useLayoutEffect(() => {
     rowActionRef.current = { onForkMessage, onRetryTask, onEditMessage };
   });
-  const forkMessage = React.useCallback((message) => rowActionRef.current.onForkMessage?.(message), []);
+  // Fork failures are server rejections (stale history, missing resource), not
+  // part of this row's content: surface them as a toast instead of an inline
+  // error card under the branch button.
+  const forkMessage = React.useCallback(async (message) => {
+    try {
+      return await rowActionRef.current.onForkMessage?.(message);
+    } catch (error) {
+      onToast?.('error', String(error?.message || error));
+      return true; // Handled: keep perform() from writing an inline error card.
+    }
+  }, [onToast]);
   // Attempts wait for the current configuration commit, never the source Task's selection.
   const retryMessage = React.useCallback(async (message) => {
     const current = composerRunConfigRef.current;
@@ -249,7 +288,7 @@ export function ChatPanel({
   // 批注校验要赶在送出发文之前跑，并把批注快照一起交给 onSend。
   const prepareSubmit = (submittedText) => {
     const commentsError = annotationDrafts.length ? annotationError(annotationDrafts, submittedText) : '';
-    setAnnotationNotice(commentsError);
+    if (commentsError) onToast?.('warn', commentsError);
     return { error: commentsError, annotations: annotationDrafts };
   };
 
@@ -324,6 +363,15 @@ export function ChatPanel({
     // 窗口比视口还矮时继续补：内容撑不满就没有滚动条，“滚到顶补一页”永远触发不了。
     if (element && hasEarlierRows && element.scrollHeight <= element.clientHeight + CHAT_ROW_WINDOW_TRIGGER_PX) growEarlierRows();
   }, [loading, hasEarlierRows, windowedRows.length, growEarlierRows]);
+  // Completion is not progress: a restore can legitimately return no records
+  // (e.g. its activation/ownership guard changed). Only a different pending
+  // page may auto-load again, never the loading flag toggling back to false.
+  // The shell supplies authoritative ids, including turns outside the DOM.
+  const earlierTasksPageKey = React.useMemo(
+    () => JSON.stringify(earlierTaskRuntimeIds
+      ?? messages.filter((message) => message.traceHydrated === false).map((message) => message.taskId || message.id)),
+    [earlierTaskRuntimeIds, messages],
+  );
   const [earlierTasksState, setEarlierTasksState] = React.useState(null);
   const earlierTasksLoadRef = React.useRef(null);
   const earlierTasksContextRef = React.useRef(null);
@@ -332,14 +380,23 @@ export function ChatPanel({
       earlierTasksLoadRef.current = null;
       setEarlierTasksState(null);
     }
-    earlierTasksContextRef.current = { conversationId, onLoadEarlierTasks };
-  }, [conversationId, onLoadEarlierTasks]);
+    earlierTasksContextRef.current = { conversationId, onLoadEarlierTasks, pageKey: earlierTasksPageKey, pending: earlierTaskRuntimesPending };
+  }, [conversationId, onLoadEarlierTasks, earlierTasksPageKey, earlierTaskRuntimesPending]);
   const earlierTaskRuntimesLoading = earlierTasksState?.conversationId === conversationId && earlierTasksState?.loading;
   const earlierTasksError = earlierTasksState?.conversationId === conversationId ? earlierTasksState?.error : '';
+  const earlierTasksPageSettled = earlierTasksState?.conversationId === conversationId
+    && earlierTasksState?.pageKey === earlierTasksPageKey && !earlierTaskRuntimesLoading && !earlierTasksError;
+  const earlierTasksPending = earlierTaskRuntimesPending && !earlierTasksPageSettled;
+  // 行窗口已经盖住会话开头（没有更早的行）时，顶部提示不该出现：剩下的待补水
+  // 任务都在当前窗口里/下方，和「更早」无关。搜索需要全量，另行保留。
+  const showEarlierTasksHint = earlierTasksPending && (hasEarlierRows || searchActive || Boolean(earlierTasksError));
   const loadEarlierTasks = React.useCallback(async () => {
     const context = earlierTasksContextRef.current;
-    if (!context.onLoadEarlierTasks || earlierTasksLoadRef.current?.conversationId === context.conversationId) return;
-    const request = { conversationId: context.conversationId, loading: true, error: '' };
+    const previous = earlierTasksLoadRef.current;
+    if (!context?.onLoadEarlierTasks || !context.pending) return;
+    if (previous?.conversationId === context.conversationId
+      && (previous.loading || (previous.pageKey === context.pageKey && !previous.error))) return;
+    const request = { conversationId: context.conversationId, pageKey: context.pageKey, loading: true, error: '' };
     earlierTasksLoadRef.current = request;
     setEarlierTasksState(request);
     let error = '';
@@ -350,8 +407,9 @@ export function ChatPanel({
     } finally {
       // A slow request from a previous conversation must not clear a newer one.
       if (earlierTasksLoadRef.current === request) {
-        earlierTasksLoadRef.current = null;
-        setEarlierTasksState({ ...request, loading: false, error });
+        const settled = { ...request, loading: false, error };
+        earlierTasksLoadRef.current = settled;
+        setEarlierTasksState(settled);
       }
     }
   }, []);
@@ -360,9 +418,15 @@ export function ChatPanel({
     if (!element) return;
     // 会话还在加载：列表里没有一行可读的内容，补页 / 分页都等正文到了再说。
     if (loading) return;
-    // 行窗口：滚到接近列表顶先补一页行，再谈执行记录分页。
-    if (hasEarlierRows && shouldGrowRowWindow(element.scrollTop, CHAT_ROW_WINDOW_TRIGGER_PX)) growEarlierRows();
-    if (!earlierTaskRuntimesPending || earlierTaskRuntimesLoading || earlierTasksError) return;
+    const now = performance.now();
+    const userScrolling = now - scrollIntentAtRef.current < 700;
+    const navigating = now - navigationIntentAtRef.current < 2500;
+    // 行窗口：滚到接近列表顶先补一页行，再谈执行记录分页。地图跳转自己已经把
+    // 窗口补到目标行了，跳转落点校正期间再补页只会把落点推走。
+    if (hasEarlierRows && !navigating && shouldGrowRowWindow(element.scrollTop, CHAT_ROW_WINDOW_TRIGGER_PX)) {
+      if (userScrolling || searchActive) growEarlierRows();
+    }
+    if (!earlierTasksPending || earlierTaskRuntimesLoading || earlierTasksError) return;
     const viewport = element.getBoundingClientRect();
     // 留在原地的上一会话行组是 display:none：它的 [data-trace-pending] 不算可见，
     // 否则会把别的会话的执行记录拉进来。
@@ -371,11 +435,18 @@ export function ChatPanel({
       const rect = row.getBoundingClientRect();
       return rect.bottom >= viewport.top && rect.top <= viewport.bottom + EARLIER_TASKS_SCROLL_TRIGGER_PX;
     });
-    if (searchActive || element.scrollTop <= EARLIER_TASKS_SCROLL_TRIGGER_PX || pendingVisible) loadEarlierTasks();
-  }, [hasEarlierRows, growEarlierRows, earlierTaskRuntimesPending, earlierTaskRuntimesLoading, earlierTasksError, searchActive, loadEarlierTasks, loading]);
+    // 已经看到会话开头、且没有可见的待补水行：没有更早的任务可拉，停止。
+    // 之前只看 scrollTop，会让「顶部就是第一条」的会话每帧都去补下方任务。
+    if (!hasEarlierRows && !searchActive && !pendingVisible) return;
+    if (searchActive || pendingVisible
+      || (hasEarlierRows && element.scrollTop <= EARLIER_TASKS_SCROLL_TRIGGER_PX && (userScrolling || navigating))) {
+      loadEarlierTasks();
+    }
+  }, [hasEarlierRows, growEarlierRows, earlierTasksPending, earlierTaskRuntimesLoading, earlierTasksError, searchActive, loadEarlierTasks, loading]);
   React.useEffect(() => {
     // Re-check after each page settles, even if row count/scrollTop did not
-    // change. Search needs every page, not just the currently visible steps.
+    // change. handleListScroll itself requires a real upward gesture or a map
+    // jump, so the first layout pass at scrollTop 0 cannot start pagination.
     const frame = requestAnimationFrame(handleListScroll);
     return () => cancelAnimationFrame(frame);
   }, [handleListScroll, messages, conversationId]);
@@ -408,9 +479,13 @@ export function ChatPanel({
     <section className="chat-workspace" aria-label="Chat">
       <div className="chat-message-region">
         <ConversationSearch key={conversationId || 'draft'} scrollRef={listRef} onSearchChange={handleSearchChange}
-          loading={earlierTaskRuntimesPending && !earlierTasksError} />
-        <div ref={listRef} className={`chat-message-list${retainSearchLayout ? ' is-searching' : ''}`} onScroll={handleListScroll}>
-          {!loading && messages.length > 0 && (earlierTaskRuntimesPending || earlierTaskRuntimesLoading) ? (
+          loading={earlierTasksPending && !earlierTasksError} />
+        {/* 导轨的跳转/拖拽是显式导航：先让「跟随最新」松手，否则它会和轨道抢 scrollTop。 */}
+        {!loading && <ConversationMap key={conversationId || 'draft'} scrollRef={listRef} entries={mapEntries}
+          onNavigate={stopFollowingLatest} onReveal={revealMapTurn} />}
+        <div ref={listRef} className={`chat-message-list${retainSearchLayout ? ' is-searching' : ''}`} onScroll={handleListScroll}
+          onWheel={markScrollIntent} onTouchMove={markScrollIntent} onKeyDown={markScrollIntent}>
+          {!loading && messages.length > 0 && showEarlierTasksHint ? (
             <div className="chat-earlier-tasks" role="status">
               {earlierTasksError ? <>{earlierTasksError} <button type="button" onClick={loadEarlierTasks}>Retry loading steps</button></>
                 : earlierTaskRuntimesLoading ? 'Loading earlier steps…' : 'Scroll up to load earlier steps'}
@@ -466,7 +541,7 @@ export function ChatPanel({
               onJump={jumpToAnnotation} onEdit={editAnnotation}
               onRemove={() => updateAnnotations((previous) => previous.filter((draft) => draft.id !== item.id))} />)}
           </div>}
-          {(annotationNotice || storageError) && <p className="haish-annotation-notice" role="status">{annotationNotice || storageError}</p>}
+          {storageError && <p className="haish-annotation-notice" role="status">{storageError}</p>}
           {running && annotationDrafts.length > 0 && <p className="haish-annotation-notice">Comments are saved as a draft. Send after the task finishes or stops.</p>}
         </>}
         attachment={attachment}
@@ -492,7 +567,7 @@ export function ChatPanel({
         contextUsage={contextUsage}
       />
       <MessageAnnotations key={conversationId || 'draft'} ref={annotationUiRef} onNavigate={stopFollowingLatest} listRef={listRef}
-        items={highlightedAnnotations} drafts={annotationDrafts} onSave={saveAnnotation} onSaved={focusComposerInput} onError={setAnnotationNotice} />
+        items={highlightedAnnotations} drafts={annotationDrafts} onSave={saveAnnotation} onSaved={focusComposerInput} onError={(message) => { if (message) onToast?.('warn', message); }} />
       <ImagePreviewOverlay image={previewImage} onClose={closeImagePreview} />
     </section>
   );

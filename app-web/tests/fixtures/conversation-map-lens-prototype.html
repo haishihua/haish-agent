@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Haish · 长会话导轨交互原型</title>
+<style>
+  :root { color-scheme: dark; --bg: #0b0f18; --panel: #121926; --line: #293345; --text: #e1e7f2; --muted: #8b98ad; --accent: #a6c8fb; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  button, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  button:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  [hidden] { display: none !important; }
+  .app { height: 100dvh; min-height: 520px; display: grid; grid-template-rows: 64px minmax(0, 1fr) 33px; }
+  .topbar { display: flex; align-items: center; gap: 12px; padding: 0 22px; border-bottom: 1px solid var(--line); background: #0d121c; }
+  .logo { display: grid; place-items: center; width: 32px; height: 34px; background: #1b2533; border-radius: 9px; font-size: 23px; }
+  .brand { font-size: 16px; font-weight: 650; letter-spacing: -.3px; }
+  .prototype-badge { padding: 3px 8px; border: 1px solid #4b412d; border-radius: 5px; color: #d3b679; font-size: 10px; letter-spacing: 1px; }
+  .topbar .description { color: var(--muted); margin-left: auto; font-size: 12px; }
+  .layout { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 0; }
+  .sidebar { padding: 23px 18px; border-right: 1px solid var(--line); background: #101621; overflow: auto; }
+  .eyebrow { color: #8295b1; font-size: 10px; letter-spacing: 1.7px; text-transform: uppercase; }
+  h1 { font-size: 20px; line-height: 1.4; margin: 8px 0; letter-spacing: -.5px; }
+  .intro { color: var(--muted); font-size: 12px; margin: 0 0 22px; }
+  .control-label { display: block; color: #acb9cb; margin: 19px 0 8px; font-size: 11px; }
+  .segmented { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line); background: #0c111b; border-radius: 8px; }
+  .segmented button { flex: 1; min-width: 0; border: 0; padding: 7px 4px; background: transparent; border-radius: 5px; color: var(--muted); font-size: 12px; }
+  .segmented button[aria-pressed="true"] { background: #253248; color: #e6efff; box-shadow: 0 1px 4px #0005; }
+  .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 17px; }
+  .switch { width: 33px; height: 19px; border: 1px solid #4b637f; border-radius: 99px; background: #3e648e; padding: 2px; }
+  .switch::after { content: ''; display: block; width: 13px; height: 13px; border-radius: 50%; background: #eef5ff; margin-left: 13px; }
+  .switch[aria-checked="false"] { background: #202a39; border-color: #394455; }
+  .switch[aria-checked="false"]::after { margin-left: 0; background: #8d99aa; }
+  .fine-print { color: #708098; font-size: 11px; margin: 7px 0 0; }
+  .steps { list-style: none; padding: 0; margin: 27px 0 21px; display: grid; gap: 18px; }
+  .steps li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; color: #a0aec2; font-size: 12px; }
+  .step-number { color: #7495be; font-size: 10px; padding-top: 2px; }
+  .steps strong { color: #d5dfef; display: block; font-weight: 500; margin-bottom: 3px; }
+  .sample-button { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 9px 10px; margin: 7px 0; background: #151e2b; border: 1px solid #29374c; border-radius: 7px; text-align: left; font-size: 12px; }
+  .sample-button:hover { background: #1c293c; border-color: #456180; }
+  .sample-button span { color: #6d85a7; }
+  .sample-button.primary { background: #1c2d43; color: #d7e7ff; }
+  .sidebar-note { border-top: 1px solid var(--line); padding-top: 13px; margin-top: 20px; color: #71829a; font-size: 11px; }
+  .main { min-width: 0; min-height: 0; display: grid; grid-template-rows: 58px minmax(0, 1fr) 100px; background: radial-gradient(ellipse at 75% 0, #18243a66, transparent 65%); }
+  .thread-heading { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #242e3e; padding: 0 24px; }
+  .thread-title { font-size: 13px; font-weight: 550; }
+  .thread-subtitle { color: #74839a; font-size: 11px; margin-top: 2px; }
+  .position { margin-left: auto; color: #98a9c0; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .latest-button { padding: 5px 9px; color: #aabedb; border: 1px solid #334258; border-radius: 6px; background: #121d2b; font-size: 11px; }
+  .message-region { position: relative; min-height: 0; overflow: hidden; }
+  .message-list { height: 100%; overflow: auto; scrollbar-width: none; padding: 22px 40px 28px 24px; overscroll-behavior: contain; }
+  .message-list::-webkit-scrollbar { display: none; }
+  .messages { max-width: 860px; margin: 0 auto; }
+  .turn { margin-bottom: 33px; }
+  .speaker { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; color: #aabbd5; font-size: 11px; }
+  .avatar { display: inline-grid; place-items: center; width: 21px; height: 21px; background: #283449; border-radius: 7px; font-size: 11px; }
+  .user { margin-left: auto; width: fit-content; max-width: 79%; }
+  .user .speaker { justify-content: flex-end; }
+  .bubble { padding: 13px 16px; border: 1px solid #344252; border-radius: 16px; background: #182231; line-height: 1.75; font-size: 13px; overflow-wrap: anywhere; }
+  .user .bubble { background: #15243b; border-color: #2d4c75; border-top-right-radius: 5px; }
+  .answer { margin-top: 22px; max-width: 89%; }
+  .answer .avatar { color: #edc276; background: #393524; }
+  .answer p { margin: 0 0 12px; }
+  .answer p:last-child { margin-bottom: 0; }
+  .answer ul { margin: 8px 0; padding-left: 20px; color: #bcc9dc; }
+  .quoted { padding: 0 0 0 10px; border-left: 2px solid #5c7192; color: #95a7c0; font-size: 12px; margin-bottom: 7px; }
+  .attachments { display: flex; gap: 8px; flex-wrap: wrap; }
+  .attachments img { width: 132px; height: 85px; object-fit: cover; border-radius: 7px; }
+  .user.image-only .bubble { background: #111c2b; padding: 8px; }
+  .turn.is-target .user .bubble { animation: arrived 1.6s ease-out; }
+  @keyframes arrived { from { box-shadow: 0 0 0 2px #9cc5ff, 0 0 28px #6eacff25; } to { box-shadow: 0 0 0 0 transparent; } }
+  .composer { margin: 0 24px 15px; border: 1px solid #354052; border-radius: 13px; background: #101723; padding: 12px 15px; display: flex; flex-direction: column; gap: 10px; }
+  .composer-placeholder { color: #738097; font-size: 13px; }
+  .composer-bottom { display: flex; justify-content: space-between; align-items: center; color: #62718a; font-size: 10px; }
+  .composer-tools { color: #8095b2; font-size: 17px; letter-spacing: 10px; }
+  .send-disabled { display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid #465064; border-radius: 50%; color: #65768b; font-size: 17px; }
+  .statusbar { display: flex; align-items: center; gap: 9px; padding: 0 20px; background: #0d131e; color: #8293ad; font-size: 11px; border-top: 1px solid #253146; }
+  .status-dot { width: 5px; height: 5px; background: #84b6a8; border-radius: 50%; flex: none; }
+  .statusbar .local-only { margin-left: auto; color: #5f718d; white-space: nowrap; }
+  .rail { position: absolute; top: 12px; bottom: 12px; right: 1px; width: 24px; cursor: grab; touch-action: none; z-index: 5; outline-offset: -2px !important; }
+  .rail.is-dragging { cursor: grabbing; }
+  .overview-tick { position: absolute; right: 0; width: 12px; height: 2px; border-radius: 99px; background: #9daec43d; pointer-events: none; transform: translateY(-50%); }
+  .overview-tick.is-visible { width: 17px; background: #c1d4ef75; }
+  .overview-tick.is-active { height: 3px; width: 12px; background: #e7efff; z-index: 2; }
+  .rail:hover .overview-tick.is-active { width: 24px; }
+  .overview-hover { position: absolute; right: 0; width: 24px; height: 2px; background: #bcd6fb; border-radius: 99px; pointer-events: none; transform: translateY(-50%); z-index: 3; }
+  .overview-range { position: absolute; right: 0; width: 24px; border: 1px solid #8ebcff62; border-left: 0; border-radius: 0 4px 4px 0; background: #8abaff10; pointer-events: none; min-height: 4px; }
+  .lens { position: fixed; width: 44px; padding: 9px 0; background: #141f30f7; border: 1px solid #5c7ca56e; border-radius: 10px; box-shadow: 0 8px 32px #0007; z-index: 30; }
+  .lens-tick { display: flex; align-items: center; justify-content: center; width: 100%; height: 18px; border: 0; padding: 0; background: transparent; }
+  .lens-tick::before { content: ''; display: block; width: 12px; height: 2px; border-radius: 99px; background: #9caec86e; }
+  .lens-tick.is-current::before { height: 3px; background: #d2e5ff; }
+  .lens-tick.is-hovered::before, .lens-tick:hover::before, .lens-tick:focus-visible::before { width: 24px; background: #edf5ff; }
+  .lens-tick:focus-visible { outline-offset: -2px; border-radius: 4px; }
+  .hover-bridge { position: fixed; z-index: 29; }
+  .preview { position: fixed; display: flex; align-items: center; gap: 10px; width: 240px; min-height: 48px; padding: 14px; border: 1px solid #34445f; border-radius: 14px; background: #101722fa; color: #e3eaf7; text-align: left; box-shadow: 0 12px 35px #0005; z-index: 35; }
+  .preview:hover { border-color: #6889b5; background: #152133; }
+  .preview-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; flex: 1; min-width: 0; font: 500 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; overflow-wrap: anywhere; }
+  .preview-thumbnails { display: flex; gap: 4px; flex: none; }
+  .preview-thumbnail { display: grid; place-items: center; width: 32px; height: 32px; overflow: hidden; border-radius: 6px; background: #253246; color: #8fa5c1; }
+  .preview-thumbnail img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .toast { position: fixed; bottom: 144px; left: 50%; transform: translateX(-50%); padding: 8px 13px; border: 1px solid #3c5576; border-radius: 8px; color: #d3e4fb; background: #172437f5; z-index: 45; font-size: 11px; pointer-events: none; max-width: 85vw; }
+  @media (max-width: 960px) { .layout { grid-template-columns: 205px minmax(0, 1fr); } .sidebar { padding: 18px 14px; } .topbar .description { display: none; } .message-list { padding-left: 16px; } .user { max-width: 90%; } .thread-heading { padding: 0 16px; } }
+  @media (max-width: 680px) { .app { grid-template-rows: 54px minmax(0, 1fr) 34px; } .layout { grid-template-columns: minmax(0, 1fr); } .sidebar { display: none; } .topbar { padding: 0 13px; } .topbar::after { content: '悬停右侧体验 · 默认 160 轮'; color: #8b9db8; font-size: 10px; margin-left: auto; } .brand { font-size: 14px; } .prototype-badge { display: none; } .main { grid-template-rows: 58px minmax(0, 1fr) 90px; } .thread-subtitle { font-size: 10px; } .thread-heading { gap: 8px; } .latest-button { display: none; } .composer { margin: 0 16px 12px; } .bubble { padding: 11px 12px; } .answer { max-width: 96%; } .statusbar { padding: 0 10px; font-size: 10px; } .statusbar .local-only { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .turn.is-target .user .bubble { animation: none; outline: 1px solid #9cc5ff; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar"><div class="logo" aria-hidden="true">🐧</div><span class="brand">Haish Agent</span><span class="prototype-badge">独立交互原型</span><span class="description">长会话导轨 · 悬停局部放大 / 不修改正式界面</span></header>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="eyebrow">Conversation map / concept</div><h1>总览不丢，<br>细节可选。</h1><p class="intro">右边仍是一条导轨。仅在需要精确选轮时，临时展开附近 7 轮。</p>
+      <span class="control-label">模拟会话长度</span>
+      <div class="segmented" id="density" role="group" aria-label="会话轮数"><button data-count="32" aria-pressed="false">32 轮</button><button data-count="160" aria-pressed="true">160 轮</button><button data-count="400" aria-pressed="false">400 轮</button></div>
+      <div class="switch-row"><span>悬停局部放大</span><button class="switch" id="mode" role="switch" aria-label="悬停局部放大" aria-checked="true"></button></div><p class="fine-print" id="mode-note">关闭可对比仅压缩刻度的交互。</p>
+      <ol class="steps"><li><span class="step-number">01</span><div><strong>右缘移动，快速找范围</strong>悬停即显示附近轮次。</div></li><li><span class="step-number">02</span><div><strong>向左移入，精确挑一轮</strong>放大区位置锁定；滚轮逐轮浏览。</div></li><li><span class="step-number">03</span><div><strong>点细线或标题，跳转</strong>移出收起；按住原导轨仍可拖动。</div></li></ol>
+      <button class="sample-button primary" id="try-lens">展开当前位置附近 <span>↗</span></button>
+      <button class="sample-button" id="try-comment">看看注释消息 <span>↗</span></button>
+      <button class="sample-button" id="try-images">看看纯图片消息 <span>↗</span></button>
+      <button class="sample-button" id="try-long">看看超长标题 <span>↗</span></button>
+      <p class="sidebar-note">为了保留细线间隙，极密时总览合并显示；展开后每格对应一轮。原型只验证交互，不连接任何会话数据。</p>
+    </aside>
+    <main class="main">
+      <header class="thread-heading"><div><div class="thread-title">聊天体验优化与方案讨论</div><div class="thread-subtitle" id="thread-subtitle">160 轮示例消息 · 全量可导航</div></div><span class="position" id="position"></span><button class="latest-button" id="latest">回到最新 ↓</button></header>
+      <div class="message-region" id="region"><div class="message-list" id="message-list" tabindex="0" aria-label="模拟会话，可滚轮或触控板滚动"><div class="messages" id="messages"></div></div><div class="rail" id="rail" tabindex="0" role="slider" aria-label="会话总览，悬停展开，按住拖动滚动" aria-orientation="vertical" aria-valuemin="1" aria-valuemax="160" aria-valuenow="1"><div id="overview" aria-hidden="true"></div><div class="overview-range" id="range" hidden></div><div class="overview-hover" id="overview-hover" hidden></div></div></div>
+      <div class="composer" aria-label="仅展示的输入框"><span class="composer-placeholder">Ask, draft, or delegate…</span><div class="composer-bottom"><span class="composer-tools" aria-hidden="true">⊕ ⋯</span><span>交互原型 · 不会发送消息</span><span class="send-disabled" aria-hidden="true">↑</span></div></div>
+    </main>
+  </div>
+  <footer class="statusbar"><span class="status-dot"></span><span id="status" role="status">把鼠标移到右侧细刻度，试试局部放大。</span><span class="local-only">本地单文件 · 零网络请求</span></footer>
+</div>
+<div class="hover-bridge" id="rail-bridge" hidden></div><div class="hover-bridge" id="card-bridge" hidden></div>
+<div class="lens" id="lens" role="group" aria-label="局部放大的附近轮次，滚轮逐轮浏览" hidden></div>
+<button class="preview" id="preview" type="button" aria-label="跳转到预览消息" hidden><span class="preview-thumbnails" id="preview-thumbnails" aria-hidden="true"></span><span class="preview-title" id="preview-title"></span></button>
+<div class="toast" id="toast" role="status" hidden></div>
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const rail = $('rail'), list = $('message-list'), lens = $('lens'), preview = $('preview');
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  const LENS_ROWS = 7, ROW_HEIGHT = 18, LENS_PADDING = 10;
+  const state = { count: 160, enabled: true, active: 0, visible: [], hover: -1, start: 0, open: false, frozen: false, dragging: false, press: null, hideTimer: 0, wheelAt: 0, frame: 0, toastTimer: 0, lensTop: 0, clicked: -1 };
+  let turns = [], offsets = [], overviewMarks = [], metrics = { height: 1, step: 1, origin: 0 }, sectionNodes = [];
+  const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const svgImage = (bg, fg, type) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="240" height="140" viewBox="0 0 240 140"><rect width="240" height="140" rx="10" fill="${bg}"/><rect x="14" y="14" width="212" height="15" rx="4" fill="${fg}" opacity=".25"/>${type === 0 ? `<path d="M0 140 65 46 133 120 180 62 240 140" fill="${fg}"/><circle cx="190" cy="46" r="16" fill="${fg}" opacity=".6"/>` : `<rect x="20" y="42" width="48" height="77" rx="5" fill="${fg}" opacity=".35"/><rect x="80" y="62" width="56" height="57" rx="5" fill="${fg}" opacity=".7"/><rect x="148" y="42" width="68" height="77" rx="5" fill="${fg}"/>`}</svg>`)}`;
+  const images = [svgImage('#193142', '#82bed1', 0), svgImage('#3b2d21', '#d8b16b', 1), svgImage('#1a352e', '#86b6a1', 0)];
+  const prompts = ['帮我检查一下这个交互的边界情况。', '这个方案和上一版相比，主要改进在哪里？', '先不要改代码，给我解释一下原因。', '能不能让界面更轻一点，少一点常驻操作？', '看看触控板滚动时会不会影响定位。', '卡片的位置应该跟着哪一个刻度？', '用户消息不在屏内时，当前轮次怎么算？', '这部分可以复用现有组件吗？', '我希望只保留最重要的信息。', '如果会话特别长，怎么兼顾总览和精确选择？', '把回归测试和实际操作结果列一下。', '这个修改会不会影响其他页面？'];
+  const replies = ['可以把它分成两层：总览负责保留位置感，局部交互负责精确选择。两者不需要一直同时占据注意力。', '当前轮次按照消息区间判断，用户消息和后续的助手回复属于同一轮。即使正在阅读跨屏长回复，也应该保持这一轮高亮。', '预览卡以悬停刻度为锚点，不追随同一格内的指针移动。移入卡片时保留显示，点击后定位到原消息。', '导航和滚动是两个不同的动作：点刻度跳到消息，按住导轨拖动则连续滚动。超过拖动阈值后，不再触发点击跳转。'];
+  function makeTurns(count) {
+    return Array.from({ length: count }, (_, index) => {
+      if (index % 17 === 5) return { type: 'comment', title: index % 2 ? '这个是啥啊' : '这段结论为什么需要修改？', quote: 'skill-creator 资源已被暂存删除，但技能草稿生成代码仍要依赖它。', answer: '这是引用消息。导航预览优先展示你补充的评论，而不是引用原文、注释编号或者通用的 Message。' };
+      if (index % 13 === 8) { const count = index % 2 ? 1 : 3; return { type: 'images', title: count === 1 ? 'Image' : '3 images', images: images.slice(0, count), answer: '收到图片。纯图片消息在导轨中用小缩略图和图片张数区分，整张预览卡只负责跳转，不打开图片查看器。' }; }
+      if (index % 23 === 11) return { type: 'text', long: true, title: '请完整检查这个长会话导航方案，包括窗口缩放、非常密集的刻度、靠近顶部和底部的预览、鼠标从导轨移入放大区、从放大区移入标题卡、图片加载失败，以及键盘上下选择时的边界行为，不要只凭单元测试判断已经完成。', answer: replies[index % replies.length] };
+      return { type: 'text', title: prompts[index % prompts.length], answer: replies[index % replies.length], longReply: index % 19 === 9 };
+    });
+  }
+  function turnHTML(turn, index) {
+    let content = escape(turn.title);
+    if (turn.type === 'comment') content = `<div class="quoted">${escape(turn.quote)}</div>${content}`;
+    if (turn.type === 'images') content = `<div class="attachments">${turn.images.map((src) => `<img src="${src}" alt="示例图片" width="132" height="85" draggable="false">`).join('')}</div>`;
+    const extra = turn.longReply ? Array.from({ length: 7 }, (_, part) => `<p>${escape(replies[(index + part) % replies.length])}</p>`).join('') : '<ul><li>保留细刻度和稳定的预览锚点。</li><li>先验证手感，再决定是否接入正式组件。</li></ul>';
+    return `<section class="turn" data-index="${index}" id="turn-${index}"><div class="user ${turn.type === 'images' ? 'image-only' : ''}"><div class="speaker">You <span class="avatar" aria-hidden="true">♙</span></div><div class="bubble">${content}</div></div><div class="answer"><div class="speaker"><span class="avatar" aria-hidden="true">✧</span>Simple Agent</div><div class="bubble"><p>${escape(turn.answer)}</p>${extra}</div></div></section>`;
+  }
+  function measureOffsets() {
+    const top = list.getBoundingClientRect().top;
+    offsets = sectionNodes.map((node) => list.scrollTop + node.getBoundingClientRect().top - top);
+  }
+  function drawOverview() {
+    const height = rail.clientHeight;
+    metrics = { height, step: Math.min(14, height / state.count), origin: Math.max(0, (height - state.count * 14) / 2) };
+    // Merge only visual marks when sub-4px spacing would otherwise form a solid wall.
+    // Hit-testing continues to resolve every individual turn.
+    const stride = Math.max(1, Math.ceil(state.count / Math.max(1, Math.floor(height / 4))));
+    overviewMarks = [];
+    const fragment = document.createDocumentFragment();
+    for (let start = 0; start < state.count; start += stride) {
+      const end = Math.min(state.count - 1, start + stride - 1);
+      const node = document.createElement('span'); node.className = 'overview-tick';
+      node.style.top = `${yOf((start + end) / 2)}px`; fragment.append(node); overviewMarks.push({ start, end, node });
+    }
+    $('overview').replaceChildren(fragment);
+    updateView();
+  }
+  function yOf(index) { return metrics.origin + metrics.step * (index + .5); }
+  function indexAt(clientY) { return clamp(Math.floor((clientY - rail.getBoundingClientRect().top - metrics.origin) / metrics.step), 0, state.count - 1); }
+  function indexForOffset(value) {
+    let lo = 0, hi = offsets.length - 1;
+    while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (offsets[mid] <= value) lo = mid; else hi = mid - 1; }
+    return lo;
+  }
+  function updateView() {
+    if (!offsets.length) return;
+    state.active = list.scrollHeight - list.scrollTop - list.clientHeight < 3 ? state.count - 1 : indexForOffset(list.scrollTop + list.clientHeight / 2);
+    const from = indexForOffset(list.scrollTop), to = indexForOffset(list.scrollTop + list.clientHeight);
+    state.visible = [from, to];
+    overviewMarks.forEach(({ start, end, node }) => { node.classList.toggle('is-active', state.active >= start && state.active <= end); node.classList.toggle('is-visible', end >= from && start <= to); });
+    $('position').textContent = `${state.active + 1} / ${state.count} 轮`;
+    rail.setAttribute('aria-valuenow', state.active + 1); rail.setAttribute('aria-valuetext', turns[state.active].title);
+    [...lens.children].forEach((node) => node.classList.toggle('is-current', Number(node.dataset.index) === state.active));
+  }
+  function cancelHide() { clearTimeout(state.hideTimer); }
+  function scheduleHide() { cancelHide(); state.hideTimer = setTimeout(closePreview, 320); }
+  function closePreview() {
+    cancelHide(); state.open = false; state.frozen = false; state.hover = -1;
+    ['lens', 'preview', 'range', 'overview-hover', 'rail-bridge', 'card-bridge'].forEach((id) => $(id).hidden = true);
+    $('status').textContent = state.enabled ? '右缘找范围 → 向左移入放大区 → 点刻度或标题跳转。按住导轨可拖动。' : '对比模式：刻度压缩，悬停只显示预览；没有局部放大。';
+  }
+  function renderLens() {
+    lens.replaceChildren();
+    for (let index = state.start; index < Math.min(state.start + LENS_ROWS, state.count); index++) {
+      const node = document.createElement('button'); node.type = 'button'; node.className = 'lens-tick'; node.dataset.index = index;
+      node.setAttribute('aria-label', turns[index].title); node.classList.toggle('is-current', index === state.active); node.classList.toggle('is-hovered', index === state.hover);
+      node.addEventListener('pointerenter', () => selectLocal(index));
+      node.addEventListener('focus', () => selectLocal(index));
+      node.addEventListener('click', () => navigate(index)); lens.append(node);
+    }
+  }
+  function bridge(node, left, top, width, height) { Object.assign(node.style, { left: `${left}px`, top: `${top}px`, width: `${Math.max(0, width)}px`, height: `${Math.max(1, height)}px` }); node.hidden = false; }
+  function positionPreview() {
+    if (!state.open || state.hover < 0) return;
+    const railBox = rail.getBoundingClientRect();
+    let anchorY = railBox.top + yOf(state.hover), anchorLeft = railBox.left;
+    if (state.enabled) {
+      const rows = Math.min(LENS_ROWS, state.count), height = rows * ROW_HEIGHT + LENS_PADDING * 2;
+      lens.style.left = `${railBox.left - 52}px`; lens.style.top = `${state.lensTop}px`; lens.hidden = false;
+      const box = lens.getBoundingClientRect();
+      anchorY = box.top + LENS_PADDING + (state.hover - state.start) * ROW_HEIGHT + ROW_HEIGHT / 2; anchorLeft = box.left;
+      bridge($('rail-bridge'), box.right, box.top, railBox.left - box.right + 2, height);
+      const rangeTop = yOf(state.start) - metrics.step / 2;
+      $('range').style.top = `${rangeTop}px`; $('range').style.height = `${Math.max(4, rows * metrics.step)}px`; $('range').hidden = false;
+    } else { lens.hidden = true; $('range').hidden = true; $('rail-bridge').hidden = true; }
+    preview.hidden = false;
+    const width = Math.min(240, window.innerWidth - 100); preview.style.width = `${width}px`;
+    const cardHeight = preview.offsetHeight, top = clamp(anchorY - cardHeight / 2, 8, window.innerHeight - cardHeight - 8);
+    const left = Math.max(8, anchorLeft - 10 - width); Object.assign(preview.style, { left: `${left}px`, top: `${top}px` });
+    bridge($('card-bridge'), left + width, Math.min(top, anchorY - 10), Math.max(0, anchorLeft - left - width + 2), Math.max(cardHeight, 20));
+    $('overview-hover').style.top = `${yOf(state.hover)}px`; $('overview-hover').hidden = false;
+    $('status').textContent = state.enabled ? `局部 ${state.start + 1}–${Math.min(state.count, state.start + LENS_ROWS)} 轮 · 选中第 ${state.hover + 1} 轮 · 放大区滚轮逐轮 / ↑ ↓ 选择 / Enter 跳转 / Esc 收起` : `第 ${state.hover + 1} 轮 · 仅压缩刻度模式 · 点击标题或原导轨跳转`;
+  }
+  function updateCard() {
+    const turn = turns[state.hover]; if (!turn) return;
+    $('preview-title').textContent = turn.title; preview.dataset.index = state.hover; preview.setAttribute('aria-label', `跳转：${turn.title}`);
+    $('preview-thumbnails').replaceChildren(); $('preview-thumbnails').hidden = turn.type !== 'images';
+    if (turn.type === 'images') for (const src of turn.images.slice(0, 2)) {
+      const wrap = document.createElement('span'); wrap.className = 'preview-thumbnail';
+      const image = new Image(32, 32); image.alt = ''; image.draggable = false; image.src = src;
+      image.onerror = () => { wrap.replaceChildren(document.createTextNode('▧')); }; wrap.append(image); $('preview-thumbnails').append(wrap);
+    }
+    [...lens.children].forEach((node) => node.classList.toggle('is-hovered', Number(node.dataset.index) === state.hover));
+    positionPreview();
+  }
+  function openAt(index, force = false) {
+    if (state.dragging || (state.frozen && !force)) return;
+    cancelHide();
+    if (state.open && state.hover === index && !force) return;
+    state.hover = index; state.start = clamp(index - 3, 0, Math.max(0, state.count - LENS_ROWS)); state.open = true; state.frozen = false;
+    const railBox = rail.getBoundingClientRect(), regionBox = $('region').getBoundingClientRect();
+    const height = Math.min(LENS_ROWS, state.count) * ROW_HEIGHT + LENS_PADDING * 2;
+    state.lensTop = clamp(railBox.top + yOf(index) - LENS_PADDING - (index - state.start) * ROW_HEIGHT - ROW_HEIGHT / 2, regionBox.top + 8, regionBox.bottom - height - 8);
+    renderLens(); updateCard();
+  }
+  function selectLocal(index) { cancelHide(); state.frozen = true; state.hover = index; updateCard(); }
+  function navigate(index) {
+    closePreview(); state.clicked = index;
+    const user = sectionNodes[index].querySelector('.user');
+    const rowRect = user.getBoundingClientRect(), viewRect = list.getBoundingClientRect();
+    list.scrollTop = clamp(list.scrollTop + rowRect.top - viewRect.top - list.clientHeight / 2 + rowRect.height / 2, 0, list.scrollHeight - list.clientHeight);
+    document.querySelector('.turn.is-target')?.classList.remove('is-target'); sectionNodes[index].classList.add('is-target');
+    updateView(); toast(`已定位到第 ${index + 1} 轮`);
+    setTimeout(() => sectionNodes[index]?.classList.remove('is-target'), 1700);
+  }
+  function toast(text) { clearTimeout(state.toastTimer); $('toast').textContent = text; $('toast').hidden = false; state.toastTimer = setTimeout(() => $('toast').hidden = true, 1500); }
+  function build(count) {
+    closePreview(); state.count = count; state.clicked = -1; turns = makeTurns(count); $('messages').innerHTML = turns.map(turnHTML).join(''); sectionNodes = [...$('messages').children];
+    document.querySelectorAll('[data-count]').forEach((node) => node.setAttribute('aria-pressed', Number(node.dataset.count) === count ? 'true' : 'false'));
+    $('thread-subtitle').textContent = `${count} 轮示例消息 · 全量可导航`; rail.setAttribute('aria-valuemax', count);
+    measureOffsets(); list.scrollTop = offsets[Math.floor(count * .48)]; drawOverview();
+  }
+  function applyDrag(clientY) {
+    const box = rail.getBoundingClientRect(), ratio = clamp((clientY - box.top) / box.height, 0, 1);
+    list.scrollTop = ratio * (list.scrollHeight - list.clientHeight); updateView();
+    $('status').textContent = `正在拖动总览 · ${Math.round(ratio * 100)}% · 松开继续阅读`;
+  }
+  rail.addEventListener('pointerenter', () => { cancelHide(); if (!state.press) state.frozen = false; });
+  rail.addEventListener('pointermove', (event) => {
+    if (state.press) {
+      if (!state.dragging && Math.hypot(event.clientX - state.press.x, event.clientY - state.press.y) > 5) { state.dragging = true; closePreview(); rail.classList.add('is-dragging'); }
+      if (state.dragging) applyDrag(event.clientY);
+    } else openAt(indexAt(event.clientY));
+  });
+  rail.addEventListener('pointerleave', () => { if (!state.press) scheduleHide(); });
+  rail.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return; cancelHide(); state.press = { x: event.clientX, y: event.clientY, index: indexAt(event.clientY) }; rail.setPointerCapture(event.pointerId); event.preventDefault();
+  });
+  function endDrag(event) {
+    if (!state.press) return; const press = state.press, dragged = state.dragging; state.press = null; state.dragging = false; rail.classList.remove('is-dragging');
+    if (rail.hasPointerCapture(event.pointerId)) rail.releasePointerCapture(event.pointerId);
+    if (event.type === 'pointerup' && !dragged) navigate(press.index); else closePreview();
+  }
+  rail.addEventListener('pointerup', endDrag); rail.addEventListener('pointercancel', endDrag);
+  [lens, preview, $('rail-bridge'), $('card-bridge')].forEach((node) => { node.addEventListener('pointerenter', () => { cancelHide(); state.frozen = true; }); node.addEventListener('pointerleave', scheduleHide); });
+  preview.addEventListener('click', () => { if (state.hover >= 0) navigate(state.hover); });
+  lens.addEventListener('wheel', (event) => {
+    event.preventDefault(); event.stopPropagation(); cancelHide(); state.frozen = true;
+    if (!event.deltaY || performance.now() - state.wheelAt < 65) return;
+    state.wheelAt = performance.now(); const delta = Math.sign(event.deltaY), start = clamp(state.start + delta, 0, state.count - LENS_ROWS);
+    const slot = state.hover - state.start; state.start = start; state.hover = clamp(start + slot, 0, state.count - 1); renderLens(); updateCard();
+  }, { passive: false });
+  function keyNavigate(event) {
+    if (event.key === 'Escape') { event.preventDefault(); closePreview(); rail.focus({ preventScroll: true }); return; }
+    if (event.key === 'Enter' && event.target === rail) { event.preventDefault(); navigate(state.hover < 0 ? state.active : state.hover); return; }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault(); const current = state.hover < 0 ? state.active : state.hover;
+    const index = event.key === 'Home' ? 0 : event.key === 'End' ? state.count - 1 : clamp(current + (event.key === 'ArrowDown' ? 1 : -1), 0, state.count - 1);
+    if (!state.open || index < state.start || index >= state.start + LENS_ROWS) openAt(index, true); else selectLocal(index);
+    if (state.enabled) lens.querySelector(`[data-index="${index}"]`)?.focus({ preventScroll: true });
+  }
+  [rail, lens, preview].forEach((node) => node.addEventListener('keydown', keyNavigate));
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && state.open) closePreview(); });
+  document.addEventListener('pointerdown', (event) => {
+    if (state.open && !event.target.closest('#rail, #lens, #preview, .hover-bridge, .sample-button')) closePreview();
+  });
+  list.addEventListener('scroll', () => { cancelAnimationFrame(state.frame); state.frame = requestAnimationFrame(updateView); }, { passive: true });
+  list.addEventListener('wheel', closePreview, { passive: true }); list.addEventListener('touchstart', closePreview, { passive: true });
+  $('density').addEventListener('click', (event) => { const target = event.target.closest('[data-count]'); if (target) build(Number(target.dataset.count)); });
+  $('mode').addEventListener('click', () => { state.enabled = !state.enabled; $('mode').setAttribute('aria-checked', String(state.enabled)); closePreview(); $('mode-note').textContent = state.enabled ? '关闭可对比仅压缩刻度的交互。' : '当前为对比模式：不展开附近轮次。'; });
+  $('latest').addEventListener('click', () => navigate(state.count - 1));
+  $('try-lens').addEventListener('click', () => { if (!state.enabled) $('mode').click(); openAt(state.active, true); });
+  function showSample(predicate) {
+    const near = Math.floor(state.count * .52);
+    let index = turns.findIndex((turn, i) => i >= near && predicate(turn));
+    if (index < 0) index = turns.findIndex(predicate);
+    if (index >= 0) { navigate(index); openAt(index, true); }
+  }
+  $('try-comment').addEventListener('click', () => showSample((turn) => turn.type === 'comment'));
+  $('try-images').addEventListener('click', () => showSample((turn) => turn.type === 'images' && turn.images.length === 3));
+  $('try-long').addEventListener('click', () => showSample((turn) => turn.long));
+  let resizeTimer = 0;
+  window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { closePreview(); measureOffsets(); drawOverview(); }, 90); });
+  // Read-only diagnostics for the independent prototype; no application/runtime API.
+  window.__conversationMapPrototype = { snapshot: () => ({ count: state.count, enabled: state.enabled, active: state.active, hover: state.hover, start: state.start, open: state.open, frozen: state.frozen, dragging: state.dragging, clicked: state.clicked, scrollTop: list.scrollTop, overviewMarks: overviewMarks.length }) };
+  build(160);
+  const contentResize = new ResizeObserver(() => { measureOffsets(); updateView(); });
+  contentResize.observe($('messages'));
+})();
+</script>
+</body>
+</html>

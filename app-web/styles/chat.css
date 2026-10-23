@@ -3,18 +3,11 @@
 .chat-workspace {
     width: 100%;
     min-height: 0;
-    /* 面板统一的左右留白：消息列表的内边距和输入框的外边距共用这一个值。内联编辑框
-       占满消息区域（见 shared/ui/agent-elements/edit-message.css），因此只要两者同
-       源，编辑框和输入框就永远等宽；改这里等于同时改两个。
-       28 → 16 → 10px：侧栏收窄后聊天区（消息 + 输入框）一路往左贴——面板左缘到正文
-       的距离 29 → 17 → 11px，正好落在左栏会话行那条 11px 文字列上（.conversation-row
-       的左内边距），右边距同源一起收，正文右缘仍落在输入框外框上（滚动条占位照扣）。
-       10px 是这条滚动条还占位时的下限：右内边距 = gutter − 10px，不能是负数；再往下
-       收就得先把 --chat-scrollbar-width 一起收窄。 */
+    /* 消息列表与输入框左缘共用 gutter；右缘共用轮次导轨保留带，编辑框占满消息行。
+       原生滚动条已隐藏，无须再扣一次滚动条占位。 */
     --chat-gutter: 10px;
-    /* 消息列表那条常显滚动条的宽度（见 .chat-message-list 的 scrollbar-gutter 与
-       右内边距、以及会话内查找的命中条）：正文右缘要扣掉它才和输入框右缘对齐。 */
-    --chat-scrollbar-width: 10px;
+    /* 与参考相同：24px 命中区、默认 12px 细刻度。查找命中条也让开这块保留带。 */
+    --chat-scrollbar-width: 24px;
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto;
     border: 1px solid rgba(176, 206, 255, 0.16);
@@ -92,6 +85,80 @@
 .haish-search-hit-marker.is-active::before, .haish-search-hit-marker:hover::before { background: #ff9f32; }
 .haish-search-hit-marker:focus-visible { outline: 2px solid #82c7ff; outline-offset: 1px; border-radius: 3px; }
 
+/* ============ 会话轮次导轨（Conversation map） ============ */
+/* 规格取自参考页计算样式：24px 导轨、每格最多 14px、默认 12×2px，当前轮次
+   12×3px；整条 hover/focus 后屏内格展开到 18px、当前格展开到 24px。
+   仅扩大命中区，不再把每一根刻度加粗。右缘放置、点击与拖动保留 Haish 的滚动条替换约定。 */
+.conversation-map { position: absolute; right: 0; top: 10px; bottom: 10px; z-index: 15; width: var(--chat-scrollbar-width, 24px); pointer-events: none; }
+.conversation-map-rail {
+    position: relative; display: flex; flex-direction: column; justify-content: center;
+    height: 100%; width: 100%;
+    touch-action: none; cursor: grab; pointer-events: auto;
+}
+.conversation-map-rail.is-dragging { cursor: grabbing; }
+.conversation-map-tick {
+    position: relative; flex: 1 1 0; min-height: 0; max-height: 14px; padding: 0; border: 0;
+    background: transparent; cursor: pointer; outline: none;
+    display: flex; align-items: center; justify-content: flex-end;
+}
+.conversation-map-tick::before {
+    content: ''; display: block; width: 12px; height: 2px; border-radius: 999px;
+    background: rgba(241, 246, 255, 0.15);
+    transition: width 200ms cubic-bezier(0.23, 1, 0.32, 1), height 200ms cubic-bezier(0.23, 1, 0.32, 1), background-color 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.conversation-map-tick.is-visible::before { background: rgba(241, 246, 255, 0.5); }
+.conversation-map-tick.is-active::before { height: 3px; background: rgba(241, 246, 255, 0.9); }
+.conversation-map-rail:is(:hover, :focus-within) .conversation-map-tick.is-visible:not(.is-active)::before { width: 18px; }
+.conversation-map-rail:is(:hover, :focus-within) .conversation-map-tick.is-active::before { width: 24px; }
+.conversation-map-rail .conversation-map-tick:is(:hover, :focus-visible):not(.is-active)::before { width: 24px; background: rgba(241, 246, 255, 0.7); }
+@media (prefers-reduced-motion: reduce) {
+    .conversation-map-tick::before { transition: none; }
+}
+
+.conversation-map-range {
+    position: absolute; right: 0; width: 24px; min-height: 4px; pointer-events: none;
+    border: 1px solid rgba(142, 188, 255, 0.38); border-left: 0; border-radius: 0 4px 4px 0;
+    background: rgba(138, 186, 255, 0.06);
+}
+.conversation-map-lens {
+    position: fixed; z-index: 44; width: 44px; padding: 9px 0; box-sizing: border-box;
+    border: 1px solid rgba(92, 124, 165, 0.5); border-radius: 10px;
+    background: var(--panel, #131b28); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+/* Transparent hover bridges preserve entry into the lens/card across their gaps. */
+.conversation-map-lens::after, .conversation-map-card::after {
+    content: ''; position: absolute; left: 100%; top: -1px; bottom: -1px; width: 12px;
+}
+.conversation-map-lens-tick {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 18px; padding: 0; border: 0; background: transparent; cursor: pointer;
+}
+.conversation-map-lens-tick::before { content: ''; width: 12px; height: 2px; border-radius: 999px; background: rgba(156, 174, 200, 0.5); }
+.conversation-map-lens-tick.is-active::before { height: 3px; background: rgba(210, 229, 255, 0.9); }
+.conversation-map-lens-tick:is(.is-hovered, :hover, :focus-visible)::before { width: 24px; background: #edf5ff; }
+.conversation-map-lens-tick:focus-visible { outline: 2px solid var(--gold, #efbf64); outline-offset: -2px; border-radius: 4px; }
+
+.conversation-map-card {
+    /* Floating UI 跟踪刻度的边界；Portal 避免卡片被消息列表裁剪。 */
+    z-index: 45; width: min(240px, calc(100vw - 32px));
+    box-sizing: border-box; padding: 14px; border: 1px solid var(--line, #3a4463); border-radius: 16px;
+    background: var(--panel, #131b28); color: var(--ink, #dfe6f1); text-align: left;
+    cursor: pointer; pointer-events: auto; display: flex; align-items: center; gap: 10px;
+}
+.conversation-map-card:focus-visible { outline: 2px solid var(--gold, #efbf64); outline-offset: 2px; }
+.conversation-map-card-text {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+    font: 500 13px/1.375 var(--conversation-font); color: inherit; overflow-wrap: anywhere;
+    flex: 1; min-width: 0;
+}
+.conversation-map-thumbnails { display: flex; flex: none; gap: 4px; }
+.conversation-map-thumbnail {
+    display: flex; align-items: center; justify-content: center; flex: none;
+    width: 32px; height: 32px; overflow: hidden; border-radius: 6px;
+    background: rgba(166, 181, 202, 0.1); color: var(--muted, #97a3b8);
+}
+.conversation-map-thumbnail img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
 .chat-message-region {
     position: relative;
     min-height: 0;
@@ -164,50 +231,22 @@
 }
 
 /* 会话详情（工作流详情面板也在用 .chat-message-list，但它没有 .chat-message-region）：
-   滚动条常驻占位（scrollbar-gutter: stable，短会话也不跳），右内边距再把这 10px 扣回去
-   （gutter 收到 10px 时正好扣成 0），正文右缘（含右对齐的用户气泡）才和下方输入框外框
-   右缘对齐——--chat-gutter 的约定。 */
+   原生滚动条已隐藏（右缘的轮次导轨 Conversation map 接管标签定位与拖动滚动），
+   右内边距仍扣着同一块保留带（--chat-scrollbar-width），正文右缘不压导轨、也才和
+   下方输入框外框右缘对齐——--chat-gutter 的约定不变。 */
 .chat-message-region > .chat-message-list {
-    padding: 24px calc(var(--chat-gutter, 10px) - var(--chat-scrollbar-width, 10px)) 24px var(--chat-gutter, 10px);
-    scrollbar-gutter: stable;
+    padding: 24px var(--chat-scrollbar-width, 24px) 24px var(--chat-gutter, 10px);
+    scrollbar-width: none;
 }
 
-/* 会话详情的滚动条：常显、可直接拖，滑块长度按「视口/内容」比例由浏览器算（内容越长
-   滑块越短，自适应）。::-webkit-scrollbar 一旦被样式化，macOS 上就不再走那个滚动时才
-   现身、又会自己淡出的浮层滚动条——这正是「滚动的时候要能看到、能拖」的判据。
-   只作用在会话详情：工作流详情那条列表有自己的细滚动条（workflow-runtime.css 里
-   scrollbar-width/color 一旦不是 auto，::-webkit-scrollbar 在这条上本来也不会生效）。 */
-.chat-message-region > .chat-message-list::-webkit-scrollbar {
-    width: var(--chat-scrollbar-width, 10px);
-}
-
+/* 原生滚动条彻底隐藏：轮次导轨就是滚动条。滚轮/触控板/键盘滚动不受影响。 */
+.chat-message-region > .chat-message-list::-webkit-scrollbar,
 .chat-message-region > .chat-message-list::-webkit-scrollbar-track,
+.chat-message-region > .chat-message-list::-webkit-scrollbar-thumb,
 .chat-message-region > .chat-message-list::-webkit-scrollbar-corner {
-    background: transparent;
-}
-
-.chat-message-region > .chat-message-list::-webkit-scrollbar-thumb {
-    /* 滑块长度由浏览器按「视口/内容」比例算（内容越长越短、会话越短越长），这里只兜一个
-       下限，会话再长也还抓得住——和工具卡片详情那条滚动条（tool-elements.css）同一套。 */
-    min-height: 28px;
-    border: 2px solid transparent;
-    border-radius: 99px;
-    /* 带兜底值：只引 chat.css 的页（部分夹具）里 --line-2 不存在，
-       不带兜底会让整条 background 失效、滑块透明——占位在、却看不见。 */
-    background: var(--line-2, #3a4463);
-    background-clip: padding-box;
-}
-
-.chat-message-region > .chat-message-list::-webkit-scrollbar-thumb:active {
-    background: rgba(159, 177, 205, 0.6);
-    background-clip: padding-box;
-}
-
-@media (hover: hover) and (pointer: fine) {
-    .chat-message-region > .chat-message-list::-webkit-scrollbar-thumb:hover {
-        background: rgba(159, 177, 205, 0.45);
-        background-clip: padding-box;
-    }
+    display: none;
+    width: 0;
+    height: 0;
 }
 
 /* Hint that the conversation holds older turns whose execution records load
@@ -1611,7 +1650,7 @@
 
 .chat-composer {
     position: relative;
-    margin: 0 var(--chat-gutter, 10px) 16px;
+    margin: 0 var(--chat-scrollbar-width, 24px) 16px var(--chat-gutter, 10px);
     min-height: 100px;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
