@@ -16,9 +16,8 @@ function cssBlock(source, selector) {
   return source.slice(open, close + 1);
 }
 
-test('the conversation body keeps a classic scrollbar instead of hiding it', () => {
-  // 之前 chat.css 和侧栏共用一条 `scrollbar-width: none`，会话详情里彻底没有滚动条：
-  // 滚动时看不到、也没法拖。侧栏那条是刻意的（面板本身窄），这里只把会话详情放出来。
+test('shared lists are unchanged while conversation detail owns its rail', () => {
+  // 隐藏规则只限会话详情，不影响工作流共用的基础列表与侧栏。
   const list = cssBlock(chatCss, '\n.chat-message-list {');
   assert.doesNotMatch(list, /scrollbar-width: none/);
   assert.doesNotMatch(chatCss, /\.conversations-body, \.chat-message-list \{[^}]*scrollbar-width: none/);
@@ -27,57 +26,50 @@ test('the conversation body keeps a classic scrollbar instead of hiding it', () 
   assert.match(chatCss, /\.conversations-body \{ scrollbar-width: none; \}/);
 });
 
-test('the list reserves the same 10px whether or not the conversation overflows', () => {
-  // 常驻占位（scrollbar-gutter: stable）：短会话不滚也不跳，正文右缘在切会话前后一致。
-  // 只写在会话详情（.chat-message-region > .chat-message-list）上：工作流详情面板也在用
-  // .chat-message-list，那边有自己的细滚动条与内边距，不该被这条常驻占位影响。
-  // 同一个选择器还有一条更早的 `height: 100%`，这里取带 padding 的那条（常驻占位）。
+test('the list reserves the same strip for the turn rail whether or not the conversation overflows', () => {
+  // 24px 命中区与参考一致；右内边距始终保留给导轨，不与原生滚动条叠加。
   const chatListRule = chatCss.match(/\.chat-message-region > \.chat-message-list \{[^}]*padding:[^}]*\}/);
   assert.ok(chatListRule, 'the chat pane list needs its own padding rule');
-  assert.match(chatListRule[0], /scrollbar-gutter: stable;/);
+  assert.match(chatListRule[0], /scrollbar-width: none;/);
   const workspace = cssBlock(chatCss, '.chat-workspace {');
-  assert.match(workspace, /--chat-scrollbar-width: 10px;/);
-  // gutter 不能再比占位窄：右内边距 = gutter − 占位，负数会把这条对齐规则弄坏。
-  const gutter = Number(workspace.match(/--chat-gutter:\s*(\d+)px/)?.[1]);
+  assert.match(workspace, /--chat-scrollbar-width: 24px;/);
   const strip = Number(workspace.match(/--chat-scrollbar-width:\s*(\d+)px/)?.[1]);
-  assert.ok(gutter >= strip, `gutter ${gutter}px must cover the ${strip}px scrollbar strip`);
-  // 右内边距扣掉这条占位，正文右缘才仍然落在 --chat-gutter 上、和输入框外框对齐。
+  assert.equal(strip, 24, '24px hit target, 12px default tick');
   assert.match(
     chatListRule[0],
-    /padding: 24px calc\(var\(--chat-gutter, 10px\) - var\(--chat-scrollbar-width, 10px\)\) 24px var\(--chat-gutter, 10px\);/,
+    /padding: 24px var\(--chat-scrollbar-width, 24px\) 24px var\(--chat-gutter, 10px\);/,
+  );
+  assert.match(
+    chatCss,
+    /\.chat-composer \{[^}]*margin: 0 var\(--chat-scrollbar-width, 24px\) 16px var\(--chat-gutter, 10px\);/,
   );
   // 基础那条（工作流详情也在用）保持原来的共享 gutter，没有多余的缺口。
   assert.match(cssBlock(chatCss, '\n.chat-message-list {'), /padding: 24px var\(--chat-gutter, 10px\);/);
-  // 会话内查找的命中条挂在列表右缘：得让开滚动条，不然两条叠在一起。
+  // 会话内查找的命中条挂在列表右缘：得让开轮次导轨，不然两条叠在一起。
   assert.match(chatCss, /\.haish-search-hit-track \{[^}]*right: calc\(var\(--chat-scrollbar-width, 10px\) \+ 2px\);/);
 });
 
-test('the scrollbar is always visible, draggable and self-sizing', () => {
-  // 样式化 ::-webkit-scrollbar 就等于放弃 macOS 那条「滚动时才现身、自己会淡出」的浮层
-  // 滚动条，换成一条常显、能按住拖的经典滚动条；滑块长度仍由浏览器按 视口/内容 比例算
-  // （内容越长滑块越短），min-height 只兜一个抓得住的下限。
-  const bar = cssBlock(chatCss, '.chat-message-region > .chat-message-list::-webkit-scrollbar {');
-  assert.doesNotMatch(bar, /display: none/);
-  assert.match(bar, /width: var\(--chat-scrollbar-width, 10px\);/);
-  const thumb = cssBlock(chatCss, '.chat-message-region > .chat-message-list::-webkit-scrollbar-thumb {');
-  assert.match(thumb, /min-height: 28px;/);
-  assert.match(thumb, /border-radius: 99px;/);
-  // 兜底颜色：只引 chat.css 的夹具里没有 --line-2，没兜底会让滑块整条透明。
-  assert.match(thumb, /background: var\(--line-2, #3a4463\);/);
-  assert.match(thumb, /background-clip: padding-box;/);
-  // 轨道与角落透明：滑块两侧那 2px 边框不能画成两条实心边。
+test('the native scrollbar is hidden; the conversation map rail takes over', () => {
+  // 产品决策：右缘一列轮次标签（Conversation map）就是滚动条——点标签跳轮次、按住导轨
+  // 拖动连续滚动，滚轮/触控板/键盘滚动不受影响。原生滚动条（含 webkit 伪元素）彻底隐藏。
+  // 四个伪元素（bar/track/thumb/corner）合并在同一条选择器列表里，整段都要藏。
   assert.match(
     chatCss,
-    /\.chat-message-region > \.chat-message-list::-webkit-scrollbar-track,\n\.chat-message-region > \.chat-message-list::-webkit-scrollbar-corner \{\n\s*background: transparent;/,
+    /\.chat-message-region > \.chat-message-list::-webkit-scrollbar,\n\.chat-message-region > \.chat-message-list::-webkit-scrollbar-track,\n\.chat-message-region > \.chat-message-list::-webkit-scrollbar-thumb,\n\.chat-message-region > \.chat-message-list::-webkit-scrollbar-corner \{\n\s*display: none;/,
   );
-  // 悬停/按住反馈只在真指针设备上放大，别在触屏上留一个「按下去变亮」的假状态。
-  assert.match(chatCss, /@media \(hover: hover\) and \(pointer: fine\) \{\n\s*\.chat-message-region > \.chat-message-list::-webkit-scrollbar-thumb:hover \{/);
-  assert.match(
-    cssBlock(chatCss, '.chat-message-region > .chat-message-list::-webkit-scrollbar-thumb:active {'),
-    /background: rgba\(159, 177, 205, 0\.6\);/,
-  );
+  // 导轨占据保留带：贴右缘、宽度就是 --chat-scrollbar-width，正文右缘扣的就是这块。
+  const map = cssBlock(chatCss, '.conversation-map {');
+  assert.match(map, /right: 0;/);
+  assert.match(map, /width: var\(--chat-scrollbar-width, 24px\);/);
+  // 拖动滚动的两个前提：指针事件不被浏览器手势截走（touch-action: none）+ 抓取光标。
+  const rail = cssBlock(chatCss, '.conversation-map-rail {');
+  assert.match(rail, /touch-action: none;/);
+  assert.match(rail, /cursor: grab;/);
+  assert.match(rail, /flex-direction: column;/);
+  // 一列均分：一个轮次一格（flex:1），不是按内容占比散布。
+  assert.match(cssBlock(chatCss, '.conversation-map-tick {'), /flex: 1 1 0;/);
   // 工作流详情面板那条列表用的是原生细滚动条（scrollbar-width/color 非 auto），
-  // 它自己那套留在 workflow-runtime.css：会话详情这条不能顺手把它接管了。
+  // 它自己那套留在 workflow-runtime.css：会话详情这条隐藏规则不能顺手把它接管了。
   assert.match(
     cssBlock(workflowCss, '.workflow-detail-body.chat-message-list {'),
     /scrollbar-width: thin;[\s\S]*scrollbar-color: rgba\(128, 151, 190, 0\.3\) transparent;/,
@@ -85,19 +77,22 @@ test('the scrollbar is always visible, draggable and self-sizing', () => {
   assert.doesNotMatch(chatCss, /\.workflow-detail-body/);
 });
 
-test('the browser fixture measures the strip, the hit target and the alignment', () => {
+test('the browser fixture measures the rail, the jump targets and the alignment', () => {
   assert.match(fixtureSource, /import '\.\.\/\.\.\/styles\/base\.css';/);
   assert.match(fixtureSource, /import '\.\.\/\.\.\/styles\/chat\.css';/);
-  // 常量在 CSS 里，滚动条本身在页面里量不到——夹具量的是它成立的前提：
-  // 占位宽度、指针落在列表上、滑块比例、正文右缘与输入框外框对齐。
+  // 导轨的「点得动」是事件层面的东西，页面里量的是它成立的前提：原生滚动条真的没了、
+  // 导轨占了那块保留带、刻度数 = 用户轮次数、正文右缘与输入框外框对齐。
   assert.match(fixtureSource, /const scrollbarStrip = \(element\) => element\.offsetWidth - element\.clientWidth;/);
-  assert.match(fixtureSource, /hit: document\.elementFromPoint\(/);
-  assert.match(fixtureSource, /thumb: round\(\(viewport \* viewport\) \/ content\)/);
+  assert.match(fixtureSource, /const railNode = \(\) => document\.querySelector\('\.conversation-map'\);/);
+  assert.match(fixtureSource, /const tapTick = \(tick\) => \{/);
   assert.match(fixtureSource, /const composerFrameRight = \(\) => round\(document\.querySelector\('\.chat-composer'\)\.getBoundingClientRect\(\)\.right\);/);
   assert.match(fixtureSource, /window\.__chatScrollbarChecks = async \(\) => report\(await runChecks\(\)\);/);
-  // 反向断言：注回 HEAD 的隐藏规则后占位塌成 0、对齐破掉。
+  // 反向断言：注回旧的「gutter − 保留带」内边距公式后正文右缘偏离输入框。
   assert.match(fixtureSource, /window\.__chatScrollbarRevertChecks = async \(\) => report\(await revertChecks\(\)\);/);
-  assert.match(fixtureSource, /\.chat-message-list \{ scrollbar-width: none !important; \}/);
+  assert.match(
+    fixtureSource,
+    /padding: 24px calc\(var\(--chat-gutter, 10px\) - var\(--chat-scrollbar-width, 24px\)\) 24px var\(--chat-gutter, 10px\) !important;/,
+  );
   assert.match(readme, /\[chat-scrollbar\.html\]\(fixtures\/chat-scrollbar\.html\)/);
 });
 

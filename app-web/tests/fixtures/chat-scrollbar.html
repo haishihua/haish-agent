@@ -2,7 +2,7 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Chat detail scrollbar (always visible, draggable, proportional)</title>
+<title>Conversation map — thin ticks, anchored titles and current-turn navigation</title>
 <style>
   html, body { margin: 0; background: #0a0f18; color: #e7ecf6; font: 13px system-ui; }
   h1 { font-size: 14px; margin: 10px 12px 6px; }
@@ -11,7 +11,7 @@
   #checks { margin: 12px; padding: 10px; background: #0b0e14; color: #9fd8a4; white-space: pre-wrap; font: 11px/1.5 ui-monospace, monospace; border-radius: 8px; }
   #checks[data-result='FAIL'] { color: #ff8b9d; }
 </style>
-<h1>会话详情滚动条 — 常显、可拖、滑块随内容自适应（真实 ChatPanel + base.css + chat.css）</h1>
+<h1>会话轮次导轨 — 细刻度、当前轮次与锚定标题卡（真实 ChatPanel + base.css + chat.css）</h1>
 <div id="root"></div>
 <pre id="checks" role="status">Running checks…</pre>
 <script type="module" src="./chat-scrollbar.jsx"></script>

@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ChatComposer } from '../../src/features/chat/components/ChatComposer.jsx';
+import { AppToast } from '../../src/features/app/components/AppToast.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import { SchedulesContext } from '../../src/features/schedules/hooks/useSchedules.js';
 import '../../styles/base.css';
@@ -35,13 +36,16 @@ function Harness() {
   const draftsRef = React.useRef(drafts);
   draftsRef.current = drafts;
   const inputRef = React.useRef(null);
+  // 引导提示已经改成全局 toast：夹具拿真的 AppToast 把 onToast 渲染出来。
+  const [toast, setToast] = React.useState(null);
   api = {
     get draft() { return draftsRef.current[viewRef.current.scope]; },
     setDraft(text) { const scope = viewRef.current.scope; flushSync(() => setDrafts((state) => ({ ...state, [scope]: text }))); },
     open(view) { flushSync(() => setView(view)); },
     inputRef,
   };
-  return <ChatComposer
+  return <>
+    <ChatComposer
     selectionStorageKey="skill-scope-fixture"
     inputRef={inputRef}
     scopeId={view.scope}
@@ -51,9 +55,12 @@ function Harness() {
     providerOptions={providers}
     agentOptions={agents}
     defaultAgentId="agent"
+    onToast={(kind, message) => setToast({ kind, message })}
     onSend={() => { sends.count += 1; return true; }}
     onStop={() => {}}
-  />;
+  />
+    {toast && <AppToast kind={toast.kind} message={toast.message} />}
+  </>;
 }
 
 createRoot(document.getElementById('root')).render(<AppTooltipProvider>
@@ -62,7 +69,8 @@ createRoot(document.getElementById('root')).render(<AppTooltipProvider>
 
 const composer = () => document.querySelector('[contenteditable="true"]');
 const tokens = () => [...document.querySelectorAll('.chat-skill-token')];
-const notice = () => document.querySelector('.haish-annotation-notice')?.textContent || '';
+// 引导提示是 toast（可能同时存在多条）：拼起来做包含匹配。
+const notice = () => [...document.querySelectorAll('.app-toast-message')].map((node) => node.textContent || '').join(' | ');
 const key = (value) => composer()?.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }));
 const submit = () => document.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 

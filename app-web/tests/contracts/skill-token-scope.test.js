@@ -36,9 +36,11 @@ test('switching conversations caches the skill per conversation and restores it 
 });
 
 test('a bare skill token never swallows Enter without feedback', () => {
-  assert.match(composer, /if \(selectedSkill\) setPathNotice\('Type a message after the skill, then press Enter\.'\);/);
-  // 提示仍然走原有的 pathNotice 通道，输入或换会话会自动清掉。
-  assert.match(composer, /React\.useEffect\(\(\) => setPathNotice\(''\), \[scopeId, draft\]\);/);
+  // 回车被拦下必须有反馈：改成全局 toast（warn），但“不能静默吞掉”的用意不变。
+  assert.match(composer, /if \(selectedSkill\) onToast\?\.\('warn', 'Type a message after the skill, then press Enter\.'\);/);
+  // 输入框上方不再有 pathNotice 内联 banner，也没有跟着草稿自动清空它的 effect。
+  assert.equal(composer.includes('setPathNotice'), false);
+  assert.equal(composer.includes('pathNotice'), false);
 });
 
 test('Backspace removes a skill token even when the upper state lost track of it', () => {
