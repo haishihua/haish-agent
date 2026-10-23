@@ -10,7 +10,15 @@ function DetailRow({ icon: Icon, label, children }) {
 }
 
 export function ScheduleCard({ job, children }) {
-  const autoName = job.name === Array.from(job.message).slice(0, 80).join('').trim();
+  // The stored name is often just the head of the message (auto-derived at create
+  // time, or left behind after the message was edited). Printing both reads as a
+  // duplicated title, so collapse to the single most informative line.
+  const name = String(job.name || '').trim();
+  const message = String(job.message || '').trim();
+  const derived = !name || name === Array.from(message).slice(0, 80).join('').trim()
+    || message.startsWith(name);
+  const title = derived ? message || name : name;
+  const subtitle = derived ? '' : message;
   const timezone = job.schedule.kind === 'cron' ? job.schedule.timezone : Intl.DateTimeFormat().resolvedOptions().timeZone;
   const nextRun = job.next_run_at ? new Intl.DateTimeFormat(undefined, {
     timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
@@ -21,8 +29,8 @@ export function ScheduleCard({ job, children }) {
     <div className="schedule-card-heading">
       <span className="schedule-detail-icon"><FileText size={16} aria-hidden="true" /></span>
       <div className="schedule-card-title">
-        <strong title={autoName ? job.message : job.name}>{autoName ? job.message : job.name}</strong>
-        {!autoName && <p className="schedule-card-message" title={job.message}>{job.message}</p>}
+        <strong title={title}>{title}</strong>
+        {subtitle && <p className="schedule-card-message" title={subtitle}>{subtitle}</p>}
       </div>
       <span className="schedule-state" data-state={job.state}><span className="schedule-state-dot" aria-hidden="true" />{job.state}</span>
     </div>
@@ -32,8 +40,7 @@ export function ScheduleCard({ job, children }) {
       <DetailRow icon={CalendarDays} label="Next run">{job.next_run_at ? <time dateTime={job.next_run_at}>{nextRun}</time> : '—'}</DetailRow>
       <DetailRow icon={Globe2} label="Timezone">{timezone}</DetailRow>
     </dl>
-    {job.paused_reason && <p className="schedule-card-note">{job.paused_reason}</p>}
-    {job.last_run && <p className="schedule-card-note">Last run: {job.last_run.status}{job.last_run.reason ? ` · ${job.last_run.reason}` : ''}</p>}
+    {job.paused_reason && job.paused_reason !== 'user_paused' && <p className="schedule-card-note">{job.paused_reason}</p>}
     {children}
   </article>;
 }
