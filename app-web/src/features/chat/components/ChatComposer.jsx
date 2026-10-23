@@ -158,9 +158,6 @@ export function ChatComposer({
     submissionMountedRef.current = true;
     return () => { submissionMountedRef.current = false; };
   }, []);
-  const [pathNotice, setPathNotice] = React.useState('');
-  React.useEffect(() => setPathNotice(''), [scopeId, draft]);
-
   const runConfig = usePersistentRunConfig({
     selectionStorageKey,
     providerOptions: resolvedProviderOptions,
@@ -280,6 +277,9 @@ export function ChatComposer({
         uploading: false,
         error: 'Unsupported image type. Use PNG, JPEG, WebP, or GIF.',
       }]);
+      // The chip already carries the red state; the toast is the global half of
+      // the same rejection so the drop does not look like it silently vanished.
+      onToast?.('warn', 'Unsupported image type. Use PNG, JPEG, WebP, or GIF.');
       return;
     }
     if (file.size > CHAT_IMAGE_MAX_BYTES) {
@@ -290,6 +290,7 @@ export function ChatComposer({
         uploading: false,
         error: `File too large (>${Math.round(CHAT_IMAGE_MAX_BYTES / 1024 / 1024)} MiB)`,
       }]);
+      onToast?.('warn', `File too large (>${Math.round(CHAT_IMAGE_MAX_BYTES / 1024 / 1024)} MiB). Choose a smaller image.`);
       return;
     }
 
@@ -340,14 +341,14 @@ export function ChatComposer({
     if (imageStore) files.filter((file) => (file.type || '').toLowerCase().startsWith('image/')).forEach(attachImageFile);
     if (paths) insertLocalPaths(paths);
     else if (files.some((file) => !String(file.type || '').startsWith('image/'))) {
-      setPathNotice('Local path unavailable. Copy the full path and paste it instead.');
+      onToast?.('warn', 'Local path unavailable. Copy the full path and paste it instead.');
     }
   }
 
   function insertLocalPaths(text) {
     if (disabled) return;
     if (!inputRef.current?.insertText(text)) {
-      setPathNotice(PATH_LIMIT_NOTICE);
+      onToast?.('warn', PATH_LIMIT_NOTICE);
     }
   }
 
@@ -455,7 +456,7 @@ export function ChatComposer({
     if (stopError || disabled || submitPending || runtimeInputPending || goalPendingRef.current) return;
     if (!canSubmitPayload) {
       // 只选了 skill、还没写内容：不要静默吞掉回车。
-      if (selectedSkill) setPathNotice('Type a message after the skill, then press Enter.');
+      if (selectedSkill) onToast?.('warn', 'Type a message after the skill, then press Enter.');
       return;
     }
     const operation = { owner: submissionOwner };
@@ -483,9 +484,9 @@ export function ChatComposer({
     const text = draft.trim();
     if (goal) {
       if (disabled || submitPending || runtimeInputPending || goalPendingRef.current || uploading || imagesUploading) return;
-      if (pendingCommentCount) { setPathNotice('Send or remove comment drafts before starting Goal Loop.'); return; }
+      if (pendingCommentCount) { onToast?.('warn', 'Send or remove comment drafts before starting Goal Loop.'); return; }
       if (!goal.prompt && (attachment || readyImages.length || composerContent.references.length)) {
-        setPathNotice('Add a task description after /goal before sending attachments or references.'); return;
+        onToast?.('warn', 'Add a task description after /goal before sending attachments or references.'); return;
       }
       goalPendingRef.current = true;
       setGoalPending(true);
@@ -550,11 +551,11 @@ export function ChatComposer({
     if (disabled || submitPending) return;
     const scheduleModelId = modelId;
     if (!providerConfigured || !scheduleModelId || scheduleModelId === 'auto' || modelLoading) {
-      setPathNotice('Select a configured provider and a concrete model before scheduling.');
+      onToast?.('warn', 'Select a configured provider and a concrete model before scheduling.');
       return;
     }
     if (attachment || composerImages.length || pendingCommentCount || contextTask || composerContent.references.length) {
-      setPathNotice('Scheduled tasks accept text only. Remove attachments, comments and path/context references first.');
+      onToast?.('warn', 'Scheduled tasks accept text only. Remove attachments, comments and path/context references first.');
       return;
     }
     schedules.openCreate({
@@ -612,7 +613,6 @@ export function ChatComposer({
       {beforeInput}
       {stopError && <ErrorState variant="inline" title="Stop not verified" detail={stopError}
         onRetry={stopAndRestore} disabled={submitPending} retryLabel="Stop again" retryHint="Retry stopping and reconcile this conversation" />}
-      {pathNotice && <p className="haish-annotation-notice" role="status">{pathNotice}</p>}
       {skillMenuOpen && (
         <div ref={skillMenuRef} className="chat-skill-menu" role="listbox" aria-label="Skills and actions">
           {matchingSkills.map((skill, index) => (
@@ -691,7 +691,7 @@ export function ChatComposer({
             setSkillMenuIndex(0);
           }}
           onPaste={handleComposerPaste}
-          onPathLimit={() => setPathNotice(PATH_LIMIT_NOTICE)}
+          onPathLimit={() => onToast?.('warn', PATH_LIMIT_NOTICE)}
           onKeyDown={(event) => {
             if (
               event.key === 'Backspace'

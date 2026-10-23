@@ -5,7 +5,7 @@ import { useConversationRunConfig } from '../../src/features/conversations/hooks
 import { createRunConfigSync } from '../../src/features/conversations/model/run-config-sync.js';
 import { createConversationHandlers } from '../../src/features/conversations/hooks/createConversationHandlers.js';
 import { createConversationRuntime } from '../../src/features/conversations/hooks/createConversationRuntime.js';
-import { AppToast } from '../../src/features/app/components/AppToast.jsx';
+import { AppToastStack } from '../../src/features/app/components/AppToast.jsx';
 import { ChatPanel } from '../../src/features/chat/components/ChatPanel.jsx';
 import { ChatComposer } from '../../src/features/chat/components/ChatComposer.jsx';
 import { WorkflowRuntimeConfig } from '../../src/features/workflow/components/WorkflowRuntimeConfig.jsx';
@@ -64,9 +64,12 @@ async function componentChecks() {
   stored.set('ui', base());
   function Panel() {
     const [status, update] = React.useState('failed');
-    const [toast, setToast] = React.useState(null);
-    const toastTimerRef = React.useRef(null);
-    React.useEffect(() => () => clearTimeout(toastTimerRef.current), []);
+    const [toasts, setToast] = React.useState([]);
+    const toastTimerRef = React.useRef(new Map());
+    React.useEffect(() => () => {
+      toastTimerRef.current.forEach((entry) => clearTimeout(entry?.timerId ?? entry));
+      toastTimerRef.current.clear();
+    }, []);
     const { showToast } = createConversationRuntime({ setToast, toastTimerRef });
     setStatus = update;
     const messages = [{ id: 'u', role: 'user', taskId: 'task', text: 'Original input', status },
@@ -78,7 +81,7 @@ async function componentChecks() {
         onSend={(...args) => { events.push({ type: 'send', agent: args[5], effort: args[3] }); return true; }}
         onRetryTask={async (id, config) => { const savedConfig = await config.ensureSaved({ background: true }); events.push({ type: 'retry', agent: savedConfig.agent_id, effort: savedConfig.reasoning_effort }); return true; }}
         onEditMessage={async (id, text, config) => { const savedConfig = await config.ensureSaved({ background: false }); events.push({ type: 'edit', agent: savedConfig.agent_id, text, effort: savedConfig.reasoning_effort }); return true; }} />
-      {toast && <AppToast kind={toast.kind} message={toast.message} />}
+      <AppToastStack toasts={toasts} />
     </SchedulesContext.Provider></AppTooltipProvider>;
   }
   flushSync(() => root.render(<Panel />)); await tick(); await tick(); await tick();
@@ -119,7 +122,7 @@ async function componentChecks() {
   check(events.length === 2 && events.every(event => event.agent === 'b' && event.effort === 'high'), 'real send and retry propagate committed B and normalized high effort');
   check(componentToasts.length === 1 && componentToasts[0].kind === 'info'
     && document.querySelector('.app-toast-message')?.textContent === 'Agent switched. Future tasks will use the new Agent.'
-    && getComputedStyle(document.querySelector('.app-toast')).position === 'fixed'
+    && getComputedStyle(document.querySelector('.app-toast-stack')).position === 'fixed'
     && !document.querySelector('.chat-composer').textContent.includes('Agent switched'), 'successful Agent switch uses the shared floating AppToast, never a composer banner');
   check(!document.querySelector('.chat-config-save-status'), 'no saving label appears after success');
   check(document.querySelector('.chat-message-row.agent').textContent.includes('Agent A'), 'history label remains actual A after current selection becomes B');

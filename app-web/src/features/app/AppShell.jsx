@@ -156,7 +156,8 @@ export function AppShell() {
   const [composerAttachment, setComposerAttachment] = useState(null);
   const [uploadState, setUploadState] = useState({ active: false, fileName: '' });
   const [queuedDeploy, setQueuedDeploy] = useState(null);
-  const [toast, setToast] = useState(null);
+  // 提示条改成堆叠队列：每条自己 3200ms 过期，同 kind+message 去重刷新，最多 3 条。
+  const [toasts, setToasts] = useState([]);
   const [agentCatalog, setAgentCatalog] = useState(() => ({
     options: APP_DEFAULT_AGENT_OPTIONS,
     defaultAgentId: APP_DEFAULT_AGENT_OPTIONS[0].id,
@@ -223,7 +224,9 @@ export function AppShell() {
   const draftApiRef = useRef({});
   const directorySelectionApiRef = useRef({});
   const settingsApiRef = useRef({});
-  const toastTimerRef = useRef(null);
+  // 提示条计时器注册表：Map<去重键, { id, timerId }>，插入顺序即队列顺序（最旧在前）。
+  // 放在 ref 里，运行时每次渲染新建闭包、以及卸载清理都读到同一份。
+  const toastTimerRef = useRef(new Map());
   const conversationActivationSeqRef = useRef(0);
   // Local draft opened by "new conversation" before the user sends a message.
   // It is intentionally NOT inserted into the sidebar list until first send.
@@ -527,7 +530,7 @@ export function AppShell() {
     setConversationRetryPending, setConversationStopState, setHollow, setLocalWorkspace,
     setQueuedDeploy, setSelectedWorkflowId, setSettingsConnectionStatus, setSettingsMode,
     setSettingsRecordsDraft, setSettingsSection, setShellSeeded, setSkillActionBusy,
-    setTaskCompletionNotices, setTaskRuntimeState, setToast, setUploadState,
+    setTaskCompletionNotices, setTaskRuntimeState, setToast: setToasts, setUploadState,
     setViewMode, setViewedWorkflowTask, setWorkflowSettingsDraft, setWorkspaceState,
     settingsApiRef, settingsMode, settingsRecordsDraft, skillInventoryCacheRef,
     skillInventoryKey, skillInventoryKeyRef, streamTargetConvIdRef, taskImageAttachmentsRef,
@@ -540,7 +543,15 @@ export function AppShell() {
   }, []);
 
   useEffect(() => () => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    const toastTimers = toastTimerRef.current;
+    if (!toastTimers) return;
+    if (typeof toastTimers.forEach !== 'function') {
+      clearTimeout(toastTimers);
+      return;
+    }
+    // 卸载时清掉队列里所有未到期的计时器，避免回调打到已卸载的组件上。
+    toastTimers.forEach((entry) => clearTimeout(entry?.timerId ?? entry));
+    toastTimers.clear();
   }, []);
 
   useEffect(() => {
@@ -810,7 +821,7 @@ export function AppShell() {
       }}
       chrome={{
         viewMode, settingsMode, activeTab, conversationPanelCollapsed, handleToggleViewMode, handleToggleSettings,
-        showToast, setActiveTab, windowFocused, toast, hollow, setHollow, contextTask, setContextTask,
+        showToast, setActiveTab, windowFocused, toasts, hollow, setHollow, contextTask, setContextTask,
       }}
       settings={{
         settingsSection, setSettingsSection, settingsSelection, setSettingsSelection,

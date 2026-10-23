@@ -12,7 +12,7 @@ import { nodeRuntimeConfigRequest } from '../workflow/model/node-runtime-config.
 import { conversationNoticesFromTasks, taskNoticesByTaskId } from '../tasks/model/task-completion-notices.js';
 import { TopBar } from './components/TopBar.jsx';
 import { BottomNav, TabPlaceholder } from './components/Shell.jsx';
-import { AppToast } from './components/AppToast.jsx';
+import { AppToastStack } from './components/AppToast.jsx';
 
 const SettingsPage = React.lazy(() => import('../settings/components/SettingsPage.jsx').then((module) => ({ default: module.SettingsPage })));
 
@@ -28,7 +28,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
   } = schedules;
   const {
     viewMode, settingsMode, activeTab, conversationPanelCollapsed, handleToggleViewMode, handleToggleSettings,
-    showToast, setActiveTab, windowFocused, toast, hollow, setHollow, contextTask, setContextTask,
+    showToast, setActiveTab, windowFocused, toasts, hollow, setHollow, contextTask, setContextTask,
   } = chrome;
   const {
     settingsSection, setSettingsSection, settingsSelection, setSettingsSelection,
@@ -153,6 +153,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                         approvalDraft={Boolean(draftConversationRef.current && !draftConversationRef.current.serverCreated)}
                         ensureApprovalConversation={ensureServerConversationForActiveDraft}
 	                    earlierTaskRuntimesPending={pendingEarlierTaskRuntimeIds.length > 0}
+                        earlierTaskRuntimeIds={pendingEarlierTaskRuntimeIds}
 	                    onLoadEarlierTasks={loadEarlierTaskRuntimes}
 	                    composerScopeId={draftConversationRef.current?.id === conversationId ? draftConversationRef.current.composerScopeId : conversationId}
 	                    messages={chatMessages} latestTaskId={taskRuntimeState.latestTaskId}
@@ -263,7 +264,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
         )}
       </div>
 
-      {toast && <AppToast kind={toast.kind} message={toast.message} />}
+      <AppToastStack toasts={toasts} />
 
       <ResultDialog open={!!hollow} title={hollow?.title} result={hollow?.result} onClose={() => setHollow(null)}
         onUseAsContext={hollow?.contextSource

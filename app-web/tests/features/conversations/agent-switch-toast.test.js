@@ -45,15 +45,78 @@ test('both composer entry points pass the existing app toast through explicit pr
 
 test('Agent-switch toast reuses the shared expiry rather than leaving a persistent message', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  let toast = null;
+  let toasts = [];
   const { showToast } = createConversationRuntime({
     toastTimerRef: { current: null },
-    setToast: (next) => { toast = typeof next === 'function' ? next(toast) : next; },
+    setToast: (next) => { toasts = typeof next === 'function' ? next(toasts) : next; },
   });
   showToast('info', 'Agent switched.');
-  assert.equal(toast.kind, 'info');
+  assert.deepEqual(toasts.map((toast) => toast.kind), ['info']);
   t.mock.timers.tick(3199);
-  assert.equal(toast.message, 'Agent switched.');
+  assert.equal(toasts[0].message, 'Agent switched.');
   t.mock.timers.tick(1);
-  assert.equal(toast, null);
+  assert.deepEqual(toasts, []);
+});
+
+test('The toast stack holds three bubbles, refreshes duplicates in place and expires each on its own clock', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  let toasts = [];
+  let writes = 0;
+  const toastTimerRef = { current: null };
+  const { showToast } = createConversationRuntime({
+    toastTimerRef,
+    setToast: (next) => { writes += 1; toasts = typeof next === 'function' ? next(toasts) : next; },
+  });
+  const messages = () => toasts.map((toast) => toast.message);
+
+  showToast('info', 'first');
+  t.mock.timers.tick(1000);
+  showToast('warn', 'second');
+  showToast('error', 'third');
+  // 第四条只把最旧的一条挤出去，不会盖掉另外两条。
+  showToast('success', 'fourth');
+  assert.deepEqual(messages(), ['second', 'third', 'fourth']);
+  assert.equal(toasts.length, 3, 'the stack never shows more than three bubbles');
+
+  t.mock.timers.tick(500);
+  // 同 kind+message 不叠第二条：保持原位置，只把它的 3200ms 重新计时。
+  showToast('warn', 'second');
+  assert.deepEqual(messages(), ['second', 'third', 'fourth']);
+
+  // 被挤掉的 first 计时器必须真的被清掉：它到期时不能往队列里写一次。
+  const writesBeforeEvictedExpiry = writes;
+  t.mock.timers.tick(1700); // t = 3200
+  assert.equal(writes, writesBeforeEvictedExpiry, 'the evicted bubble stops touching the queue');
+  assert.deepEqual(messages(), ['second', 'third', 'fourth']);
+
+  t.mock.timers.tick(1000); // t = 4200：third / fourth 一起到期，second 因刷新还在
+  assert.deepEqual(messages(), ['second']);
+
+  t.mock.timers.tick(500); // t = 4700：刷新后的 second 到期
+  assert.deepEqual(messages(), []);
+  assert.equal(toastTimerRef.current.size, 0, 'the timer registry releases every entry');
+});
+
+test('A refreshed bubble is not the one an overflowing stack drops', (t) => {
+  // 淘汰按「最早到期」判：夹具必须同时控住 Date，否则同一秒内的几条会并列成同分。
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  let toasts = [];
+  const { showToast } = createConversationRuntime({
+    toastTimerRef: { current: null },
+    setToast: (next) => { toasts = typeof next === 'function' ? next(toasts) : next; },
+  });
+  const messages = () => toasts.map((toast) => toast.message);
+
+  showToast('warn', 'avatar');
+  t.mock.timers.tick(400);
+  showToast('warn', 'quota');
+  t.mock.timers.tick(400);
+  showToast('warn', 'network');
+  t.mock.timers.tick(400);
+  // 用户又触发了一次最早的 avatar：它到期时间最晚，不该因为「插入最早」被挤掉。
+  showToast('warn', 'avatar');
+  showToast('warn', 'clipboard');
+
+  assert.deepEqual(messages(), ['avatar', 'network', 'clipboard'],
+    'eviction targets the earliest expiry, so a just-refreshed hint stays on screen');
 });

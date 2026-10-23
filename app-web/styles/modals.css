@@ -25,18 +25,29 @@
     }
 }
 
-.app-toast {
+/* 堆叠容器独占固定定位：多条提示在容器里纵向排开（最多 3 条），
+   单条时容器宽度就是气泡宽度，视觉仍是顶部居中 22px。 */
+.app-toast-stack {
     position: fixed;
     top: 22px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 520;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    max-width: 100vw;
+    pointer-events: none;
+}
+
+.app-toast {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 9px;
     max-width: min(92vw, 420px);
-    padding: 12px 14px;
-    border-radius: 14px;
+    padding: 10px 14px 10px 12px;
+    border-radius: 12px;
     border: 1px solid rgba(120, 137, 177, 0.28);
     background: rgba(11, 16, 29, 0.94);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
@@ -47,42 +58,47 @@
 
 .app-toast-success {
     border-color: rgba(96, 211, 160, 0.34);
-    --toast-accent: #1fa876;
+    --toast-icon: #4fd39b;
 }
 
 .app-toast-error {
     border-color: rgba(236, 94, 111, 0.34);
-    --toast-accent: #e0476a;
+    --toast-icon: #f4728a;
+}
+
+/* 介于 success 与 info 之间：动作被前置条件挡住，不是失败。 */
+.app-toast-warn {
+    border-color: rgba(240, 176, 72, 0.34);
+    --toast-icon: #e8ae4c;
 }
 
 .app-toast-info {
     border-color: rgba(120, 168, 255, 0.34);
-    --toast-accent: #4a7ce8;
+    --toast-icon: #7aa4ff;
 }
 
-/* 向量徽标：lucide 图形 + 纯色圆底。
+/* 细描边向量图标，跟着 tone 换色；不再用「实心高饱和圆底 + 白色小图形」
+   那套贴纸感，和 ErrorState / 侧栏状态图标保持同一套语言。
    image-rendering 必须回到 auto，否则会继承 body 的 pixelated，
-   SVG 与圆底边缘都会被最近邻采样成硬阶梯。 */
+   SVG 描边会被最近邻采样成硬阶梯。 */
 .app-toast-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 999px;
-    flex: 0 0 20px;
-    background: var(--toast-accent, #4a7ce8);
-    color: #ffffff;
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+    color: var(--toast-icon, #7aa4ff);
     image-rendering: auto;
 }
 
 .app-toast-message {
-    color: #eef3ff;
+    color: #e9eefc;
     font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 1.4;
-    letter-spacing: 0.02em;
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.45;
+    letter-spacing: 0.006em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     word-break: break-word;
@@ -91,11 +107,11 @@
 @keyframes toast-in {
     from {
         opacity: 0;
-        transform: translateX(-50%) translateY(-8px);
+        transform: translateY(-8px);
     }
     to {
         opacity: 1;
-        transform: translateX(-50%) translateY(0);
+        transform: translateY(0);
     }
 }
 
@@ -340,11 +356,14 @@
 }
 
 @media (max-width: 768px) {
-    .app-toast {
+    .app-toast-stack {
         top: 14px;
-        left: 50%;
-        right: auto;
         width: min(calc(100vw - 28px), 420px);
+        max-width: none;
+    }
+
+    .app-toast {
+        width: 100%;
         max-width: none;
     }
 

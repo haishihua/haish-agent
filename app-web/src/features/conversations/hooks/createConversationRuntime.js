@@ -1,3 +1,7 @@
+// 提示条队列：同屏最多 3 条，每条自己 3200ms 过期，同 kind+message 只刷新已有那条。
+const TOAST_STACK_LIMIT = 3;
+const TOAST_LIFETIME_MS = 3200;
+
 export function createConversationRuntime(ctx) {
   const {
     conversationIdRef,
@@ -242,14 +246,63 @@ export function createConversationRuntime(ctx) {
     }
   }
 
+  // 计时器注册表：生产由 AppShell 的 ref 持有（跨渲染稳定）；只给了空 ref 的宿主
+  // 会在这里被提升成 Map，完全没给 ref 时退化成当前闭包自己的一份。
+  let localToastRegistry = null;
+  function toastTimerRegistry() {
+    if (!toastTimerRef) {
+      if (!localToastRegistry) localToastRegistry = new Map();
+      return localToastRegistry;
+    }
+    if (!(toastTimerRef.current instanceof Map)) {
+      // 兼容旧式“裸 timeout id”宿主：先把它清掉，避免升级成注册表时留一个孤儿计时器。
+      if (toastTimerRef.current != null) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = new Map();
+    }
+    return toastTimerRef.current;
+  }
+
   function showToast(kind, message) {
-    const nextToast = { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, kind, message };
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast(nextToast);
-    toastTimerRef.current = setTimeout(() => {
-      setToast((current) => (current?.id === nextToast.id ? null : current));
-      toastTimerRef.current = null;
-    }, 3200);
+    const text = message == null ? '' : String(message);
+    if (!text) return;
+    // 注册表挂在 AppShell 的 ref 上（Map<去重键, { id, timerId, expiresAt }>）：每次渲染新建的
+    // 闭包与卸载清理读到的是同一份，插入顺序就是队列顺序（最旧在前）。
+    const registry = toastTimerRegistry();
+    const duplicateKey = `${kind}\u0000${text}`;
+    const existing = registry.get(duplicateKey);
+    // 重复提示不叠第二条：沿用原 id（保持位置），只把它的计时器重置。
+    const id = existing?.id ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    let evictedId = null;
+    const expiresAt = Date.now() + TOAST_LIFETIME_MS;
+    if (!existing) {
+      // 超限先丢“最早到期”的那条（= 最久没被刷新过），不是最早插入的那条：
+      // 用户反复触发同一条提示时应该留在原地，而不是被下一条新提示立刻挤掉。
+      // 连它的计时器一起清，避免它到期时误删别的条目。
+      while (registry.size >= TOAST_STACK_LIMIT) {
+        let victimKey = null;
+        let victim = null;
+        for (const [key, entry] of registry) {
+          if (!victim || entry.expiresAt < victim.expiresAt) { victimKey = key; victim = entry; }
+        }
+        clearTimeout(victim.timerId);
+        registry.delete(victimKey);
+        evictedId = victim.id;
+      }
+    }
+    if (existing) clearTimeout(existing.timerId);
+    const timerId = setTimeout(() => {
+      const current = registry.get(duplicateKey);
+      if (current?.id === id) registry.delete(duplicateKey);
+      // 只移除自己这条：期间可能已经弹出了更新的提示。
+      setToast((queued) => (Array.isArray(queued) ? queued.filter((toast) => toast.id !== id) : []));
+    }, TOAST_LIFETIME_MS);
+    registry.set(duplicateKey, { id, timerId, expiresAt });
+    if (existing) return;
+    const nextToast = { id, kind, message: text };
+    setToast((queued) => {
+      const kept = Array.isArray(queued) ? queued.filter((toast) => toast.id !== evictedId) : [];
+      return [...kept, nextToast].slice(-TOAST_STACK_LIMIT);
+    });
   }
 
   return {

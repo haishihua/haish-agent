@@ -1,18 +1,11 @@
-/* Fixture-only layout: the production toast is position: fixed, the fixture stacks it inline. */
+/* Fixture-only layout: the production stack is position: fixed at the top of the
+   viewport, the fixture just keeps the bubbling inside its own box. */
 .toast-fixture {
     padding: 24px;
     display: grid;
     gap: 22px;
     justify-items: start;
     overflow: auto;
-}
-
-.toast-fixture .app-toast {
-    position: static;
-    top: auto;
-    left: auto;
-    transform: none;
-    animation: none;
 }
 
 .toast-fixture-row {
