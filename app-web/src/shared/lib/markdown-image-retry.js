@@ -24,6 +24,8 @@ export function withRetryParam(url, attempt) {
 //   - 403/404/415：文件不在、不允许、不是图 → 没有“再取一次”这回事；
 //   - 超时/网络/5xx：真的可以再等等。
 // 用一次 1 字节的 Range 探针拿状态码（FileResponse 支持 Range；不支持时直接取消正文）。
+// 这个探针有两处调用：加载失败后给失败定性，以及挂马赛克加载框之前的预检——
+// 预检必须能区分“能解析”（2xx，含 Range 的 206）和“说不清”（5xx/断网）。
 const TERMINAL_IMAGE_STATUSES = new Set([400, 403, 404, 410, 415]);
 
 export async function probeImageStatus(url) {
@@ -36,6 +38,7 @@ export async function probeImageStatus(url) {
     } catch {
       // 正文已经在读了：放弃即可，我们只要状态码。
     }
+    if (response.ok) return 'ok';
     return TERMINAL_IMAGE_STATUSES.has(response.status) ? 'missing' : 'unavailable';
   } catch {
     return 'unavailable';

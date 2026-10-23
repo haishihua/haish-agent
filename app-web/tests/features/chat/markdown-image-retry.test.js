@@ -81,7 +81,9 @@ test('a picture the server says is missing is not retried behind an empty frame'
     assert.equal(calls[0].options.cache, 'no-store');
     globalThis.fetch = async () => new Response(null, { status: 404 });
     assert.equal(await probeImageStatus(PREVIEW), 'missing');
-    // 5xx / 断网是“还能再等等”，和“真的没有”必须分开。
+    // 2xx（含 Range 的 206）是“能解析”：预检放行，交给正常加载。
+    globalThis.fetch = async () => new Response(null, { status: 206 });
+    assert.equal(await probeImageStatus(PREVIEW), 'ok');
     globalThis.fetch = async () => new Response(null, { status: 503 });
     assert.equal(await probeImageStatus(PREVIEW), 'unavailable');
     globalThis.fetch = async () => {
@@ -108,6 +110,25 @@ test('a missing picture falls back to the original path, not an empty box', () =
   assert.doesNotMatch(markdownSource, /setAttempt\(0\)/);
 });
 
+test('unresolvable paths never show the mosaic loading frame', () => {
+  // 预检在挂框之前：1 字节 Range 探针问一次预览接口，终态 403/404 直接显示路径。
+  // 探针说不清（5xx/断网）时不能拦：那可能只是运行时还没就绪。
+  assert.match(markdownSource, /const \[probe, setProbe\] = React\.useState/);
+  assert.match(markdownSource, /void check\(0\);/);
+  assert.match(markdownSource, /const result = await probeImageStatus\(resolvedSrc\);/);
+  assert.match(markdownSource, /if \(probe === 'pending'\) \{/);
+  assert.match(markdownSource, /if \(probe === 'missing'\) \{/);
+  // 预检的静默复探与失败重试同节奏，不复用旧的 attempt 状态。
+  assert.match(markdownSource, /retryTimer = setTimeout\(\(\) => \{ void check\(attempt \+ 1\); \}, PATH_IMAGE_RETRY_DELAYS_MS\[attempt\]\)/);
+  // 预检期间不渲染任何占位（不闪路径文本也不闪框）。
+  assert.match(markdownSource, /return null;/);
+  // 已缓存的图不走预检：warm 复用不能多出一次探针。
+  assert.match(markdownSource, /if \(!marker \|\| !resolvedSrc \|\| cached\) return undefined;/);
+  assert.match(markdownSource, /useState\(\(\) => \(cached \|\| !marker \|\| !resolvedSrc\) \? 'ok' : 'pending'\)/);
+  assert.match(markdownSource, /probe=\{probe\}/);
+  assert.match(markdownSource, /probe = 'ok',/);
+});
+
 test('a tool card whose preview is gone shows its path instead of an empty frame', () => {
   assert.match(cardSource, /const imagePath = String\(view\?\.generatedImagePath \|\| ''\)/);
   assert.match(cardSource, /<p className="aui-imagegen-path">\{imagePath\}<\/p>/);
@@ -117,8 +138,13 @@ test('a tool card whose preview is gone shows its path instead of an empty frame
 
 test('structured answer paths replace the prose path inline, never append a block', () => {
   assert.match(rowSource, /normalizeLocalImagePath/);
-  assert.match(rowSource, /answerImagePathSet/);
-  assert.match(rowSource, /answerImages\.length > 0 && !answerImagePathSet\.has/);
+  assert.match(rowSource, /answerImagePathBySuffix/);
+  // 模型经常把长目录缩写成 `.../images/x.png`；缩写尾部要能命中结构化路径，
+  // 命中后改用结构化路径本身去拼预览。
+  assert.match(rowSource, /const bound = resolveAnswerImagePath\(path\);/);
+  assert.match(rowSource, /chatImagePreviewUrl\(\{ path: bound \}, conversationId\)/);
+  // 纯文件名不作为匹配依据：不同代同名图会冲突。
+  assert.match(rowSource, /depth >= 2/);
   assert.doesNotMatch(rowSource, /answerImagesSource/);
   assert.doesNotMatch(rowSource, /chat-answer-images/);
   assert.doesNotMatch(rowSource, /pathImages=\{answerImages\.length === 0\}/);

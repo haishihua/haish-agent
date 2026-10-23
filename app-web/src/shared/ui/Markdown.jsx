@@ -124,10 +124,40 @@ function MarkdownPathImage({ node, src, alt, title, ...rest }) {
     // 地址改变时换一份加载状态，不在 passive effect 里重置：缓存图的 onLoad 可能早于
     // effect，随后又被重置成 loading，且不会再收到第二次 onLoad（切会话才恢复）。
     const cached = React.useSyncExternalStore(subscribeLoadedChatImages, () => loadedChatImage(resolvedSrc));
-    return <ResolvedMarkdownImage key={cached?.src || resolvedSrc} cached={cached} resolvedSrc={resolvedSrc} label={label} alt={alt} onPreviewImage={onPreviewImage} {...rest} />;
+    // 预检：本地预览地址先问一次“能不能解析”（1 字节 Range 探针）。终态 403/404
+    // 直接显示路径，不挂马赛克加载框——解析不了的路径对读者就是文本，不是一块会
+    // 转圈的空地。已缓存的图跳过预检；探针说不清（5xx/断网）时按可解析处理，交给
+    // 正常加载流程。403 也可能是刚结束一轮、根还没登记的瞬态，所以静默复探一次，
+    // 复探仍不在才算终态（与失败重试同节奏，见 PATH_IMAGE_RETRY_DELAYS_MS）。
+    const [probe, setProbe] = React.useState(() => (cached || !marker || !resolvedSrc) ? 'ok' : 'pending');
+    React.useEffect(() => {
+        if (!marker || !resolvedSrc || cached) return undefined;
+        let active = true;
+        let retryTimer = 0;
+        setProbe('pending');
+        const check = async (attempt) => {
+            const result = await probeImageStatus(resolvedSrc);
+            if (!active) return;
+            if (result !== 'missing') {
+                setProbe('ok');
+                return;
+            }
+            if (attempt < PATH_IMAGE_RETRY_DELAYS_MS.length) {
+                retryTimer = setTimeout(() => { void check(attempt + 1); }, PATH_IMAGE_RETRY_DELAYS_MS[attempt]);
+                return;
+            }
+            setProbe('missing');
+        };
+        void check(0);
+        return () => {
+            active = false;
+            clearTimeout(retryTimer);
+        };
+    }, [marker, resolvedSrc, cached]);
+    return <ResolvedMarkdownImage key={cached?.src || resolvedSrc} cached={cached} probe={probe} resolvedSrc={resolvedSrc} label={label} alt={alt} onPreviewImage={onPreviewImage} {...rest} />;
 }
 
-function ResolvedMarkdownImage({ cached, resolvedSrc, label, alt, onPreviewImage, ...rest }) {
+function ResolvedMarkdownImage({ cached, resolvedSrc, label, alt, onPreviewImage, probe = 'ok', ...rest }) {
     const requestSrc = cached?.src || resolvedSrc;
     const [attempt, setAttempt] = React.useState(0);
     const [reducedMotion] = React.useState(prefersReducedMotion);
@@ -227,6 +257,14 @@ function ResolvedMarkdownImage({ cached, resolvedSrc, label, alt, onPreviewImage
     if (!resolvedSrc || phase === 'empty') {
         // 没有预览地址时保持原文，不发必然失败的请求。
         return label ? <span className="haish-markdown-image-path" data-preview-failed="missing-src">{label}</span> : null;
+    }
+    if (probe === 'pending') {
+        // 预检还没回来：既不出马赛克占位，也不先露路径文本，避免抖一下。
+        return null;
+    }
+    if (probe === 'missing') {
+        // 预检已判定“不在本会话可见范围”：不挂框、不发请求，直接显示路径。
+        return label ? <span className="haish-markdown-image-path" data-preview-failed="missing">{label}</span> : null;
     }
     if (phase === 'missing' || phase === 'failed') {
         // 图片确实取不到时不再留空框或重试图标，直接把原始路径显示出来。

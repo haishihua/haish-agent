@@ -115,6 +115,14 @@ window.imageLifecycle = {
             check(pathIn(id) === path, `${id}: path fallback missing`);
             check(!document.querySelector(`[data-case="${id}"] .haish-markdown-image-retry`), `${id}: retry icon still shown`);
         }
+        // 预检：解析不了的路径（终态 403/404）从第一帧起就不许出马赛克框，直接是路径文本。
+        for (const id of ['forbidden', 'missing', 'answer-forbidden', 'answer-missing']) {
+            check(!document.querySelector(`[data-case="${id}"] .haish-markdown-image-frame`), `${id}: mosaic frame shown for unresolvable path`);
+            check(!history.some((state) => state[0] === id && state[1]), `${id}: frame phase ever recorded`);
+        }
+        // 慢图仍要走马赛克加载框：预检只拦“解析不了”，不拦“慢”。探针返回 ok 后
+        // 必须出现 loading/slow 框阶段，最终 loaded；不能因为预检把框并没了。
+        check(history.some((state) => state[0] === 'slow' && (state[1] === 'loading' || state[1] === 'slow')), 'slow image skipped its loading frame');
         check(!document.querySelector('[data-case=final] .haish-markdown-image-path'), 'final answer still shows the raw path');
         check(!document.querySelector('.chat-answer-images'), 'answer images still appended at the tail');
         const previewEntries = performance.getEntriesByType('resource')
@@ -183,7 +191,7 @@ function App() {
         <section data-case="tool"><h2>生成卡</h2><PreviewableTool view={{ isRunning: !generated, generatedImagePath: generated ? DURABLE : '', task: '测试生成' }} /></section>
         <section data-case="historical-tool"><h2>历史生图卡（任务 artifacts 已清理）</h2><PreviewableTool view={{ isRunning: false, generatedImagePath: OLD, task: '历史生成' }} /></section>
         <section data-case="broken-tool"><h2>生图卡图片已失效</h2><ImageGenerateToolDetail conversationId="c1" view={{ isRunning: false, generatedImagePath: '/tmp/missing-tool.png', task: '失效生成' }} /></section>
-        <section data-case="final"><h2>普通最终回答（结构化绑定）</h2><PreviewableAnswer rowKey={reopened} message={{ id: 'answer', role: 'agent', conversationId: 'c1', status: final ? 'done' : 'running', streaming: !final, text: final ? `图片已生成。文件：${DURABLE}` : '', answerImages: final ? finalAnswerTask.answerImages : [], traceTimeline: [] }} /></section>
+        <section data-case="final"><h2>普通最终回答（结构化绑定）</h2><PreviewableAnswer rowKey={reopened} message={{ id: 'answer', role: 'agent', conversationId: 'c1', status: final ? 'done' : 'running', streaming: !final, text: final ? `图片已生成。文件：.../images/${DURABLE.split('/').pop()}` : '', answerImages: final ? finalAnswerTask.answerImages : [], traceTimeline: [] }} /></section>
         <section data-case="old-answer"><h2>上一轮保留红色旧图</h2><ChatMessageRow key={`old-${newReopened}`} message={{ id: 'old-answer', taskId: 't1', role: 'agent', conversationId: 'c1', status: 'done', text: `文件：\`${OLD}\``, answerImages: oldAnswerTask.answerImages, traceTimeline: oldTimeline }} /></section>
         <section data-case="new-tool"><h2>本轮生成绿色新图</h2><PreviewableTool view={{ isRunning: !newGenerated, generatedImagePath: newGenerated ? NEW : '', task: '绿色新一代' }} /></section>
         <section data-case="new-answer"><h2>本轮答案用本轮路径</h2><ChatMessageRow key={`new-${newReopened}`} message={{ id: 'new-answer', taskId: 't2', role: 'agent', conversationId: 'c1', status: newFinal ? 'done' : 'running', streaming: !newFinal, text: newFinal ? `已重新生成。文件：\`${NEW}\`` : '', answerImages: newFinal ? newAnswerTask.answerImages : [], traceTimeline: newFinal ? newTimeline : [] }} /></section>

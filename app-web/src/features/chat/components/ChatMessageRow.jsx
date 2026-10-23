@@ -141,10 +141,39 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
   // 结构化回答图片的路径是唯一可信的路径：最终回答正文里出现它时，Markdown
   // 插件会把它就地替换成图片，不再额外追加到答案尾部。正文里其他图片路径
   // （例如模型抄错的历史路径）不解析，保留原路径文本。
-  const answerImagePathSet = React.useMemo(
-    () => new Set(answerImages.map((img) => normalizeLocalImagePath(img.path)).filter(Boolean)),
-    [answerImages],
-  );
+  // 模型经常把长目录缩写成 `.../images/x.png` 再写进正文，而后端预览接口本来就
+  // 支持“丢前缀按尾部后缀在本会话根内找回”。所以这里不能只做精确相等：
+  // 结构化路径或它去掉前缀后的尾部后缀唯一命中时就放行，并且改用结构化路径
+  // 本身去请求预览（缩写路径直接请求会拼出错误候选）。0.0.32 的全放行会串图，
+  // 这里的门禁本身没错，错在只有精确相等一种匹配。
+  const answerImagePathBySuffix = React.useMemo(() => {
+    const map = new Map();
+    const add = (suffix, path) => {
+      map.set(suffix, map.has(suffix) && map.get(suffix) !== path ? '' : path);
+    };
+    for (const img of answerImages) {
+      const normalized = normalizeLocalImagePath(img.path);
+      if (!normalized) continue;
+      const segments = normalized.split('/').filter(Boolean);
+      // 从整条路径到“目录/文件名”两层，尾部越深越转异性越高；只剩纯文件名时
+      // 不同代同名图会冲突，不再作为匹配依据。
+      for (let depth = segments.length; depth >= 2; depth -= 1) {
+        add(segments.slice(segments.length - depth).join('/'), normalized);
+      }
+    }
+    return map;
+  }, [answerImages]);
+  const resolveAnswerImagePath = React.useCallback((raw) => {
+    const normalized = normalizeLocalImagePath(raw);
+    if (!normalized) return null;
+    if (answerImagePathBySuffix.get(normalized)) return answerImagePathBySuffix.get(normalized);
+    const segments = normalized.split('/').filter(Boolean);
+    for (let depth = segments.length; depth >= 2; depth -= 1) {
+      const candidate = answerImagePathBySuffix.get(segments.slice(segments.length - depth).join('/'));
+      if (candidate) return candidate;
+    }
+    return null;
+  }, [answerImagePathBySuffix]);
 
   // Model answers report artifacts as local paths. The preview endpoint re-checks
   // each path against this conversation's roots, so the resolver only has to build
@@ -153,12 +182,16 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
     const conversationId = String(message.conversationId || '');
     return (path) => {
       if (!conversationId) return null;
-      if (answerImages.length > 0 && !answerImagePathSet.has(normalizeLocalImagePath(path))) {
-        return null;
+      if (answerImages.length > 0) {
+        // 正文路径要么指向本轮结构化绑定的同一张图，要么不解析（保留原路径文本）。
+        // 命中时用结构化路径本身去拼预览，缩写尾部不再单独发请求。
+        const bound = resolveAnswerImagePath(path);
+        if (!bound) return null;
+        return chatImagePreviewUrl({ path: bound }, conversationId) || null;
       }
       return chatImagePreviewUrl({ path }, conversationId) || null;
     };
-  }, [message.conversationId, answerImages.length, answerImagePathSet]);
+  }, [message.conversationId, answerImages.length, resolveAnswerImagePath]);
 
   const imageAttachments = messageImages.length > 0 ? (
         <div className="chat-message-images" aria-label="Attached images">

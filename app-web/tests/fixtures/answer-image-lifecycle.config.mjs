@@ -28,7 +28,9 @@ export default defineConfig({
                 const color = oldGeneration ? '#b91c1c' : newGeneration ? '#15803d' : '#6d4bca';
                 const label = oldGeneration ? 'OLD generation' : newGeneration ? 'NEW generation' : 'Generated image';
                 const body = status === 200 ? `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="${color}"/><text x="30" y="95" fill="white" font-size="24">${label}</text></svg>` : 'unavailable';
-                const delay = path.includes('slow') ? 8500 : 0;
+                // 慢图只慢正文：预检探针（Range: bytes=0-0）要立刻回，否则 8.5s 探针
+                // + 8.5s 图片会把断言窗口变成 17 秒，测的还是“慢”不是“预检”。
+                const delay = path.includes('slow') && !req.headers.range ? 8500 : 0;
                 if (delay) setTimeout(() => res.end(body), delay);
                 else res.end(body);
             });
