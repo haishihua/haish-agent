@@ -12,6 +12,29 @@ export function streamEventUpdate(events) {
   return STREAM_UPDATES.get(events);
 }
 
+// Both the runtime log and its per-agent progress projection are immutable
+// append/replace-tail arrays. Keep ancestry weak so skipped React renders can
+// find the last projected snapshot without retaining old histories.
+export function recordStreamEventUpdate(next, previous, prefixLength) {
+  STREAM_UPDATES.set(next, { previous: new WeakRef(previous), prefixLength });
+  return next;
+}
+
+export function cachedStreamEventBase(events, cache) {
+  let current = events;
+  let prefixLength = events?.length || 0;
+  for (let depth = 0; depth < 256; depth += 1) {
+    const update = streamEventUpdate(current);
+    const previous = update?.previous.deref();
+    if (!previous) return null;
+    prefixLength = Math.min(prefixLength, update.prefixLength);
+    const cached = cache.get(previous);
+    if (cached) return { events: previous, cached, prefixLength };
+    current = previous;
+  }
+  return null;
+}
+
 function nestedData(event) {
   return event?.data && typeof event.data === 'object' ? event.data : {};
 }
@@ -95,8 +118,7 @@ export function appendStreamEvent(events, event, getText = defaultDeltaText) {
   const merged = mergeAdjacentStreamEvent(list[lastIndex], event, getText);
   const next = merged ? [...list.slice(0, lastIndex), merged] : [...list, event];
   // Weak references avoid retaining every previous streaming array.
-  STREAM_UPDATES.set(next, { previous: new WeakRef(list), prefixLength: merged ? lastIndex : list.length });
-  return next;
+  return recordStreamEventUpdate(next, list, merged ? lastIndex : list.length);
 }
 
 export function compactStreamEvents(events, getText = defaultDeltaText) {

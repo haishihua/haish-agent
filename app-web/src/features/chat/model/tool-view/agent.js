@@ -1,6 +1,7 @@
 // Agent / 子 Agent / 视觉类工具：进度流、最终回答与子 Agent 时间线。
 import { normalizeToolName } from '../tool-names.js';
 import { createTerminalTimeline } from '../terminal-timeline.js';
+import { cachedStreamEventBase } from '../stream-events.js';
 import { getToolResponseTraceStatus, getToolTraceStatus } from '../tool-trace-status.js';
 import {
   TOOL_BLOCK_LIMIT,
@@ -135,12 +136,59 @@ function subAgentToolCategory(event) {
   return 'tool';
 }
 
+const SUB_AGENT_TIMELINE_CACHE = new WeakMap();
+const SUB_AGENT_TEXT_TYPES = new Set(['sub_agent_answer_delta', 'sub_agent_progress_delta']);
+function subAgentText(event) {
+  return event.type === 'sub_agent_answer_delta'
+    ? String(event.message || event.summary || '') : subAgentEventText(event);
+}
+
+function incrementalSubAgentItems(events, status, base) {
+  if (!base || base.cached.status !== status || base.prefixLength < base.events.length - 1) return null;
+  const cached = base.cached;
+  let text = cached.textBuffer;
+  if (base.prefixLength < base.events.length) {
+    const previous = base.events.at(-1);
+    if (!SUB_AGENT_TEXT_TYPES.has(previous.type)) return null;
+    const suffix = subAgentText(previous);
+    if (!text.endsWith(suffix)) return null;
+    if (suffix) text = text.slice(0, -suffix.length);
+  }
+  for (let index = base.prefixLength; index < events.length; index += 1) {
+    const event = events[index];
+    if (!SUB_AGENT_TEXT_TYPES.has(event.type)) return null;
+    text += subAgentText(event);
+  }
+  const items = cached.items.slice(0, cached.tailIndex);
+  if (text.trim()) items.push({ kind: 'text', id: `sub-text-${cached.textIndex}`, text: text.trim(), streaming: status === 'running' });
+  const next = { ...cached, items, textBuffer: text };
+  SUB_AGENT_TIMELINE_CACHE.set(events, next);
+  return items;
+}
+
+// Structural child-tool events still replay to retain the terminal/session and
+// legacy no-call-id semantics. Reuse equal records so unrelated cards stay memoized.
+function reuseSubAgentItems(items, previous) {
+  if (!previous) return items;
+  const byId = new Map(previous.map((item) => [item.id, item]));
+  return items.map((item) => {
+    const old = byId.get(item.id);
+    const keys = Object.keys(item);
+    return old && Object.keys(old).length === keys.length && keys.every((key) => old[key] === item[key]) ? old : item;
+  });
+}
+
 export function buildSubAgentTimelineItems(view) {
   const events = Array.isArray(view.progressEvents) ? view.progressEvents : [];
+  const finalStatus = view.isRunning ? 'running' : view.cancelled ? 'cancelled' : view.failed ? 'failed' : 'done';
+  const cached = SUB_AGENT_TIMELINE_CACHE.get(events);
+  if (cached?.status === finalStatus) return cached.items;
+  const base = cachedStreamEventBase(events, SUB_AGENT_TIMELINE_CACHE);
+  const incremental = incrementalSubAgentItems(events, finalStatus, base);
+  if (incremental) return incremental;
   const items = [];
   const toolItemsByKey = new Map();
   const pendingTools = new Set();
-  const finalStatus = view.isRunning ? 'running' : view.cancelled ? 'cancelled' : view.failed ? 'failed' : 'done';
   const { findTerminalForInput, mergeTerminalResult } = createTerminalTimeline({ events, finalStatus });
   let textBuffer = '';
   let textIndex = 0;
@@ -245,8 +293,15 @@ export function buildSubAgentTimelineItems(view) {
       item.toolOutput = event.toolOutput || item.toolOutput || '';
     }
   });
+  const tailIndex = items.length;
+  const tailText = textBuffer;
+  const tailTextIndex = textIndex;
   flushText(Boolean(view.isRunning));
-  return items;
+  const shared = reuseSubAgentItems(items, (cached || base?.cached)?.items);
+  SUB_AGENT_TIMELINE_CACHE.set(events, {
+    status: finalStatus, items: shared, tailIndex, textBuffer: tailText, textIndex: tailTextIndex,
+  });
+  return shared;
 }
 
 function extractProcessResultText(item) {
@@ -315,10 +370,24 @@ function extractProcessChatMeta(item, name) {
   };
 }
 
+// The collapsed sub-agent header only needs its label/failure/disclosure state.
+// Do not walk progress or stringify prompts/answers until its panel is mounted.
+export function buildProcessToolSummary(item) {
+  return {
+    mode: 'process',
+    label: item.category === 'subagent' ? (item.label || item.toolName || 'Sub-agent') : (item.label || toolActionLabel(item)),
+    failed: isToolFailure(item),
+    detailsDeferred: true,
+    hasDetails: Boolean(item.toolInput || item.toolResponse || item.outputSummary || item.progressEvents?.length || item.children?.length),
+  };
+}
+
 export function buildProcessToolView(item, name) {
   const response = toolPlainObject(item.toolResponse);
-  const streamLines = buildToolStreamLines(item);
-  const streamAnswerText = buildToolStreamAnswerText(item);
+  // The rich child timeline normally owns these events. Build legacy fallback
+  // strings only when a consumer actually needs them, not for every text delta.
+  let streamLines;
+  let streamAnswerText;
   const finalText = extractProcessResultText(item);
   const chatMeta = extractProcessChatMeta(item, name);
   return {
@@ -327,8 +396,8 @@ export function buildProcessToolView(item, name) {
       ? (item.label || item.toolName || 'Sub-agent')
       : (item.label || toolActionLabel(item)),
     requestJson: toolJsonText(item.toolInput),
-    streamLines,
-    streamAnswerText,
+    get streamLines() { return streamLines ??= buildToolStreamLines(item); },
+    get streamAnswerText() { return streamAnswerText ??= buildToolStreamAnswerText(item); },
     progressEvents: Array.isArray(item.progressEvents) ? item.progressEvents : [],
     finalText,
     defaultOpen: false,

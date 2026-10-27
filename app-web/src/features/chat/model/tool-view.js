@@ -17,12 +17,16 @@ import {
   buildReadToolView,
 } from './tool-view/file.js';
 import { buildSearchToolView } from './tool-view/search.js';
-import { buildProcessToolView, buildSubAgentTimelineItems, isProcessTool } from './tool-view/agent.js';
+import { buildProcessToolSummary, buildProcessToolView, buildSubAgentTimelineItems, isProcessTool } from './tool-view/agent.js';
 
 export { TOOL_SHELL_NAMES, buildSubAgentTimelineItems };
 
-export function buildToolView(item) {
+export function buildToolView(item, { details = true } = {}) {
   const name = normalizeToolName(item.toolName);
+  // 折叠的 sub-agent chip 只要 label / failed / 是否可展开：不碰 toolInput 的字段，
+  // 也不枚举 progressEvents。放在 skill 前面是安全的——`skillTrigger` 只认
+  // read_file / load_skill / skill，哪一个都不可能落成 category `subagent`。
+  if (!details && item.category === 'subagent') return buildProcessToolSummary(item);
   const path = firstToolPath(item);
   const skill = skillTrigger(item);
   if (skill) return { mode: 'skill', label: skill.name, skill, failed: isToolFailure(item) };

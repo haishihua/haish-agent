@@ -302,7 +302,10 @@ function ChatTimelineToolGroup({
 // still active. Once it settles the ring gives way to the shared terminal
 // icons (Check / CircleAlert / Minus), exactly like every other tool call.
 
-function ChatTimelineToolBody({ view, conversationId, taskId, onPreviewImage }) {
+function ChatTimelineToolBody({ item, view: summary, conversationId, taskId, onPreviewImage }) {
+  // This component only mounts inside the open disclosure (including its exit
+  // animation); a collapsed sub-agent never builds its prompt/progress details.
+  const view = React.useMemo(() => summary.detailsDeferred ? buildToolView(item) : summary, [item, summary]);
   if (view.mode === 'terminal') {
     return <TerminalDetail view={view} />;
   }
@@ -373,12 +376,15 @@ function ChatProcessConversation({ view, conversationId, taskId }) {
     return (path) => chatImagePreviewUrl({ path }, id) || null;
   }, [conversationId]);
   const hasPrompt = Boolean(view.task || view.role || view.systemPrompt);
-  const streamAnswerText = String(view.streamAnswerText || '');
-  const hasStreamAnswer = Boolean(streamAnswerText.trim());
-  const hasStream = Array.isArray(view.streamLines) && view.streamLines.length > 0;
-  const subTimelineItems = buildSubAgentTimelineItems(view);
-  const hasSubTimeline = subTimelineItems.length > 0;
   const hasFinal = Boolean(view.finalText);
+  const subTimelineItems = hasFinal ? [] : buildSubAgentTimelineItems(view);
+  const hasSubTimeline = subTimelineItems.length > 0;
+  // Rich timeline/final answer owns the display; only legacy activity needs
+  // the flattened strings, which are lazily derived by the process view.
+  const streamAnswerText = !hasFinal && !hasSubTimeline ? String(view.streamAnswerText || '') : '';
+  const streamLines = !hasFinal && !hasSubTimeline ? view.streamLines : [];
+  const hasStreamAnswer = Boolean(streamAnswerText.trim());
+  const hasStream = Array.isArray(streamLines) && streamLines.length > 0;
   if (!hasPrompt && !hasSubTimeline && !hasStreamAnswer && !hasStream && !hasFinal && !view.requestJson) {
     return null;
   }
@@ -416,7 +422,7 @@ function ChatProcessConversation({ view, conversationId, taskId }) {
           ) : null}
           {hasStream ? (
             <div className="chat-subagent-activity" aria-label="Sub-agent activity">
-              {view.streamLines.map((row) => (
+              {streamLines.map((row) => (
                 <div key={row.id} className={`chat-subagent-activity-line ${row.state || ''}`}>
                   {row.text}
                 </div>
@@ -472,17 +478,23 @@ function ChatProcessConversation({ view, conversationId, taskId }) {
   );
 }
 
-export function ChatTimelineToolNode({
-  item, conversationId = '', taskId = '', askUserActive = false, awaitingInput = false, onPreviewImage,
-}) {
+// Keep the context subscription in a thin shell: changing another tool's
+// approval placement must not defeat memoization of an unchanged sub-agent.
+export function ChatTimelineToolNode({ item, ...props }) {
   const approvalRequest = React.useContext(ToolApprovalsContext).get(item.id);
+  return <MemoizedTimelineToolNode item={item} {...props} approvalRequest={approvalRequest} />;
+}
+
+function ChatTimelineToolNodeComponent({
+  item, conversationId = '', taskId = '', askUserActive = false, awaitingInput = false, onPreviewImage, approvalRequest,
+}) {
   const isAskUser = String(item.toolName || '').toLowerCase() === 'ask_user';
   const status = item.status || 'pending';
   const category = item.category || 'tool';
   const defaultIconClass = CATEGORY_ICON_CLASS[category] || CATEGORY_ICON_CLASS.tool;
   // 先按 toolName 匹配专属 icon；匹配不到再退回 skill/mcp/subagent 分类图标。
   const iconClass = resolveToolIconClass(item.toolName, defaultIconClass);
-  const view = buildToolView(item);
+  const view = React.useMemo(() => buildToolView(item, { details: false }), [item]);
   const heading = toolCardHeading(item, view);
   const isSkill = view.mode === 'skill';
   const displayStatus = approvalRequest || awaitingInput ? 'approval' : view.failed ? 'failed' : status;
@@ -509,6 +521,7 @@ export function ChatTimelineToolNode({
   const hasBody = !isSkill && !approvalRequest && (view.mode === 'terminal'
     ? Boolean(view.command || view.stdout || view.stderr || view.running || hasChildren)
     : (
+      view.hasDetails ||
       Boolean(view.body) ||
       Boolean(view.requestJson) ||
       Boolean(view.responseJson) ||
@@ -533,7 +546,7 @@ export function ChatTimelineToolNode({
         query={approvalRequest ? '' : heading.query} status={displayStatus} open={open} onOpenChange={setOpen} expandable={hasBody}
         statusLabel={awaitingInput && !approvalRequest ? 'Waiting for your answer' : undefined}
         icon={<span className={`ico ${iconClass}`} />}>
-          {view.mode !== 'read' ? <ChatTimelineToolBody view={view} conversationId={conversationId} taskId={taskId} onPreviewImage={onPreviewImage} /> : null}
+          {view.mode !== 'read' ? <ChatTimelineToolBody item={item} view={view} conversationId={conversationId} taskId={taskId} onPreviewImage={onPreviewImage} /> : null}
           {view.mode === 'read' &&
             fallbackLines.map((line, index) => (
               <div key={index} className="chat-timeline-tool-line">
@@ -573,6 +586,8 @@ export function ChatTimelineToolNode({
     </div>
   );
 }
+
+const MemoizedTimelineToolNode = React.memo(ChatTimelineToolNodeComponent);
 
 // Keep the existing action-count summary and per-call interaction inside
 // the assistant-ui timeline surface.

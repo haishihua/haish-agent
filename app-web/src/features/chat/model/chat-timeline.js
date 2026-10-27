@@ -1,5 +1,5 @@
 import { eventDeltaText, stripInjectedSkillInstruction } from './chat-text.js';
-import { streamEventUpdate } from './stream-events.js';
+import { cachedStreamEventBase, recordStreamEventUpdate, streamEventUpdate } from './stream-events.js';
 import { normalizeToolName } from './tool-names.js';
 import { getToolResponseTraceStatus, getToolTraceStatus } from './tool-trace-status.js';
 import { createTerminalTimeline } from './terminal-timeline.js';
@@ -400,6 +400,118 @@ function toolProgressSummary(event) {
   }
 }
 
+const SUB_AGENT_PROGRESS_TYPES = new Set([
+  'sub_agent_started', 'sub_agent_finished', 'sub_agent_progress_delta',
+  'sub_agent_answer_delta', 'sub_agent_tool_call_started', 'sub_agent_tool_call_completed',
+]);
+
+function progressEventFor(toolItem, event, index, state = '') {
+  const summary = event.type === 'sub_agent_answer_delta' ? eventDeltaText(event) : toolProgressSummary(event);
+  if (!summary) return null;
+  return {
+    id: `${toolItem.id}-${event.type}-${index}`,
+    type: event.type,
+    state,
+    callId: event.callId || event.toolCallId || event.tool_call_id || '',
+    parentCallId: event.parentCallId || event.parent_call_id || '',
+    role: event.role || event.subAgentRole || event.sub_agent_role || '',
+    toolName: event.toolName || event.tool_name || '',
+    toolInput: event.toolInput || event.tool_input || null,
+    toolResponse: event.toolResponse || event.tool_response || null,
+    toolOutput: event.toolOutput || event.tool_output || '',
+    summary,
+    message: event.type === 'sub_agent_answer_delta' ? summary : event.message || '',
+    inputSummary: event.inputSummary || '',
+    outputSummary: event.outputSummary || '',
+    timestamp: event.timestamp || null,
+  };
+}
+
+function subAgentProgressState(type) {
+  if (type === 'sub_agent_answer_delta') return 'stream';
+  if (type === 'sub_agent_started') return 'running';
+  if (type === 'sub_agent_finished') return 'completed';
+  if (type === 'sub_agent_tool_call_started') return 'requested';
+  if (type === 'sub_agent_tool_call_completed') return 'completed';
+  return 'progress';
+}
+
+function toolPathsIn(items, eventToolCallIds, path = [], paths = new Map()) {
+  items.forEach((item, index) => {
+    const itemPath = [...path, index];
+    if (eventToolCallIds.has(item.callId)) paths.set(item.callId, itemPath);
+    for (const key of ['children', 'tools']) {
+      if (item[key]?.length) toolPathsIn(item[key], eventToolCallIds, [...itemPath, key], paths);
+    }
+  });
+  return paths;
+}
+
+const atPath = (value, path) => path.reduce((current, key) => current[key], value);
+function replaceAtPath(value, path, next) {
+  if (!path.length) return next;
+  const [key, ...rest] = path;
+  const copy = Array.isArray(value) ? value.slice() : { ...value };
+  copy[key] = replaceAtPath(value[key], rest, next);
+  return copy;
+}
+
+// Sub-agent events only alter their owner's progress list: main-agent text,
+// tool order/grouping and sibling tools are unchanged. Structural/control-plane
+// transitions still use the authoritative full replay below.
+function incrementalSubAgentTimeline(task, status) {
+  const events = task?.eventLog;
+  const base = cachedStreamEventBase(events, EVENT_TIMELINE_CACHE);
+  if (!base) return null;
+  const { cached, prefixLength, events: previous } = base;
+  if (cached.status !== status || !['running', 'queued'].includes(status)
+    || cached.toolCalls !== task.toolCalls || cached.conversationId !== (task.conversationId || task.conversation_id || '')
+    || prefixLength < previous.length - 1) return null;
+  const state = cached.subAgentState;
+  if (!state) return null;
+  const changes = new Map();
+  const editProgress = (parentCallId) => {
+    if (changes.has(parentCallId)) return changes.get(parentCallId);
+    const path = state.paths.get(parentCallId);
+    if (!path) return null;
+    const item = atPath(cached.timeline.items, path);
+    const change = { item, path, events: item.progressEvents.slice(), prefixLength: item.progressEvents.length };
+    changes.set(parentCallId, change);
+    return change;
+  };
+  if (prefixLength < previous.length) {
+    if (!SUB_AGENT_PROGRESS_TYPES.has(previous.at(-1)?.type)) return null;
+    if (state.lastProgress) {
+      const change = editProgress(state.lastProgress.parentCallId);
+      if (!change) return null;
+      change.events.length = state.lastProgress.index;
+      change.prefixLength = change.events.length;
+    }
+  }
+  let lastProgress = null;
+  for (let index = prefixLength; index < events.length; index += 1) {
+    const event = events[index];
+    if (!SUB_AGENT_PROGRESS_TYPES.has(event.type)) return null;
+    const parentCallId = event.parentCallId || event.parent_call_id || '';
+    // Unknown/backfilled parents may have different event-admission semantics.
+    const change = editProgress(parentCallId);
+    if (!change) return null;
+    const progress = progressEventFor(change.item, event, change.events.length, subAgentProgressState(event.type));
+    if (!progress) continue;
+    const last = change.events.at(-1);
+    if (event.type !== 'sub_agent_answer_delta' && last?.type === event.type && last.summary === progress.summary) continue;
+    change.events.push(progress);
+    if (index === events.length - 1) lastProgress = { parentCallId, index: change.events.length - 1 };
+  }
+  let items = cached.timeline.items;
+  for (const change of changes.values()) {
+    if (change.prefixLength === change.item.progressEvents.length && change.events.length === change.prefixLength) continue;
+    const progressEvents = recordStreamEventUpdate(change.events, change.item.progressEvents, change.prefixLength);
+    items = replaceAtPath(items, change.path, { ...change.item, progressEvents });
+  }
+  return { timeline: { ...cached.timeline, items }, subAgentState: { paths: state.paths, lastProgress } };
+}
+
 const CHAT_TIMELINE_CACHE = new WeakMap();
 const EVENT_TIMELINE_CACHE = new WeakMap();
 
@@ -430,14 +542,17 @@ function incrementalTextTimeline(task, status) {
     if (!suffix || !tail.text.endsWith(suffix)) return null;
     text = (tail.text.slice(0, -suffix.length) + nextText).trim();
   }
-  return { ...cached.timeline, items: [...cached.timeline.items.slice(0, -1), { ...tail, text }] };
+  return {
+    timeline: { ...cached.timeline, items: [...cached.timeline.items.slice(0, -1), { ...tail, text }] },
+    subAgentState: cached.subAgentState,
+  };
 }
 
-function cacheTimeline(task, status, timeline) {
+function cacheTimeline(task, status, timeline, subAgentState) {
   if (task && typeof task === 'object') {
     CHAT_TIMELINE_CACHE.set(task, { status, timeline });
     if (Array.isArray(task.eventLog)) EVENT_TIMELINE_CACHE.set(task.eventLog, {
-      status, timeline, toolCalls: task.toolCalls,
+      status, timeline, subAgentState, toolCalls: task.toolCalls,
       conversationId: task.conversationId || task.conversation_id || '',
     });
   }
@@ -449,8 +564,8 @@ export function buildChatTimeline(task, taskStatus) {
   const finalStatus = normalizeTaskStatus(taskStatus || task?.status);
   const cached = task && typeof task === 'object' ? CHAT_TIMELINE_CACHE.get(task) : null;
   if (cached?.status === finalStatus) return cached.timeline;
-  const incremental = incrementalTextTimeline(task, finalStatus);
-  if (incremental) return cacheTimeline(task, finalStatus, incremental);
+  const incremental = incrementalTextTimeline(task, finalStatus) || incrementalSubAgentTimeline(task, finalStatus);
+  if (incremental) return cacheTimeline(task, finalStatus, incremental.timeline, incremental.subAgentState);
 
   const events = Array.isArray(task?.eventLog) ? task.eventLog : [];
   const toolCalls = Array.isArray(task?.toolCalls) ? task.toolCalls : [];
@@ -487,32 +602,16 @@ export function buildChatTimeline(task, taskStatus) {
     const status = String(toolItem.status || '').toLowerCase();
     return status === 'pending' || status === 'running';
   };
+  let lastProgress = null;
   const appendToolProgress = (toolItem, event, state = '') => {
     if (!toolItem || !event) return;
-    const summary = event.type === 'sub_agent_answer_delta' ? eventDeltaText(event) : toolProgressSummary(event);
-    if (!summary) return;
-    const progressEvents = Array.isArray(toolItem.progressEvents)
-      ? toolItem.progressEvents
-      : [];
-    const last = progressEvents[progressEvents.length - 1];
-    if (event.type !== 'sub_agent_answer_delta' && last && last.type === event.type && last.summary === summary) return;
-    progressEvents.push({
-      id: `${toolItem.id}-${event.type}-${progressEvents.length}`,
-      type: event.type,
-      state,
-      callId: event.callId || event.toolCallId || event.tool_call_id || '',
-      parentCallId: event.parentCallId || event.parent_call_id || '',
-      role: event.role || event.subAgentRole || event.sub_agent_role || '',
-      toolName: event.toolName || event.tool_name || '',
-      toolInput: event.toolInput || event.tool_input || null,
-      toolResponse: event.toolResponse || event.tool_response || null,
-      toolOutput: event.toolOutput || event.tool_output || '',
-      summary,
-      message: event.type === 'sub_agent_answer_delta' ? summary : event.message || '',
-      inputSummary: event.inputSummary || '',
-      outputSummary: event.outputSummary || '',
-      timestamp: event.timestamp || null,
-    });
+    const progressEvents = toolItem.progressEvents || [];
+    const progress = progressEventFor(toolItem, event, progressEvents.length, state);
+    if (!progress) return;
+    const last = progressEvents.at(-1);
+    if (event.type !== 'sub_agent_answer_delta' && last?.type === event.type && last.summary === progress.summary) return;
+    if (event === events.at(-1)) lastProgress = { parentCallId: toolItem.callId, index: progressEvents.length };
+    progressEvents.push(progress);
     toolItem.progressEvents = progressEvents;
   };
   const appendSubAgentProgressByEvent = (event, state = '') => {
@@ -521,14 +620,6 @@ export function buildChatTimeline(task, taskStatus) {
     const toolItem = toolItemsByCallId.get(parentCallId);
     if (!toolItem) return;
     appendToolProgress(toolItem, event, state);
-  };
-  const subAgentProgressState = (type) => {
-    if (type === 'sub_agent_answer_delta') return 'stream';
-    if (type === 'sub_agent_started') return 'running';
-    if (type === 'sub_agent_finished') return 'completed';
-    if (type === 'sub_agent_tool_call_started') return 'requested';
-    if (type === 'sub_agent_tool_call_completed') return 'completed';
-    return 'progress';
   };
   const finalizeToolItem = (callId, terminalState, event = null) => {
     if (!callId) return;
@@ -912,6 +1003,7 @@ export function buildChatTimeline(task, taskStatus) {
     textSegmentIndex += 1;
   }
 
+  const eventToolCallIds = new Set(toolItemsByCallId.keys());
   // Backfill tool calls that exist in toolCalls but have no matching event yet
   // (e.g. event still in-flight). Append them in their natural order.
   for (const call of toolCalls) {
@@ -999,7 +1091,9 @@ export function buildChatTimeline(task, taskStatus) {
   // (text + thinking)，不关心 read_file / chrome_devtools_* 反复的细节；想看
   // 单条工具调用时点开 chip 还能看到原来的 ChatTimelineToolNode 列表。
   const timeline = { items: groupConsecutiveTools(items), latestTodos };
-  return cacheTimeline(task, finalStatus, timeline);
+  return cacheTimeline(task, finalStatus, timeline, {
+    paths: toolPathsIn(timeline.items, eventToolCallIds), lastProgress,
+  });
 }
 
 function sanitizeTodoItems(items) {
