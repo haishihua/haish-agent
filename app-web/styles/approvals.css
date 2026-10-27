@@ -185,6 +185,15 @@
   white-space: pre-wrap;
 }
 
+/* 上下文改走 Markdown 后，上面那条 pre-wrap 会把源码里的换行再摊一遍（段落之间
+   多出空行），legend / embedded 卡的 600 字重也会把表格、列表整体变粗：
+   正文排版交回 markdown.css。 */
+.haish-approval-intent .haish-markdown,
+.haish-user-input-prompt .haish-markdown {
+  white-space: normal;
+  font-weight: 400;
+}
+
 .haish-workflow-approval-card .haish-approval-header {
   border-color: rgba(244, 114, 182, 0.52);
 }

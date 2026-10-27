@@ -47,12 +47,14 @@ const REQUEST = {
   conversation_id: 'conv-ask',
   task_id: 'task-ask',
   tool_call_id: 'call-ask',
-  context: '好，再问你几个问题，用来确认这轮的目标、范围和验收标准。',
+  // 上下文和题干都是模型写的 markdown（反引号、表格很常见）：夹具里直接上真实形态，
+  // 盯住「源码不落到卡片里」这个回归。
+  context: '好，再问你几个问题，用来确认这轮的目标、范围和验收标准。\n\n| 字段 | 当前 |\n|---|---|\n| `agent_id` | a |\n| 队列 | 空 |',
   questions: [
     {
       id: 'goal',
       header: '本轮目标',
-      question: '这一轮你最想让我完成什么？',
+      question: '这一轮你最想让我完成**什么**？',
       options: [
         { label: '继续视觉与工具验收', description: '再发图/截图，我识别并复述关键信息。' },
         { label: '真实开发任务', description: '需求澄清、详设、编码、单测、缺陷修复或变更提交。' },
@@ -128,6 +130,15 @@ async function runChecks() {
   );
   check('two questions are in the DOM', questions().length === 2, `questions=${questions().length}`);
   check('the first question is the visible one', questionText() === '这一轮你最想让我完成什么？', questionText());
+  check(
+    Boolean(visibleQuestion()?.querySelector('.haish-user-input-prompt .haish-markdown strong')),
+    'the question prompt goes through the markdown renderer instead of showing raw source',
+  );
+  check(
+    Boolean(card?.querySelector('.haish-approval-intent .haish-markdown table'))
+      && Boolean(card?.querySelector('.haish-approval-intent .haish-markdown code')),
+    'the agent context renders as markdown (table + inline code) like the final answer does',
+  );
 
   const optionFieldset = visibleQuestion();
   const optionPlaceholder = textareaOf(optionFieldset)?.placeholder || '';

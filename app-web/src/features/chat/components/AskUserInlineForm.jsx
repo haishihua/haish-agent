@@ -1,8 +1,10 @@
 import { ApprovalSurface } from '../../../shared/ui/agent-elements/ApprovalSurface.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
+import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import React from 'react';
 import { approvalStore } from '../../approvals/model/approval-store.js';
+import { markdownPlainText } from '../../../shared/lib/markdown-text.js';
 import { selectPendingUserInput } from '../model/pending-user-input.js';
 import {
   allQuestionsAnswered,
@@ -108,18 +110,23 @@ export function AskUserInlineForm({
     <ApprovalSurface className="haish-approval-card haish-user-input-card" data-busy={submitting ? '1' : '0'}>
       <div className="haish-approval-header"><span className="haish-approval-title">Questions</span></div>
       <div className="haish-approval-body">
-        {request.context ? <div className="haish-approval-intent">{request.context}</div> : null}
+        {/* 上下文和题目都是模型写的长文本，里面常带反引号、表格、列表：
+            跟最终回答用同一个 Markdown 渲染，别把 markdown 源码直接摊在卡片里。 */}
+        {request.context ? <div className="haish-approval-intent"><Markdown source={request.context} /></div> : null}
         {error ? <ErrorState variant="inline" detail={error} /> : null}
         <div className="haish-user-input-questions">
           {questions.map((question, index) => {
             const options = Array.isArray(question.options) ? question.options : [];
             const draft = readDraft(drafts, question.id);
             const selected = draft.values;
+            // 显示走 Markdown，可访问名称走一行纯文本：aria-label 里不能出现
+            // `**什么**` / `| 字段 |` 这种源码。
+            const promptText = markdownPlainText(question.question, { maxLength: 160 });
             return (
                 <fieldset className="haish-user-input-question" key={question.id || index} hidden={index !== activeStep} disabled={submitting}>
                 <legend>
                   {question.header ? <span className="haish-user-input-header">{question.header}</span> : null}
-                  <span className="haish-user-input-prompt">{question.question}</span>
+                  <div className="haish-user-input-prompt"><Markdown source={question.question} /></div>
                 </legend>
                 {options.length ? (
                   <div className="haish-user-input-options">
@@ -144,7 +151,7 @@ export function AskUserInlineForm({
                           <span className="haish-user-input-check" aria-hidden="true" />
                           <span className="haish-user-input-option-copy">
                             <strong>{label}</strong>
-                            {option?.description ? <small>{option.description}</small> : null}
+                            {option?.description ? <small>{markdownPlainText(option.description)}</small> : null}
                           </span>
                         </label>
                       );
@@ -159,8 +166,8 @@ export function AskUserInlineForm({
                     ? 'Add a note, or type your own answer (optional)…'
                     : 'Type your answer…'}
                   aria-label={options.length
-                    ? `Note or your own answer: ${question.question}`
-                    : `Your answer: ${question.question}`}
+                    ? `Note or your own answer: ${promptText}`
+                    : `Your answer: ${promptText}`}
                   rows={2}
                 />
               </fieldset>
