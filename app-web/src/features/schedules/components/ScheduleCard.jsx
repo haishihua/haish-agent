@@ -12,7 +12,9 @@ function DetailRow({ icon: Icon, label, children }) {
 export function ScheduleCard({ job, children }) {
   // The stored name is often just the head of the message (auto-derived at create
   // time, or left behind after the message was edited). Printing both reads as a
-  // duplicated title, so collapse to the single most informative line.
+  // duplicated title, so collapse to the single most informative line. The
+  // backend refreshes derived names on edit and marks custom ones explicit; the
+  // prefix check remains as a fallback for records written before that flag.
   const name = String(job.name || '').trim();
   const message = String(job.message || '').trim();
   const derived = !name || name === Array.from(message).slice(0, 80).join('').trim()

@@ -87,10 +87,16 @@ export function ScheduleDialog({ state, api, ensureConversation }) {
   const [deleteId, setDeleteId] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [savedAt, setSavedAt] = React.useState(0);
   // Stable binding survives the draft's real-id handoff, even when POST fails.
   const boundId = React.useRef(null);
   const close = () => state.setDialog(null);
   const jobs = state.items.filter((job) => job.conversation_id === request.conversationId);
+  React.useEffect(() => {
+    if (!savedAt) return;
+    const timer = window.setTimeout(() => setSavedAt(0), 2500);
+    return () => window.clearTimeout(timer);
+  }, [savedAt]);
   async function action(work) {
     if (busy) return;
     setBusy(true); setError('');
@@ -102,6 +108,8 @@ export function ScheduleDialog({ state, api, ensureConversation }) {
       if (editing) {
         state.upsert(await api.update(editing.id, payload));
         setEditing(null);
+        // Closing the form is invisible feedback on its own; confirm the edit landed.
+        setSavedAt(Date.now());
       } else {
         if (!boundId.current) boundId.current = await ensureConversation(payload.message, request.conversationId);
         await state.configSync.flush(boundId.current, request.scopeId);
@@ -115,6 +123,7 @@ export function ScheduleDialog({ state, api, ensureConversation }) {
     description="Runs in this conversation. Keep Haish open.">
     <div className="schedule-dialog-body">
       {(error || state.error) && <ErrorState variant="inline" detail={error || state.error} />}
+      {savedAt > 0 && !error && !state.error && <p className="schedule-saved" role="status">Task saved.</p>}
       {request.mode === 'create' || editing ? <ScheduleForm key={editing?.id || 'new'} job={editing} initialMessage={request.message} busy={busy} onSave={save} onCancel={editing ? () => setEditing(null) : close} /> : <>
         {state.loading && <p role="status">Loading…</p>}
         {!state.loading && !jobs.length && <p>No scheduled tasks in this conversation.</p>}

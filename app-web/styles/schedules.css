@@ -50,6 +50,7 @@
 .schedule-actions .schedule-save { background: #d4d4d4; border-color: #d4d4d4; color: #202020; }
 .schedule-dialog-body button:disabled { opacity: .5; cursor: default; }
 .schedule-dialog-body [role="alert"] { color: #f5b2aa; }
+.schedule-saved { margin: 0 0 10px; color: #65df94; font-size: 13px; line-height: 1.5; }
 .schedule-card { border: 1px solid #3e3e3e; border-radius: 12px; padding: 10px; margin-bottom: 10px; background: #222; font-size: 13px; overflow-wrap: anywhere; }
 .schedule-card-heading { display: flex; align-items: flex-start; gap: 8px; padding-bottom: 10px; }
 .schedule-card-title { flex: 1; min-width: 0; }
