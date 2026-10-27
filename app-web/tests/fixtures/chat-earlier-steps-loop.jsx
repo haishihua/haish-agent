@@ -36,12 +36,15 @@ const draw = () => {
   <ChatPanel conversationId={current.id} messages={current.messages} providerOptions={providerOptions}
     earlierTaskRuntimesPending={current.pending}
     earlierTaskRuntimeIds={current.authoritative ? current.ids : undefined}
-    onLoadEarlierTasks={async () => {
+    onLoadEarlierTasks={async (_conversationId, requestedIds) => {
       const request = current;
       request.calls += 1;
-      const ids = request.ids.slice(-3);
+      // 与生产一致：点了名的行就只拉它们，没人点名才退回最新一页。
+      const ids = Array.isArray(requestedIds) && requestedIds.length
+        ? requestedIds.filter((id) => request.ids.includes(id))
+        : request.ids.slice(-3);
       request.pages.push(ids);
-      await sleep(60);
+      await sleep(request.delay ?? 60);
       if (request.mode === 'error' && request.fail) throw new Error('Offline');
       if (request.mode === 'pages' || request.mode === 'error') {
         request.ids = request.ids.filter((id) => !ids.includes(id));
@@ -84,11 +87,25 @@ const showCompact = async () => {
 };
 const snapshot = () => ({ calls: scenario.calls, pages: scenario.pages, pending: scenario.ids,
   status: document.querySelector('.chat-earlier-tasks')?.textContent || '', scrollTop: listNode()?.scrollTop });
+// 视口里还带着 data-trace-pending 的行（就是此刻看得见、还没补水的行）。
+const pendingInViewport = () => {
+  const list = listNode();
+  const viewport = list.getBoundingClientRect();
+  return [...document.querySelectorAll('.chat-row-group:not([hidden]) [data-trace-pending]')]
+    .filter((row) => row.getClientRects().length)
+    .filter((row) => {
+      const rect = row.getBoundingClientRect();
+      return rect.bottom >= viewport.top && rect.top <= viewport.bottom;
+    });
+};
 const jumpTop = async () => {
   document.querySelector('.conversation-map-tick').click();
-  await waitFor(() => document.querySelector('[data-message-id="loop-user-0"]'));
+  await waitFor(() => visibleRow('loop-user-0'));
   await sleep(250);
 };
+// 切走的那组行会带着 hidden 留在 DOM 里（同样的 message id），查行必须限定在
+// 当前可见的那一组，否则量到的是 display:none 的旧行（高度/位置都是 0）。
+const visibleRow = (messageId) => document.querySelector(`.chat-row-group:not([hidden]) [data-message-id="${messageId}"]`);
 window.__earlierStepsShow = show;
 window.__earlierStepsSnapshot = snapshot;
 window.__earlierStepsChecks = async () => {
@@ -123,16 +140,36 @@ window.__earlierStepsChecks = async () => {
   await sleep(400);
   check(scenario.calls === 1 && !document.querySelector('.chat-earlier-tasks'), 'message-derived pending identity also stops a no-progress loader');
 
+  // 只补视口里看得见的那几行：以前在会话顶部会按队列从新往旧一整条翻完
+  // （长会话就是几十个连续请求 + 内容一直在跳）。
   await show('pages');
   await jumpTop();
-  await waitFor(() => !scenario.pending && !document.querySelector('.chat-earlier-tasks'));
-  check(scenario.calls === 8 && new Set(scenario.pages.flat()).size === 23,
-    'real page progress continues until all 23 historical task ids load exactly once');
-  const doneCalls = scenario.calls;
-  await sleep(500);
+  await sleep(1200);
+  check(scenario.calls <= 3, `a jump to the top hydrates only the visible rows, not the whole queue (${scenario.calls})`);
+  check(scenario.ids.length > 0, 'pending tasks below the viewport stay pending (no pre-fetch sweep)');
+  check(pendingInViewport().length === 0, 'every pending row inside the viewport is hydrated');
+  const callAfterJump = scenario.calls;
+  await sleep(600);
+  check(scenario.calls === callAfterJump, 'nothing else is fetched while the reader sits still at the top');
+
+  // 读者自己翻到别的待补水行时，才补它那一批。
+  visibleRow('loop-agent-10').scrollIntoView({ block: 'center' });
+  listNode().dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true }));
   listNode().dispatchEvent(new Event('scroll', { bubbles: true }));
-  await sleep(100);
-  check(scenario.calls === doneCalls, 'an exhausted conversation never fetches another page');
+  await waitFor(() => !scenario.ids.includes('loop-10'));
+  check(scenario.pages.slice(callAfterJump).flat().includes('loop-10'), 'scrolling to another pending row hydrates that row');
+  check(scenario.pages.slice(callAfterJump).flat().length <= 6, 'only the rows that came into view are fetched');
+
+  // 顶部再也不挂 “Scroll up to load earlier steps / Loading earlier steps…”：补页是自己
+  // 触发的，读者不需要动作；加载中只体现在 aria-busy 上。之前那条 28px 的 pill 每补
+  // 一批就来一次、又走一次，内容会被顶得上下抽，搜索时它还会一直挂着。
+  await show('pages');
+  scenario.delay = 400;
+  await jumpTop();
+  await waitFor(() => listNode().getAttribute('aria-busy') === 'true');
+  check(!document.querySelector('.chat-earlier-tasks'), 'hydrating a visible slice shows no status copy at the top');
+  check(await waitFor(() => !listNode().getAttribute('aria-busy')), 'the busy flag clears once the slice lands');
+  scenario.delay = 60;
 
   await show('empty');
   await jumpTop();
@@ -168,8 +205,25 @@ window.__earlierStepsChecks = async () => {
   check(scenario.calls === 1, 'request failure does not auto-retry');
   scenario.fail = false;
   document.querySelector('.chat-earlier-tasks button').click();
-  await waitFor(() => !scenario.pending && !document.querySelector('.chat-earlier-tasks'));
-  check(scenario.calls === 9, 'explicit retry is allowed, followed by the remaining legitimate pages');
+  await waitFor(() => scenario.calls === 2 && !document.querySelector('.chat-earlier-tasks button'));
+  check(scenario.calls === 2 && scenario.pages[0].join() === scenario.pages[1].join(),
+    'explicit retry repeats the same visible slice instead of paging the rest of the queue');
+
+  // 搜索时同样不挂那条文案；搜索计数也不应该因为“还有下游待补水任务”就永远停在
+  // “Searching…”（正文早已在 DOM 里，缺的是执行记录，和搜索命中无关）。
+  await show('pages');
+  await jumpTop();
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', metaKey: true, bubbles: true }));
+  await waitFor(() => document.querySelector('[aria-label="Find in conversation"]'));
+  const searchInput = document.querySelector('[aria-label="Find in conversation"]');
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(searchInput, 'Question 7');
+  searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => /\d+ \/ \d+/.test(document.querySelector('.haish-search-count')?.textContent || ''));
+  check(!document.querySelector('.chat-earlier-tasks'), 'search does not resurrect the earlier-steps copy');
+  const searchCount = document.querySelector('.haish-search-count')?.textContent || '';
+  check(/\d+ \/ \d+/.test(searchCount), `a pending queue outside the viewport does not block a real search match (${searchCount})`);
+  searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await sleep(120);
   check(window.__pageErrors.length === 0, 'no page errors or unhandled rejections');
   document.title = `${results.every((result) => result.pass) ? 'PASS' : 'FAIL'}: ${results.length} earlier-step checks`;
   return results;

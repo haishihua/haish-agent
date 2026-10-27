@@ -1,9 +1,11 @@
 // Search rendered text, so Markdown delimiters and hidden source do not create phantom hits.
+// 只搜消息正文（`.chat-bubble-text`）：执行步骤/工具输出不进搜索——定稿后的步骤正文渲染成
+// Markdown（`.haish-markdown`），工具卡片折叠时甚至不挂载，两者都不属于“会话正文”。
 export function collectConversationMatches(container, query) {
   const needle = query.trim();
   if (!container || !needle) return [];
   const matches = [];
-  for (const block of container.querySelectorAll('.chat-bubble-text, .chat-timeline-text-body')) {
+  for (const block of container.querySelectorAll('.chat-bubble-text')) {
     const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
     const nodes = [];
     let text = '';

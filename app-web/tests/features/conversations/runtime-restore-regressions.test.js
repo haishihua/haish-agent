@@ -14,7 +14,7 @@ const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
 const events = await import('../../../src/features/tasks/model/runtime-events.js');
 const workspace = await import('../../../src/features/conversations/model/workspace-state.js');
 const { conversationRuntimeHasLiveTurn } = await import('../../../src/features/conversations/model/runtime-restore-guard.js');
-const { nextEarlierTaskRuntimeIds } = await import('../../../src/features/tasks/model/task-runtime-paging.js');
+const { nextEarlierTaskRuntimeIds, pendingTaskRuntimeIds } = await import('../../../src/features/tasks/model/task-runtime-paging.js');
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const task = (id, status = 'done', updated = 1) => ({
@@ -79,9 +79,9 @@ function harness(records = [task('history'), task('latest', 'running')]) {
   const shell = readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
   // 历史回调 / 删除回调在 hooks/useShellHandlers.js 里定义。
   const shellHandlers = readFileSync(new URL('../../../src/features/app/hooks/useShellHandlers.js', import.meta.url), 'utf8');
-  const earlierSource = shellHandlers.match(/ {2}const loadEarlierTaskRuntimes = async \(targetConversationId\) => \{[\s\S]*?\n {2}\};/);
+  const earlierSource = shellHandlers.match(/ {2}const loadEarlierTaskRuntimes = async \(targetConversationId[\s\S]*?\n {2}\};/);
   assert.ok(earlierSource, 'execute the actual page history callback');
-  const pagingCtx = { ...ctx, nextEarlierTaskRuntimeIds };
+  const pagingCtx = { ...ctx, nextEarlierTaskRuntimeIds, pendingTaskRuntimeIds };
   const loadEarlierTaskRuntimes = new Function(...Object.keys(pagingCtx),
     `${earlierSource[0]}\nreturn loadEarlierTaskRuntimes;`)(...Object.values(pagingCtx));
   const removeSource = shell.slice(shell.indexOf('  function removeMissingTask('), shell.indexOf('  const panelWorkspaceState'));

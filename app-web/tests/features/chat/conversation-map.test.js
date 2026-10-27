@@ -78,7 +78,9 @@ test('local lens preserves navigation affordances but renders no visible instruc
   const panel = fs.readFileSync(new URL('../../../src/features/chat/components/ChatPanel.jsx', import.meta.url), 'utf8');
   assert.match(panel, /entries=\{mapEntries\}/);
   assert.match(panel, /onReveal=\{revealMapTurn\}/);
-  assert.match(panel, /key=\{conversationId \|\| 'draft'\} scrollRef=\{listRef\} entries/);
+  assert.match(panel, /key=\{`map:\$\{conversationId \|\| 'draft'\}`\} scrollRef=\{listRef\} entries/);
+  // 搜索与导轨是同层兄弟：key 必须各自带前缀，撞成同一个 key 会让 React 漏删搜索面板。
+  assert.match(panel, /key=\{`search:\$\{conversationId \|\| 'draft'\}`\} scrollRef=\{listRef\} onSearchChange/);
 });
 
 test('preview titles prefer body text, then comments, then unnumbered quotes', () => {

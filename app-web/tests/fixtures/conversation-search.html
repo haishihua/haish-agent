@@ -25,14 +25,16 @@
   const assert = (value, label) => { if (!value) throw new Error(label); };
   try {
     const hits = collectConversationMatches(container, '211');
-    assert(hits.length === 3, 'Repeated matches, timeline, hidden control filtering');
+    assert(hits.length === 2, 'Repeated matches in message bodies, hidden control filtered');
     assert(hits.every(hit => hit.range.toString() === '211'), 'Range matches across inline markup');
+    // 执行步骤/工具输出不参与搜索：`.chat-timeline-text-body` 里的同一个词不计入命中。
+    assert(collectConversationMatches(container, '过程中的').length === 0, 'Execution steps stay out of search');
     assert(collectConversationMatches(container, 'a.b').length === 1, 'Literal regex escaping');
     assert(collectConversationMatches(container, 'draft').length === 2, 'Case insensitive');
     assert(collectConversationMatches(container, ' ').length === 0, 'Empty query');
     const positions = conversationMatchPositions(container, hits);
     assert(positions.every((position) => position >= 0 && position <= 100), 'Markers stay inside the track');
-    assert(positions[0] < positions[1] && positions[1] < positions[2], 'Positions distinguish hits within one long message');
+    assert(positions[0] < positions[1], 'Positions distinguish hits within one long message');
     CSS.highlights.set('conversation-matches', new Highlight(...hits.map(hit => hit.range)));
     document.querySelector('#candidate').onclick = () => scrollToConversationMatch(container, hits[1].range);
     document.querySelector('#candidate').click();
@@ -47,9 +49,11 @@
     const resizedPositions = conversationMatchPositions(container, hits);
     assert(resizedPositions[1] > positions[1], 'Layout changes update keyword positions');
     spacer.style.height = '';
+    // 删掉步骤块不影响命中/标记：搜索本来就只看消息正文（工具卡/步骤内容不在扫描范围）。
     const removed = container.lastElementChild;
     removed.remove();
-    assert(conversationMatchPositions(container, hits).at(-1) === null, 'Detached ranges have no marker');
+    assert(conversationMatchPositions(container, hits).every((position) => position !== null), 'Removing an execution step leaves the markers alone');
+    assert(collectConversationMatches(container, '211').length === 2, 'Removing an execution step changes no hit');
     container.append(removed);
     document.querySelector('#result').textContent = 'PASS — keyword ranges, navigation and scrollbar positions';
   } catch (error) {

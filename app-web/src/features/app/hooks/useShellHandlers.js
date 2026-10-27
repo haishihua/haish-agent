@@ -64,7 +64,7 @@ import {
   toDisplayText,
 } from '../../tasks/model/runtime-events.js';
 import { clearTaskCompletionNotice } from '../../tasks/model/task-completion-notices.js';
-import { nextEarlierTaskRuntimeIds } from '../../tasks/model/task-runtime-paging.js';
+import { nextEarlierTaskRuntimeIds, pendingTaskRuntimeIds } from '../../tasks/model/task-runtime-paging.js';
 import {
   applyTerminalTaskState,
   buildTaskRuntimeRecord,
@@ -655,13 +655,18 @@ export function useShellHandlers({
     userCancelledTaskIdsRef.current.delete(taskId);
     setTaskCompletionNotices((current) => clearTaskCompletionNotice(current, targetConversationId, taskId));
   }
-  const loadEarlierTaskRuntimes = async (targetConversationId) => {
+  const loadEarlierTaskRuntimes = async (targetConversationId, requestedTaskIds = []) => {
     if (!targetConversationId || conversationIdRef.current !== targetConversationId) return;
     const activationSeq = conversationActivationSeqRef.current;
     const runtimeState = getRuntime(targetConversationId)?.taskRuntimeState;
-    const taskIds = nextEarlierTaskRuntimeIds(runtimeState?.taskOrder, runtimeState?.tasksById);
-    if (taskIds.length === 0) return;
-    return restoreTaskRuntimes(taskIds, {
+    const pendingIds = pendingTaskRuntimeIds(runtimeState?.taskOrder, runtimeState?.tasksById);
+    // 视口里点名要的那几行：只回拉它们（已经补过水的直接剔掉）。没人点名（例如重试
+    // 按钮）才退回「最新的待补水一页」，保持旧的单页节奏。
+    const requested = Array.isArray(requestedTaskIds) && requestedTaskIds.length
+      ? requestedTaskIds.filter((taskId) => pendingIds.includes(taskId))
+      : nextEarlierTaskRuntimeIds(runtimeState?.taskOrder, runtimeState?.tasksById);
+    if (requested.length === 0) return;
+    return restoreTaskRuntimes(requested, {
       targetConversationId,
       isCurrentActivation: () => conversationIdRef.current === targetConversationId
         && isConversationActivationCurrent(activationSeq),

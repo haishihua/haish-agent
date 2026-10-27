@@ -74,17 +74,14 @@ async function main() {
   find(); await tick(); query('needle-match'); await wait(() => document.querySelector('.haish-search-count')?.textContent === '1 / 2');
   await tick(); const beforeClear = top(); query(''); await tick(); await tick();
   check(sameTop(beforeClear), 'clearing query also preserves position');
-  query('trace-needle'); await wait(() => document.querySelector('.haish-search-count')?.textContent === '1 / 1');
-  await tick(); const traceTop = top();
-  list().scrollTop += 120; await tick();
-  document.querySelector('[aria-label="Next match"]').click(); await tick();
-  check(sameTop(traceTop), 'single-result Next remains an explicit jump back to the match');
-  const match = document.querySelector('.chat-timeline-text-body');
-  check(Boolean(match?.getClientRects().length), 'search finds execution history text');
-  document.querySelector('[aria-label="Find in conversation"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  await tick(); await tick();
-  check(sameTop(traceTop) && match?.getClientRects().length > 0, 'Escape keeps found trace open at its reading position');
-  check(Boolean(document.querySelector('[aria-label="Hide steps"]')), 'trace can be collapsed manually again after close');
+  query('trace-needle'); await tick(); await tick(); await tick();
+  // 步骤/工具内容不进搜索：定稿后的步骤正文渲染成 Markdown、工具卡折叠就不挂载，
+  // 搜索也不为“找步骤”把步骤行展开（那只会让内容变长、位置被推走）。
+  check(document.querySelector('.haish-search-count')?.textContent === '0 matches',
+    'execution steps are not searchable');
+  check(!document.querySelector('.chat-timeline-text'), 'search does not force execution steps open');
+  check(sameTop(beforeClear), 'searching a step term does not move the reading position');
+  query(''); await tick(); await tick();
 
   document.querySelector('[aria-label="Scroll to latest message"]').click(); await tick();
   mutateLatest(); await tick();

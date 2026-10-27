@@ -146,7 +146,9 @@ test('markers, composer drafts and sent quotes share one conversation number', (
   assert.doesNotMatch(panel, /index: index \+ 1/, 'markers must not number per message');
   assert.match(panel, /annotationNumbers=\{group\.annotationNumbers\}/, 'rows need the shared numbers');
   // 窗口化之后编号由行组下发：同一份共享编号，只是从组里传给行（不再每行现取）。
-  assert.match(panel, /annotationNumbers,\n {4}forceTraceOpen: searchActive,/, 'the live row group must carry the shared numbers');
+  assert.match(panel, /annotationNumbers,\n {4}actionsDisabled:/, 'the live row group must carry the shared numbers');
+  // 搜索只覆盖消息正文：不再把步骤强制展开（定稿后正文是 Markdown、工具卡折叠即不挂载）。
+  assert.doesNotMatch(panel, /forceTraceOpen: searchActive/, 'search must not force execution steps open');
   assert.match(row, /annotationNumbers\?\.get\(item\.id\)/);
   assert.match(row, /previous\.annotationNumbers === next\.annotationNumbers/, 'memo must not freeze stale numbers');
 });

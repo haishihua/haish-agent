@@ -238,10 +238,14 @@ async function checkEarlierSteps(mode) {
   let calls = 0;
   const draw = () => render(<ChatPanel conversationId="paging-regression" messages={messages}
     earlierTaskRuntimesPending={messages.some((message) => !message.traceHydrated)}
-    onLoadEarlierTasks={async () => {
+    onLoadEarlierTasks={async (_conversationId, requestedIds) => {
       calls += 1;
       await tick();
-      const nextIds = messages.filter((message) => !message.traceHydrated).slice(-PAGE_SIZE).map((message) => message.id);
+      // 与生产一致：点了名的行就只拉它们（一页最多 PAGE_SIZE 条），没人点名才退回最新一页。
+      const pending = messages.filter((message) => !message.traceHydrated).map((message) => message.id);
+      const nextIds = (Array.isArray(requestedIds) && requestedIds.length
+        ? requestedIds.filter((id) => pending.includes(id))
+        : pending.slice(-PAGE_SIZE)).slice(0, PAGE_SIZE);
       messages = messages.map((message) => nextIds.includes(message.id) ? {
         ...message, traceHydrated: true, traceTimeline: [{ kind: 'text', id: `${message.id}-step`, text: `historical-step-needle-${message.id}` }],
       } : message);
@@ -252,12 +256,15 @@ async function checkEarlierSteps(mode) {
   await tick();
   const list = document.querySelector('.chat-message-list');
   list.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true }));
+  const type = (value) => {
+    const input = document.querySelector('[aria-label="Find in conversation"]');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
   if (mode === 'search') {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }));
     await tick();
-    const input = document.querySelector('[aria-label="Find in conversation"]');
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'historical-step-needle-paged-0');
-    input.dispatchEvent(new Event('input', { bubbles: true }));
+    type('historical-step-needle-paged-0');
   } else {
     const target = document.querySelector('[data-message-id="paged-8"]');
     list.scrollTop = mode === 'top' ? 0 : target.offsetTop - list.offsetTop;
@@ -265,14 +272,25 @@ async function checkEarlierSteps(mode) {
   }
   for (let page = 0; page < TURN_COUNT / PAGE_SIZE + 2; page += 1) await tick();
   if (mode === 'top') {
-    check(calls > 1 && messages[0].traceHydrated, 'Jumping to the oldest turn continues paging while its steps are still visible');
+    // 跳顶只补视口里那几行：不再按队列从新到旧把整条历史翻完（那正是“一直转圈/抽搐”）。
+    check(calls >= 1 && messages[0].traceHydrated && messages.some((message) => !message.traceHydrated),
+      'Jumping to the oldest turn hydrates its visible rows without sweeping the queue');
   } else if (mode === 'visible') {
     check(list.scrollTop > 160 && messages[8].traceHydrated, 'Visible older steps load without requiring a scroll to the absolute top');
   } else {
-    check(messages.every((message) => message.traceHydrated)
-      && document.querySelector('.haish-search-count')?.textContent === '1 / 1'
-      && document.querySelector('.haish-search-match-preview mark')?.textContent === 'historical-step-needle-paged-0',
-    'Search hydrates all older steps and finds a keyword absent from every summary');
+    // 步骤/工具内容不进搜索：搜索既不扫步骤正文，也不为“找步骤”把步骤行展开；
+    // 但消息正文（包括早期轮次）照旧可搜——搜索打开时整条历史都挂载。
+    check(document.querySelector('.haish-search-count')?.textContent === '0 matches'
+      && !document.querySelector('.chat-timeline-text'),
+    'Search leaves execution steps out and does not force them open');
+    type('Answer 0');
+    let count = '';
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      count = document.querySelector('.haish-search-count')?.textContent || '';
+      if (/^\d+ \/ \d+$/.test(count)) break;
+      await tick();
+    }
+    check(count === '1 / 1', `Search still covers message bodies from older turns (${count})`);
   }
   render(null);
   await tick();
@@ -313,7 +331,7 @@ async function checkPagingRecovery() {
   check(completions.size === 2, 'Switching conversations does not wait for the previous page request');
   completions.get('slow-conversation')();
   await tick();
-  check(document.querySelector('.chat-earlier-tasks')?.textContent === 'Loading earlier steps…',
+  check(document.querySelector('.chat-message-list')?.getAttribute('aria-busy') === 'true',
     'A late completion cannot clear the new conversation loading state');
   show('next-conversation', false);
   completions.get('next-conversation')();
@@ -343,9 +361,10 @@ async function checkPagingRecovery() {
 (async () => {
   try {
     await document.fonts.ready;
+    // 历史步骤分页/搜索先跑：它和行内容的记忆化无关，避免被下面那条既有失败挡住。
+    for (const mode of ['top', 'visible', 'search']) await checkEarlierSteps(mode);
     await checkRows();
     await checkAnnotationWork();
-    for (const mode of ['top', 'visible', 'search']) await checkEarlierSteps(mode);
     await checkPagingRecovery();
     report.dataset.result = 'PASS';
     document.title = `PASS: ${checks.length} chat streaming checks`;

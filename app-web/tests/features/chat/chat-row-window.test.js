@@ -11,6 +11,7 @@ import {
   rememberRowWindow,
   rowWindowCovering,
   shouldGrowRowWindow,
+  visiblePendingTaskIdsIn,
   windowRows,
 } from '../../../src/features/chat/model/chat-row-window.js';
 
@@ -95,4 +96,46 @@ test('the window position survives a conversation switch, bounded by memory slot
   assert.equal(recallRowWindow(memory, `conversation-${CHAT_ROW_WINDOW_MEMORY + 2}`), CHAT_ROW_WINDOW_INITIAL * (CHAT_ROW_WINDOW_MEMORY + 3));
   assert.equal(recallRowWindow(memory, 'conversation-0'), CHAT_ROW_WINDOW_INITIAL);
   assert.equal(recallRowWindow(null, 'conversation-a'), CHAT_ROW_WINDOW_INITIAL);
+});
+
+// 回拉的对象是「视口里那几行还没补水的任务」：探测器要把「可见/预读区/已 hydration」
+// 和「隐藏的上一会话行组」分清楚，否则又会变成整条队列扫一遍。
+const fakeContainer = (rows) => ({
+  querySelectorAll: () => rows.map((row) => ({
+    dataset: { messageId: row.messageId },
+    getClientRects: () => (row.hidden ? [] : [{}]),
+    getBoundingClientRect: () => ({ top: row.top, bottom: row.top + row.height }),
+  })),
+});
+const viewport = { top: 100, bottom: 500 };
+const taskIdByRowId = new Map([
+  ['m-above', 'task-above'], ['m-visible', 'task-visible'], ['m-lookahead', 'task-lookahead'],
+  ['m-below', 'task-below'], ['m-hidden', 'task-hidden'], ['m-no-task', ''],
+]);
+
+test('only the pending rows at the viewport are requested, top to bottom', () => {
+  const container = fakeContainer([
+    { messageId: 'm-above', top: -200, height: 80 },
+    { messageId: 'm-visible', top: 120, height: 80 },
+    { messageId: 'm-lookahead', top: 520, height: 80 },
+    { messageId: 'm-below', top: 900, height: 80 },
+    { messageId: 'm-hidden', top: 120, height: 80, hidden: true },
+    { messageId: 'm-no-task', top: 200, height: 80 },
+  ]);
+  assert.deepEqual(visiblePendingTaskIdsIn(container, viewport, taskIdByRowId, 160),
+    ['task-visible', 'task-lookahead']);
+  // 没有预读区时，只有真的在视口里的那行。
+  assert.deepEqual(visiblePendingTaskIdsIn(container, viewport, taskIdByRowId, 0), ['task-visible']);
+});
+
+test('the pending-row probe survives missing rows and missing lookups', () => {
+  assert.deepEqual(visiblePendingTaskIdsIn(null, viewport, taskIdByRowId), []);
+  assert.deepEqual(visiblePendingTaskIdsIn(fakeContainer([]), viewport, taskIdByRowId), []);
+  assert.deepEqual(visiblePendingTaskIdsIn(fakeContainer([{ messageId: 'm-visible', top: 120, height: 80 }]), viewport, null), []);
+  // 重复任务（同一任务的多个行）只请求一次。
+  const duplicate = fakeContainer([
+    { messageId: 'm-visible', top: 120, height: 80 },
+    { messageId: 'm-visible', top: 200, height: 80 },
+  ]);
+  assert.deepEqual(visiblePendingTaskIdsIn(duplicate, viewport, taskIdByRowId), ['task-visible']);
 });

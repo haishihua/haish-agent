@@ -64,8 +64,11 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
   const [traceExpansionOverride, setTraceExpanded] = React.useState(null);
   React.useEffect(() => setTraceExpanded(null), [message.conversationId, message.id]);
   React.useEffect(() => {
-    // Search opens traces for discovery. Keep them open when search closes so
-    // the found text stays in place; the normal collapse control returns.
+    // A caller can pin a trace open (fixture/screenshot pages do). Keep it open
+    // after that flag clears so the reader does not lose what they landed on; the
+    // normal collapse control comes back. Production opens traces through
+    // `message.traceOpen` / a live stream — search does not force steps open,
+    // because step/tool text is not part of conversation search.
     if (forceTraceOpen) setTraceExpanded(true);
   }, [forceTraceOpen, message.conversationId, message.id]);
   const traceExpanded = traceExpansionOverride ?? message.status === 'cancelled';

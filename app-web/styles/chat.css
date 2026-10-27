@@ -249,8 +249,8 @@
     height: 0;
 }
 
-/* Hint that the conversation holds older turns whose execution records load
-   only when the user scrolls up to them. */
+/* 唯一的顶部状态：执行记录补水失败时的重试条。加载中不再挂任何文案（行自己就是
+   加载态，批次文案会让内容上下抽）。 */
 .chat-earlier-tasks {
     align-self: center;
     padding: 6px 14px;

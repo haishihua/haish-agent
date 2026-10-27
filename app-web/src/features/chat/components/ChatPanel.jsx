@@ -15,12 +15,12 @@ import {
 } from './ChatMessageRow.jsx';
 import { ChatDaySeparator } from './DaySeparator.jsx';
 import { withDaySeparators } from '../model/day-separators.js';
-import { CHAT_ROW_WINDOW_INITIAL, CHAT_ROW_WINDOW_TRIGGER_PX, growRowWindow, recallRowWindow, rememberRowWindow, rowWindowCovering, shouldGrowRowWindow, windowRows } from '../model/chat-row-window.js';
+import { CHAT_ROW_WINDOW_INITIAL, CHAT_ROW_WINDOW_TRIGGER_PX, growRowWindow, recallRowWindow, rememberRowWindow, rowWindowCovering, shouldGrowRowWindow, visiblePendingTaskIdsIn, windowRows } from '../model/chat-row-window.js';
 import { ScrollToBottomButton } from '../../../shared/ui/ScrollToBottomButton.jsx';
 import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
 import { ChatComposer } from './ChatComposer.jsx';
-// Prefetch execution records as their summary rows approach the viewport.
-const EARLIER_TASKS_SCROLL_TRIGGER_PX = 160;
+// 回拉执行记录的对象是「视口里那些还没补水的行」，不再按 scrollTop 阈值预取：
+// 用距离触发的分页会把最新一页当成下一批，见 model/chat-row-window.js。
 // 跳转落点要能居中：窗口若刚好只盖住目标行，它永远贴在顶部，scrollTop 只能是 0。
 // 一次多带几行上文，目标才有可滚动的上方空间；目标很靠上时窗口仍会盖到会话开头，
 // 但这只发生在一次显式跳转，不会随滚动反复扩窗。
@@ -40,7 +40,6 @@ const ChatRowGroup = React.memo(function ChatRowGroup({ group, hidden = false })
         <ChatMessageRow
           key={row.id}
           message={row}
-          forceTraceOpen={group.forceTraceOpen}
           annotationNumbers={group.annotationNumbers}
           onPreviewImage={group.onPreviewImage}
           onAnnotationJump={group.onAnnotationJump}
@@ -375,9 +374,17 @@ export function ChatPanel({
   const [earlierTasksState, setEarlierTasksState] = React.useState(null);
   const earlierTasksLoadRef = React.useRef(null);
   const earlierTasksContextRef = React.useRef(null);
+  // 失败重试要重试同一批行：点按钮时视口可能已经不在原处了。
+  const earlierTasksRequestedRef = React.useRef([]);
+  // 行 id → taskId：视口里的待补水行靠它换成要回拉的任务。
+  const taskIdByRowIdRef = React.useRef(new Map());
+  React.useLayoutEffect(() => {
+    taskIdByRowIdRef.current = new Map(messages.map((message) => [String(message.id), message.taskId || '']));
+  }, [messages]);
   React.useLayoutEffect(() => {
     if (earlierTasksContextRef.current?.conversationId !== conversationId) {
       earlierTasksLoadRef.current = null;
+      earlierTasksRequestedRef.current = [];
       setEarlierTasksState(null);
     }
     earlierTasksContextRef.current = { conversationId, onLoadEarlierTasks, pageKey: earlierTasksPageKey, pending: earlierTaskRuntimesPending };
@@ -387,21 +394,31 @@ export function ChatPanel({
   const earlierTasksPageSettled = earlierTasksState?.conversationId === conversationId
     && earlierTasksState?.pageKey === earlierTasksPageKey && !earlierTaskRuntimesLoading && !earlierTasksError;
   const earlierTasksPending = earlierTaskRuntimesPending && !earlierTasksPageSettled;
-  // 行窗口已经盖住会话开头（没有更早的行）时，顶部提示不该出现：剩下的待补水
-  // 任务都在当前窗口里/下方，和「更早」无关。搜索需要全量，另行保留。
-  const showEarlierTasksHint = earlierTasksPending && (hasEarlierRows || searchActive || Boolean(earlierTasksError));
-  const loadEarlierTasks = React.useCallback(async () => {
+  // 补页是自己触发的（视口里有待补水行就补），读者不需要做任何动作，所以顶部不再挂
+  // “Scroll up to load earlier steps / Loading earlier steps…” 这类文案：它会在一个
+  // 初始化后一直挂着（尤其搜索时），并且每补一批就插入/移走一条 28px 的 pill，反而把
+  // 内容顶得来回跳。只有真的失败时才给一条带重试按钮的状态。
+  // 加载中的状态改由列表的 aria-busy 暴露（读屏和回归夹具都用它）。
+  const showEarlierTasksError = Boolean(earlierTasksError) && !loading && messages.length > 0;
+  const loadEarlierTasks = React.useCallback(async (requestedTaskIds = []) => {
     const context = earlierTasksContextRef.current;
     const previous = earlierTasksLoadRef.current;
     if (!context?.onLoadEarlierTasks || !context.pending) return;
+    // 请求的对象是「视口里那几行还没补水的任务」，不是「最新的待补水页」。
+    // 在会话顶部时最新的一页全在视口下方：以前按队列从头往后翻，看得见的行一直
+    // 不会被补水，于是一个手势之后整条历史被一页页翻完（“一直转圈、页面抽搐”）。
+    const taskIds = requestedTaskIds.filter(Boolean);
+    if (taskIds.length) earlierTasksRequestedRef.current = taskIds;
+    const pageKey = context.pageKey;
+    const sliceKey = taskIds.length ? `ids:${taskIds.join('|')}` : `page:${pageKey}`;
     if (previous?.conversationId === context.conversationId
-      && (previous.loading || (previous.pageKey === context.pageKey && !previous.error))) return;
-    const request = { conversationId: context.conversationId, pageKey: context.pageKey, loading: true, error: '' };
+      && (previous.loading || (previous.sliceKey === sliceKey && !previous.error))) return;
+    const request = { conversationId: context.conversationId, pageKey, sliceKey, taskIds, loading: true, error: '' };
     earlierTasksLoadRef.current = request;
     setEarlierTasksState(request);
     let error = '';
     try {
-      await context.onLoadEarlierTasks(context.conversationId);
+      await context.onLoadEarlierTasks(context.conversationId, taskIds);
     } catch {
       error = 'Could not load earlier steps.';
     } finally {
@@ -430,23 +447,16 @@ export function ChatPanel({
     const viewport = element.getBoundingClientRect();
     // 留在原地的上一会话行组是 display:none：它的 [data-trace-pending] 不算可见，
     // 否则会把别的会话的执行记录拉进来。
-    const pendingVisible = [...element.querySelectorAll('[data-trace-pending]')].some((row) => {
-      if (!row.getClientRects().length) return false;
-      const rect = row.getBoundingClientRect();
-      return rect.bottom >= viewport.top && rect.top <= viewport.bottom + EARLIER_TASKS_SCROLL_TRIGGER_PX;
-    });
-    // 已经看到会话开头、且没有可见的待补水行：没有更早的任务可拉，停止。
-    // 之前只看 scrollTop，会让「顶部就是第一条」的会话每帧都去补下方任务。
-    if (!hasEarlierRows && !searchActive && !pendingVisible) return;
-    if (searchActive || pendingVisible
-      || (hasEarlierRows && element.scrollTop <= EARLIER_TASKS_SCROLL_TRIGGER_PX && (userScrolling || navigating))) {
-      loadEarlierTasks();
-    }
+    const visiblePendingTaskIds = visiblePendingTaskIdsIn(element, viewport, taskIdByRowIdRef.current);
+    // 只有「视口里有还没补水的行」才回拉：补的就是读者正在看的那几行。
+    // （搜索也不再拿最新一页去扫队列，见 model/chat-row-window.js 的说明。）
+    if (!visiblePendingTaskIds.length) return;
+    loadEarlierTasks(visiblePendingTaskIds);
   }, [hasEarlierRows, growEarlierRows, earlierTasksPending, earlierTaskRuntimesLoading, earlierTasksError, searchActive, loadEarlierTasks, loading]);
   React.useEffect(() => {
-    // Re-check after each page settles, even if row count/scrollTop did not
-    // change. handleListScroll itself requires a real upward gesture or a map
-    // jump, so the first layout pass at scrollTop 0 cannot start pagination.
+    // Re-check after each render, even if row count/scrollTop did not change: the
+    // loader below only fires for rows that are actually in the viewport, so the
+    // first layout pass at scrollTop 0 cannot page anything that is not on screen.
     const frame = requestAnimationFrame(handleListScroll);
     return () => cancelAnimationFrame(frame);
   }, [handleListScroll, messages, conversationId]);
@@ -455,7 +465,6 @@ export function ChatPanel({
     rows: windowedRows,
     count: rowWindow,
     annotationNumbers,
-    forceTraceOpen: searchActive,
     actionsDisabled: running || submitPending || taskActionsPending || Boolean(stopError),
     lastTaskId: latestTaskId || messages.at(-1)?.taskId,
     retryPendingTaskId,
@@ -464,7 +473,7 @@ export function ChatPanel({
     onEditMessage: editMessage,
     onPreviewImage: openImagePreview,
     onAnnotationJump: jumpToAnnotation,
-  }), [conversationId, windowedRows, rowWindow, annotationNumbers, searchActive, running, submitPending, latestTaskId, taskActionsPending, retryPendingTaskId, stopError, messages, forkMessage, retryMessage, editMessage, openImagePreview, jumpToAnnotation]);
+  }), [conversationId, windowedRows, rowWindow, annotationNumbers, running, submitPending, latestTaskId, taskActionsPending, retryPendingTaskId, stopError, messages, forkMessage, retryMessage, editMessage, openImagePreview, jumpToAnnotation]);
   // 下一次会话切换时，这一份就是被留在原地的那个分组。
   liveGroupRef.current = liveGroup;
   const composerInputRef = React.useRef(null);
@@ -478,17 +487,20 @@ export function ChatPanel({
   return (
     <section className="chat-workspace" aria-label="Chat">
       <div className="chat-message-region">
-        <ConversationSearch key={conversationId || 'draft'} scrollRef={listRef} onSearchChange={handleSearchChange}
-          loading={earlierTasksPending && !earlierTasksError} />
+        {/* key 在本层兄弟之间必须唯一：搜索面板和导轨都按会话重置，但同一个
+            会话 id 会撞成同一个 key，React 的 key 映射会漏删旧节点——切换会话后
+            搜索面板会留下一个没有事件处理器的僵尸 DOM（看着开着，却点不动、打不了字）。 */}
+        <ConversationSearch key={`search:${conversationId || 'draft'}`} scrollRef={listRef} onSearchChange={handleSearchChange}
+          loading={Boolean(earlierTaskRuntimesLoading)} />
         {/* 导轨的跳转/拖拽是显式导航：先让「跟随最新」松手，否则它会和轨道抢 scrollTop。 */}
-        {!loading && <ConversationMap key={conversationId || 'draft'} scrollRef={listRef} entries={mapEntries}
+        {!loading && <ConversationMap key={`map:${conversationId || 'draft'}`} scrollRef={listRef} entries={mapEntries}
           onNavigate={stopFollowingLatest} onReveal={revealMapTurn} />}
         <div ref={listRef} className={`chat-message-list${retainSearchLayout ? ' is-searching' : ''}`} onScroll={handleListScroll}
+          aria-busy={earlierTaskRuntimesLoading ? 'true' : undefined}
           onWheel={markScrollIntent} onTouchMove={markScrollIntent} onKeyDown={markScrollIntent}>
-          {!loading && messages.length > 0 && showEarlierTasksHint ? (
+          {showEarlierTasksError ? (
             <div className="chat-earlier-tasks" role="status">
-              {earlierTasksError ? <>{earlierTasksError} <button type="button" onClick={loadEarlierTasks}>Retry loading steps</button></>
-                : earlierTaskRuntimesLoading ? 'Loading earlier steps…' : 'Scroll up to load earlier steps'}
+              {earlierTasksError} <button type="button" onClick={() => loadEarlierTasks(earlierTasksRequestedRef.current)}>Retry loading steps</button>
             </div>
           ) : null}
           {!loading && hasEarlierRows ? (

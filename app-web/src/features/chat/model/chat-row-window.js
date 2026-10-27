@@ -50,6 +50,26 @@ export function shouldGrowRowWindow(scrollTop, triggerPx = CHAT_ROW_WINDOW_TRIGG
   return top <= trigger;
 }
 
+// 视口里那几行「执行记录还没回拉」的任务（行上有 data-trace-pending）。
+//
+// 回拉要看的是这几行，而不是待补水队列里最新的一页：两者在长会话里是反的——
+// 最新一页永远在视口下方。以前在会话顶部也按队列从新往旧翻，看得见的行一直补不到，
+// 于是一个手势之后整条历史被一页页翻完（界面上就是一直转圈 + 内容抽搐）。
+// 留在原地的上一会话行组是 display:none，没有布局盒子，自然不算可见。
+export function visiblePendingTaskIdsIn(container, viewport, taskIdByRowId, lookaheadPx = CHAT_ROW_WINDOW_TRIGGER_PX) {
+  if (!container || !viewport) return [];
+  const lookahead = Number.isFinite(Number(lookaheadPx)) ? Number(lookaheadPx) : 0;
+  const ids = [];
+  for (const row of container.querySelectorAll('[data-trace-pending]')) {
+    if (!row.getClientRects().length) continue;
+    const rect = row.getBoundingClientRect();
+    if (rect.bottom < viewport.top || rect.top > viewport.bottom + lookahead) continue;
+    const taskId = taskIdByRowId?.get?.(String(row.dataset?.messageId || ''));
+    if (taskId && !ids.includes(taskId)) ids.push(taskId);
+  }
+  return ids;
+}
+
 /** 记住某个会话渲染到第几行（超出 limit 的老会话被丢掉，内存有界）。 */
 export function rememberRowWindow(memory, conversationId, count, limit = CHAT_ROW_WINDOW_MEMORY) {
   if (!memory || typeof memory.set !== 'function' || !conversationId) return memory;
