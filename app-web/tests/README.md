@@ -4,6 +4,8 @@
 
 ## 自动测试
 
+- Sub-agent 增量投影：`features/chat/sub-agent-performance.test.js` 覆盖合并/交错 delta、跳帧、未变化主/子工具节点复用、生命周期、历史替换与折叠详情懒计算；`fixtures/sub-agent-performance.html` 使用生产时间线组件验证折叠期间零详情读取、重新展开显示最新内容、兄弟/已完成子工具不重复渲染及终态/审批切换。夹具全程离线，不调用模型或写真实会话。
+
 - 模型目录加载：`features/chat/provider-models-loading.test.js` 覆盖缓存/已保存列表后台刷新、首次无目录加载、请求与正文 15 秒期限、AbortError 收尾、Provider/endpoint 归属及卸载取消；后台刷新失败只保留上次目录，不再进入界面。`fixtures/provider-models-loading.html` 使用真实 ModelPicker、ChatComposer 和 WorkflowRuntimeConfig 验证选项不被 Loading 隐藏、刷新失败静默保留原列表（无错误卡与重试按钮）、迟到结果隔离，以及后台刷新期间保留原路由发送；网络与存储全为离线内存桩。
 
 - Provider 启动与缓存同步：`features/settings/llm-settings-lifecycle.test.js` 运行生产 Hook、AppShell 参数和保存处理器，覆盖陈旧缓存启动恢复、成功响应脱敏回写、GET/保存/删除竞态、草稿与执行快照隔离、编辑保留、启停、缓存失败及有限启动重试。`fixtures/llm-settings-lifecycle.html` 用真实 React 编辑器和 ChatComposer 验证启动发送、未保存编辑、保存后重挂载发送和真删除拒发；使用内存存储与离线传输，不修改真实配置或调用模型。
@@ -35,7 +37,7 @@
 
 - `features/chat/composer-message-history.test.js` 覆盖用户消息历史与未发送草稿分离：↑ 只预览当前会话的全部用户消息、↓/Escape 返回草稿、非浏览状态 ↓ 不清空、切会话/组件重挂保留原草稿及编辑/清空成为新草稿。`fixtures/composer-message-history.html` 使用真实 ChatPanel 与 Lexical 输入框检查方向键、光标移动、多行草稿和历史窗口外的消息。
 
-- `contracts/scroll-to-bottom.test.js` 锁住搜索刷新不重复跳转、关闭不重启底部跟随、历史窗口/执行步骤保留以及焦点返回不滚动。`fixtures/conversation-search-scroll.html` 用真实 ChatPanel 的 100 条消息验证搜索期间自由滚动、输出更新不拉回、×/Escape/清空关键词保留位置、显式上下项跳转及返回最新/切会话恢复跟随。
+- `contracts/scroll-to-bottom.test.js` 锁住搜索刷新不重复跳转、关闭不重启底部跟随、历史窗口保留以及焦点返回不滚动。`fixtures/conversation-search-scroll.html` 用真实 ChatPanel 的 100 条消息验证搜索期间自由滚动、输出更新不拉回、×/Escape/清空关键词保留位置、显式上下项跳转及返回最新/切会话恢复跟随，并锁住“步骤/工具内容不进搜索”（搜步骤里的词是 `0 matches`，且搜索不会为了找步骤把步骤行展开、也不会推走阅读位置）。
 
 - `features/workflow/runtime-flow-nodes.test.js` 验证状态/流式更新保留 React Flow 的 measured 尺寸和 handle bounds、未变化节点复用、真正的移动/增删/类型替换仍生效；`fixtures/runtime-update-stability.html` 用生产运行画布连续更新 30 次，检查节点/边不隐藏且 DOM 身份不变，并用生产任务卡与确认 hook 验证当前任务完成无需切换就清绿点、延迟通知/回前台/返回任务页自动清除，同时保留同会话其他任务和后台未读通知。
 
@@ -90,6 +92,7 @@
 
 | 页面 | 覆盖范围 |
 | --- | --- |
+| [sub-agent-performance.html](fixtures/sub-agent-performance.html) | 20 次折叠流更新零详情读取；展开/收起/重新展开内容正确；未变化兄弟与已完成子工具不重渲染；完成、失败、取消及审批切换。 |
 | [runtime-update-stability.html](fixtures/runtime-update-stability.html) | 30 次状态/流式更新节点与边保持可见；当前任务完成、延迟通知、回前台和返回任务页自动清绿点，不清其他任务/会话及后台未读。 |
 | [workflow-all-node-models.html](fixtures/workflow-all-node-models.html) | Clarifier / Worker / Verifier 在完成、运行、待执行时均显示模型配置；画布与详情一致，实际执行配置立即覆盖本节点，其他节点配置不受影响；旧任务空节点配置表使用本任务记录的默认路由，只读且不修改任务。 |
 | [workflow-provider-icons.html](fixtures/workflow-provider-icons.html) | Provider / Model 的收起字段与菜单均展示图标；只读历史品牌键（openai）显示 OpenAI 与品牌图标，不误用当前同品牌配置；已删除配置显示通用图标，空值保留占位；仅显示不改写运行配置。 |
@@ -100,11 +103,12 @@
 | [approval-picker-boundary.html](fixtures/approval-picker-boundary.html) | 生产模式选择器：聊天 / Workflow、240 / 360 / 640px 动画边界及命中测试；Smart / Strict 切换带会话 ID，双会话模式独立、切回恢复、失败可见且回退、新草稿创建会话后保存、只读明确禁用；上排两颗圆是一对——左边那颗原位不动（`-30px`，第一个备选），只把右边那颗往左拉到 `+16px`，中心距 46px、缝 8px（`seam` 断言 5～12px，改前是 22px 的两颗“卫星”）。 |
 | [approval-decisions.html](fixtures/approval-decisions.html) | 生产审批卡：Once / Remember 按钮可点击、发送正确 decision、成功后卡片消失，其他会话审批不展示；离线桩不批准真实请求。 |
 | [settings-agent-count.html](fixtures/settings-agent-count.html) | 展开 Automation 即加载 Agent 总数，不用先点 Agent；加载前不显示默认 1，统计系统预设及自定义（含禁用项），切换 Agent / Workflow 不重复请求；计数与加载提示共用固定右侧列，长标题、三位数字及选中状态不改变对齐；`#checks[data-result]` 输出 11 项检查。 |
-| [conversation-search.html](fixtures/conversation-search.html) | 关键词 Range、跨标签匹配、精确跳转和滚动条标记 |
+| [conversation-search.html](fixtures/conversation-search.html) | 关键词 Range、跨标签匹配、精确跳转和滚动条标记；执行步骤/工具输出不进搜索（步骤块里的同一个词不计入命中，删掉步骤块也不改变命中与标记） |
+| [conversation-search-switch.html](fixtures/conversation-search-switch.html) | 生产 ChatPanel + 真实 chat.css：开着搜索切会话后搜索按会话重置——DOM 里只剩一个 `.haish-conversation-search`（旧节点真的被删掉，不再是那个「看着还开着、0 matches、点 × 不关、也打不了字」的僵尸面板），面板/关键词/highlight 全清；新会话 Ctrl+F 仍能打开并聚焦、搜到的是新会话正文、× 能关；来回切保持关闭，且始终只有一个搜索节点和一个导轨；会话还在 loading（导轨不渲染）时切会话同样收尾；控制台没有任何 React 同 key 兄弟告警（搜索与导轨的 key 用 `search:` / `map:` 区分） |
 | [message-annotations.html](fixtures/message-annotations.html) | 选区引用、UTF-16 偏移、跨 Markdown 选取和重新定位 |
 | [annotation-numbering.html](fixtures/annotation-numbering.html) | 注释编号在整个会话内累加：跨轮次、草稿与已发送引用共用同一序号 |
-| [chat-streaming-regression.html](fixtures/chat-streaming-regression.html) | 生产 ChatPanel 的历史消息缓存、最新分支/重试/编辑参数；批注增量处理、滚动布局、DOM 替换及清理；历史步骤连续翻页、搜索、失败重试与切换会话 |
-| [chat-earlier-steps-loop.html](fixtures/chat-earlier-steps-loop.html) | 真实 ChatPanel + base.css + chat.css：点击顶部导轨后，空返回、undefined、反复相同结果均只尝试同一待加载集合一次，不因 scroll、重新渲染或回调换引用而循环；完成后加载 pill 消失、顶部位置稳定；23 个真实待加载任务按 8 页正常耗尽，队列内容变化（即使条数和消息行相同）才可继续，失败保留显式重试。`window.__earlierStepsChecks()` 输出 20 项断言；`window.__earlierStepsShow('empty')` 可配合实际鼠标复测。 |
+| [chat-streaming-regression.html](fixtures/chat-streaming-regression.html) | 生产 ChatPanel 的历史消息缓存、最新分支/重试/编辑参数；批注增量处理、滚动布局、DOM 替换及清理；历史步骤分页（只补视口那几行、不扫整条队列）、搜索只覆盖消息正文（步骤不展开也不命中）、失败重试与切换会话 |
+| [chat-earlier-steps-loop.html](fixtures/chat-earlier-steps-loop.html) | 真实 ChatPanel + base.css + chat.css：点击顶部导轨后，空返回、undefined、反复相同结果均只尝试同一待加载集合一次，不因 scroll、重新渲染或回调换引用而循环；完成后顶部位置稳定；回拉只补**视口里那几行**（会话顶部不再把整条待补水队列从新到旧翻一遍），队列下方的任务保持待补、读者翻到那行才拉它那一批；顶部不再挂“Scroll up to load earlier steps / Loading earlier steps…” 这类文案（补页不需要读者动作，一条 28px 的 pill 来了又走会把内容顶得上下抽），加载中只体现在 `.chat-message-list[aria-busy]` 上，只有失败才给重试按钮；搜索时也不会把那条文案带回来，搜索计数不会因为还有下游待补水任务就永远停在 “Searching…”。`window.__earlierStepsChecks()` 输出 31 项断言；`window.__earlierStepsShow('empty')` 可配合实际鼠标复测。 |
 | [day-separator.html](fixtures/day-separator.html) | 生产 ChatPanel + 真实时间戳：会话详情的日期头只在消息自己的 `created_at` 跨天处出现（首条消息也有头，列表从历史中间打开时同样成立），头在当天第一条消息前面、同一天共享一条；追加同一天的消息不新增头，跨到新的一天立刻多一条；每条消息自己的时间仍留在悬停浮标（`.chat-bubble-clock`）上，日期头里没有时间；`#checks[data-result]` 输出逐项 PASS / FAIL |
 | [workflow-composer-dock.html](fixtures/workflow-composer-dock.html) | 生产 WorkflowRuntimePage + 生产 ChatComposer：工作流舞台里只有一个 `.workflow-composer-dock`、dock 里就是聊天那个 `.chat-composer`，页面里没有任何 `.task-delegation` 节点，也没有把聊天面板整套搬进来；输入框自己的外边距在 dock 里归零、composer 占满 dock 宽；dock 按 `--task-panel-edge-x` 贴住画布左右各 18px、离底 10px，整块落在画布底部预留的 154px 带子里（不会压住节点）；打字后 Send 可用、点击把原文交回 `onSend` 并清空输入框；运行中按钮变 Stop，且不出现「Add instruction」（工作流不支持中途纠偏）；空态（还没选 workflow）挂的是同一个输入框；`#checks[data-result]` 输出逐项 PASS / FAIL |
 | [workflow-node-parity.html](fixtures/workflow-node-parity.html) | 生产 WorkflowFlowNode 在真实容器里并排对照（`.workflow-canvas` 编辑画布 / `.workflow-run-canvas` 运行画布）：同一类型节点的卡片高度（72px）、图标底色/字色、标题颜色、默认描边（自己 accent 的 52% + 一圈 16px/10% 柔光）、选中态单层高亮逐项一致（没有 `#aebdd3` 外圈、也没有第二道贴边环；配置页 = 中性卡片 + 类型色图标）；没跑到的节点直接穿配置页那套外观（图标底色/字色与配置页同一份，只有描边比完成态淡——不再另配灰色皮肤），跑过/在跑才由状态色覆盖（运行中蓝 + 呼吸圈、完成态按类型色）；两种页面里把手都是同一颗 7px 实心小圆点、颜色跟着类型色（Start 绿 / Agent 蓝 / Condition 紫 / Loop 青 / End 紫；运行页在跑/等人用状态色）、外面一圈暗色细边 + glow（配置页过去 12px 常显的中性点、运行页 6px 收起的那两套都不在了）；`window.__nodeParity` 返回逐项断言 |
@@ -124,7 +128,7 @@
 | [lossless-artwork.html](fixtures/lossless-artwork.html) | 生产企鹅卡片：9 张 PNG 与无损 WebP 在 Chromium 中逐像素/尺寸一致，原始卡片、纸底和 SVG 绿幕层正常加载，点选/手势/退出保持；`#checks[data-result]` 输出 PASS / FAIL。`scripts/optimize-ui-images.py --check` 验证源图一致性；`scripts/check-native-logo.mjs` 用 Electron 验证开发/打包的共享 PNG Dock 图标。 |
 | [workflow-runtime-detail.html](fixtures/workflow-runtime-detail.html) | 真实运行页：类型色运行高亮、选中节点与右侧同色详情联动、装饰连接不拦截操作、真实输入/回复、状态更新保留选中、切换任务/关闭清理选中、键盘调整面板宽度；无 Peek / Normal / Focus |
 | [workflow-node-reply-name.html](fixtures/workflow-node-reply-name.html) | 生产 WorkflowRuntimePage + 生产 ChatMessageRow：点开工作流节点后，agent 节点的回复气泡署名该节点配置的 `agent_id`（两个不同节点各署各的名字），llm 节点与审批卡仍写 `Assistant`，节点输入气泡仍是 `You`，内部 id 不出现，整轮点节点看回复没有页面报错；`window.__workflowReplyNameChecks` 返回逐项断言 |
-| [ask-user-card.html](fixtures/ask-user-card.html) | 生产 AskUserInlineForm + 生产 approvalStore：占位提示写明「可加备注，也可自己写答案」，题目翻页是 26px 描边圆按钮 + `Question 1 of 2` + 悬停说明且真的能切题，最后一题/第一题的禁用边界、提交门禁与「选选项 + 备注 / 纯手写」的答案形状逐项断言；方框勾选是可取消的开关（单选项再点一次就取消、取消后重新点回来照样能选上、取消不删已写下的备注，整行点击走的也是同一条路）；`window.__askUserChecks()` 返回逐项断言 |
+| [ask-user-card.html](fixtures/ask-user-card.html) | 生产 AskUserInlineForm + 生产 approvalStore：上下文和题干都走生产 Markdown 渲染（表格变成真表格、反引号变成行内代码，源码不再摊在卡片里），而 `aria-label` 拿的是剥干净的纯文本（读屏不会念出 `**什么**`）；占位提示写明「可加备注，也可自己写答案」，题目翻页是 26px 描边圆按钮 + `Question 1 of 2` + 悬停说明且真的能切题，最后一题/第一题的禁用边界、提交门禁与「选选项 + 备注 / 纯手写」的答案形状逐项断言；方框勾选是可取消的开关（单选项再点一次就取消、取消后重新点回来照样能选上、取消不删已写下的备注，整行点击走的也是同一条路）；`window.__askUserChecks()` 返回逐项断言 |
 | [turn-duration.html](fixtures/turn-duration.html) | 生产 ChatMessageRow：折叠步骤的时长只来自真时间戳——拷贝里没有 `completedAt` 时数字位留空（截图里那个「› 0s」就是这里编出来的），有完成时间的轮次显示量出来的值，在跑的轮次从首字起计时，展开态没有完成时间时不渲染计时器，数字位留空时折叠按钮仍有可访问名（`Show steps`，有时长时名字就是那个真数字）；`#checks[data-result]` 输出逐项 PASS / FAIL |
 | [error-states.html](fixtures/error-states.html) | 生产 ErrorState / ErrorBoundary（跑在真实 `chat.css` 上）：失败提示只有一套 UI——聊天失败轮是 16px 圆角红卡 + 胶囊 Retry，设置 / 对话框 / 审批卡里的 inline 卡更紧凑（没有重试入口就不渲染按钮，带 handler 时才回来）且铺满容器（不缩成药丸），同一张卡进聊天气泡时与正文留 8px，重试中是 `role=status` 的扫光行；崩溃屏复用同一张卡（标题 HAISH UI ERROR、卡不再是内联样式方框、原始堆栈收进 Technical details），陈旧分片给 Reload app、普通崩溃给 Try again；`window.__errorStateChecks()` 返回逐项断言 |
 | [app-update-footer.html](fixtures/app-update-footer.html) | 生产 AppUpdateFooter + 生产 PortalTooltip（用假桌面 API 推进状态）：装好之后页脚是弱提示（框还在、没有底色），不再是灰掉的大按钮——开发版 `vX · Dev build`（点不动，悬停说明「Updates are only available in installed builds」）、浏览器里没有桌面 API 时是老文案 `Updates unavailable`（同样是一行灰字）、已是最新 `vX · Up to date`（不铺进度卡，点一下重新对版本并弹一次 toast）、检查中 `vX · Checking…` 带一颗小转圈；只有 `available` 与 `error && canInstall` 才长成按钮（`Update to v0.0.23` / `Retry install`，点击走 `applyLatestAppUpdate`，装的时候铺 JobProgress 且不再留第二个入口）；启动静默对版本时是 `vX · Checking…` 带一颗小转圈且不铺卡、0 次 toast（查到新版当场长出入口）；点入口后灰卡（JobProgress）立刻接手：Check（`Checking updates`，当前阶段就是 Check）→ Download（真百分比）→ Install 各停在对应阶段、全程同一张卡、不再留第二个入口、检查阶段 0 toast；两种形态是同一个 DOM 节点、同高（34px）同行顶（上面的列表不跳）；弱提示是居中的状态行（文字中心 = 页脚中心，`justify-content: center`）、字体跟应用正文统一（`--conversation-font`，和这行的悬浮说明一致）；`#checks[data-result]` 输出逐项 PASS / FAIL |
