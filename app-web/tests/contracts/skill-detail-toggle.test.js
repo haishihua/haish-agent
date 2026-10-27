@@ -6,7 +6,7 @@ const source = fs.readFileSync(new URL('../../src/features/settings/components/T
 
 test('skill details show description and location without a duplicate enable control', () => {
   const start = source.indexOf('{selectedSkill &&');
-  const end = source.indexOf('{provider && <FieldRow', start);
+  const end = source.indexOf('{provider &&', start);
   assert.ok(start >= 0 && end > start);
   const detail = source.slice(start, end);
   assert.match(detail, /selectedSkill\.description/);
@@ -15,7 +15,7 @@ test('skill details show description and location without a duplicate enable con
 });
 
 test('the outer skill list retains the enable callback and busy guard', () => {
-  assert.match(source, /onToggle=\{skillsPane && !item\.shadowed \? enabled => onToggleSkill\(item\.name, enabled\) : undefined\}/);
+  assert.match(source, /onToggle=\{skillsPane \? \(item\.shadowed \? undefined : enabled => onToggleSkill\(item\.name, enabled\)\) : \(\) => activateProvider\(id\)\}/);
   assert.match(source, /busy=\{Boolean\(skillActionBusy \|\| busy\)\}/);
   assert.doesNotMatch(source, /SettingsToggleRow/);
 });

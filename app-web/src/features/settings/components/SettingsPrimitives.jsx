@@ -50,14 +50,14 @@ export function SettingsToggleRow({ label, checked, onCheckedChange, disabled = 
   return <div className="settings-toggle-modern"><span>{label}</span><Switch aria-label={label} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} /></div>;
 }
 
-export function SettingsRow({ title, description, icon, selected, onOpen, readOnly, badge, enabled, onToggle, busy, onDelete, deleteLabel = 'Delete', status }) {
+export function SettingsRow({ title, description, icon, selected, onOpen, readOnly, badge, enabled, onToggle, busy, onDelete, deleteLabel = 'Delete', status, toggleLabel, toggleTitle }) {
   return <Item className={`settings-row-modern ${selected ? 'is-selected' : ''}`}>
     <Button variant="ghost" className="settings-row-main" onClick={onOpen} aria-label={`${readOnly ? 'View' : 'Edit'} ${title}`} aria-expanded={selected}>
       <ItemMedia>{icon}</ItemMedia><ItemContent><ItemTitle>{title}{readOnly && <Badge variant="secondary">Built-in</Badge>}{badge && <Badge variant="secondary">{badge}</Badge>}</ItemTitle>{description && <ItemDescription>{description}</ItemDescription>}</ItemContent>
       {status && <span className={`settings-row-status ${status.className || ''}`}>{status.className === 'success' && <Check size={12} />}{status.label}</span>}
       {!onToggle && <ChevronRight size={14} className="settings-row-chevron" />}
     </Button>
-    {(onToggle || onDelete) && <ItemActions>{onToggle && <Switch aria-label={`Enable ${title}`} checked={enabled !== false} onCheckedChange={onToggle} disabled={busy} />}{onDelete && <DropdownMenu modal={false}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`More actions for ${title}`} disabled={busy}><Ellipsis /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem variant="destructive" onSelect={onDelete}><Trash2 />{deleteLabel}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}</ItemActions>}
+    {(onToggle || onDelete) && <ItemActions>{onToggle && <Switch aria-label={toggleLabel || `Enable ${title}`} title={toggleTitle} checked={enabled !== false} onCheckedChange={onToggle} disabled={busy} />}{onDelete && <DropdownMenu modal={false}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`More actions for ${title}`} disabled={busy}><Ellipsis /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem variant="destructive" onSelect={onDelete}><Trash2 />{deleteLabel}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}</ItemActions>}
   </Item>;
 }
 

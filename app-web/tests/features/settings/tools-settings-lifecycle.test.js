@@ -24,7 +24,7 @@ const find = (records, id) => records.tools.find(record => record.id === id);
 const patch = (records, id, fields) => ({ ...records, tools: records.tools.map(record => record.id === id ? { ...record, ...fields } : record) });
 const snapshot = (config, inventory, configured = false) => ({
   mcp: { config, path: '/fixture/saved-mcp.json' },
-  web_search: { mode: 'hybrid', providers: { tavily: { api_key: '', api_key_configured: configured } } },
+  web_search: { provider: 'tavily', providers: { tavily: { api_key: '', api_key_configured: configured } } },
   skills: { items: [{ name: inventory }] },
 });
 const settled = () => new Promise(resolve => setImmediate(resolve));
@@ -243,13 +243,13 @@ for (const getFirst of [true, false]) {
     h.edit(prev => patch(prev, 'tools-mcp', { mcp_json: JSON.stringify(edited, null, 2) }));
     h.edit(prev => {
       const web = find(prev, 'tools-web').web_search;
-      return patch(prev, 'tools-web', { web_search: { ...web, mode: 'tavily', providers: { ...web.providers, tavily: { ...web.providers.tavily, api_key: 'fixture-in-flight-key' } } } });
+      return patch(prev, 'tools-web', { web_search: { ...web, provider: 'tavily', providers: { ...web.providers, tavily: { ...web.providers.tavily, api_key: 'fixture-in-flight-key' } } } });
     });
     h.respond(h.requests[1], snapshot(nextConfig, 'put-inventory', true));
     assert.equal(await save, true);
     if (!getFirst) await respondGet();
     assert.deepEqual(JSON.parse(find(h.records, 'tools-mcp').mcp_json), edited);
-    assert.equal(find(h.records, 'tools-web').web_search.mode, 'tavily');
+    assert.equal(find(h.records, 'tools-web').web_search.provider, 'tavily');
     assert.equal(find(h.records, 'tools-web').web_search.providers.tavily.api_key, 'fixture-in-flight-key');
     assert.equal(find(h.records, 'tools-web').web_search.providers.tavily.api_key_configured, true);
   });
@@ -305,7 +305,7 @@ test('failed PUT replays deferred initialization without erasing edits made afte
 test('production AppShell readback wrapper forwards the request baseline in current and switched workspaces', () => {
   const initial = createDefaultSettingsRecords();
   const edited = patch(patch(initial, 'tools-mcp', { mcp_json: '{"servers":{"unsaved":{}}}' }), 'tools-web', {
-    web_search: { ...find(initial, 'tools-web').web_search, mode: 'tavily', providers: {
+    web_search: { ...find(initial, 'tools-web').web_search, provider: 'tavily', providers: {
       ...find(initial, 'tools-web').web_search.providers,
       tavily: { ...find(initial, 'tools-web').web_search.providers.tavily, api_key: 'fixture-wrapper-key' },
     } },
@@ -319,7 +319,7 @@ test('production AppShell readback wrapper forwards the request baseline in curr
     assert.deepEqual(JSON.parse(find(untouched, 'tools-mcp').mcp_json), payload.mcp.config, 'untouched configuration still initializes');
     const result = applyReadback(edited, payload, initial);
     assert.equal(find(result, 'tools-mcp').mcp_json, find(edited, 'tools-mcp').mcp_json, 'the third argument protects MCP edits');
-    assert.equal(find(result, 'tools-web').web_search.mode, 'tavily');
+    assert.equal(find(result, 'tools-web').web_search.provider, 'tavily');
     assert.equal(find(result, 'tools-web').web_search.providers.tavily.api_key, 'fixture-wrapper-key');
     assert.equal(find(result, 'tools-web').web_search.providers.tavily.api_key_configured, true);
     assert.equal(find(result, 'tools-skills').skills.length, currentKey === 'at-request' ? 1 : 0, 'only current-workspace inventory is applied');

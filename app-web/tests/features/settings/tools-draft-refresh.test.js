@@ -6,23 +6,23 @@ import { createSettingsHandlers } from '../../../src/features/settings/hooks/cre
 
 const fullPayload = {
   mcp: { config: { servers: { saved: {} } }, path: '/fixture/mcp.json' },
-  web_search: { mode: 'serpapi', providers: { tavily: { api_key_configured: true }, serpapi: { api_key_configured: true } } },
+  web_search: { provider: 'serpapi', providers: { tavily: { api_key_configured: true }, serpapi: { api_key_configured: true } } },
   skills: { items: [{ name: 'latest' }] },
 };
 const find = (records, id) => records.tools.find(record => record.id === id);
 const edit = records => ({ ...records, tools: records.tools.map(record => record.id === 'tools-mcp'
   ? { ...record, mcp_json: '{"servers":{"draft":{}}}' }
-  : record.id === 'tools-web' ? { ...record, web_search: { ...record.web_search, mode: 'tavily', providers: { ...record.web_search.providers, tavily: { ...record.web_search.providers.tavily, api_key: 'fixture-unsaved-key' } } } } : record) });
+  : record.id === 'tools-web' ? { ...record, web_search: { ...record.web_search, provider: 'tavily', providers: { ...record.web_search.providers, tavily: { ...record.web_search.providers.tavily, api_key: 'fixture-unsaved-key' } } } } : record) });
 
 test('first configuration GET initializes untouched fields', () => {
   const initial = createDefaultSettingsRecords();
   const loaded = applyToolsSettingsPayloadToRecords(initial, fullPayload, initial);
   assert.deepEqual(JSON.parse(find(loaded, 'tools-mcp').mcp_json), fullPayload.mcp.config);
-  assert.equal(find(loaded, 'tools-web').web_search.mode, 'serpapi');
+  assert.equal(find(loaded, 'tools-web').web_search.provider, 'serpapi');
   assert.equal(find(loaded, 'tools-web').web_search.providers.tavily.api_key_configured, true);
 });
 
-test('delayed first GET preserves MCP, mode and key typed during the request, initializes untouched metadata', async () => {
+test('delayed first GET preserves MCP, provider and key typed during the request, initializes untouched metadata', async () => {
   const initial = createDefaultSettingsRecords();
   let resolve;
   const request = new Promise(yes => { resolve = yes; });
@@ -32,7 +32,7 @@ test('delayed first GET preserves MCP, mode and key typed during the request, in
   resolve(fullPayload);
   await load;
   assert.equal(find(records, 'tools-mcp').mcp_json, '{"servers":{"draft":{}}}');
-  assert.equal(find(records, 'tools-web').web_search.mode, 'tavily');
+  assert.equal(find(records, 'tools-web').web_search.provider, 'tavily');
   assert.equal(find(records, 'tools-web').web_search.providers.tavily.api_key, 'fixture-unsaved-key');
   assert.equal(find(records, 'tools-web').web_search.providers.serpapi.api_key_configured, true);
   assert.equal(find(records, 'tools-skills').skills[0].name, 'latest');

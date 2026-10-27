@@ -69,10 +69,10 @@ test('partial tools save neither writes nor replaces other drafts; disabled sear
   let records = createDefaultSettingsRecords();
   records.tools.find(x => x.id === 'tools-mcp').mcp_json = '{invalid local draft';
   const web = records.tools.find(x => x.id === 'tools-web').web_search;
-  web.enabled = false; web.mode = 'tavily'; web.providers.tavily.enabled = false;
+  web.enabled = false; web.provider = 'tavily'; web.providers.tavily.enabled = false;
   assert.deepEqual(Object.keys(buildToolsSettingsPayload(records, 'web_search')), ['web_search']);
   assert.equal(buildToolsSettingsPayload(records, 'web_search').web_search.enabled, false);
-  assert.equal(buildToolsSettingsPayload(records, 'web_search').web_search.mode, 'tavily');
+  assert.equal(buildToolsSettingsPayload(records, 'web_search').web_search.provider, 'tavily');
   assert.equal(buildToolsSettingsPayload(records, 'web_search').web_search.providers.tavily.enabled, false);
   const request = write('web_search');
   const payload = await response(request, { mcp: { config: { servers: {} } }, web_search: web }, { web_search: 'e:1' });

@@ -16,7 +16,7 @@ const agentFixture = allow => normalizeAgentSettings({ custom: [{ agent_id: 'cus
 const payload = name => ({
   skills: { items: [{ name }] },
   mcp: { config: { servers: { saved: {} } } },
-  web_search: { mode: 'serpapi', providers: { tavily: { api_key_configured: true }, serpapi: { api_key_configured: true } } },
+  web_search: { provider: 'serpapi', providers: { tavily: { api_key_configured: true }, serpapi: { api_key_configured: true } } },
 });
 function Harness() {
   const [records, setRecords] = useState(createDefaultSettingsRecords);
@@ -50,7 +50,7 @@ function Harness() {
     <label>Search key<input id="key-draft" value={web.web_search.providers.tavily.api_key} onChange={event => update(web.id, { web_search: { ...web.web_search, providers: { ...web.web_search.providers, tavily: { ...web.web_search.providers.tavily, api_key: event.target.value } } } })} /></label>
     <output id="inventory">{records.tools.find(record => record.id === 'tools-skills').skills.map(skill => skill.name).join(',')}</output>
     <output id="load-state">{state.status}</output>
-    <output id="search-mode">{web.web_search.mode}</output>
+    <output id="search-mode">{web.web_search.provider}</output>
     <output id="configured-key">{String(web.web_search.providers.serpapi.api_key_configured)}</output>
     <button id="toggle-loader" onClick={() => setEnabled(value => !value)}>Toggle loader</button>
     <button id="context-switch" onClick={() => setContext('workspace-b')}>Switch workspace</button>
@@ -92,7 +92,7 @@ async function run() {
   check(document.getElementById('inventory').textContent === '', 'superseded first response ignored');
   requests[1].resolve(payload('initial')); await tick();
   checkDrafts('delayed first GET');
-  check(document.getElementById('search-mode').textContent === 'serpapi', 'untouched mode initialized');
+  check(document.getElementById('search-mode').textContent === 'serpapi', 'untouched provider initialized');
   check(document.getElementById('configured-key').textContent === 'true', 'untouched configured-key metadata initialized');
   window.dispatchEvent(new Event('focus')); await tick();
   check(requests.length === 3, 'focus starts one inventory refresh');

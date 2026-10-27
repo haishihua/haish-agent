@@ -4,11 +4,11 @@ import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import { DEFAULT_MCP_CONFIG_JSON, MCP_CONFIG_TEMPLATE_JSON, WEB_SEARCH_PROVIDER_OPTIONS } from '../model/settings-records.js';
 import { parseJsonSafe, isEmptyMcpConfigDraft, normalizeWebSearchDraft } from '../model/settings-payload.js';
+import { activateWebSearchProvider, patchWebSearchProvider, webSearchProviderState } from '../model/web-search-provider.js';
 import { mcpServerEnabled, setMcpServerEnabled } from '../model/mcp-server-toggle.js';
 import { skillSourceLabel } from '../model/skill-source-label.js';
 import { isSkillPage, skillScopeForPage, skillGroups } from '../model/skill-inventory.js';
 import './skill-tabs.css';
-import { WEB_SEARCH_BRAND_LOGOS } from './settings-ui.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
 import { SecretKeyField, FieldRow, SettingsRow, SettingsSearch, SettingsSheet, SettingsDeleteDialog } from './SettingsPrimitives.jsx';
@@ -16,7 +16,7 @@ import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import { Item, ItemGroup } from '../../../shared/ui/settings-elements/ui/item.tsx';
 import { Switch } from '../../../shared/ui/settings-elements/ui/switch.tsx';
 import { Textarea } from '../../../shared/ui/settings-elements/ui/textarea.tsx';
-import { BrandLogoIcon } from './settings-ui.jsx';
+import { WebSearchProviderIcon } from './settings-ui.jsx';
 import { SheetFooter } from '../../../shared/ui/settings-elements/ui/sheet.tsx';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../../../shared/ui/settings-elements/ui/collapsible.tsx';
 import { SkillUpload } from './SkillUpload.jsx';
@@ -34,7 +34,12 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
   const current = (records.tools || []).find(item => item.id === (isSkillPage(selectedId) ? 'tools-skills' : selectedId));
   if (!current) return <div className="settings-empty">No configuration available.</div>;
   const patchedRecords = patch => ({ ...records, tools: (records.tools || []).map(item => item.id === current.id ? { ...item, ...patch } : item) });
-  const update = patch => onRecordsChange(prev => ({ ...prev, tools: (prev.tools || []).map(item => item.id === current.id ? { ...item, ...patch } : item) }));
+  const update = patch => onRecordsChange(prev => ({
+    ...prev,
+    tools: (prev.tools || []).map(item => (item.id === current.id
+      ? { ...item, ...(typeof patch === 'function' ? patch(item) : patch) }
+      : item)),
+  }));
   const run = async (name, action) => { setBusy(name); setError(''); try { return await action(); } catch (failure) { setError(String(failure?.message || failure)); return false; } finally { setBusy(''); } };
 
   if (selectedId === 'tools-mcp') {
@@ -82,7 +87,26 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
   const selectedSkill = tabSkills.find(skill => (skill.id || skill.name) === editing);
   const provider = WEB_SEARCH_PROVIDER_OPTIONS.find(item => item.id === editing);
   const providerDraft = provider ? web.providers[provider.id] || {} : {};
-  const patchProvider = patch => update({ web_search: normalizeWebSearchDraft({ ...web, providers: { ...web.providers, [provider.id]: { ...providerDraft, ...patch } } }) });
+  // 开关＝“用这一家”：点一下就写回后端，失败回滚。单选没“全关”，点当前那家给一句提示。
+  const activateProvider = async id => {
+    const label = WEB_SEARCH_PROVIDER_OPTIONS.find(item => item.id === id)?.label || id;
+    const next = activateWebSearchProvider(web, id);
+    if (next === web) { onToast?.('info', `${label} is already the active search provider.`); return; }
+    update({ web_search: next });
+    await run(`provider:${id}`, async () => {
+      if (!onSaveTools) throw new Error('Saving search settings is not available from here.');
+      // 连同草稿里的 key 一起提交，否则刚贴的密钥会被默默丢掉。
+      try {
+        const saved = await onSaveTools(patchedRecords({ web_search: next }), `${label} is now the active search provider`, 'web_search');
+        if (saved === false) throw new Error(`${label} was not saved.`);
+      } catch (failure) {
+        // 只回滚开关：请求期间在面板里输入的其它草稿（比如另一家的 key）不能跟着丢。
+        update(record => ({ web_search: { ...record.web_search, provider: web.provider } }));
+        throw failure;
+      }
+    });
+  };
+  const patchProvider = patch => update({ web_search: patchWebSearchProvider(web, provider.id, patch) });
   const saveProvider = async () => {
     const saved = await onSaveTools?.(patchedRecords({ web_search: web }), 'Search provider saved', 'web_search');
     if (saved !== false) setEditing(null);
@@ -104,10 +128,11 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
     <SettingsSearch value={query} onChange={setQuery} label={skillsPane ? 'Search skills' : 'Search providers'} />
     <ItemGroup className="settings-list-modern">{shown.map(item => {
       const id = skillsPane ? item.id || item.name : item.id;
-      const configured = !skillsPane && Boolean(web.providers[id]?.api_key_configured || web.providers[id]?.api_key);
+      const providerState = skillsPane ? undefined : webSearchProviderState(web, id);
+      const isActive = Boolean(providerState?.active);
       const skillSource = skillSourceLabel(item.source);
-      return <SettingsRow key={id} title={item.name || item.label} description={skillsPane && item.shadowed ? `${item.description || ''} · Overridden by the current project.` : skillsPane && skillTab === 'project' && groups.global.some(global => global.name === item.name) ? `${item.description || ''} · Overrides the user-level Codex version.` : item.description} icon={skillsPane ? <Sparkles size={22} /> : <BrandLogoIcon logo={WEB_SEARCH_BRAND_LOGOS[id]} />} selected={editing === id} onOpen={() => { setEditing(id); setError(''); }} enabled={item.enabled} onToggle={skillsPane && !item.shadowed ? enabled => onToggleSkill(item.name, enabled) : undefined} busy={Boolean(skillActionBusy || busy)} onDelete={skillsPane && item.can_uninstall ? () => setDeleting({ title: item.name }) : undefined} deleteLabel="Uninstall skill" badge={skillsPane ? skillSource : undefined} status={!skillsPane ? { label: configured ? 'Configured' : 'Needs setup', className: configured ? 'success' : '' } : undefined} />;
-    })}{!shown.length && <div className="settings-empty">{query ? 'No matching items.' : 'No skills in this scope.'}</div>}</ItemGroup>
+      return <SettingsRow key={id} title={item.name || item.label} description={skillsPane && item.shadowed ? `${item.description || ''} · Overridden by the current project.` : skillsPane && skillTab === 'project' && groups.global.some(global => global.name === item.name) ? `${item.description || ''} · Overrides the user-level Codex version.` : item.description} icon={skillsPane ? <Sparkles size={22} /> : <WebSearchProviderIcon provider={id} label={item.label} />} selected={editing === id} onOpen={() => { setEditing(id); setError(''); }} enabled={skillsPane ? item.enabled : isActive} onToggle={skillsPane ? (item.shadowed ? undefined : enabled => onToggleSkill(item.name, enabled)) : () => activateProvider(id)} busy={Boolean(skillActionBusy || busy)} onDelete={skillsPane && item.can_uninstall ? () => setDeleting({ title: item.name }) : undefined} deleteLabel="Uninstall skill" badge={skillsPane ? skillSource : undefined} toggleLabel={skillsPane ? undefined : `${item.label} for web search`} toggleTitle={skillsPane ? undefined : (isActive ? `${item.label} is the active search provider` : `Use ${item.label} for web search`)} />;
+    })}{!shown.length && <div className="settings-empty">{query ? 'No matching items.' : skillsPane ? 'No skills in this scope.' : 'No providers available.'}</div>}</ItemGroup>
     </div>
     {skillsPane && skillErrors.length > 0 && <Collapsible className="settings-skill-errors">
       <CollapsibleTrigger asChild><Button variant="ghost" size="sm"><AlertTriangle size={14} /><span>{skillErrors.length} {skillErrors.length === 1 ? 'skill' : 'skills'} couldn’t be loaded</span><ChevronRight size={14} className="settings-skill-errors-chevron" /></Button></CollapsibleTrigger>
@@ -116,7 +141,7 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
     </div>
     <SettingsSheet open={Boolean(editing)} title={selectedSkill?.name || provider?.label || 'Details'} onClose={() => { if (!busy) setEditing(null); }}><div className="settings-editor-scroll">
       {selectedSkill && <div className="skill-details"><p>{selectedSkill.description}</p>{(selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path) && <dl><dt>Location</dt><dd>{selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path}</dd></dl>}</div>}
-      {provider && <FieldRow label={`${provider.label} API key`}><SecretKeyField value={providerDraft.api_key || ''} configured={providerDraft.api_key_configured} onChange={event => patchProvider({ api_key: event.target.value })} disabled={Boolean(busy)} /></FieldRow>}
+      {provider && <FieldRow label="API key"><SecretKeyField value={providerDraft.api_key || ''} configured={providerDraft.api_key_configured} onChange={event => patchProvider({ api_key: event.target.value })} disabled={Boolean(busy)} /></FieldRow>}
       {error && <ErrorState variant="inline" detail={error} />}
     </div><SheetFooter><div>{provider && <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('test', () => onTestWebProvider?.(provider.id, providerDraft.api_key || ''))}>{busy === 'test' ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button variant="ghost" size="sm" disabled={Boolean(busy)} onClick={() => setEditing(null)}>{skillsPane ? 'Close' : 'Cancel'}</Button>{provider && <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', saveProvider)}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></SettingsSheet>
     {installing && <SkillUpload installedSkills={skills} destination={skillTab === 'project' ? `Project · ${current.skill_workspace || 'Current workspace'}` : 'Global · All projects'} onClose={() => setInstalling(false)} onInstall={(_skill, file) => onInstallSkill(file, skillTab)} />}

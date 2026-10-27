@@ -148,10 +148,12 @@ function toolsRecordSummary(record) {
   }
   if (record?.id === 'tools-web') {
     const web = normalizeWebSearchDraft(record.web_search);
+    const active = WEB_SEARCH_PROVIDER_OPTIONS.find((provider) => provider.id === web.provider);
+    if (active) return `Active: ${active.label}`;
     const configured = WEB_SEARCH_PROVIDER_OPTIONS
       .filter((provider) => web.providers[provider.id]?.api_key_configured || web.providers[provider.id]?.api_key)
       .map((provider) => provider.label);
-    return configured.length ? `Configured: ${configured.join(', ')}` : 'No keys configured';
+    return configured.length ? `Keys configured: ${configured.join(', ')} — pick one` : 'No keys configured';
   }
   return record?.enabled ? (record.endpoint || record.notes || 'Enabled') : 'Disabled';
 }
@@ -198,10 +200,13 @@ export function normalizeWebSearchDraft(value) {
       ...(incoming.providers?.[provider.id] || {}),
     };
   }
+  // Legacy drafts carried `mode`（hybrid/tavily/serpapi）：直接丢弃，不映射。
+  const providerIds = WEB_SEARCH_PROVIDER_OPTIONS.map((item) => item.id);
   return {
     ...fallback,
     ...incoming,
-    mode: ['hybrid', 'tavily', 'serpapi'].includes(incoming.mode) ? incoming.mode : fallback.mode,
+    mode: undefined,
+    provider: providerIds.includes(incoming.provider) ? incoming.provider : fallback.provider,
     providers,
   };
 }
@@ -269,7 +274,7 @@ function mergeWebSearchSettings(current, incoming, initial) {
   return {
     ...saved,
     enabled: draft.enabled !== before.enabled ? draft.enabled : saved.enabled,
-    mode: draft.mode !== before.mode ? draft.mode : saved.mode,
+    provider: draft.provider !== before.provider ? draft.provider : saved.provider,
     providers: Object.fromEntries(WEB_SEARCH_PROVIDER_OPTIONS.map(({ id }) => [id, {
       ...saved.providers[id],
       ...(draft.providers[id].api_key !== before.providers[id].api_key
@@ -293,6 +298,22 @@ export function applyMemorySettingsPayloadToRecords(records, payload) {
   };
 }
 
+// web_search 的写回形状只有一个出处：单选 `provider` 加六家的 `enabled`/草稿 key。
+// 没选过 provider 就不发空串——后端只接受这六家里的一个，缺省交给它自己回落。
+function webSearchPayload(web) {
+  return {
+    enabled: web.enabled !== false,
+    ...(web.provider ? { provider: web.provider } : {}),
+    providers: Object.fromEntries(WEB_SEARCH_PROVIDER_OPTIONS.map(({ id }) => {
+      const draft = web.providers[id] || {};
+      return [id, {
+        enabled: draft.enabled !== false,
+        ...(String(draft.api_key || '').trim() ? { api_key: String(draft.api_key).trim() } : {}),
+      }];
+    })),
+  };
+}
+
 export function buildToolsSettingsPayload(records, resource) {
   const tools = Array.isArray(records?.tools) ? records.tools : [];
   const mcp = tools.find((item) => item.id === 'tools-mcp');
@@ -304,28 +325,13 @@ export function buildToolsSettingsPayload(records, resource) {
     return { mcp: { config: parsed.value } };
   }
   if (resource === 'web_search') {
-    const web = normalizeWebSearchDraft(webRecord?.web_search);
-    return { web_search: {
-      enabled: web.enabled !== false, mode: web.mode,
-      providers: Object.fromEntries(WEB_SEARCH_PROVIDER_OPTIONS.map(({ id }) => [id, {
-        enabled: web.providers[id]?.enabled !== false,
-        ...(String(web.providers[id]?.api_key || '').trim() ? { api_key: String(web.providers[id].api_key).trim() } : {}),
-      }])),
-    } };
+    return { web_search: webSearchPayload(normalizeWebSearchDraft(webRecord?.web_search)) };
   }
   const parsedMcp = parseJsonSafe(mcp?.mcp_json || DEFAULT_MCP_CONFIG_JSON);
   if (!parsedMcp.ok) {
     throw new Error(`MCP JSON is invalid: ${parsedMcp.error}`);
   }
   const web = normalizeWebSearchDraft(webRecord?.web_search);
-  const providers = {};
-  for (const provider of WEB_SEARCH_PROVIDER_OPTIONS) {
-    const draft = web.providers[provider.id] || {};
-    providers[provider.id] = {
-      enabled: draft.enabled !== false,
-      ...(String(draft.api_key || '').trim() ? { api_key: String(draft.api_key).trim() } : {}),
-    };
-  }
   return {
     mcp: { config: parsedMcp.value },
     ...(skills?.skill_inventory_ready === false ? {} : { skills: {
@@ -334,11 +340,7 @@ export function buildToolsSettingsPayload(records, resource) {
         .map((skill) => skill.name || skill.id)
         .filter(Boolean),
     } }),
-    web_search: {
-      enabled: web.enabled !== false,
-      mode: web.mode,
-      providers,
-    },
+    web_search: webSearchPayload(web),
   };
 }
 

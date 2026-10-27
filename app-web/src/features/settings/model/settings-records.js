@@ -34,9 +34,15 @@ export const QDRANT_DISTANCE_OPTIONS = [
 const LEGACY_DEFAULT_QDRANT_COLLECTION = 'haish_rag_default';
 // 后端已移除、前端跟着下线的工具记录：老草稿里可能还留着，装载时丢掉。
 const RETIRED_TOOLS_RECORD_IDS = new Set(['tools-jev']);
+// Search providers the core runtime can drive (`haish_agent_core.settings.tools.WEB_SEARCH_PROVIDERS`).
+// `description` doubles as the row subtitle and as extra search keywords for the filter box.
 export const WEB_SEARCH_PROVIDER_OPTIONS = [
-  { id: 'tavily', label: 'Tavily', keyLabel: 'Tavily API Key' },
-  { id: 'serpapi', label: 'SerpApi', keyLabel: 'SerpApi API Key' },
+  { id: 'tavily', label: 'Tavily', description: 'Answer snippet plus ranked results.' },
+  { id: 'serpapi', label: 'SerpApi', description: 'Google results with answer box and knowledge panel.' },
+  { id: 'exa', label: 'Exa', description: 'Neural search; returns highlight snippets per page.' },
+  { id: 'brave', label: 'Brave', description: 'Independent web index; title and description per hit.' },
+  { id: 'parallel', label: 'Parallel', description: 'Objective-style search; returns excerpts per result.' },
+  { id: 'firecrawl', label: 'Firecrawl', description: 'Crawler-backed search; returns page descriptions.' },
 ];
 
 export function createDefaultSettingsRecords() {
@@ -44,7 +50,7 @@ export function createDefaultSettingsRecords() {
     tools: [
       { id: 'tools-mcp', name: 'MCP Servers', kind: 'JSON Config', enabled: true, protected: true, endpoint: '', notes: 'Visual editor for runtime mcp.json.', mcp_json: DEFAULT_MCP_CONFIG_JSON, mcp_path: '', mcp_error: '', mcp_status: '' },
       { id: 'tools-skills', name: 'Skills', kind: 'Package Manager', enabled: true, protected: true, endpoint: '', notes: 'Install, view, enable, disable, and uninstall skills.', skills: [], skill_errors: [], skill_install_root: '' },
-      { id: 'tools-web', name: 'Web Search', kind: 'Provider Keys', enabled: true, protected: true, endpoint: '', notes: 'Configure Tavily and SerpApi search keys.', web_search: createDefaultWebSearchSettings() },
+      { id: 'tools-web', name: 'Web Search', kind: 'Provider Keys', enabled: true, protected: true, endpoint: '', notes: 'Pick one search provider and store its key.', web_search: createDefaultWebSearchSettings() },
     ],
     memory: [
       { id: 'memory-qdrant', name: 'Qdrant', kind: 'Vector Store', enabled: true, protected: true, endpoint: '', notes: 'Vector search for long-term memory.', qdrant: normalizeQdrantDraft() },
@@ -61,11 +67,10 @@ export function createDefaultSettingsRecords() {
 export function createDefaultWebSearchSettings() {
   return {
     enabled: true,
-    mode: 'hybrid',
-    providers: {
-      tavily: { enabled: true, api_key: '', api_key_configured: false },
-      serpapi: { enabled: true, api_key: '', api_key_configured: false },
-    },
+    // 未选前留空：草稿的 provider 要能和服务器值区分开，否则“请求途中选了 tavily”会被
+    // mergeWebSearchSettings 当成没改。空值只有落盘时会被 core 回落成 tavily。
+    provider: '',
+    providers: Object.fromEntries(WEB_SEARCH_PROVIDER_OPTIONS.map(({ id }) => [id, { enabled: true, api_key: '', api_key_configured: false }])),
   };
 }
 

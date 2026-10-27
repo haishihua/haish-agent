@@ -33,8 +33,9 @@ test('missing or unfamiliar sources are not falsely labeled Codex or Built-in', 
 test('the actual skill row uses the source mapper without making presets read-only', () => {
   const source = fs.readFileSync(new URL('../../../src/features/settings/components/ToolsConfigEditor.jsx', import.meta.url), 'utf8');
   assert.match(source, /const skillSource = skillSourceLabel\(item\.source\)/);
+  // Provider 行的 badge 让位给右侧状态；skill 行仍是 source 标签。
   assert.match(source, /badge=\{skillsPane \? skillSource : undefined\}/);
-  assert.match(source, /onToggle=\{skillsPane && !item\.shadowed \? enabled => onToggleSkill\(item\.name, enabled\) : undefined\}/);
+  assert.match(source, /onToggle=\{skillsPane \? \(item\.shadowed \? undefined : enabled => onToggleSkill\(item\.name, enabled\)\) : \(\) => activateProvider\(id\)\}/);
   assert.match(source, /onDelete=\{skillsPane && item\.can_uninstall/);
   assert.doesNotMatch(source, /readOnly=\{[^}]*preset/);
 });

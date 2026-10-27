@@ -10,7 +10,11 @@ import qwenLogo from '@lobehub/icons-static-svg/icons/qwen.svg';
 import xaiLogo from '@lobehub/icons-static-svg/icons/xai.svg';
 import zhipuLogo from '@lobehub/icons-static-svg/icons/zhipu.svg';
 import tavilyLogo from '@lobehub/icons-static-svg/icons/tavily.svg';
+import exaLogo from '@lobehub/icons-static-svg/icons/exa.svg';
 import serpapiLogo from '../../../../assets/ui/icons/serpapi.svg';
+import braveLogo from '../../../../assets/ui/icons/brave.svg';
+import parallelLogo from '../../../../assets/ui/icons/parallel.svg';
+import firecrawlLogo from '../../../../assets/ui/icons/firecrawl.svg';
 import qdrantLogo from '../../../../assets/ui/icons/qdrant.svg';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
@@ -49,7 +53,20 @@ const CONNECTION_BRAND_LOGOS = {
 export const WEB_SEARCH_BRAND_LOGOS = {
   tavily: tavilyLogo,
   serpapi: serpapiLogo,
+  exa: exaLogo,
+  brave: braveLogo,
+  parallel: parallelLogo,
+  firecrawl: firecrawlLogo,
 };
+
+// Logos render through a CSS mask, so each file only needs an opaque silhouette.
+// Unlisted providers keep a monogram tile instead of an empty media slot.
+export function WebSearchProviderIcon({ provider, label }) {
+  const logo = WEB_SEARCH_BRAND_LOGOS[provider];
+  if (logo) return <BrandLogoIcon logo={logo} />;
+  const initial = String(label || provider || '?').trim().slice(0, 1).toUpperCase();
+  return <span className="settings-provider-icon settings-provider-initials" aria-hidden="true">{initial}</span>;
+}
 
 export function BrandLogoIcon({ logo }) {
   if (!logo) return null;
