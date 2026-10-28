@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { apiFetch, parseResponseMessage } from '../../../src/shared/api/client.js';
+import { runtimeLlmProviderOptions } from '../../../src/features/settings/model/llm-settings.js';
 
 const source = readFileSync(new URL('../../../src/features/chat/hooks/useRunConfig.js', import.meta.url), 'utf8')
   .replace(/^import .*;\n/gm, '').replace(/\bexport /g, '');
@@ -243,6 +244,38 @@ test('same record ID with changed endpoint cannot expose the old endpoint catalo
   assert.equal(h.result.loading, true);
   await h.respond(1, response(['new-endpoint-model']));
   assert.deepEqual(h.ids, ['new-endpoint-model']);
+});
+
+test('custom Anthropic discovery uses the saved protocol and isolates protocol changes and late results', async t => {
+  const [native] = runtimeLlmProviderOptions({ chat: {
+    id: 'native-relay', provider: 'custom', name: 'Native relay', auth_mode: 'api_key',
+    base_url: 'https://fixture.invalid/v1', protocol: 'anthropic', model: 'claude-sonnet-5-5',
+  } });
+  const h = harness(t, native);
+  assert.equal(JSON.parse(h.requests[0].init.body).protocol, 'anthropic');
+  assert.equal(JSON.parse(h.requests[0].init.body).model, 'claude-sonnet-5-5');
+  await h.respond(0, response(['claude-opus-5-5']));
+  assert.deepEqual(h.ids, ['claude-opus-5-5', 'claude-sonnet-5-5']);
+  h.retry();
+  assert.equal(h.requests.length, 2);
+  h.render({ ...native, protocol: 'openai' });
+  assert.equal(h.requests[1].init.signal.aborted, true);
+  assert.equal(JSON.parse(h.requests[2].init.body).protocol, 'openai');
+  assert.deepEqual(h.ids, ['claude-sonnet-5-5'], 'the old protocol catalog must not leak');
+  await h.respond(1, response(['late-anthropic-model']));
+  assert.deepEqual(h.ids, ['claude-sonnet-5-5']);
+  await h.respond(2, response(['openai-wire-model']));
+  assert.deepEqual(h.ids, ['openai-wire-model', 'claude-sonnet-5-5']);
+});
+
+test('official Anthropic discovery sends the provider without a custom protocol', async t => {
+  const h = harness(t, provider('official-anthropic', { provider: 'anthropic', baseUrl: '', defaultModelId: 'claude-opus-5-5' }));
+  const payload = JSON.parse(h.requests[0].init.body);
+  assert.equal(payload.provider, 'anthropic');
+  assert.equal('protocol' in payload, false);
+  await h.respond(0, { provider: 'anthropic', models: ['claude-opus-5-5'], default_model: 'claude-opus-5-5' });
+  assert.equal(h.result.error, '');
+  assert.deepEqual(h.ids, ['claude-opus-5-5']);
 });
 
 test('equivalent renders and fallback-only changes do not restart discovery', async t => {

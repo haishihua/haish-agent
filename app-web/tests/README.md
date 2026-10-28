@@ -4,6 +4,8 @@
 
 ## 自动测试
 
+- Anthropic 接入：`features/settings/anthropic-provider.test.js` 与 `features/chat/provider-models-loading.test.js` 覆盖 Anthropic provider 可选/API Key 认证、custom 的 `protocol=anthropic` 在保存/读回/连接测试/运行时目录请求中的透传，以及协议切换后的缓存和迟到响应隔离。`fixtures/anthropic-provider.html` 使用真实设置编辑器验证协议选择、刷新、保存重挂、只读和 Vision/Compact 表单；API 全为离线桩，不修改真实设置或调用模型。Custom 原生 Claude 网关须选择 **API Protocol → Anthropic Messages**；OpenAI-compatible 仍是旧配置的默认协议，不代表支持 OpenAI 协议的 Claude 中转。
+
 - Sub-agent 增量投影：`features/chat/sub-agent-performance.test.js` 覆盖合并/交错 delta、跳帧、未变化主/子工具节点复用、生命周期、历史替换与折叠详情懒计算；`fixtures/sub-agent-performance.html` 使用生产时间线组件验证折叠期间零详情读取、重新展开显示最新内容、兄弟/已完成子工具不重复渲染及终态/审批切换。夹具全程离线，不调用模型或写真实会话。
 
 - 模型目录加载：`features/chat/provider-models-loading.test.js` 覆盖缓存/已保存列表后台刷新、首次无目录加载、请求与正文 15 秒期限、AbortError 收尾、Provider/endpoint 归属及卸载取消；后台刷新失败只保留上次目录，不再进入界面。`fixtures/provider-models-loading.html` 使用真实 ModelPicker、ChatComposer 和 WorkflowRuntimeConfig 验证选项不被 Loading 隐藏、刷新失败静默保留原列表（无错误卡与重试按钮）、迟到结果隔离，以及后台刷新期间保留原路由发送；网络与存储全为离线内存桩。
