@@ -3,7 +3,7 @@ import { REASONING_EFFORT_OPTIONS, normalizeReasoningEffort } from '../../chat/m
 const LLM_PROVIDER_MODELS = {
   openai: ['gpt-5.5', 'gpt-5.4'],
   xai: ['grok-4.5'],
-  anthropic: ['claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-6'],
+  anthropic: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'],
   gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
   deepseek: ['deepseek-v4-flash', 'deepseek-v4-pro'],
   dashscope: ['qwen3-max', 'qwen3-plus', 'qwen3-vl-max'],
@@ -17,7 +17,7 @@ const LLM_PROVIDER_MODELS = {
 const LLM_PROVIDER_OPTIONS = [
   { id: 'openai', label: 'OpenAI', authModes: ['api_key', 'oauth'], defaultAuth: 'api_key', defaultModel: 'gpt-5.5', baseUrl: 'https://api.openai.com/v1' },
   { id: 'xai', label: 'xAI', authModes: ['api_key', 'oauth'], defaultAuth: 'api_key', defaultModel: 'grok-4.5', baseUrl: 'https://api.x.ai/v1' },
-  { id: 'anthropic', label: 'Anthropic', authModes: ['api_key', 'oauth'], defaultAuth: 'api_key', defaultModel: 'claude-opus-4-8', baseUrl: 'https://api.anthropic.com/v1' },
+  { id: 'anthropic', label: 'Anthropic', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'claude-opus-5-5', baseUrl: 'https://api.anthropic.com/v1' },
   { id: 'gemini', label: 'Gemini', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'gemini-2.5-pro', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
   { id: 'deepseek', label: 'DeepSeek', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'deepseek-v4-flash', baseUrl: 'https://api.deepseek.com' },
   { id: 'dashscope', label: 'DashScope', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: 'qwen3-max', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
@@ -27,12 +27,17 @@ const LLM_PROVIDER_OPTIONS = [
   { id: 'ollama', label: 'Ollama', authModes: ['none'], defaultAuth: 'none', defaultModel: '', baseUrl: 'http://127.0.0.1:11434/v1' },
   { id: 'custom', label: 'Custom', authModes: ['api_key'], defaultAuth: 'api_key', defaultModel: '', baseUrl: '' },
 ];
-const HIDDEN_SETTINGS_LLM_PROVIDERS = new Set(['anthropic', 'gemini']);
+const HIDDEN_SETTINGS_LLM_PROVIDERS = new Set(['gemini']);
 export const SETTINGS_LLM_PROVIDER_OPTIONS = LLM_PROVIDER_OPTIONS.filter((item) => !HIDDEN_SETTINGS_LLM_PROVIDERS.has(item.id));
 /** Providers that show OAuth fields in Settings. */
 export const LLM_OAUTH_UI_PROVIDERS = new Set(['openai', 'xai']);
 /** Providers whose callback is captured and completed by the local runtime. */
 export const LLM_OAUTH_CALLBACK_PROVIDERS = new Set(['openai', 'xai']);
+
+export const CUSTOM_LLM_PROTOCOL_OPTIONS = [
+  { id: 'openai', label: 'OpenAI-compatible' },
+  { id: 'anthropic', label: 'Anthropic Messages' },
+];
 
 export const LLM_SETTINGS_STORAGE_KEY = 'haish.llmSettingsDraft.v1';
 
@@ -137,6 +142,7 @@ export function runtimeLlmProviderOptions(draft) {
       authMode: String(config.auth_mode || getLlmProvider(provider).defaultAuth || '').trim(),
       customProvider: provider === 'custom' ? String(config.name || config.custom_provider || '').trim() : '',
       baseUrl: provider === 'custom' ? String(config.base_url || '').trim() : '',
+      ...(provider === 'custom' ? { protocol: config.protocol || 'openai' } : {}),
       defaultModelId: String(config.model || '').trim(),
       defaultReasoningEffort: normalizeReasoningEffort(config.reasoning_effort),
       customModelIds: customModelIds(config),
@@ -154,6 +160,7 @@ export function nextProviderDraft(providerId, previous = {}) {
     ...previous,
     provider: provider.id,
     auth_mode: provider.defaultAuth,
+    protocol: isCustom ? 'openai' : undefined,
     custom_provider: isCustom ? String(previous.custom_provider || previous.name || '').trim() : '',
     model: isCustom || providerId === 'ollama' ? '' : (choices[0] || provider.defaultModel),
     base_url: isCustom ? '' : provider.baseUrl,

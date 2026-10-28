@@ -16,6 +16,7 @@ import {
   LLM_OAUTH_CALLBACK_PROVIDERS,
   SETTINGS_REASONING_OPTIONS,
   SETTINGS_LLM_PROVIDER_OPTIONS,
+  CUSTOM_LLM_PROTOCOL_OPTIONS,
   IMAGE_PROVIDER_IDS,
   formatAuthModeLabel,
   nextProviderDraft,
@@ -249,6 +250,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
     config.custom_provider,
     config.name,
     config.base_url,
+    config.protocol,
     config.api_key,
     config.api_key_configured,
     oauthModelCatalogReady,
@@ -278,6 +280,19 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
             onChange={(event) => update({ name: event.target.value, custom_provider: event.target.value })}
             disabled={readOnly}
             placeholder="Custom provider name"
+          />
+        </FieldRow>
+      )}
+      {config.provider === 'custom' && !isImageProvider && selectedId !== 'embedding' && (
+        <FieldRow label="API Protocol">
+          <SettingsMenuSelect
+            value={config.protocol || 'openai'}
+            options={CUSTOM_LLM_PROTOCOL_OPTIONS}
+            onChange={(protocol) => {
+              setModelCatalogError('');
+              update({ protocol, model_options: [] });
+            }}
+            disabled={disabled}
           />
         </FieldRow>
       )}

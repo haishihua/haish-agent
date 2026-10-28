@@ -432,6 +432,7 @@ export function llmProviderRequestPayload(config, { includeSecret = false, refre
   }
   if (provider === 'custom') {
     payload.base_url = config.base_url || '';
+    payload.protocol = config.protocol || 'openai';
   }
   if (includeSecret && config.auth_mode === 'api_key' && config.api_key) {
     payload.api_key = config.api_key;

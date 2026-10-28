@@ -64,6 +64,7 @@ function providerModelsRequest(providerOption) {
     auth_mode: providerOption.authMode || '',
     custom_provider: providerOption.customProvider || '',
     base_url: providerOption.baseUrl || '',
+    ...(providerOption.provider === 'custom' ? { protocol: providerOption.protocol || 'openai' } : {}),
     model: providerOption.defaultModelId || '',
     custom_model_ids: providerOption.customModelIds || [],
     refresh: true,
