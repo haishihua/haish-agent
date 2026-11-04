@@ -262,6 +262,7 @@ export function createTaskStreamHandlers(ctx) {
 
   const executeQuest = createQuestExecutor({
     ctx,
+    ensureTaskForEvent,
     getRuntime,
     mutateRuntime,
     updateTaskById,

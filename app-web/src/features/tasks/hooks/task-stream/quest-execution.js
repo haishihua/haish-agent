@@ -13,6 +13,7 @@ const realtimeRequestId = () => globalThis.crypto?.randomUUID?.()
 
 export function createQuestExecutor({
   ctx,
+  ensureTaskForEvent,
   getRuntime,
   mutateRuntime,
   updateTaskById,
@@ -340,6 +341,17 @@ export function createQuestExecutor({
       },
     };
     mutateRuntime(runConversationId, (rt) => { rt.pendingRun = pendingRun; });
+    const confirmTask = (event) => {
+      if (confirmedTaskId || !event.task_id) return;
+      confirmedTaskId = event.task_id;
+      pendingRun.taskId = confirmedTaskId;
+      // A task-scoped receipt on THIS request confirms server acceptance even
+      // if run_started was dropped. Do this before content deduplication: REST
+      // may already contain that event, but not the pending identity handoff.
+      ensureTaskForEvent(event, runConversationId);
+      settleIdentity(confirmedTaskId);
+      streamRequest?.onAccepted?.();
+    };
     const flushQueuedEvents = () => {
       if (flushTimer) {
         clearTimeout(flushTimer);
@@ -362,10 +374,6 @@ export function createQuestExecutor({
             ) {
               continue;
             }
-            if (event.type === 'run_started' && event.task_id) {
-              confirmedTaskId = event.task_id;
-              pendingRun.taskId = event.task_id;
-            }
             if (
               event.task_id
               && runRuntime.activeTaskId !== event.task_id
@@ -374,10 +382,6 @@ export function createQuestExecutor({
               setRuntimeActiveTaskId(event.task_id, runConversationId);
             }
             applyRuntimeEvent(event, runConversationId);
-            if (event.type === 'run_started' && event.task_id) {
-              settleIdentity(event.task_id);
-              streamRequest?.onAccepted?.();
-            }
           }
         });
       } finally {
@@ -425,13 +429,14 @@ export function createQuestExecutor({
               || getRuntime(runConversationId) !== runRuntime) return;
             // Identity confirmation is control-plane data, not generated content.
             // Keep it even when Stop has already aborted the local projection.
-            if (normalized.type === 'run_started' && normalized.task_id && !confirmedTaskId
+            if (normalized.task_id && !confirmedTaskId
               && (controller.signal.aborted || runRuntime.cancelledRunIds.has(runId))) {
               pendingRun.confirmStoppedTask(normalized);
               return;
             }
             if (controller.signal.aborted || runRuntime.abortRequested
               || runRuntime.activeRunId !== runId || runRuntime.cancelledRunIds.has(runId)) return;
+            confirmTask(normalized);
             // Never combine an already-seen fragment with a fresh one: once
             // text is merged, the identities alone cannot split partial replay.
             if (!acceptRuntimeEvent(normalized, runConversationId)) return;
@@ -498,6 +503,21 @@ export function createQuestExecutor({
     } finally {
       flushQueuedEvents();
       if (!confirmedTaskId) rollbackUnconfirmedRerun();
+      const settledRuntime = getRuntime(runConversationId);
+      // REST may already have applied the terminal snapshot and its event log.
+      // Replayed content stays deduplicated, but this request must still release
+      // its local ownership. Never clear a newer run that took over meanwhile.
+      const settledTask = confirmedTaskId && settledRuntime?.activeRunId === runId
+        ? settledRuntime.taskRuntimeState.tasksById?.[confirmedTaskId] : null;
+      if (settledTask && isTerminalTaskStatus(settledTask.status)) {
+        chatFinalizedTaskIdsRef.current.add(confirmedTaskId);
+        batchRuntimeMutations(runConversationId, () => {
+          updateTaskRuntimeState((state) => ({ ...state, activeTaskId: null }), runConversationId);
+          mutateRuntime(runConversationId, (rt) => { rt.activeRunId = null; });
+          setRuntimeBusy(false, runConversationId);
+          setRuntimeActiveTaskId(null, runConversationId);
+        });
+      }
       settleIdentity(confirmedTaskId);
       settleStream();
       if (getRuntime(runConversationId)?.pendingRun === pendingRun) {

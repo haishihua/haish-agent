@@ -21,9 +21,13 @@ function handleRetryTaskBranch() {
   return conversationSource.slice(start, conversationSource.indexOf('\n\n  return {', start));
 }
 
-test('acceptance is announced only in the server startup confirmation branch', () => {
+test('acceptance is announced only after a task-scoped server receipt, before content deduplication', () => {
   // The editor waits for server acceptance, not full execution or a local draft.
-  assert.match(streamSource, /if \(event\.type === 'run_started' && event\.task_id\) \{\s*settleIdentity\(event\.task_id\);\s*streamRequest\?\.onAccepted\?\.\(\);/);
+  // Startup may be lost or already hydrated, so any task-scoped receipt confirms it.
+  assert.match(streamSource, /const confirmTask = \(event\) => \{\s*if \(confirmedTaskId \|\| !event\.task_id\) return;/);
+  assert.match(streamSource, /settleIdentity\(confirmedTaskId\);\s*streamRequest\?\.onAccepted\?\.\(\);/);
+  assert.ok(streamSource.indexOf('confirmTask(normalized);') < streamSource.indexOf('if (!acceptRuntimeEvent(normalized,'),
+    'content replay must not discard identity confirmation');
   assert.equal(streamSource.match(/streamRequest\?\.onAccepted\?\.\(\);/g)?.length, 1);
   assert.match(ackSource, /export function createQuestAck\(\) \{/);
   assert.match(ackSource, /accept\(\) \{/);

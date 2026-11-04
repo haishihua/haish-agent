@@ -4,8 +4,9 @@ import { stripInjectedSkillInstruction } from '../../../chat/model/chat-text.js'
 import { usableWorkflowSnapshot } from '../../../workflow/model/workflow-snapshot.js';
 
 export function handleRunStarted(scope, _event) {
-  const { taskId, ownerConvId, updateTaskRuntimeState, chatFinalizedTaskIdsRef, updateTaskById } = scope;
-  updateTaskRuntimeState((state) => ({ ...state, latestTaskId: taskId }), ownerConvId);
+  const { taskId, chatFinalizedTaskIdsRef, updateTaskById } = scope;
+  // Identity/latest-turn state is established by ensureTaskForEvent for ANY
+  // receipt, not only run_started (which can be missing or already replayed).
   chatFinalizedTaskIdsRef.current.delete(taskId);
   updateTaskById(taskId, (run) => ({
     ...run,

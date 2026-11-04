@@ -10,7 +10,7 @@ import { createRunConfigSync } from '../../src/features/conversations/model/run-
 import { createConversationHandlers } from '../../src/features/conversations/hooks/createConversationHandlers.js';
 import { createConversationActivationHandlers } from '../../src/features/conversations/hooks/createConversationActivationHandlers.js';
 import { sortTaskIdsForRestore, taskSummaryToRuntimeTask, taskDetailToRuntimeTask } from '../../src/features/tasks/model/task-runtime.js';
-import { collapseFullTaskAttempts } from '../../src/features/chat/model/task-attempts.js';
+import { buildChatRows, latestChatTaskId } from '../../src/features/app/model/chat-rows.js';
 import { createAttemptHarness } from './task-attempt-runtime.js';
 import '../../styles.css';
 
@@ -78,15 +78,17 @@ const sync = createRunConfigSync({ get: async id => {
   saved.set(id, structuredClone(config));
 } });
 let transportCount = 0;
+const retryTargets = [];
 let releaseStart;
 const startup = new Promise(resolve => { releaseStart = resolve; });
 let restoreStatus = 'failed';
-const harness = createAttemptHarness(source, { transport: async (_command, onEvent) => {
+const harness = createAttemptHarness(source, { transport: async (command, onEvent) => {
+  retryTargets.push(command.task_id);
   transportCount += 1;
   const id = `attempt-${transportCount}`;
   if (transportCount === 1) await startup;
   const start = { task_id: id, conversation_id: source.conversationId, user_message_id: source.userMessageId,
-    source_task_id: transportCount === 1 ? source.taskId : `attempt-${transportCount - 1}` };
+    source_task_id: command.task_id };
   onEvent({ ...start, type: 'run_started', message: source.title });
   if (transportCount === 1) throw new Error('Synthetic interrupted model stream');
   onEvent({ ...start, type: 'run_finished', status: 'done', task: { ...start, title: source.title, status: 'done', answer_text: 'Synthetic recovered reply' } });
@@ -114,13 +116,8 @@ const handlers = createConversationHandlers({ executeQuest: harness.executeQuest
   configSync: sync, getRuntime: () => harness.runtime, recoverConversationTasks: recovery.recoverConversationTasks,
   showToast: (kind, message) => toasts.push([kind, message]) });
 function projectRows() {
-  const state = harness.runtime.taskRuntimeState;
-  const tasks = collapseFullTaskAttempts(state.taskOrder.map(id => state.tasksById[id]), state.pendingTask);
-  return tasks.flatMap(task => [
-    { id: `${task.taskId}-user`, taskId: task.taskId, role: 'user', status: task.status, text: task.title },
-    { id: `${task.taskId}-agent`, taskId: task.taskId, role: 'agent', status: task.status,
-      text: task.error || task.answerText, traceTimeline: [] },
-  ]);
+  return buildChatRows({ agentOptions: [], chatMessageRowsCache: new WeakMap(), conversationId: source.conversationId,
+    currentConversation: null, settledRuntimeTaskIds: new Set(), taskRuntimeState: harness.runtime.taskRuntimeState });
 }
 let displayedConversation;
 function draw(conversationId = source.conversationId, rows = projectRows(), onRetryTask = (id, config) =>
@@ -129,6 +126,7 @@ function draw(conversationId = source.conversationId, rows = projectRows(), onRe
   flushSync(() => root.render(<AppTooltipProvider>
     <SchedulesContext.Provider value={{ configSync: sync, currentConversationId: conversationId }}>
       <ChatPanel key={conversationId} conversationId={conversationId} messages={rows} draft="Synthetic draft"
+        latestTaskId={conversationId === source.conversationId ? latestChatTaskId(harness.runtime.taskRuntimeState) : null}
         running={conversationId === source.conversationId && harness.runtime.busy} onRetryTask={onRetryTask}
         retryPendingTaskId={conversationId === source.conversationId && harness.runtime.pendingRetry?.editedMessage === null ? harness.runtime.pendingRetry.sourceTaskId : null}
         taskActionsPending={conversationId === source.conversationId && Boolean(harness.runtime.pendingRetry)}
@@ -222,6 +220,40 @@ async function run() {
     && !document.querySelector('.chat-message-row.agent .aui-error-state.is-inline'), 'blocked Retry also adds no lower hint or second error card');
   check(document.querySelector('.aui-error-detail').textContent.includes('Synthetic original failure'), 'blocked Retry does not erase original model error');
   check(errors.length === 0, 'no page errors');
+  const previous = { ...source, taskId: 'previous-turn', status: 'done', error: null, answerText: 'Previous answer' };
+  restoreStatus = 'failed';
+  const identity = createAttemptHarness(previous, { transport: async (_command, emit) => {
+    // The first receipt is the terminal failure: no run_started reaches the client.
+    emit({ type: 'run_finished', task_id: 'latest-failed', conversation_id: source.conversationId, status: 'failed',
+      task: { task_id: 'latest-failed', conversation_id: source.conversationId, user_message_id: 'latest-user',
+        status: 'failed', error: 'Synthetic rate limit after missing startup', title: 'Latest input' } });
+  } });
+  identity.runtime.taskRuntimeState.latestTaskId = previous.taskId;
+  await identity.executeQuest({ ...source, id: 'local-latest', taskId: 'local-latest', userMessageId: null,
+    requestedProvider: 'fixture', requestedModelId: 'model' }, source.conversationId);
+  harness.runtime.taskRuntimeState = identity.runtime.taskRuntimeState;
+  draw(); await sleep();
+  check(!retry().disabled && retry().title === 'Retry', 'real latest-task prop keeps the latest failure retryable after a missing startup receipt');
+  const state = harness.runtime.taskRuntimeState;
+  retry().click();
+  await until(() => harness.runtime.taskRuntimeState.tasksById['attempt-3']?.status === 'done' && !harness.runtime.pendingRetry);
+  draw(); await sleep();
+  check(retryTargets.at(-1) === 'latest-failed' && !retry(),
+    'clicking the failure with a missing startup receipt retries that exact task and completes');
+  // Branch from that same failure to verify a separately arriving newer turn.
+  harness.runtime.taskRuntimeState = state;
+  state.tasksById = { ...state.tasksById, newer: { ...previous, taskId: 'newer', title: 'Continue', answerText: 'Newer answer' } };
+  state.taskOrder = [...state.taskOrder, 'newer'];
+  state.latestTaskId = 'newer';
+  draw(); await sleep();
+  check(retry().disabled && retry().title.includes('Only the latest'), 'a genuinely newer turn still disables Retry on the older failure');
+  state.pendingTask = { ...source, id: 'unaccepted', taskId: null, userMessageId: null,
+    error: 'Synthetic request rejected before server acceptance' };
+  draw(); await sleep();
+  const failedButtons = [...document.querySelectorAll('.chat-message-row.agent .aui-error-state button')];
+  check(failedButtons.length === 2 && failedButtons[0].disabled && !failedButtons[1].disabled,
+    'an unaccepted local failure is retryable without enabling the older server failure');
+  check(state.latestTaskId === 'newer', 'local Retry eligibility never rewrites the authoritative server latest ID');
 }
 run().catch(error => {
   checks.push(`FAIL ${error.message}`);

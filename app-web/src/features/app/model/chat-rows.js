@@ -9,6 +9,18 @@ import {
   taskFirstStreamTimestamp,
 } from '../../tasks/model/task-runtime.js';
 
+// A failed draft that was never accepted is the current local turn, not a
+// historical server task. Keep the server's latestTaskId untouched: persisted
+// Retry still goes through its authoritative preflight and latest-turn guard.
+export function latestChatTaskId(taskRuntimeState) {
+  const pending = taskRuntimeState.pendingTask;
+  if (pending && normalizeTaskStatus(pending.status) === 'failed'
+    && !pending.awaitingRetryConfirmation && !taskRuntimeState.activeTaskId) {
+    return pending.id || pending.taskId || taskRuntimeState.latestTaskId || null;
+  }
+  return taskRuntimeState.latestTaskId || null;
+}
+
 /**
  * 聊天时间线的行投影：把一轮轮任务投影成 user / agent 两种消息行。
  * 纯函数（不碰 React）：缓存由调用方以 WeakMap 传入——键是任务对象本身，值里带着

@@ -518,11 +518,16 @@ export function createConversationActivationHandlers(ctx) {
     }
 
     const promotesPending = Boolean(ownerRuntime.taskRuntimeState.pendingTask
-      && !ownerRuntime.taskRuntimeState.tasksById[taskId]);
+      && (!ownerRuntime.taskRuntimeState.tasksById[taskId] || ownerRuntime.pendingRun?.taskId === taskId));
     updateTaskRuntimeState((state) => {
       const existingTask = state.tasksById[taskId];
       if (existingTask) {
-        return state.activeTaskId === taskId ? state : { ...state, activeTaskId: taskId };
+        // Only a promoted pending turn changes identity or clears the local draft.
+        // Any other repeat receipt for the same row is already fully expressed.
+        if (!promotesPending && state.activeTaskId === taskId) return state;
+        return { ...state, activeTaskId: taskId,
+          latestTaskId: promotesPending ? taskId : state.latestTaskId,
+          pendingTask: promotesPending ? null : state.pendingTask };
       }
       const pendingTask = state.pendingTask;
       const baseTask = buildTaskRuntimeRecord(event, pendingTask);
@@ -530,6 +535,7 @@ export function createConversationActivationHandlers(ctx) {
       return {
         ...state,
         activeTaskId: taskId,
+        latestTaskId: taskId,
         pendingTask: null,
         taskOrder: [...state.taskOrder, taskId],
         tasksById: {
