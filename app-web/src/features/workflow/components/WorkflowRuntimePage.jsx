@@ -11,7 +11,7 @@ import {
   ReactFlowProvider,
   useNodesState,
 } from '@xyflow/react';
-import { workflowNodeAgentName } from '../../chat/model/assistant-name.js';
+import { workflowAgentName } from '../../chat/model/assistant-name.js';
 import { normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
 import { workflowRuntimeDisplayStatus, workflowRuntimeNodeStatus } from '../model/runtime-status.js';
 import {
@@ -137,7 +137,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
   const retryLatest = React.useCallback(() => onRetry?.(node.id), [node.id, onRetry]);
 
   return (
-    <aside className={`workflow-detail-panel is-${status}${isAgent ? ' has-runtime-tabs' : ''}`} data-node-id={node.id} aria-label={`${node.label || node.id} execution details`}>
+    <aside className={`workflow-detail-panel is-${status}${isAgent ? ' has-runtime-tabs' : ''}`} data-node-id={node.id} aria-label={`${agentName || node.label || node.id} execution details`}>
       <WorkflowDetailResizer onResize={onResize} onResizeBy={onResizeBy} />
       <WorkflowNodeDetailHead
         node={node}
@@ -145,6 +145,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
         statusCopy={STATUS_COPY[status] || status}
         isAgent={isAgent}
         agentOptions={agentOptions}
+        agentName={agentName}
         detailTab={detailTab}
         tabId={tabId}
         selectTab={selectTab}
@@ -152,7 +153,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
       />
       <div className="workflow-detail-scroll-region">
         <div ref={detailBodyRef} className={`workflow-detail-body chat-message-list${showResult ? '' : ' is-config'}`} aria-live="polite" role={isAgent ? 'tabpanel' : undefined} id={isAgent ? `${tabId}-panel` : undefined} aria-labelledby={isAgent ? `${tabId}-${detailTab}-tab` : undefined}>
-          {isAgent && !showResult ? <WorkflowRuntimeConfig value={runtimeConfig} providerOptions={providerOptions} readOnly={configReadOnly} onChange={onRuntimeConfigChange} /> : null}
+          {isAgent && !showResult ? <WorkflowRuntimeConfig value={runtimeConfig} providerOptions={providerOptions} agentOptions={agentOptions} readOnly={configReadOnly} onChange={onRuntimeConfigChange} /> : null}
           {showResult ? (
             <WorkflowNodeAttempts
               node={node}
@@ -162,6 +163,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
               status={status}
               attention={attention}
               agentName={agentName}
+              agentOptions={agentOptions}
               canRetry={canRetry}
               retryLatest={retryLatest}
               historyOpen={historyOpen}
@@ -272,14 +274,17 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     const runtimeDetailAvailable = canOpenNodeDetail(node);
     const config = workflowNodeRuntimeConfig(node, task, configs, configReadOnly, providers);
     const provider = providers.find((item) => item.id === config.llm_config_id)?.provider;
+    const runtimeNode = node.type === 'agent' ? { ...node, agent_id: config.agent_id } : node;
+    const agentName = workflowAgentName(config.agent_id, task, agentOptions);
     return {
       // ponytail: reuse the editor node renderer; runtime only supplies status/config data.
       id,
       type: 'workflowNode',
       position: arrangement.get(id) || layout.positions.get(id) || { x: 0, y: 0 },
       data: {
-        workflowNode: node,
+        workflowNode: runtimeNode,
         agentOptions,
+        ...(node.type === 'agent' ? { runtimeAgentName: agentName } : {}),
         runtimeStatus: status,
         runtimeStatusLabel: STATUS_COPY[status],
         runtimeDetailAvailable,
@@ -351,10 +356,14 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     selected: node.id === selectedNodeId && node.data.runtimeDetailAvailable,
   })), [nodes, selectedNodeId]);
   const selectedNodeCandidate = selectedNodeId ? nodeById.get(selectedNodeId) || null : null;
-  const selectedNode = canOpenNodeDetail(selectedNodeCandidate) ? selectedNodeCandidate : null;
+  const selectedRuntimeConfig = selectedNodeCandidate
+    ? workflowNodeRuntimeConfig(selectedNodeCandidate, task, nodeRuntimeConfigs, configReadOnly, providerOptions) : {};
+  const selectedNode = canOpenNodeDetail(selectedNodeCandidate)
+    ? selectedNodeCandidate.type === 'agent' ? { ...selectedNodeCandidate, agent_id: selectedRuntimeConfig.agent_id } : selectedNodeCandidate
+    : null;
   // 节点详情的回复按节点配置的 agent 署名（catalog 与节点图标同一份）。
   const selectedNodeAgentName = selectedNode
-    ? workflowNodeAgentName(selectedNode, agentOptions)
+    ? workflowAgentName(selectedRuntimeConfig.agent_id, task, agentOptions)
     : '';
   const selectedStatus = selectedNodeId === attentionNodeId && attentionStatus ? attentionStatus : selectedNode
     ? workflowRuntimeNodeStatus(selectedNode, run, task, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)
@@ -499,7 +508,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
           agentName={selectedNodeAgentName}
           agentOptions={agentOptions}
           providerOptions={providerOptions}
-          runtimeConfig={workflowNodeRuntimeConfig(selectedNode, task, nodeRuntimeConfigs, configReadOnly, providerOptions)}
+          runtimeConfig={selectedRuntimeConfig}
           onRuntimeConfigChange={(config) => onNodeRuntimeConfigChange?.(selectedNode.id, config)}
           configReadOnly={configReadOnly || !onNodeRuntimeConfigChange}
         />

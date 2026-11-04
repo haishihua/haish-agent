@@ -308,6 +308,8 @@ export function WorkflowCanvasEdge({
 export function WorkflowFlowNode({ data, selected, sourcePosition, targetPosition }) {
   const node = data?.workflowNode || {};
   const nodeType = node.type || 'agent';
+  const nodeTitle = data?.runtimeAgentName || node.label || nodeType;
+  const nodeLabel = `${nodeTitle}${runtimeStatus ? ` · ${data.runtimeStatusLabel || runtimeStatus}` : ''}`;
   const meta = workflowNodeMeta(nodeType);
   const iconName = nodeType === 'agent'
     ? (data?.agentIconName || agentIconNameForAgentId(node.agent_id, data?.agentOptions))
@@ -322,8 +324,8 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
   return (
     <div
       className={`workflow-flow-node ${nodeType} ${selected ? 'active' : ''}${data?.dropPreview ? ' is-drop-preview' : ''}${runtimeStatus ? ` is-runtime status-${runtimeStatus}` : ''}${runtimeDetailAvailable ? ' has-runtime-detail' : ''}${data?.reconnectType ? ' is-reconnecting' : ''}`}
-      title={`${node.label || nodeType}${runtimeStatus ? ` · ${data.runtimeStatusLabel || runtimeStatus}` : ''}`}
-      aria-label={`${node.label || nodeType}${runtimeStatus ? ` · ${data.runtimeStatusLabel || runtimeStatus}` : ''}`}
+      title={nodeLabel}
+      aria-label={nodeLabel}
     >
       {nodeType !== 'start' ? <Handle type="target" position={resolvedTargetPosition} /> : null}
       {data?.feedbackTarget ? (
@@ -342,8 +344,8 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
         <AppIcon name={iconName} size={22} />
       </span>
       <span className="workflow-flow-node-copy">
-        <strong>{node.label}</strong>
-        {NODE_TYPE_LABEL[nodeType] ? <small className={data?.runtimeModelId ? 'workflow-node-model' : undefined}>{data?.runtimeModelId ? <><ProviderIcon provider={data.runtimeProvider} /><span>Agent · {data.runtimeModelId}</span></> : NODE_TYPE_LABEL[nodeType]}</small> : null}
+        <strong>{nodeTitle}</strong>
+        {NODE_TYPE_LABEL[nodeType] ? <small className={data?.runtimeModelId ? 'workflow-node-model' : undefined}>{data?.runtimeModelId ? <><ProviderIcon provider={data.runtimeProvider} /><span>{data.runtimeModelId}</span></> : NODE_TYPE_LABEL[nodeType]}</small> : null}
       </span>
       {WORKFLOW_BRANCHES[nodeType]
         ? WORKFLOW_BRANCHES[nodeType].map((branch, index) => (

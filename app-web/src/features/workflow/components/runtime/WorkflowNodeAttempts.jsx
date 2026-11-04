@@ -2,6 +2,7 @@
 import React from 'react';
 import { ChatTimelineChevron } from '../../../chat/components/ChatTimelineNodes.jsx';
 import { isTaskSettled } from '../../../conversations/model/conversation-status.js';
+import { workflowAgentName } from '../../../chat/model/assistant-name.js';
 import { workflowResultForAttempt } from '../../model/runtime-workflow-layout.js';
 import { AppIcon } from '../../../../shared/ui/AppIcon.jsx';
 import { NodeConversation } from './WorkflowNodeConversation.jsx';
@@ -15,6 +16,7 @@ export function WorkflowNodeAttempts({
   status,
   attention = null,
   agentName = '',
+  agentOptions = [],
   canRetry = false,
   retryLatest,
   historyOpen,
@@ -26,6 +28,10 @@ export function WorkflowNodeAttempts({
 
   const renderAttempt = (attempt, index, isLatestAttempt) => {
     const attemptNumber = attempt?.result?.attempt || index + 1;
+    const attemptAgent = attempt?.result?.runtime_config?.agent_id;
+    const attemptAgentName = attemptAgent
+      ? workflowAgentName(attemptAgent, task, agentOptions)
+      : agentName;
     return (
       <section className={`workflow-detail-attempt${isLatestAttempt ? ' is-latest' : ''}`} key={attempt?.id || `${node.id}-${index}`}>
         {!isLatestAttempt ? (
@@ -43,7 +49,7 @@ export function WorkflowNodeAttempts({
           running={isLatestAttempt && (status === 'running' || status === 'waiting_input' || status === 'approval')}
           showApproval={isLatestAttempt && status === 'approval' && !isTaskSettled(task)}
           onRetry={isLatestAttempt && canRetry ? retryLatest : null}
-          agentName={agentName}
+          agentName={attemptAgentName}
           pendingInput={isLatestAttempt && attention?.status === 'waiting_input' ? attention.request : null}
         />
       </section>

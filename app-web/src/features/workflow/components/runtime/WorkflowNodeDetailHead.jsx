@@ -21,6 +21,7 @@ export function WorkflowNodeDetailHead({
   statusCopy,
   isAgent,
   agentOptions,
+  agentName,
   detailTab,
   tabId,
   selectTab,
@@ -33,7 +34,7 @@ export function WorkflowNodeDetailHead({
           <AppIcon name={node.type === 'agent' ? agentIconNameForAgentId(node.agent_id, agentOptions) : NODE_ICON[node.type] || 'box'} size={26} />
         </span>
         <span className="workflow-detail-heading">
-          <span className="workflow-detail-name"><strong>{node.label || typeLabelForWorkflowNode(node.type)}</strong></span>
+          <span className="workflow-detail-name"><strong>{agentName || node.label || typeLabelForWorkflowNode(node.type)}</strong></span>
           <span className="workflow-detail-subtitle"><i className={`workflow-detail-status-dot is-${status}`} aria-hidden="true" />{typeLabelForWorkflowNode(node.type)} · {isAgent && status === 'pending' ? 'Ready' : statusCopy}</span>
         </span>
         <button type="button" className="workflow-detail-close" onClick={onClose} aria-label="Close node details">

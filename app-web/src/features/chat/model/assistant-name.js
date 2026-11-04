@@ -10,7 +10,9 @@
 //   3. 会话记录的 profile_display_name / agent id：会话开始时选定的 agent，兜住
 //      早期没有记 agent 的任务；
 // 三者都拿不到返回 ''，由气泡决定显示什么。
-import { agentDisplayNameForId } from '../../agents/model/agent-settings.js';
+import { APP_DEFAULT_AGENT_OPTIONS, agentDisplayNameForId } from '../../agents/model/agent-settings.js';
+
+const DEFAULT_AGENT_NAME = agentDisplayNameForId('preset.general', APP_DEFAULT_AGENT_OPTIONS);
 
 function cleanName(value) {
   return String(value || '').trim();
@@ -40,4 +42,25 @@ export function assistantNameForTask(task, conversation, agentOptions = []) {
 export function workflowNodeAgentName(node, agentOptions = []) {
   if (node?.type !== 'agent') return '';
   return agentDisplayNameForId(node.agent_id, agentOptions);
+}
+
+/**
+ * 工作流节点这一轮实际该署谁的名（画布标题、节点详情、历史尝试共用）。
+ *
+ * `task` 允许为空：用户刚进 /goal、还没建任务时，首屏就会调用这里，任何对任务
+ * 字段的读取都必须先确认任务存在。名字按可信度取：
+ *   1. 任务记录上同一个 agent 的名字：真正跑它的是谁，改名/下线都留得住；
+ *   2. catalog 里当前的名字：任务还没落库时就是选择器里那一项；
+ *   3. 内置默认 Agent 的名字。
+ * 其余（没配 agent / catalog 查不到的 id）返回 ''，绝不把内部 id 漏到界面上。
+ */
+export function workflowAgentName(agentId, task, agentOptions = []) {
+  const id = String(agentId || '').trim();
+  if (!id) return '';
+  const executedName = String(task?.profileId || '').trim() === id
+    ? cleanName(task.profileDisplayName)
+    : '';
+  return executedName
+    || agentDisplayNameForId(id, agentOptions)
+    || (id === 'preset.general' ? DEFAULT_AGENT_NAME : '');
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { assistantNameForTask, workflowNodeAgentName } from '../../../src/features/chat/model/assistant-name.js';
+import { assistantNameForTask, workflowAgentName, workflowNodeAgentName } from '../../../src/features/chat/model/assistant-name.js';
 import { agentDisplayNameForId } from '../../../src/features/agents/model/agent-settings.js';
 
 const AGENT_OPTIONS = [
@@ -87,6 +87,23 @@ test('a workflow agent node names its reply from the agent configured on that no
   assert.equal(workflowNodeAgentName({ type: 'agent' }, AGENT_OPTIONS), '');
   assert.equal(workflowNodeAgentName({ type: 'agent', agent_id: 'custom.agent-gone' }, AGENT_OPTIONS), '');
   assert.equal(workflowNodeAgentName({ type: 'agent', agent_id: 'custom.agent-code' }, null), '');
+});
+
+test('workflow nodes resolve an executed name without a task yet', () => {
+  // 刚进 /goal、任务还没建：首屏也会算名字，读任务字段前必须先看任务是否存在。
+  assert.equal(workflowAgentName('preset.general', null, AGENT_OPTIONS), 'Task Assistant');
+  assert.equal(workflowAgentName('custom.agent-code', undefined, AGENT_OPTIONS), 'Code Agent');
+  assert.equal(workflowAgentName(undefined, null, AGENT_OPTIONS), '');
+  assert.equal(workflowAgentName('custom.agent-gone', null, AGENT_OPTIONS), '');
+});
+
+test('the recorded execution identity wins over a renamed or retired catalog entry', () => {
+  const task = { profileId: 'custom.agent-code', profileDisplayName: 'Release Operator' };
+  assert.equal(workflowAgentName('custom.agent-code', task, AGENT_OPTIONS), 'Release Operator');
+  assert.equal(workflowAgentName('custom.agent-code', task, []), 'Release Operator');
+  // 任务记录的是别的 agent 时不能借用它的名字。
+  assert.equal(workflowAgentName('preset.general', task, AGENT_OPTIONS), 'Task Assistant');
+  assert.equal(workflowAgentName('preset.general', { ...task, profileDisplayName: '' }, AGENT_OPTIONS), 'Task Assistant');
 });
 
 test('only agent nodes carry a reply name; the others have no agent to sign with', () => {
