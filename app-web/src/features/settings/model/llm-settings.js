@@ -47,8 +47,23 @@ export function getLlmProvider(id) {
   return LLM_PROVIDER_OPTIONS.find((item) => item.id === id) || LLM_PROVIDER_OPTIONS[0];
 }
 
+// Provider ids and auth modes share one loose spelling ('API-KEY', 'api_key ').
+const normalizeToken = (value) => String(value || '').trim().toLowerCase().replace(/-/g, '_');
+
 export function normalizeLlmProviderId(value) {
-  return String(value || '').trim().toLowerCase().replace(/-/g, '_');
+  return normalizeToken(value);
+}
+
+// Only providers offering both modes need disambiguation in lists and pickers.
+// Missing modes follow the same default used when creating a provider record.
+export function providerAuthBadge(providerId, authMode) {
+  const id = normalizeLlmProviderId(providerId);
+  const provider = LLM_PROVIDER_OPTIONS.find((item) => item.id === id);
+  if (!provider?.authModes.includes('oauth') || !provider.authModes.includes('api_key')) return '';
+  const mode = normalizeToken(authMode || provider.defaultAuth);
+  if (mode === 'api_key') return 'API';
+  if (mode === 'oauth') return 'OAuth';
+  return '';
 }
 
 export function formatAuthModeLabel(mode) {
@@ -183,7 +198,7 @@ export function nextProviderDraft(providerId, previous = {}) {
 function normalizeVisionProvider(entry, index = 0) {
   const source = entry && typeof entry === 'object' ? entry : {};
   const provider = normalizeLlmProviderId(source.provider);
-  const authMode = String(source.auth_mode || '').trim().toLowerCase().replace(/-/g, '_');
+  const authMode = normalizeToken(source.auth_mode);
   return {
     ...source,
     id: String(source.id || '').trim() || `vision-${index + 1}`,
@@ -278,7 +293,7 @@ export const IMAGE_PROVIDER_IDS = ['openai', 'custom'];
 function normalizeImageProvider(entry, index = 0) {
   const source = entry && typeof entry === 'object' ? entry : {};
   const provider = normalizeLlmProviderId(source.provider);
-  const authMode = String(source.auth_mode || '').trim().toLowerCase().replace(/-/g, '_');
+  const authMode = normalizeToken(source.auth_mode);
   return {
     ...source,
     id: String(source.id || '').trim() || `image-${index + 1}`,

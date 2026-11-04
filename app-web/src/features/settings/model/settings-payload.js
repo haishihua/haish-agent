@@ -17,6 +17,7 @@ import {
   configuredModelOptions,
   customModelIds,
   runtimeProviderLabel,
+  providerAuthBadge,
 } from './llm-settings.js';
 import { DEFAULT_REASONING_EFFORT } from '../../chat/model/run-catalog.js';
 import { agentListItems } from '../../agents/model/agent-settings.js';
@@ -34,6 +35,7 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
       id: provider.id,
       title: titleForConfig(provider),
       provider: provider.provider,
+      badge: providerAuthBadge(provider.provider, provider.auth_mode),
       kind: activeSubtab === 'compact' ? 'Compact Provider' : (activeSubtab === 'image' ? 'Image Provider' : 'Vision Provider'),
       summary: provider.model || 'not set',
       protected: true,
@@ -48,6 +50,7 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
         id: 'embedding',
         title: titleForConfig(draft.embedding),
         provider: draft.embedding.provider,
+        badge: providerAuthBadge(draft.embedding.provider, draft.embedding.auth_mode),
         kind: 'Embedding Provider',
         summary: draft.embedding.model || 'not set',
         protected: true,
@@ -60,6 +63,7 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
       id: 'chat',
       title: titleForConfig(draft.chat),
       provider: draft.chat.provider,
+      badge: providerAuthBadge(draft.chat.provider, draft.chat.auth_mode),
       kind: 'Provider',
       summary: draft.chat.model || 'not set',
       protected: true,
@@ -69,6 +73,7 @@ function getLlmConfigItems(draft, activeSubtab = 'chat') {
       id: profile.id,
       title: titleForConfig(profile),
       provider: profile.provider,
+      badge: providerAuthBadge(profile.provider, profile.auth_mode),
       kind: 'Provider',
       summary: profile.model || 'not set',
       protected: false,

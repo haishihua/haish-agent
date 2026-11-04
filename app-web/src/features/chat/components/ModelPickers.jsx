@@ -6,6 +6,8 @@ import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
 import { REASONING_EFFORT_OPTIONS } from '../model/run-catalog.js';
 import { reasoningGaugeRotation } from '../model/reasoning-gauge.js';
+import { providerAuthBadge } from '../../settings/model/llm-settings.js';
+import { ProviderAuthBadge } from '../../../shared/ui/ProviderAuthBadge.jsx';
 
 export const APPROVAL_MODE_OPTIONS = [
   { id: 'strict', label: 'Request Approval', icon: 'ask-for-help.png',   desc: 'Ask before every write or network op' },
@@ -306,7 +308,7 @@ export function ModelPicker({
             <button
               type="button"
               role="menuitem"
-              className={`model-picker-option model-picker-submenu-entry ${activeSubmenu === 'provider' ? 'is-active' : ''}`}
+              className={`model-picker-option model-picker-provider-option model-picker-submenu-entry ${activeSubmenu === 'provider' ? 'is-active' : ''}`}
               onMouseEnter={() => setActiveSubmenu('provider')}
               onFocus={() => setActiveSubmenu('provider')}
               onClick={() => setActiveSubmenu((currentOpen) => currentOpen === 'provider' ? null : 'provider')}
@@ -314,6 +316,7 @@ export function ModelPicker({
               aria-expanded={activeSubmenu === 'provider'}
             >
               <span className="model-picker-option-label">{providerLabel}</span>
+              <ProviderAuthBadge label={providerAuthBadge(currentProvider?.provider, currentProvider?.authMode)} />
               <span className="model-picker-subcaret" aria-hidden="true" />
             </button>
             <button
@@ -383,12 +386,13 @@ export function ModelPicker({
                         type="button"
                         role="option"
                         aria-selected={active}
-                        className={`model-picker-option ${active ? 'is-active' : ''} ${readOnly ? 'is-readonly' : ''}`}
+                        className={`model-picker-option model-picker-provider-option ${active ? 'is-active' : ''} ${readOnly ? 'is-readonly' : ''}`}
                         disabled={disabled || readOnly}
                         aria-disabled={disabled || readOnly ? 'true' : undefined}
                         onClick={() => { if (disabled || readOnly) return; onProviderChange?.(opt.id); }}
                       >
                         <span className="model-picker-option-label">{opt.label || opt.id}</span>
+                        <ProviderAuthBadge label={providerAuthBadge(opt.provider, opt.authMode)} />
                         {active ? (
                           <span className="model-picker-check" aria-hidden="true">
                             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"

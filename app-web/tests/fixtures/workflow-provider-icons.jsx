@@ -35,7 +35,7 @@ const visibleIcon = (element) => {
     check(visibleIcon(trigger(id, 'Node provider')) && visibleIcon(trigger(id, 'Node model')), `${id}: both closed fields retain icons`);
   }
   check(trigger('snapshot', 'Node model').textContent.includes('gpt-6.1-sol'), 'Historical model stays unchanged');
-  check(trigger('record-snapshot', 'Node provider').textContent.trim() === 'Source Provider' && trigger('record-snapshot', 'Node model').textContent.includes('saved-model'), 'Exact saved record keeps its identity and historical model outside the current catalog');
+  check(trigger('record-snapshot', 'Node provider').textContent.trim() === 'Source ProviderAPI' && trigger('record-snapshot', 'Node model').textContent.includes('saved-model'), 'Exact saved record keeps its identity, default API label and historical model outside the current catalog');
   check(trigger('removed-record', 'Node provider').textContent.trim() === 'removed-profile' && trigger('removed-record', 'Node model').querySelector('.settings-provider-icon-custom'), 'Deleted record retains its identity and generic model icon');
   check(!trigger('model-only', 'Node model').querySelector('.settings-provider-icon'), 'A model without a provider identity does not invent a brand');
   check([...document.querySelectorAll('#snapshot [role="combobox"]')].every((item) => item.disabled), 'Historical fields remain read-only');
