@@ -12,13 +12,17 @@
 //      之间留 10px 呼吸位（上一版图标是贴着标题的，只剩 3px）；
 //   5. 一条真的溢出的长标题：mask 收到 linear-gradient（末尾一层透明），text-overflow = clip；
 //   6. 表头那张 Conversation 图标贴到列表里 folder 图标那条左缘（3px），且面板收到
-//      app-shell 左栏的新下限 210px 时表头（图标 + 标题 + 两个按钮）仍一行放得下。
+//      app-shell 左栏的新下限 210px 时表头（图标 + 标题 + Activity / Add project）仍一行放得下；
+//   7. 折叠 / 展开：设计稿把那枚图标换成了贴在面板右缘、竖直居中的舌片把手，
+//      设计稿里印在把手旁边的 Collapse / Expand 改走统一 tooltip（PortalTooltip，
+//      跟项目悬停提示同一套），所以把手常驻只有一枚 chevron，颜色/尺寸由 panels.css 写死；
+//      收起后面板只剩 32px 窄条、表头整个收走，把手翻向右。
 // 反向断言（revert）：把改前的 42px 行高 / 9px 内边距 / 6px 外边距 / 30px Show more
 // 注回去，一屏里完整可见的项目行必须变少；把 26px 图标按钮和 ellipsis 注回去，
 // 项目标题被推离文字列、渐隐消失；把 21px 文字列与居中的图标注回去，
 // 图标与标题之间那道缝被吃掉；把 40px 标题留白注回去，静态框右端退回行尾那条空带；
-// 把表头旧内边距（11 / 18 / 18）与旧图标尺寸（18 / 22px）注回去，
-// 图标离开左缘、两枚 icon 大一号、210px 下溢出——说明这几条是真的在被测。
+// 把表头旧内边距（11 / 18 / 18）与旧 folder-plus 尺寸（18px）注回去，
+// 图标离开左缘、图标大一号、210px 下溢出——说明这几条是真的在被测。
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
@@ -128,29 +132,38 @@ const snapshot = () => {
 
 const root = createRoot(document.getElementById('root'));
 
+// 夹具自己收着 collapsed：折叠 / 展开要真的能点，右缘那枚把手才有东西可量。
+function Harness() {
+  const [collapsed, setCollapsed] = React.useState(false);
+  return (
+    <AppTooltipProvider>
+      {/* 真实侧栏是 grid 里撑满一整行高度的项；这里用 flex 收住高度，
+          否则面板会被内容撑高，一屏能看到几个项目就量不准了。 */}
+      <div id="panel-slot" style={{ display: 'flex', width: collapsed ? 32 : 288, height: PANEL_HEIGHT }}>
+        <ConversationsPanel
+          workspaceState={WORKSPACE}
+          extensionStyle={{ width: '100%' }}
+          collapsed={collapsed}
+          onToggleCollapsed={() => setCollapsed((value) => !value)}
+          onSelectProject={() => {}}
+          onToggleProject={() => {}}
+          onSelectConversation={() => {}}
+          onAddConversation={() => {}}
+          onRemoveProject={() => {}}
+          onDeleteConversation={() => {}}
+          onRenameConversation={() => {}}
+          onRenameProject={() => {}}
+          onPinConversation={() => {}}
+          onPinProject={() => {}}
+        />
+      </div>
+    </AppTooltipProvider>
+  );
+}
+
 async function runChecks() {
   flushSync(() => {
-    root.render(
-      <AppTooltipProvider>
-        {/* 真实侧栏是 grid 里撑满一整行高度的项；这里用 flex 收住高度，
-            否则面板会被内容撑高，一屏能看到几个项目就量不准了。 */}
-        <div style={{ display: 'flex', width: 288, height: PANEL_HEIGHT }}>
-          <ConversationsPanel
-            workspaceState={WORKSPACE}
-            onSelectProject={() => {}}
-            onToggleProject={() => {}}
-            onSelectConversation={() => {}}
-            onAddConversation={() => {}}
-            onRemoveProject={() => {}}
-            onDeleteConversation={() => {}}
-            onRenameConversation={() => {}}
-            onRenameProject={() => {}}
-            onPinConversation={() => {}}
-            onPinProject={() => {}}
-          />
-        </div>
-      </AppTooltipProvider>,
-    );
+    root.render(<Harness />);
   });
   await sleep(250);
 
@@ -249,15 +262,98 @@ async function runChecks() {
     `tail=${tail} rowRight=${rowRight} titleRight=${staticRight}`,
   );
 
-  // 表头两枚 icon 一起减重：folder-plus 18 → 15px、折叠图标 22 → 18px（墨迹 ≈15px），
-  // 跟列表行 15px 的 folder 同一条视觉重量；两个按钮的命中区（30px）不动。
+  // 表头两枚 icon 一起减重：folder-plus 18 → 15px，跟列表行 15px 的 folder
+  // 同一条视觉重量；两个按钮的命中区（30px）不动。折叠图标已经搬出表头（见下），
+  // 所以这里只剩 folder-plus 一件事。
   const headFolderGlyph = head.querySelector('.conversation-head-action .ico-folder-plus-circle').getBoundingClientRect();
-  const headToggleIcon = head.querySelector('.sidebar-toggle-icon').getBoundingClientRect();
   check(
-    'the two header icons shrink one step (Add project 18 → 15px, collapse 22 → 18px)',
-    round(headFolderGlyph.width) === 15 && round(headFolderGlyph.height) === 15
-      && round(headToggleIcon.width) === 18 && round(headToggleIcon.height) === 18,
-    `folder=${round(headFolderGlyph.width)}x${round(headFolderGlyph.height)} toggle=${round(headToggleIcon.width)}x${round(headToggleIcon.height)}`,
+    'the header folder-plus keeps its shrunken 15px glyph',
+    round(headFolderGlyph.width) === 15 && round(headFolderGlyph.height) === 15,
+    `folder=${round(headFolderGlyph.width)}x${round(headFolderGlyph.height)}`,
+  );
+
+  // 折叠 / 展开：设计稿把那枚图标换成了贴在面板右缘、竖直居中的舌片把手，
+  // 设计稿印在把手旁边的 Collapse / Expand 改成统一 tooltip（跟项目悬停提示同一只），
+  // 所以把手常驻只有一枚 chevron。
+  const panelEl = document.querySelector('.conversations-panel');
+  const panelBox = panelEl.getBoundingClientRect();
+  const edgeToggle = panelEl.querySelector('.conversations-edge-toggle');
+  const headButtons = head.querySelectorAll('.conversation-head-action').length;
+  check(
+    'the collapse control left the header for the panel edge',
+    Boolean(edgeToggle) && !head.contains(edgeToggle) && headButtons === 2,
+    `handle=${Boolean(edgeToggle)} inHeader=${head.contains(edgeToggle)} headButtons=${headButtons}`,
+  );
+  const edgeBox = edgeToggle.getBoundingClientRect();
+  check(
+    'the edge handle hugs the panel border halfway down the panel',
+    Math.abs(edgeBox.right - panelBox.right) <= 1.5
+      && Math.abs((edgeBox.top + edgeBox.bottom) / 2 - (panelBox.top + panelBox.bottom) / 2) <= 1.5
+      && Math.round(edgeBox.height) === 64 && Math.round(edgeBox.width) === 20
+      && Boolean(edgeToggle.querySelector('.conversations-edge-contour-line')),
+    `handle=${round(edgeBox.width)}x${round(edgeBox.height)} right=${round(edgeBox.right)} border=${round(panelBox.right)} cy=${round((edgeBox.top + edgeBox.bottom) / 2)} panelCy=${round((panelBox.top + panelBox.bottom) / 2)}`,
+  );
+
+  // chevron 朝向：展开时朝左（合上），收起时朝右（拉开）。d 里第三个数就是拐点 x。
+  const apexX = (node) => {
+    const numbers = (node.querySelector('.conversations-edge-chevron path')?.getAttribute('d') ?? '')
+      .match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+    return numbers[2];
+  };
+  const tooltipText = () => document.querySelector('.portal-tooltip')?.textContent ?? '';
+  const hoverHandle = async () => {
+    edgeToggle.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    await sleep(520);
+  };
+  check(
+    'the expanded handle points left (collapse)',
+    edgeToggle.dataset.collapsed === '0' && apexX(edgeToggle) < 6,
+    `apexX=${apexX(edgeToggle)}`,
+  );
+  await hoverHandle();
+  check(
+    'hovering the expanded handle shows the shared "Collapse" tooltip',
+    tooltipText() === 'Collapse',
+    `tooltip=${JSON.stringify(tooltipText())}`,
+  );
+
+  // 点一下：面板收成 32px 窄条（app-shell 里就是这一列），表头整个收走，把手翻向右、文案换成 Expand。
+  edgeToggle.click();
+  await sleep(220);
+  const collapsedPanel = document.querySelector('.conversations-panel');
+  const collapsedBox = collapsedPanel.getBoundingClientRect();
+  const collapsedToggle = collapsedPanel.querySelector('.conversations-edge-toggle');
+  const collapsedHandle = collapsedToggle.getBoundingClientRect();
+  check(
+    'collapsing drops the header and keeps the sole edge handle',
+    !collapsedPanel.querySelector('.side-panel-head')
+      && collapsedPanel.querySelector('.conversations-body')?.hidden === true
+      && Math.round(collapsedBox.width) === 32
+      && Math.abs((collapsedHandle.top + collapsedHandle.bottom) / 2 - (collapsedBox.top + collapsedBox.bottom) / 2) <= 1.5,
+    `width=${round(collapsedBox.width)} head=${Boolean(collapsedPanel.querySelector('.side-panel-head'))} hidden=${collapsedPanel.querySelector('.conversations-body')?.hidden}`,
+  );
+  check(
+    'the collapsed handle points right (expand)',
+    collapsedToggle.dataset.collapsed === '1' && apexX(collapsedToggle) > 6,
+    `apexX=${apexX(collapsedToggle)}`,
+  );
+  // 点击会把 tooltip 暂时抑住（不自作主张再弹），先把指针挪开再 hover 回来。
+  collapsedToggle.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: collapsedPanel }));
+  await sleep(80);
+  collapsedToggle.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  await sleep(520);
+  check(
+    'hovering the collapsed handle shows the shared "Expand" tooltip',
+    tooltipText() === 'Expand',
+    `tooltip=${JSON.stringify(tooltipText())}`,
+  );
+  collapsedToggle.click();
+  await sleep(220);
+  check(
+    'expanding brings the header back and flips the handle to the left',
+    Boolean(document.querySelector('.conversations-panel .side-panel-head'))
+      && apexX(document.querySelector('.conversations-panel .conversations-edge-toggle')) < 6,
+    `head=${Boolean(document.querySelector('.conversations-panel .side-panel-head'))}`,
   );
 
   // 标题太长：末尾渐隐（mask 最后一段是全透明的黑），不再画「…」。
@@ -394,7 +490,6 @@ async function revertHeadChecks() {
   style.textContent = `
     .conversations-panel .side-panel-head { padding-left: 11px !important; padding-right: 18px !important; gap: 18px !important; }
     .conversation-head-action .ico-folder-plus-circle { width: 18px !important; height: 18px !important; }
-    .sidebar-toggle-icon { width: 22px !important; height: 22px !important; }
   `;
   document.head.appendChild(style);
   const wrapper = document.getElementById('root').firstElementChild;
@@ -405,7 +500,6 @@ async function revertHeadChecks() {
   const glyph = iconNode().getBoundingClientRect();
   const overflow = head.scrollWidth - head.clientWidth;
   const revertedFolder = head.querySelector('.conversation-head-action .ico-folder-plus-circle').getBoundingClientRect();
-  const revertedToggle = head.querySelector('.sidebar-toggle-icon').getBoundingClientRect();
   wrapper.style.width = '288px';
   return [
     {
@@ -419,9 +513,9 @@ async function revertHeadChecks() {
       detail: `overflow=${overflow}`,
     },
     {
-      name: 'revert: the old 18px / 22px header icons come back a size bigger',
-      pass: round(revertedFolder.width) === 18 && round(revertedToggle.width) === 22,
-      detail: `folder=${round(revertedFolder.width)} toggle=${round(revertedToggle.width)}`,
+      name: 'revert: the old 18px folder-plus comes back a size bigger',
+      pass: round(revertedFolder.width) === 18,
+      detail: `folder=${round(revertedFolder.width)}`,
     },
   ];
 }

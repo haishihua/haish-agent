@@ -112,8 +112,10 @@
        图标共用同一条左缘（3px），整块表头跟着左移；右侧内边距与组间距再收一档
        （18 → 8 / 18 → 8），加上图标底板与两个按钮 34 → 30px，表头一整行最少只要
        ~209px，面板自身的下限因此能继续往下走（app-shell 左栏 clamp）。
-       右边距 8px 同时跟会话行悬停按钮（.conversation-actions 的 right: 8px）对齐。 */
-    gap: 8px;
+       右边距 8px 同时跟会话行悬停按钮（.conversation-actions 的 right: 8px）对齐。
+       组间距 8 → 4px：收起把手搬去面板右缘后表头只剩两个按钮，210px 下限时刚好
+       还差 3px；表头是 space-between，空隙富余时 4 跟 8 看起来一模一样。 */
+    gap: 4px;
     padding-left: 3px;
     padding-right: 8px;
 }
@@ -129,29 +131,81 @@
     transform: translateX(4px);
 }
 
-.sidebar-toggle-icon {
-    /* 图标尺寸写死，不靠按钮的内宽压出来（那样按钮一改宽度图标就跟着缩水）。
-       22 → 18px：与同行「Add project」的 folder-plus（18 → 15px）一起减重，
-       墨迹从 ≈18px 收到 ≈15px，跟列表行里 15px 的 folder 同一条视觉重量。 */
-    flex: 0 0 auto;
-    width: 18px;
-    height: 18px;
-    display: block;
+/* The straight edge is interrupted by the toggle's curved SVG contour. */
+.conversations-panel {
+    border-right: 0;
 }
 
-.conversation-head-action.conversation-panel-toggle {
-    width: 30px;
+.conversations-panel::after,
+.app-body.chat-mode .conversations-panel::after {
+    content: "";
+    position: absolute;
+    z-index: 8;
+    top: 10px;
+    bottom: 10px;
+    right: 0;
+    width: 1px;
+    background: linear-gradient(to bottom,
+        rgba(176, 206, 255, 0.09) 0 calc(50% - 32px),
+        transparent calc(50% - 32px) calc(50% + 32px),
+        rgba(176, 206, 255, 0.09) calc(50% + 32px) 100%);
+    opacity: 1;
+    pointer-events: none;
 }
 
-.sidebar-toggle-icon-panel {
-    fill: var(--bg);
-    transition: d .35s cubic-bezier(.4, 0, .2, 1);
+.conversations-panel .conversations-edge-toggle {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    z-index: 9;
+    width: 20px;
+    height: 64px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #dce7fb;
+    cursor: pointer;
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .sidebar-toggle-icon-panel {
-        transition: none;
-    }
+.conversations-edge-contour {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    fill: #0b162a;
+    filter: drop-shadow(-4px 0 10px rgba(75, 137, 226, 0.28));
+    pointer-events: none;
+}
+
+.conversations-edge-contour-line {
+    fill: none;
+    stroke: #679ce8;
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+
+.conversations-edge-chevron {
+    position: absolute;
+    top: 50%;
+    right: 3px;
+    width: 10px;
+    height: 10px;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.conversations-panel .conversations-edge-toggle:hover .conversations-edge-contour {
+    fill: #122443;
+}
+
+.conversations-panel .conversations-edge-toggle:hover .conversations-edge-contour-line {
+    stroke: #a4c8ff;
+}
+
+.conversations-panel .conversations-edge-toggle:focus-visible {
+    outline: 2px solid rgba(239, 191, 100, 0.9);
+    outline-offset: -2px;
 }
 
 .conversation-head-action:focus-visible {
@@ -160,10 +214,7 @@
     border-radius: 6px;
 }
 
-.conversations-panel.is-collapsed .side-panel-head {
-    padding-inline: 8px;
-    justify-content: center;
-}
+/* 收起后只剩 32px 窄条：表头整个不渲染（见 ConversationsPanel），唯一的入口是右缘那枚把手。 */
 
 .conversations-panel .side-panel-head .title {
     font-family: "Nunito Sans", "SF Pro Rounded", "Quicksand", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -225,6 +276,51 @@
     color: var(--gold);
 }
 
+.activity-toggle { position: relative; border-radius: 7px; transform: translateX(8px); }
+.activity-toggle.is-active { background: rgba(63, 138, 255, .18); color: #79adff; }
+.activity-toggle-unread {
+    position: absolute;
+    top: 5px;
+    right: 4px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #70a9ff;
+    flex: 0 0 auto;
+}
+.activity-view { padding: 0 0 12px; }
+.activity-new-conversation {
+    display: flex; align-items: center; gap: 9px; width: calc(100% - 20px); min-height: 34px;
+    margin: 0 10px 2px; padding: 0 9px; border: 0; border-radius: 7px;
+    background: transparent; color: #dce6f5; cursor: pointer;
+    text-align: left; font: 400 13px var(--conversation-font); letter-spacing: .01em;
+}
+.activity-new-conversation:hover { background: rgba(100, 130, 180, .12); }
+.activity-new-conversation.active, .activity-new-conversation.active:hover { background: rgba(77, 141, 246, 0.14); color: #eff5ff; }
+.activity-new-conversation:focus-visible { outline: 2px solid #79adff; outline-offset: 1px; }
+.activity-message { color: #8b98b2; font: 12px var(--conversation-font); padding: 6px 16px; }
+.activity-loading { display: flex; justify-content: center; padding: 24px 0; }
+.activity-list { display: flex; flex-direction: column; }
+.activity-row.conversation-row {
+    width: 100%;
+    padding-left: 16px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    text-align: left;
+    font: inherit;
+}
+.activity-row.conversation-row.active {
+    background: rgba(77, 141, 246, 0.14);
+    color: #eff5ff;
+}
+.activity-list > .conversation-show-more { padding-left: 16px; }
+/* 保持与普通侧栏终态黄点一致，覆盖时间线对 cancelled 的灰色样式。 */
+.activity-row .conversation-terminal-notice.status-cancelled {
+    background: var(--gold);
+    box-shadow: 0 0 6px rgba(239, 191, 100, 0.28);
+}
+
 .conversations-body {
     /* 右 padding 归零：会话行/高亮背景直接延伸到面板右缘（滚动条处），
        与收窄后的面板右边框对齐，避免高亮框右侧残留多余空隙 */
@@ -236,6 +332,8 @@
     --sidebar-title-fade: 12px;
     padding: 8px 0 10px;
 }
+
+.conversations-body[data-activity='1'] { padding-top: 2px; }
 
 /* Apple-style 侧栏：用留白与层级，不画框 */
 .project-node {

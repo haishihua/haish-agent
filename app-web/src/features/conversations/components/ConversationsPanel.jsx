@@ -1,35 +1,21 @@
 // Conversations side panel shell (leaf components live in sibling modules).
 import React from 'react';
-import { ListTodo, MessagesSquare } from 'lucide-react';
+import { Bell, ListTodo, MessagesSquare } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ConversationDialog } from './ConversationTaskCards.jsx';
 import { ProjectNode, ProjectDropEnd } from './ProjectNode.jsx';
 import { PREVIEW_PAGE_SIZE } from '../model/list-preview.js';
 import { AppUpdateFooter } from './AppUpdateFooter.jsx';
 import { ThreadSearch } from './ThreadSearch.jsx';
+import { ActivityView } from './ActivityView.jsx';
+import { useActivityProjects } from '../hooks/useActivityProjects.js';
+import { API_BASE } from '../../../shared/api/base.js';
+import { apiFetch } from '../../../shared/api/client.js';
+import { taskDetailToRuntimeTask } from '../../tasks/model/task-runtime.js';
 
-const SIDEBAR_TOGGLE_OUTER = 'M11 3H13C16.7712 3 18.6569 3 19.8284 4.17157C21 5.34315 21 7.22876 21 11V13C21 16.7712 21 18.6569 19.8284 19.8284C18.6569 21 16.7712 21 13 21H11C7.2288 21 5.3431 21 4.1716 19.8284C3 18.6569 3 16.7712 3 13V11C3 7.22876 3 5.34315 4.1716 4.17157C5.3431 3 7.2288 3 11 3Z';
-const SIDEBAR_TOGGLE_CLOSED = 'M10 5.5 C10 4.793 10 4.439 9.780 4.220 C9.560 4 9.207 4 8.5 4 H8.5 C6.379 4 5.318 4 4.659 4.659 C4 5.318 4 6.379 4 8.5 V15.5 C4 17.621 4 18.682 4.659 19.341 C5.318 20 6.379 20 8.5 20 H8.5 C9.207 20 9.561 20 9.780 19.780 C10 19.561 10 19.207 10 18.5 V5.5 Z';
-const SIDEBAR_TOGGLE_OPEN = 'M14 6 C14 5.057 14 4.586 13.707 4.293 C13.414 4 12.943 4 12 4 H10 C7.172 4 5.757 4 4.879 4.879 C4 5.757 4 7.172 4 10 V14 C4 16.828 4 18.243 4.879 19.121 C5.757 20 7.172 20 10 20 H12 C12.943 20 13.414 20 13.707 19.707 C14 19.414 14 18.943 14 18 V6 Z';
-
-function SidebarToggleIcon({ isOpen }) {
-  return (
-    <svg className="sidebar-toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d={SIDEBAR_TOGGLE_OUTER}
-        fill="currentColor"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        className="sidebar-toggle-icon-panel"
-        d={isOpen ? SIDEBAR_TOGGLE_OPEN : SIDEBAR_TOGGLE_CLOSED}
-      />
-    </svg>
-  );
-}
+// Chevron direction follows the action; the curved border is shared by both states.
+const EDGE_CHEVRON_COLLAPSE = 'M7.15 2.5 3.65 6l3.5 3.5';
+const EDGE_CHEVRON_EXPAND = 'M4.85 2.5 8.35 6l-3.5 3.5';
 
 function usePanelWidth() {
   const ref = React.useRef(null);
@@ -50,6 +36,12 @@ export function ConversationsPanel({
   workspaceState,
   terminalNotices = {},
   taskTerminalNotices = {},
+  activityNotices = {},
+  activityOwnerId = '',
+  activityOpen: controlledActivityOpen,
+  onActivityOpenChange,
+  isNewConversationSelected = false,
+  onSelectActivity,
   windowFocused = true,
   acknowledgeActiveConversation = true,
   onViewConversationCompletions,
@@ -84,6 +76,19 @@ export function ConversationsPanel({
 }) {
   const [panelRef, panelWidth] = usePanelWidth();
   const [dialog, setDialog] = React.useState(null);
+  const [uncontrolledActivityOpen, setUncontrolledActivityOpen] = React.useState(false);
+  const activityOpen = controlledActivityOpen ?? uncontrolledActivityOpen;
+  const toggleActivity = () => {
+    const next = !activityOpen;
+    if (controlledActivityOpen === undefined) setUncontrolledActivityOpen(next);
+    onActivityOpenChange?.(next);
+  };
+  const activityMode = workflowTaskMode ? 'bot' : 'chat';
+  const activity = useActivityProjects(activityOpen && !collapsed, activityOwnerId, activityMode);
+  const activityConversationIds = React.useMemo(() => new Set(
+    workspaceState.projects.flatMap((project) => (project.conversations || []).map((conversation) => conversation.id)),
+  ), [workspaceState.projects]);
+  const hasUnreadActivity = Object.values(activityNotices).some((notice) => activityConversationIds.has(notice.conversationId));
   const activeProjectId = workspaceState?.activeProjectId;
   const activeConversationId = workspaceState?.activeConversationId;
 
@@ -211,6 +216,21 @@ export function ConversationsPanel({
     });
   }
 
+  async function openActivityReport(entry) {
+    try {
+      const response = await apiFetch(`${API_BASE}/api/tasks/${encodeURIComponent(entry.taskId)}?event_view=runtime`,
+        { method: 'GET' }, { json: false });
+      if (!response.ok) throw new Error('Could not load task report');
+      const detail = await response.json();
+      if (detail.task_id !== entry.taskId || detail.conversation_id !== entry.conversation.id) {
+        throw new Error('Task report does not match the selected activity');
+      }
+      onOpenTaskReport?.(taskDetailToRuntimeTask(detail, entry.task));
+    } catch (error) {
+      onToast?.('error', String(error?.message || error));
+    }
+  }
+
   function requestRemoveProject(project) {
     setDialog({
       kind: 'delete-project',
@@ -222,33 +242,59 @@ export function ConversationsPanel({
     });
   }
 
+  const panelName = workflowTaskMode ? 'task' : 'conversation';
+  const panelBodyId = React.useId();
   const panelToggle = (
-    <PortalTooltip text={collapsed ? `Expand ${workflowTaskMode ? 'Task' : 'Conversation'}` : `Collapse ${workflowTaskMode ? 'Task' : 'Conversation'}`} position="below">
+    <PortalTooltip text={collapsed ? 'Expand' : 'Collapse'} position="below">
       <button
         type="button"
-        className="conversation-head-action conversation-panel-toggle"
+        className="conversations-edge-toggle"
         onClick={onToggleCollapsed}
-        aria-label={collapsed ? 'Expand conversation panel' : 'Collapse conversation panel'}
+        aria-label={collapsed ? `Expand ${panelName} panel` : `Collapse ${panelName} panel`}
         aria-expanded={!collapsed}
+        aria-controls={panelBodyId}
+        data-collapsed={collapsed ? '1' : '0'}
       >
-        <SidebarToggleIcon isOpen={collapsed} />
+        <svg className="conversations-edge-contour" viewBox="0 0 28 88" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M28 0 C28 12 24 16 18 20 C8 26 4 31 4 44 C4 57 8 62 18 68 C24 72 28 76 28 88 L28 0 Z" />
+          <path className="conversations-edge-contour-line" d="M28 0 C28 12 24 16 18 20 C8 26 4 31 4 44 C4 57 8 62 18 68 C24 72 28 76 28 88" />
+        </svg>
+        <svg className="conversations-edge-chevron" viewBox="0 0 12 12" aria-hidden="true">
+          <path
+            d={collapsed ? EDGE_CHEVRON_EXPAND : EDGE_CHEVRON_COLLAPSE}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
     </PortalTooltip>
   );
 
   return (
     <div className={`side-panel left conversations-panel${collapsed ? ' is-collapsed' : ''}`} ref={panelRef} style={{ ...extensionStyle, '--panel-width': `${panelWidth}px` }}>
-      <div className="side-panel-head">
-        <div className="conversation-head-primary">
-          {collapsed ? panelToggle : <div className="title conversation-brand">
-            <span className="conversation-brand-icon" aria-hidden="true">
-              {workflowTaskMode ? <ListTodo size={20} strokeWidth={1.75} /> : <MessagesSquare size={20} strokeWidth={1.75} />}
-            </span>
-            <span>{workflowTaskMode ? 'Task' : 'Conversation'}</span>
-          </div>}
-        </div>
-        {!collapsed ? (
+      {/* 收起时整块表头一起收走：面板只剩 32px 宽的窄条，唯一的入口就是右缘那枚把手。 */}
+      {!collapsed ? (
+        <div className="side-panel-head">
+          <div className="conversation-head-primary">
+            <div className="title conversation-brand">
+              <span className="conversation-brand-icon" aria-hidden="true">
+                {workflowTaskMode ? <ListTodo size={20} strokeWidth={1.75} /> : <MessagesSquare size={20} strokeWidth={1.75} />}
+              </span>
+              <span>{workflowTaskMode ? 'Task' : 'Conversation'}</span>
+            </div>
+          </div>
           <div className="conversation-head-actions">
+            <PortalTooltip text={activityOpen ? 'Close activity' : 'Activity'} position="below">
+              <button type="button" className={`conversation-head-action activity-toggle${activityOpen ? ' is-active' : ''}`}
+                onClick={toggleActivity} aria-label={activityOpen ? 'Close activity' : 'Open activity'}
+                aria-pressed={activityOpen}>
+                <Bell size={16} aria-hidden="true" />
+                {hasUnreadActivity ? <span className="activity-toggle-unread" aria-label="Unread activity" /> : null}
+              </button>
+            </PortalTooltip>
             <PortalTooltip text="Add Project" position="below">
               <button
                 type="button"
@@ -259,11 +305,20 @@ export function ConversationsPanel({
                 <span className="ico ico-folder-plus-circle" aria-hidden="true" />
               </button>
             </PortalTooltip>
-            {panelToggle}
           </div>
-        ) : null}
-      </div>
-      <div className="side-panel-body conversations-body" ref={scrollBodyRef} hidden={collapsed}>
+        </div>
+      ) : null}
+      {panelToggle}
+      <div className="side-panel-body conversations-body" data-activity={activityOpen ? '1' : undefined} ref={scrollBodyRef} id={panelBodyId} hidden={collapsed}>
+        {activityOpen ? (
+          <ActivityView key={activityMode} mode={activityMode} projects={activity.projects} workspaceProjects={workspaceState.projects}
+            notices={activityNotices} terminalNotices={terminalNotices} taskTerminalNotices={taskTerminalNotices}
+            activeConversationId={activeConversationId} activeTaskId={activeTaskId}
+            loading={activity.loading} error={activity.error} onSelect={onSelectActivity}
+            onPin={onPinConversation} onDeleteConversation={requestDeleteConversation} onDeleteTask={requestDeleteTask}
+            onOpenReport={openActivityReport} isNewConversationSelected={isNewConversationSelected}
+            onNewConversation={() => onAddConversation?.(activeProjectId)} />
+        ) : (<>
         {/* 两个标签页都有搜索框：会话模式搜会话、任务模式搜任务——同一只组件、同一套
             样式与键盘操作，选中后分别跳对应会话 / 对应任务。 */}
         <ThreadSearch
@@ -306,6 +361,7 @@ export function ConversationsPanel({
           />
         ))}
         <ProjectDropEnd onDropProject={dropProject} />
+        </>)}
       </div>
       {!collapsed ? <AppUpdateFooter onToast={onToast} /> : null}
       <ConversationDialog dialog={dialog} onCancel={() => setDialog(null)} />

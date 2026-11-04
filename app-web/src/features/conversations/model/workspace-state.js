@@ -440,6 +440,15 @@ export function isTaskActuallyActive(task) {
   return isTaskLive(task);
 }
 
+export function compareConversationOrder(a, b) {
+  const pinned = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
+  if (pinned) return pinned;
+  const active = Number(conversationHasActiveTask(b)) - Number(conversationHasActiveTask(a));
+  if (active) return active;
+  return conversationOrderTimestamp(b) - conversationOrderTimestamp(a)
+    || (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+}
+
 export function normalizeWorkspaceOrdering(state) {
   const activeProjectId = state?.activeProjectId || defaultProjectIdForMode('chat');
   const activeConversationId = state?.activeConversationId || null;
@@ -458,20 +467,7 @@ export function normalizeWorkspaceOrdering(state) {
     .map((project) => withDefaultExpansion(project))
     .map((project) => ({
       ...project,
-      conversations: [...project.conversations].sort((a, b) => {
-        const aPinned = Boolean(a.pinned);
-        const bPinned = Boolean(b.pinned);
-        if (aPinned && !bPinned) return -1;
-        if (bPinned && !aPinned) return 1;
-        const aActive = conversationHasActiveTask(a);
-        const bActive = conversationHasActiveTask(b);
-        if (aActive && !bActive) return -1;
-        if (bActive && !aActive) return 1;
-        // A drag establishes an order until newer real activity occurs.
-        // Keep this separate from updatedAt: viewing is not an update.
-        return conversationOrderTimestamp(b) - conversationOrderTimestamp(a)
-          || (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-      }),
+      conversations: [...project.conversations].sort(compareConversationOrder),
     }))
     .sort((a, b) => {
         const aPinned = Boolean(a.pinned);

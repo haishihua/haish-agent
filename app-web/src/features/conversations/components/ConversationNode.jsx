@@ -1,8 +1,7 @@
 import React from 'react';
 import { Clock } from 'lucide-react';
 import { useSchedules } from '../../schedules/hooks/useSchedules.js';
-import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
-import { ApprovalGlyph, ConversationAction, WaitingInputGlyph } from './ConversationIcons.jsx';
+import { ApprovalGlyph, ConversationAction, ConversationPinAction, WaitingInputGlyph } from './ConversationIcons.jsx';
 import { TaskRecordCompact } from './ConversationTaskCards.jsx';
 import {
   RUN_STATE_APPROVAL,
@@ -203,19 +202,7 @@ export function ConversationNode({
       >
         <ConversationMarqueeTitle name={conversation.name || ''} />
         <span className="conversation-actions">
-          <PortalTooltip text={isPinned ? 'Unpin conversation' : 'Pin conversation'} position="above">
-            <button
-              type="button"
-              className={`conversation-icon-btn conversation-pin-toggle${isPinned ? ' pinned' : ''}`}
-              aria-label={isPinned ? 'Unpin conversation' : 'Pin conversation'}
-              onClick={(event) => { event.stopPropagation(); onPinConversation?.(project.id, conversation.id); }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 17v5"/>
-                <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
-              </svg>
-            </button>
-          </PortalTooltip>
+          <ConversationPinAction pinned={isPinned} onClick={() => onPinConversation?.(project.id, conversation.id)} />
           <ConversationAction label="Delete conversation" icon="trash" onClick={() => onRequestDeleteConversation(project, conversation)} />
         </span>
         {scheduleCount > 0 && <button type="button" className="conversation-schedule-icon" aria-label={`Scheduled tasks (${scheduleCount})`} title={`${scheduleCount} scheduled task(s)`}

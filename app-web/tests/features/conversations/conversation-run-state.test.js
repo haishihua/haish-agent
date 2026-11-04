@@ -359,7 +359,8 @@ test('a copy that is behind while the turn already settled gets rebuilt instead 
 test('both the row indicator and the task card share the same wait glyphs', () => {
   assert.match(iconsSource, /export function WaitingInputGlyph\(\)/);
   assert.match(iconsSource, /export function ApprovalGlyph\(\)/);
-  assert.match(nodeSource, /import \{ ApprovalGlyph, ConversationAction, WaitingInputGlyph \} from '\.\/ConversationIcons\.jsx';/);
+  // 两个 glyph 都从共享模块取（成员顺序不参与断言，加一个新动作不该让它红）。
+  assert.match(nodeSource, /import \{[^}]*\bApprovalGlyph\b[^}]*\bWaitingInputGlyph\b[^}]*\} from '\.\/ConversationIcons\.jsx';/);
   // 「等你回答」用 lucide 的气泡+问号（与 AppIcon 同源，不再自己手写路径）；只有审批那一个
   // 状态还是本地描边路径。
   assert.match(iconsSource, /import \{ MessageCircleQuestion \} from 'lucide-react';/);
