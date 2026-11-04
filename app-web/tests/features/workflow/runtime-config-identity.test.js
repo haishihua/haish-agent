@@ -8,7 +8,7 @@ const providers = [
   { id: 'source', requestProvider: 'source', legacySelectors: ['custom.source'], provider: 'openai', label: 'Source Provider' },
   { id: 'executed', requestProvider: 'executed', provider: 'openai', label: 'Executed Provider' },
 ];
-const requested = { llm_config_id: 'source', model_id: 'requested-model', reasoning_effort: 'high' };
+const requested = { agent_id: 'preset.general', llm_config_id: 'source', model_id: 'requested-model', reasoning_effort: 'high' };
 
 function displaySnapshot(snapshot) {
   const configs = { worker: { ...requested } };
@@ -26,14 +26,14 @@ function displaySnapshot(snapshot) {
 test('actual record identity, model and effort override the requested route together', () => {
   const actual = { llm_config_id: 'executed', model_id: 'actual-model', reasoning_effort: 'low' };
   const value = displaySnapshot(actual);
-  assert.deepEqual(value, actual);
+  assert.deepEqual(value, { ...actual, agent_id: 'preset.general' });
   assert.equal(runtimeProviderDisplay(value.llm_config_id, providers, true).label, 'Executed Provider');
 });
 
 test('actual legacy route replaces the requested record before exact-ID or frozen-alias migration', () => {
   for (const provider of ['source', 'custom.source', 'executed']) {
     const value = displaySnapshot({ provider, model_id: 'legacy-model', reasoning_effort: 'medium' });
-    assert.deepEqual(value, { llm_config_id: provider === 'executed' ? 'executed' : 'source', model_id: 'legacy-model', reasoning_effort: 'medium' });
+    assert.deepEqual(value, { agent_id: 'preset.general', llm_config_id: provider === 'executed' ? 'executed' : 'source', model_id: 'legacy-model', reasoning_effort: 'medium' });
     assert.equal(runtimeProviderDisplay(value.llm_config_id, providers, true).label, provider === 'executed' ? 'Executed Provider' : 'Source Provider');
   }
 });
@@ -44,13 +44,13 @@ test('unresolved actual identities remain visible and never inherit the requeste
     { llm_config_id: 'custom.source', model_id: 'invalid-id-model', reasoning_effort: 'high' },
   ]) {
     const value = displaySnapshot(snapshot);
-    assert.deepEqual(value, snapshot);
+    assert.deepEqual(value, { ...snapshot, agent_id: 'preset.general' });
     const identity = value.llm_config_id || value.provider;
     assert.deepEqual(runtimeProviderDisplay(identity, providers, true), { selected: null, label: identity, provider: 'custom' });
   }
 });
 
 test('a partial actual route does not borrow the requested model or reasoning effort', () => {
-  assert.deepEqual(displaySnapshot({ provider: 'executed' }), { llm_config_id: 'executed', model_id: '' });
+  assert.deepEqual(displaySnapshot({ provider: 'executed' }), { agent_id: 'preset.general', llm_config_id: 'executed', model_id: '' });
   assert.deepEqual(displaySnapshot({ model_id: 'same-route-model' }), { ...requested, model_id: 'same-route-model' });
 });

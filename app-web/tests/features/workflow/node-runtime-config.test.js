@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest, workflowNodeRuntimeConfig } from '../../../src/features/workflow/model/node-runtime-config.js';
+import { nodeConfigHasRouteOverride, nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest, workflowNodeRuntimeConfig } from '../../../src/features/workflow/model/node-runtime-config.js';
 import { createTaskStreamHandlers, workflowNodeFinishedState, workflowNodeConfiguredState } from '../../../src/features/tasks/hooks/createTaskStreamHandlers.js';
 globalThis.window = { HAISH_API_BASE: 'http://fixture.invalid', location: { origin: 'http://fixture.invalid' } };
 const { taskSummaryToRuntimeTask } = await import('../../../src/features/tasks/model/task-runtime.js');
@@ -32,9 +32,9 @@ test('node legacy effort uses its inherited provider default without adding a ro
 test('all pending and running nodes display recorded task defaults, with per-node execution precedence', () => {
   const task = { requestedProvider: 'source', requestedModelId: 'source-model', requestedReasoningEffort: 'high', workflowRun: { nodes: { worker: { runtime_config: { provider: 'actual', model_id: 'actual-model', reasoning_effort: 'low' } } } } };
   assert.equal(workflowNodeRuntimeConfig(workflow.nodes[0], task, {}, true).model_id, 'actual-model');
-  assert.deepEqual(workflowNodeRuntimeConfig(workflow.nodes[1], task, {}, true), { llm_config_id: 'source', model_id: 'source-model', reasoning_effort: 'high' });
+  assert.deepEqual(workflowNodeRuntimeConfig(workflow.nodes[1], task, {}, true), { agent_id: 'preset.general', llm_config_id: 'source', model_id: 'source-model', reasoning_effort: 'high' });
   assert.equal(workflowNodeRuntimeConfig(workflow.nodes[1], task, { verifier: { provider: 'other' } }, true).model_id, '');
-  assert.deepEqual(workflowNodeRuntimeConfig(workflow.nodes[1], task, {}, false), {});
+  assert.deepEqual(workflowNodeRuntimeConfig(workflow.nodes[1], task, {}, false), { agent_id: 'preset.general' });
   const running = workflowNodeConfiguredState({ runtime_config: { provider: 'a', model_id: 'm1' } }, { status: 'running', input: 'work', attempt: 2 });
   assert.deepEqual(running, { status: 'running', input: 'work', attempt: 2, runtime_config: { provider: 'a', model_id: 'm1' } });
 });
@@ -96,6 +96,31 @@ test('node rerun replaces only target config and normalizes old null before tran
 });
 test('empty rerun config is rejected without a configured definition or task default', async () => {
   await assert.rejects(captureStreamRequest({ taskId: 'task', executionMode: 'bot', workflowSnapshot: { nodes: [workflow.nodes[0]] }, nodeRuntimeConfigs: { worker: { provider: 'a', model_id: 'm1' } } }, { rerunNodeId: 'worker', runConfig: nodeRuntimeConfigRequest({}) }), /configuration.*not been sent/);
+});
+
+test('Agent identity defaults, overrides and model changes remain independent', () => {
+  const node = { id: 'worker', type: 'agent', agent_id: 'custom.definition', runtime_config: { agent_id: 'custom.runtime', llm_config_id: 'a', model_id: 'm1' } };
+  assert.equal(workflowNodeRuntimeConfig({ id: 'worker', type: 'agent' }).agent_id, 'preset.general');
+  assert.equal(workflowNodeRuntimeConfig(node).agent_id, 'custom.runtime');
+  const configs = { worker: { agent_id: 'custom.selected', llm_config_id: 'b', model_id: 'm2' } };
+  assert.equal(workflowNodeRuntimeConfig(node, null, configs).agent_id, 'custom.selected');
+  assert.equal(nodeRuntimeConfigsForWorkflow({ nodes: [node] }, configs).worker.agent_id, 'custom.selected');
+  assert.equal(nodeRuntimeConfigRequest(configs.worker).nodeRuntimeConfig.agent_id, 'custom.selected');
+  assert.equal(workflowNodeRuntimeConfig(node, { workflowRun: { nodes: { worker: { runtime_config: { agent_id: 'custom.executed' } } } } }, configs, true).agent_id, 'custom.executed');
+  assert.equal(workflowNodeRuntimeConfig(node, null, { worker: { llm_config_id: 'b', model_id: 'm2' } }).agent_id, 'custom.runtime');
+});
+
+test('the clear action only appears when a model route can actually be cleared', () => {
+  // 默认 agent_id 是节点自带的身份，不是可清空的路由：有它不等于「有配置可清」。
+  assert.equal(nodeConfigHasRouteOverride(workflowNodeRuntimeConfig({ id: 'worker', type: 'agent' }, null, {}, false)), false);
+  assert.equal(nodeConfigHasRouteOverride({ agent_id: 'preset.general' }), false);
+  assert.equal(nodeConfigHasRouteOverride({}), false);
+  assert.equal(nodeConfigHasRouteOverride(undefined), false);
+  for (const override of [{ llm_config_id: 'a' }, { provider: 'a' }, { model_id: 'm1' }, { reasoning_effort: 'high' }]) {
+    assert.equal(nodeConfigHasRouteOverride({ agent_id: 'preset.general', ...override }), true, JSON.stringify(override));
+  }
+  // 清空后剩下的正是默认身份本身，按钮随之消失。
+  assert.equal(nodeConfigHasRouteOverride({ agent_id: 'custom.selected', llm_config_id: '' }), false);
 });
 
 test('deploy snapshots node config before queuing', () => {

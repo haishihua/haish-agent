@@ -1,7 +1,9 @@
 import { normalizeReasoningEffort } from '../../chat/model/run-catalog.js';
 import { migrateExecutionRoute } from '../../settings/model/execution-identity.js';
 
-const FIELDS = ['llm_config_id', 'provider', 'model_id', 'reasoning_effort'];
+const FIELDS = ['llm_config_id', 'provider', 'model_id', 'reasoning_effort', 'agent_id'];
+// Agent 身份是节点的默认值（workflowNodeRuntimeConfig 会补上），不是可以「清掉」的路由覆盖。
+const ROUTE_FIELDS = FIELDS.filter((field) => field !== 'agent_id');
 
 function configFields(config, providerOptions = [], effectiveId = config.llm_config_id) {
   config = migrateExecutionRoute(config, providerOptions);
@@ -11,6 +13,14 @@ function configFields(config, providerOptions = [], effectiveId = config.llm_con
     result.reasoning_effort = normalizeReasoningEffort(config.reasoning_effort, provider?.defaultReasoningEffort);
   }
   return result;
+}
+
+/**
+ * 只有在真有模型路由可清的时候才给「清空节点配置」按钮：
+ * 光有一枚默认 agent_id 时按钮点了也不会变，等于一个假开关。
+ */
+export function nodeConfigHasRouteOverride(config = {}) {
+  return ROUTE_FIELDS.some((field) => Boolean(config?.[field]));
 }
 
 export function nodeRuntimeConfigsForWorkflow(workflow, configs = {}, providerOptions = []) {
@@ -38,6 +48,7 @@ export function workflowNodeRuntimeConfig(node, task, configs = {}, readOnly = f
     }
     value = { ...value, ...config };
   }
+  if (node?.type === 'agent' && !value.agent_id) value.agent_id = node.agent_id || 'preset.general';
   return migrateExecutionRoute(value, providerOptions);
 }
 

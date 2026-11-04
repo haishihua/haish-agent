@@ -30,6 +30,23 @@ test('Bot accepts explicit task defaults but cannot execute a model-free graph w
   assert.match(executionConfigError({ executionMode: 'bot', workflow: { nodes: [{ id: 'tool', type: 'tool' }] }, providerOptions }), /configuration/);
 });
 
+test('Goal judge inherits the validated agent route rather than requiring its own model', () => {
+  const goal = { nodes: [{ id: 'agent', type: 'agent' },
+    { id: 'judge', label: 'Judge', type: 'llm', runtime_config_from: 'agent' }] };
+  const input = { executionMode: 'bot', workflow: goal, providerOptions, nodeRuntimeConfigs: { agent: route } };
+  assert.equal(executionConfigError(input), '');
+  assert.equal(executionConfigError({ ...input, workflow: { nodes: [...goal.nodes].reverse() } }), '', 'inheritance does not depend on node array order');
+  assert.equal(executionConfigError({ ...input, nodeRuntimeConfigs: {}, provider: route.llm_config_id, modelId: route.model_id }), '');
+  assert.match(executionConfigError({ ...input, nodeRuntimeConfigs: {} }), /Node agent.*configuration/);
+  assert.match(executionConfigError({ ...input, nodeRuntimeConfigs: { agent: { ...route, llm_config_id: 'removed' } } }), /Node agent.*unavailable/);
+  const override = { ...goal, nodes: [goal.nodes[0], { ...goal.nodes[1], llm_config_id: 'removed', model: 'other' }] };
+  assert.match(executionConfigError({ ...input, workflow: override }), /Node Judge.*unavailable/);
+  const missingModel = { ...goal, nodes: [goal.nodes[0], { ...goal.nodes[1], llm_config_id: 'configured' }] };
+  assert.match(executionConfigError({ ...input, workflow: missingModel }), /Node Judge.*concrete model/);
+  const missingSource = { ...goal, nodes: [goal.nodes[0], { ...goal.nodes[1], runtime_config_from: 'missing' }] };
+  assert.match(executionConfigError({ ...input, workflow: missingSource }), /requires the configured route/);
+});
+
 test('Chat and Bot deploy reject before task staging, upload or conversation creation', () => {
   for (const executionMode of ['chat', 'bot']) {
     const notices = [];

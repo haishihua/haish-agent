@@ -127,12 +127,12 @@ const select = async (id) => { document.querySelector(`.react-flow__node[data-id
   [...document.querySelectorAll('[role="tab"]')].find((tab) => tab.textContent === 'Runtime Config').click(); await tick();
   window.__setRuntimeTask((t) => ({ ...t, eventLog: [...t.eventLog, { type: 'text_delta', delta: 'checking', workflowNodeId: 'worker' }] })); await tick();
   check(selectedTab() === 'Runtime Config', 'Streaming does not override an explicit tab choice');
-  const configShown = (provider, model, effort) => panel().querySelector('[aria-label="Node provider"]')?.textContent.trim() === provider
+  const configShown = (provider, model, effort) => panel().querySelector('[aria-label="Node provider"] [data-slot="select-value"] > span:not([aria-hidden]):not([data-slot="badge"])')?.textContent.trim() === provider
     && panel().querySelector('[aria-label="Node model"]')?.textContent.trim() === model
     && panel().querySelector('[aria-label="Node thinking level"]')?.textContent.trim().toLowerCase() === effort;
   const configLocked = () => {
     const fields = [...panel().querySelectorAll('.workflow-runtime-config [role="combobox"]')];
-    return fields.length === 3 && fields.every((item) => item.disabled);
+    return fields.length === 4 && fields.every((item) => item.disabled);
   };
   check(configShown('Source Provider', 'gpt-5.5', 'high') && configLocked(), 'Running node displays inherited Provider, Model and Reasoning effort before completion');
   const executedConfig = { llm_config_id: 'executed', model_id: 'actual-model', reasoning_effort: 'low' };

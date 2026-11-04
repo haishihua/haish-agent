@@ -14,6 +14,9 @@ export function executionConfigError({ executionMode = 'chat', provider, legacyP
   if (executionMode === 'chat') return routeError({ llm_config_id: provider, provider: legacyProvider, model_id: modelId }, 'Chat');
   if (!workflow?.nodes?.length) return 'Select an available Workflow before sending.';
   const taskDefaults = { requestedProvider: provider, requestedModelId: modelId };
+  const agentRoutes = new Map(workflow.nodes.filter((node) => node.type === 'agent').map((node) => [
+    node.id, workflowNodeRuntimeConfig(node, taskDefaults, nodeRuntimeConfigs, true, providerOptions),
+  ]));
   if (provider || modelId) {
     const error = routeError({ llm_config_id: provider, model_id: modelId }, 'Workflow default');
     if (error) return error;
@@ -22,13 +25,18 @@ export function executionConfigError({ executionMode = 'chat', provider, legacyP
   for (const node of workflow.nodes) {
     if (node.type === 'agent') {
       modelNodes += 1;
-      const error = routeError(workflowNodeRuntimeConfig(node, taskDefaults, nodeRuntimeConfigs, true, providerOptions), `Node ${node.label || node.id}`);
+      const route = agentRoutes.get(node.id);
+      const error = routeError(route, `Node ${node.label || node.id}`);
       if (error) return error;
     } else if (node.type === 'llm') {
       modelNodes += 1;
+      const label = `Node ${node.label || node.id}`;
+      const inherited = node.runtime_config_from ? agentRoutes.get(node.runtime_config_from) : null;
+      if (node.runtime_config_from && !inherited) return `${label}: requires the configured route of agent node ${node.runtime_config_from}.`;
       const ownRoute = Boolean(node.llm_config_id || node.provider);
-      const error = routeError({ llm_config_id: node.llm_config_id || (ownRoute ? '' : provider), provider: node.provider,
-        model_id: node.model || (ownRoute ? '' : modelId) }, `Node ${node.label || node.id}`);
+      const base = inherited || { llm_config_id: provider, model_id: modelId };
+      const error = routeError({ llm_config_id: node.llm_config_id || (ownRoute ? '' : base.llm_config_id), provider: node.provider,
+        model_id: node.model || (ownRoute ? '' : base.model_id) }, label);
       if (error) return error;
     }
   }
