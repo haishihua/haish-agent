@@ -18,6 +18,7 @@ export function createDraftLifecycleHandlers(ctx) {
     draftConversationIdsRef,
     draftConversationRef,
     draftFirstSendRef,
+    draftServerCreateRef,
     flushRuntimeTasksToWorkspace,
     generateHexId,
     mutateRuntime,
@@ -125,7 +126,7 @@ export function createDraftLifecycleHandlers(ctx) {
     }
     // 会话留下了，"新建会话" 就得换一个新壳：文字和附件都归那条真会话。
     if (keepServerConversation) {
-      forgetDraftConversationId(draftConversationIdsRef.current, draft?.projectId);
+      forgetDraftConversationId(draftConversationIdsRef.current, draft?.projectId, draft?.localDraftId || draft?.id);
     }
     draftConversationRef.current = null;
     pendingCreatedDetailRef.current = null;
@@ -225,12 +226,34 @@ export function createDraftLifecycleHandlers(ctx) {
     return isConversationActivationCurrent(requestSeq) ? draftId : null;
   }
 
+  function switchDraftProject(projectOrId) {
+    const draft = draftConversationRef.current;
+    const project = typeof projectOrId === 'object' && projectOrId?.id
+      ? projectOrId : workspaceState.projects.find((item) => item.id === projectOrId);
+    if (!draft || draft.executionMode !== 'chat' || draft.id !== conversationIdRef.current || !project || project.executionMode !== 'chat'
+      || draft.serverCreated || pendingCreatedDetailRef.current || draftServerCreateRef?.current
+      || draftFirstSendRef.current || draftConversationHasSendInFlight(draft.id)) return false;
+    if (project.id === draft.projectId) return true;
+    const existingDraftId = draftConversationIdsRef.current.get(project.id);
+    forgetDraftConversationId(draftConversationIdsRef.current, draft.projectId, draft.id);
+    if (!existingDraftId || existingDraftId === draft.id) draftConversationIdsRef.current.set(project.id, draft.id);
+    draftConversationRef.current = {
+      ...draft, projectId: project.id, workspacePath: project.workspacePath || null,
+      workspaceLabel: project.workspaceLabel || project.name || null,
+    };
+    setLocalWorkspace({ path: project.workspacePath || window.haish?.homePath || null,
+      label: project.workspaceLabel || project.name || null });
+    setWorkspaceState((state) => normalizeWorkspaceOrdering({ ...state, activeProjectId: project.id, activeConversationId: null }));
+    return true;
+  }
+
   return {
     invalidateConversationActivation,
     isConversationActivationCurrent,
     isDraftConversationId,
     clearDraftConversationState,
     openDraftConversation,
+    switchDraftProject,
     markDraftConversationKept,
     markDraftFirstSendInFlight,
     clearDraftFirstSendInFlight,

@@ -59,6 +59,7 @@ export function ChatPanel({
   approvalDraft = false,
   ensureApprovalConversation,
   composerScopeId = conversationId,
+  draftProjectSelector = null,
   messages = [],
   // 会话正文还在路上（判据见 AppShell 的 conversationLoading）：整段会话在正中间用一颗
   // Loader 占位，行等正文到了再一次性铺开。
@@ -527,6 +528,7 @@ export function ChatPanel({
           <ScrollToBottomButton ref={scrollNavigationRef} scrollRef={listRef} autoFollow={!searchActive} resetKey={`${conversationId || ''}:${sendScrollKey}`} />
         ) : null}
       </div>
+      {draftProjectSelector}
       <ChatComposer
         conversationId={conversationId}
         approvalDraft={approvalDraft}

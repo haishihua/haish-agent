@@ -50,6 +50,7 @@ export function createDraftMaterializeHandlers(ctx) {
     const project = workspaceState.projects.find((item) => item.id === draft.projectId)
       || {
         id: draft.projectId,
+        executionMode: draft.executionMode,
         workspacePath: draft.workspacePath,
         workspaceLabel: draft.workspaceLabel,
       };
@@ -116,7 +117,7 @@ export function createDraftMaterializeHandlers(ctx) {
     // 这一笔发送已经接下、还没落地（同步设上，handleDeploy 靠它挡住第二次提交）。
     draftFirstSendRef.current = draft.id;
     // A later '+' in the same project must not reuse this in-flight runtime.
-    forgetDraftConversationId(draftConversationIdsRef.current, draft.projectId);
+    forgetDraftConversationId(draftConversationIdsRef.current, draft.projectId, draft.id);
     const activationSeq = conversationActivationSeqRef.current;
     try {
       let detail = pendingCreatedDetailRef.current;

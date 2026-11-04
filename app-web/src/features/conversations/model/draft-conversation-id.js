@@ -18,7 +18,7 @@ export function rememberDraftConversationId(registry, projectId, generateId) {
   return created;
 }
 
-export function forgetDraftConversationId(registry, projectId) {
+export function forgetDraftConversationId(registry, projectId, expectedId = null) {
   const key = String(projectId || '');
-  if (key) registry?.delete(key);
+  if (key && (!expectedId || registry?.get(key) === expectedId)) registry?.delete(key);
 }
