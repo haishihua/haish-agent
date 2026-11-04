@@ -10,6 +10,9 @@ app-web/dist-release/
 !/build/icon.png
 release/
 tmp/
+# Local verification runs build the app into here; never commit the output.
+.verification/
+app-web/.verification/
 .DS_Store
 .env
 .env.local
