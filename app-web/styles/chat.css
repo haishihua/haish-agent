@@ -1660,6 +1660,9 @@
 }
 .draft-project-trigger { max-width: min(280px, 65vw); padding: 7px 10px; background: #292d33; }
 .draft-project-trigger span, .draft-project-option span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.draft-project-chevron { flex-shrink: 0; transition: transform .18s ease; }
+.draft-project-trigger[aria-expanded='true'] .draft-project-chevron { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .draft-project-chevron { transition: none; } }
 .draft-project-trigger:hover, .draft-project-option:hover, .draft-project-add:hover { background: #34383e; }
 .draft-project-trigger:disabled { opacity: .55; cursor: default; }
 .draft-project-menu {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, ChevronDown, Folder, Plus, Search } from 'lucide-react';
+import { Check, ChevronUp, Folder, Plus, Search } from 'lucide-react';
 import { PortalTooltip, closeAllPortalTooltips } from '../../../shared/ui/PortalTooltip.jsx';
 
 export function DraftProjectPicker({ projects = [], selectedId, onSelect, onAddProject, disabled = false }) {
@@ -35,7 +35,7 @@ export function DraftProjectPicker({ projects = [], selectedId, onSelect, onAddP
     <PortalTooltip text={tooltip} position="above" multiline>
       <button type="button" className="draft-project-trigger" aria-label={`Project: ${selected.name}`}
         aria-expanded={open} aria-haspopup="dialog" disabled={disabled} onClick={() => { setQuery(''); setOpen((value) => !value); }}>
-        <Folder size={15} aria-hidden="true" /><span>{selected.name}</span><ChevronDown size={14} aria-hidden="true" />
+        <Folder size={15} aria-hidden="true" /><span>{selected.name}</span><ChevronUp className="draft-project-chevron" size={14} aria-hidden="true" />
       </button>
     </PortalTooltip>
     {open ? <div className="draft-project-menu" role="dialog" aria-label="Choose project">
