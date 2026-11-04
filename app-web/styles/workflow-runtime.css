@@ -593,6 +593,21 @@
     bottom: 14px;
 }
 
+.workflow-judge-input {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--runtime-detail-border);
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--workflow-detail-accent) 7%, #0e1828);
+    color: rgba(200, 211, 231, 0.78);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.workflow-judge-input strong { color: #dce6f5; }
+.workflow-judge-input p { margin: 6px 0 0; white-space: pre-wrap; }
+
 .workflow-detail-waiting {
     display: grid;
     grid-template-columns: 34px minmax(0, 1fr);

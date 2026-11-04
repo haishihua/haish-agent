@@ -12,9 +12,10 @@ export function createGoalCommandHandler(ctx) {
       invalidateConversationActivation, isConversationActivationCurrent,
       replaceWorkspaceModeFromProjects, normalizeWorkspaceOrdering, setWorkspaceState,
       createConversationInProject, activateConversationDetail, buildDeployRequest,
-      startDeploy, setViewMode, setSelectedWorkflowId, modeLocationRef, showToast,
+      startDeploy, setViewMode, setSelectedWorkflowId, modeLocationRef, showToast, setGoalPreparing,
     } = ctx;
     const sourceId = conversationIdRef.current;
+    const sourceIsDraft = Boolean(draftConversationRef.current);
     const source = workspaceState.projects.find((project) => project.id === (
       draftConversationRef.current?.projectId || workspaceState.activeProjectId
     ));
@@ -24,28 +25,30 @@ export function createGoalCommandHandler(ctx) {
       showToast('error', 'Goal Loop is unavailable. Check the workflow settings and try again.');
       return false;
     }
-    // Snapshot attachments and task context before navigating away from Chat.
+    // Snapshot the source selection before navigating away from Chat.
     if (attachment && !attachment.file) {
       showToast('error', 'Reattach the document before sending it to a new Workflow task.');
       return false;
     }
     const workflowAttachment = attachment ? { ...attachment, uploaded: false } : null;
     // Capture the source composer's selection before any asynchronous navigation.
-    // Only model fields cross this boundary; never copy credentials or Agent identity.
+    // Carry the selected Agent and model, never credentials or a client-built history.
     const sourceConfig = Object.fromEntries(['llm_config_id', 'model_id', 'reasoning_effort']
       .filter((field) => typeof runConfig[field] === 'string' && runConfig[field].trim())
       .map((field) => [field, runConfig[field].trim()]));
     if (Object.hasOwn(runConfig, 'reasoning_effort')) sourceConfig.reasoning_effort = runConfig.reasoning_effort ?? null;
     if (!sourceConfig.llm_config_id) delete sourceConfig.model_id;
+    const sourceAgentId = runConfig.agent_id || 'preset.general';
     const nodeRuntimeConfigs = nodeRuntimeConfigsForWorkflow(workflow, Object.fromEntries(
-      (workflow.nodes || []).map((node) => [node.id, { ...sourceConfig }]),
+      (workflow.nodes || []).map((node) => [node.id, { ...sourceConfig, agent_id: sourceAgentId }]),
     ), ctx.providerOptions || []);
-    if (prompt) {
+    const hasTask = Boolean(String(prompt || '').trim());
+    if (hasTask) {
       const error = executionConfigError({ executionMode: 'bot', workflow, nodeRuntimeConfigs, providerOptions: ctx.providerOptions || [] });
       if (error) { showToast('error', error); return false; }
     }
     const request = buildDeployRequest(prompt, workflowAttachment, null, null, images, GOAL_WORKFLOW_ID, null, prompt, [], nodeRuntimeConfigs);
-    Object.assign(request, { executionMode: 'bot', workflowId: GOAL_WORKFLOW_ID, agentId: null });
+    Object.assign(request, { executionMode: 'bot', workflowId: GOAL_WORKFLOW_ID, agentId: null, contextTasks: [] });
     const activationSeq = invalidateConversationActivation();
     const isCurrent = () => isConversationActivationCurrent(activationSeq)
       && conversationIdRef.current === sourceId && viewModeRef.current === 'chat';
@@ -54,6 +57,9 @@ export function createGoalCommandHandler(ctx) {
       if (!response.ok) throw new Error(`Goal Loop preparation failed: ${response.status}`);
       return response.json();
     }
+    // 从这里到任务交接完成都盖着整页 loading：用户不再盯着输入框等跳转。
+    // 空描述也会准备 Bot 页，但不启动空任务。
+    setGoalPreparing?.(true);
     try {
       // Consult the server, not a possibly stale Workflow sidebar cache.
       let { projects = [] } = await call('/api/projects?execution_mode=bot');
@@ -71,7 +77,10 @@ export function createGoalCommandHandler(ctx) {
       // One Workflow task gets its own conversation; never reuse an active run.
       const detail = await createConversationInProject({
         id: target.project_id, executionMode: 'bot', workspacePath: target.workspace_path,
-      }, undefined, 'bot');
+      }, undefined, 'bot', {
+        agent_id: sourceAgentId,
+        ...(!sourceIsDraft && sourceId ? { source_conversation_id: sourceId } : {}),
+      });
       if (!isCurrent()) return false;
       await call(`/api/conversations/${encodeURIComponent(detail.conversation_id)}/run-config`, {
         method: 'PUT', body: JSON.stringify({
@@ -91,7 +100,7 @@ export function createGoalCommandHandler(ctx) {
         ...state, projects: state.projects.map((project) => project.id === target.project_id
           ? { ...project, userExpanded: true, workflowTasksExpanded: true } : project),
       }));
-      if (prompt) {
+      if (hasTask) {
         request.targetConversationId = detail.conversation_id;
         startDeploy(request, detail.conversation_id, detail);
       }
@@ -99,6 +108,8 @@ export function createGoalCommandHandler(ctx) {
     } catch (error) {
       showToast('error', String(error?.message || error));
       return false;
+    } finally {
+      setGoalPreparing?.(false);
     }
   };
 }

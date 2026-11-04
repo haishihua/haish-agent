@@ -10,6 +10,7 @@ import { isTerminalTaskStatus, normalizeTaskStatus, taskFirstStreamTimestamp } f
 import {
   attemptTask,
   detailText,
+  goalJudgeInput,
   nodeConversationInputValue,
   timestampMs,
 } from './node-attempts.js';
@@ -30,6 +31,7 @@ export function NodeConversation({ node, task, attempt, result, status, running,
     () => nodeConversationInputValue(node, attempt, result),
     [attempt, node, result],
   );
+  const judgeInput = React.useMemo(() => goalJudgeInput(node, task, inputValue), [node, task, inputValue]);
   const inputText = React.useMemo(() => workflowInputDisplayText(inputValue), [inputValue]);
   const createdAt = timestampMs(attempt?.startedAt || result?.started_at || task?.createdAt);
   const completedAt = running
@@ -94,7 +96,13 @@ export function NodeConversation({ node, task, attempt, result, status, running,
 
   return (
     <>
-      {inputText ? <ChatMessageRow message={inputMessage} /> : null}
+      {judgeInput ? (
+        <div className="workflow-judge-input" role="note">
+          <strong>Evaluation input</strong>
+          {judgeInput.goal ? <p>Goal: {judgeInput.goal}</p> : null}
+          <p>When called, Judge evaluates the Agent’s conversation snapshot, including available history, tool evidence and its latest answer, with separate review instructions. The snapshot is not shown here.</p>
+        </div>
+      ) : inputText ? <ChatMessageRow message={inputMessage} /> : null}
       {showAssistant ? <ChatMessageRow message={assistantMessage} onRetry={onRetry} /> : null}
       {pendingInput && !hasAskUser(timelineItems) ? <AskUserInlineForm taskId={task?.taskId} conversationId={task?.conversationId} toolCallId={pendingInput.tool_call_id || ''} active /> : null}
     </>

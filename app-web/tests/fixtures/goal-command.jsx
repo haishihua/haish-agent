@@ -46,7 +46,7 @@ async function run() {
   const token = document.querySelector('[data-command-token="goal"]');
   check(api.draft === '' && token?.querySelector('svg.lucide-target') && token.textContent === 'goal', 'Enter selects an inline goal token with the Target icon, not literal /goal text');
   check(!document.querySelector('[role="listbox"]') && calls.length === 0, 'selecting only closes the menu without submitting');
-  check(!document.querySelector('[aria-label="Run Goal Loop"]')?.disabled, 'bare selected goal remains available for workflow navigation');
+  check(!document.querySelector('[aria-label="Run Goal Loop"]')?.disabled, 'bare selected goal can submit into the prepared bot page');
   api.setDraft('Fix the bug');
   await sleep(50);
   const button = document.querySelector('[aria-label="Run Goal Loop"]');
@@ -62,14 +62,18 @@ async function run() {
   document.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   await sleep(160);
   check(calls.length === 1 && calls[0].prompt === 'Fix the bug', 'one command dispatch strips /goal and duplicate sends are blocked');
+  check(calls[0]?.runConfig.agent_id === 'agent', 'Goal with a prompt receives the actual composer Agent');
   check(api.draft === '' && ordinary === 0 && !document.querySelector('[data-command-token]'), 'accepted goal clears the draft and token without sending to chat');
   api.setDraft('/goal');
   await sleep(80);
   key('Enter');
   await sleep(80);
+  const beforeBare = calls.length;
   key('Enter');
   await sleep(160);
-  check(calls.at(-1)?.prompt === '' && calls.length === 2, 'second Enter on a bare goal token navigates through the existing empty-prompt route');
+  check(calls.length === beforeBare + 1 && calls.at(-1)?.prompt === '', 'bare goal dispatches exactly once with no empty task text');
+  check(calls.at(-1)?.runConfig.agent_id === 'agent', 'bare Goal carries the actual composer Agent while preparing the bot page');
+  check(!document.querySelector('[data-command-token]'), 'accepted bare goal clears the token for the bot page handoff');
   accept = false;
   api.setDraft('/goal Preserve me');
   await sleep(50);

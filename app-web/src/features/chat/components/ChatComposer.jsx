@@ -369,7 +369,8 @@ export function ChatComposer({
       previewUrl: img.previewUrl || null,
     }));
   const hasComposerPayload = Boolean(selectedCommand || draft.trim() || composerImages.length > 0 || pendingCommentCount);
-  const canSubmitPayload = Boolean((selectedCommand || draft.trim() || readyImages.length > 0 || pendingCommentCount) && !imagesUploading && !(running && pendingCommentCount));
+  const canSubmitPayload = Boolean((selectedCommand || draft.trim() || readyImages.length > 0 || pendingCommentCount)
+    && !imagesUploading && !(running && pendingCommentCount));
 
   const usedTokens = Math.max(0, Math.round(Number(contextUsage?.usedTokens) || 0));
   const totalTokens = Math.max(0, Math.round(Number(contextUsage?.totalTokens) || 0));
@@ -493,7 +494,7 @@ export function ChatComposer({
       try {
         const accepted = await onGoalCommand({
           prompt: composePathReferenceDraft(goal.prompt, composerContent.references), attachment, images: readyImages,
-          runConfig: savedConfig || { llm_config_id: providerRequest, model_id: sendModelId, reasoning_effort: reasoningEffort },
+          runConfig: { ...(savedConfig || { llm_config_id: providerRequest, model_id: sendModelId, reasoning_effort: reasoningEffort }), agent_id: effectiveAgentId },
         });
         if (accepted !== false && submissionMountedRef.current && submissionOwnerRef.current === owner) {
           clearComposerAfterSend();

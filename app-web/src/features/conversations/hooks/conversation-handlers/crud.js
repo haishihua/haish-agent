@@ -310,14 +310,17 @@ export function createConversationCrudHandlers(deps) {
     });
   }
 
-  async function createConversationInProject(project, title, executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot') {
+  async function createConversationInProject(project, title, executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot', context = {}) {
     if (!project?.id || project.executionMode !== executionMode) {
       throw new Error('Conversation execution mode must match project execution mode.');
     }
     const createResponse = await apiFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: buildApiHeaders(),
-      body: JSON.stringify({ title, execution_mode: executionMode, project_id: project.id }),
+      body: JSON.stringify({ title, execution_mode: executionMode, project_id: project.id,
+        ...(context.agent_id ? { agent_id: context.agent_id } : {}),
+        ...(context.source_conversation_id ? { source_conversation_id: context.source_conversation_id } : {}),
+      }),
     });
     if (!createResponse.ok) {
       throw new Error(`conversation create failed: ${createResponse.status}`);
@@ -343,7 +346,11 @@ export function createConversationCrudHandlers(deps) {
     openDraftConversation(projectId);
   }
 
-  async function handleAddProject() {
+  async function handleAddProject({ draftOnly = false, switchDraftProject, isDraftCurrent } = {}) {
+    if (draftOnly && !window.haish?.pickProjectDirectory) {
+      showToast('error', 'Adding a project from a draft requires the desktop app.');
+      return;
+    }
     const requestSeq = invalidateConversationActivation();
     if (window.haish?.pickProjectDirectory) {
       const pickResult = await window.haish.pickProjectDirectory();
@@ -352,6 +359,7 @@ export function createConversationCrudHandlers(deps) {
         return;
       }
       const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
+      if (draftOnly && (!isConversationActivationCurrent(requestSeq) || !isDraftCurrent?.())) return;
       const projectResponse = await apiFetch(`${API_BASE}/api/projects`, {
         method: 'POST',
         headers: buildApiHeaders(),
@@ -391,14 +399,15 @@ export function createConversationCrudHandlers(deps) {
               sortOrder: (item.sortOrder ?? 0) + 1,
             }))],
       }));
-      const detail = await createConversationInProject({
-        id: project.project_id,
-        type: 'custom',
-        executionMode: project.execution_mode,
-        name: project.name,
-        workspacePath: project.workspace_path,
-        workspaceLabel: project.name,
-      });
+      const createdProject = {
+        id: project.project_id, type: 'custom', executionMode: project.execution_mode,
+        name: project.name, workspacePath: project.workspace_path, workspaceLabel: project.name,
+      };
+      if (draftOnly) {
+        if (isConversationActivationCurrent(requestSeq)) switchDraftProject?.(createdProject);
+        return;
+      }
+      const detail = await createConversationInProject(createdProject);
       if (!isConversationActivationCurrent(requestSeq)) return;
       await activateConversationDetail(detail, { restoreLatest: false });
       showToast('success', `local workspace set: ${pickResult.project.name}`);

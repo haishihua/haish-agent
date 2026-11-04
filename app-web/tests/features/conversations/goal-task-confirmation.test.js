@@ -65,7 +65,7 @@ for (const background of [false, true]) {
     };
     Object.assign(ctx, createDeployHandlers(ctx));
     const runConfig = { llm_config_id: 'source-provider', model_id: 'source-model', reasoning_effort: 'high' };
-    const expectedConfigs = Object.fromEntries(['clarify', 'goal_worker', 'goal_verifier'].map((id) => [id, runConfig]));
+    const expectedConfigs = Object.fromEntries(['clarify', 'goal_worker', 'goal_verifier'].map((id) => [id, { ...runConfig, agent_id: 'preset.general' }]));
     const accepted = await createGoalCommandHandler(ctx)({ prompt: 'Goal', runConfig });
     assert.equal(accepted, true);
     assert.deepEqual(calls.map((call) => call.method), ['GET', 'POST', 'POST', 'PUT']);

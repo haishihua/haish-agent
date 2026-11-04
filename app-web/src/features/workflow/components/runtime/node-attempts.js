@@ -4,6 +4,7 @@ import {
   workflowToolCallsForAttempt,
 } from '../../model/runtime-workflow-layout.js';
 import { workflowArgumentsText } from '../../model/workflow-catalog.js';
+import { GOAL_WORKFLOW_ID } from '../../../chat/model/goal-command.js';
 
 function eventNodeId(event) {
   return String(event?.workflowNodeId || event?.workflow_node_id || event?.nodeId || event?.node_id || '');
@@ -90,6 +91,17 @@ export function nodeConversationInputValue(node, attempt, result) {
     ?? (result?.arguments != null ? { tool_name: result?.tool_name || node.tool_name, arguments: result.arguments } : null)
     ?? result?.reviewed_input
     ?? '';
+}
+
+export function goalJudgeInput(node, task, input) {
+  const workflow = task?.workflowSnapshot;
+  const workflowId = workflow?.workflow_id || workflow?.id || task?.requestedWorkflowId;
+  if (workflowId !== GOAL_WORKFLOW_ID || node?.id !== 'judge' || node?.type !== 'llm') return null;
+  let prompt = input?.prompt;
+  if (typeof prompt === 'string') {
+    try { prompt = JSON.parse(prompt); } catch { prompt = null; }
+  }
+  return { goal: typeof prompt?.goal === 'string' ? prompt.goal : '' };
 }
 
 export function timestampMs(value) {

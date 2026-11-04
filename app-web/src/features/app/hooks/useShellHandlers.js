@@ -102,7 +102,7 @@ export function useShellHandlers({
   setAgentSettingsDraft, setBusy, setComposerAttachment, setContextTask,
   setConversationAttachments, setConversationError, setConversationId, setConversationReady,
   setConversationRetryPending, setConversationStopState, setHollow, setLocalWorkspace,
-  setQueuedDeploy, setSelectedWorkflowId, setSettingsConnectionStatus, setSettingsMode,
+  setGoalPreparing, setQueuedDeploy, setSelectedWorkflowId, setSettingsConnectionStatus, setSettingsMode,
   setSettingsRecordsDraft, setSettingsSection, setShellSeeded, setSkillActionBusy,
   setTaskCompletionNotices, setTaskRuntimeState, setToast, setUploadState,
   setViewMode, setViewedWorkflowTask, setWorkflowSettingsDraft, setWorkspaceState,
@@ -126,6 +126,7 @@ export function useShellHandlers({
     isDraftConversationId,
     clearDraftConversationState,
     openDraftConversation,
+    switchDraftProject,
     ensureServerConversationForActiveDraft,
     markDraftConversationKept,
     isDraftFirstSendInFlight,
@@ -192,7 +193,7 @@ export function useShellHandlers({
     workspaceStateWithConversationDetail,
   });
 
-  draftApiRef.current = { materializeDraftConversationForSend };
+  draftApiRef.current = { materializeDraftConversationForSend, switchDraftProject };
 
   const {
     getRuntime,
@@ -539,6 +540,7 @@ export function useShellHandlers({
     normalizeWorkspaceOrdering,
     openDraftConversation,
     setActiveTab,
+    setGoalPreparing,
     setSettingsMode,
     setHollow,
     setViewMode,

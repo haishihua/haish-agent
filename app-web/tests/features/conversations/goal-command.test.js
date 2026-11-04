@@ -8,6 +8,7 @@ import { goalInvocation, goalMenuItems, GOAL_WORKFLOW_ID } from '../../../src/fe
 function harness({ missing = false, defaultProject = false, fail = '', workflow = { nodes: [{ id: 'worker', type: 'agent', runtime_config: { llm_config_id: 'fixture', model_id: 'model' } }] }, draft = false, interrupt = '' } = {}) {
   const source = { id: 'chat-project', executionMode: 'chat', name: 'Renamed project', workspacePath: defaultProject ? null : '/repo', conversations: [] };
   const target = { project_id: 'bot-project', execution_mode: 'bot', name: 'Different name', workspace_path: source.workspacePath, is_default: defaultProject };
+  const preparing = [];
   const ctx = {
     API_BASE: '', providerOptions: ['fixture', 'old', 'custom.provider-id'].map((id) => ({ id, provider: id })), workspaceState: { activeProjectId: source.id, projects: [source] },
     conversationIdRef: { current: draft ? 'draft-chat' : 'chat-conversation' },
@@ -22,6 +23,7 @@ function harness({ missing = false, defaultProject = false, fail = '', workflow 
     showToast: (...args) => notices.push(args),
     activateConversationDetail: async (detail) => { events.push('activate'); ctx.conversationIdRef.current = detail.conversation_id; },
     setViewMode: (mode) => events.push(mode),
+    setGoalPreparing: (value) => preparing.push(value),
     setSelectedWorkflowId: (id) => events.push(id),
     startDeploy: (...args) => { events.push('deploy'); sent.push(args); },
     contextTask: { taskId: 'source-task', conversationId: 'chat-conversation', title: 'report' },
@@ -40,7 +42,7 @@ function harness({ missing = false, defaultProject = false, fail = '', workflow 
           : body;
     return { ok: true, json: async () => payload };
   };
-  return { ctx, calls, events, notices, sent, run: createConversationHandlers(ctx).handleGoalCommand };
+  return { ctx, calls, events, notices, preparing, sent, run: createConversationHandlers(ctx).handleGoalCommand };
 }
 
 test('/goal parses only a leading, complete command token and preserves multiline tasks', () => {
@@ -62,7 +64,7 @@ test('existing Workflow project is matched by path, not its renamed title, and r
   assert.equal(await h.run({ prompt: 'Fix the bug' }), true);
   assert.equal(h.calls.some((call) => call.url === '/api/projects'), false);
   assert.deepEqual(h.calls.find((call) => call.url === '/api/conversations').body, {
-    execution_mode: 'bot', project_id: 'bot-project',
+    execution_mode: 'bot', project_id: 'bot-project', agent_id: 'preset.general', source_conversation_id: 'chat-conversation',
   });
   const [request, id, detail] = h.sent[0];
   assert.equal(request.executionMode, 'bot');
@@ -73,8 +75,9 @@ test('existing Workflow project is matched by path, not its renamed title, and r
   assert.equal(request.modelId, null);
   assert.equal(request.targetConversationId, id);
   assert.equal(id, detail.conversation_id);
-  assert.deepEqual(request.contextTasks, [{ taskId: 'source-task', conversationId: 'chat-conversation', title: 'report' }]);
+  assert.deepEqual(request.contextTasks, [], 'native Chat context is captured on the server, not replaced by a task report');
   assert.deepEqual(h.events, ['activate', 'workflow', GOAL_WORKFLOW_ID, 'deploy']);
+  assert.deepEqual(h.preparing, [true, false], 'the loading page is shown for preparation and cleared after the task handoff');
   assert.equal(h.ctx.modeLocationRef.current.chat.projectId, 'chat-project');
   const config = h.calls.find((call) => call.method === 'PUT').body;
   assert.equal(config.workflow_id, GOAL_WORKFLOW_ID, 'picker restores Goal Loop even if another workflow was previously preferred');
@@ -97,11 +100,14 @@ test('default Chat project maps to the default Workflow project without importin
   assert.equal(h.sent.length, 1);
 });
 
-test('bare /goal navigates with Goal Loop selected but never submits an empty task', async () => {
+test('bare /goal prepares the bot page through the loading page without starting an empty task', async () => {
   const h = harness();
-  assert.equal(await h.run({ prompt: '' }), true);
+  assert.equal(await h.run({ prompt: '   ' }), true);
   assert.equal(h.ctx.viewModeRef.current, 'workflow');
-  assert.equal(h.sent.length, 0);
+  assert.ok(h.calls.length > 0, 'the Goal conversation is prepared before the bot page opens');
+  assert.equal(h.sent.length, 0, 'no empty task is started');
+  assert.deepEqual(h.preparing, [true, false], 'the loading page covers preparation and clears before the bot page reveals');
+  assert.equal(h.notices.length, 0);
 });
 
 const goalNodes = [
@@ -114,24 +120,29 @@ const goalNodes = [
   { id: 'goal_loop', type: 'loop' },
   { id: 'output', type: 'output' },
 ];
-for (const prompt of ['', 'Task']) {
-  test(`/goal snapshots the source model for every Agent node and persists it (${prompt || 'navigation only'})`, async () => {
+test('/goal snapshots the source model for every Agent node and persists it', async () => {
     const h = harness({ missing: true, workflow: { nodes: goalNodes } });
     const runConfig = { llm_config_id: 'custom.provider-id', model_id: 'gpt-5.5', reasoning_effort: 'xhigh', api_key: 'not-a-config-field', agent_id: 'source-agent' };
     const expected = Object.fromEntries(['clarify', 'goal_worker', 'goal_verifier'].map((id) => [id, {
-      llm_config_id: 'custom.provider-id', model_id: 'gpt-5.5', reasoning_effort: 'xhigh',
+      llm_config_id: 'custom.provider-id', model_id: 'gpt-5.5', reasoning_effort: 'xhigh', agent_id: 'source-agent',
     }]));
-    const pending = h.run({ prompt, runConfig });
+    const pending = h.run({ prompt: 'Task', runConfig });
     runConfig.model_id = 'changed-after-navigation';
     assert.equal(await pending, true);
     assert.deepEqual(h.calls.find((call) => call.method === 'PUT').body.node_runtime_configs, expected);
-    if (prompt) {
-      assert.deepEqual(h.sent[0][0].nodeRuntimeConfigs, expected);
-      assert.equal(h.sent[0][0].modelId, null, 'models are node scoped, not global Bot settings');
-    } else assert.equal(h.sent.length, 0);
+    assert.deepEqual(h.sent[0][0].nodeRuntimeConfigs, expected);
+    assert.equal(h.sent[0][0].modelId, null, 'models are node scoped, not global Bot settings');
     assert.equal(h.notices.length, 0);
-  });
-}
+});
+
+test('/goal sends the current Goal Loop with only the agent model configured', async () => {
+  const nodes = [{ id: 'start', type: 'start' }, { id: 'agent', type: 'agent' },
+    { id: 'judge', label: 'Judge', type: 'llm', runtime_config_from: 'agent' }, { id: 'output', type: 'output' }];
+  const h = harness({ workflow: { nodes } });
+  assert.equal(await h.run({ prompt: 'Task', runConfig: { llm_config_id: 'custom.provider-id', model_id: 'model', reasoning_effort: 'medium' } }), true);
+  assert.deepEqual(h.sent[0][0].nodeRuntimeConfigs, { agent: { llm_config_id: 'custom.provider-id', model_id: 'model', reasoning_effort: 'medium', agent_id: 'preset.general' } });
+  assert.equal(h.notices.length, 0);
+});
 
 test('/goal normalizes old null before persisting and sending node config', async () => {
   const h = harness({ workflow: { nodes: goalNodes } });
@@ -170,6 +181,7 @@ for (const fail of ['/api/projects?execution_mode=bot', '/api/projects', '/api/c
     assert.equal(h.sent.length, 0);
     assert.equal(h.ctx.viewModeRef.current, 'chat');
     assert.equal(h.notices.length, 1);
+    assert.deepEqual(h.preparing, [true, false], 'failed preparation also clears the loading page');
   });
 }
 
@@ -203,6 +215,41 @@ test('documents are re-uploaded to the destination, not reused with a source con
   assert.equal(stale.calls.length, 0);
 });
 
+test('draft /goal carries its selected Agent without referencing a nonexistent Chat', async () => {
+  const h = harness({ draft: true });
+  assert.equal(await h.run({ prompt: 'Task', runConfig: { agent_id: 'custom.draft' } }), true);
+  const body = h.calls.find((call) => call.url === '/api/conversations').body;
+  assert.equal(body.agent_id, 'custom.draft');
+  assert.equal(Object.hasOwn(body, 'source_conversation_id'), false);
+  assert.equal(h.sent[0][0].nodeRuntimeConfigs.worker.agent_id, 'custom.draft');
+});
+
+test('persisted /goal captures the source Agent and conversation before asynchronous navigation', async () => {
+  const h = harness();
+  const runConfig = { agent_id: 'custom.selected' };
+  const pending = h.run({ prompt: 'Task', runConfig });
+  runConfig.agent_id = 'custom.changed';
+  h.ctx.draftConversationRef.current = { projectId: 'another' };
+  assert.equal(await pending, true);
+  const body = h.calls.find((call) => call.url === '/api/conversations').body;
+  assert.equal(body.source_conversation_id, 'chat-conversation');
+  assert.equal(body.agent_id, 'custom.selected');
+  assert.equal(h.sent[0][0].nodeRuntimeConfigs.worker.agent_id, 'custom.selected');
+});
+
+test('goal preparation uses the shell loading page instead of a composer placeholder', () => {
+  const handler = readFileSync(new URL('../../../src/features/conversations/hooks/createGoalCommandHandler.js', import.meta.url), 'utf8');
+  const view = readFileSync(new URL('../../../src/features/app/AppShellView.jsx', import.meta.url), 'utf8');
+  const shell = readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
+  const page = readFileSync(new URL('../../../src/features/app/components/GoalPreparingPage.jsx', import.meta.url), 'utf8');
+  assert.match(handler, /setGoalPreparing\?\.\(true\)/, 'preparation starts the loading page');
+  assert.match(handler, /finally \{\s*setGoalPreparing\?\.\(false\)/, 'the loading page clears on success and failure');
+  assert.match(view, /\{goalPreparing \? <GoalPreparingPage \/> : null\}/, 'the shell renders the loading page while Goal is preparing');
+  assert.match(shell, /const \[goalPreparing, setGoalPreparing\] = useState\(false\)/, 'the shell owns the preparing state');
+  assert.match(page, /Preparing Goal Loop/, 'the loading page uses the standard shell loader');
+  assert.match(page, /goal-preparing-overlay/, 'the loader covers the body without unmounting the draft host');
+});
+
 test('goal command uses a target icon while schedule keeps its clock', () => {
   const source = readFileSync(new URL('../../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
   assert.match(source, /skill\.command && skill\.name === 'goal' \? <Target className="chat-skill-menu-icon"/);
@@ -216,5 +263,7 @@ test('composer intercepts /goal before skill expansion and runtime steering, and
   assert.match(source, /goalPendingRef\.current = true/);
   assert.match(source, /if \(goalPendingRef\.current\) return/);
   assert.match(source, /if \(accepted !== false\)[\s\S]*?setDraft\(''\)/);
+  assert.match(source, /runConfig: \{[\s\S]*?agent_id: effectiveAgentId/, 'Goal dispatch must carry the actual composer Agent');
+  assert.doesNotMatch(source, /Describe the task for Goal Loop/, 'Goal guidance is not faked with a composer placeholder');
   assert.match(source, /modelConfigError/, 'Goal Loop with a prompt must have a valid effective model route');
 });
