@@ -6,6 +6,7 @@ import { SchedulesProvider } from '../schedules/components/SchedulesProvider.jsx
 import { createScheduleBinding } from '../schedules/model/schedule.js';
 import { ConversationsPanel } from '../conversations/components/ConversationsPanel.jsx';
 import { ChatPanel } from '../chat/components/ChatPanel.jsx';
+import { DraftProjectPicker } from '../chat/components/DraftProjectPicker.jsx';
 import { ChatComposer } from '../chat/components/ChatComposer.jsx';
 import { WorkflowRuntimeEntry as WorkflowRuntimePage } from '../workflow/components/WorkflowRuntimeEntry.jsx';
 import { nodeRuntimeConfigRequest } from '../workflow/model/node-runtime-config.js';
@@ -13,6 +14,8 @@ import { conversationNoticesFromTasks, taskNoticesByTaskId } from '../tasks/mode
 import { TopBar } from './components/TopBar.jsx';
 import { BottomNav, TabPlaceholder } from './components/Shell.jsx';
 import { AppToastStack } from './components/AppToast.jsx';
+import { GoalPreparingPage } from './components/GoalPreparingPage.jsx';
+import { latestChatTaskId } from './model/chat-rows.js';
 
 const SettingsPage = React.lazy(() => import('../settings/components/SettingsPage.jsx').then((module) => ({ default: module.SettingsPage })));
 
@@ -27,7 +30,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
     configSync, conversationId, materializeDraftConversationForSend, conversationIdRef, scheduleRuntime,
   } = schedules;
   const {
-    viewMode, settingsMode, activeTab, conversationPanelCollapsed, handleToggleViewMode, handleToggleSettings,
+    viewMode, settingsMode, goalPreparing, activeTab, conversationPanelCollapsed, handleToggleViewMode, handleToggleSettings,
     showToast, setActiveTab, windowFocused, toasts, hollow, setHollow, contextTask, setContextTask,
   } = chrome;
   const {
@@ -44,12 +47,12 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
     skillActionBusy, pendingSettingsEditor, setPendingSettingsEditor,
   } = settings;
   const {
-    panelActions, visiblePanelWorkspaceState, taskCompletionNotices, currentWorkflowTask,
+    panelActions, visiblePanelWorkspaceState, taskCompletionNotices, currentWorkflowTask, ownerId, activityOpen, setActivityOpen,
     markConversationTaskCompletionsViewed, handleDeleteWorkflowTask, handleRenameProject,
     handleOpenTaskReport, handleRetryTask,
   } = sidebar;
   const {
-    ensureServerConversationForActiveDraft, draftConversationRef, pendingEarlierTaskRuntimeIds,
+    ensureServerConversationForActiveDraft, draftConversationRef, pendingEarlierTaskRuntimeIds, switchDraftProject, onAddDraftProject, draftProjectSelectable,
     loadEarlierTaskRuntimes, chatMessages, taskRuntimeState, conversationStopState, conversationRetryPending,
     getRuntime, conversationLoading, currentConversationRunning, composerDisabled, submitPending,
     handleDeploy, handleGoalCommand, handleStop, handleAttachmentSelect, handleAttachmentClear,
@@ -62,6 +65,12 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
     setViewedWorkflowTask, executeWorkflowNodeRerun, workflowLoading, workflowOptions, defaultWorkflowId,
     setSelectedWorkflowId, botRunConfigStorageKey,
   } = workflow;
+
+  const draftProjectSelector = activityOpen && draftConversationRef.current?.id === conversationId
+    && !draftConversationRef.current?.serverCreated ? <DraftProjectPicker
+      projects={visiblePanelWorkspaceState.projects.filter((project) => project.executionMode === 'chat')}
+      selectedId={draftConversationRef.current.projectId} onSelect={switchDraftProject}
+      onAddProject={onAddDraftProject} disabled={!draftProjectSelectable || submitPending || uploadState.active} /> : null;
 
   return (
     <SchedulesProvider configSync={configSync} currentConversationId={conversationId} ensureConversation={createScheduleBinding(materializeDraftConversationForSend, conversationIdRef)} onRuntimeEvent={scheduleRuntime.event} onRecover={scheduleRuntime.recover}>
@@ -80,6 +89,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
         onToggleSettings={handleToggleSettings}
       />
       <div className={`app-body ${settingsMode ? 'settings-mode' : viewMode === 'chat' ? 'chat-mode' : 'workflow-mode'} ${!settingsMode && conversationPanelCollapsed ? 'conversations-collapsed' : ''}`}>
+        {goalPreparing ? <GoalPreparingPage /> : null}
         {settingsMode ? (
           <React.Suspense fallback={<div className="app-body-loading"><LoadingState role="status" label="Loading settings…" /></div>}>
           <SettingsPage
@@ -132,6 +142,12 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
               workspaceState={visiblePanelWorkspaceState}
               terminalNotices={conversationNoticesFromTasks(taskCompletionNotices)}
               taskTerminalNotices={taskNoticesByTaskId(taskCompletionNotices)}
+              activityNotices={taskCompletionNotices}
+              activityOwnerId={ownerId}
+              activityOpen={activityOpen}
+              onActivityOpenChange={setActivityOpen}
+              isNewConversationSelected={viewMode === 'chat' && Boolean(draftConversationRef.current?.id && draftConversationRef.current.id === conversationId)}
+              onSelectActivity={panelActions.onSelectActivity}
               windowFocused={windowFocused}
               acknowledgeActiveConversation={viewMode === 'chat'}
               onViewConversationCompletions={markConversationTaskCompletionsViewed}
@@ -149,6 +165,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
               <div className="app-chat-stage">
                 <div className="app-chat-main">
 	                  <ChatPanel
+                        draftProjectSelector={draftProjectSelector}
 	                    conversationId={conversationId}
                         approvalDraft={Boolean(draftConversationRef.current && !draftConversationRef.current.serverCreated)}
                         ensureApprovalConversation={ensureServerConversationForActiveDraft}
@@ -156,7 +173,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                         earlierTaskRuntimeIds={pendingEarlierTaskRuntimeIds}
 	                    onLoadEarlierTasks={loadEarlierTaskRuntimes}
 	                    composerScopeId={draftConversationRef.current?.id === conversationId ? draftConversationRef.current.composerScopeId : conversationId}
-	                    messages={chatMessages} latestTaskId={taskRuntimeState.latestTaskId}
+	                    messages={chatMessages} latestTaskId={latestChatTaskId(taskRuntimeState)}
                         taskActionsPending={Boolean(conversationStopState.pending || conversationStopState.error || conversationRetryPending)} stopError={conversationStopState.error}
                         retryPendingTaskId={conversationRetryPending ? getRuntime(conversationId)?.pendingRetry?.sourceTaskId : null}
 	                    loading={conversationLoading}

@@ -36,6 +36,7 @@ type TooltipData = {
   align: Align;
   alignOffset: number;
   id: string;
+  alwaysDelay?: boolean;
 };
 
 type GlobalTooltipContextType = {
@@ -91,12 +92,13 @@ function TooltipProvider({
   const showTooltip = React.useCallback(
     (data: TooltipData) => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      if (currentTooltip !== null) {
+      if (currentTooltip !== null && !data.alwaysDelay) {
         setCurrentTooltip(data);
         return;
       }
+      if (data.alwaysDelay && currentTooltip !== null) setCurrentTooltip(null);
       const now = Date.now();
-      const delay = now - lastCloseTimeRef.current < closeDelay ? 0 : openDelay;
+      const delay = data.alwaysDelay ? openDelay : now - lastCloseTimeRef.current < closeDelay ? 0 : openDelay;
       const reference = referenceElRef.current;
       timeoutRef.current = window.setTimeout(
         () => {

@@ -124,6 +124,7 @@ export function AppShell() {
   const [viewedWorkflowTask, setViewedWorkflowTask] = useState(null);
   const composerImageDraftsRef = useRef(new Map());
   const [conversationPanelCollapsed, setConversationPanelCollapsed] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [taskCompletionNotices, setTaskCompletionNotices] = useState({});
   const [taskCompletionNoticesOwner, setTaskCompletionNoticesOwner] = useState('');
   const [windowFocused] = useWindowFocus();
@@ -175,6 +176,7 @@ export function AppShell() {
 
   const copyTimerRef = useRef(null);
   const [settingsMode, setSettingsMode] = useState(false);
+  const [goalPreparing, setGoalPreparing] = useState(false);
   const [settingsSection, setSettingsSection] = useState('llm');
   const [automationExpanded, setAutomationExpanded] = useState(false);
   const [skillsExpanded, setSkillsExpanded] = useState(false);
@@ -529,6 +531,7 @@ export function AppShell() {
     setConversationAttachments, setConversationError, setConversationId, setConversationReady,
     setConversationRetryPending, setConversationStopState, setHollow, setLocalWorkspace,
     setQueuedDeploy, setSelectedWorkflowId, setSettingsConnectionStatus, setSettingsMode,
+    setGoalPreparing,
     setSettingsRecordsDraft, setSettingsSection, setShellSeeded, setSkillActionBusy,
     setTaskCompletionNotices, setTaskRuntimeState, setToast: setToasts, setUploadState,
     setViewMode, setViewedWorkflowTask, setWorkflowSettingsDraft, setWorkspaceState,
@@ -820,7 +823,7 @@ export function AppShell() {
         configSync, conversationId, materializeDraftConversationForSend, conversationIdRef, scheduleRuntime,
       }}
       chrome={{
-        viewMode, settingsMode, activeTab, conversationPanelCollapsed, handleToggleViewMode, handleToggleSettings,
+        viewMode, settingsMode, goalPreparing, activeTab, conversationPanelCollapsed, handleToggleViewMode, handleToggleSettings,
         showToast, setActiveTab, windowFocused, toasts, hollow, setHollow, contextTask, setContextTask,
       }}
       settings={{
@@ -837,13 +840,22 @@ export function AppShell() {
         skillActionBusy, pendingSettingsEditor, setPendingSettingsEditor,
       }}
       sidebar={{
-        panelActions, visiblePanelWorkspaceState, taskCompletionNotices, currentWorkflowTask,
+        panelActions, visiblePanelWorkspaceState, taskCompletionNotices, currentWorkflowTask, ownerId, activityOpen, setActivityOpen,
         markConversationTaskCompletionsViewed, handleDeleteWorkflowTask, handleRenameProject,
         handleOpenTaskReport, handleRetryTask,
       }}
       chat={{
         ensureServerConversationForActiveDraft, draftConversationRef, pendingEarlierTaskRuntimeIds,
         loadEarlierTaskRuntimes, chatMessages, taskRuntimeState, conversationStopState, conversationRetryPending,
+        switchDraftProject: (projectId) => draftApiRef.current.switchDraftProject?.(projectId),
+        draftProjectSelectable: !draftServerCreateRef.current && !draftFirstSendRef.current && !pendingCreatedDetailRef.current,
+        onAddDraftProject: () => {
+          const draft = draftConversationRef.current;
+          return handleAddProject({ draftOnly: true,
+            isDraftCurrent: () => draftConversationRef.current === draft && !draftServerCreateRef.current && !draftFirstSendRef.current,
+            switchDraftProject: (project) => draftApiRef.current.switchDraftProject?.(project) })
+            .catch((error) => showToast('error', String(error?.message || error)));
+        },
         getRuntime, conversationLoading, currentConversationRunning, composerDisabled, submitPending,
         handleDeploy, handleGoalCommand, handleStop, handleAttachmentSelect, handleAttachmentClear,
         composerImageDraftsRef, composerAttachment, uploadState, contextUsage, localWorkspace, activeTaskText,

@@ -270,7 +270,7 @@
 }
 
 .app-body.conversations-collapsed {
-    grid-template-columns: 52px minmax(320px, 1fr) clamp(340px, 21vw, 420px);
+    grid-template-columns: 32px minmax(320px, 1fr) clamp(340px, 21vw, 420px);
 }
 
 .app-body.conversations-collapsed .app-chat-stage,
@@ -348,6 +348,16 @@
     min-height: 0;
     display: grid;
     place-items: center;
+}
+
+/* Goal 提交后的准备页：盖住 Chat/Bot 内容但保留顶栏，任务交接完成后再揭开。 */
+.goal-preparing-overlay {
+    /* 不参与 grid 定位：否则绝对定位的包含块会缩到内容区，盖不住 app-body 的内边距。 */
+    grid-column: auto;
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    background: var(--app-canvas-background, #05060b);
 }
 
 /* Must load with the shell, before the lazy workflow chunk arrives. */

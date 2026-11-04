@@ -68,6 +68,16 @@ export function useConversationPanelActions({
         handleSelectWorkflowTask(projectId, targetConversationId, task)
           .catch((error) => reportFailure('task select failed', error));
       },
+      // Activity rows reuse the same selection paths as the project tree, so the
+      // failure toast stays here instead of leaking into AppShell.
+      onSelectActivity: ({ project, conversation, task } = {}) => {
+        if (!project?.id || !conversation?.id) return;
+        const pending = project.executionMode === 'bot'
+          ? handleSelectWorkflowTask(project.id, conversation.id, task)
+          : handleSelectConversation(project.id, conversation.id)
+            .then(() => markConversationTaskCompletionsViewed(conversation.id));
+        Promise.resolve(pending).catch((error) => reportFailure('activity select failed', error));
+      },
       onToggleConversationTasks: handleToggleConversationTasks,
       onToggleProjectConversations: handleToggleProjectConversations,
       onDeleteConversation: (projectId, nextConversationId) => (

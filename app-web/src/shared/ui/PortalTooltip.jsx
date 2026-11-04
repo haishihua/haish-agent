@@ -23,23 +23,23 @@ export function AppTooltipProvider({ children }) {
 }
 
 // Compatibility adapter: preserve Haish callers and Animate UI's shared overlay.
-export function PortalTooltip({ text, position = 'below', multiline = false, className = '', target = null, children }) {
+export function PortalTooltip({ text, position = 'below', multiline = false, className = '', target = null, alwaysDelay = false, children }) {
   const tooltip = useGlobalTooltip();
   const id = React.useId();
   const triggerRef = React.useRef(null);
   const latest = React.useRef(null);
   const suppressed = React.useRef(false);
   const child = target ? null : React.Children.only(children);
-  const open = () => {
+  const open = (refresh = false) => {
     const element = target || triggerRef.current;
     if (!text || !element?.isConnected || suppressed.current) return;
     tooltip.setReferenceEl(element);
     tooltip.showTooltip({
-      id, rect: element.getBoundingClientRect(), side: position === 'above' ? 'top' : 'bottom',
+      id, rect: element.getBoundingClientRect(), side: position === 'above' ? 'top' : 'bottom', alwaysDelay: alwaysDelay && !refresh,
       sideOffset: 10, align: 'center', alignOffset: 0, contentAsChild: false,
       contentProps: {
         className: ['portal-tooltip', multiline && 'is-multiline', className].filter(Boolean).join(' '),
-        onMouseEnter: () => latest.current.open(),
+        onMouseEnter: () => latest.current.open(true),
         onMouseLeave: tooltip.hideTooltip,
         children: <>
           <motion.div className="app-tooltip-content" layout="preserve-aspect">{text}</motion.div>
@@ -49,7 +49,7 @@ export function PortalTooltip({ text, position = 'below', multiline = false, cla
     });
   };
   const handlers = {
-    onMouseEnter: open,
+    onMouseEnter: () => open(),
     onMouseLeave: () => { suppressed.current = false; tooltip.hideTooltip(); },
     onFocus: (event) => { if (event.target.matches(':focus-visible')) open(); },
     onBlur: () => { suppressed.current = false; tooltip.hideTooltip(); },
@@ -77,7 +77,7 @@ export function PortalTooltip({ text, position = 'below', multiline = false, cla
   }, [target, id]);
   React.useEffect(() => {
     if (latest.current.tooltip.currentTooltip?.id !== id) return;
-    if (text) latest.current.open();
+    if (text) latest.current.open(true);
     else latest.current.tooltip.hideImmediate();
   }, [text, id]);
   React.useEffect(() => () => {
