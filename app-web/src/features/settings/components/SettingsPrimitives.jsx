@@ -1,11 +1,5 @@
 import React, { useId, useState } from 'react';
 import { Check, ChevronRight, Ellipsis, Eye, EyeOff, Search, ShieldCheck, Trash2, X } from 'lucide-react';
-import { OpenAILogo, ClaudeLogo, GeminiLogo } from '../../../shared/ui/settings-elements/assistant-ui/logos.tsx';
-import deepseek from '@lobehub/icons-static-svg/icons/deepseek-color.svg?inline';
-import zhipu from '@lobehub/icons-static-svg/icons/zhipu-color.svg?inline';
-import siliconflow from '@lobehub/icons-static-svg/icons/siliconcloud-color.svg?inline';
-import { ProviderIcon as LegacyProviderIcon } from '../../../shared/ui/ProviderIcon.jsx';
-import { providerLogoSize } from '../../../shared/lib/provider-logo-metrics.js';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import { Input } from '../../../shared/ui/settings-elements/ui/input.tsx';
@@ -18,14 +12,6 @@ import { Badge } from '../../../shared/ui/settings-elements/ui/badge.tsx';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../../shared/ui/settings-elements/ui/dropdown-menu.tsx';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '../../../shared/ui/settings-elements/ui/alert-dialog.tsx';
 
-
-export function ProviderIcon({ provider, name = '', opticalSize }) {
-  const Logo = { openai: OpenAILogo, anthropic: ClaudeLogo, gemini: GeminiLogo }[provider];
-  const brand = { deepseek, zhipu, siliconflow }[name.toLowerCase() === 'siliconflow' ? 'siliconflow' : provider];
-  const size = providerLogoSize(provider, opticalSize);
-  const sized = size ? { width: size, height: size } : undefined;
-  return <span className="settings-brand" aria-hidden="true">{Logo ? <Logo style={sized} /> : brand ? <img src={brand} alt="" style={sized} /> : provider === 'custom' ? <span className="settings-initials">{name.trim().split(/[\s_.-]+/).map(p => p[0]).join('').slice(0, 2).toUpperCase() || 'API'}</span> : <LegacyProviderIcon provider={provider} opticalSize={opticalSize} />}</span>;
-}
 
 export function FieldRow({ label, hint, children }) {
   const id = useId();

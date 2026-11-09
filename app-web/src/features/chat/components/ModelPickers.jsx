@@ -10,15 +10,15 @@ import { providerAuthBadge } from '../../../core/provider-catalog.js';
 import { ProviderAuthBadge } from '../../../shared/ui/ProviderAuthBadge.jsx';
 import { AgentAvatar } from '../../agents/components/AgentAvatar.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
-import { ProviderIcon } from '../../settings/components/SettingsPrimitives.jsx';
-import { providerBrandForModel } from '../../settings/model/provider-brand.js';
+import { ProviderBrandMark } from '../../../shared/ui/ProviderIcon.jsx';
+import { providerBrandForModel } from '../../../shared/lib/provider-brand.js';
 
 /** Settings 列表里那枚 provider 品牌标识；custom 走首字母地砖，与列表一致。 */
 function ProviderGlyph({ option }) {
   if (!option?.provider) return null;
   return (
     <span className="model-picker-option-glyph" aria-hidden="true">
-      <ProviderIcon provider={option.provider} name={option.customProvider || option.label || ''} opticalSize={16} />
+      <ProviderBrandMark provider={option.provider} name={option.customProvider || option.label || ''} opticalSize={16} />
     </span>
   );
 }
@@ -29,7 +29,7 @@ function ModelGlyph({ modelId, className = '' }) {
   return (
     <span className={`model-picker-option-glyph ${className}`.trim()} aria-hidden="true">
       {brand
-        ? <ProviderIcon provider={brand} opticalSize={16} />
+        ? <ProviderBrandMark provider={brand} opticalSize={16} />
         : <AppIcon name="box" size={15} className="model-picker-option-glyph-fallback" />}
     </span>
   );

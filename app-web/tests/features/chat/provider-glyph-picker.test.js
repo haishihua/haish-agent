@@ -8,8 +8,8 @@ const picker = readFileSync(new URL('../../../src/features/chat/components/Model
 const css = readFileSync(new URL('../../../styles/delegation.css', import.meta.url), 'utf8');
 
 test('provider rows reuse the Settings brand mark at a picker-sized optical box', () => {
-  assert.match(picker, /import \{ ProviderIcon \} from '\.\.\/\.\.\/settings\/components\/SettingsPrimitives\.jsx';/);
-  assert.match(picker, /<ProviderIcon provider=\{option\.provider\} name=\{[^}]+\} opticalSize=\{16\} \/>/);
+  assert.match(picker, /import \{ ProviderBrandMark \} from '\.\.\/\.\.\/\.\.\/shared\/ui\/ProviderIcon\.jsx';/);
+  assert.match(picker, /<ProviderBrandMark provider=\{option\.provider\} name=\{[^}]+\} opticalSize=\{16\} \/>/);
   // 当前 Provider 入口和列表每一行都带头像，不只是子菜单标题。
   assert.equal(picker.match(/<ProviderGlyph option=\{/g)?.length, 2);
   assert.equal(providerLogoSize('openai', 16), 16);
@@ -19,7 +19,7 @@ test('provider rows reuse the Settings brand mark at a picker-sized optical box'
 });
 
 test('model rows infer the vendor mark and fall back to one neutral icon', () => {
-  assert.match(picker, /import \{ providerBrandForModel \} from '\.\.\/\.\.\/settings\/model\/provider-brand\.js';/);
+  assert.match(picker, /import \{ providerBrandForModel \} from '\.\.\/\.\.\/\.\.\/shared\/lib\/provider-brand\.js';/);
   assert.match(picker, /const brand = providerBrandForModel\(modelId\);/);
   assert.match(picker, /<AppIcon name="box" size=\{15\} className="model-picker-option-glyph-fallback" \/>/);
   // 当前模型入口（思考级别面板）和列表每一行都带图标。

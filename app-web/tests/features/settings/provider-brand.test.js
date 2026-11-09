@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { providerBrandForModel } from '../../../src/features/settings/model/provider-brand.js';
+import { providerBrandForModel } from '../../../src/shared/lib/provider-brand.js';
 
 test('model ids resolve to their vendor brand', () => {
   const cases = {

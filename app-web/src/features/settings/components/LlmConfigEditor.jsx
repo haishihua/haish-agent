@@ -17,7 +17,8 @@ import {
   llmEditorModelChoices,
   llmProviderRequestPayload,
 } from '../model/settings-payload.js';
-import { FieldRow, SecretKeyField, SettingsMenuSelect, ProviderIcon } from './SettingsPrimitives.jsx';
+import { FieldRow, SecretKeyField, SettingsMenuSelect } from './SettingsPrimitives.jsx';
+import { ProviderBrandMark } from '../../../shared/ui/ProviderIcon.jsx';
 import { ModelSelectorRoot, ModelSelectorTrigger, ModelSelectorValue, ModelSelectorContent, ModelSelectorSearch, ModelSelectorList, ModelSelectorEffort } from '../../../shared/ui/settings-elements/assistant-ui/model-selector.tsx';
 
 const { useState, useEffect, useCallback, useMemo, useRef } = React;
@@ -369,7 +370,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       </FieldRow>
       )}
       <ModelSelectorRoot
-        models={uniqueModelChoices(modelChoices, config.model).map(model => ({ id: model.id, name: model.label, icon: <ProviderIcon provider={config.provider} name={config.name || provider.label} />, efforts: showEffort ? effortOptions.map(item => ({ id: item.id, name: item.id === 'medium' ? 'Med' : item.id === 'xhigh' ? 'XHigh' : `${item.id[0].toUpperCase()}${item.id.slice(1)}` })) : undefined }))}
+        models={uniqueModelChoices(modelChoices, config.model).map(model => ({ id: model.id, name: model.label, icon: <ProviderBrandMark provider={config.provider} name={config.name || provider.label} />, efforts: showEffort ? effortOptions.map(item => ({ id: item.id, name: item.id === 'medium' ? 'Med' : item.id === 'xhigh' ? 'XHigh' : `${item.id[0].toUpperCase()}${item.id.slice(1)}` })) : undefined }))}
         value={config.model || ''} onValueChange={model => { if (!disabled) update({ model }); }} effort={normalizeReasoningEffort(config.reasoning_effort)} onEffortChange={reasoning_effort => { if (!disabled) update({ reasoning_effort, ...(isCompactProvider ? { thinking: 'auto' } : {}) }); }}>
         <FieldRow label="Default model"><ModelSelectorTrigger disabled={disabled} className="w-full"><ModelSelectorValue showEffort={false} /></ModelSelectorTrigger></FieldRow>
         <ModelSelectorContent searchable className="settings-model-options"><ModelSelectorSearch aria-label="Search models" /><ModelSelectorList /></ModelSelectorContent>

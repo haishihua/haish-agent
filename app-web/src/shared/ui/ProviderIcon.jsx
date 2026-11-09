@@ -1,6 +1,10 @@
 // Provider 品牌标记：settings 列表、chat 的模型选择器、workflow 的画布节点与运行配置
 // 都显示同一个 provider 图标，实现只留这一份。
 import React from 'react';
+import { OpenAILogo, ClaudeLogo, GeminiLogo } from './settings-elements/assistant-ui/logos.tsx';
+import deepseekBrand from '@lobehub/icons-static-svg/icons/deepseek-color.svg?inline';
+import zhipuBrand from '@lobehub/icons-static-svg/icons/zhipu-color.svg?inline';
+import siliconflowBrand from '@lobehub/icons-static-svg/icons/siliconcloud-color.svg?inline';
 import anthropicLogo from '@lobehub/icons-static-svg/icons/anthropic.svg?inline';
 import deepseekLogo from '@lobehub/icons-static-svg/icons/deepseek.svg?inline';
 import geminiLogo from '@lobehub/icons-static-svg/icons/gemini.svg?inline';
@@ -47,4 +51,22 @@ export function ProviderIcon({ provider, opticalSize }) {
     );
   }
   return <BrandLogoIcon logo={PROVIDER_LOGOS[provider]} scaleKey={provider} opticalSize={opticalSize} />;
+}
+
+// 彩色品牌标记：设置列表和模型选择器要能一眼认出厂商，所以用带色的 logo；
+// 画布、运行配置那种跟文字同色的小标记用上面的 ProviderIcon（mask 剪影）。
+export function ProviderBrandMark({ provider, name = '', opticalSize }) {
+  const colored = { openai: OpenAILogo, anthropic: ClaudeLogo, gemini: GeminiLogo }[provider];
+  const brand = { deepseek: deepseekBrand, zhipu: zhipuBrand, siliconflow: siliconflowBrand }[
+    String(name).toLowerCase() === 'siliconflow' ? 'siliconflow' : provider
+  ];
+  const size = providerLogoSize(provider, opticalSize);
+  const sized = size ? { width: size, height: size } : undefined;
+  return (
+    <span className="settings-brand" aria-hidden="true">
+      {colored ? <colored style={sized} /> : brand ? <img src={brand} alt="" style={sized} /> : provider === 'custom'
+        ? <span className="settings-initials">{String(name).trim().split(/[\s_.-]+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'API'}</span>
+        : <ProviderIcon provider={provider} opticalSize={opticalSize} />}
+    </span>
+  );
 }

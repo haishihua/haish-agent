@@ -39,14 +39,19 @@ test('both logo renderers size the mark through its box, not a transform', () =>
   assert.match(legacy, /width: size, height: size/);
   assert.doesNotMatch(legacy, /settings-logo-scale/);
 
-  const primitives = read('app-web/src/features/settings/components/SettingsPrimitives.jsx');
-  assert.match(primitives, /const size = providerLogoSize\(provider, opticalSize\)/);
-  assert.match(primitives, /<Logo style=\{sized\} \/>/);
-  assert.match(primitives, /<img src=\{brand\} alt="" style=\{sized\} \/>/);
-  assert.match(primitives, /<LegacyProviderIcon provider=\{provider\} opticalSize=\{opticalSize\} \/>/);
+  const brandMark = read('app-web/src/shared/ui/ProviderIcon.jsx');
+  assert.match(brandMark, /const size = providerLogoSize\(provider, opticalSize\)/);
+  assert.match(brandMark, /<colored style=\{sized\} \/>/);
+  assert.match(brandMark, /<img src=\{brand\} alt="" style=\{sized\} \/>/);
+  assert.match(brandMark, /<ProviderIcon provider=\{provider\} opticalSize=\{opticalSize\} \/>/);
+  assert.doesNotMatch(
+    read('app-web/src/features/settings/components/SettingsPrimitives.jsx'),
+    /providerLogoSize/,
+    'settings 不再保留第二份 provider 标记实现',
+  );
   assert.equal(providerLogoSize('xai'), 18);
   assert.equal(providerLogoSize('xai', 16), 13);
-  assert.doesNotMatch(primitives, /settings-logo-scale/);
+  assert.doesNotMatch(brandMark, /settings-logo-scale/);
 
   const css = read('app-web/styles/app-shell.css');
   assert.doesNotMatch(css, /settings-logo-scale/);
