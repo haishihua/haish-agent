@@ -133,7 +133,7 @@ export function categorizeToolCall(call) {
 const KNOWN_MCP_COMPOUND_PREFIXES = ['chrome_devtools'];
 
 function mcpServerNameFromToolName(toolName) {
-  const s = String(toolName || '').toLowerCase().trim();
+  const s = normalizeToolName(toolName);
   if (!s) return 'mcp';
   // Strip dispatch control suffixes first (mcp_control_tool_name on the
   // backend: `<prefix>_call` / `<prefix>_list_tools` / `<prefix>_activate`).
