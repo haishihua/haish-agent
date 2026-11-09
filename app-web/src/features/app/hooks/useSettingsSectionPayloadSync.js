@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { applyMemorySettingsPayloadToRecords } from '../../settings/model/settings-payload.js';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch } from '../../../shared/api/client.js';
+import { retryWithBackoff, SECTION_LOAD_RETRY } from '../../../shared/lib/retry-with-backoff.js';
 
 /**
  * 设置页的 workflow 分区：进入该分区（或设置刷新 epoch 变化）时重读一次工作流目录，
@@ -17,25 +18,28 @@ export function useWorkflowSettingsSectionSync({
   useEffect(() => {
     if (!settingsMode || settingsSection !== 'workflow') return undefined;
     let cancelled = false;
-    let retryTimer = null;
-    const load = async (attempt = 0) => {
+    const stop = retryWithBackoff(async () => {
       try {
         const payload = await settingsApiRef.current.fetchWorkflowSettingsPayload();
         if (!cancelled) settingsApiRef.current.applyWorkflowSettingsPayload(payload);
       } catch (error) {
+        // 已经离开这个分区：这一次失败不该再提示用户。
         if (cancelled) return;
-        if (attempt < 4) {
-          retryTimer = window.setTimeout(() => load(attempt + 1), 400 * (attempt + 1));
-          return;
-        }
+        throw error;
+      }
+    }, {
+      ...SECTION_LOAD_RETRY,
+      onExhausted: (error) => {
         console.warn('failed to fetch workflow settings', error);
         runtimeApiRef.current.showToast?.('error', String(error?.message || error));
-      }
-    };
-    load();
+      },
+      // 定时器走 window：分区切走时能按 id 清掉排队中的重试。
+      schedule: (callback, ms) => window.setTimeout(callback, ms),
+      cancel: (handle) => window.clearTimeout(handle),
+    });
     return () => {
       cancelled = true;
-      if (retryTimer) window.clearTimeout(retryTimer);
+      stop();
     };
   }, [settingsMode, settingsSection, refreshEpoch, settingsApiRef, runtimeApiRef]);
 }

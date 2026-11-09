@@ -36,6 +36,7 @@ export function BrowserConfigEditor({ onToast }) {
       } catch (failure) {
         if (!stopped) setError(failure.message || 'Could not read Browser settings.');
       } finally {
+        // 这里是轮询而不是退避重试：安装/导入由服务端自己在推进，成败都得接着读，直到卸载。
         if (!stopped) timer = setTimeout(refresh, 2000);
       }
     };

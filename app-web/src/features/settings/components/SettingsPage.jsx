@@ -20,6 +20,7 @@ import {
   createGenericRecord,
   createLlmProfile,
   connectionBadgeMeta,
+  findSettingsRecord,
 } from '../model/settings-payload.js';
 import { createVisionProviderDraft, createCompactProviderDraft, createImageProviderDraft } from '../model/llm-settings.js';
 import {
@@ -561,7 +562,7 @@ export function SettingsPage({
           <CollapsibleContent><div className="settings-nav-children">{children.map(child => {
             if (child.children) {
               const skillsSelected = activeSection === 'tools' && isSkillPage(activeSubtab);
-              const groups = skillGroups((records.tools || []).find(record => record.id === 'tools-skills'));
+              const groups = skillGroups(findSettingsRecord(records.tools, 'skills'));
               return <Collapsible key={child.id} open={skillsOpen} onOpenChange={setSkillsOpen}>
                 <CollapsibleTrigger asChild><Button variant="ghost" className={`settings-nav-item settings-skill-nav-parent ${skillsSelected ? 'is-current' : ''}`}><AppIcon name="wrench" size={16} /><span>Skills</span><ChevronRight size={14} className={skillsOpen ? 'settings-skill-nav-expanded' : undefined} /></Button></CollapsibleTrigger>
                 <CollapsibleContent><div className="settings-skill-nav-children">{child.children.map(sub => <Button

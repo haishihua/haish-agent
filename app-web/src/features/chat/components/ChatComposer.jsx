@@ -494,7 +494,14 @@ export function ChatComposer({
     if ((!running || goal) && (!goal || goal.prompt) && modelConfigError) return;
     let savedConfig = null;
     if ((!running && !goal) || goal?.prompt) {
-      try { savedConfig = await configSync.ensureSaved(); } catch { return; } // The save hook reports errors; keep the payload intact.
+      try {
+        savedConfig = await configSync.ensureSaved();
+      } catch (error) {
+        // 配置预检失败（超时、切走会话、保存被拒）必须让用户看见：这里以前直接 return，
+        // 结果就是「按了发送没反应，草稿还在」。payload 原样保留，用户改完配置能直接重发。
+        onToast?.('error', error?.message || 'Could not save the current configuration. Your message was not sent.');
+        return;
+      }
       const current = submissionContextRef.current;
       if (!submissionMountedRef.current || current.owner !== owner || current.disabled || current.submitPending || current.stopError || (!running && current.running)) return;
       if (currentSelection?.disabled) return;

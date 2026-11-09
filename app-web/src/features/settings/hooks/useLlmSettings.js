@@ -1,4 +1,5 @@
 import { reconcileSettings, hasSettingsVersion } from '../../../shared/lib/settings-sync.js';
+import { retryWithBackoff, STARTUP_LOAD_RETRY } from '../../../shared/lib/retry-with-backoff.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
@@ -28,7 +29,7 @@ export function useLlmSettings({ draft, setDraft, settingsOpen, refreshEpoch = 0
   current.current = { draft, setDraft };
   const mounted = useRef(false);
   const request = useRef(null);
-  const retryTimer = useRef(null);
+  const stopRetry = useRef(null);
   const revision = useRef(0);
   const writes = useRef(new Set());
   const committedWrite = useRef(0);
@@ -36,8 +37,9 @@ export function useLlmSettings({ draft, setDraft, settingsOpen, refreshEpoch = 0
   const cancelRead = useCallback(() => {
     request.current?.abort();
     request.current = null;
-    if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
-    retryTimer.current = null;
+    // 排队中的重试也要一起停：放弃读取时不该再自己回来。
+    stopRetry.current?.();
+    stopRetry.current = null;
   }, []);
 
   const applySaved = useCallback((payload, baseline) => {
@@ -57,8 +59,8 @@ export function useLlmSettings({ draft, setDraft, settingsOpen, refreshEpoch = 0
     }
   }, [updateCatalogReady]);
 
-  const refresh = useCallback(async (attempt = 0) => {
-    cancelRead();
+  const loadSaved = useCallback(async () => {
+    // 每次重试都重算这两道门：等待期间开始的写或卸载，都比这次读取新。
     if (!mounted.current || writes.current.size) return;
     updateCatalogReady(false);
     const controller = new AbortController();
@@ -75,18 +77,23 @@ export function useLlmSettings({ draft, setDraft, settingsOpen, refreshEpoch = 0
       const payload = await response.json();
       if (isCurrent()) applySaved(payload, baseline);
     } catch (error) {
+      // 旧请求/已卸载不算失败：既不重试也不报告。
       if (!isCurrent()) return;
-      // The desktop renderer can mount before the local runtime is ready.
-      if (attempt < 8) {
-        retryTimer.current = window.setTimeout(() => {
-          retryTimer.current = null;
-          void refresh(attempt + 1);
-        }, Math.min(400 * (attempt + 1), 2000));
-      } else {
-        console.warn('failed to fetch llm settings', error);
-      }
+      throw error;
     }
-  }, [applySaved, cancelRead, updateCatalogReady]);
+  }, [applySaved, updateCatalogReady]);
+
+  const refresh = useCallback(() => {
+    cancelRead();
+    if (!mounted.current || writes.current.size) return;
+    stopRetry.current = retryWithBackoff(loadSaved, {
+      ...STARTUP_LOAD_RETRY,
+      onExhausted: (error) => console.warn('failed to fetch llm settings', error),
+      // 定时器走 window：卸载时 cancelRead 要能按 id 清掉排队中的重试。
+      schedule: (callback, ms) => window.setTimeout(callback, ms),
+      cancel: (handle) => window.clearTimeout(handle),
+    });
+  }, [cancelRead, loadSaved]);
 
   useEffect(() => {
     mounted.current = true;

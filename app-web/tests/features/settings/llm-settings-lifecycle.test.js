@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { reconcileSettings, hasSettingsVersion, resetSettingsSync, trackSettingsDraft } from '../../../src/shared/lib/settings-sync.js';
+import { retryWithBackoff, STARTUP_LOAD_RETRY } from '../../../src/shared/lib/retry-with-backoff.js';
 import { createSettingsHandlers } from '../../../src/features/settings/hooks/createSettingsHandlers.js';
 import {
   LLM_SETTINGS_STORAGE_KEY, applyLlmSettingsPayloadToDraft, llmDraftForStorage,
@@ -85,7 +86,7 @@ function harness(t, initial, cache = new Map()) {
   };
   const useLlmSettings = vm.runInNewContext(`${hookSource}\nuseLlmSettings;`, {
     useState, useRef, useMemo, useCallback, useEffect, API_BASE: '', apiFetch, parseResponseMessage, AbortController,
-    reconcileSettings, hasSettingsVersion,
+    reconcileSettings, hasSettingsVersion, retryWithBackoff, STARTUP_LOAD_RETRY,
     LLM_SETTINGS_STORAGE_KEY, applyLlmSettingsPayloadToDraft, llmDraftForStorage, loadLlmSettingsDraft,
     mergeLlmSettingsDraft, runtimeLlmProviderOptions, window, console: { warn() {} },
   });

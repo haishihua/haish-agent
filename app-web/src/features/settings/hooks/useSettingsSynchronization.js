@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { trackSettingsDraft, onSettingsInvalidated, invalidateSettings } from '../../../shared/lib/settings-sync.js';
+import { findSettingsRecord, settingsRecordSyncTargets } from '../model/settings-payload.js';
 
 export function useSettingsSynchronization({ records, llm, agents, workflows }) {
   const [epochs, setEpochs] = useState({});
-  for (const [id, resource, field] of [['tools-mcp', 'mcp', 'mcp_json'], ['tools-web', 'web_search', 'web_search']]) {
-    trackSettingsDraft(resource, records.tools?.find(row => row.id === id)?.[field]);
+  for (const { kind, section, resource, value } of settingsRecordSyncTargets()) {
+    trackSettingsDraft(resource, value(findSettingsRecord(records?.[section], kind)));
   }
-  trackSettingsDraft('memory', records.memory?.find(row => row.id === 'memory-qdrant'));
   trackSettingsDraft('llm', llm);
   trackSettingsDraft('agents', agents);
   trackSettingsDraft('workflows', workflows);
