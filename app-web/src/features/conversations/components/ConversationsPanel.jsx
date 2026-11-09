@@ -39,7 +39,7 @@ export function ConversationsPanel({
   activityOwnerId = '',
   activityOpen: controlledActivityOpen,
   onActivityOpenChange,
-  isNewConversationSelected = false,
+  isDraftSelected = false,
   onSelectActivity,
   windowFocused = true,
   acknowledgeActiveConversation = true,
@@ -90,6 +90,10 @@ export function ConversationsPanel({
   const hasUnreadActivity = Object.values(activityNotices).some((notice) => activityConversationIds.has(notice.conversationId));
   const activeProjectId = workspaceState?.activeProjectId;
   const activeConversationId = workspaceState?.activeConversationId;
+  // 「新建」入口必须开在当前模式自己的项目上：activeProjectId 是两个模式共用的，
+  // 拿着隔壁模式的项目开会话，首条消息会因为项目执行模式不匹配而失败。
+  const newEntryProjectId = workspaceState.projects.some((project) => project.id === activeProjectId)
+    ? activeProjectId : workspaceState.projects[0]?.id;
 
   // A background completion may belong to the already-selected conversation.
   // It becomes viewed only when the window returns to the foreground.
@@ -315,8 +319,8 @@ export function ConversationsPanel({
             activeConversationId={activeConversationId} activeTaskId={activeTaskId}
             loading={activity.loading} error={activity.error} onSelect={onSelectActivity}
             onPin={onPinConversation} onDeleteConversation={requestDeleteConversation} onDeleteTask={requestDeleteTask}
-            onOpenReport={openActivityReport} isNewConversationSelected={isNewConversationSelected}
-            onNewConversation={() => onAddConversation?.(activeProjectId)} />
+            onOpenReport={openActivityReport} isDraftSelected={isDraftSelected}
+            onNewEntry={() => onAddConversation?.(newEntryProjectId)} />
         ) : (<>
         {/* 两个标签页都有搜索框：会话模式搜会话、任务模式搜任务——同一只组件、同一套
             样式与键盘操作，选中后分别跳对应会话 / 对应任务。 */}

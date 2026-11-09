@@ -140,10 +140,16 @@ export function createDraftLifecycleHandlers(ctx) {
     conversationDetailAbortRef.current?.abort?.();
     conversationDetailAbortRef.current = null;
 
-    const project = workspaceState.projects.find((item) => item.id === projectId)
-      || workspaceState.projects[0]
-      || createDefaultProject();
+    // 项目必须跟当前模式同一个：两个模式的项目共用一个 id 空间，从隔壁模式
+    // 的 activeProjectId 开出来的草稿会在首条消息上撞执行模式不匹配。
+    // 只有工作区里根本没有本模式的项目（缺执行模式的老数据 / 空目录）时，才退回原来的取法。
     const executionMode = viewModeRef.current === 'chat' ? 'chat' : 'bot';
+    const modeProjects = workspaceState.projects.filter((item) => item.executionMode === executionMode);
+    const project = modeProjects.find((item) => item.id === projectId)
+      || modeProjects[0]
+      || workspaceState.projects.find((item) => item.id === projectId)
+      || workspaceState.projects[0]
+      || createDefaultProject(executionMode);
     const previousId = conversationIdRef.current;
     const previousDraftId = draftConversationRef.current?.id || null;
     if (previousId) flushRuntimeTasksToWorkspace(previousId);

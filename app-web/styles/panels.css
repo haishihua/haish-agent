@@ -289,15 +289,15 @@
     flex: 0 0 auto;
 }
 .activity-view { padding: 0 0 12px; }
-.activity-new-conversation {
+.activity-new-entry {
     display: flex; align-items: center; gap: 9px; width: calc(100% - 20px); min-height: 34px;
     margin: 0 10px 2px; padding: 0 9px; border: 0; border-radius: 7px;
     background: transparent; color: #dce6f5; cursor: pointer;
     text-align: left; font: 400 13px var(--conversation-font); letter-spacing: .01em;
 }
-.activity-new-conversation:hover { background: rgba(100, 130, 180, .12); }
-.activity-new-conversation.active, .activity-new-conversation.active:hover { background: rgba(77, 141, 246, 0.14); color: #eff5ff; }
-.activity-new-conversation:focus-visible { outline: 2px solid #79adff; outline-offset: 1px; }
+.activity-new-entry:hover { background: rgba(100, 130, 180, .12); }
+.activity-new-entry.active, .activity-new-entry.active:hover { background: rgba(77, 141, 246, 0.14); color: #eff5ff; }
+.activity-new-entry:focus-visible { outline: 2px solid #79adff; outline-offset: 1px; }
 .activity-message { color: #8b98b2; font: 12px var(--conversation-font); padding: 6px 16px; }
 .activity-loading { display: flex; justify-content: center; padding: 24px 0; }
 .activity-list { display: flex; flex-direction: column; }

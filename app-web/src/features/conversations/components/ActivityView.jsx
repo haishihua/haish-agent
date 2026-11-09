@@ -10,6 +10,7 @@ import { resolveConversationStatusMark } from '../model/conversation-run-state.j
 import { RUN_STATE_APPROVAL, RUN_STATE_RUNNING, RUN_STATE_WAITING_INPUT } from '../../../core/run-status.js';
 import { isTaskLive } from '../../../core/run-status.js';
 import { ACTIVITY_PAGE_SIZE, activityEntries, filterActivityEntries } from '../model/activity.js';
+import { newEntryLabel } from '../model/new-entry.js';
 import { terminalTaskNoticeStatus } from '../../../core/task-completion-notices.js';
 
 function ActivityStatus({ entry, mode, terminalStatus }) {
@@ -33,7 +34,7 @@ function formatTime(timestamp) {
 }
 
 export function ActivityView({ projects, workspaceProjects, activeConversationId, activeTaskId, notices, terminalNotices = {}, taskTerminalNotices = {}, mode, onSelect, onPin, onDeleteConversation,
-  onDeleteTask, onOpenReport, onNewConversation, isNewConversationSelected = false, loading, error }) {
+  onDeleteTask, onOpenReport, onNewEntry, isDraftSelected = false, loading, error }) {
   const [limit, setLimit] = React.useState(ACTIVITY_PAGE_SIZE);
   const [query, setQuery] = React.useState('');
   const entries = React.useMemo(() => activityEntries(loading ? null : projects, notices, mode, workspaceProjects, activeConversationId),
@@ -49,12 +50,14 @@ export function ActivityView({ projects, workspaceProjects, activeConversationId
     (project.conversations || []).map((conversation) => [conversation.id, conversation])
   ))), [workspaceProjects]);
   const searchLabel = mode === 'bot' ? 'Search tasks' : 'Search conversations';
+  // 两种模式都要有「新建」入口：会话是 New Conversation，任务是 New Task——
+  // 任务面板少了它就只能跑到项目树里点，跟会话模式的习惯不一致。
   return (
     <section className="activity-view" aria-label="Activity">
-      {mode === 'chat' ? <button type="button" className={`activity-new-conversation${isNewConversationSelected ? ' active' : ''}`}
-        aria-current={isNewConversationSelected ? 'page' : undefined} onClick={onNewConversation}>
-        <SquarePen size={16} aria-hidden="true" /><span>New Conversation</span>
-      </button> : null}
+      <button type="button" className={`activity-new-entry${isDraftSelected ? ' active' : ''}`}
+        aria-current={isDraftSelected ? 'page' : undefined} onClick={onNewEntry}>
+        <SquarePen size={16} aria-hidden="true" /><span>{newEntryLabel(mode)}</span>
+      </button>
       <div className="haish-thread-search">
         <div className="haish-search-field">
           <Search size={15} aria-hidden="true" />

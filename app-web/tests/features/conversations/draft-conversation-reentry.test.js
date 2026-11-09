@@ -5,11 +5,12 @@ import assert from 'node:assert/strict';
 import { createDraftConversationHandlers } from '../../../src/features/conversations/hooks/createDraftConversationHandlers.js';
 
 const PROJECTS = [
-  { id: 'project-1', type: 'project', workspacePath: '/tmp/one', conversations: [] },
-  { id: 'project-2', type: 'project', workspacePath: '/tmp/two', conversations: [] },
+  { id: 'project-1', type: 'project', executionMode: 'chat', workspacePath: '/tmp/one', conversations: [] },
+  { id: 'project-2', type: 'project', executionMode: 'chat', workspacePath: '/tmp/two', conversations: [] },
 ];
 
-function createHarness() {
+function createHarness({ viewMode = 'chat', projects = PROJECTS } = {}) {
+  globalThis.window = { haish: { homePath: '/home' } };
   const state = {
     conversationId: null,
     // Stands in for usePerConversationDraft: composer text keyed by conversation id.
@@ -17,6 +18,7 @@ function createHarness() {
     aliases: new Map(),
     deletedConversationIds: [],
   };
+  const draftConversationRef = { current: null };
   let hexCount = 0;
   let serverCount = 0;
   const handlers = createDraftConversationHandlers({
@@ -54,7 +56,7 @@ function createHarness() {
     }),
     detachActiveRunFromCurrentConversation: () => {},
     draftConversationIdsRef: { current: new Map() },
-    draftConversationRef: { current: null },
+    draftConversationRef,
     draftFirstSendRef: { current: null },
     draftServerCreateRef: { current: null },
     flushRuntimeTasksToWorkspace: () => {},
@@ -91,13 +93,14 @@ function createHarness() {
     titleFromTaskText: (text) => String(text || '').trim().slice(0, 48),
     updateTaskRuntimeState: () => {},
     userCancelledTaskIdsRef: { current: new Set() },
-    viewModeRef: { current: 'chat' },
-    workspaceState: { projects: PROJECTS.map((project) => ({ ...project })) },
+    viewModeRef: { current: viewMode },
+    workspaceState: { projects: projects.map((project) => ({ ...project })) },
     workspaceStateWithConversationDetail: (value) => value,
   });
   return {
     handlers,
     state,
+    draft: () => draftConversationRef.current,
     draftText: (id) => state.composerDrafts.get(id),
     setDraftText: (id, text) => state.composerDrafts.set(id, text),
   };
@@ -147,6 +150,23 @@ test('a sent draft frees its id so the next new conversation starts empty', asyn
   harness.handlers.openDraftConversation('project-1');
   assert.notEqual(harness.state.conversationId, draftId, 'the consumed draft id must not be reused');
   assert.equal(harness.draftText(harness.state.conversationId), undefined);
+});
+
+test('a task-mode blank entry never borrows a chat project', () => {
+  // 两个模式的项目共用一个 id 空间：外面递进来的 activeProjectId 可能还是会话模式那个。
+  // 这种 id 不能拿来开任务草稿，否则首条消息会撞「执行模式不匹配」。
+  const harness = createHarness({
+    viewMode: 'workflow',
+    projects: [
+      { id: 'chat-project', type: 'project', executionMode: 'chat', conversations: [] },
+      { id: 'bot-project', type: 'project', executionMode: 'bot', conversations: [] },
+    ],
+  });
+
+  harness.handlers.openDraftConversation('chat-project');
+
+  assert.equal(harness.draft().executionMode, 'bot');
+  assert.equal(harness.draft().projectId, 'bot-project');
 });
 
 test('discarding a draft that already created a server conversation returns the text to the draft id', async () => {

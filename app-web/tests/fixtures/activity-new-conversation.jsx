@@ -24,7 +24,7 @@ function Fixture() {
     <div style={{ display: 'flex', height: 550, width: 900, gap: 12 }}>
       <aside className="conversations-panel" style={{ width: 280, paddingTop: 12 }}>
         <ActivityView mode={mode} projects={projects} workspaceProjects={projects} notices={{}}
-          isNewConversationSelected={draft && mode === 'chat'} onNewConversation={() => setDraft(true)} onSelect={() => {}} onPin={() => {}} onDeleteConversation={() => {}}
+          isDraftSelected={draft} onNewEntry={() => setDraft(true)} onSelect={() => {}} onPin={() => {}} onDeleteConversation={() => {}}
           onDeleteTask={() => {}} onOpenReport={() => {}} />
       </aside>
       <section className="chat-workspace" style={{ flex: 1 }}>

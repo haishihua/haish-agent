@@ -17,6 +17,7 @@ import { BottomNav, TabPlaceholder } from './components/Shell.jsx';
 import { AppToastStack } from './components/AppToast.jsx';
 import { GoalPreparingPage } from './components/GoalPreparingPage.jsx';
 import { latestChatTaskId } from './model/chat-rows.js';
+import { isDraftEntrySelected } from '../conversations/model/new-entry.js';
 
 const SettingsPage = React.lazy(() => import('../settings/components/SettingsPage.jsx').then((module) => ({ default: module.SettingsPage })));
 
@@ -147,7 +148,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
               activityOwnerId={ownerId}
               activityOpen={activityOpen}
               onActivityOpenChange={setActivityOpen}
-              isNewConversationSelected={viewMode === 'chat' && Boolean(draftConversationRef.current?.id && draftConversationRef.current.id === conversationId)}
+              isDraftSelected={isDraftEntrySelected(draftConversationRef.current, conversationId, viewMode === 'chat' ? 'chat' : 'bot')}
               onSelectActivity={panelActions.onSelectActivity}
               windowFocused={windowFocused}
               acknowledgeActiveConversation={viewMode === 'chat'}

@@ -5,6 +5,7 @@ import { ConversationNode } from './ConversationNode.jsx';
 import { TaskRecordCompact } from './ConversationTaskCards.jsx';
 import { useConversationOrderAnimation } from '../hooks/useConversationOrderAnimation.js';
 import { projectCreatedTimestamp, projectWorkflowTasks } from '../model/workspace-state.js';
+import { newEntryLabel } from '../model/new-entry.js';
 import { DEFAULT_PREVIEW, PREVIEW_PAGE_SIZE, nextExtraVisible, previewWhenHidden } from '../model/list-preview.js';
 
 function formatProjectCreated(ts) {
@@ -189,17 +190,17 @@ export function ProjectNode({
               </svg>
             </button>
           </PortalTooltip>
-          {!workflowTaskMode ? (
-            <ConversationAction
-              label="New Conversation"
-              icon="multiple"
-              tooltipPosition="below"
-              onClick={() => {
-                if (!project.expanded) onToggleProject(project.id);
-                onAddConversation(project.id);
-              }}
-            />
-          ) : null}
+          {/* 两种模式的项目行都有「新建」：会话模式开一条空白会话，任务模式开一条
+              空白任务——任务面板少了它，新建就只能跑去会话模式里做。 */}
+          <ConversationAction
+            label={newEntryLabel(workflowTaskMode ? 'bot' : 'chat')}
+            icon="multiple"
+            tooltipPosition="below"
+            onClick={() => {
+              if (!project.expanded) onToggleProject(project.id);
+              onAddConversation(project.id);
+            }}
+          />
           {project.removable && <ConversationAction label="Remove project" icon="trash" tooltipPosition="below" onClick={() => onRemoveProject(project)} />}
         </span>
       </div>
