@@ -1,6 +1,5 @@
 import { useProviderModels } from '../../../shared/lib/useProviderModels.js';
 import React from 'react';
-import { BookOpen, Clock, CornerDownLeft, Target } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { firstPastedDocument } from '../model/document-paste.js';
@@ -37,6 +36,7 @@ import { scheduleInvocation, scheduleMenuItems } from '../../../core/schedule.js
 import { useComposerHistory } from '../hooks/useComposerHistory.js';
 import { LexicalComposerInput } from './LexicalComposerInput.jsx';
 import { GOAL_COMMAND, goalInvocation, goalMenuItems } from '../model/goal-command.js';
+import { ComposerSkillMenu } from './ComposerSkillMenu.jsx';
 import { ComposerPet } from './ComposerPet.jsx';
 import { ComposerBorderBeam } from '../../../shared/ui/MotionEffects.jsx';
 
@@ -620,29 +620,13 @@ export function ChatComposer({
       {stopError && <ErrorState variant="inline" title="Stop not verified" detail={stopError}
         onRetry={stopAndRestore} disabled={submitPending} retryLabel="Stop again" retryHint="Retry stopping and reconcile this conversation" />}
       {skillMenuOpen && (
-        <div ref={skillMenuRef} className="chat-skill-menu" role="listbox" aria-label="Skills and actions">
-          {matchingSkills.map((skill, index) => (
-            <button
-              key={skill.name}
-              type="button"
-              role="option"
-              aria-selected={index === skillMenuIndex}
-              title={`/${skill.name}${skill.description ? ` — ${skill.description}` : ''}`}
-              className={`chat-skill-menu-item${index === skillMenuIndex ? ' is-active' : ''}`}
-              onMouseDown={(event) => {
-                selectSkill(skill, event);
-              }}
-              onMouseEnter={() => setSkillMenuIndex(index)}
-            >
-              {skill.command && skill.name === 'goal' ? <Target className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" /> : skill.command ? <Clock className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" /> : <BookOpen className="chat-skill-menu-icon" size={15} strokeWidth={1.5} aria-hidden="true" />}
-              <span className="chat-skill-menu-name">/{skill.name}</span>
-              {skill.description ? (
-                <span className="chat-skill-menu-description">{skill.description}</span>
-              ) : null}
-              <span className="chat-skill-menu-enter" aria-hidden="true"><CornerDownLeft size={12} /></span>
-            </button>
-          ))}
-        </div>
+        <ComposerSkillMenu
+          menuRef={skillMenuRef}
+          skills={matchingSkills}
+          activeIndex={skillMenuIndex}
+          onSelect={selectSkill}
+          onHover={setSkillMenuIndex}
+        />
       )}
       <div className="chat-composer-surface">
         <ComposerBorderBeam active={sendBeamActive} />

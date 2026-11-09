@@ -252,7 +252,8 @@ test('goal preparation uses the shell loading page instead of a composer placeho
 });
 
 test('goal command uses a target icon while schedule keeps its clock', () => {
-  const source = readFileSync(new URL('../../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
+  // 图标分支跟着斜杠菜单搬到 ComposerSkillMenu。
+  const source = readFileSync(new URL('../../../src/features/chat/components/ComposerSkillMenu.jsx', import.meta.url), 'utf8');
   assert.match(source, /skill\.command && skill\.name === 'goal' \? <Target className="chat-skill-menu-icon"/);
   assert.match(source, /: skill\.command \? <Clock className="chat-skill-menu-icon"/);
 });

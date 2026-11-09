@@ -227,3 +227,13 @@ app-web/tests/**        # 所有 test/spec
 应用 UI 上。给这些组件写样式必须显式声明属性；尤其是 `<button>` 默认
 `display: inline-block`，会让 trigger 里的文字压在基线上、比左侧标签低半行。
 workflow 表单的 `[data-slot="select-trigger"]` 因此显式 `display: flex; align-items: center`。
+
+### 刻意不拆的大文件
+
+- `features/app/AppShell.jsx`（约 880 行）是组合根：30 多个 `useState` 都是它要向下游
+  分发的会话/任务/视图状态，逻辑已全部下沉到 `hooks/useShellHandlers.js` 与
+  `hooks/useShellRuntimeWiring.js`。再抽 hook 只是给同一批状态加一层转发，不减阅读量，
+  所以保留，只守 2000 行硬上限。
+- `features/chat/components/ChatComposer.jsx`（约 830 行，斜杠菜单已拆到
+  `ComposerSkillMenu.jsx`）剩下的部分是草稿同步、Lexical 编辑器、发送与停止流程的交叉
+  逻辑。抽成 hook 会得到一打参数和一堆 ref，引用稳定性一变就是输入框行为回归。
