@@ -360,11 +360,26 @@ async function resolveInsideProject(projectId: string, relativePath = ''): Promi
   return candidate;
 }
 
-ipcMain.handle('project:pick-directory', async (): Promise<DirectoryPickResult> => {
-  const result = await dialog.showOpenDialog({
+ipcMain.handle('project:pick-directory', async (event): Promise<DirectoryPickResult> => {
+  // 绑父窗口：macOS 上无父窗口的 NSOpenPanel 走 beginWithCompletionHandler 开独立面板，
+  // 应用不在前台时面板起不来，Electron 就用 v8::Undefined 把这个 promise 拒掉
+  // （gin_helper::PromiseBase::Reject()），而 ipc 层的 replyWithError 会对 undefined
+  // 调 toString() 自己崩掉，渲染进程最终只看到「reply was never sent」。
+  const parent = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getAllWindows()[0];
+  const options = {
     title: 'Add Project to Haish',
-    properties: ['openDirectory', 'createDirectory'],
-  });
+    properties: ['openDirectory', 'createDirectory'] as const,
+  };
+  let result: Awaited<ReturnType<typeof dialog.showOpenDialog>>;
+  try {
+    result = parent
+      ? await dialog.showOpenDialog(parent, { ...options, properties: [...options.properties] })
+      : await dialog.showOpenDialog({ ...options, properties: [...options.properties] });
+  } catch (error) {
+    // 同一缺陷的第二道闸：非 Error 值一旦穿过 IPC，replyWithError 就崩，
+    // 用户拿不到任何原因。这里换成带消息的 Error，至少能看见失败理由。
+    throw error instanceof Error ? error : new Error(`directory picker failed: ${String(error)}`);
+  }
   if (result.canceled || !result.filePaths[0]) {
     return { canceled: true };
   }
