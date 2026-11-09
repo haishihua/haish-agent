@@ -2,6 +2,8 @@ import React from 'react';
 import { BorderBeam } from 'border-beam';
 import { MetalFx } from 'metal-fx';
 import { prefersReducedMotion } from '../lib/reduced-motion.js';
+import { hasWebgl } from '../lib/webgl.js';
+import { ErrorBoundary } from './ErrorBoundary.jsx';
 
 export function ComposerBorderBeam({ active }) {
   const beamRef = React.useRef(null);
@@ -48,39 +50,53 @@ export function ComposerBorderBeam({ active }) {
 // re-create the canvas and visibly change the button mid-press.
 // Pausing it also parks metal-fx's shared render loop: an instance that is
 // paused and already painted stops requesting frames.
+//
+// 没有 WebGL 时 metal-fx 会 throw（它在模块级建全局 context），而它包住的是发送按钮本体：
+// 崩掉就是「发送键消失」。所以降级成同样 class 的裸容器——按钮还在，只是没有 shader。
 export const MetalActionEffect = React.forwardRef(function MetalActionEffect({ children, className = '', active = true, ...props }, ref) {
+  const shellClass = `chat-send-metal ${active ? 'is-active' : 'is-idle'}${className ? ` ${className}` : ''}`;
+  if (!hasWebgl()) {
+    return <div ref={ref} className={shellClass} {...props}>{children}</div>;
+  }
   return (
-    <MetalFx
-      ref={ref}
-      className={`chat-send-metal ${active ? 'is-active' : 'is-idle'}${className ? ` ${className}` : ''}`}
-      variant="circle"
-      preset="chromatic"
-      theme="dark"
-      strength={1}
-      paused={prefersReducedMotion() || !active}
-      {...props}
-    >
-      {children}
-    </MetalFx>
+    <ErrorBoundary fallback={<div ref={ref} className={shellClass} {...props}>{children}</div>}>
+      <MetalFx
+        ref={ref}
+        className={shellClass}
+        variant="circle"
+        preset="chromatic"
+        theme="dark"
+        strength={1}
+        paused={prefersReducedMotion() || !active}
+        {...props}
+      >
+        {children}
+      </MetalFx>
+    </ErrorBoundary>
   );
 });
 
+// 只为了不让 metal-fx 的共享渲染循环在首个按钮出现时重建 canvas；它本身不可见，
+// 所以拿不到 WebGL 时直接不渲染，没有必要留空壳。
 export function MetalFxRuntimeKeeper() {
+  if (!hasWebgl()) return null;
   // metal-fx insets its circular SVG mask by 2px per side, even with disableGlow.
   const keeperSize = 8;
   return (
-    <MetalFx
-      className="metal-fx-runtime-keeper"
-      variant="circle"
-      preset="chromatic"
-      theme="dark"
-      strength={0}
-      paused
-      disableGlow
-      aria-hidden="true"
-      style={{ position: 'fixed', left: -100, top: -100, width: keeperSize, height: keeperSize, pointerEvents: 'none' }}
-    >
-      <span style={{ width: keeperSize, height: keeperSize }} />
-    </MetalFx>
+    <ErrorBoundary fallback={null}>
+      <MetalFx
+        className="metal-fx-runtime-keeper"
+        variant="circle"
+        preset="chromatic"
+        theme="dark"
+        strength={0}
+        paused
+        disableGlow
+        aria-hidden="true"
+        style={{ position: 'fixed', left: -100, top: -100, width: keeperSize, height: keeperSize, pointerEvents: 'none' }}
+      >
+        <span style={{ width: keeperSize, height: keeperSize }} />
+      </MetalFx>
+    </ErrorBoundary>
   );
 }

@@ -5,7 +5,9 @@ import { applyScheduleEvent } from '../../../core/schedule.js';
 export const SchedulesContext = React.createContext(null);
 export const useSchedules = () => React.useContext(SchedulesContext);
 
-const subscribeSchedules = (callback) => window.haish.onScheduleEvent(callback);
+// 与其它 window.haish 调用一致用可选链：preload 没注上时降级成「没有实时事件」，
+// 而不是在渲染期抛 TypeError 把整个应用推到顶层错误页。
+const subscribeSchedules = (callback) => window.haish?.onScheduleEvent?.(callback) ?? null;
 
 export function useSchedulesState({ api = schedulesApi, onRuntimeEvent, onRecover, subscribe = subscribeSchedules }) {
   const [items, setItems] = React.useState([]);

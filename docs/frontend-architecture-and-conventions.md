@@ -237,3 +237,24 @@ workflow 表单的 `[data-slot="select-trigger"]` 因此显式 `display: flex; a
 - `features/chat/components/ChatComposer.jsx`（约 830 行，斜杠菜单已拆到
   `ComposerSkillMenu.jsx`）剩下的部分是草稿同步、Lexical 编辑器、发送与停止流程的交叉
   逻辑。抽成 hook 会得到一打参数和一堆 ref，引用稳定性一变就是输入框行为回归。
+
+### 装饰效果不得带走功能
+
+`metal-fx` 在模块级建全局 WebGL context，拿不到就 `throw new Error('metal-fx: WebGL not supported')`。
+它此前直接渲染在 `AppShellView` 顶层与发送按钮外层，所以「没有 WebGL」的机器会：
+
+- 不可见的 `MetalFxRuntimeKeeper` 抛错 → 冒泡到 `app.jsx` 唯一的顶层 `ErrorBoundary` → **整个应用变成错误页**；
+- `MetalActionEffect` 抛错 → **发送按钮整个消失**（实测：`.chat-send` 从 2 个变 0 个）。
+
+现在两道防线：
+
+1. `shared/lib/webgl.js` 的 `hasWebgl()` 先探测（结果缓存），不支持时降级：keeper 返回 `null`，
+   发送按钮退化成同 class 的 `<div>` 壳，按钮本身还在，只是没有 shader。
+2. 仍然用 `<ErrorBoundary fallback={…}>` 局部兜底运行期失败（例如 GPU 进程中途崩溃）。
+   `ErrorBoundary` 只有在**没有** `fallback` 时才渲染全屏错误页，顶层用法不变。
+
+无 WebGL 环境下的验证：`llm-settings-lifecycle` 夹具由「1000ms × 150 全部超时」变为 18/18 PASS；
+`workflow-agent-details` 187 项全 PASS。有 WebGL 时渲染结构与改动前逐字一致（忽略 shader 动画色值）。
+
+同一条原则适用于任何 `window.haish` 调用：一律写 `window.haish?.api?.()`。
+`useSchedules` 曾有唯一一处不带可选链的调用，preload 缺失时同样会推到顶层错误页。

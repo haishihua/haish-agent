@@ -25,6 +25,8 @@ export class ErrorBoundary extends React.Component {
   render() {
     const { error } = this.state;
     if (!error) return this.props.children;
+    // 传了 fallback 就当局部隔离用：装饰层炸了只降级自己，不接管整个窗口。
+    if (this.props.fallback !== undefined) return this.props.fallback;
     const needsReload = /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk [\w-]+ failed/i.test(String(error?.message || error));
     return (
       <div className="aui-error-screen">
