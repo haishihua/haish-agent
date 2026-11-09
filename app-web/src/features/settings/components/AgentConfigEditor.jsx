@@ -12,7 +12,12 @@ import {
 } from '../../agents/model/agent-settings.js';
 import { FieldRow, SettingsMenuSelect, SettingsToggleRow } from './SettingsPrimitives.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
+import { API_BASE } from '../../../shared/api/base.js';
+import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import { mcpToolPickerServers, mcpToolSelected, toggleMcpToolSelection } from '../model/mcp-tool-selection.js';
+import { AgentAvatar } from '../../agents/components/AgentAvatar.jsx';
+import { useAgentAvatars } from '../../agents/hooks/useAgentAvatars.js';
+import { AgentAvatarPicker } from './AgentAvatarPicker.jsx';
 import {
   Boxes,
   Brain,
@@ -24,7 +29,6 @@ import {
   Globe,
   Image as ImageIcon,
   ListChecks,
-  Lock,
   MessageCircleQuestion,
   SquarePen,
   Terminal,
@@ -57,6 +61,10 @@ const SKILL_PREVIEW_COUNT = 8;
 
 export function AgentConfigEditor({ selectedId, settings, onSettingsChange, readOnly = false }) {
   const [skillsExpanded, setSkillsExpanded] = React.useState(false);
+  const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
+  const [catalogBusy, setCatalogBusy] = React.useState('');
+  const [catalogError, setCatalogError] = React.useState('');
+  const { avatarIdFor, setAvatar } = useAgentAvatars();
   const normalized = normalizeAgentSettings(settings);
   const current = normalized.custom.find((item) => item.agent_id === selectedId) || null;
   if (!current) {
@@ -73,23 +81,21 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
       : effectiveSkills.slice(0, SKILL_PREVIEW_COUNT);
     return (
       <div className="settings-editor-form settings-agent-form preset-agent-form">
-        <div className="preset-agent-note">
-          <span className="preset-agent-note-icon" aria-hidden="true"><Lock size={12} strokeWidth={1.8} /></span>
-          <div className="preset-agent-note-body">
-            <span className="preset-agent-note-title">Built-in preset</span>
-            <span className="preset-agent-note-text">Read-only. Create your own agent to change its tools, skills or instructions.</span>
+        <div className="agent-hero">
+          <AgentAvatar
+            agentId={preset.agent_id}
+            size="hero"
+            label={preset.display_name || 'this agent'}
+            onChange={() => setAvatarPickerOpen(true)}
+          />
+          <div className="agent-hero-body">
+            <div className="agent-hero-heading">
+              <h2 className="agent-hero-name">{preset.display_name || 'Untitled preset'}</h2>
+              <span className="agent-hero-badge">Built-in</span>
+            </div>
+            <p className="agent-hero-desc">{preset.description || 'No description.'}</p>
           </div>
         </div>
-        <dl className="preset-meta">
-          <div className="preset-meta-row">
-            <dt>Name</dt>
-            <dd>{preset.display_name || 'Untitled preset'}</dd>
-          </div>
-          <div className="preset-meta-row">
-            <dt>Description</dt>
-            <dd>{preset.description || 'No description.'}</dd>
-          </div>
-        </dl>
         <section className="preset-caps" aria-label="Tools">
           <header className="preset-caps-head">
             <h3 className="preset-caps-title">Tools</h3>
@@ -140,6 +146,15 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
             </>
           ) : <p className="preset-caps-empty">No skills.</p>}
         </section>
+        <AgentAvatarPicker
+          open={avatarPickerOpen}
+          value={avatarIdFor(preset.agent_id)}
+          onSelect={(avatarId) => {
+            setAvatar(preset.agent_id, avatarId);
+            setAvatarPickerOpen(false);
+          }}
+          onClose={() => setAvatarPickerOpen(false)}
+        />
       </div>
     );
   }
@@ -189,6 +204,24 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
   );
   const mcpServers = mcpToolPickerServers(normalized.mcp_servers);
   const hasMcpTools = mcpServers.some((server) => server.tools.length > 0);
+  const loadMcpCatalog = async (serverName) => {
+    setCatalogBusy(serverName);
+    setCatalogError('');
+    try {
+      const response = await apiFetch(`${API_BASE}/api/mcp/catalog/${encodeURIComponent(serverName)}`, { method: 'POST' });
+      if (!response.ok) throw new Error(await parseResponseMessage(response, 'Could not load MCP tools.'));
+      const catalog = await response.json();
+      if (!catalog.loaded) throw new Error(catalog.error || 'Could not load MCP tools.');
+      onSettingsChange((previous) => ({
+        ...previous,
+        mcp_servers: (previous.mcp_servers || []).map((server) => server.name === serverName ? catalog : server),
+      }));
+    } catch (error) {
+      setCatalogError(String(error?.message || error));
+    } finally {
+      setCatalogBusy('');
+    }
+  };
   const toggleSkill = (skillId) => {
     const next = new Set(allowedSkills);
     if (next.has(skillId)) next.delete(skillId);
@@ -206,6 +239,23 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
 
   return (
     <div className="settings-editor-form settings-agent-form">
+      <div className="agent-hero">
+        <AgentAvatar
+          agentId={current.agent_id}
+          size="hero"
+          label={current.display_name || 'this agent'}
+          onChange={() => setAvatarPickerOpen(true)}
+        />
+        <div className="agent-hero-body">
+          <div className="agent-hero-heading">
+            <h2 className="agent-hero-name">
+              {current.display_name || (current.draft ? 'New Agent' : current.agent_id)}
+            </h2>
+            <span className="agent-hero-badge">Custom</span>
+          </div>
+          {current.description ? <p className="agent-hero-desc">{current.description}</p> : null}
+        </div>
+      </div>
       <FieldRow label="Name">
         <Input value={current.display_name || ''} onChange={(event) => update({ display_name: event.target.value })} disabled={readOnly} placeholder="Agent name" />
       </FieldRow>
@@ -251,6 +301,14 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
                     <span className="settings-check-label">{server.name}</span>
                     {server.error && <ErrorState variant="inline" detail={server.error} />}
                   </div>
+                  {server.loaded === false ? (
+                    <div className="settings-check-row">
+                      <button type="button" onClick={() => loadMcpCatalog(server.name)} disabled={Boolean(catalogBusy)}>
+                        {catalogBusy === server.name ? 'Loading…' : 'Load tools'}
+                      </button>
+                      <small>Starts or connects to this MCP server to discover tools.</small>
+                    </div>
+                  ) : null}
                   {tools.map((tool) => (
                     <label className="settings-check-row" key={`${server.name}.${tool.name}`}>
                       <Checkbox
@@ -258,13 +316,14 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
                         onCheckedChange={() => toggleMcpTool(server, tool.name)}
                         disabled={readOnly}
                       />
-                      <span className="settings-check-label">{tool.name}</span>
+                      <span className="settings-check-label" title={tool.description || undefined}>{tool.name}</span>
                     </label>
                   ))}
                 </div>
               );
             })}
-            {!hasMcpTools ? <small>No MCP tools available.</small> : null}
+            {catalogError ? <ErrorState variant="inline" detail={catalogError} /> : null}
+            {!hasMcpTools && !mcpServers.some((server) => server.loaded === false) ? <small>No MCP tools available.</small> : null}
           </div>
         </FieldRow>
       ) : null}
@@ -288,6 +347,15 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
           {!skillOptions.length ? <small>No installed skills.</small> : null}
         </div>
       </FieldRow>
+      <AgentAvatarPicker
+        open={avatarPickerOpen}
+        value={avatarIdFor(current.agent_id)}
+        onSelect={(avatarId) => {
+          setAvatar(current.agent_id, avatarId);
+          setAvatarPickerOpen(false);
+        }}
+        onClose={() => setAvatarPickerOpen(false)}
+      />
     </div>
   );
 }

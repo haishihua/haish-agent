@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { ModelPicker } from '../../src/features/chat/components/ModelPickers.jsx';
+import { ModelPicker, AgentPicker } from '../../src/features/chat/components/ModelPickers.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import { startAgentCatalogLoad, staleAgentCatalog } from '../../src/features/agents/model/agent-catalog-loading.js';
 import '../../styles.css';
@@ -19,6 +19,7 @@ function Fixture() {
   const [catalog, setCatalog] = React.useState({ options: [{ id: 'preset.general', label: 'Saved', skills: [{ name: 'old-skill' }] }] });
   const [provider, setProvider] = React.useState('p');
   const [model, setModel] = React.useState('m1');
+  const [agent, setAgent] = React.useState('preset.general');
   const [reasoning, setReasoning] = React.useState(null);
   const [readOnly, setReadOnly] = React.useState(false);
   const [disabled, setDisabled] = React.useState(false);
@@ -28,12 +29,15 @@ function Fixture() {
     const attempt = startAgentCatalogLoad({ request, url: workspace, onState: setState, onCatalog: setCatalog });
     return attempt.cancel;
   }, [workspace, retry]);
-  control = { setWorkspace, setReadOnly, setDisabled, setLocked, provider, model, reasoning, catalog, state };
-  return <AppTooltipProvider><ModelPicker value={model} options={[{ id: 'm1', label: 'Model One' }, { id: 'm2', label: 'Model Two' }]}
-    onChange={setModel} reasoningEffort={reasoning} onReasoningChange={setReasoning}
-    providerValue={provider} providerOptions={[{ id: 'p', label: 'Provider One' }, { id: 'q', label: 'Provider Two' }]} onProviderChange={setProvider}
-    agentValue="preset.general" agentOptions={catalog.options} agentLoading={state.status === 'loading'} agentError={state.error} onAgentRetry={() => setRetry((n) => n + 1)}
-    readOnly={readOnly} disabled={disabled} agentLocked={locked} /></AppTooltipProvider>;
+  control = { setWorkspace, setReadOnly, setDisabled, setLocked, provider, model, agent, reasoning, catalog, state };
+  return <AppTooltipProvider>
+    <ModelPicker value={model} options={[{ id: 'm1', label: 'Model One' }, { id: 'm2', label: 'Model Two' }]}
+      onChange={setModel} reasoningEffort={reasoning} onReasoningChange={setReasoning}
+      providerValue={provider} providerOptions={[{ id: 'p', label: 'Provider One' }, { id: 'q', label: 'Provider Two' }]} onProviderChange={setProvider}
+      readOnly={readOnly} disabled={disabled} />
+    <AgentPicker value={agent} options={catalog.options} onChange={setAgent} loading={state.status === 'loading'} error={state.error}
+      onRetry={() => setRetry((n) => n + 1)} readOnly={readOnly} disabled={disabled} locked={locked} />
+  </AppTooltipProvider>;
 }
 createRoot(document.getElementById('root')).render(<Fixture />);
 const sleep = (ms = 25) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -46,7 +50,7 @@ async function openSettings() {
     document.querySelector('.model-picker-quick-summary').click(); await sleep();
   }
 }
-async function section(name) { await openSettings(); const buttons = [...document.querySelectorAll('.model-picker-submenu-entry')]; buttons[['agent', 'provider', 'model'].indexOf(name)].focus(); await sleep(); }
+async function section(name) { await openSettings(); const buttons = [...document.querySelectorAll('.model-picker-submenu-entry')]; buttons[['provider', 'model'].indexOf(name)].focus(); await sleep(); }
 const choose = (label) => [...document.querySelectorAll('.model-picker-flyout button')].find((button) => button.textContent.trim() === label)?.click();
 async function run() {
   await sleep(100);
@@ -61,8 +65,8 @@ async function run() {
   check(control.model === 'm2', 'Model changes during Agent loading');
   await section('provider'); choose('Provider Two'); await sleep();
   check(control.provider === 'q', 'Provider changes during Agent loading');
-  await section('agent');
-  check(document.querySelector('[role=status]')?.textContent.includes('Loading agents'), 'Loading is local to Agent flyout');
+  document.querySelector('.agent-picker-trigger').click(); await sleep();
+  check(document.querySelector('[role=status]')?.textContent.includes('Loading agents'), 'Loading is local to Agent picker');
   check(control.catalog.options[0].skills.length === 0 && control.catalog.options[0].unavailable, 'Pending catalog hides stale skills and switch targets');
   attempts[0].resolve(new Response('', { status: 500 })); await sleep();
   check(document.querySelector('[role=alert]') && !trigger().disabled, 'HTTP failure is visible without blocking model settings');
@@ -76,8 +80,9 @@ async function run() {
   attempts[3].resolve(Response.json(payload('newest'))); await sleep();
   old.resolve(Response.json(payload('obsolete'))); await sleep();
   check(control.catalog.options[0].label === 'newest', 'Late old workspace response cannot overwrite newest catalog');
-  control.setLocked(true); await sleep(); await section('agent');
-  check([...document.querySelectorAll('.model-picker-flyout-agent button[role=option]')].every((button) => button.disabled), 'Agent lock is retained');
+  control.setLocked(true); await sleep();
+  if (!document.querySelector('.agent-picker-menu')) { document.querySelector('.agent-picker-trigger').click(); await sleep(); }
+  check(document.querySelectorAll('.agent-picker-option').length > 0 && [...document.querySelectorAll('.agent-picker-option')].every((button) => button.disabled), 'Agent lock is retained');
   await section('model'); choose('Model One'); await sleep();
   check(control.model === 'm1', 'Agent lock does not block model changes');
   control.setReadOnly(true); await sleep();

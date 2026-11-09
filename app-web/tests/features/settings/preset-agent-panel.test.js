@@ -65,11 +65,16 @@ test('the read-only preset panel shows capabilities, never the raw tool identifi
   assert.match(editor, /`Show all \$\{effectiveSkills\.length\}`/);
   // 预设只读，不再摆两个禁用输入框冒充表单。
   assert.doesNotMatch(editor, /<Input value=\{preset\.display_name/);
-  assert.match(editor, /Read-only\. Create your own agent/);
+  // 只读状态写在详情页顶部：头像 + Built-in 徽标，不再单摆一条提示框。
+  assert.doesNotMatch(editor, /Read-only\. Create your own agent/);
+  assert.match(editor, /className="agent-hero-badge">Built-in</);
+  // 名字和描述已经在顶部 hero 里，下面不再重复一遍 Name / Description 两行。
+  assert.doesNotMatch(editor, /preset-meta/);
+  assert.doesNotMatch(editor, /<dt>Name<\/dt>/);
+  assert.doesNotMatch(editor, /<dt>Description<\/dt>/);
 });
 
 test('preset capability styles keep the grouped list readable inside the 390px editor', () => {
-  assert.match(css, /\.preset-meta-row \{ display: grid; grid-template-columns: 88px minmax\(0, 1fr\);/);
   assert.match(css, /\.preset-tool-groups \{ border: 1px solid #ffffff0c; border-radius: 9px; background: var\(--control\); overflow: hidden; \}/);
   assert.match(css, /\.preset-tool-group \{ display: grid; grid-template-columns: 20px minmax\(0, 1fr\) auto;[^}]*padding: 11px 12px;/);
   assert.match(css, /\.preset-tool-group \+ \.preset-tool-group \{ border-top: 1px solid #ffffff08; \}/);

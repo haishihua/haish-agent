@@ -78,7 +78,7 @@ async function chooseProvider(name) {
   closeMenu(); await sleep();
   document.querySelector('.model-picker-trigger').click(); await sleep();
   document.querySelector('[aria-label="Open agent and model settings"]').click(); await sleep();
-  [...document.querySelectorAll('.model-picker-submenu-entry')][1].focus(); await sleep();
+  [...document.querySelectorAll('.model-picker-submenu-entry')][0].focus(); await sleep();
   const option = [...document.querySelectorAll('.model-picker-flyout-provider [role="option"]')].find((item) => item.textContent.includes(name));
   option.click(); await sleep(); closeMenu(); await sleep();
 }

@@ -53,9 +53,14 @@
     color: var(--ink);
 }
 
-.chat-composer .model-picker-submenu-entry:hover, .chat-composer .model-picker-submenu-entry.is-active {
+.chat-composer .model-picker-submenu-entry:hover {
     background: rgba(255, 255, 255, 0.08);
-    color: var(--gold);
+    color: #8fb7ff;
+}
+
+.chat-composer .model-picker-submenu-entry.is-active {
+    background: rgba(255, 255, 255, 0.08);
+    color: #8fb7ff;
 }
 
 .chat-composer .model-picker-subcaret {
@@ -85,6 +90,20 @@
 .chat-composer .model-picker-flyout-provider {
     width: 240px;
     min-width: 240px;
+    max-height: 360px;
+    overflow: hidden;
+}
+
+/* provider 列表和 model 列表一致：固定高度，超出部分滚轮滚动，不顶着窗口往上长。 */
+.chat-composer .model-picker-flyout-provider .model-picker-list {
+    max-height: 300px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+/* 行高固定：列表短时不能被 flex 压扁，必须靠滚动露出后面的 provider。 */
+.chat-composer .model-picker-flyout-provider .model-picker-option {
+    flex: 0 0 auto;
 }
 
 .chat-composer .model-picker-flyout-agent {
@@ -123,20 +142,75 @@
 }
 
 .chat-composer .model-picker-option.is-disabled.is-active, .chat-composer .model-picker-option[aria-disabled="true"].is-active {
-    color: rgba(239, 191, 100, 0.72);
+    color: rgba(143, 183, 255, 0.72);
 }
 
 .chat-composer .model-picker-option.is-disabled:hover, .chat-composer .model-picker-option[aria-disabled="true"]:hover {
     background: transparent;
 }
 
-.chat-composer .model-picker-flyout-model .model-picker-list::-webkit-scrollbar {
+/* 三个列表（Agent / Provider / Model）默认不画滚动条，鼠标进入列表才出现，
+   避免一条灰槽压在菜单右边。 */
+.chat-composer .model-picker-flyout-model .model-picker-list::-webkit-scrollbar,
+.chat-composer .model-picker-flyout-provider .model-picker-list::-webkit-scrollbar,
+.agent-picker-list::-webkit-scrollbar {
     width: 6px;
+    height: 6px;
 }
 
-.chat-composer .model-picker-flyout-model .model-picker-list::-webkit-scrollbar-thumb {
-    background: rgba(176, 206, 255, 0.22);
+.chat-composer .model-picker-flyout-model .model-picker-list::-webkit-scrollbar-thumb,
+.chat-composer .model-picker-flyout-provider .model-picker-list::-webkit-scrollbar-thumb,
+.agent-picker-list::-webkit-scrollbar-thumb {
+    background: transparent;
     border-radius: 999px;
+}
+
+.chat-composer .model-picker-flyout-model .model-picker-list::-webkit-scrollbar-track,
+.chat-composer .model-picker-flyout-provider .model-picker-list::-webkit-scrollbar-track,
+.agent-picker-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-composer .model-picker-flyout-model .model-picker-list:hover::-webkit-scrollbar-thumb,
+.chat-composer .model-picker-flyout-provider .model-picker-list:hover::-webkit-scrollbar-thumb,
+.agent-picker-list:hover::-webkit-scrollbar-thumb {
+    background: rgba(176, 206, 255, 0.22);
+}
+
+.chat-composer .model-picker-option-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    color: #dce6f5;
+}
+
+.chat-composer .model-picker-option-glyph-fallback {
+    opacity: 0.7;
+}
+
+/* Settings 的媒体格在 composer 里带 44px 描边框，这里拉回成无底色的小图标。 */
+.chat-composer .model-picker-option-glyph .settings-brand,
+.chat-composer .model-picker-option-glyph .settings-provider-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+}
+
+.chat-composer .model-picker-option-glyph .settings-initials {
+    color: inherit;
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: .02em;
 }
 
 /* The run-config picker sits on the right side of the composer footer, so its
@@ -247,11 +321,26 @@
     outline-offset: -2px;
 }
 
-.chat-composer .model-picker-quick-summary > span:first-child {
+.chat-composer .model-picker-quick-summary > .model-picker-quick-model {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* 模型名左侧的厂商小图标：比列表里的 18px 格再小一号，不抢文字的重心。 */
+.chat-composer .model-picker-quick-summary > .model-picker-quick-glyph {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    margin-right: -1px;
+    color: #dce6f5;
+}
+
+.chat-composer .model-picker-quick-summary > .model-picker-quick-glyph .settings-brand,
+.chat-composer .model-picker-quick-summary > .model-picker-quick-glyph .settings-provider-icon {
+    width: 16px;
+    height: 16px;
 }
 
 .chat-composer .model-picker-quick-summary strong {

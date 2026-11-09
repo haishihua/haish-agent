@@ -28,6 +28,13 @@ test('no servers, empty catalogs and globally disabled tools produce no choices'
   assert.deepEqual(mcpToolPickerServers([{ ...SERVER, tools: SERVER.tools.map((tool) => ({ ...tool, enabled: false })) }]), []);
 });
 
+test('unloaded servers remain visible so users can explicitly discover their tools', () => {
+  const unloaded = { name: 'dbx', expose: 'proxy', loaded: false, tools: [] };
+  assert.deepEqual(mcpToolPickerServers([unloaded]), [unloaded]);
+  assert.deepEqual(mcpToolPickerServers([{ ...unloaded, enabled: false }]), []);
+  assert.deepEqual(mcpToolPickerServers([{ ...unloaded, loaded: true }]), []);
+});
+
 test('available tool choices do not depend on agent selections; errors remain visible', () => {
   const disabledTool = { name: 'off', enabled: false };
   const input = [SERVER, { name: 'mixed', tools: [{ name: 'on' }, disabledTool, null, { name: ' ' }] },
@@ -95,6 +102,16 @@ test('a whole-server allow becomes per-tool entries the moment one of its tools 
   assert.equal(mcpToolSelected(after, SERVER, 'node_repl'), true);
   // 别的服务器照样不进 allow_servers。
   assert.equal(mcpServerWholesaleAllowed(after, 'cua-agent'), false);
+});
+
+test('proxy upstream selections do not grant siblings and keep old control entries unchanged', () => {
+  const server = { name: 'dbx', expose: 'proxy', loaded: true, tools: [{ name: 'read' }, { name: 'write' }] };
+  const old = { allow_servers: [], allow_tools: ['dbx.dbx_call', 'dbx.dbx_list_tools'] };
+  assert.equal(mcpToolSelected(old, server, 'read'), false);
+  const next = toggleMcpToolSelection(old, server, 'read');
+  assert.deepEqual(next.allow_tools, ['dbx.dbx_call', 'dbx.dbx_list_tools', 'dbx.read']);
+  assert.equal(mcpToolSelected(next, server, 'write'), false);
+  assert.deepEqual(old.allow_tools, ['dbx.dbx_call', 'dbx.dbx_list_tools']);
 });
 
 test('a click without a tool name is a no-op, and the policy is always returned whole', () => {

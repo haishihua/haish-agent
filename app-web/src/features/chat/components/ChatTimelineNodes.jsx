@@ -1,9 +1,10 @@
 import React from 'react';
-import { Bot, LoaderCircle, Sparkles } from 'lucide-react';
+import { Bot, LoaderCircle, Sparkles, Timer } from 'lucide-react';
 import { TerminalDetail, DiffDetail } from '../../../shared/ui/agent-elements/ToolDetails.jsx';
 import { ToolCall, ToolStatus, isActiveToolStatus } from '../../../shared/ui/agent-elements/ToolCall.jsx';
 import { ToolTimeline } from '../../../shared/ui/agent-elements/ToolTimeline.jsx';
 import { WebSearch } from '../../../shared/ui/agent-elements/WebSearch.jsx';
+import { CheckpointHistory } from '../../../shared/ui/agent-elements/CheckpointHistory.jsx';
 import { ActivityOrb } from './ActivityOrb.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
@@ -319,6 +320,19 @@ function ChatTimelineToolBody({ item, view: summary, conversationId, taskId, onP
     running={view.running} failed={view.failed} cancelled={view.cancelled} />;
   if (view.mode === 'browser') return <BrowserToolDetail {...view.browser} taskId={taskId}
     running={view.running} failed={view.failed} cancelled={view.cancelled} />;
+  if (view.mode === 'checkpoints') {
+    if (view.failed) return <div className="chat-timeline-tool-line">{view.failureText}</div>;
+    if (!view.checkpoints.length) {
+      return <div className="chat-timeline-tool-line">No checkpoints yet.</div>;
+    }
+    // 行标题已经写了 “Listed checkpoints”，列表自己不再重复一层 caption。
+    return <CheckpointHistory
+      checkpoints={view.checkpoints}
+      currentId={view.currentId}
+      caption={null}
+      data-truncated={view.truncated ? 'true' : 'false'}
+    />;
+  }
   if (view.mode === 'json') {
     return <ChatJsonPair requestJson={view.requestJson} responseJson={view.responseJson || view.body} />;
   }
@@ -525,6 +539,7 @@ function ChatTimelineToolNodeComponent({
       Boolean(view.body) ||
       Boolean(view.requestJson) ||
       Boolean(view.responseJson) ||
+      (Array.isArray(view.checkpoints) && view.checkpoints.length > 0) ||
       Boolean(view.search) || Boolean(view.browser) ||
       (Array.isArray(view.streamLines) && view.streamLines.length > 0) ||
       Boolean(view.finalText) ||
@@ -602,7 +617,7 @@ export function ChatTimelineCollapsed({ onExpand, label = 'Trace', expanded = fa
       // aria-hidden 的，没名字时读屏只能听到「按钮」。
       aria-label={label || (expanded ? 'Hide steps' : 'Show steps')}
     >
-      <ChatTimelineChevron open={expanded} />
+      <Timer className="chat-timeline-time-icon" size={13} strokeWidth={2.2} aria-hidden="true" />
       <span className="chat-timeline-collapsed-text">{label}</span>
     </button>
   );
@@ -612,6 +627,7 @@ export function ChatTimelineElapsedPill({ label }) {
   if (!label) return null;
   return (
     <div className="chat-timeline-collapsed chat-timeline-elapsed-pill" aria-label={`Task elapsed ${label}`}>
+      <Timer className="chat-timeline-time-icon" size={13} strokeWidth={2.2} aria-hidden="true" />
       <span className="chat-timeline-collapsed-text">{label}</span>
     </div>
   );

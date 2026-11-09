@@ -1,5 +1,6 @@
 import { collapseFullTaskAttempts } from '../../chat/model/task-attempts.js';
-import { assistantNameForTask } from '../../chat/model/assistant-name.js';
+import { assistantAgentIdForTask, assistantNameForTask } from '../../chat/model/assistant-name.js';
+import { changedFilesForTask } from '../../chat/model/changed-files.js';
 import { stripInjectedSkillInstruction } from '../../chat/model/chat-text.js';
 import { buildChatTimeline } from '../../chat/model/chat-timeline.js';
 import { isTaskLive } from '../../conversations/model/conversation-status.js';
@@ -37,6 +38,8 @@ export function buildChatRows({
   const rows = [];
   // 助手气泡上的名字跟着会话选定的 agent 走（见 chat/model/assistant-name.js）。
   const agentNameFor = (task) => assistantNameForTask(task, currentConversation, agentOptions);
+  // 气泡头像跟着同一个 agent 走；名字与头像必须出自同一轮记录，不能一个取任务、一个取会话。
+  const agentIdFor = (task) => assistantAgentIdForTask(task, currentConversation);
   // 本地还没被服务端接下的那一轮（pending，见 conversations/model/agent-binding.js）
   // 在时间线上照旧渲染；被它顶掉的那一轮必须在同一刻让位。编辑 / 重发刚被接下时旧行
   // 还留在上面（编辑框正悬在那一行上），新的运行态却在下面另起一轮——看起来就是输入框
@@ -58,10 +61,12 @@ export function buildChatRows({
     const taskId = task.taskId || task.id || task.title;
     const live = isTaskLive(task) && !settled.has(String(task.taskId || task.id || ''));
     const agentName = agentNameFor(task);
+    const agentId = agentIdFor(task);
     const cachedRows = rowCache.get(task);
     // catalog 是异步到的：名字也会变，所以名字一起比，不能只比 live。conversationId 同理：
     // 它决定最终回答里的图片能不能拼出预览地址，缓存的行带着空 id 就永远不出图。
-    if (cachedRows && cachedRows.live === live && cachedRows.agentName === agentName && cachedRows.conversationId === conversationId) {
+    if (cachedRows && cachedRows.live === live && cachedRows.agentName === agentName
+      && cachedRows.agentId === agentId && cachedRows.conversationId === conversationId) {
       rows.push(...cachedRows.rows);
       continue;
     }
@@ -126,12 +131,16 @@ export function buildChatRows({
         conversationId,
         role: 'agent',
         agentName,
+        agentId,
         text: bubbleText,
         answerImages: Array.isArray(task.answerImages) ? task.answerImages : [],
         progressLines,
         traceTimeline: timelineItems,
         traceHydrated,
         traceLatestTodos: timeline?.latestTodos || null,
+        // 本轮真正改过的工作区文件（只从工具结果折叠，不解析回答正文）。
+        // 没改文件时 count 为 0，ChatMessageRow 据此不渲染 FileTree。
+        changedFiles: changedFilesForTask(task),
         status,
         streaming,
         createdAt: task.createdAt,
@@ -139,7 +148,7 @@ export function buildChatRows({
         firstTokenAt: taskFirstStreamTimestamp(task),
       });
     }
-    rowCache.set(task, { rows: taskRows, live, agentName, conversationId });
+    rowCache.set(task, { rows: taskRows, live, agentName, agentId, conversationId });
     rows.push(...taskRows);
   }
   if (pendingTurnVisible) {
@@ -165,6 +174,7 @@ export function buildChatRows({
         conversationId,
         role: 'agent',
         agentName: agentNameFor(pendingTurn),
+        agentId: agentIdFor(pendingTurn),
         text: pendingStreaming ? '' : (pendingStatus === 'cancelled' ? '' : pendingError),
         progressLines: [],
         traceTimeline: [],

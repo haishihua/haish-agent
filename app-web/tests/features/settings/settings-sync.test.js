@@ -113,6 +113,29 @@ test('production Tools hook accepts external deletion after initialization and o
   slots.forEach(s=>s.cleanup?.());
 });
 
+test('agent MCP discovery is not a settings edit and refresh preserves edited rows', async () => {
+  resetSettingsSync();
+  const initial = { presets: [], custom: [{ agent_id: 'a', name: 'old' }], mcp_servers: [{ name: 'db', loaded: false }] };
+  trackSettingsDraft('agents', initial);
+  let p = await response(read('agents'), {}, { agents: 'e:0' });
+  reconcileSettings('agents', initial, initial, p);
+  const discovered = { ...initial, mcp_servers: [{ name: 'db', loaded: true, tools: [{ name: 'read' }] }] };
+  trackSettingsDraft('agents', discovered);
+  p = await response(read('agents'), {}, { agents: 'e:1' });
+  const external = { ...discovered, custom: [{ agent_id: 'a', name: 'external' }] };
+  assert.deepEqual(reconcileSettings('agents', discovered, external, p), external);
+  assert.deepEqual(settingsConflicts(), []);
+  const edited = { ...external, custom: [{ agent_id: 'a', name: 'my draft' }] };
+  trackSettingsDraft('agents', edited);
+  const refreshed = { ...external, mcp_servers: [{ name: 'db', loaded: true, tools: [{ name: 'write' }] }] };
+  p = await response(read('agents'), {}, { agents: 'e:1' });
+  const current = reconcileSettings('agents', edited, refreshed, p);
+  assert.equal(current.custom[0].name, 'my draft');
+  assert.deepEqual(current.mcp_servers, refreshed.mcp_servers);
+  assert.deepEqual(settingsConflicts(), []);
+  assert.deepEqual(prepareSettingsRequest('/api/mcp/catalog/db', { method: 'POST' }).resources, []);
+});
+
 for (const resource of ['agents', 'workflows']) {
   test(`${resource}: saving one row preserves other unsaved rows and edits made in flight`, async () => {
     resetSettingsSync();

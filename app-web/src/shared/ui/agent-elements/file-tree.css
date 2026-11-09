@@ -1,0 +1,245 @@
+/* assistant-ui FileTree utilities adapted to scoped CSS (dark theme). */
+.aui-file-tree {
+  box-sizing: border-box;
+  /* 官方是 max-w-sm；这里要跟回答正文同宽，所以只保留 width:0 + min-width:100%：
+     width:0 让树不参与气泡的 max-content 计算（长绝对路径不许把气泡撑宽），
+     min-width:100% 再把它拉满正文盒宽——右边缘与 .chat-bubble-text 对齐。 */
+  width: 0;
+  min-width: 100%;
+  /* 头部和首条明细紧凑排列。 */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+  /* 保留卡片圆角，减少上下留白。 */
+  border: 1px solid rgb(58 68 99 / 60%);
+  border-radius: 16px;
+  background: rgb(20 25 40 / 72%);
+  padding: 2px 8px;
+  /* 字体跟正文同一套（见 styles/chat.css 的 .chat-bubble-text），不再另用等宽字体。 */
+  font-family: var(--conversation-font, ui-sans-serif, sans-serif);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink, #daddef);
+  white-space: normal;
+  overflow: hidden;
+  animation: aui-file-tree-enter 240ms ease-out both;
+}
+
+/* 头部整行是折叠开关，不显示悬停或选中底色。 */
+.aui-file-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  align-self: stretch;
+  min-width: 0;
+  margin: 0;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+/* 头部箭头即时切换方向，避免状态与图标方向不同步。 */
+.aui-file-tree-header .aui-file-tree-header-chevron {
+  transition: none;
+}
+
+.aui-file-tree[data-open="false"] .aui-file-tree-header-chevron {
+  transform: rotate(-90deg);
+}
+
+.aui-file-tree-header:focus-visible {
+  outline: 2px solid rgb(143 183 255 / 70%);
+  outline-offset: 1px;
+}
+
+/* text-[13.5px] font-medium */
+.aui-file-tree-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+/* mono text-[11px] tracking-tight：等宽字体换成本文同一套，字号跟着正文（11px 在气泡里太小）。 */
+.aui-file-tree-totals {
+  flex: none;
+  font-size: 13px;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 行之间不额外留缝，头部与明细之间仅留 2px。 */
+.aui-file-tree-rows {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* hidden 要在 display:flex 之后才生效（作者样式会盖掉 UA 的 [hidden]）。 */
+.aui-file-tree-rows[hidden],
+.aui-file-tree-row[hidden] {
+  display: none;
+}
+
+/* gap-2 rounded-lg px-1 py-1 text-[13px] + hover:bg-foreground/[0.03] */
+.aui-file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ink, #daddef);
+  transition: background-color 300ms ease;
+  opacity: 0;
+  animation: aui-file-tree-row-in 300ms ease-out forwards;
+}
+
+.aui-file-tree-row:hover {
+  background: rgb(255 255 255 / 5%);
+}
+
+/* 目录行本身就是它自己的折叠开关（官方这行不可点）。 */
+.aui-file-tree-folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.aui-file-tree-folder:focus-visible {
+  outline: 2px solid rgb(143 183 255 / 60%);
+  outline-offset: 2px;
+}
+
+/* size-3：展开时朝下（跟官方一致），收起时朝右，表示还能再打开。 */
+.aui-file-tree-chevron {
+  flex: none;
+  color: rgb(218 221 239 / 55%);
+  transition: transform 160ms ease;
+}
+
+.aui-file-tree-folder[aria-expanded="false"] .aui-file-tree-chevron {
+  transform: rotate(-90deg);
+}
+
+/* 文件图标回到冷蓝色（跟目录图标区分开）；再 ms-3，落在目录图标下面。 */
+.aui-file-tree-icon {
+  flex: none;
+  color: rgb(218 221 239 / 55%);
+}
+
+.aui-file-tree-row.is-file .aui-file-tree-icon {
+  margin-inline-start: 12px;
+  color: rgb(143 183 255 / 70%);
+}
+
+/* 目录名和文件名都是 flex-1 truncate：只在必要时截断，完整路径在悬停的路径卡里。 */
+.aui-file-tree-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* text-foreground/60 / text-foreground/85 */
+.aui-file-tree-row.is-folder .aui-file-tree-name {
+  color: rgb(218 221 239 / 60%);
+}
+
+.aui-file-tree-row.is-file .aui-file-tree-name {
+  color: rgb(218 221 239 / 85%);
+}
+
+/* mono text-[11px] tracking-tight shrink-0 tabular-nums（字号跟正文一致，不再压到 11px） */
+.aui-file-tree-counts {
+  flex: none;
+  font-size: 13px;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* emerald-400 / red-400（官方深色档），跟参考元素同一个绿红。 */
+.aui-file-tree-added {
+  color: #34d399;
+}
+
+.aui-file-tree-removed {
+  color: #f87171;
+}
+
+/* 悬停亮出的路径卡：跟住当前行（fixed + 行坐标），路径可选中等一下再收，
+   收起延时在 FileTree.jsx 里。只放路径，不放按钮。 */
+.aui-file-tree-tip {
+  position: fixed;
+  z-index: 420;
+  box-sizing: border-box;
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 7px 10px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 10px;
+  background: rgb(28 28 32 / 96%);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 45%);
+  color: var(--ink, #daddef);
+  font-family: var(--conversation-font, ui-sans-serif, sans-serif);
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: normal;
+  user-select: text;
+  animation: aui-file-tree-enter 120ms ease-out both;
+}
+
+.aui-file-tree-tip-path {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: rgb(218 221 239 / 88%);
+}
+
+@keyframes aui-file-tree-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 官方是 fade-in + slide-in-from-left-1：从左侧 4px 滑进来。 */
+@keyframes aui-file-tree-row-in {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aui-file-tree,
+  .aui-file-tree-row,
+  .aui-file-tree-tip {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

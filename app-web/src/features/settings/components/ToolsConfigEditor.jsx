@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { AlertTriangle, ChevronRight, FileJson2, FlaskConical, LoaderCircle, Plus, RefreshCw, Server, Sparkles } from 'lucide-react';
+import { AlertTriangle, ChevronRight, FileJson2, FlaskConical, LoaderCircle, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import { DEFAULT_MCP_CONFIG_JSON, MCP_CONFIG_TEMPLATE_JSON, WEB_SEARCH_PROVIDER_OPTIONS } from '../model/settings-records.js';
 import { parseJsonSafe, isEmptyMcpConfigDraft, normalizeWebSearchDraft } from '../model/settings-payload.js';
 import { activateWebSearchProvider, patchWebSearchProvider, webSearchProviderState } from '../model/web-search-provider.js';
-import { mcpServerEnabled, setMcpServerEnabled } from '../model/mcp-server-toggle.js';
+import { setMcpServerEnabled } from '../model/mcp-server-toggle.js';
+import { mcpServerRows } from '../model/mcp-server-panel.js';
 import { skillSourceLabel } from '../model/skill-source-label.js';
 import { isSkillPage, skillScopeForPage, skillGroups } from '../model/skill-inventory.js';
 import './skill-tabs.css';
@@ -13,14 +14,14 @@ import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
 import { SecretKeyField, FieldRow, SettingsRow, SettingsSearch, SettingsSheet, SettingsDeleteDialog } from './SettingsPrimitives.jsx';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
-import { Item, ItemGroup } from '../../../shared/ui/settings-elements/ui/item.tsx';
-import { Switch } from '../../../shared/ui/settings-elements/ui/switch.tsx';
+import { ItemGroup } from '../../../shared/ui/settings-elements/ui/item.tsx';
 import { Textarea } from '../../../shared/ui/settings-elements/ui/textarea.tsx';
 import { WebSearchProviderIcon } from './settings-ui.jsx';
 import { SheetFooter } from '../../../shared/ui/settings-elements/ui/sheet.tsx';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../../../shared/ui/settings-elements/ui/collapsible.tsx';
 import { SkillUpload } from './SkillUpload.jsx';
 import { BrowserConfigEditor } from './BrowserConfigEditor.jsx';
+import { McpServerPanel } from './McpServerPanel.jsx';
 
 export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSaveTools, onTestWebProvider, onInstallSkill, onToggleSkill, onUninstallSkill, skillActionBusy, onToast, toolsSettingsState = { status: 'ready', error: '' }, onRefreshTools }) {
   const [query, setQuery] = useState('');
@@ -30,6 +31,9 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
   const [deleting, setDeleting] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  // MCP 折叠面板：一次只展开一台，展开态不写进记录（纯界面状态）。
+  const [expandedServer, setExpandedServer] = useState('');
+  const [loadingCatalog, setLoadingCatalog] = useState('');
   if (selectedId === 'tools-browser') return <BrowserConfigEditor onToast={onToast} />;
   const current = (records.tools || []).find(item => item.id === (isSkillPage(selectedId) ? 'tools-skills' : selectedId));
   if (!current) return <div className="settings-empty">No configuration available.</div>;
@@ -40,17 +44,30 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
       ? { ...item, ...(typeof patch === 'function' ? patch(item) : patch) }
       : item)),
   }));
-  const run = async (name, action) => { setBusy(name); setError(''); try { return await action(); } catch (failure) { setError(String(failure?.message || failure)); return false; } finally { setBusy(''); } };
+  // 错误走统一 toast（下面仍留一行 ErrorState 便于对着 JSON 改），不再往记录里写状态文案。
+  const run = async (name, action) => {
+    setBusy(name); setError('');
+    try { return await action(); } catch (failure) {
+      const message = String(failure?.message || failure);
+      setError(message);
+      onToast?.('error', message);
+      return false;
+    } finally { setBusy(''); }
+  };
 
   if (selectedId === 'tools-mcp') {
     const json = current.mcp_json ?? DEFAULT_MCP_CONFIG_JSON;
     const parsed = parseJsonSafe(json);
     const servers = parsed.ok && parsed.value?.servers && typeof parsed.value.servers === 'object' && !Array.isArray(parsed.value.servers) ? Object.entries(parsed.value.servers) : [];
-    const validate = async () => {
+    // 列表行 = mcp.json 里的配置 + core 那份缓存快照（工具清单/是否加载/错误）。
+    const rows = mcpServerRows(parsed.ok ? parsed.value : null, current.mcp_servers);
+    // Save 会先校验再落盘，那条成功提示由 save 自己发，不重复报一次。
+    const validate = async ({ quiet = false } = {}) => {
       if (!parsed.ok) throw new Error(parsed.error);
       const response = await apiFetch(`${API_BASE}/api/settings/tools/mcp/validate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: parsed.value }) }, { json: false });
       if (!response.ok) throw new Error(await parseResponseMessage(response, `MCP validation failed (${response.status})`));
-      update({ mcp_error: '', mcp_status: 'MCP config is valid.' });
+      update({ mcp_error: '' });
+      if (!quiet) onToast?.('success', 'MCP config is valid.');
     };
     // 开关（就是 skill 行那一颗共享 Switch）= 改这一台的 enabled 再整份保存
     // （core 会把 mcp.json 落盘并重载 hub），和下面输入框的 Save 走同一条路；
@@ -62,18 +79,32 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
       const saved = await onSaveTools(patchedRecords({ mcp_json, mcp_error: '', mcp_status: '' }), enabled ? `${name} enabled` : `${name} disabled`, 'mcp');
       if (saved === false) throw new Error(`MCP server ${name} was not updated.`);
     });
+    // 展开区那个 Load tools：显式用户动作才去连一台 server 拿工具清单（core 的
+    // POST /api/mcp/catalog/{name}），拿完重新拉一次设置让快照更新。
+    const loadServerTools = async (name) => {
+      setLoadingCatalog(name);
+      try {
+        const response = await apiFetch(`${API_BASE}/api/mcp/catalog/${encodeURIComponent(name)}`, { method: 'POST' }, { json: false });
+        if (!response.ok) throw new Error(await parseResponseMessage(response, `Could not load tools from ${name} (${response.status})`));
+        await response.json().catch(() => null);
+        await onRefreshTools?.();
+      } catch (failure) {
+        const message = String(failure?.message || failure);
+        setError(message);
+        onToast?.('error', message);
+      } finally {
+        setLoadingCatalog('');
+      }
+    };
     return <div className="settings-content-modern"><div className="settings-page-heading"><h1>MCP servers</h1><Button variant="ghost" size="sm" className="settings-heading-action" disabled={Boolean(busy || toolsSettingsState.refreshing)} onClick={onRefreshTools}><RefreshCw size={14} aria-hidden="true" className={toolsSettingsState.refreshing ? 'settings-spin' : undefined} />Refresh</Button></div><div className="mcp-workspace">
-      {servers.length > 0 && <div className="mcp-servers-surface"><div className="mcp-server-columns" aria-hidden="true"><span /><span>Server</span><span>Transport</span><span>Status</span></div><ItemGroup className="mcp-server-list">{servers.map(([name, server]) => {
-        const enabled = mcpServerEnabled(server);
-        return <Item key={name} className="mcp-server-row"><Server size={16} /><span className="mcp-server-name">{name}</span><span className="mcp-server-transport">{typeof server?.transport === 'string' ? server.transport : 'stdio'}</span><span className="mcp-server-state"><span className={`mcp-server-status ${enabled ? '' : 'is-disabled'}`}><span className="mcp-status-dot" />{enabled ? 'Enabled' : 'Disabled'}</span><Switch className="mcp-server-switch" aria-label={`${enabled ? 'Disable' : 'Enable'} MCP server ${name}`} checked={enabled} onCheckedChange={next => toggleServer(name, next)} disabled={Boolean(busy)} /></span></Item>;
-      })}</ItemGroup></div>}
+      {rows.length > 0 && <McpServerPanel servers={rows} expandedId={expandedServer} onToggle={name => setExpandedServer(current => (current === name ? '' : name))} onToggleServer={toggleServer} onLoadTools={loadServerTools} loadingName={loadingCatalog} busy={Boolean(busy)} />}
       <div className="mcp-code-surface"><div className="mcp-code-toolbar"><div className="mcp-file-label"><FileJson2 size={16} /><strong>mcp.json</strong><span>{servers.length} {servers.length === 1 ? 'server' : 'servers'}</span></div><div className="mcp-editor-actions">
-        <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => { if (!isEmptyMcpConfigDraft(json)) { setError('Template can only fill an empty MCP config.'); return; } setError(''); update({ mcp_json: MCP_CONFIG_TEMPLATE_JSON, mcp_error: '', mcp_status: '' }); }}>Template</Button>
-        <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => { if (!parsed.ok) { setError(parsed.error); return; } setError(''); update({ mcp_json: JSON.stringify(parsed.value, null, 2), mcp_error: '', mcp_status: '' }); }}>Format</Button>
-        <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('validate', validate)}>{busy === 'validate' ? 'Validating…' : 'Validate'}</Button>
-        <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', async () => { await validate(); const next = patchedRecords({ mcp_json: JSON.stringify(parsed.value, null, 2), mcp_error: '', mcp_status: '' }); if (await onSaveTools?.(next, 'MCP config saved and reloaded', 'mcp') !== false) update({ mcp_status: 'Saved and MCP reloaded.' }); })}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>
+        <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => { if (!isEmptyMcpConfigDraft(json)) { onToast?.('warn', 'Template can only fill an empty MCP config.'); return; } setError(''); update({ mcp_json: MCP_CONFIG_TEMPLATE_JSON, mcp_error: '', mcp_status: '' }); }}>Template</Button>
+        <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => { if (!parsed.ok) { onToast?.('error', parsed.error); return; } setError(''); update({ mcp_json: JSON.stringify(parsed.value, null, 2), mcp_error: '', mcp_status: '' }); }}>Format</Button>
+        <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('validate', () => validate())}>{busy === 'validate' ? 'Validating…' : 'Validate'}</Button>
+        <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', async () => { await validate({ quiet: true }); const next = patchedRecords({ mcp_json: JSON.stringify(parsed.value, null, 2), mcp_error: '', mcp_status: '' }); await onSaveTools?.(next, 'MCP config saved and reloaded', 'mcp'); })}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>
       </div></div><Textarea className="mcp-json" aria-label="MCP configuration JSON" value={json} disabled={Boolean(busy)} onChange={event => { setError(''); update({ mcp_json: event.target.value, mcp_error: '', mcp_status: '' }); }} spellCheck={false} wrap="off" /></div>
-      {(error || current.mcp_error) && <ErrorState variant="inline" detail={error || current.mcp_error} />}{!error && current.mcp_status && <p className="settings-inline-success" role="status">{current.mcp_status}</p>}
+      {(error || current.mcp_error) && <ErrorState variant="inline" detail={error || current.mcp_error} />}
     </div></div>;
   }
 
@@ -120,10 +151,7 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
   }
   return <div className={`settings-tools-modern ${editing ? 'with-editor' : ''}`}><div className={`settings-content-modern ${skillsPane ? 'settings-skills-content' : ''}`}>
     <div className="settings-page-heading"><h1>{skillsPane ? `Skills · ${skillTab === 'builtin' ? 'Built-in' : skillTab === 'global' ? 'Global' : 'Project'}` : 'Search providers'}</h1>{skillsPane && <div className="settings-skill-actions">{onRefreshTools && <Button variant="ghost" size="sm" className="settings-heading-action" disabled={Boolean(skillActionBusy || toolsSettingsState.refreshing)} onClick={onRefreshTools}><RefreshCw size={14} aria-hidden="true" className={toolsSettingsState.refreshing ? 'settings-spin' : undefined} />Refresh</Button>}{skillTab !== 'builtin' && current.skill_can_install !== false && <Button size="sm" disabled={Boolean(skillActionBusy)} onClick={() => { setEditing(null); setInstalling(true); }}><Plus size={16} />Install skill</Button>}</div>}</div>
-    {skillsPane && <><div className="settings-skill-context">
-      <p>{skillTab === 'builtin' ? 'Included with Haish.' : skillTab === 'global' ? 'Installed packages and user-level Codex skills, shared across projects.' : <>Project skills · <strong>{current.skill_workspace || 'Current workspace'}</strong></>}</p>
-      <p>Enablement is shared across projects by skill name. Agent access also follows its role permissions.</p>
-    </div>{toolsSettingsState.error && <div className="settings-skill-refresh-error"><ErrorState variant="inline" detail={toolsSettingsState.error} /><Button variant="outline" size="sm" onClick={onRefreshTools}>Retry</Button></div>}</>}
+    {skillsPane && toolsSettingsState.error && <div className="settings-skill-refresh-error"><ErrorState variant="inline" detail={toolsSettingsState.error} /><Button variant="outline" size="sm" onClick={onRefreshTools}>Retry</Button></div>}
     <div id={skillsPane ? 'skill-list-panel' : undefined}>
     <SettingsSearch value={query} onChange={setQuery} label={skillsPane ? 'Search skills' : 'Search providers'} />
     <ItemGroup className="settings-list-modern">{shown.map(item => {

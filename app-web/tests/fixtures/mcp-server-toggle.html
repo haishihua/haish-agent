@@ -2,7 +2,7 @@
 <html lang="en">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MCP servers — 每行一颗开关（就是 skill 行那一颗），点一下开/关</title>
+  <title>MCP servers — 折叠面板 + 每行一颗开关（就是 skill 行那一颗）</title>
   <style>
     html,
     body {
@@ -39,10 +39,11 @@
       color: #ff8b9d;
     }
   </style>
-  <h1>MCP servers — Status 列里的开关 = skill 行那一颗</h1>
+  <h1>MCP servers — 折叠行里的开关 = skill 行那一颗</h1>
   <p>
-    生产 ToolsConfigEditor + 真实 settings.css：每台 server 一个共享 Switch（不再自造电源图标），点一下改这一台的
-    <code>enabled</code> 并整份保存（和输入框的 Save 同一条路）；请求在飞时开关锁住。
+    生产 ToolsConfigEditor + 真实 settings.css：收起时一行只有箭头 / 插头 / 名字 / 工具数 / 状态点，行尾跟着共享
+    Switch（不再自造电源图标），点一下改这一台的 <code>enabled</code> 并整份保存（和输入框的 Save 同一条路）；展开才显示
+    transport 和工具清单；请求在飞时开关锁住。
   </p>
   <pre id="checks" role="status">Running checks…</pre>
   <div id="root"></div>

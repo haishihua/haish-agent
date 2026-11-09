@@ -86,12 +86,10 @@ async function componentChecks() {
   }
   flushSync(() => root.render(<Panel />)); await tick(); await tick(); await tick();
   const select = async label => {
-    document.querySelector('.model-picker-trigger').click(); await tick();
-    document.querySelector('[aria-label="Open agent and model settings"]').click(); await tick();
-    document.querySelector('.model-picker-submenu-entry').focus(); await tick();
+    document.querySelector('.agent-picker-trigger').click(); await tick();
     let option;
     for (let attempt = 0; attempt < 40; attempt += 1) {
-      option = [...document.querySelectorAll('.model-picker-flyout-agent [role="option"]')].find(item => item.textContent.includes(label));
+      option = [...document.querySelectorAll('.agent-picker-option')].find(item => item.textContent.includes(label));
       if (option) break;
       await tick();
     }
@@ -182,10 +180,8 @@ async function saveInteractionChecks() {
   }
   async function switchWithHold() {
     hold = true;
-    document.querySelector('.model-picker-trigger').click(); await tick();
-    document.querySelector('[aria-label="Open agent and model settings"]').click(); await tick();
-    document.querySelector('.model-picker-submenu-entry').focus(); await tick();
-    [...document.querySelectorAll('.model-picker-flyout-agent [role="option"]')].find(item => item.textContent.includes('Agent B')).click(); await tick();
+    document.querySelector('.agent-picker-trigger').click(); await tick();
+    [...document.querySelectorAll('.agent-picker-option')].find(item => item.textContent.includes('Agent B')).click(); await tick();
   }
   await mount('fast');
   let observedFeedback = false;

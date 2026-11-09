@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { PortalTooltip } from './PortalTooltip.jsx';
 
 /**
@@ -45,11 +46,11 @@ export function ImagePreviewOverlay({ image, onClose }) {
     const naturalWidth = Number(element?.naturalWidth) || 0;
     const naturalHeight = Number(element?.naturalHeight) || 0;
     if (!naturalWidth || !naturalHeight) return;
-    const stageStyle = stageRef.current ? window.getComputedStyle(stageRef.current) : null;
-    const stageMaxWidth = Number.parseFloat(stageStyle?.maxWidth || '') || Infinity;
-    const stageMaxHeight = Number.parseFloat(stageStyle?.maxHeight || '') || Infinity;
-    // contain：能放大也能缩小，唯一目标是尽量填满可用区域。
-    const fit = Math.min(stageMaxWidth / naturalWidth, stageMaxHeight / naturalHeight);
+    const stageRect = stageRef.current?.getBoundingClientRect();
+    if (!stageRect?.width || !stageRect?.height) return;
+    // Use the actual clipping area, not viewport CSS maxima: flex layout and
+    // container constraints can make the stage smaller than those maxima.
+    const fit = Math.min(stageRect.width / naturalWidth, stageRect.height / naturalHeight);
     const width = naturalWidth * fit;
     const height = naturalHeight * fit;
     // 同样的输入不重复写 state：ref 回调 / resize 会反复调到这里，不拦一下会
@@ -94,7 +95,13 @@ export function ImagePreviewOverlay({ image, onClose }) {
     if (!image) return undefined;
     const handleChange = () => syncBox(imageElementRef.current);
     window.addEventListener('resize', handleChange);
-    return () => window.removeEventListener('resize', handleChange);
+    handleChange();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(handleChange);
+    if (stageRef.current) observer?.observe(stageRef.current);
+    return () => {
+      window.removeEventListener('resize', handleChange);
+      observer?.disconnect();
+    };
   }, [image, syncBox]);
 
   React.useEffect(() => () => {
@@ -228,7 +235,7 @@ export function ImagePreviewOverlay({ image, onClose }) {
   // 缩到像素级 1:1 时显示 100%。
   const readout = Math.round(scale * (box?.fit ?? 1) * 100);
 
-  return (
+  return createPortal(
     <div
       className={`image-preview-backdrop${dragging ? ' is-dragging' : ''}`}
       role="dialog"
@@ -316,6 +323,7 @@ export function ImagePreviewOverlay({ image, onClose }) {
         </span>
         <button type="button" onClick={() => adjustScale(0.25)} aria-label="Zoom in">+</button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

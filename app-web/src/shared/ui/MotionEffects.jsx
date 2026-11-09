@@ -32,7 +32,7 @@ export function ComposerBorderBeam({ active }) {
       brightness={1.28}
       saturation={1.18}
       hueRange={30}
-      borderRadius={10}
+      borderRadius={18}
       active={(Boolean(active) || interacting) && !prefersReducedMotion()}
       aria-hidden="true"
     >

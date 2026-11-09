@@ -15,6 +15,13 @@ import {
 // draft; neither a background GET nor a successful PUT may erase newer edits.
 export function useLlmSettings({ draft, setDraft, settingsOpen, refreshEpoch = 0 }) {
   const [saved, setSaved] = useState(loadLlmSettingsDraft);
+  const [catalogReady, setCatalogReady] = useState(false);
+  const catalogReadyRef = useRef(false);
+  const updateCatalogReady = useCallback((value) => {
+    if (catalogReadyRef.current === value) return;
+    catalogReadyRef.current = value;
+    setCatalogReady(value);
+  }, []);
   const savedRef = useRef(saved);
   savedRef.current = saved;
   const current = useRef({ draft, setDraft });
@@ -39,6 +46,7 @@ export function useLlmSettings({ draft, setDraft, settingsOpen, refreshEpoch = 0
     if (!Object.hasOwn(normalized, 'profiles')) throw new Error('Invalid model configuration response.');
     savedRef.current = normalized;
     setSaved(normalized);
+    updateCatalogReady(true);
     current.current.setDraft(previous => hasSettingsVersion(payload, 'llm')
       ? reconcileSettings('llm', previous, normalized, payload)
       : mergeLlmSettingsDraft(previous, normalized, baseline));
@@ -47,11 +55,12 @@ export function useLlmSettings({ draft, setDraft, settingsOpen, refreshEpoch = 0
     } catch {
       // Backend success and this session remain valid when local storage is full.
     }
-  }, []);
+  }, [updateCatalogReady]);
 
   const refresh = useCallback(async (attempt = 0) => {
     cancelRead();
     if (!mounted.current || writes.current.size) return;
+    updateCatalogReady(false);
     const controller = new AbortController();
     request.current = controller;
     const expectedRevision = revision.current;
@@ -77,7 +86,7 @@ export function useLlmSettings({ draft, setDraft, settingsOpen, refreshEpoch = 0
         console.warn('failed to fetch llm settings', error);
       }
     }
-  }, [applySaved, cancelRead]);
+  }, [applySaved, cancelRead, updateCatalogReady]);
 
   useEffect(() => {
     mounted.current = true;
@@ -92,6 +101,7 @@ export function useLlmSettings({ draft, setDraft, settingsOpen, refreshEpoch = 0
 
   const beginWrite = useCallback((baseline) => {
     cancelRead();
+    updateCatalogReady(false);
     const generation = ++revision.current;
     writes.current.add(generation);
     let finished = false;
@@ -110,8 +120,8 @@ export function useLlmSettings({ draft, setDraft, settingsOpen, refreshEpoch = 0
         void refresh();
       }
     };
-  }, [applySaved, cancelRead, refresh]);
+  }, [applySaved, cancelRead, refresh, updateCatalogReady]);
 
   const providerOptions = useMemo(() => runtimeLlmProviderOptions(saved), [saved]);
-  return { providerOptions, beginWrite };
+  return { providerOptions, catalogReady, beginWrite };
 }

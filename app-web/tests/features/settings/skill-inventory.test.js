@@ -94,7 +94,7 @@ test('project install and removal send explicit scope with the same conversation
   ]);
 });
 
-test('production UI separates scopes, identifies project and discloses global enablement', () => {
+test('production UI separates skill scopes without description copy', () => {
   const source = fs.readFileSync(new URL('../../../src/features/settings/components/ToolsConfigEditor.jsx', import.meta.url), 'utf8');
   const navigation = fs.readFileSync(new URL('../../../src/features/settings/model/settings-navigation.js', import.meta.url), 'utf8');
   const page = fs.readFileSync(new URL('../../../src/features/settings/components/SettingsPage.jsx', import.meta.url), 'utf8');
@@ -104,7 +104,8 @@ test('production UI separates scopes, identifies project and discloses global en
   assert.match(source, /skillTab !== 'builtin' && current.skill_can_install/);
   assert.match(source, /settings-skill-actions/);
   assert.match(source, /onInstallSkill\(file, skillTab\)/);
-  assert.match(source, /current.skill_workspace/);
-  assert.match(source, /Enablement is shared across projects/);
+  // 标题下的两行说明（项目路径 / 共享启用规则）已经去掉。
+  assert.doesNotMatch(source, /settings-skill-context/);
+  assert.doesNotMatch(source, /Enablement is shared across projects/);
   assert.match(source, /Overridden by the current project/);
 });

@@ -58,13 +58,16 @@ function harness(t, initial, cache = new Map()) {
   let settingsSection = 'llm';
   let result;
   let stopped = false;
+  let rendering = false;
+  let needsRender = false;
   const useRef = value => slots[cursor++] ||= { current: value };
   const useState = initialValue => {
     const index = cursor++;
     if (!slots[index]) slots[index] = { value: typeof initialValue === 'function' ? initialValue() : initialValue };
     return [slots[index].value, update => {
       slots[index].value = typeof update === 'function' ? update(slots[index].value) : update;
-      render();
+      if (rendering) needsRender = true;
+      else render();
     }];
   };
   const useMemo = (factory, deps) => {
@@ -89,12 +92,16 @@ function harness(t, initial, cache = new Map()) {
   const setDraft = update => { draft = typeof update === 'function' ? update(draft) : update; render(); };
   function render() {
     if (stopped) return;
+    rendering = true;
+    needsRender = false;
     cursor = 0;
     effects = [];
     trackSettingsDraft('llm', draft);
     const args = vm.runInNewContext(`(${hookArguments})`, { llmSettingsDraft: draft, setLlmSettingsDraft: setDraft, settingsMode, settingsSection, settingsSync: { epochs: {} } });
     result = useLlmSettings(args);
     effects.forEach(effect => effect());
+    rendering = false;
+    if (needsRender) render();
   }
   const stop = () => {
     if (stopped) return;
@@ -107,6 +114,7 @@ function harness(t, initial, cache = new Map()) {
     cache, requests, notices, timers, stored, stop,
     get draft() { return draft; },
     get options() { return result.providerOptions; },
+    get catalogReady() { return result.catalogReady; },
     edit: setDraft,
     open: (section = 'llm') => { settingsMode = true; settingsSection = section; render(); },
     close: () => { settingsMode = false; render(); },
@@ -124,6 +132,28 @@ function harness(t, initial, cache = new Map()) {
     routeError: (provider = 'saved-route', modelId = 'saved-model') => executionConfigError({ provider, modelId, providerOptions: result.providerOptions }),
   };
 }
+
+test('provider onboarding waits for a confirmed catalog and hides while refresh or write is unresolved', async t => {
+  const h = harness(t);
+  assert.equal(h.catalogReady, false);
+  await h.resolve(0, { profiles: [] });
+  assert.equal(h.catalogReady, true);
+  assert.equal(h.options.length, 0);
+  h.open();
+  assert.equal(h.catalogReady, false);
+  h.requests[1].reject(new Error('offline'));
+  await settled();
+  assert.equal(h.catalogReady, false);
+  h.retry();
+  await h.resolve(2, { profiles: [] });
+  assert.equal(h.catalogReady, true);
+  const saving = h.handlers().handleSaveSettingsDraft('llm');
+  assert.equal(h.catalogReady, false);
+  await h.resolve(3, { profiles: [row('new-route')] });
+  assert.equal(await saving, true);
+  assert.equal(h.catalogReady, true);
+  assert.equal(h.options.length, 1);
+});
 
 test('versioned runtime refreshes saved models but keeps dirty editor out of execution and saves its stale draft anyway', async t => {
   const h = harness(t, normalized(payload()));

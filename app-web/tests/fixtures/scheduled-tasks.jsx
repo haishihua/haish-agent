@@ -140,7 +140,7 @@ async function run() {
   check(savedTime.getHours() === 18 && savedTime.getMinutes() === 45, 'Custom picker saves chosen local time as offset-aware ISO');
   document.querySelector('.model-picker-trigger').click(); await sleep(50);
   document.querySelector('[aria-label="Open agent and model settings"]').click(); await sleep(50);
-  document.querySelectorAll('.model-picker-submenu-entry')[2].focus(); await sleep(50);
+  document.querySelectorAll('.model-picker-submenu-entry')[1].focus(); await sleep(50);
   [...document.querySelectorAll('.model-picker-flyout-model [role="option"]')].find((option) => option.textContent.includes('model-2')).click(); await sleep(150);
   check(configs.at(-1).model_id === 'model-2' && !('options' in jobs[0]), 'Changing model after creation updates conversation, not schedule');
   document.querySelector('.model-picker-trigger').click(); await sleep(50);

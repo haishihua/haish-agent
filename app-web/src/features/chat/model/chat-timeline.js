@@ -194,6 +194,10 @@ function classifyToolForGroup(item) {
   if (name.includes('memory') || name.includes('remember') || name.includes('recall') || name.startsWith('note_')) {
     return { bucket: 'noted', verbPast: 'recorded', verbPresent: 'recording', subject: '', unitSingular: 'note', unitPlural: 'notes' };
   }
+  if (name === 'list_checkpoints') {
+    // 只查不改：分组 chip 不能写 “snapshotted”（那是回滚那一半的动词）。
+    return { bucket: 'snapshot', verbPast: 'checked', verbPresent: 'checking', subject: '', unitSingular: 'checkpoint', unitPlural: 'checkpoints' };
+  }
   if (name.includes('checkpoint') || name.includes('rollback')) {
     return { bucket: 'snapshot', verbPast: 'snapshotted', verbPresent: 'snapshotting', subject: '', unitSingular: 'checkpoint', unitPlural: 'checkpoints' };
   }

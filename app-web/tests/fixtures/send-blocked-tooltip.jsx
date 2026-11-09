@@ -103,7 +103,7 @@ async function run() {
   enter(wrapper()); await until(() => tooltip());
   document.querySelector('.model-picker-trigger').click(); await sleep();
   document.querySelector('[aria-label="Open agent and model settings"]').click(); await sleep();
-  [...document.querySelectorAll('.model-picker-submenu-entry')][1].focus(); await sleep();
+  [...document.querySelectorAll('.model-picker-submenu-entry')][0].focus(); await sleep();
   document.querySelector('.model-picker-flyout-provider [role="option"]').click();
   await until(() => !document.querySelector('.chat-send').disabled);
   await until(() => !tooltip());

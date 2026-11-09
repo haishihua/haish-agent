@@ -2,7 +2,6 @@ import { Input } from '../../../shared/ui/settings-elements/ui/input.tsx';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import React from 'react';
 import {
-  CircleCheck,
   ExternalLink,
   LoaderCircle,
 } from 'lucide-react';
@@ -35,7 +34,7 @@ import { ModelSelectorRoot, ModelSelectorTrigger, ModelSelectorValue, ModelSelec
 
 const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
-export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = false, refreshModels = false }) {
+export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = false, refreshModels = false, onToast }) {
   const config = getSelectedLlmConfig(draft, selectedId);
   const provider = getLlmProvider(config.provider);
   // Vision 是多条 provider 列表：每条都可独立编辑，启用状态由同一套开关控制。
@@ -167,6 +166,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
         setOauthFlowMessage(String(payload?.message || ''));
         if (status === 'success') {
           setOauthStartError('');
+          onToast?.('success', `Connected to ${provider.label}`);
           updateSelectedLlmConfig(onDraftChange, selectedId, {
             oauth_configured: true,
             oauth_auth_url: '',
@@ -178,6 +178,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
         }
         if (status === 'error') {
           setOauthStartError(String(payload?.message || 'OAuth login failed. Start again.'));
+          onToast?.('error', String(payload?.message || 'OAuth login failed. Start again.'));
           return;
         }
         timer = window.setTimeout(poll, 800);
@@ -192,7 +193,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [showOAuthCallbackLogin, oauthFlowId, oauthFlowStatus, onDraftChange, selectedId]);
+  }, [showOAuthCallbackLogin, oauthFlowId, oauthFlowStatus, onDraftChange, selectedId, onToast, provider.label]);
 
   useEffect(() => {
     if (!refreshModels || disabled) return undefined;
@@ -361,10 +362,9 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
                 {oauthFlowMessage || 'Waiting for browser authorization.'}
               </div>
             ) : null}
-            {!oauthStartError && !oauthFlowPending && config.oauth_configured ? (
-              <div className="settings-inline-success" role="status">
-                <CircleCheck size={15} aria-hidden="true" />
-                Connected to {provider.label}
+            {!oauthStartError && !oauthFlowPending ? (
+              <div className="settings-oauth-message" role="status" aria-live="polite">
+                {config.oauth_configured ? `${provider.label} 已连接` : `${provider.label} 未连接`}
               </div>
             ) : null}
           </div>

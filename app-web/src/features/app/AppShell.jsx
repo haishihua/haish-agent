@@ -75,6 +75,7 @@ import {
 import {
   isRunStateLive,
   settledTaskIds,
+  taskIdOf,
 } from '../conversations/model/conversation-run-state.js';
 import { useConversationRunState } from '../conversations/hooks/useConversationRunState.js';
 import {
@@ -363,7 +364,7 @@ export function AppShell() {
     settingsMode, settingsSection, refreshEpoch: settingsSync.epochs.workflows, settingsApiRef, runtimeApiRef,
   });
 
-  const { providerOptions: llmProviderOptions, beginWrite: beginLlmSettingsWrite } = useLlmSettings({
+  const { providerOptions: llmProviderOptions, catalogReady: llmCatalogReady, beginWrite: beginLlmSettingsWrite } = useLlmSettings({
     draft: llmSettingsDraft, setDraft: setLlmSettingsDraft,
     settingsOpen: settingsMode && ['llm', 'embedding', 'compact'].includes(settingsSection),
     refreshEpoch: settingsSync.epochs.llm,
@@ -666,6 +667,17 @@ export function AppShell() {
     restoreLatestTaskRuntime, setWorkspaceState,
   });
   const runtimeCurrentTask = useMemo(() => runtimeCurrentTaskFor(taskRuntimeState), [taskRuntimeState]);
+  const petTask = useMemo(() => {
+    const tasks = currentConversation?.tasks || [];
+    const liveId = currentConversationRunState.taskId;
+    const runtimeId = taskIdOf(runtimeCurrentTask);
+    const id = liveId || runtimeId;
+    if (!id) return null;
+    const listCopy = tasks.find((task) => taskIdOf(task) === id);
+    const runtimeCopy = taskRuntimeState.tasksById[id] || (runtimeId === id ? runtimeCurrentTask : null);
+    // A landed task status wins over a stale live copy, as in the conversation state.
+    return [listCopy, runtimeCopy].find((task) => terminalTaskNoticeStatus(task?.status)) || runtimeCopy || listCopy || null;
+  }, [currentConversation?.tasks, currentConversationRunState.taskId, runtimeCurrentTask, taskRuntimeState.tasksById]);
   const currentTask = useMemo(() => {
     if (viewMode !== 'chat' && viewedWorkflowTask?.projectId === workspaceState.activeProjectId) {
       const viewedTask = taskRuntimeState.tasksById[viewedWorkflowTask.taskId];
@@ -687,6 +699,12 @@ export function AppShell() {
     setSettingsSection('workflow');
     setSettingsSelection((prev) => ({ ...prev, workflow: id }));
     setPendingSettingsEditor({ section: 'workflow', id, mode: 'edit' });
+  }, []);
+  const openAddChatProvider = React.useCallback(() => {
+    setSettingsSection('llm');
+    setSettingsSelection((prev) => ({ ...prev, llm: 'chat' }));
+    setPendingSettingsEditor({ section: 'llm', action: 'create-chat-provider' });
+    setSettingsMode(true);
   }, []);
   const currentWorkflowTask = currentTask?.executionMode === 'bot' ? currentTask : null;
   completionViewRef.current.chatVisible = activeTab === 'dashboard' && !settingsMode && viewMode === 'chat' && conversationReady;
@@ -856,10 +874,10 @@ export function AppShell() {
             switchDraftProject: (project) => draftApiRef.current.switchDraftProject?.(project) })
             .catch((error) => showToast('error', String(error?.message || error)));
         },
-        getRuntime, conversationLoading, currentConversationRunning, composerDisabled, submitPending,
+        getRuntime, conversationLoading, currentConversationRunning, currentConversationRunState, petTask, composerDisabled, submitPending,
         handleDeploy, handleGoalCommand, handleStop, handleAttachmentSelect, handleAttachmentClear,
         composerImageDraftsRef, composerAttachment, uploadState, contextUsage, localWorkspace, activeTaskText,
-        llmProviderOptions, chatAgentSelection, defaultAgentId, agentLoading, agentState, setAgentRetry,
+        llmProviderOptions, llmCatalogReady, openAddChatProvider, chatAgentSelection, defaultAgentId, agentLoading, agentState, setAgentRetry,
         runConfigStorageKey, chatDraft, setChatDraft, handleForkMessage, getTaskById,
       }}
       workflow={{

@@ -5,6 +5,12 @@ const listeners = new Set();
 const refreshers = new Set();
 const responses = new WeakMap();
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Agent catalog entries are discovered runtime metadata, not editable settings.
+const draftEqual = (resource, a, b) => {
+  if (resource !== 'agents') return equal(a, b);
+  const withoutCatalog = value => value && typeof value === 'object' ? { ...value, mcp_servers: undefined } : value;
+  return equal(withoutCatalog(a), withoutCatalog(b));
+};
 let scheduled = false;
 let sequence = 0;
 function changed() {
@@ -69,7 +75,7 @@ export function reconcileSettings(resource, current, incoming, payload) {
   const writing = Object.hasOwn(meta.submitted || {}, resource);
   const discard = state.discard && equal(current, state.discard.current);
   state.discard = null;
-  if (writing || discard || equal(current, state.baseline) || equal(current, incoming)) {
+  if (writing || discard || draftEqual(resource, current, state.baseline) || draftEqual(resource, current, incoming)) {
     const preserveLaterEdit = writing && !equal(current, meta.submitted[resource]);
     const next = writing && ['agents', 'workflows'].includes(resource)
       ? mergeCatalogWrite(resource, current, incoming, state.baseline, meta.submitted[resource], meta.target)
@@ -84,15 +90,17 @@ export function reconcileSettings(resource, current, incoming, payload) {
   }
   // Redacted secrets can change without changing the visible response body.
   // Never grant a dirty draft a new revision merely because both keys are blank.
-  if (!equal(incoming, state.baseline) || (state.version && state.version !== version)) {
+  if (!draftEqual(resource, incoming, state.baseline) || (state.version && state.version !== version)) {
     state.conflict = true;
   } else {
     state.version = version || state.version;
     state.conflict = false;
   }
-  state.current = current;
+  const next = resource === 'agents' && Object.hasOwn(incoming, 'mcp_servers')
+    ? { ...current, mcp_servers: incoming.mcp_servers } : current;
+  state.current = next;
   changed();
-  return accept(current);
+  return accept(next);
 }
 
 export function settingsResponseIsCurrent(payload, resource) {

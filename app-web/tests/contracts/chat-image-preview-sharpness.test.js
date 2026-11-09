@@ -19,11 +19,14 @@ const css = fs.readFileSync(new URL('../../styles/chat.css', import.meta.url), '
 test('image preview fills the stage by default (contain, up or down)', () => {
   // fit 不再夹在 1：小图放大填满，大图缩小放下，预览首先要"大"。
   assert.doesNotMatch(overlaySource, /Math\.min\(1,/);
-  assert.match(overlaySource, /const fit = Math\.min\(stageMaxWidth \/ naturalWidth, stageMaxHeight \/ naturalHeight\);/);
+  assert.match(overlaySource, /const fit = Math\.min\(stageRect\.width \/ naturalWidth, stageRect\.height \/ naturalHeight\);/);
   // devicePixelRatio 不再参与布局：contain 与 dpr 无关。
   assert.doesNotMatch(overlaySource, /devicePixelRatio/);
-  // 舞台上限从 CSS 读，避免在 JS 里再写一份视口常量。
-  assert.match(overlaySource, /window\.getComputedStyle\(stageRef\.current\)/);
+  // 按实际裁剪区计算，并在容器变化时重新量；浮层不受聊天祖先裁剪。
+  assert.match(overlaySource, /stageRef\.current\?\.getBoundingClientRect\(\)/);
+  assert.match(overlaySource, /new ResizeObserver\(handleChange\)/);
+  assert.match(overlaySource, /return createPortal\(/);
+  assert.match(overlaySource, /document\.body,/);
   assert.match(overlaySource, /<div\n\s+className=\{`image-preview-stage\$\{dragging \? ' is-dragging' : ''\}`\}\n\s+ref=\{stageRef\}/);
 });
 

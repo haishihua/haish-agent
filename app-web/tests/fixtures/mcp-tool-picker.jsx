@@ -224,6 +224,35 @@ async function main() {
   renderEditor();
   await tick();
 
+  state = { ...baseSettings(), mcp_servers: [{ name: 'dbx', expose: 'proxy', loaded: false, tools: [] }] };
+  renderEditor();
+  await tick();
+  const originalFetch = window.fetch;
+  const requests = [];
+  try {
+    window.fetch = async (url, init) => {
+      requests.push({ url: String(url), method: init?.method });
+      return new Response(JSON.stringify({ name: 'dbx', expose: 'proxy', enabled: true, loaded: true,
+        tools: [{ name: 'dbx_list_connections' }, { name: 'dbx_delete_connection' }], error: null }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    check(requests.length === 0, 'opening settings does not connect the server');
+    const loadButton = [...document.querySelectorAll('#root button')].find((button) => button.textContent === 'Load tools');
+    check(Boolean(loadButton), 'unloaded server offers explicit discovery');
+    loadButton?.click();
+    await tick(8);
+    check(requests.length === 1 && requests[0].method === 'POST' && requests[0].url.includes('/mcp/catalog/dbx'), 'discovery starts only after the click');
+    renderEditor();
+    await tick();
+    check(groups()[0]?.textContent.includes('dbx_list_connections') && groups()[0]?.textContent.includes('dbx_delete_connection'), 'upstream tools appear after discovery');
+    check(!groups()[0]?.textContent.includes('dbx_call'), 'proxy control entries are not displayed');
+    boxesOf(groups()[0])[0].click();
+    await tick();
+    check(sorted(policy().allow_tools) === 'dbx.dbx_list_connections', 'upstream selection grants only the chosen raw tool');
+  } finally {
+    window.fetch = originalFetch;
+  }
+
   const errors = window.__pageErrors || [];
   check(errors.length === 0, `no page errors (${errors.join(' | ') || 'none'})`);
   report.dataset.result = failures.length ? 'FAIL' : 'PASS';

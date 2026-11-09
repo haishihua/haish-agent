@@ -136,18 +136,16 @@ test('a tool card whose preview is gone shows its path instead of an empty frame
   assert.doesNotMatch(cardSource, /aui-imagegen-broken/);
 });
 
-test('structured answer paths replace the prose path inline, never append a block', () => {
-  assert.match(rowSource, /normalizeLocalImagePath/);
-  assert.match(rowSource, /answerImagePathBySuffix/);
-  // 模型经常把长目录缩写成 `.../images/x.png`；缩写尾部要能命中结构化路径，
-  // 命中后改用结构化路径本身去拼预览。
-  assert.match(rowSource, /const bound = resolveAnswerImagePath\(path\);/);
-  assert.match(rowSource, /chatImagePreviewUrl\(\{ path: bound \}, conversationId\)/);
-  // 纯文件名不作为匹配依据：不同代同名图会冲突。
-  assert.match(rowSource, /depth >= 2/);
-  assert.doesNotMatch(rowSource, /answerImagesSource/);
-  assert.doesNotMatch(rowSource, /chat-answer-images/);
-  assert.doesNotMatch(rowSource, /pathImages=\{answerImages\.length === 0\}/);
+test('structured answer images render after the answer and before the file tree', () => {
+  const answer = rowSource.indexOf('<FinalAnswerMarkdown source={answerText}');
+  const gallery = rowSource.indexOf('className="chat-message-images chat-answer-images"');
+  const tree = rowSource.indexOf('<FileTree', gallery);
+  assert.ok(answer >= 0 && answer < gallery && gallery < tree);
+  assert.match(rowSource, /message\.status === 'done' && !message\.streaming && answerImages\.length > 0/);
+  assert.match(rowSource, /answerImages\.map\(\(img, idx\)/);
+  assert.match(rowSource, /chatImagePreviewUrl\(img, message\.conversationId\)/);
+  assert.match(rowSource, /<Markdown source=\{text\} pathImages=\{false\} \/>/);
+  assert.doesNotMatch(rowSource, /answerImagePathBySuffix|resolveAnswerImagePath/);
 });
 
 test('decoded answer and tool-card images open the shared chat preview overlay', () => {
@@ -155,7 +153,7 @@ test('decoded answer and tool-card images open the shared chat preview overlay',
   assert.match(markdownSource, /React\.useContext\(ImagePreviewContext\)/);
   assert.match(markdownSource, /onPreviewImage\(\{ src: resolvedSrc, title: label \|\| alt/);
   assert.match(markdownSource, /data-previewable=\{canPreview \? 'true' : undefined\}/);
-  assert.match(rowSource, /<FinalAnswerMarkdown[^>]*onPreviewImage=\{onPreviewImage\}/);
+  assert.match(rowSource, /<ChatImageThumb image=\{img\} onPreview=\{onPreviewImage\} \/>/);
   assert.match(cardSource, /export function ImageGenerateToolDetail\(\{ view, conversationId, onPreviewImage \}\)/);
   assert.match(cardSource, /onPreviewImage\(\{ src: previewUrl, title: alt \}\)/);
   assert.match(cardSource, /data-previewable=\{canPreview \? 'true' : undefined\}/);

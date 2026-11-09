@@ -27,7 +27,7 @@ export function mcpToolPickerServers(servers) {
       tools: (Array.isArray(server.tools) ? server.tools : [])
         .filter((tool) => tool && clean(tool.name) && tool.enabled !== false),
     }))
-    .filter((server) => server.tools.length || server.error);
+    .filter((server) => server.tools.length || server.error || server.loaded === false);
 }
 
 function serverToolKeys(server) {

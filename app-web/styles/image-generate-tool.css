@@ -1,22 +1,26 @@
 /* Generated-image card. No captions: the tool row already says what ran, so the
    body is only the picture (or the reason it is missing). */
 .aui-imagegen {
-  display: flex;
+  display: inline-flex;
   flex-direction: column;
+  align-items: flex-start;
+  max-width: 100%;
   gap: 8px;
   margin: 2px 0 6px;
 }
 
-/* img-fx sizes its wrapper to the child, so the 320px lives on the child.
-   The surface is the app's dark card colour: the effect is passed theme="dark"
-   (see ImageGenerateToolDetail), and a pale frame behind it made the whole card
-   read as a white block in the dark chat. */
+/* The effect wrapper follows its child: retain a square while loading, then
+   size the reveal canvas to the result's intrinsic aspect ratio. */
 .aui-imagegen-frame {
-  width: 320px;
-  height: 320px;
+  max-width: 100%;
   border-radius: 20px;
   overflow: hidden;
   background: var(--bg, #0a0d15);
+}
+
+.aui-imagegen-frame[data-running='true'] {
+  width: min(320px, 100%);
+  aspect-ratio: 1;
 }
 
 .aui-imagegen-frame[data-previewable='true'],
@@ -30,13 +34,21 @@
   outline-offset: 3px;
 }
 
-.aui-imagegen-image,
+.aui-imagegen-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(100%, 420px);
+  max-height: 420px;
+  border-radius: 14px;
+  object-fit: contain;
+}
+
 .aui-imagegen-loader {
   display: block;
-  width: 320px;
-  height: 320px;
+  width: min(320px, 100%);
+  aspect-ratio: 1;
   border-radius: 20px;
-  object-fit: cover;
 }
 
 /* Sits under the mosaic shader while the request is still running. Dark on

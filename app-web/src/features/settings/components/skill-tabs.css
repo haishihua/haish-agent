@@ -26,21 +26,10 @@
   font-variant-numeric: tabular-nums;
   opacity: .75;
 }
-.settings-modern .settings-skill-context {
-  display: grid;
-  gap: 2px;
-  margin-bottom: 10px;
-}
-.settings-modern .settings-skill-context p {
-  margin: 0;
-  line-height: 1.4;
-}
 .settings-skill-install-destination { margin: 4px 0; }
-.settings-modern .settings-skill-context p,
 .settings-skill-install-destination {
   font-size: 12px;
   color: var(--muted-foreground, #a1a1aa);
   overflow-wrap: anywhere;
 }
-.settings-modern .settings-skill-context strong { color: var(--foreground, #fafafa); font-weight: 500; }
 .settings-modern .settings-skill-refresh-error { margin-bottom: 12px; }

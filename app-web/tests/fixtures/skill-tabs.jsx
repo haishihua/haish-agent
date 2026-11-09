@@ -81,14 +81,13 @@ async function main() {
   check(document.querySelector('#skill-list-panel').textContent.includes('Overridden by the current project'), 'override disclosed');
   check(!document.querySelector('#skill-list-panel [role="switch"]'), 'shadowed global version cannot toggle effective project skill');
   nav('Project').click();
-  await wait(() => document.querySelector('.settings-skill-context').textContent.includes('/projects/contract-review'));
+  await wait(() => document.querySelector('.settings-skills-content .settings-page-heading')?.textContent.includes('Skills · Project'));
   const actions = document.querySelectorAll('.settings-skill-actions button');
   check(actions.length === 2 && actions[0].textContent === 'Refresh' && actions[1].textContent.includes('Install skill'), 'refresh and install adjacent in top-right actions');
   check(actions[0].querySelector('.lucide-refresh-cw'), 'Refresh has refresh icon');
   const contentStyle = getComputedStyle(document.querySelector('.settings-skills-content'));
   const headingStyle = getComputedStyle(document.querySelector('.settings-skills-content .settings-page-heading'));
-  const descriptionStyle = getComputedStyle(document.querySelector('.settings-skill-context p'));
-  check(contentStyle.paddingTop === '16px' && contentStyle.paddingLeft === '20px' && headingStyle.marginBottom === '6px' && descriptionStyle.marginTop === '0px', 'Skills heading and descriptions use compact spacing');
+  check(contentStyle.paddingTop === '16px' && contentStyle.paddingLeft === '20px' && headingStyle.marginBottom === '6px', 'Skills heading uses compact spacing');
   state = { status: 'ready', refreshing: true };
   draw();
   await wait(() => document.querySelector('.settings-skill-actions .settings-spin'));
@@ -97,7 +96,7 @@ async function main() {
   draw();
   await wait(() => !document.querySelector('.settings-skill-actions button').disabled);
   check(document.querySelector('#skill-list-panel').textContent.includes('Project version'), 'project contents visible');
-  check(document.querySelector('.settings-skill-context').textContent.includes('shared across projects'), 'toggle scope disclosed');
+  check(!document.querySelector('.settings-skill-context'), 'scope description copy stays removed');
   document.querySelector('[role="switch"]').click();
   await wait(() => calls.length);
   check(calls[0].name === 'shared-skill' && calls[0].enabled === true, 'toggle callback preserved');
@@ -108,7 +107,6 @@ async function main() {
   records = { tools: [{ ...records.tools[0], skill_workspace: '/projects/empty', skill_groups: { builtin: [preset], global: [global], project: [] } }] };
   draw();
   await wait(() => document.querySelector('#skill-list-panel').textContent.includes('No skills in this scope'));
-  check(document.querySelector('.settings-skill-context').textContent.includes('/projects/empty'), 'empty project identifies new workspace');
   state = { status: 'ready', error: 'Refresh failed' };
   draw();
   await wait(() => document.querySelector('.settings-skill-refresh-error'));

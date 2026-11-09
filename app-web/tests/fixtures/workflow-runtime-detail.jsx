@@ -66,13 +66,11 @@ const select = async (id) => { document.querySelector(`.react-flow__node[data-id
   check(getComputedStyle(userMeta).justifyContent === 'flex-end' && getComputedStyle(userMeta.querySelector('.chat-bubble-meta-main')).flexDirection === 'row', 'You and user avatar retain shared right alignment');
   const userShell = panel().querySelector('.chat-message-row.user .message-shell');
   check(getComputedStyle(userShell).paddingRight === '38px' && getComputedStyle(userShell).paddingLeft === '0px', 'User bubble leaves avatar space on the right');
-  const goldProbe = document.createElement('span');
-  goldProbe.style.color = 'var(--gold)';
-  goldProbe.style.background = 'color-mix(in srgb, var(--gold) 12%, transparent)';
-  panel().append(goldProbe);
-  const avatar = getComputedStyle(panel().querySelector('.chat-message-row.agent .chat-speaker-avatar'));
-  check(avatar.color === getComputedStyle(goldProbe).color && avatar.backgroundColor === getComputedStyle(goldProbe).backgroundColor, 'Penguin avatar retains original gold color and background');
-  goldProbe.remove();
+  const agentAvatar = panel().querySelector('.chat-message-row.agent .chat-speaker-avatar .agent-avatar-frame > img');
+  check(Boolean(agentAvatar) && agentAvatar.complete && agentAvatar.naturalWidth > 0,
+    'Assistant bubble shows the agent avatar image');
+  check(getComputedStyle(panel().querySelector('.chat-message-row.agent .chat-speaker-avatar')).backgroundColor === 'rgba(0, 0, 0, 0)',
+    'Agent avatar keeps no legacy gold tile behind it');
   check(!/Peek|Normal|Focus/.test(panel().querySelector('header').textContent), 'No display-mode controls');
   check(getComputedStyle(panel().querySelector('.workflow-detail-icon')).backgroundImage === getComputedStyle(card('worker').querySelector('.workflow-flow-node-icon')).backgroundImage, 'Panel icon uses canvas palette');
   check(document.querySelector('.workflow-selection-link path') && getComputedStyle(document.querySelector('.workflow-selection-link')).pointerEvents === 'none', 'Visual selection link is non-interactive');

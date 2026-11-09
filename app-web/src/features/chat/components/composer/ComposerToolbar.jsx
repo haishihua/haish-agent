@@ -32,14 +32,6 @@ export function ComposerToolbar({
         providerValue={providerId}
         providerOptions={providerOptions}
         onProviderChange={setProviderId}
-        agentValue={agent.value}
-        agentOptions={agent.options}
-        onAgentChange={agent.onChange}
-        agentLoading={agent.loading}
-        agentError={agent.error}
-        onAgentRetry={agent.onRetry}
-        agentLocked={agent.locked}
-        agentLockedReason={agent.lockedReason}
       />}
     </>
   );

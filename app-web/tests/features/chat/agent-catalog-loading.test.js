@@ -58,12 +58,12 @@ test('old-workspace selection remains displayable without old permissions/comple
   assert.equal(original.options[0].skills.length, 1);
 });
 
-test('run configuration trigger is independent and status/retry stays inside agent flyout', () => {
+test('run configuration trigger is independent and status/retry stays inside the agent picker', () => {
   const source = fs.readFileSync(new URL('../../../src/features/chat/components/ModelPickers.jsx', import.meta.url), 'utf8');
   const trigger = source.slice(source.indexOf('const triggerButton ='), source.indexOf('return (', source.indexOf('const triggerButton =')));
   assert.doesNotMatch(trigger, /agentLoading|pickerLoading|loading/);
-  assert.match(source, /agentLoading \? <LoadingState label="Loading agents"/);
-  assert.match(source, /<ErrorState variant="inline" detail=\{agentError\} onRetry=\{onAgentRetry\}/);
+  assert.match(source, /loading \? <LoadingState label="Loading agents"/);
+  assert.match(source, /<ErrorState variant="inline" detail=\{error\} onRetry=\{onRetry\}/);
   assert.match(source, /\{options\.length === 0 \? \(/);
   assert.doesNotMatch(source, /LoadingState label="Loading models"/);
   assert.doesNotMatch(source, /modelError|onModelRetry/);

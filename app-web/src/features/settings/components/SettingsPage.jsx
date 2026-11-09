@@ -381,6 +381,14 @@ export function SettingsPage({
     selectItem(record.id);
     openEditor(activeSection, record.id, 'new');
   };
+  // The home-page shortcut uses the exact same new-provider draft/cancel flow as the list button.
+  useEffect(() => {
+    const request = openEditorRequest;
+    if (request?.action !== 'create-chat-provider' || activeSection !== 'llm' || activeSubtab !== 'chat' || lastOpenRequestRef.current === request) return;
+    lastOpenRequestRef.current = request;
+    void addItem();
+    onOpenEditorRequestConsumed?.();
+  });
   const showSideEditor = showConfigList && Boolean(editingSettings);
   const panelSection = editingSettings?.section || '';
   const panelSelectedId = editingSettings?.id || '';
@@ -392,6 +400,15 @@ export function SettingsPage({
   const panelIsConnectionSection = panelSection === 'memory';
   const panelConnectionStatus = settingsConnectionStatus?.[panelSection]?.[panelSelectedId] || storedMemoryConnectionStatus(records, panelSection, panelSelectedId);
   const panelConnectionTesting = panelConnectionStatus?.state === 'testing';
+  // 连接测试只在用户真的点过 Test 之后才弹 toast：抽屉里的历史结果（内存页从 records 读回来的那份）不重复播报。
+  const connectionTestRequestRef = useRef(false);
+  useEffect(() => {
+    if (!connectionTestRequestRef.current) return;
+    const status = panelConnectionStatus;
+    if (!status?.message || status.state === 'testing') return;
+    connectionTestRequestRef.current = false;
+    onToast?.(status.state === 'error' ? 'error' : 'success', status.message);
+  }, [panelConnectionStatus, onToast]);
   const panelCanSave = !panelSelectedItem?.readonly && !(panelSection === 'workflow' && !panelSelectedItem?.custom);
   const panelWorkflow = panelSection === 'workflow' ? workflowById(workflowSettings, panelSelectedId) : null;
   const updatePanelWorkflow = (patch) => {
@@ -459,6 +476,8 @@ export function SettingsPage({
   };
   const testSelectedProvider = async () => {
     setPanelBusy('test');
+    // 结果回来时要发一条 toast；用这个标记区分「刚点的」和「打开抽屉时读到的历史结果」。
+    connectionTestRequestRef.current = true;
     try { if (panelUsesLlmTest) await onTestLlmConfig?.(panelSelectedId); else await onTestSettingsConnection?.(panelSection, panelSelectedId); }
     finally { setPanelBusy(''); }
   };
@@ -470,6 +489,7 @@ export function SettingsPage({
           selectedId={id}
           draft={llmDraft}
           onDraftChange={onLlmDraftChange}
+          onToast={onToast}
           readOnly={readOnly}
           refreshModels={mode !== 'detail'}
         />
@@ -629,12 +649,12 @@ export function SettingsPage({
           <SettingsSearch label={activeSection === 'llm' ? 'Search providers or models' : `Search ${listTitle.toLowerCase()}`} value={settingsSearch} onChange={setSettingsSearch} />
           {activeSection === 'llm' && addButton}
         </div>}
-        <ItemGroup className="settings-list-modern">{filteredItems.map(item => <SettingsRow key={item.id} title={item.title} description={item.summary} badge={item.badge} readOnly={item.readonly} selected={editingSettings?.id === item.id} icon={['llm', 'embedding', 'compact'].includes(activeSection) ? <ProviderIcon provider={item.provider} name={item.title} /> : activeSection === 'agent' ? <AgentListIcon item={item} /> : activeSection === 'workflow' ? <WorkflowListIcon item={item} /> : <ConnectionBrandIcon itemId={item.id} title={item.title} />} onOpen={() => { if (panelBusy) return; selectListItem(item.id); openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit'); }} enabled={item.enabled} onToggle={item.canToggle ? enabled => (activeSection === 'agent' ? onTogglePresetAgent : activeSection === 'workflow' ? onTogglePresetWorkflow : toggleLlmProvider)?.(item.id, enabled) : undefined} busy={Boolean(panelBusy) || Boolean(llmToggleBusy)} onDelete={item.canDelete || item.custom ? () => requestDelete(activeSection, item.id) : undefined} status={activeSection === 'memory' ? connectionBadgeMeta(settingsConnectionStatus?.[activeSection]?.[item.id] || storedMemoryConnectionStatus(records, activeSection, item.id)) : undefined} />)}{!filteredItems.length && <div className="settings-empty">{settingsSearch ? 'No matching configuration.' : 'No configuration yet.'}</div>}</ItemGroup>
+        <ItemGroup className="settings-list-modern">{filteredItems.map(item => <SettingsRow key={item.id} className={activeSection === 'agent' ? 'settings-agent-row' : ''} title={item.title} description={item.summary} badge={item.badge} readOnly={item.readonly} selected={editingSettings?.id === item.id} icon={['llm', 'embedding', 'compact'].includes(activeSection) ? <ProviderIcon provider={item.provider} name={item.title} /> : activeSection === 'agent' ? <AgentListIcon item={item} /> : activeSection === 'workflow' ? <WorkflowListIcon item={item} /> : <ConnectionBrandIcon itemId={item.id} title={item.title} />} onOpen={() => { if (panelBusy) return; selectListItem(item.id); openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit'); }} enabled={item.enabled} onToggle={item.canToggle ? enabled => (activeSection === 'agent' ? onTogglePresetAgent : activeSection === 'workflow' ? onTogglePresetWorkflow : toggleLlmProvider)?.(item.id, enabled) : undefined} busy={Boolean(panelBusy) || Boolean(llmToggleBusy)} onDelete={item.canDelete || item.custom ? () => requestDelete(activeSection, item.id) : undefined} status={activeSection === 'memory' ? connectionBadgeMeta(settingsConnectionStatus?.[activeSection]?.[item.id] || storedMemoryConnectionStatus(records, activeSection, item.id)) : undefined} />)}{!filteredItems.length && <div className="settings-empty">{settingsSearch ? 'No matching configuration.' : 'No configuration yet.'}</div>}</ItemGroup>
       </div> : editorBody(activeSection, selectedId, 'edit')}
     </main>
     <div data-settings-portal="" />
     <SettingsSheet open={ordinaryEditorOpen} title={panelSelectedItem?.title || listTitle} onClose={() => { if (!panelBusy) cancelEditor(); }}>
-      {ordinaryEditorOpen && <><div className="settings-editor-scroll">{editorBody(panelSection, panelSelectedId, panelMode)}{panelConnectionStatus?.message && (panelConnectionStatus.state === 'error' ? <ErrorState variant="inline" detail={panelConnectionStatus.message} /> : <p className="settings-inline-success" role="status">{panelConnectionStatus.message}</p>)}{panelError && <ErrorState variant="inline" detail={panelError} />}</div><SheetFooter><div>{(panelUsesLlmTest || panelIsConnectionSection) && <Button size="sm" variant="outline" onClick={testSelectedProvider} disabled={Boolean(panelBusy) || panelConnectionTesting}>{panelBusy === 'test' || panelConnectionTesting ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button size="sm" variant="ghost" disabled={Boolean(panelBusy)} onClick={cancelEditor}>{panelCanSave ? 'Cancel' : 'Close'}</Button>{panelCanSave && <Button size="sm" onClick={saveAndClose} disabled={Boolean(panelBusy)}>{panelBusy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></>}
+      {ordinaryEditorOpen && <><div className="settings-editor-scroll">{editorBody(panelSection, panelSelectedId, panelMode)}{panelConnectionStatus?.state === 'error' && <ErrorState variant="inline" detail={panelConnectionStatus.message} />}{panelError && <ErrorState variant="inline" detail={panelError} />}</div><SheetFooter><div>{(panelUsesLlmTest || panelIsConnectionSection) && <Button size="sm" variant="outline" onClick={testSelectedProvider} disabled={Boolean(panelBusy) || panelConnectionTesting}>{panelBusy === 'test' || panelConnectionTesting ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button size="sm" variant="ghost" disabled={Boolean(panelBusy)} onClick={cancelEditor}>{panelCanSave ? 'Cancel' : 'Close'}</Button>{panelCanSave && <Button size="sm" onClick={saveAndClose} disabled={Boolean(panelBusy)}>{panelBusy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></>}
     </SettingsSheet>
     <SettingsDeleteDialog target={deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={target => performDelete(target.section, target.id)} />
   </div>;

@@ -229,6 +229,8 @@ export function applyToolsSettingsPayloadToRecords(records, payload, recordsAtRe
           mcp_path: payload.mcp.path || record.mcp_path || '',
           mcp_error: payload.mcp.error || '',
           mcp_status: '',
+          // 服务端给的缓存快照（未启动服务器）：折叠行的状态点/工具数从这里读。
+          mcp_servers: Array.isArray(payload.mcp_servers) ? payload.mcp_servers : (record.mcp_servers || []),
           mcp_json: reconcileSettings('mcp', record.mcp_json, JSON.stringify(payload.mcp.config || { servers: {} }, null, 2), response),
         };
       }

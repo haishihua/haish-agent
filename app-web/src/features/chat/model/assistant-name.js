@@ -18,6 +18,13 @@ function cleanName(value) {
   return String(value || '').trim();
 }
 
+/** 这一轮任务实际是哪个 agent 跑的（头像用），拿不到返回 ''。 */
+export function assistantAgentIdForTask(task, conversation) {
+  return cleanName(task?.profileId)
+    || cleanName(task?.requestedAgentId)
+    || cleanName(conversation?.agentId);
+}
+
 function taskAgentName(task, agentOptions) {
   return cleanName(task?.profileDisplayName)
     || agentDisplayNameForId(task?.profileId || task?.requestedAgentId, agentOptions);

@@ -53,6 +53,7 @@ export function NodeConversation({ node, task, attempt, result, status, running,
     role: 'agent',
     // 回复气泡署名节点配置里的 agent；非 agent 节点没名字，气泡显示 "Assistant"。
     agentName,
+    agentId: node.type === 'agent' ? (node.agent_id || '') : '',
     text: running ? '' : resultText,
     traceTimeline: timelineItems,
     traceLatestTodos: timeline?.latestTodos || null,
@@ -61,7 +62,7 @@ export function NodeConversation({ node, task, attempt, result, status, running,
     createdAt,
     completedAt,
     firstTokenAt: taskFirstStreamTimestamp(scopedTask),
-  }), [agentName, attempt?.id, completedAt, createdAt, node.id, resultText, running, scopedTask, task?.conversationId, task?.taskId, timeline?.latestTodos, timelineItems, timelineStatus]);
+  }), [agentName, attempt?.id, completedAt, createdAt, node.agent_id, node.id, node.type, resultText, running, scopedTask, task?.conversationId, task?.taskId, timeline?.latestTodos, timelineItems, timelineStatus]);
   const hasAskUser = (items) => items.some((item) => (
     String(item.toolName || '').toLowerCase() === 'ask_user'
     || hasAskUser(item.children || item.tools || [])

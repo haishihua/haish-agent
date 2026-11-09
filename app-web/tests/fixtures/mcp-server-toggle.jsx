@@ -1,9 +1,10 @@
-// Settings → Tools → MCP：每台 server 的 Status 列里一颗开关——就是 skill 行那一颗共享 Switch
+// Settings → Tools → MCP：折叠面板里每行一颗开关——就是 skill 行那一颗共享 Switch
 // （shared/ui/settings-elements 的 Switch），不另造电源图标。
 // 真实 ToolsConfigEditor + 真实 settings.css + 真实保存载荷（buildToolsSettingsPayload）。
 //
 // 断言：
-//   1. 每台 server 一行，行里自带一颗真开关（data-slot="switch"、role="switch"），状态仍是「点 + 文字」；
+//   1. 每台 server 一行，行里自带一颗真开关（data-slot="switch"、role="switch"）；收起行不再画状态那一列
+//      （点 + 文字），状态只在展开区交代；
 //   2. 打开的那台就是设置区那颗蓝（--settings-primary）——和 skill 行同一个长相，没有自己的一套颜色；
 //   3. 开关说得出管哪一台、当前是什么状态（aria-checked / aria-label）；
 //   4. 点一下 → 只改这一台的 enabled，走和输入框 Save 同一条路（mcp: {config}）；
@@ -79,10 +80,34 @@ const mcpJson = () => JSON.stringify(MCP_CONFIG, null, 2);
 
 const baseRecords = () => {
   const records = createDefaultSettingsRecords();
+  // core 的缓存快照（GET /api/settings/tools 的 mcp_servers）：只读、不会去连服务器。
+  const mcpServers = [
+    {
+      name: 'figma',
+      enabled: true,
+      expose: 'lazy',
+      loaded: true,
+      error: null,
+      tools: [
+        { name: 'get_file', qualified_name: 'figma__get_file', description: '' },
+        { name: 'get_comments', qualified_name: 'figma__get_comments', description: '' },
+      ],
+    },
+    { name: 'sketch', enabled: false, expose: 'direct', loaded: false, error: null, tools: [] },
+    { name: 'node-repl', enabled: true, expose: 'direct', loaded: false, error: 'connection refused', tools: [] },
+    {
+      name: 'cua-agent',
+      enabled: true,
+      expose: 'direct',
+      loaded: true,
+      error: null,
+      tools: [{ name: 'act', qualified_name: 'cua-agent__act', description: '' }],
+    },
+  ];
   return {
     ...records,
     tools: records.tools.map((record) =>
-      record.id === 'tools-mcp' ? { ...record, mcp_json: mcpJson(), mcp_path: '/tmp/fixture/mcp.json' } : record,
+      record.id === 'tools-mcp' ? { ...record, mcp_json: mcpJson(), mcp_path: '/tmp/fixture/mcp.json', mcp_servers: mcpServers } : record,
     ),
   };
 };
@@ -125,11 +150,16 @@ const draw = () =>
     ),
   );
 
-const rows = () => [...document.querySelectorAll('#root .mcp-server-row')];
+const rows = () => [...document.querySelectorAll('#root .mcp-server-panel-item')];
 const rowFor = (name) => rows().find((row) => row.querySelector('.mcp-server-name')?.textContent === name);
 const toggleFor = (name) => rowFor(name)?.querySelector('.mcp-server-switch');
+const summaryFor = (name) => rowFor(name)?.querySelector('.mcp-server-summary');
 const switchState = (name) => toggleFor(name)?.getAttribute('data-state');
-const statusFor = (name) => rowFor(name)?.querySelector('.mcp-server-status')?.textContent || '';
+const statusFor = (name) => rowFor(name)?.querySelector('.mcp-server-detail .mcp-server-status')?.textContent || '';
+const openRow = async (name) => {
+  if (summaryFor(name)?.getAttribute('aria-expanded') !== 'true') summaryFor(name).click();
+  await tick();
+};
 const draftServers = () => JSON.parse(document.querySelector('#root textarea.mcp-json').value).servers;
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 // 设置区自己的颜色（--settings-primary）：拿它证明「开关用的就是 skill 那颗」，不是另调的一套。
@@ -169,15 +199,14 @@ async function main() {
     rows().every((row) => !row.querySelector('.mcp-server-switch svg') && !row.querySelector('.mcp-server-toggle')),
     'the row switch is the plain pill — no power icon smuggled back in',
   );
+  // 收起行不再挂状态（点 + 文字）——那一列已经去掉了；状态只在展开区交代。
   check(
-    rows().every((row) => row.querySelector('.mcp-status-dot')),
-    'the status keeps its dot',
+    rows().every((row) => !row.querySelector('.mcp-server-panel-row .mcp-status-dot')),
+    'a collapsed row carries no status dot any more',
   );
   check(
-    rows()
-      .map((row) => row.querySelector('.mcp-server-status').textContent)
-      .join(',') === 'Enabled,Disabled,Enabled,Enabled',
-    'and it still says Enabled / Disabled in text',
+    rows().every((row) => !row.querySelector('.mcp-server-panel-row .mcp-server-status')),
+    'and no status text either — the status column is gone',
   );
   // 2) 同一个长相：开着 = 设置区的蓝（和 skill 行的开关同一颗组件、同一套颜色）。
   const primary = themeColor('--settings-primary');
@@ -190,19 +219,61 @@ async function main() {
     `a server that is on shows the settings blue (${getComputedStyle(toggleFor('figma')).backgroundColor})`,
   );
   check(getComputedStyle(toggleFor('sketch')).backgroundColor !== primary, 'a server that is off does not');
-  const statusBox = rowFor('figma').querySelector('.mcp-server-status').getBoundingClientRect();
   const toggleBox = toggleFor('figma').getBoundingClientRect();
   const rowBox = rowFor('figma').getBoundingClientRect();
+  const countBox = rowFor('figma').querySelector('.mcp-server-tool-count').getBoundingClientRect();
   check(
-    toggleBox.left >= statusBox.right,
-    `the switch sits right of the status text, not on top of it (${Math.round(toggleBox.left - statusBox.right)}px)`,
+    toggleBox.left >= countBox.right,
+    `the switch sits right of the tool count, not on top of it (${Math.round(toggleBox.left - countBox.right)}px)`,
   );
   check(
     toggleBox.right <= rowBox.right - 12,
-    `and it stays inside the row instead of hanging out of the Status column (${Math.round(rowBox.right - toggleBox.right)}px to the edge)`,
+    `and it stays inside the row (${Math.round(rowBox.right - toggleBox.right)}px to the edge)`,
+  );
+  check(
+    Math.abs(countBox.right - toggleBox.left) <= 12,
+    `the tool count hangs off the right edge next to the switch (${Math.round(toggleBox.left - countBox.right)}px gap)`,
   );
   const nameEl = rowFor('figma').querySelector('.mcp-server-name');
   check(nameEl.scrollWidth <= nameEl.clientWidth + 1, 'the server name is not clipped by the switch');
+
+  // 2.5) 折叠面板：表头数出「几台连上了」，一次只开一台，展开在收起行下面接。
+  check(
+    document.querySelector('#root .mcp-server-panel-count')?.textContent === '2 of 4 connected',
+    `the header counts only real connections (${document.querySelector('#root .mcp-server-panel-count')?.textContent})`,
+  );
+  summaryFor('figma').click();
+  await tick();
+  check(summaryFor('figma').getAttribute('aria-expanded') === 'true', 'clicking a row opens it');
+  // 展开区的左缘对齐上面那颗插头图标（不是对着名字、也不是随便缩进）。
+  const detailLeft = rowFor('figma').querySelector('.mcp-server-detail-meta').getBoundingClientRect().left;
+  const plugLeft = rowFor('figma').querySelector('.mcp-server-plug').getBoundingClientRect().left;
+  check(
+    Math.abs(detailLeft - plugLeft) <= 1,
+    `the expanded block starts at the plug icon (detail ${Math.round(detailLeft)}px vs plug ${Math.round(plugLeft)}px)`,
+  );
+  const detailStatus = statusFor('figma');
+  check(detailStatus === 'Connected', `and the status lives down here now (${detailStatus})`);
+  const chips = [...rowFor('figma').querySelectorAll('.mcp-server-tool-chip')].map((el) => el.textContent);
+  check(chips.join(',') === 'get_file,get_comments', `the open row lists the tools that server brought (${chips.join(',')})`);
+  check(
+    rowFor('figma').querySelector('.mcp-server-detail-meta')?.textContent.includes('stdio'),
+    'and its transport, which no longer takes a column when collapsed',
+  );
+  check(
+    !document.querySelector('#root .mcp-server-columns'),
+    'the old Server / Transport / Status column head is gone',
+  );
+  summaryFor('cua-agent').click();
+  await tick();
+  check(
+    summaryFor('figma').getAttribute('aria-expanded') === 'false' &&
+      summaryFor('cua-agent').getAttribute('aria-expanded') === 'true',
+    'opening another row closes the first one',
+  );
+  summaryFor('cua-agent').click();
+  await tick();
+  check(summaryFor('cua-agent').getAttribute('aria-expanded') === 'false', 'clicking the open row closes it again');
 
   // 3) 开关说得出管谁、当前开还是关。
   check(
@@ -237,7 +308,8 @@ async function main() {
   check(saveCalls[0].message === 'figma disabled', `the toast says what happened (${saveCalls[0].message})`);
 
   // 5) 落盘回来的配置 = 界面显示。
-  check(statusFor('figma') === 'Disabled', 'the row now reads Disabled');
+  await openRow('figma');
+  check(statusFor('figma') === 'Disabled', 'the expanded row now reads Disabled');
   check(
     switchState('figma') === 'unchecked' && toggleFor('figma').getAttribute('aria-label') === 'Enable MCP server figma',
     'and the switch flips off, offering to enable',
@@ -252,7 +324,9 @@ async function main() {
     saveCalls.length === 2 && saveCalls[1].payload.mcp.config.servers.figma.enabled === true,
     'turning it back on writes an explicit true',
   );
-  check(statusFor('figma') === 'Enabled' && draftServers().figma.enabled === true, 'the row and the file agree again');
+  await idle();
+  await openRow('figma');
+  check(statusFor('figma') === 'Connected' && draftServers().figma.enabled === true, 'the row and the file agree again');
 
   // 7) 请求在飞：开关锁住 + 连点无效（外观统一交给那颗共享组件，不再自带转圈）。
   await idle();
@@ -273,8 +347,10 @@ async function main() {
   holdSave = false;
   await idle();
   check(saveCalls[2].payload.mcp.config.servers.sketch.enabled === true, 'the held save carried the flipped value');
+  await idle();
+  await openRow('sketch');
   check(
-    switchState('sketch') === 'checked' && statusFor('sketch') === 'Enabled' && draftServers().sketch.enabled === true,
+    switchState('sketch') === 'checked' && statusFor('sketch') === 'Not loaded' && draftServers().sketch.enabled === true,
     'when it lands the server is on',
   );
 

@@ -34,9 +34,43 @@ const motionEffectsSource = fs.readFileSync(new URL('../../src/shared/ui/MotionE
 const chatStyles = fs.readFileSync(new URL('../../styles/chat.css', import.meta.url), 'utf8');
 const delegationStyles = fs.readFileSync(new URL('../../styles/delegation.css', import.meta.url), 'utf8');
 
-test('empty-state penguins stay out until dismissed and cards never swap', () => {
+test('welcome area uses the new headline and the shared composer', () => {
+  assert.match(chatPanelSource, /<img src=\{welcomeSlogan\} alt="Your ideas\. My execution\."/);
+  assert.doesNotMatch(chatPanelSource, /<PenguinCards\s*\/>/);
+  assert.match(chatPanelSource, /<ChatComposer/);
+  assert.match(composerSource, /className="chat-composer-surface"/);
+  assert.match(chatStyles, /\.chat-composer-surface\s*\{[^}]*border:\s*0;[^}]*background:\s*#303030;[^}]*box-shadow:\s*none/s);
+  assert.match(chatStyles, /\.chat-composer-editor\s*\{[^}]*min-height:\s*24px;[^}]*max-height:\s*120px/s);
+  // 空态输入框保持原横向宽度，并为向上展开的审批图标预留纵向空间。
+  assert.match(chatStyles, /\.chat-workspace\.is-empty \.chat-composer\s*\{[^}]*width:\s*min\(850px,/s);
+  assert.match(chatStyles, /\.chat-composer-actions\s*\{[^}]*margin-top:\s*18px;/s);
+});
+
+test('empty state project picker aligns with the centered composer', () => {
+  const composer = chatStyles.match(/\.chat-workspace\.is-empty \.chat-composer\s*\{([^}]*)\}/)[1];
+  const picker = chatStyles.match(/\.chat-workspace\.is-empty > \.draft-project-picker\s*\{([^}]*)\}/)[1];
+  for (const property of ['width', 'justify-self', 'left']) {
+    const declaration = new RegExp(`(?:^|\\n)\\s*${property}: ([^;]+);`);
+    assert.equal(picker.match(declaration)?.[1], composer.match(declaration)?.[1], `${property} stays aligned`);
+  }
+});
+
+test('quoted comments live inside the composer box', () => {
+  const surfaceIndex = composerSource.indexOf('<div className="chat-composer-surface">');
+  const beforeInputIndex = composerSource.indexOf('className="chat-composer-before-input"');
+  const inputRowIndex = composerSource.indexOf('className="chat-composer-input-row"');
+  assert.ok(surfaceIndex > -1, 'composer keeps its surface');
+  // 注释草稿属于输入框本体：在 surface 内、输入行之上，与 placeholder 同一个左内边距。
+  assert.ok(beforeInputIndex > surfaceIndex, 'comment drafts render inside the composer surface');
+  assert.ok(inputRowIndex > beforeInputIndex, 'comment drafts sit above the input row');
+  assert.match(chatStyles, /\.chat-composer-surface\s*\{[^}]*padding:\s*7px 8px 7px 16px;/s);
+  assert.match(chatStyles, /\.chat-composer-before-input\s*\{[^}]*min-width:\s*0;/s);
+  const annotationStyles = fs.readFileSync(new URL('../../src/features/chat/components/message-annotations.css', import.meta.url), 'utf8');
+  assert.match(annotationStyles, /\.haish-annotation-drafts \{[^}]*padding:0;/);
+});
+
+test('unused penguin cards preserve their interaction and artwork', () => {
   const cards = fs.readFileSync(new URL('../../src/features/chat/components/PenguinCards.jsx', import.meta.url), 'utf8');
-  assert.match(chatPanelSource, /<PenguinCards \/>/);
   assert.match(cards, /id: 'secondary', name: 'relax'/);
   assert.match(cards, /<PortalTooltip text="Click to play" position="above">/);
   assert.doesNotMatch(cards, /chat-empty-penguin-hint|MousePointer2/);
@@ -187,13 +221,11 @@ test('background catalog reads keep the picked skill token and only run for the 
   assert.match(appShellSource, /setAgentRetry\(\(attempt\) => attempt \+ 1\); return deployTask\(\.\.\.args\);/);
 });
 
-test('picking an agent keeps the run-config menu open so provider/model can follow', () => {
-  const start = modelPickersSource.indexOf('onAgentChange?.(opt.id);');
-  assert.ok(start > 0);
-  const afterPick = modelPickersSource.slice(start, start + 240);
-  // 选完 agent 只收起 agent 子菜单，不关整个运行配置面板。
-  assert.match(afterPick, /setActiveSubmenu\(null\)/);
-  assert.doesNotMatch(afterPick, /setOpen\(false\)/);
+test('picking an agent uses the composer agent picker and leaves the run-config menu alone', () => {
+  assert.match(composerSource, /<AgentPicker/);
+  assert.match(modelPickersSource, /export function AgentPicker/);
+  assert.doesNotMatch(modelPickersSource, /model-picker-flyout-agent/);
+  assert.doesNotMatch(modelPickersSource, /setActiveSubmenu\('agent'\)/);
   // 光标离开不能自动收起面板：子菜单就在面板右侧，它一收，光标就落到面板外，
   // 旧的 mouseleave + 180ms 计时器会把用户正在选的主面板直接关掉。
   assert.doesNotMatch(modelPickersSource, /leaveTimer/);
@@ -205,8 +237,12 @@ test('run configuration progressively reveals thinking before agent and model se
   assert.match(modelPickersSource, /model-picker-quick thinking-/);
   assert.match(modelPickersSource, /type="range"/);
   assert.match(modelPickersSource, /setMenuOpen\(true\)/);
-  assert.match(modelPickersSource, /activeSubmenu === 'agent'/);
+  assert.match(modelPickersSource, /<div className="agent-picker-header">Agent<\/div>/);
   assert.doesNotMatch(modelPickersSource, /activeSubmenu === 'thinking'/);
+  // 模型名左边要有厂商图标：与列表里的模型行用同一个 ModelGlyph，图标略小一号。
+  assert.match(modelPickersSource, /<ModelGlyph modelId=\{current\?\.id \|\| value\} className="model-picker-quick-glyph" \/>/);
+  assert.match(delegationStyles, /\.model-picker-quick-summary > \.model-picker-quick-glyph\s*\{[^}]*width: 16px;[^}]*height: 16px;/s);
+  assert.match(delegationStyles, /\.model-picker-quick-summary > \.model-picker-quick-model\s*\{[^}]*text-overflow: ellipsis;/s);
   assert.match(delegationStyles, /\.model-picker-menu,[\s\S]*border-color: var\(--line\)/);
   assert.match(delegationStyles, /\.model-picker-reasoning\.thinking-xhigh input::/);
   assert.match(delegationStyles, /font-family: var\(--conversation-font\)/);
@@ -254,11 +290,14 @@ test('the shared MetalFx context survives chat and workflow mode switches', () =
   assert.match(appShellSource, /<MetalFxRuntimeKeeper \/>/);
 });
 
-test('composer border animation only runs during interaction, input, or a task run', () => {
-  assert.match(motionEffectsSource, /addEventListener\('pointerenter', engage\)/);
-  assert.doesNotMatch(motionEffectsSource, /addEventListener\('focusin', engage\)/);
-  assert.match(motionEffectsSource, /active=\{\(Boolean\(active\) \|\| interacting\)/);
-  assert.match(composerSource, /<ComposerBorderBeam active=\{running \|\| submitPending \|\| hasComposerPayload\}/);
+test('composer keeps the colorful beam on its outer edge', () => {
+  // 五色流光放在输入框表面内，避免被不透明背景挡住。
+  const surfaceIndex = composerSource.indexOf('<div className="chat-composer-surface">');
+  const beamIndex = composerSource.indexOf('<ComposerBorderBeam active={sendBeamActive} />');
+  assert.ok(beamIndex > surfaceIndex, 'the beam belongs to the composer surface');
+  assert.match(chatStyles, /\.composer-border-beam\s*\{[^}]*position:\s*absolute !important;[^}]*z-index:\s*2;/s);
+  // 聚焦仍不会额外画出实线边框。
+  assert.doesNotMatch(chatStyles, /\.chat-composer-surface:focus-within\s*\{/);
 });
 
 test('workflow catalog exposes the human approval gate and its decision contract', () => {

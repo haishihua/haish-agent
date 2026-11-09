@@ -19,7 +19,7 @@ import {
 import { DEFAULT_AGENT_OPTIONS } from '../model/run-catalog.js';
 import { executionConfigError } from '../../workflow/model/execution-config.js';
 import { nodeRuntimeConfigsForWorkflow } from '../../workflow/model/node-runtime-config.js';
-import { ApprovalModePicker } from './ModelPickers.jsx';
+import { ApprovalModePicker, AgentPicker } from './ModelPickers.jsx';
 import { AttachmentChips } from './composer/AttachmentChips.jsx';
 import { ComposerToolbar } from './composer/ComposerToolbar.jsx';
 import { SendControls } from './composer/SendControls.jsx';
@@ -37,6 +37,7 @@ import { scheduleInvocation, scheduleMenuItems } from '../../schedules/model/sch
 import { useComposerHistory } from '../hooks/useComposerHistory.js';
 import { LexicalComposerInput } from './LexicalComposerInput.jsx';
 import { GOAL_COMMAND, goalInvocation, goalMenuItems } from '../model/goal-command.js';
+import { ComposerPet } from './ComposerPet.jsx';
 import { ComposerBorderBeam } from '../../../shared/ui/MotionEffects.jsx';
 
 /**
@@ -61,6 +62,10 @@ export function ChatComposer({
   onStop,
   onSent,
   activeTaskText,
+  petRunState = 'idle',
+  petActivityState = null,
+  petTask = null,
+  petProjectObstacle = false,
   running = false,
   disabled = false,
   submitPending = false,
@@ -85,6 +90,7 @@ export function ChatComposer({
   approvalDraft = false,
   ensureApprovalConversation,
   providerOptions = [],
+  onAddProvider,
   agentOptions,
   defaultAgentId,
   agentLoading = false,
@@ -610,8 +616,7 @@ export function ChatComposer({
       onDragOver={handleComposerDragOver}
       onDropCapture={handleComposerDrop}
     >
-      <ComposerBorderBeam active={running || submitPending || hasComposerPayload} />
-      {beforeInput}
+      <ComposerPet conversationId={conversationId} runState={petRunState} activityState={petActivityState} running={running} submitPending={submitPending} task={petTask} projectObstacle={petProjectObstacle} />
       {stopError && <ErrorState variant="inline" title="Stop not verified" detail={stopError}
         onRetry={stopAndRestore} disabled={submitPending} retryLabel="Stop again" retryHint="Retry stopping and reconcile this conversation" />}
       {skillMenuOpen && (
@@ -639,7 +644,10 @@ export function ChatComposer({
           ))}
         </div>
       )}
-      <div className="chat-composer-input-row">
+      <div className="chat-composer-surface">
+        <ComposerBorderBeam active={sendBeamActive} />
+        {beforeInput ? <div className="chat-composer-before-input">{beforeInput}</div> : null}
+        <div className="chat-composer-input-row">
         <LexicalComposerInput
           key={scopeId}
           ref={inputRef}
@@ -762,12 +770,26 @@ export function ChatComposer({
           disabled={disabled || goalPending}
           maxLength={5000}
         />
-      </div>
+        </div>
       <div className="chat-composer-actions">
         <div className="chat-composer-tools">
           <ApprovalModePicker key={conversationId || 'draft'} conversationId={conversationId}
             draft={approvalDraft} ensureConversation={ensureApprovalConversation}
             disabled={!conversationId || submitPending || goalPending} />
+          {executionMode === 'chat' ? (
+            <AgentPicker
+              value={effectiveAgentId}
+              options={resolvedAgentOptions}
+              onChange={changeAgent}
+              disabled={runConfigDisabled}
+              readOnly={runConfigReadOnly}
+              loading={agentLoading}
+              error={agentError}
+              onRetry={onAgentRetry}
+              locked={agentLocked}
+              lockedReason={agentLockedReason}
+            />
+          ) : null}
         </div>
         <div className="chat-composer-submit">
           {executionMode === 'chat' && totalTokens > 0 ? <PortalTooltip text={contextTooltip} position="above">
@@ -812,6 +834,10 @@ export function ChatComposer({
           />
         </div>
       </div>
+      </div>
+      {onAddProvider && <button type="button" className="chat-add-provider" onClick={onAddProvider}>
+        <span aria-hidden="true">＋</span> Add a model provider
+      </button>}
     </form>
   );
 }

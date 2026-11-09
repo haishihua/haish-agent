@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ChatMessageRow } from '../../src/features/chat/components/ChatMessageRow.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
-import { assistantNameForTask } from '../../src/features/chat/model/assistant-name.js';
+import { assistantAgentIdForTask, assistantNameForTask } from '../../src/features/chat/model/assistant-name.js';
+import { saveAgentAvatar } from '../../src/features/agents/model/agent-avatars.js';
 import '../../styles/base.css';
 import '../../styles/chat.css';
 import '../../styles/markdown.css';
@@ -47,6 +48,15 @@ const CASES = [
     text: '为什么登陆失败了？',
   },
   {
+    id: 'turn-with-elapsed',
+    expected: 'Simple Agent',
+    task: { taskId: 'task-elapsed' },
+    conversation: LEGACY_CONVERSATION,
+    text: '已经跑完的一轮，气泡右上角显示计时胶囊。',
+    traceTimeline: [{ id: 'trace-1', kind: 'text', text: 'reading files…' }],
+    elapsedMs: 5 * 60 * 1000 + 39 * 1000,
+  },
+  {
     id: 'turn-unknown',
     // 连会话记录都没有 agent（历史遗留）：不许把内部 id 当名字写出来。
     expected: 'Assistant',
@@ -56,18 +66,29 @@ const CASES = [
   },
 ];
 
-const rows = CASES.map((entry) => ({
-  id: entry.id,
-  messageId: `${entry.id}-message`,
-  conversationId: 'fixture',
-  taskId: entry.task.taskId,
-  role: 'agent',
-  agentName: assistantNameForTask(entry.task, entry.conversation, AGENT_OPTIONS),
-  text: entry.text,
-  status: 'done',
-  streaming: Boolean(entry.streaming),
-  createdAt: Date.now(),
-}));
+// 头像库：两个 agent 各选一只企鹅，气泡上的头像与选择器一致。
+saveAgentAvatar('custom.agent-code', 'penguin-06');
+saveAgentAvatar('custom.agent-simple', 'penguin-10');
+
+const rows = CASES.map((entry) => {
+  const completedAt = entry.elapsedMs ? Date.now() : null;
+  return {
+    id: entry.id,
+    messageId: `${entry.id}-message`,
+    conversationId: 'fixture',
+    taskId: entry.task.taskId,
+    role: 'agent',
+    agentName: assistantNameForTask(entry.task, entry.conversation, AGENT_OPTIONS),
+    agentId: assistantAgentIdForTask(entry.task, entry.conversation),
+    text: entry.text,
+    traceTimeline: entry.traceTimeline || [],
+    status: 'done',
+    streaming: Boolean(entry.streaming),
+    createdAt: completedAt ? completedAt - entry.elapsedMs : Date.now(),
+    firstTokenAt: completedAt ? completedAt - entry.elapsedMs : null,
+    completedAt,
+  };
+});
 
 rows.push({
   id: 'turn-user',

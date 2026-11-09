@@ -49,8 +49,7 @@ function PickerFixture() {
   control = { models, providerId, model };
   return <AppTooltipProvider><ModelPicker value={model} onChange={setModel} reasoningEffort="high" onReasoningChange={() => {}}
     options={models.options} loading={models.loading}
-    providerValue={providerId} providerOptions={providers} onProviderChange={id => { setProviderId(id); setModel(providers.find(item => item.id === id).defaultModelId); }}
-    agentValue="a" agentOptions={agents} /></AppTooltipProvider>;
+    providerValue={providerId} providerOptions={providers} onProviderChange={id => { setProviderId(id); setModel(providers.find(item => item.id === id).defaultModelId); }} /></AppTooltipProvider>;
 }
 const route = { llm_config_id: 'route-a', model_id: 'saved-a', reasoning_effort: 'xhigh', agent_id: 'a', execution_mode: 'chat', use_history: true };
 const sync = createRunConfigSync({ get: async () => route, save: async () => {} });
@@ -80,7 +79,7 @@ async function open(submenu = 'model') {
   if (!document.querySelector('.model-picker-submenu-entry')) {
     document.querySelector('[aria-label="Open agent and model settings"]').click(); await sleep();
   }
-  document.querySelectorAll('.model-picker-submenu-entry')[submenu === 'model' ? 2 : 1].focus(); await sleep();
+  document.querySelectorAll('.model-picker-submenu-entry')[submenu === 'model' ? 1 : 0].focus(); await sleep();
 }
 async function chooseProvider(id) {
   await open('provider');

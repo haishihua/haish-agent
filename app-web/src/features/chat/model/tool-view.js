@@ -17,6 +17,9 @@ import {
   buildReadToolView,
 } from './tool-view/file.js';
 import { buildSearchToolView } from './tool-view/search.js';
+// checkpoint 历史是只读列表（不再落回原始 JSON 卡），只接 list_checkpoints；
+// rollback_workspace 是一次执行结果，形状不同，仍走 JSON 卡。
+import { buildCheckpointToolView } from './tool-view/checkpoint.js';
 import { buildProcessToolSummary, buildProcessToolView, buildSubAgentTimelineItems, isProcessTool } from './tool-view/agent.js';
 
 export { TOOL_SHELL_NAMES, buildSubAgentTimelineItems };
@@ -38,5 +41,8 @@ export function buildToolView(item, { details = true } = {}) {
   if (TOOL_CHANGE_NAMES.has(name)) return buildChangeToolView(item, path);
   if (TOOL_READ_NAMES.has(name)) return buildReadToolView(item, path);
   if (TOOL_SHELL_NAMES.has(name)) return buildTerminalToolView(item, name);
+  // 已完成但结构化结果缺失时保留通用卡，避免把旧记录误报为空列表。
+  if (name === 'list_checkpoints' && (['pending', 'running'].includes(item.status)
+      || isToolFailure(item) || Array.isArray(item.toolResponse?.data?.groups))) return buildCheckpointToolView(item);
   return buildJsonToolView(item);
 }

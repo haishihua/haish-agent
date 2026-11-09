@@ -5,6 +5,9 @@ import { PortalTooltip, closeAllPortalTooltips } from '../../../shared/ui/Portal
 export function DraftProjectPicker({ projects = [], selectedId, onSelect, onAddProject, disabled = false }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
+  // 菜单向上展开，必须自己限制在触发按钮以上的可用空间里：.chat-workspace 是
+  // overflow: clip，超出去的部分会被直接裁掉（项目多时看起来就像被顶掉了）。
+  const [menuMaxHeight, setMenuMaxHeight] = React.useState(null);
   const rootRef = React.useRef(null);
   const searchRef = React.useRef(null);
   const selected = projects.find((project) => project.id === selectedId);
@@ -14,6 +17,21 @@ export function DraftProjectPicker({ projects = [], selectedId, onSelect, onAddP
   const matching = projects.filter((project) => `${project.name || ''} ${project.workspacePath || ''}`.toLowerCase().includes(query.trim().toLowerCase()));
   React.useEffect(() => {
     if (open) closeAllPortalTooltips();
+  }, [open]);
+  React.useLayoutEffect(() => {
+    if (!open) { setMenuMaxHeight(null); return undefined; }
+    function measure() {
+      const trigger = rootRef.current?.querySelector('.draft-project-trigger');
+      if (!trigger) return;
+      const clip = rootRef.current?.closest('.chat-workspace');
+      const clipTop = clip ? clip.getBoundingClientRect().top : 0;
+      const available = trigger.getBoundingClientRect().top - clipTop - 12;
+      // 默认跟 model 菜单同高（360）；窗口/面板矮时再向下收敛，保证顶边不越界。
+      setMenuMaxHeight(Math.max(180, Math.min(360, Math.round(available))));
+    }
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
   }, [open]);
   React.useEffect(() => {
     if (!open) return undefined;
@@ -38,7 +56,7 @@ export function DraftProjectPicker({ projects = [], selectedId, onSelect, onAddP
         <Folder size={15} aria-hidden="true" /><span>{selected.name}</span><ChevronUp className="draft-project-chevron" size={14} aria-hidden="true" />
       </button>
     </PortalTooltip>
-    {open ? <div className="draft-project-menu" role="dialog" aria-label="Choose project">
+    {open ? <div className="draft-project-menu" role="dialog" aria-label="Choose project" style={menuMaxHeight ? { maxHeight: `${menuMaxHeight}px` } : undefined}>
       <div className="draft-project-search"><Search size={15} aria-hidden="true" />
         <input ref={searchRef} aria-label="Search projects" placeholder="Search projects" value={query} onChange={(event) => setQuery(event.target.value)} />
       </div>

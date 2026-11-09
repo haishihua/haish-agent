@@ -1,24 +1,25 @@
 import React from 'react';
-import anthropicLogo from '@lobehub/icons-static-svg/icons/anthropic.svg';
-import deepseekLogo from '@lobehub/icons-static-svg/icons/deepseek.svg';
-import geminiLogo from '@lobehub/icons-static-svg/icons/gemini.svg';
-import minimaxLogo from '@lobehub/icons-static-svg/icons/minimax.svg';
-import moonshotLogo from '@lobehub/icons-static-svg/icons/moonshot.svg';
-import ollamaLogo from '@lobehub/icons-static-svg/icons/ollama.svg';
-import openaiLogo from '@lobehub/icons-static-svg/icons/openai.svg';
-import qwenLogo from '@lobehub/icons-static-svg/icons/qwen.svg';
-import xaiLogo from '@lobehub/icons-static-svg/icons/xai.svg';
-import zhipuLogo from '@lobehub/icons-static-svg/icons/zhipu.svg';
-import tavilyLogo from '@lobehub/icons-static-svg/icons/tavily.svg';
-import exaLogo from '@lobehub/icons-static-svg/icons/exa.svg';
-import serpapiLogo from '../../../../assets/ui/icons/serpapi.svg';
-import braveLogo from '../../../../assets/ui/icons/brave.svg';
-import parallelLogo from '../../../../assets/ui/icons/parallel.svg';
-import firecrawlLogo from '../../../../assets/ui/icons/firecrawl.svg';
-import qdrantLogo from '../../../../assets/ui/icons/qdrant.svg';
+import anthropicLogo from '@lobehub/icons-static-svg/icons/anthropic.svg?inline';
+import deepseekLogo from '@lobehub/icons-static-svg/icons/deepseek.svg?inline';
+import geminiLogo from '@lobehub/icons-static-svg/icons/gemini.svg?inline';
+import minimaxLogo from '@lobehub/icons-static-svg/icons/minimax.svg?inline';
+import moonshotLogo from '@lobehub/icons-static-svg/icons/moonshot.svg?inline';
+import ollamaLogo from '@lobehub/icons-static-svg/icons/ollama.svg?inline';
+import openaiLogo from '@lobehub/icons-static-svg/icons/openai.svg?inline';
+import qwenLogo from '@lobehub/icons-static-svg/icons/qwen.svg?inline';
+import xaiLogo from '@lobehub/icons-static-svg/icons/xai.svg?inline';
+import zhipuLogo from '@lobehub/icons-static-svg/icons/zhipu.svg?inline';
+import tavilyLogo from '@lobehub/icons-static-svg/icons/tavily.svg?inline';
+import exaLogo from '@lobehub/icons-static-svg/icons/exa.svg?inline';
+import serpapiLogo from '../../../../assets/ui/icons/serpapi.svg?inline';
+import braveLogo from '../../../../assets/ui/icons/brave.svg?inline';
+import parallelLogo from '../../../../assets/ui/icons/parallel.svg?inline';
+import firecrawlLogo from '../../../../assets/ui/icons/firecrawl.svg?inline';
+import qdrantLogo from '../../../../assets/ui/icons/qdrant.svg?inline';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
-import { agentIconNameForItem } from '../../agents/model/agent-settings.js';
+import { AgentAvatar } from '../../agents/components/AgentAvatar.jsx';
+import { providerLogoSize } from '../model/provider-logo-metrics.js';
 
 const { useState, useEffect, useRef } = React;
 
@@ -63,21 +64,22 @@ export const WEB_SEARCH_BRAND_LOGOS = {
 // Unlisted providers keep a monogram tile instead of an empty media slot.
 export function WebSearchProviderIcon({ provider, label }) {
   const logo = WEB_SEARCH_BRAND_LOGOS[provider];
-  if (logo) return <BrandLogoIcon logo={logo} />;
+  if (logo) return <BrandLogoIcon logo={logo} scaleKey={provider} />;
   const initial = String(label || provider || '?').trim().slice(0, 1).toUpperCase();
   return <span className="settings-provider-icon settings-provider-initials" aria-hidden="true">{initial}</span>;
 }
 
-export function BrandLogoIcon({ logo }) {
+export function BrandLogoIcon({ logo, scaleKey, opticalSize }) {
   if (!logo) return null;
+  const size = providerLogoSize(scaleKey, opticalSize);
   return (
     <span className="settings-provider-icon" aria-hidden="true">
-      <span className="settings-provider-logo" style={{ '--settings-provider-logo': `url(${logo})` }} />
+      <span className="settings-provider-logo" style={{ '--settings-provider-logo': `url("${logo}")`, ...(size ? { width: size, height: size } : {}) }} />
     </span>
   );
 }
 
-export function ProviderIcon({ provider }) {
+export function ProviderIcon({ provider, opticalSize }) {
   if (provider === 'custom') {
     return (
       <span className="settings-provider-icon settings-provider-icon-custom" aria-hidden="true">
@@ -85,30 +87,17 @@ export function ProviderIcon({ provider }) {
       </span>
     );
   }
-  return <BrandLogoIcon logo={PROVIDER_LOGOS[provider]} />;
+  return <BrandLogoIcon logo={PROVIDER_LOGOS[provider]} scaleKey={provider} opticalSize={opticalSize} />;
 }
 
 export function ConnectionBrandIcon({ itemId, title }) {
-  const logo = CONNECTION_BRAND_LOGOS[itemId]
-    || CONNECTION_BRAND_LOGOS[String(title || '').trim().toLowerCase()];
-  return <BrandLogoIcon logo={logo} />;
+  const key = CONNECTION_BRAND_LOGOS[itemId] ? itemId : String(title || '').trim().toLowerCase();
+  return <BrandLogoIcon logo={CONNECTION_BRAND_LOGOS[key]} scaleKey={key} />;
 }
 
 
 export function AgentListIcon({ item }) {
-  const iconName = agentIconNameForItem(item);
-  if (iconName === 'box' && item?.custom) {
-    return (
-      <span className="settings-provider-icon settings-provider-icon-custom" aria-hidden="true">
-        <AppIcon name="box" size={22} className="settings-provider-glyph" />
-      </span>
-    );
-  }
-  return (
-    <span className={`settings-provider-icon${iconName === 'box' ? ' settings-provider-icon-custom' : ''}`} aria-hidden="true">
-      <AppIcon name={iconName} size={22} className="settings-provider-glyph" />
-    </span>
-  );
+  return <AgentAvatar agentId={item?.id} size="list" />;
 }
 
 export function WorkflowListIcon({ item }) {

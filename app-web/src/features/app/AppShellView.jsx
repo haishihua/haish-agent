@@ -8,6 +8,7 @@ import { ConversationsPanel } from '../conversations/components/ConversationsPan
 import { ChatPanel } from '../chat/components/ChatPanel.jsx';
 import { DraftProjectPicker } from '../chat/components/DraftProjectPicker.jsx';
 import { ChatComposer } from '../chat/components/ChatComposer.jsx';
+import { petActivityFromWorkflow } from '../chat/model/pet-state.js';
 import { WorkflowRuntimeEntry as WorkflowRuntimePage } from '../workflow/components/WorkflowRuntimeEntry.jsx';
 import { nodeRuntimeConfigRequest } from '../workflow/model/node-runtime-config.js';
 import { conversationNoticesFromTasks, taskNoticesByTaskId } from '../tasks/model/task-completion-notices.js';
@@ -54,10 +55,10 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
   const {
     ensureServerConversationForActiveDraft, draftConversationRef, pendingEarlierTaskRuntimeIds, switchDraftProject, onAddDraftProject, draftProjectSelectable,
     loadEarlierTaskRuntimes, chatMessages, taskRuntimeState, conversationStopState, conversationRetryPending,
-    getRuntime, conversationLoading, currentConversationRunning, composerDisabled, submitPending,
+    getRuntime, conversationLoading, currentConversationRunning, currentConversationRunState, petTask, composerDisabled, submitPending,
     handleDeploy, handleGoalCommand, handleStop, handleAttachmentSelect, handleAttachmentClear,
     composerImageDraftsRef, composerAttachment, uploadState, contextUsage, localWorkspace, activeTaskText,
-    llmProviderOptions, chatAgentSelection, defaultAgentId, agentLoading, agentState, setAgentRetry,
+    llmProviderOptions, llmCatalogReady, openAddChatProvider, chatAgentSelection, defaultAgentId, agentLoading, agentState, setAgentRetry,
     runConfigStorageKey, chatDraft, setChatDraft, handleForkMessage, getTaskById,
   } = chat;
   const {
@@ -178,6 +179,8 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                         retryPendingTaskId={conversationRetryPending ? getRuntime(conversationId)?.pendingRetry?.sourceTaskId : null}
 	                    loading={conversationLoading}
 	                    running={currentConversationRunning}
+                        petRunState={currentConversationRunState.state}
+                        petTask={petTask}
 	                    disabled={composerDisabled}
 	                    submitPending={submitPending}
 	                    onSend={handleDeploy}
@@ -194,6 +197,8 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                     homePath={window.haish?.homePath || ''}
                     activeTaskText={activeTaskText}
                     providerOptions={llmProviderOptions}
+                    showAddProvider={llmCatalogReady && llmProviderOptions.length === 0}
+                    onAddProvider={openAddChatProvider}
                     {...chatAgentSelection}
                     defaultAgentId={defaultAgentId}
                     agentLoading={agentLoading}
@@ -247,6 +252,9 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                       onSend={(...args) => handleDeploy(...args.slice(0, 9), args[9] ?? botNodeConfigs)}
                       onStop={handleStop}
                       activeTaskText={activeTaskText}
+                      petRunState={currentConversationRunState.state}
+                      petActivityState={petActivityFromWorkflow(petTask, currentConversationRunState.state)}
+                      petTask={petTask}
                       running={currentConversationRunning}
                       disabled={composerDisabled}
                       submitPending={submitPending} stopError={conversationStopState.error}

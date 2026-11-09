@@ -1,5 +1,5 @@
 import React from 'react';
-import { PenguinCards } from './PenguinCards.jsx';
+import welcomeSlogan from '../../../../assets/ui/empty-state/welcome-slogan.png';
 import { ConversationSearch } from './ConversationSearch.jsx';
 import { ConversationMap } from './ConversationMap.jsx';
 import { conversationMapEntries } from '../model/conversation-map.js';
@@ -19,6 +19,7 @@ import { CHAT_ROW_WINDOW_INITIAL, CHAT_ROW_WINDOW_TRIGGER_PX, growRowWindow, rec
 import { ScrollToBottomButton } from '../../../shared/ui/ScrollToBottomButton.jsx';
 import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
 import { ChatComposer } from './ChatComposer.jsx';
+import { petActivityFromMessages } from '../model/pet-state.js';
 // 回拉执行记录的对象是「视口里那些还没补水的行」，不再按 scrollTop 阈值预取：
 // 用距离触发的分页会把最新一页当成下一批，见 model/chat-row-window.js。
 // 跳转落点要能居中：窗口若刚好只盖住目标行，它永远贴在顶部，scrollTop 只能是 0。
@@ -64,6 +65,8 @@ export function ChatPanel({
   // 会话正文还在路上（判据见 AppShell 的 conversationLoading）：整段会话在正中间用一颗
   // Loader 占位，行等正文到了再一次性铺开。
   loading = false,
+  petRunState = 'idle',
+  petTask = null,
   running = false,
   disabled = false,
   latestTaskId = null,
@@ -82,6 +85,8 @@ export function ChatPanel({
   contextUsage,
   activeTaskText,
   providerOptions = [],
+  showAddProvider = false,
+  onAddProvider,
   agentOptions,
   defaultAgentId,
   agentLoading = false,
@@ -486,7 +491,7 @@ export function ChatPanel({
   }, []);
 
   return (
-    <section className="chat-workspace" aria-label="Chat">
+    <section className={`chat-workspace${!loading && messages.length === 0 ? ' is-empty' : ''}`} aria-label="Chat">
       <div className="chat-message-region">
         {/* key 在本层兄弟之间必须唯一：搜索面板和导轨都按会话重置，但同一个
             会话 id 会撞成同一个 key，React 的 key 映射会漏删旧节点——切换会话后
@@ -517,9 +522,7 @@ export function ChatPanel({
             </div>
           ) : messages.length === 0 ? (
             <div className="chat-empty">
-              <PenguinCards />
-              <div className="chat-empty-title">What's on your mind?</div>
-              <div className="chat-empty-copy">Drop a task, a question, or a loose idea. I'll take it from there.</div>
+              <h1 className="chat-empty-heading"><img src={welcomeSlogan} alt="Your ideas. My execution." /></h1>
             </div>
           ) : <ChatRowGroup key={liveGroup.conversationId} group={liveGroup} />}
           <ApprovalInline conversationId={conversationId} />
@@ -543,6 +546,10 @@ export function ChatPanel({
         onStop={onStop}
         onSent={() => setSendScrollKey((value) => value + 1)}
         activeTaskText={activeTaskText}
+        petRunState={petRunState}
+        petActivityState={petActivityFromMessages(messages, petTask?.taskId || petTask?.task_id || petTask?.id, petRunState)}
+        petTask={petTask}
+        petProjectObstacle={Boolean(draftProjectSelector)}
         running={running}
         disabled={disabled}
         submitPending={submitPending}
@@ -566,6 +573,7 @@ export function ChatPanel({
         onPreviewImage={openImagePreview}
         history={userMessageHistory}
         providerOptions={providerOptions}
+        onAddProvider={!loading && messages.length === 0 && showAddProvider ? onAddProvider : undefined}
         agentOptions={agentOptions}
         defaultAgentId={defaultAgentId}
         agentLoading={agentLoading}

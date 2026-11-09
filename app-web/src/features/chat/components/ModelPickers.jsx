@@ -8,11 +8,37 @@ import { REASONING_EFFORT_OPTIONS } from '../model/run-catalog.js';
 import { reasoningGaugeRotation } from '../model/reasoning-gauge.js';
 import { providerAuthBadge } from '../../settings/model/llm-settings.js';
 import { ProviderAuthBadge } from '../../../shared/ui/ProviderAuthBadge.jsx';
+import { AgentAvatar } from '../../agents/components/AgentAvatar.jsx';
+import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
+import { ProviderIcon } from '../../settings/components/SettingsPrimitives.jsx';
+import { providerBrandForModel } from '../../settings/model/provider-brand.js';
+
+/** Settings 列表里那枚 provider 品牌标识；custom 走首字母地砖，与列表一致。 */
+function ProviderGlyph({ option }) {
+  if (!option?.provider) return null;
+  return (
+    <span className="model-picker-option-glyph" aria-hidden="true">
+      <ProviderIcon provider={option.provider} name={option.customProvider || option.label || ''} opticalSize={16} />
+    </span>
+  );
+}
+
+/** 模型行：按模型名推断厂商（如 deepseek-v4-flash），认不出来就用默认图标。 */
+function ModelGlyph({ modelId, className = '' }) {
+  const brand = providerBrandForModel(modelId);
+  return (
+    <span className={`model-picker-option-glyph ${className}`.trim()} aria-hidden="true">
+      {brand
+        ? <ProviderIcon provider={brand} opticalSize={16} />
+        : <AppIcon name="box" size={15} className="model-picker-option-glyph-fallback" />}
+    </span>
+  );
+}
 
 export const APPROVAL_MODE_OPTIONS = [
-  { id: 'strict', label: 'Request Approval', icon: 'ask-for-help.png',   desc: 'Ask before every write or network op' },
-  { id: 'smart',  label: 'Auto Approve',     icon: 'generative.png',     desc: 'Allow safe ops, ask on risk' },
-  { id: 'full',   label: 'Full Access',      icon: 'cyber-security.png', desc: 'Allow everything without prompting' },
+  { id: 'strict', label: 'Request Approval', icon: 'approval-strict-bold.png', desc: 'Ask before every write or network op' },
+  { id: 'smart',  label: 'Auto Approve',     icon: 'generative.png',           desc: 'Allow safe ops, ask on risk' },
+  { id: 'full',   label: 'Full Access',      icon: 'approval-full-bold.png',   desc: 'Allow everything without prompting' },
 ];
 
 export function ApprovalModePicker({ conversationId, draft = false, ensureConversation, disabled = false, readOnly = false }) {
@@ -109,6 +135,7 @@ export function ApprovalModePicker({ conversationId, draft = false, ensureConver
         >
           <span
             className="approval-mode-icon"
+            data-approval-mode={current.id}
             style={{
               WebkitMaskImage: `url("assets/ui/icons/${current.icon}")`,
               maskImage: `url("assets/ui/icons/${current.icon}")`,
@@ -133,6 +160,7 @@ export function ApprovalModePicker({ conversationId, draft = false, ensureConver
                 >
                   <span
                     className="approval-mode-option-icon"
+                    data-approval-mode={opt.id}
                     style={{
                       WebkitMaskImage: `url("assets/ui/icons/${opt.icon}")`,
                       maskImage: `url("assets/ui/icons/${opt.icon}")`,
@@ -160,14 +188,6 @@ export function ModelPicker({
   providerValue,
   providerOptions = [],
   onProviderChange,
-  agentValue,
-  agentOptions,
-  onAgentChange,
-  agentLoading = false,
-  agentError = '',
-  onAgentRetry,
-  agentLocked = false,
-  agentLockedReason = '',
 }) {
   const [open, setOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -182,17 +202,9 @@ export function ModelPicker({
   const reasoningProgressOffset = 12 - (24 * reasoningRatio);
   const reasoningProgress = `calc(${reasoningRatio * 100}% ${reasoningProgressOffset < 0 ? '-' : '+'} ${Math.abs(reasoningProgressOffset)}px)`;
   const gaugeRotation = reasoningGaugeRotation(reasoningEffort, suppliedReasoningOptions);
-  const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : [];
-  const currentAgent = resolvedAgentOptions.find((o) => o.id === agentValue)
-    || (agentValue ? { id: agentValue, label: agentValue } : null)
-    || resolvedAgentOptions[0]
-    || null;
   const modelLabel = current ? current.label : (currentProvider ? (loading ? 'loading' : 'unavailable') : 'No model');
   const runConfigLabel = `${value || 'No model'} · ${currentReasoning?.label || 'Unspecified'}`;
-  const providerLabel = currentProvider ? currentProvider.label : 'Configure LLM';
-  const agentLabel = currentAgent ? currentAgent.label : 'Agent';
-  const agentChangeDisabled = disabled || readOnly || agentLoading || Boolean(agentError) || agentLocked;
-  const agentLockText = agentLockedReason || 'Cannot change agent for this conversation.';
+  const providerLabel = currentProvider ? currentProvider.label : 'No provider';
 
   React.useEffect(() => {
     if (!open) return undefined;
@@ -265,7 +277,8 @@ export function ModelPicker({
             onClick={() => { setMenuOpen(true); setActiveSubmenu(null); }}
             aria-label="Open agent and model settings"
           >
-            <span>{modelLabel}</span>
+            <ModelGlyph modelId={current?.id || value} className="model-picker-quick-glyph" />
+            <span className="model-picker-quick-model">{modelLabel}</span>
             <strong>{currentReasoning?.label || 'Thinking'}</strong>
             <span className="model-picker-subcaret" aria-hidden="true" />
           </button>
@@ -290,21 +303,7 @@ export function ModelPicker({
       {open && menuOpen ? (
         <div className={`model-picker-menu ${activeSubmenu ? 'has-flyout' : ''}`} role="menu">
           <div className="model-picker-submenu">
-            {currentAgent || agentLoading || agentError ? (
-              <button
-                type="button"
-                role="menuitem"
-                className={`model-picker-option model-picker-submenu-entry ${activeSubmenu === 'agent' ? 'is-active' : ''}`}
-                onMouseEnter={() => setActiveSubmenu('agent')}
-                onFocus={() => setActiveSubmenu('agent')}
-                onClick={() => setActiveSubmenu((currentOpen) => currentOpen === 'agent' ? null : 'agent')}
-                aria-haspopup="listbox"
-                aria-expanded={activeSubmenu === 'agent'}
-              >
-                <span className="model-picker-option-label">{agentLabel}</span>
-                <span className="model-picker-subcaret" aria-hidden="true" />
-              </button>
-            ) : null}
+            {/* Agent 选择已经拆到输入框左侧的 AgentPicker；这里只留 provider 和 model。 */}
             <button
               type="button"
               role="menuitem"
@@ -315,6 +314,7 @@ export function ModelPicker({
               aria-haspopup="listbox"
               aria-expanded={activeSubmenu === 'provider'}
             >
+              <ProviderGlyph option={currentProvider} />
               <span className="model-picker-option-label">{providerLabel}</span>
               <ProviderAuthBadge label={providerAuthBadge(currentProvider?.provider, currentProvider?.authMode)} />
               <span className="model-picker-subcaret" aria-hidden="true" />
@@ -329,49 +329,10 @@ export function ModelPicker({
               aria-haspopup="listbox"
               aria-expanded={activeSubmenu === 'model'}
             >
+              <ModelGlyph modelId={value} />
               <span className="model-picker-option-label">{modelLabel}</span>
               <span className="model-picker-subcaret" aria-hidden="true" />
             </button>
-            {activeSubmenu === 'agent' ? (
-              <div className="model-picker-flyout model-picker-flyout-agent" role="listbox" aria-label="agent">
-                <div className="model-picker-header">Agent</div>
-                <div className="model-picker-list">
-                  {agentLoading ? <LoadingState label="Loading agents" role="status" /> : agentError ? (
-                    <ErrorState variant="inline" detail={agentError} onRetry={onAgentRetry} />
-                  ) : resolvedAgentOptions.map((opt) => {
-                    const active = opt.id === currentAgent?.id;
-                    return (
-                      <PortalTooltip key={opt.id} text={agentLocked ? agentLockText : ''} position="above">
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={active}
-                          aria-disabled={agentChangeDisabled || opt.unavailable ? 'true' : undefined}
-                          disabled={agentChangeDisabled || opt.unavailable}
-                          className={`model-picker-option ${active ? 'is-active' : ''} ${agentChangeDisabled || opt.unavailable ? 'is-disabled' : ''}`}
-                          onClick={() => {
-                            if (agentChangeDisabled || opt.unavailable) return;
-                            onAgentChange?.(opt.id);
-                            // 选完 agent 只收起子菜单，运行配置面板留着，接着就能选 provider/model。
-                            setActiveSubmenu(null);
-                          }}
-                        >
-                          <span className="model-picker-option-label">{opt.label || opt.id}</span>
-                          {active ? (
-                            <span className="model-picker-check" aria-hidden="true">
-                              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
-                                   strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="3.2,8.6 6.6,12 13,4.8" />
-                              </svg>
-                            </span>
-                          ) : null}
-                        </button>
-                      </PortalTooltip>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
             {activeSubmenu === 'provider' ? (
               <div className="model-picker-flyout model-picker-flyout-provider" role="listbox" aria-label="provider">
                 <div className="model-picker-header">Provider</div>
@@ -391,6 +352,7 @@ export function ModelPicker({
                         aria-disabled={disabled || readOnly ? 'true' : undefined}
                         onClick={() => { if (disabled || readOnly) return; onProviderChange?.(opt.id); }}
                       >
+                        <ProviderGlyph option={opt} />
                         <span className="model-picker-option-label">{opt.label || opt.id}</span>
                         <ProviderAuthBadge label={providerAuthBadge(opt.provider, opt.authMode)} />
                         {active ? (
@@ -428,6 +390,7 @@ export function ModelPicker({
                         aria-disabled={disabled || readOnly || loading ? 'true' : undefined}
                         onClick={() => { if (disabled || readOnly || loading) return; onChange(opt.id); }}
                       >
+                        <ModelGlyph modelId={opt.id} />
                         <span className="model-picker-option-label">{opt.label}</span>
                         {active ? (
                           <span className="model-picker-check" aria-hidden="true">
@@ -443,6 +406,121 @@ export function ModelPicker({
                 </div>
               </div>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * 输入框左侧的 Agent 选择器，跟在审批权限图标右边。
+ * 按钮和每一行都用 Settings 里配好的头像（本地偏好，没配过就是默认企鹅）。
+ */
+export function AgentPicker({
+  value,
+  options = [],
+  onChange,
+  disabled = false,
+  readOnly = false,
+  loading = false,
+  error = '',
+  onRetry,
+  locked = false,
+  lockedReason = '',
+}) {
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef(null);
+  const resolvedOptions = Array.isArray(options) ? options : [];
+  const current = resolvedOptions.find((option) => option.id === value)
+    || (value ? { id: value, label: value } : null)
+    || resolvedOptions[0]
+    || null;
+  const changeDisabled = disabled || readOnly || loading || Boolean(error) || locked;
+  const lockText = lockedReason || 'Cannot change agent for this conversation.';
+  const label = current?.label || 'Agent';
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    function handleDocMouseDown(event) {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    }
+    function handleKey(event) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', handleDocMouseDown);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleDocMouseDown);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [open]);
+
+  function choose(option) {
+    if (changeDisabled || option.unavailable || option.id === current?.id) {
+      setOpen(false);
+      return;
+    }
+    onChange?.(option.id);
+    setOpen(false);
+  }
+
+  return (
+    <div className={`agent-picker ${open ? 'is-open' : ''} ${readOnly ? 'is-readonly' : ''}`} ref={rootRef}>
+      <PortalTooltip text={open ? '' : (locked ? lockText : label)} position="above">
+        <button
+          type="button"
+          className="agent-picker-trigger"
+          onClick={() => { if (!disabled) setOpen((next) => !next); }}
+          disabled={disabled}
+          aria-disabled={disabled ? 'true' : undefined}
+          aria-readonly={readOnly ? 'true' : undefined}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={`Agent, ${label}`}
+        >
+          {current ? <AgentAvatar agentId={current.id} size="list" /> : <span className="agent-picker-fallback" aria-hidden="true" />}
+        </button>
+      </PortalTooltip>
+      {open ? (
+        <div className="agent-picker-menu" role="listbox" aria-label="Agent">
+          <div className="agent-picker-header">Agent</div>
+          <div className="agent-picker-list">
+            {loading ? <LoadingState label="Loading agents" role="status" /> : error ? (
+              <ErrorState variant="inline" detail={error} onRetry={onRetry} />
+            ) : resolvedOptions.length === 0 ? (
+              <div className="agent-picker-empty">No agents</div>
+            ) : resolvedOptions.map((option) => {
+              const active = option.id === current?.id;
+              const blocked = changeDisabled || option.unavailable;
+              return (
+                <PortalTooltip key={option.id} text={locked ? lockText : ''} position="above">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    aria-disabled={blocked ? 'true' : undefined}
+                    disabled={blocked}
+                    className={`agent-picker-option ${active ? 'is-active' : ''} ${blocked ? 'is-disabled' : ''}`}
+                    onClick={() => choose(option)}
+                  >
+                    <AgentAvatar agentId={option.id} size="list" />
+                    <span className="agent-picker-option-copy">
+                      <span className="agent-picker-option-label">{option.label || option.id}</span>
+                      {option.description ? <span className="agent-picker-option-desc">{option.description}</span> : null}
+                    </span>
+                    {active ? (
+                      <span className="agent-picker-check" aria-hidden="true">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                             strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3.2,8.6 6.6,12 13,4.8" />
+                        </svg>
+                      </span>
+                    ) : null}
+                  </button>
+                </PortalTooltip>
+              );
+            })}
           </div>
         </div>
       ) : null}

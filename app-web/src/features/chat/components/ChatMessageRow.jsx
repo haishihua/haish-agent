@@ -3,13 +3,13 @@ import { UserRound, Split, Pencil, LoaderCircle } from 'lucide-react';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { EditMessage } from '../../../shared/ui/agent-elements/EditMessage.jsx';
+import { FileTree } from '../../../shared/ui/agent-elements/FileTree.jsx';
 import { QuoteBlock } from '../../../shared/ui/agent-elements/Quote.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { stripInjectedSkillInstruction } from '../model/chat-text.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
 import { localPathReference, splitPathReferenceDraft } from '../model/path-references.js';
-import { normalizeLocalImagePath } from '../../../shared/lib/local-image-path.js';
 import {
   formatElapsedDuration,
   formatMessageClock,
@@ -23,17 +23,18 @@ import {
 } from './ChatTimelineNodes.jsx';
 import { ChatImageThumb } from './ChatImageThumb.jsx';
 import { ImagePreviewOverlay } from '../../../shared/ui/ImagePreviewOverlay.jsx';
+import { AgentAvatar } from '../../agents/components/AgentAvatar.jsx';
 
 // 预览浮层已抽到 shared/ui，聊天附件、Markdown 插图、生图卡共用一份实现。
 export { ImagePreviewOverlay };
 
-function FinalAnswerMarkdown({ source, streaming, sourceMessageId, imagePathResolver, onPreviewImage, pathImages = true }) {
+function FinalAnswerMarkdown({ source, streaming, sourceMessageId }) {
   const text = String(source || '');
 
   if (!text || streaming) return null;
   return (
     <div className="chat-bubble-text" data-annotation-source={sourceMessageId}>
-      {Markdown ? <Markdown source={text} imagePathResolver={imagePathResolver} onPreviewImage={onPreviewImage} pathImages={pathImages} /> : text}
+      {Markdown ? <Markdown source={text} pathImages={false} /> : text}
     </div>
   );
 }
@@ -82,6 +83,18 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
   // view; the row keeps `data-trace-pending` so ChatPanel can page the missing
   // slices in, and the wait is no longer announced with a line of copy.
   const tracePending = isAgent && message.traceHydrated === false && !message.streaming;
+  // 本轮改动的工作区文件：数据来自工具结果（chat-rows.js 折叠），没有就不渲染，
+  // 所以没动手的对话和在跑的过程里都不会多出这张卡片。流式期间最终回答还没落到气泡里，
+  // 树跟着最终回答一起出现（失败的轮次也照旧显示：文件确实改过）。
+  const changedFiles = isAgent ? message.changedFiles : null;
+  const showChangedFiles = Boolean(
+    isAgent
+    && !message.streaming
+    && changedFiles
+    && changedFiles.count > 0
+    && Array.isArray(changedFiles.nodes)
+    && changedFiles.nodes.length > 0,
+  );
   const isUser = message.role === 'user';
   // 名字来自每轮任务的实际 Agent，而非会话当前默认选择。
   // AppShell 从任务/会话记录里解析；拿不到历史 agent 记录的旧任务才退回 Assistant。
@@ -130,8 +143,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
   const messageImages = Array.isArray(message.images)
     ? message.images.filter((img) => img && (img.previewUrl || img.path))
     : [];
-  // 最终回答的图片来自任务自己的结构化绑定，不从正文路径推断图片内容；
-  // 正文只负责给出结构化路径的插入位置。旧任务没有这个字段时保持原行为。
+  // 只展示本任务成功生图的结构化绑定，既不依赖正文路径，也不猜历史图片。
   const answerImages = React.useMemo(() => {
     if (!isAgent || !Array.isArray(message.answerImages)) return [];
     return message.answerImages
@@ -141,60 +153,6 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
         previewUrl: img.previewUrl || chatImagePreviewUrl(img, message.conversationId),
       }));
   }, [isAgent, message.answerImages, message.conversationId]);
-  // 结构化回答图片的路径是唯一可信的路径：最终回答正文里出现它时，Markdown
-  // 插件会把它就地替换成图片，不再额外追加到答案尾部。正文里其他图片路径
-  // （例如模型抄错的历史路径）不解析，保留原路径文本。
-  // 模型经常把长目录缩写成 `.../images/x.png` 再写进正文，而后端预览接口本来就
-  // 支持“丢前缀按尾部后缀在本会话根内找回”。所以这里不能只做精确相等：
-  // 结构化路径或它去掉前缀后的尾部后缀唯一命中时就放行，并且改用结构化路径
-  // 本身去请求预览（缩写路径直接请求会拼出错误候选）。0.0.32 的全放行会串图，
-  // 这里的门禁本身没错，错在只有精确相等一种匹配。
-  const answerImagePathBySuffix = React.useMemo(() => {
-    const map = new Map();
-    const add = (suffix, path) => {
-      map.set(suffix, map.has(suffix) && map.get(suffix) !== path ? '' : path);
-    };
-    for (const img of answerImages) {
-      const normalized = normalizeLocalImagePath(img.path);
-      if (!normalized) continue;
-      const segments = normalized.split('/').filter(Boolean);
-      // 从整条路径到“目录/文件名”两层，尾部越深越转异性越高；只剩纯文件名时
-      // 不同代同名图会冲突，不再作为匹配依据。
-      for (let depth = segments.length; depth >= 2; depth -= 1) {
-        add(segments.slice(segments.length - depth).join('/'), normalized);
-      }
-    }
-    return map;
-  }, [answerImages]);
-  const resolveAnswerImagePath = React.useCallback((raw) => {
-    const normalized = normalizeLocalImagePath(raw);
-    if (!normalized) return null;
-    if (answerImagePathBySuffix.get(normalized)) return answerImagePathBySuffix.get(normalized);
-    const segments = normalized.split('/').filter(Boolean);
-    for (let depth = segments.length; depth >= 2; depth -= 1) {
-      const candidate = answerImagePathBySuffix.get(segments.slice(segments.length - depth).join('/'));
-      if (candidate) return candidate;
-    }
-    return null;
-  }, [answerImagePathBySuffix]);
-
-  // Model answers report artifacts as local paths. The preview endpoint re-checks
-  // each path against this conversation's roots, so the resolver only has to build
-  // the URL. 作用域始终取这一行自己的 conversationId；拿不到时不发请求，回退原文。
-  const resolveImagePath = React.useMemo(() => {
-    const conversationId = String(message.conversationId || '');
-    return (path) => {
-      if (!conversationId) return null;
-      if (answerImages.length > 0) {
-        // 正文路径要么指向本轮结构化绑定的同一张图，要么不解析（保留原路径文本）。
-        // 命中时用结构化路径本身去拼预览，缩写尾部不再单独发请求。
-        const bound = resolveAnswerImagePath(path);
-        if (!bound) return null;
-        return chatImagePreviewUrl({ path: bound }, conversationId) || null;
-      }
-      return chatImagePreviewUrl({ path }, conversationId) || null;
-    };
-  }, [message.conversationId, answerImages.length, resolveAnswerImagePath]);
 
   const imageAttachments = messageImages.length > 0 ? (
         <div className="chat-message-images" aria-label="Attached images">
@@ -213,7 +171,9 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
           {!isUser ? (
             <div className="chat-bubble-meta">
               <span className="chat-bubble-meta-main">
-                <span className="chat-speaker-avatar" aria-hidden="true"><span className="ico-assistant-avatar" /></span>
+                <span className="chat-speaker-avatar agent-speaker-avatar" aria-hidden="true">
+                  <AgentAvatar agentId={message.agentId || ''} size="meta" />
+                </span>
                 <span>{agentName || 'Assistant'}</span>
               </span>
           {showTimelineToggle ? (
@@ -259,13 +219,30 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
             <ErrorState title="Task failed" detail={[message.text, actionError].filter(Boolean).join('\n')} retrying={actionBusy || retryPending}
               disabled={actionsDisabled} onRetry={onRetry ? () => perform(() => onRetry(message)) : undefined} />
           ) : isAgent ? (
-            <FinalAnswerMarkdown source={answerText} streaming={message.streaming} sourceMessageId={message.status === 'done' ? message.messageId : undefined} imagePathResolver={resolveImagePath} onPreviewImage={onPreviewImage} />
+            <FinalAnswerMarkdown source={answerText} streaming={message.streaming} sourceMessageId={message.status === 'done' ? message.messageId : undefined} />
           ) : bodyText ? (
             <div className="chat-bubble-text">
               {(isUser || message.markdown) && Markdown
                 ? <Markdown source={String(bodyText)} hardBreaks={isUser} />
                 : <span className="chat-stream-text">{bodyText}</span>}
             </div>
+          ) : null}
+          {isAgent && message.status === 'done' && !message.streaming && answerImages.length > 0 ? (
+            <div className="chat-message-images chat-answer-images" aria-label="Generated images">
+              {answerImages.map((img, idx) => (
+                <div key={img.image_id || img.path || idx} className="chat-message-image">
+                  <ChatImageThumb image={img} onPreview={onPreviewImage} />
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {showChangedFiles ? (
+            <FileTree
+              nodes={changedFiles.nodes}
+              visibleCount={changedFiles.nodes.length}
+              totalAdditions={changedFiles.totalAdditions}
+              totalDeletions={changedFiles.totalDeletions}
+            />
           ) : null}
           </div>
           {actionError && !(isAgent && message.status === 'failed') ? <ErrorState variant="inline" detail={actionError} /> : null}

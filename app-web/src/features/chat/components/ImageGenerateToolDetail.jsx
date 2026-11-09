@@ -26,6 +26,7 @@ const REVEALED_SOURCES = new Set();
 export function ImageGenerateToolDetail({ view, conversationId, onPreviewImage }) {
   const effectRef = useRef(null);
   const [imageReady, setImageReady] = useState(false);
+  const [imageSize, setImageSize] = useState(null);
   const [imageBroken, setImageBroken] = useState(false);
   const [fxFailed, setFxFailed] = useState(false);
   const [reducedMotion] = useState(prefersReducedMotion);
@@ -46,7 +47,8 @@ export function ImageGenerateToolDetail({ view, conversationId, onPreviewImage }
   const alt = String(view?.task || '').trim() || 'Generated image';
   const imagePath = String(view?.generatedImagePath || '');
   const previewUrl = chatImagePreviewUrl({ path: imagePath }, conversationId);
-  const showEffect = !failed && !imageBroken && (running || (Boolean(revealTarget) && !fxFailed));
+  const resultSize = imageSize?.src === previewUrl ? imageSize : null;
+  const showEffect = !failed && !imageBroken && (running || (Boolean(revealTarget) && Boolean(resultSize) && !fxFailed));
   const canPreview = Boolean(previewUrl) && !running && !failed && !imageBroken && typeof onPreviewImage === 'function';
   const openPreview = () => {
     if (!canPreview) return;
@@ -65,6 +67,7 @@ export function ImageGenerateToolDetail({ view, conversationId, onPreviewImage }
   useEffect(() => {
     if (!previewUrl) {
       setImageReady(false);
+      setImageSize(null);
       setImageBroken(false);
       return undefined;
     }
@@ -72,11 +75,17 @@ export function ImageGenerateToolDetail({ view, conversationId, onPreviewImage }
     setImageBroken(false);
     const cached = loadedChatImage(previewUrl);
     setImageReady(Boolean(cached));
-    if (cached) return undefined;
+    if (cached) {
+      setImageSize({ src: previewUrl, width: cached.image.naturalWidth, height: cached.image.naturalHeight });
+      return undefined;
+    }
     const image = new Image();
     const ready = () => {
       void rememberLoadedChatImage(previewUrl, image);
-      if (active) setImageReady(true);
+      if (active) {
+        setImageSize({ src: previewUrl, width: image.naturalWidth, height: image.naturalHeight });
+        setImageReady(true);
+      }
     };
     image.onload = ready;
     image.onerror = () => { if (active) setImageBroken(true); };
@@ -93,7 +102,7 @@ export function ImageGenerateToolDetail({ view, conversationId, onPreviewImage }
   // auto-reveal loop (which fades back to the shader) is not used. The retries
   // cover the code-split chunk arriving after the image did.
   useEffect(() => {
-    if (!revealTarget || !imageReady) return undefined;
+    if (!showEffect || running || !revealTarget || !imageReady) return undefined;
     const reveal = () => effectRef.current?.triggerReveal?.({ hold: 'manual' });
     reveal();
     const retries = [setTimeout(reveal, 250), setTimeout(reveal, 900)];
@@ -104,7 +113,7 @@ export function ImageGenerateToolDetail({ view, conversationId, onPreviewImage }
       retries.forEach(clearTimeout);
       clearTimeout(watchdog);
     };
-  }, [revealTarget, imageReady]);
+  }, [revealTarget, imageReady, showEffect, running]);
 
   return (
     <div className="aui-imagegen">
@@ -114,7 +123,7 @@ export function ImageGenerateToolDetail({ view, conversationId, onPreviewImage }
         <Suspense
           fallback={
             running
-              ? <div className="aui-imagegen-frame" aria-hidden="true" />
+              ? <div className="aui-imagegen-frame aui-imagegen-loader" aria-hidden="true" />
               : <img className="aui-imagegen-image" src={previewUrl} alt={alt} onError={markImageBroken} onClick={canPreview ? openPreview : undefined} data-previewable={canPreview ? 'true' : undefined} />
           }
         >
@@ -128,6 +137,11 @@ export function ImageGenerateToolDetail({ view, conversationId, onPreviewImage }
             cardBg={EFFECT_CARD_BG}
             images={running ? undefined : [revealTarget || previewUrl]}
             className="aui-imagegen-frame"
+            data-running={running ? 'true' : undefined}
+            style={resultSize && !running ? {
+              width: `min(100%, 420px, ${420 * resultSize.width / resultSize.height}px)`,
+              aspectRatio: `${resultSize.width} / ${resultSize.height}`,
+            } : undefined}
             onClick={canPreview ? openPreview : undefined}
             onKeyDown={canPreview ? (event) => {
               if (event.key !== 'Enter' && event.key !== ' ') return;

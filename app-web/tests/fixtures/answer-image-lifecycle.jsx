@@ -72,17 +72,19 @@ window.imageLifecycle = {
     earlyLoads: 0,
     assert() {
         const check = (value, label) => { if (!value) throw new Error(label); };
-        for (const id of ['cold', 'final', 'warm', 'change', 'slow']) {
+        for (const id of ['cold', 'warm', 'change', 'slow']) {
             const section = document.querySelector(`[data-case="${id}"]`);
             check(section.querySelector('.haish-markdown-image')?.dataset.phase === 'loaded', `${id}: not loaded`);
             check(section.querySelector('img')?.naturalWidth === 320, `${id}: not decoded`);
             check(!section.querySelector('.haish-markdown-image-frame,.haish-markdown-image-retry'), `${id}: still covered`);
         }
         check(document.querySelector('[data-case=final] [data-message-id=answer]'), 'not an ordinary answer row');
-        check(!history.some((state) => ['final', 'warm'].includes(state[0]) && ['loading', 'slow', 'failed'].includes(state[1])), 'warm answer replayed loading');
+        check(!history.some((state) => state[0] === 'warm' && ['loading', 'slow', 'failed'].includes(state[1])), 'warm answer replayed loading');
+        const finalImage = document.querySelector('[data-case=final] .chat-answer-images img');
+        check(finalImage?.complete && finalImage.naturalWidth === 320, 'final gallery image not loaded');
         for (const [id, color, suffix] of [['old-answer', [185, 28, 28], 'gen-old.png'], ['new-answer', [21, 128, 61], 'gen-new.png']]) {
             const section = document.querySelector(`[data-case="${id}"]`);
-            const image = section.querySelector('.haish-markdown-image-img');
+            const image = section.querySelector('.chat-answer-images img');
             check(image?.complete && image.naturalWidth === 320, `${id}: not decoded`);
             check(decodeURIComponent(image.currentSrc).includes(suffix), `${id}: wrong generation URL`);
             const canvas = document.createElement('canvas');
@@ -108,23 +110,23 @@ window.imageLifecycle = {
             ['forbidden', '/tmp/forbidden.png'],
             ['missing', '/tmp/missing.png'],
             ['server-error', '/tmp/server-error.png'],
-            ['answer-forbidden', '/tmp/forbidden.png'],
-            ['answer-missing', '/tmp/missing.png'],
-            ['answer-server-error', '/tmp/server-error.png'],
         ]) {
             check(pathIn(id) === path, `${id}: path fallback missing`);
             check(!document.querySelector(`[data-case="${id}"] .haish-markdown-image-retry`), `${id}: retry icon still shown`);
         }
         // 预检：解析不了的路径（终态 403/404）从第一帧起就不许出马赛克框，直接是路径文本。
-        for (const id of ['forbidden', 'missing', 'answer-forbidden', 'answer-missing']) {
+        for (const id of ['forbidden', 'missing']) {
             check(!document.querySelector(`[data-case="${id}"] .haish-markdown-image-frame`), `${id}: mosaic frame shown for unresolvable path`);
             check(!history.some((state) => state[0] === id && state[1]), `${id}: frame phase ever recorded`);
         }
         // 慢图仍要走马赛克加载框：预检只拦“解析不了”，不拦“慢”。探针返回 ok 后
         // 必须出现 loading/slow 框阶段，最终 loaded；不能因为预检把框并没了。
         check(history.some((state) => state[0] === 'slow' && (state[1] === 'loading' || state[1] === 'slow')), 'slow image skipped its loading frame');
-        check(!document.querySelector('[data-case=final] .haish-markdown-image-path'), 'final answer still shows the raw path');
-        check(!document.querySelector('.chat-answer-images'), 'answer images still appended at the tail');
+        for (const id of ['answer-forbidden', 'answer-missing', 'answer-server-error']) {
+            check(document.querySelector(`[data-case="${id}"] .chat-answer-images .is-unavailable`), `${id}: missing unavailable state`);
+        }
+        check(document.querySelector('[data-case=final] .chat-bubble-text')?.textContent.includes('gen-lifecycle.png'), 'final answer path did not remain text');
+        check(document.querySelector('[data-case=final] .chat-answer-images img'), 'answer image missing from gallery');
         const previewEntries = performance.getEntriesByType('resource')
             .map((entry) => entry.name)
             .filter((name) => name.includes('/messages/images/preview'));
