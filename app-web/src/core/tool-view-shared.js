@@ -1,6 +1,7 @@
 // 工具视图的共用底座：文本压缩、JSON 清洗、失败判定与标签文案。
 // 各工具类型（terminal / file / search / agent）都从这里取同一套原语。
 import { normalizeToolName } from './tool-names.js';
+import { getToolResponseTraceStatus } from './tool-trace-status.js';
 
 export const TOOL_BLOCK_LIMIT = 16000;
 const TOOL_SHELL_TAIL_LINES = 80;
@@ -174,15 +175,7 @@ export function toolPlainObject(value) {
 export function isToolFailure(item) {
   const status = String(item?.status || '').toLowerCase();
   if (status === 'failed' || status === 'error') return true;
-  const response = toolPlainObject(item?.toolResponse);
-  const responseStatus = String(response.status || '').toLowerCase();
-  const resultState = String(response.result_state || response.resultState || response.state || '').toLowerCase();
-  return Boolean(response.error)
-    || responseStatus === 'error'
-    || responseStatus === 'failed'
-    || resultState === 'blocked'
-    || resultState === 'failed'
-    || resultState === 'error';
+  return getToolResponseTraceStatus(toolPlainObject(item?.toolResponse)) === 'failed';
 }
 
 export function firstToolDisplayValue(...values) {

@@ -6,11 +6,10 @@ globalThis.window = { HAISH_API_BASE: 'http://fixture.invalid', location: { orig
 const { taskSummaryToRuntimeTask } = await import('../../../src/core/task-runtime.js');
 import { createDeployHandlers } from '../../../src/features/tasks/hooks/createDeployHandlers.js';
 
-const { nodeReasoningOptions } = await import('../../../src/features/workflow/model/node-reasoning-options.js');
+import { REASONING_EFFORT_OPTIONS } from '../../../src/core/run-catalog.js';
 test('every model exposes the same four runtime levels', () => {
-  for (const model of ['deepseek-chat', 'MiniMax-M2', 'glm-4.7', 'gpt-5', 'custom-model', '']) {
-    assert.deepEqual(nodeReasoningOptions(model).map((option) => option.id), ['low', 'medium', 'high', 'xhigh']);
-  }
+  // 档位不分模型：适配器负责映射到各家 wire 值，节点运行时只认这四个公共档位。
+  assert.deepEqual(REASONING_EFFORT_OPTIONS.map((option) => option.id), ['low', 'medium', 'high', 'xhigh']);
 });
 
 const workflow = { nodes: [{ id: 'worker', type: 'agent' }, { id: 'verifier', type: 'agent' }, { id: 'tool', type: 'tool' }] };

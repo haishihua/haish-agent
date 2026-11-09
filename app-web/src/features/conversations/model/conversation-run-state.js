@@ -54,6 +54,17 @@ export function isRunStateLive(state) {
  * 这一轮就算收工——否则过期的本地拷贝能让气泡一直转下去。
  * 落地判据就是 `isTaskSettled` 这一份，不在这里再列一遍状态串。
  */
+/**
+ * 一轮的收工判定要读两份权威快照：本地运行时拷贝 + 服务端目录拷贝。
+ * 渲染用的合并列表不能拿来判——它会用本地拷贝覆写目录写下的落地标记。
+ */
+export function conversationSettledTaskIds(taskOrder, tasksById, directoryTasks) {
+  return settledTaskIds([
+    ...(Array.isArray(taskOrder) ? taskOrder : []).map((taskId) => tasksById?.[taskId]),
+    ...(Array.isArray(directoryTasks) ? directoryTasks : []),
+  ]);
+}
+
 export function settledTaskIds(taskCopies) {
   const settled = new Set();
   for (const task of Array.isArray(taskCopies) ? taskCopies : []) {

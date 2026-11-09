@@ -191,26 +191,19 @@ export function createConversationRuntime(ctx) {
       return normalizeWorkspaceOrdering({ ...state, projects });
     });
   }
-  function setRuntimeActiveTaskId(value, explicit = null) {
-    const cid = activeRuntimeTargetConvId(explicit);
-    if (!cid) throw new Error('active task update requires a conversation id');
-    mutateRuntime(cid, (rt) => { rt.activeTaskId = value; });
+  // 单个 runtime 字段的写入：目标会话的解析与校验只在这里做一次，
+  // 以后要「写字段顺带做点什么」，改这里就够，不必记着补四个。
+  function runtimeFieldWriter(field, message) {
+    return function writeRuntimeField(value, explicit = null) {
+      const cid = activeRuntimeTargetConvId(explicit);
+      if (!cid) throw new Error(message);
+      mutateRuntime(cid, (rt) => { rt[field] = value; });
+    };
   }
-  function setRuntimeActiveRunId(value, explicit = null) {
-    const cid = activeRuntimeTargetConvId(explicit);
-    if (!cid) throw new Error('active run update requires a conversation id');
-    mutateRuntime(cid, (rt) => { rt.activeRunId = value; });
-  }
-  function setRuntimeFetchController(value, explicit = null) {
-    const cid = activeRuntimeTargetConvId(explicit);
-    if (!cid) throw new Error('runtime request update requires a conversation id');
-    mutateRuntime(cid, (rt) => { rt.fetchController = value; });
-  }
-  function setRuntimeAnswerBuffer(value, explicit = null) {
-    const cid = activeRuntimeTargetConvId(explicit);
-    if (!cid) throw new Error('answer buffer update requires a conversation id');
-    mutateRuntime(cid, (rt) => { rt.answerBuffer = value; });
-  }
+  const setRuntimeActiveTaskId = runtimeFieldWriter('activeTaskId', 'active task update requires a conversation id');
+  const setRuntimeActiveRunId = runtimeFieldWriter('activeRunId', 'active run update requires a conversation id');
+  const setRuntimeFetchController = runtimeFieldWriter('fetchController', 'runtime request update requires a conversation id');
+  const setRuntimeAnswerBuffer = runtimeFieldWriter('answerBuffer', 'answer buffer update requires a conversation id');
   function readRuntimeAnswerBuffer(explicit = null) {
     const cid = activeRuntimeTargetConvId(explicit);
     if (!cid) throw new Error('answer buffer read requires a conversation id');

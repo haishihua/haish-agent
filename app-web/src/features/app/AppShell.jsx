@@ -69,7 +69,7 @@ import { saveWorkspaceState, findConversationById, createEmptyWorkspaceState, is
 import { taskUpdatedTimestamp } from '../../core/task-record.js';;
 import {
   isRunStateLive,
-  settledTaskIds,
+  conversationSettledTaskIds,
   taskIdOf,
 } from '../conversations/model/conversation-run-state.js';
 import { useConversationRunState } from '../conversations/hooks/useConversationRunState.js';
@@ -734,10 +734,14 @@ export function AppShell() {
   // ——和侧边栏用的是同一个判据（model/conversation-run-state.js）。收工的判据只在这里
   // 算一次，行渲染读同一份；但手上那份拷贝可能还停在半路（正文、终态都没到），
   // 那是重建要管的事，见下面的过期拷贝重建。
-  const settledRuntimeTaskIds = useMemo(() => settledTaskIds([
-    ...taskRuntimeState.taskOrder.map((taskId) => taskRuntimeState.tasksById[taskId]),
-    ...(directoryConversation?.tasks || []),
-  ]), [directoryConversation, taskRuntimeState]);
+  const settledRuntimeTaskIds = useMemo(
+    () => conversationSettledTaskIds(
+      taskRuntimeState.taskOrder,
+      taskRuntimeState.tasksById,
+      directoryConversation?.tasks,
+    ),
+    [directoryConversation, taskRuntimeState],
+  );
   // 已经收工、可本地那份拷贝还停在半路的任务：它的正文永远不会自己出现（轮询只盯
   // 「列表说还活着」的任务），得重建。「这份拷贝停在半路了没」和「这一次重建哪几条」
   // 都在 tasks/model/task-runtime-paging.js，现算而不是 memo——重建过的名单在 ref 里，

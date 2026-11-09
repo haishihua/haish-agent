@@ -79,11 +79,8 @@ export function isTaskLive(task) {
 
 /** 通知用的终态归类：done / failed / cancelled，非终态返回空串。 */
 export function terminalNoticeStatus(status) {
-  const value = String(status || '').toLowerCase();
-  if (value === 'done' || value === 'completed' || value === 'success') return 'done';
-  if (value === 'failed' || value === 'error') return 'failed';
-  if (value === 'cancelled' || value === 'canceled' || value === 'aborted') return 'cancelled';
-  return '';
+  const value = normalizeTaskStatus(String(status || '').toLowerCase());
+  return isTerminalStatus(value) ? value : '';
 }
 
 // 会话当前处于哪一步；只描述「现在」，终态由 TERMINAL_STATUSES 表达。

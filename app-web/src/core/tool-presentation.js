@@ -1,5 +1,9 @@
 import { normalizeToolName } from './tool-names.js';
 
+// 卡片里正文与错误的分段长度：正文给足上下文，错误只留判断依据。
+const RESULT_TEXT_LIMIT = 8000;
+const RESULT_ERROR_LIMIT = 1000;
+
 function object(value) {
   if (typeof value === 'string') {
     try { return object(JSON.parse(value)); } catch { return {}; }
@@ -37,8 +41,8 @@ export function searchPresentation(item) {
   const data = object(response.data);
   return {
     query: String(input.query || object(response.subject).query || data.query || ''),
-    answer: typeof data.direct_answer === 'string' ? data.direct_answer.slice(0, 8000) : '',
-    error: String(object(response.error).message || response.summary || '').slice(0, 1000),
+    answer: typeof data.direct_answer === 'string' ? data.direct_answer.slice(0, RESULT_TEXT_LIMIT) : '',
+    error: String(object(response.error).message || response.summary || '').slice(0, RESULT_ERROR_LIMIT),
     results: (Array.isArray(data.results) ? data.results : []).filter((result) => result && typeof result === 'object').map((result) => {
       const url = safeToolUrl(result.url);
       return {
@@ -61,9 +65,9 @@ export function fetchPresentation(item) {
   return {
     kind: 'fetch',
     query: requestedUrl || url,
-    content: content.slice(0, 8000),
-    truncated: data.truncated === true || object(response.limits).truncated === true || content.length > 8000,
-    error: String(object(response.error).message || response.summary || '').slice(0, 1000),
+    content: content.slice(0, RESULT_TEXT_LIMIT),
+    truncated: data.truncated === true || object(response.limits).truncated === true || content.length > RESULT_TEXT_LIMIT,
+    error: String(object(response.error).message || response.summary || '').slice(0, RESULT_ERROR_LIMIT),
     results: data.final_url || data.title || content ? [{
       url,
       domain: url ? new URL(url).hostname.replace(/^www\./, '') : '',
@@ -74,8 +78,8 @@ export function fetchPresentation(item) {
 
 function browserText(value, tail = false) {
   const text = typeof value === 'string' ? value : '';
-  if (text.length <= 8000) return text;
-  return tail ? `… output truncated …\n${text.slice(-8000)}` : `${text.slice(0, 8000)}\n… truncated …`;
+  if (text.length <= RESULT_TEXT_LIMIT) return text;
+  return tail ? `… output truncated …\n${text.slice(-RESULT_TEXT_LIMIT)}` : `${text.slice(0, RESULT_TEXT_LIMIT)}\n… truncated …`;
 }
 
 function browserVisibleText(value, tail = false) {
