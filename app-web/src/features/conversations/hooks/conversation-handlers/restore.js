@@ -3,7 +3,6 @@
 //
 // 与 crud 的往返：handleSelectProject 在目标项目没有会话时要新建一个，而新建动作
 // 属于 crud，所以由主文件注入 addConversation（延迟绑定，调用时主文件已经装配完）。
-import { beginConversationLoadPerf, conversationLoadPerf } from '../../../../shared/lib/conversation-load-perf.js';
 
 export function createConversationRestoreHandlers(deps) {
   const {
@@ -94,7 +93,6 @@ export function createConversationRestoreHandlers(deps) {
     try {
       const detail = await fetchConversationDetail(targetConversationId, { signal: controller.signal });
       if (!isConversationActivationCurrent(activationSeq) || controller.signal.aborted) {
-        conversationLoadPerf('detail_discarded', targetConversationId, { aborted: controller.signal.aborted });
         if (controller.signal.aborted) reportInterruptedLoad();
         return null;
       }
@@ -182,7 +180,6 @@ export function createConversationRestoreHandlers(deps) {
         };
       }),
     });
-    beginConversationLoadPerf(nextConversationId, 'selection');
     const currentConversationId = conversationIdRef.current || conversationId;
     const controller = conversationDetailAbortRef?.current;
     const pendingRequest = controller && conversationLoadRequests.get(controller);
@@ -196,10 +193,6 @@ export function createConversationRestoreHandlers(deps) {
         || draftConversationRef.current?.id === nextConversationId
         || conversationRuntimeIsCurrent(nextConversationId));
     if (!nextConversationId || sameConversationReady) {
-      conversationLoadPerf('selection_no_request', nextConversationId, {
-        shell_seeded: Boolean(getRuntime?.(nextConversationId)?.shellSeeded),
-        pending_request: loadingThisConversation,
-      });
       setWorkspaceState((state) => normalizeWorkspaceOrdering(stampActivation(state)));
       return;
     }
