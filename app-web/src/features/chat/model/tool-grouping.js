@@ -1,6 +1,7 @@
 // 工具调用的分类、连续分组、分组摘要与活动判定。时间线只消费这里的结果。
 
 import { eventDeltaText } from '../../../core/message-text.js';
+import { subAgentEventText } from './progress-text.js';
 import { normalizeToolName } from '../../../core/tool-names.js';
 import { skillDisplayName } from '../../../core/runtime-events.js';
 import { skillTrigger } from '../../../core/tool-presentation.js';
@@ -286,6 +287,8 @@ export function timelineToolLabel(call, category) {
 function toolProgressSummary(event) {
   const toolName = chatTraceToolName(event.toolName);
   const message = String(event.message || '').trim();
+  const subAgentText = subAgentEventText(event, { message, toolName });
+  if (subAgentText !== null) return subAgentText;
   switch (event.type) {
     case 'tool_call_started':
       return event.inputSummary || message || `${toolName} requested.`;
@@ -294,17 +297,6 @@ function toolProgressSummary(event) {
     case 'tool_executor_failed':
     case 'tool_executor_error':
       return message || `${toolName} failed.`;
-    case 'sub_agent_started':
-      return message || `${event.role || 'Sub-agent'} started.`;
-    case 'sub_agent_finished':
-      return event.outputSummary || message || `${event.role || 'Sub-agent'} finished.`;
-    case 'sub_agent_progress_delta':
-    case 'sub_agent_answer_delta':
-      return message || event.delta || event.text || event.contentDelta || event.outputSummary || '';
-    case 'sub_agent_tool_call_started':
-      return message || `${event.role || 'Sub-agent'} requested ${toolName}.`;
-    case 'sub_agent_tool_call_completed':
-      return event.outputSummary || message || `${toolName} completed.`;
     default:
       return message || event.inputSummary || event.outputSummary || '';
   }

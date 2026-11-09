@@ -6,6 +6,7 @@ import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { normalizeWorkflowApprovalMarkdown } from '../../../core/workflow-approval-markdown.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
+import { CopyMessageButton } from '../../../shared/ui/CopyMessageButton.jsx';
 import { copyTextToClipboard } from '../../../shared/lib/clipboard.js';
 import { formatMessageClock } from '../../../shared/lib/message-format.js';
 import {
@@ -697,18 +698,7 @@ export function WorkflowApprovalInline({
       {(messageClock || copyText || onRetry) ? (
         <div className="chat-message-actions">
           {messageClock ? <span className="chat-bubble-clock">{messageClock}</span> : null}
-          {copyText ? (
-            <PortalTooltip text={copied ? 'Copied' : 'Copy'} position="above">
-              <button
-                type="button"
-                className={`chat-bubble-copy ${copied ? 'copied' : ''}`}
-                onClick={handleCopy}
-                aria-label={copied ? 'Copied' : 'Copy message'}
-              >
-                <span className="ico-copy-message" aria-hidden="true" />
-              </button>
-            </PortalTooltip>
-          ) : null}
+          {copyText ? <CopyMessageButton copied={copied} onCopy={handleCopy} /> : null}
           {onRetry ? (
             <PortalTooltip text="ReRun" position="above">
               <button type="button" className="chat-bubble-copy" onClick={onRetry} aria-label="ReRun this node">

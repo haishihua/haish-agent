@@ -1,8 +1,31 @@
 // 进度行与流式文本累积：任务流、恢复与重放共用同一套拼接规则。
 
+
+// sub_agent 事件的文案：进度行和工具卡进度必须同措辞，否则同一个事件会在
+// 时间线的两个位置显示不同说法。不是 sub_agent 事件时返回 null，调用方继续走自己的分支。
+export function subAgentEventText(event, { message, toolName }) {
+  switch (event.type) {
+    case 'sub_agent_started':
+      return message || `${event.role || 'Sub-agent'} started.`;
+    case 'sub_agent_finished':
+      return event.outputSummary || message || `${event.role || 'Sub-agent'} finished.`;
+    case 'sub_agent_progress_delta':
+    case 'sub_agent_answer_delta':
+      return message || event.delta || event.text || event.contentDelta || event.outputSummary || '';
+    case 'sub_agent_tool_call_started':
+      return message || `${event.role || 'Sub-agent'} requested ${toolName}.`;
+    case 'sub_agent_tool_call_completed':
+      return event.outputSummary || message || `${toolName} completed.`;
+    default:
+      return null;
+  }
+}
+
 export function getChatProgressLine(event) {
   const toolName = event.tool_name || event.toolName || 'tool';
   const message = String(event.message || '').trim();
+  const subAgentText = subAgentEventText(event, { message, toolName });
+  if (subAgentText !== null) return subAgentText;
   switch (event.type) {
     case 'run_started':
       return '';
@@ -22,17 +45,6 @@ export function getChatProgressLine(event) {
       return `Running ${toolName}.`;
     case 'tool_call_completed':
       return `${toolName} completed.`;
-    case 'sub_agent_started':
-      return message || `${event.role || 'Sub-agent'} started.`;
-    case 'sub_agent_finished':
-      return event.outputSummary || message || `${event.role || 'Sub-agent'} finished.`;
-    case 'sub_agent_progress_delta':
-    case 'sub_agent_answer_delta':
-      return message || event.delta || event.text || event.contentDelta || event.outputSummary || '';
-    case 'sub_agent_tool_call_started':
-      return message || `${event.role || 'Sub-agent'} requested ${toolName}.`;
-    case 'sub_agent_tool_call_completed':
-      return event.outputSummary || message || `${toolName} completed.`;
     default:
       return '';
   }

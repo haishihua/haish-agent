@@ -76,7 +76,10 @@ test('workflow approval nodes reuse the approval card without a duplicate assist
   assert.match(runtimeSource, /completedAt=\{completedAt\}/);
   assert.match(overlaySource, /const activeRequest = allowLiveRequest \? request : null/);
   assert.match(overlaySource, /className="chat-bubble-clock"/);
-  assert.match(overlaySource, /aria-label=\{copied \? 'Copied' : 'Copy message'\}/);
+  // 复制按钮与聊天消息行共用 shared/ui/CopyMessageButton.jsx：类名和 aria 只有一份。
+  assert.match(overlaySource, /<CopyMessageButton copied=\{copied\} onCopy=\{handleCopy\} \/>/);
+  const copyButtonSource = fs.readFileSync(new URL('../../src/shared/ui/CopyMessageButton.jsx', import.meta.url), 'utf8');
+  assert.match(copyButtonSource, /aria-label=\{copied \? 'Copied' : 'Copy message'\}/);
   assert.match(overlaySource, /aria-label="ReRun this node"/);
   assert.match(overlaySource, /!isWorkflowApprovalRequest\(request\)/);
   assert.match(overlaySource, /resolved=\{!activeRequest\}/);

@@ -8,6 +8,7 @@ import { QuoteBlock } from '../../../shared/ui/agent-elements/Quote.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { stripInjectedSkillInstruction } from '../../../core/message-text.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
+import { CopyMessageButton } from '../../../shared/ui/CopyMessageButton.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
 import { localPathReference, splitPathReferenceDraft } from '../model/path-references.js';
 import {
@@ -246,18 +247,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
       {(messageClock || copyText || onRetry || onFork || onEdit) && !editing ? (
         <div className="chat-message-actions">
           {isUser && messageClock ? <span className="chat-bubble-clock">{messageClock}</span> : null}
-          {copyText ? (
-            <PortalTooltip text={copied ? 'Copied' : 'Copy'} position="above">
-              <button
-                type="button"
-                className={`chat-bubble-copy ${copied ? 'copied' : ''}`}
-                onClick={handleCopy}
-                aria-label={copied ? 'Copied' : 'Copy message'}
-              >
-                <span className="ico-copy-message" aria-hidden="true" />
-              </button>
-            </PortalTooltip>
-          ) : null}
+          {copyText ? <CopyMessageButton copied={copied} onCopy={handleCopy} /> : null}
           {onFork ? <PortalTooltip text="Branch into new chat" position="above"><button type="button" className="chat-bubble-copy message-turn-action" aria-label="Branch into new chat" disabled={actionBusy} onClick={() => perform(() => onFork(message))}>{actionBusy ? <LoaderCircle size={14} /> : <Split size={16} strokeWidth={1.75} style={{ transform: 'rotate(90deg)' }} />}</button></PortalTooltip> : null}
           {onEdit ? <PortalTooltip text="Edit message" position="above"><button type="button" className="chat-bubble-copy message-turn-action" aria-label="Edit message" disabled={actionsDisabled || actionBusy} onClick={() => {
             // The editor is a fixed width (edit-message.css, same width as the
