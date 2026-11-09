@@ -11,7 +11,7 @@ test('macOS release keeps the four approved Electron locales', () => {
 });
 
 test('runtime artwork uses lossless WebP copies while PNG originals remain available', () => {
-  const cards = read('app-web/src/features/chat/components/PenguinCards.jsx');
+  const cards = read('app-web/tests/fixtures/PenguinCards.jsx');
   for (const name of ['hug', 'relax', 'sleepy']) {
     for (const layer of ['card', 'plate', 'smooth']) {
       const base = `app-web/assets/ui/empty-state/penguin-${name}-${layer}`;

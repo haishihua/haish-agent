@@ -33,7 +33,6 @@ test('the reduced-motion query is written down exactly once', () => {
 test('every motion guard reads the shared query instead of its own copy', () => {
   const consumers = [
     'features/chat/components/ActivityOrb.jsx',
-    'features/chat/components/PenguinCards.jsx',
     'features/app/components/TopBar.jsx',
     'shared/ui/MotionEffects.jsx',
   ];

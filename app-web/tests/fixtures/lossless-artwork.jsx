@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { PenguinCards } from '../../src/features/chat/components/PenguinCards.jsx';
+import { PenguinCards } from './PenguinCards.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import '../../styles.css';
 

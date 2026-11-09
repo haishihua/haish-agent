@@ -70,7 +70,7 @@ test('quoted comments live inside the composer box', () => {
 });
 
 test('unused penguin cards preserve their interaction and artwork', () => {
-  const cards = fs.readFileSync(new URL('../../src/features/chat/components/PenguinCards.jsx', import.meta.url), 'utf8');
+  const cards = fs.readFileSync(new URL('../fixtures/PenguinCards.jsx', import.meta.url), 'utf8');
   assert.match(cards, /id: 'secondary', name: 'relax'/);
   assert.match(cards, /<PortalTooltip text="Click to play" position="above">/);
   assert.doesNotMatch(cards, /chat-empty-penguin-hint|MousePointer2/);
@@ -83,7 +83,7 @@ test('unused penguin cards preserve their interaction and artwork', () => {
   assert.doesNotMatch(greetingOriginal, /opacity:\s*0|visibility:\s*hidden/);
   assert.match(cards, /src=\{card\.plate\}/);
   for (const name of ['relax', 'sleepy', 'hug']) {
-    assert.ok(cards.includes(`import ${name}Plate from '../../../../assets/ui/empty-state/penguin-${name}-plate.webp'`));
+    assert.ok(cards.includes(`import ${name}Plate from '../../../assets/ui/empty-state/penguin-${name}-plate.webp'`));
   }
   assert.match(cards, /window\.setTimeout\(\(\) => activate\(card\), 180\)/);
   assert.match(cards, /onPointerLeave=\{cancel\}/);

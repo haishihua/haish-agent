@@ -1,12 +1,12 @@
 import React from 'react';
-import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
-import { prefersReducedMotion } from '../../../shared/lib/reduced-motion.js';
-import relax from '../../../../assets/ui/empty-state/penguin-relax-smooth.webp';
-import sleepy from '../../../../assets/ui/empty-state/penguin-sleepy-smooth.webp';
-import hug from '../../../../assets/ui/empty-state/penguin-hug-smooth.webp';
-import relaxPlate from '../../../../assets/ui/empty-state/penguin-relax-plate.webp';
-import sleepyPlate from '../../../../assets/ui/empty-state/penguin-sleepy-plate.webp';
-import hugPlate from '../../../../assets/ui/empty-state/penguin-hug-plate.webp';
+import { PortalTooltip } from '../../src/shared/ui/PortalTooltip.jsx';
+import { prefersReducedMotion } from '../../src/shared/lib/reduced-motion.js';
+import relax from '../../../assets/ui/empty-state/penguin-relax-smooth.webp';
+import sleepy from '../../../assets/ui/empty-state/penguin-sleepy-smooth.webp';
+import hug from '../../../assets/ui/empty-state/penguin-hug-smooth.webp';
+import relaxPlate from '../../../assets/ui/empty-state/penguin-relax-plate.webp';
+import sleepyPlate from '../../../assets/ui/empty-state/penguin-sleepy-plate.webp';
+import hugPlate from '../../../assets/ui/empty-state/penguin-hug-plate.webp';
 
 // ponytail: these black/cream assets use green solely as a removable backdrop.
 const CARDS = [
