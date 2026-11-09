@@ -6,7 +6,7 @@ import {
   AGENT_AVATAR_CATEGORIES,
   agentAvatarsInCategory,
   agentAvatarImageSrc,
-} from '../../agents/model/agent-avatars.js';
+} from '../../../shared/lib/agent-avatars.js';
 
 /**
  * 头像选择弹窗：只允许从素材库里挑，不接受自定义上传。

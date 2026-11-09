@@ -8,7 +8,7 @@ import firecrawlLogo from '../../../../assets/ui/icons/firecrawl.svg?inline';
 import qdrantLogo from '../../../../assets/ui/icons/qdrant.svg?inline';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
-import { AgentAvatar } from '../../agents/components/AgentAvatar.jsx';
+import { AgentAvatar } from '../../../shared/ui/AgentAvatar.jsx';
 import { BrandLogoIcon } from '../../../shared/ui/ProviderIcon.jsx';
 
 const { useState, useEffect, useRef } = React;

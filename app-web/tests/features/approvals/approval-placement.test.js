@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { placeToolApprovals } from '../../../src/features/approvals/model/approval-placement.js';
+import { placeToolApprovals } from '../../../src/features/chat/model/approval-placement.js';
 import { buildToolView } from '../../../src/features/chat/model/tool-view.js';
 
 const tool = { kind: 'tool', id: 'write-1', status: 'running', toolName: 'write_file', toolInput: { path: 'example.txt' } };

@@ -22,7 +22,7 @@ import {
   ChatTimelineElapsedPill,
 } from './ChatTimelineNodes.jsx';
 import { ChatImageThumb } from './ChatImageThumb.jsx';
-import { AgentAvatar } from '../../agents/components/AgentAvatar.jsx';
+import { AgentAvatar } from '../../../shared/ui/AgentAvatar.jsx';
 
 function FinalAnswerMarkdown({ source, streaming, sourceMessageId }) {
   const text = String(source || '');

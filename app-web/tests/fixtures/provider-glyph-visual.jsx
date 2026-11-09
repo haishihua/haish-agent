@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { AgentPicker, ModelPicker } from '../../src/features/chat/components/ModelPickers.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
-import { saveAgentAvatar } from '../../src/features/agents/model/agent-avatars.js';
+import { saveAgentAvatar } from '../../src/shared/lib/agent-avatars.js';
 import '../../styles.css';
 
 const agents = [

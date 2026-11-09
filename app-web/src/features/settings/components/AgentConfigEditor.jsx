@@ -15,8 +15,8 @@ import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import { mcpToolPickerServers, mcpToolSelected, toggleMcpToolSelection } from '../model/mcp-tool-selection.js';
-import { AgentAvatar } from '../../agents/components/AgentAvatar.jsx';
-import { useAgentAvatars } from '../../agents/hooks/useAgentAvatars.js';
+import { AgentAvatar } from '../../../shared/ui/AgentAvatar.jsx';
+import { useAgentAvatars } from '../../../shared/lib/useAgentAvatars.js';
 import { AgentAvatarPicker } from './AgentAvatarPicker.jsx';
 import {
   Boxes,

@@ -8,7 +8,7 @@ import { REASONING_EFFORT_OPTIONS } from '../../../core/run-catalog.js';
 import { reasoningGaugeRotation } from '../model/reasoning-gauge.js';
 import { providerAuthBadge } from '../../../core/provider-catalog.js';
 import { ProviderAuthBadge } from '../../../shared/ui/ProviderAuthBadge.jsx';
-import { AgentAvatar } from '../../agents/components/AgentAvatar.jsx';
+import { AgentAvatar } from '../../../shared/ui/AgentAvatar.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { ProviderBrandMark } from '../../../shared/ui/ProviderIcon.jsx';
 import { providerBrandForModel } from '../../../shared/lib/provider-brand.js';

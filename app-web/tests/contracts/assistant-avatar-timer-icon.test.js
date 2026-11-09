@@ -9,7 +9,7 @@ const timeline = readFileSync(new URL('../../src/features/chat/components/ChatTi
 const chatCss = readFileSync(new URL('../../styles/chat.css', import.meta.url), 'utf8');
 
 test('the assistant bubble wears the executing agent avatar', () => {
-  assert.match(row, /import \{ AgentAvatar \} from '\.\.\/\.\.\/agents\/components\/AgentAvatar\.jsx';/);
+  assert.match(row, /import \{ AgentAvatar \} from '\.\.\/\.\.\/\.\.\/shared\/ui\/AgentAvatar\.jsx';/);
   assert.match(row, /<AgentAvatar agentId=\{message\.agentId \|\| ''\} size="meta" \/>/);
   // 旧的企鹅 mask 图标不能留在助手气泡里。
   assert.doesNotMatch(row, /ico-assistant-avatar/);

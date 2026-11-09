@@ -9,7 +9,7 @@ import {
   agentAvatarIdFor,
   agentAvatarImageSrc,
   agentAvatarsInCategory,
-} from '../../../src/features/agents/model/agent-avatars.js';
+} from '../../../src/shared/lib/agent-avatars.js';
 
 const avatarDir = new URL('../../../assets/ui/agent-avatars/', import.meta.url);
 const files = readdirSync(avatarDir)
@@ -28,7 +28,7 @@ const picker = readFileSync(
   'utf8',
 );
 const avatar = readFileSync(
-  new URL('../../../src/features/agents/components/AgentAvatar.jsx', import.meta.url),
+  new URL('../../../src/shared/ui/AgentAvatar.jsx', import.meta.url),
   'utf8',
 );
 const css = readFileSync(new URL('../../../src/features/settings/settings.css', import.meta.url), 'utf8');

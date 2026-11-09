@@ -1,6 +1,6 @@
 import { Pencil } from 'lucide-react';
-import { useAgentAvatars } from '../hooks/useAgentAvatars.js';
-import { agentAvatarById, agentAvatarIdFor, agentAvatarImageSrc } from '../model/agent-avatars.js';
+import { useAgentAvatars } from '../lib/useAgentAvatars.js';
+import { agentAvatarById, agentAvatarIdFor, agentAvatarImageSrc } from '../lib/agent-avatars.js';
 
 /**
  * Agent 头像。素材是透明黑线稿，米色底由 CSS 提供（见 settings.css 的 .agent-avatar-frame），
