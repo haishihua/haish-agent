@@ -75,12 +75,24 @@ npm run dev
 The main process then `spawn`s the Python backend on a random `127.0.0.1` port and
 proxies all `haish://app/api/*` requests to it.
 
+On macOS the dev window carries the「Haish Dev」identity instead of Electron's:
+`predev` clones `node_modules/electron/dist/Electron.app` into `Haish Dev.app`
+(bundle name, executable name, icon, ad-hoc re-sign), points
+`node_modules/electron/path.txt` at it, and keeps its own `Haish (Dev)` userData
+so it never fights the installed `/Applications/Haish.app` for the single-instance
+lock. The `Haish Dev.app` under `node_modules` is generated state: any
+`npm install` drops it, and the next `npm run dev` rebuilds it. Its
+`Contents/Resources/app` is a symlink back to this checkout, so double-clicking
+the bundle (or its Dock pin) starts the app instead of Electron's welcome page.
+
 Useful scripts:
 
 | Script | Purpose |
 | --- | --- |
 | `npm run build:web` | One-shot Vite production build for `app-web` |
 | `npm run dev:web` | Vite watch rebuild into `app-web/dist` |
+| `npm run prepare:dev-bundle` | Rebuild the「Haish Dev」dev bundle (also runs from `predev`) |
+| `npm run install:dev-launcher` | Create `~/Applications/Haish Dev.app`, a click-to-run dev shortcut for this checkout |
 | `npm run typecheck` | TypeScript check (Electron + shared) |
 | `npm run lint` | ESLint for app-web + Electron sources |
 

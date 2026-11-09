@@ -90,7 +90,12 @@ const webRoot = () => {
 const appIconPngPath = () => path.join(
   app.getAppPath(), 'app-web', app.isPackaged ? 'dist' : '.', 'assets', 'ui', 'penguin_logo_user.png',
 );
-const devMode = process.env.HAISH_DEV_MODE === '1' || !app.isPackaged;
+// 改名成「Haish Dev.app」后 Electron 会把这个包当成已安装应用（isPackaged=true），
+// 但它的二进制仍躺在 node_modules/electron 下 —— 与 app-updater 里的判据一致，
+// 这类包一律按 dev 处理：否则 userData 会落回已安装应用的 Haish 目录，
+// 单实例锁跟 /Applications/Haish.app 撞车，进程会静默退出。
+const isDevBinary = process.execPath.split(path.sep).join('/').includes('/node_modules/electron/');
+const devMode = process.env.HAISH_DEV_MODE === '1' || !app.isPackaged || isDevBinary;
 const runtimePaths = () => ({
   userDataPath: app.getPath('userData'),
   resourcesPath: process.resourcesPath,
