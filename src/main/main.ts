@@ -360,18 +360,11 @@ async function resolveInsideProject(projectId: string, relativePath = ''): Promi
   return candidate;
 }
 
-ipcMain.handle('project:pick-directory', async (event): Promise<DirectoryPickResult> => {
-  // 给对话框绑父窗口：macOS 上无父窗口的 showOpenDialog 在应用失焦/后台时
-  // 可能迟迟不 resolve，而这个 handler 一旦不返回，渲染进程拿到的就是
-  // 「reply was never sent」这种看不出所以然的 IPC 错误。
-  const parent = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getAllWindows()[0];
-  const options = {
+ipcMain.handle('project:pick-directory', async (): Promise<DirectoryPickResult> => {
+  const result = await dialog.showOpenDialog({
     title: 'Add Project to Haish',
-    properties: ['openDirectory', 'createDirectory'] as const,
-  };
-  const result = parent
-    ? await dialog.showOpenDialog(parent, { ...options, properties: [...options.properties] })
-    : await dialog.showOpenDialog({ ...options, properties: [...options.properties] });
+    properties: ['openDirectory', 'createDirectory'],
+  });
   if (result.canceled || !result.filePaths[0]) {
     return { canceled: true };
   }
