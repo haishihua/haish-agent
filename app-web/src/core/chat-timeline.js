@@ -119,6 +119,33 @@ function cacheTimeline(task, status, timeline, subAgentState) {
   return timeline;
 }
 
+// 工具卡片的形状只在这里定义：事件流那条路和 toolCalls 兜底那条路都走它。
+// 以前两处各写一份，加一个字段总要记得改两遍。
+function buildToolItem(call, finalStatus, id) {
+  const category = categorizeToolCall(call);
+  const skill = skillTrigger(call);
+  return {
+    kind: 'tool',
+    id,
+    callId: call.callId || '',
+    category,
+    label: timelineToolLabel(call, category),
+    toolName: call.toolName || '',
+    skillName: skill?.name || '',
+    skillPath: skill?.path || '',
+    inputSummary: call.inputSummary || '',
+    outputSummary: call.outputSummary || '',
+    toolInput: call.toolInput || null,
+    toolResponse: call.toolResponse || null,
+    toolOutput: call.toolOutput || '',
+    message: call.message || '',
+    executor: call.toolGroup || '',
+    status: getToolTraceStatus(call.state, finalStatus),
+    children: [],
+    progressEvents: [],
+  };
+}
+
 export function buildChatTimeline(task, taskStatus) {
   const conversationId = task?.conversationId || task?.conversation_id || '';
   const finalStatus = normalizeTaskStatus(taskStatus || task?.status);
@@ -463,28 +490,7 @@ export function buildChatTimeline(task, taskStatus) {
         message: event.message || '',
         state: 'requested',
       };
-      const category = categorizeToolCall(call);
-      const label = timelineToolLabel(call, category);
-      const toolItem = {
-        kind: 'tool',
-        id: callId || `tool-${seenToolIds.size}`,
-        callId,
-        category,
-        label,
-        toolName: call.toolName || '',
-        skillName: skillTrigger(call)?.name || '',
-        skillPath: skillTrigger(call)?.path || '',
-        inputSummary: call.inputSummary || '',
-        outputSummary: call.outputSummary || '',
-        toolInput: call.toolInput || null,
-        toolResponse: call.toolResponse || null,
-        toolOutput: call.toolOutput || '',
-        message: call.message || '',
-        executor: call.toolGroup || '',
-        status: getToolTraceStatus(call.state, finalStatus),
-        children: [],
-        progressEvents: [],
-      };
+      const toolItem = buildToolItem(call, finalStatus, callId || `tool-${seenToolIds.size}`);
       if (eventToolName === 'exec_command' || eventToolName === 'write_stdin') {
         mergeTerminalResult(toolItem, call, call.state || 'requested', true);
       }
@@ -493,7 +499,7 @@ export function buildChatTimeline(task, taskStatus) {
         seenToolIds.add(callId);
         toolItemsByCallId.set(callId, toolItem);
       }
-      if (category === 'skill') {
+      if (toolItem.category === 'skill') {
         items.push(toolItem);
         currentSkillItem = canNestToolChildren(toolItem) ? toolItem : null;
       } else if (canNestToolChildren(currentSkillItem)) {
@@ -578,33 +584,12 @@ export function buildChatTimeline(task, taskStatus) {
       seenToolIds.add(call.callId);
       continue;
     }
-    const category = categorizeToolCall(call);
-    const label = timelineToolLabel(call, category);
-    const toolItem = {
-      kind: 'tool',
-      id: call.callId,
-      callId: call.callId,
-      category,
-      label,
-      toolName: call.toolName || '',
-      skillName: skillTrigger(call)?.name || '',
-      skillPath: skillTrigger(call)?.path || '',
-      inputSummary: call.inputSummary || '',
-      outputSummary: call.outputSummary || '',
-      toolInput: call.toolInput || null,
-      toolResponse: call.toolResponse || null,
-      toolOutput: call.toolOutput || '',
-      message: call.message || '',
-      executor: call.toolGroup || '',
-      status: getToolTraceStatus(call.state, finalStatus),
-      children: [],
-      progressEvents: [],
-    };
+    const toolItem = buildToolItem(call, finalStatus, call.callId);
     if (callToolName === 'exec_command' || callToolName === 'write_stdin') {
       mergeTerminalResult(toolItem, call, call.state || 'requested');
     }
     seenToolIds.add(call.callId);
-    if (category === 'skill') {
+    if (toolItem.category === 'skill') {
       items.push(toolItem);
       currentSkillItem = canNestToolChildren(toolItem) ? toolItem : null;
     } else if (canNestToolChildren(currentSkillItem)) {
