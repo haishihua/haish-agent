@@ -2,7 +2,7 @@ import React from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import { REASONING_EFFORT_OPTIONS, normalizeReasoningEffort } from '../../../core/run-catalog.js';
-import { migrateExecutionRoute, savedExecutionConfigId } from '../../settings/model/execution-identity.js';
+import { migrateExecutionRoute, savedExecutionConfigId } from '../../../core/execution-identity.js';
 
 const PROVIDER_MODELS_STORAGE_KEY = 'haish_provider_models_v1';
 export const PROVIDER_MODELS_TIMEOUT_MS = 15_000;

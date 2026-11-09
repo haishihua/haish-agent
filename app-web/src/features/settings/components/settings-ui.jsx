@@ -1,14 +1,4 @@
 import React from 'react';
-import anthropicLogo from '@lobehub/icons-static-svg/icons/anthropic.svg?inline';
-import deepseekLogo from '@lobehub/icons-static-svg/icons/deepseek.svg?inline';
-import geminiLogo from '@lobehub/icons-static-svg/icons/gemini.svg?inline';
-import minimaxLogo from '@lobehub/icons-static-svg/icons/minimax.svg?inline';
-import moonshotLogo from '@lobehub/icons-static-svg/icons/moonshot.svg?inline';
-import ollamaLogo from '@lobehub/icons-static-svg/icons/ollama.svg?inline';
-import openaiLogo from '@lobehub/icons-static-svg/icons/openai.svg?inline';
-import qwenLogo from '@lobehub/icons-static-svg/icons/qwen.svg?inline';
-import xaiLogo from '@lobehub/icons-static-svg/icons/xai.svg?inline';
-import zhipuLogo from '@lobehub/icons-static-svg/icons/zhipu.svg?inline';
 import tavilyLogo from '@lobehub/icons-static-svg/icons/tavily.svg?inline';
 import exaLogo from '@lobehub/icons-static-svg/icons/exa.svg?inline';
 import serpapiLogo from '../../../../assets/ui/icons/serpapi.svg?inline';
@@ -19,7 +9,7 @@ import qdrantLogo from '../../../../assets/ui/icons/qdrant.svg?inline';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { AgentAvatar } from '../../agents/components/AgentAvatar.jsx';
-import { providerLogoSize } from '../model/provider-logo-metrics.js';
+import { BrandLogoIcon } from '../../../shared/ui/ProviderIcon.jsx';
 
 const { useState, useEffect, useRef } = React;
 
@@ -33,19 +23,6 @@ export const SETTINGS_SUBTAB_ICONS = {
   'tools-web': 'globe',
   'tools-browser': 'browser',
 };
-const PROVIDER_LOGOS = {
-  openai: openaiLogo,
-  xai: xaiLogo,
-  anthropic: anthropicLogo,
-  gemini: geminiLogo,
-  deepseek: deepseekLogo,
-  dashscope: qwenLogo,
-  moonshot: moonshotLogo,
-  minimax: minimaxLogo,
-  zhipu: zhipuLogo,
-  ollama: ollamaLogo,
-};
-
 const CONNECTION_BRAND_LOGOS = {
   'memory-qdrant': qdrantLogo,
   qdrant: qdrantLogo,
@@ -66,27 +43,6 @@ export function WebSearchProviderIcon({ provider, label }) {
   if (logo) return <BrandLogoIcon logo={logo} scaleKey={provider} />;
   const initial = String(label || provider || '?').trim().slice(0, 1).toUpperCase();
   return <span className="settings-provider-icon settings-provider-initials" aria-hidden="true">{initial}</span>;
-}
-
-export function BrandLogoIcon({ logo, scaleKey, opticalSize }) {
-  if (!logo) return null;
-  const size = providerLogoSize(scaleKey, opticalSize);
-  return (
-    <span className="settings-provider-icon" aria-hidden="true">
-      <span className="settings-provider-logo" style={{ '--settings-provider-logo': `url("${logo}")`, ...(size ? { width: size, height: size } : {}) }} />
-    </span>
-  );
-}
-
-export function ProviderIcon({ provider, opticalSize }) {
-  if (provider === 'custom') {
-    return (
-      <span className="settings-provider-icon settings-provider-icon-custom" aria-hidden="true">
-        <AppIcon name="box" size={22} className="settings-provider-glyph" />
-      </span>
-    );
-  }
-  return <BrandLogoIcon logo={PROVIDER_LOGOS[provider]} scaleKey={provider} opticalSize={opticalSize} />;
 }
 
 export function ConnectionBrandIcon({ itemId, title }) {

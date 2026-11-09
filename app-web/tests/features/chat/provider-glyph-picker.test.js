@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { providerLogoSize } from '../../../src/features/settings/model/provider-logo-metrics.js';
+import { providerLogoSize } from '../../../src/shared/lib/provider-logo-metrics.js';
 
 const picker = readFileSync(new URL('../../../src/features/chat/components/ModelPickers.jsx', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../../../styles/delegation.css', import.meta.url), 'utf8');

@@ -9,16 +9,8 @@ import {
   normalizeQdrantDraft,
 } from './settings-records.js';
 import { settingsSectionMeta } from './settings-navigation.js';
-import {
-  getLlmProvider,
-  normalizeLlmProviderId,
-  modelChoicesFor,
-  uniqueModelChoices,
-  configuredModelOptions,
-  customModelIds,
-  runtimeProviderLabel,
-  providerAuthBadge,
-} from './llm-settings.js';
+import { getLlmProvider, normalizeLlmProviderId, providerAuthBadge } from '../../../core/provider-catalog.js';
+import { modelChoicesFor, uniqueModelChoices, configuredModelOptions, customModelIds, runtimeProviderLabel } from './llm-settings.js';
 import { DEFAULT_REASONING_EFFORT } from '../../../core/run-catalog.js';
 import { agentListItems } from '../../agents/model/agent-settings.js';
 import {

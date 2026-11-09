@@ -4,8 +4,8 @@ import { OpenAILogo, ClaudeLogo, GeminiLogo } from '../../../shared/ui/settings-
 import deepseek from '@lobehub/icons-static-svg/icons/deepseek-color.svg?inline';
 import zhipu from '@lobehub/icons-static-svg/icons/zhipu-color.svg?inline';
 import siliconflow from '@lobehub/icons-static-svg/icons/siliconcloud-color.svg?inline';
-import { ProviderIcon as LegacyProviderIcon } from './settings-ui.jsx';
-import { providerLogoSize } from '../model/provider-logo-metrics.js';
+import { ProviderIcon as LegacyProviderIcon } from '../../../shared/ui/ProviderIcon.jsx';
+import { providerLogoSize } from '../../../shared/lib/provider-logo-metrics.js';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import { Input } from '../../../shared/ui/settings-elements/ui/input.tsx';

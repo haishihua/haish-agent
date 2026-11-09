@@ -7,7 +7,7 @@ import {
   OPTICAL_LOGO_SIZE,
   PROVIDER_LOGO_INK,
   providerLogoSize,
-} from '../../../src/features/settings/model/provider-logo-metrics.js';
+} from '../../../src/shared/lib/provider-logo-metrics.js';
 
 const root = path.resolve(import.meta.dirname, '../../../..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
@@ -34,7 +34,7 @@ test('unknown providers keep their native size', () => {
 
 test('both logo renderers size the mark through its box, not a transform', () => {
   // 列表的媒体格是 overflow:hidden，transform 放大的部分会被裁掉，看起来等于没改。
-  const legacy = read('app-web/src/features/settings/components/settings-ui.jsx');
+  const legacy = read('app-web/src/shared/ui/ProviderIcon.jsx');
   assert.match(legacy, /const size = providerLogoSize\(scaleKey, opticalSize\)/);
   assert.match(legacy, /width: size, height: size/);
   assert.doesNotMatch(legacy, /settings-logo-scale/);

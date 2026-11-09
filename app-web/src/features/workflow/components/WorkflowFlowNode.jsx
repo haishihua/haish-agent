@@ -5,7 +5,7 @@ import { workflowEdgePath } from '../model/workflow-edge-path.js';
 import { typeLabelForWorkflowNode, workflowNodeIcon } from '../model/workflow-catalog.js';
 import { WORKFLOW_PORT_SIDES, workflowSideHandle } from '../model/workflow-canvas-editing.js';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
-import { ProviderIcon } from '../../settings/components/settings-ui.jsx';
+import { ProviderIcon } from '../../../shared/ui/ProviderIcon.jsx';
 
 export const WORKFLOW_FIT_OPTIONS = { padding: 0.2, minZoom: 0.3, maxZoom: 0.9 };
 

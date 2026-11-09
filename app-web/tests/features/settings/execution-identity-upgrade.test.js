@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { savedExecutionConfigId, migrateExecutionRoute } from '../../../src/features/settings/model/execution-identity.js';
+import { savedExecutionConfigId, migrateExecutionRoute } from '../../../src/core/execution-identity.js';
 import { runtimeLlmProviderOptions } from '../../../src/features/settings/model/llm-settings.js';
 import { executionConfigError } from '../../../src/features/workflow/model/execution-config.js';
 import { nodeRuntimeConfigRequest, nodeRuntimeConfigsForWorkflow, workflowNodeRuntimeConfig } from '../../../src/features/workflow/model/node-runtime-config.js';

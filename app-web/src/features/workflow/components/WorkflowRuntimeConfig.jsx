@@ -3,10 +3,10 @@ import { useProviderModels } from '../../chat/hooks/useRunConfig.js';
 import { normalizeReasoningEffort } from '../../../core/run-catalog.js';
 import { nodeReasoningOptions } from '../model/node-reasoning-options.js';
 import { runtimeProviderDisplay } from '../model/runtime-provider-display.js';
-import { providerAuthBadge } from '../../settings/model/llm-settings.js';
+import { providerAuthBadge } from '../../../core/provider-catalog.js';
 import { ProviderAuthBadge } from '../../../shared/ui/ProviderAuthBadge.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
-import { ProviderIcon } from '../../settings/components/settings-ui.jsx';
+import { ProviderIcon } from '../../../shared/ui/ProviderIcon.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../../shared/ui/settings-elements/ui/select.tsx';
 import { nodeConfigHasRouteOverride } from '../model/node-runtime-config.js';
 

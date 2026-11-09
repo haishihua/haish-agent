@@ -1,16 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  SETTINGS_LLM_PROVIDER_OPTIONS,
-  getLlmProvider,
-  nextProviderDraft,
-  modelChoicesFor,
-  llmModelCatalogPatch,
-  applyLlmSettingsPayloadToDraft,
-  llmDraftForStorage,
-  loadLlmSettingsDraft,
-  runtimeLlmProviderOptions,
-} from '../../../src/features/settings/model/llm-settings.js';
+import { SETTINGS_LLM_PROVIDER_OPTIONS, getLlmProvider } from '../../../src/core/provider-catalog.js';
+import { nextProviderDraft, modelChoicesFor, llmModelCatalogPatch, applyLlmSettingsPayloadToDraft, llmDraftForStorage, loadLlmSettingsDraft, runtimeLlmProviderOptions } from '../../../src/features/settings/model/llm-settings.js';;
 import {
   getSelectedLlmConfig,
   llmEditorModelChoices,

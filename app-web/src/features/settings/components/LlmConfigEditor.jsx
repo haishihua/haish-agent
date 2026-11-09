@@ -9,20 +9,8 @@ import { API_BASE } from '../../../shared/api/base.js';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { normalizeReasoningEffort } from '../../../core/run-catalog.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
-import {
-  getLlmProvider,
-  LLM_OAUTH_UI_PROVIDERS,
-  LLM_OAUTH_CALLBACK_PROVIDERS,
-  SETTINGS_REASONING_OPTIONS,
-  SETTINGS_LLM_PROVIDER_OPTIONS,
-  CUSTOM_LLM_PROTOCOL_OPTIONS,
-  IMAGE_PROVIDER_IDS,
-  formatAuthModeLabel,
-  nextProviderDraft,
-  uniqueModelChoices,
-  customModelIds,
-  llmModelCatalogPatch,
-} from '../model/llm-settings.js';
+import { getLlmProvider, LLM_OAUTH_UI_PROVIDERS, LLM_OAUTH_CALLBACK_PROVIDERS, SETTINGS_LLM_PROVIDER_OPTIONS, CUSTOM_LLM_PROTOCOL_OPTIONS } from '../../../core/provider-catalog.js';
+import { SETTINGS_REASONING_OPTIONS, IMAGE_PROVIDER_IDS, formatAuthModeLabel, nextProviderDraft, uniqueModelChoices, customModelIds, llmModelCatalogPatch } from '../model/llm-settings.js';;
 import {
   getSelectedLlmConfig,
   updateSelectedLlmConfig,

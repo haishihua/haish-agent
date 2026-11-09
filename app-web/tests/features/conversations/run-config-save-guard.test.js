@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { migrateExecutionRoute, savedExecutionConfigId } from '../../../src/features/settings/model/execution-identity.js';
+import { migrateExecutionRoute, savedExecutionConfigId } from '../../../src/core/execution-identity.js';
 import { normalizeReasoningEffort, REASONING_EFFORT_OPTIONS } from '../../../src/core/run-catalog.js';
 import { executionConfigError } from '../../../src/features/workflow/model/execution-config.js';
 import { createRunConfigSync } from '../../../src/features/conversations/model/run-config-sync.js';

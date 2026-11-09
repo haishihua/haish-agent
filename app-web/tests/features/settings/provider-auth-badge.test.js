@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { providerAuthBadge, runtimeLlmProviderOptions } from '../../../src/features/settings/model/llm-settings.js';
+import { providerAuthBadge } from '../../../src/core/provider-catalog.js';
+import { runtimeLlmProviderOptions } from '../../../src/features/settings/model/llm-settings.js';
 import { configItemsForSection } from '../../../src/features/settings/model/settings-payload.js';
 
 const draft = {

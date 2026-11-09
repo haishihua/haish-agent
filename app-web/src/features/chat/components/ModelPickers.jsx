@@ -6,7 +6,7 @@ import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
 import { REASONING_EFFORT_OPTIONS } from '../../../core/run-catalog.js';
 import { reasoningGaugeRotation } from '../model/reasoning-gauge.js';
-import { providerAuthBadge } from '../../settings/model/llm-settings.js';
+import { providerAuthBadge } from '../../../core/provider-catalog.js';
 import { ProviderAuthBadge } from '../../../shared/ui/ProviderAuthBadge.jsx';
 import { AgentAvatar } from '../../agents/components/AgentAvatar.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';

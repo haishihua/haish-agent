@@ -1,4 +1,4 @@
-import { getLlmProvider } from '../../settings/model/llm-settings.js';
+import { getLlmProvider } from '../../../core/provider-catalog.js';
 
 // Display metadata only: never replace a saved request key with a same-brand profile.
 export function runtimeProviderDisplay(value, providerOptions = [], readOnly = false) {
