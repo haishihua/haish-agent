@@ -22,31 +22,6 @@ const WORKFLOW_NODE_TYPE_LABELS = {
   loop: 'Loop',
 };
 
-// 变量选择器里 field id → 人话。
-const WORKFLOW_FIELD_LABELS = {
-  status: 'status',
-  success: 'success',
-  summary: 'summary',
-  error: 'error',
-  metadata: 'metadata',
-  messages: 'messages',
-  artifacts: 'artifacts',
-  structured: 'structured',
-  citations: 'citations',
-  trace: 'trace',
-  text: 'text',
-  json: 'json',
-  usage: 'usage',
-  finish_reason: 'finish_reason',
-  raw: 'raw',
-  matched_case: 'matched_case',
-  selected_target: 'selected_target',
-  decision: 'decision',
-  feedback: 'feedback',
-  reviewed_input: 'reviewed_input',
-  attempt: 'attempt',
-  value: 'value',
-};
 
 export function typeLabelForWorkflowNode(type) {
   return WORKFLOW_NODE_TYPE_LABELS[type] || type || 'Node';
@@ -66,7 +41,6 @@ export function workflowFriendlyVariableLabel(item) {
   const nodeLabel = String(item.nodeLabel || item.group || 'Node').trim() || 'Node';
   const fieldLabel = String(
     item.fieldLabel
-    || WORKFLOW_FIELD_LABELS[item.fieldId]
     || item.fieldId
     || 'value',
   ).trim() || 'value';

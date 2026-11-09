@@ -1,4 +1,4 @@
-import { normalizeChatImageRefs, mergeChatImageRefs, generateHexId, taskUpdatedTimestamp, taskCreatedTimestamp } from './task-record.js';;
+import { normalizeChatImageRefs, mergeChatImageRefs, generateHexId, taskUpdatedTimestamp, taskCreatedTimestamp } from './task-record.js';
 import { stripChatImageAugmentation, stripInjectedSkillInstruction } from './message-text.js';
 import { compactStreamEvents } from './stream-events.js';
 import { normalizeTaskStatus } from './run-status.js';
@@ -38,7 +38,6 @@ const ASSISTANT_VISIBLE_STREAM_EVENT_TYPES = new Set([
   'llm_thinking_delta',
   'llm_answer_delta',
   'llm_retry',
-  'final_answer',
   'tool_call_started',
   'agent_progress_delta',
   'context_compaction_started',
@@ -336,6 +335,8 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = []) {
     toolCalls: [],
     eventLog: [],
     error: task.error || null,
+    // 刻意只认三个规范词：真实列表里还有 completed / success 这类历史别名，
+    // 认了它们，「合并藏掉落地标记」的检测就失效（见 task-runtime-paging 的用例）。
     serverFinished: task.status === 'done' || task.status === 'failed' || task.status === 'cancelled',
     runtimeHydrated: false,
   };

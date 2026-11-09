@@ -1,7 +1,7 @@
 import React from 'react';
 import { useProviderModels } from '../../../shared/lib/useProviderModels.js';
-import { normalizeReasoningEffort } from '../../../core/run-catalog.js';
-import { nodeReasoningOptions } from '../model/node-reasoning-options.js';
+import { REASONING_EFFORT_OPTIONS, normalizeReasoningEffort } from '../../../core/run-catalog.js';
+
 import { runtimeProviderDisplay } from '../model/runtime-provider-display.js';
 import { providerAuthBadge } from '../../../core/provider-catalog.js';
 import { ProviderAuthBadge } from '../../../shared/ui/ProviderAuthBadge.jsx';
@@ -34,7 +34,7 @@ export function WorkflowRuntimeConfig({ value = {}, providerOptions = [], agentO
   const display = runtimeProviderDisplay(routeId, providerOptions, readOnly);
   const provider = display.selected;
   const models = useProviderModels(provider);
-  const efforts = nodeReasoningOptions(value.model_id || provider?.defaultModelId || '');
+  const efforts = REASONING_EFFORT_OPTIONS;
   const effort = normalizeReasoningEffort(value.reasoning_effort, provider?.defaultReasoningEffort);
   const selectedAgentId = value.agent_id || 'preset.general';
   // The catalog only carries { id, label }: an id it does not know is shown as unavailable

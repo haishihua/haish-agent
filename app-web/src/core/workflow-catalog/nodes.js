@@ -83,11 +83,8 @@ export function normalizeWorkflowRow(item, fallback = DEFAULT_DIRECT_WORKFLOW) {
         return {
           ...node,
           output_mode: 'json_object',
-          output_mapping: { answer: '{{input.message}}' },
-          output_schema: {
-            type: 'object',
-            fields: [{ id: 'answer', label: 'answer', type: 'string', path: 'output.answer' }],
-          },
+          output_mapping: DEFAULT_WORKFLOW_OUTPUT_MAPPING,
+          output_schema: DEFAULT_WORKFLOW_OUTPUT_SCHEMA,
         };
       }
       return node;
