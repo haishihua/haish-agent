@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { apiFetch, parseResponseMessage } from '../../../src/shared/api/client.js';
 import { runtimeLlmProviderOptions } from '../../../src/features/settings/model/llm-settings.js';
 
-const source = readFileSync(new URL('../../../src/features/chat/hooks/useRunConfig.js', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../../../src/shared/lib/useProviderModels.js', import.meta.url), 'utf8')
   .replace(/^import .*;\n/gm, '').replace(/\bexport /g, '');
 const cacheKey = 'haish_provider_models_v1';
 const provider = (id = 'route-a', extras = {}) => ({ id, provider: 'custom', authMode: 'api_key', baseUrl: 'https://fixture.invalid/v1', ...extras });

@@ -1,3 +1,4 @@
+import { useProviderModels } from '../../../shared/lib/useProviderModels.js';
 import React from 'react';
 import { BookOpen, Clock, CornerDownLeft, Target } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
@@ -14,7 +15,6 @@ import { BoundedCache } from '../../../shared/lib/bounded-cache.js';
 import { contextSectorPath } from '../../../shared/lib/context-usage-ring.js';
 import {
   usePersistentRunConfig,
-  useProviderModels,
 } from '../hooks/useRunConfig.js';
 import { DEFAULT_AGENT_OPTIONS } from '../../../core/run-catalog.js';
 import { executionConfigError } from '../../../core/execution-config.js';

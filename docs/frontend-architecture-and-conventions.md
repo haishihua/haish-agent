@@ -47,7 +47,7 @@ app-web/
       workflow/              # 工作流画布、运行详情与领域算法
     shared/
       api/                   # API base、普通请求与通用 header
-      lib/                   # 无业务归属的纯工具
+      lib/                   # 无业务归属的纯工具与数据加载 hook（如 provider 模型目录）
       ui/                    # 无业务归属的展示组件
   tests/
     contracts/               # 静态契约和边界回归

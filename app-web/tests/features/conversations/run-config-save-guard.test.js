@@ -130,7 +130,11 @@ test('conflicting restored identities block all saves until an explicit provider
   const writes = [];
   const observed = [];
   const storageWrites = [];
-  const selectionSource = readFileSync(new URL('../../../src/features/chat/hooks/useRunConfig.js', import.meta.url), 'utf8');
+  // 选择持久化与 provider 模型加载各自独立：拼接两份源码，剥掉 import 后在同一个上下文里跑。
+  const selectionSource = [
+    readFileSync(new URL('../../../src/features/chat/hooks/useRunConfig.js', import.meta.url), 'utf8'),
+    readFileSync(new URL('../../../src/shared/lib/useProviderModels.js', import.meta.url), 'utf8'),
+  ].join('\n');
   const sync = {
     load: async () => structuredClone(conflict),
     observe: (_scope, next) => observed.push(structuredClone(next)),
@@ -237,7 +241,10 @@ test('Retry clicked during a model catalog refresh uses the valid route without 
   let catalogRequests = 0;
   const options = [{ id: route.llm_config_id, provider: 'openai', authMode: 'oauth',
     defaultModelId: route.model_id, modelOptions: [route.model_id], defaultReasoningEffort: 'high' }];
-  const selectionSource = readFileSync(new URL('../../../src/features/chat/hooks/useRunConfig.js', import.meta.url), 'utf8');
+  const selectionSource = [
+    readFileSync(new URL('../../../src/features/chat/hooks/useRunConfig.js', import.meta.url), 'utf8'),
+    readFileSync(new URL('../../../src/shared/lib/useProviderModels.js', import.meta.url), 'utf8'),
+  ].join('\n');
   const sync = createRunConfigSync({ get: async () => route, save: async (_id, config) => { writes.push(config); return config; } });
   const harness = hookHarness({}, (React, persistence) => {
     const hooks = vm.runInNewContext(`${selectionSource.replace(/^import .*;\n/gm, '').replace(/export /g, '')}\n({usePersistentRunConfig, useProviderModels});`, {

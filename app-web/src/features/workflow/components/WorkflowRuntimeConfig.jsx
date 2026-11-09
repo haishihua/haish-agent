@@ -1,5 +1,5 @@
 import React from 'react';
-import { useProviderModels } from '../../chat/hooks/useRunConfig.js';
+import { useProviderModels } from '../../../shared/lib/useProviderModels.js';
 import { normalizeReasoningEffort } from '../../../core/run-catalog.js';
 import { nodeReasoningOptions } from '../model/node-reasoning-options.js';
 import { runtimeProviderDisplay } from '../model/runtime-provider-display.js';
