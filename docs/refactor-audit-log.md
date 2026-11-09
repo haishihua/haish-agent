@@ -286,3 +286,22 @@ toast（`useConversationRunConfig.js:92`），再加一条是重复；而 `persi
 不是整段会话；再写一套轻量活动推断会改变宠物动画的触发时机。
 `settings-sync` 的 0ms 收尾仍保留：它保证写入方先应用响应，再让被跳过的读恢复；
 改成 await 会碰到并发保存的顺序。图片复制失败提示、批注高亮寿命仍需产品决定。
+
+## 第十四批：设置保存后的读恢复不再藏在裸 setTimeout 里
+
+`finishSettingsRequest` 里的 `setTimeout(() => invalidateSettings(...), 0)` 是一条没有名字、也没有测试的
+顺序契约：写入在 `response.json()` 的 `finally` 里收尾，调用方之后才把 payload 写进 React 状态，
+所以恢复被跳过的读必须跨一个宏任务。
+
+本批没有改时序（去掉边界需要改 8 个写入方的状态应用时机，不属于纯重构），改的是它不再隐式：
+
+- 抽成唯一入口 `scheduleSettingsRecovery(resources)`，注释写明为什么必须是宏任务、为什么不能换
+  `queueMicrotask` / `Promise.then`。
+- 计时器登记在 `recoveryTimers` 里；`resetSettingsSync()` 一并取消。此前它只清 `entries`，上一个用例
+  排着的恢复会在下一个用例里凭空 bump epoch——测试之间因此有隐性耦合。
+- 新增三条用例：写入方先应用、恢复随后且只一次；写期间的读被推迟、写完后恢复可读；reset 取消
+  待触发恢复。前两条分别用变异验证过（把恢复改成同步、把 reset 的清理删掉都会立刻红）。
+
+剩下的风险写在明处：这条顺序靠宏任务边界保证，不是类型或结构强制；若将来某个写入方在响应之后
+再 `await` 一次才应用状态，边界仍可能被绕过。要彻底消除得把「应用响应」变成显式的
+`applySettingsResponse(payload)` 并让每个写入方调用，那会新增 8 个必须记得的调用点，本批不做。

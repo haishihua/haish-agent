@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { prepareSettingsRequest, observeSettingsResponse, reconcileSettings, trackSettingsDraft, resetSettingsSync, settingsConflicts, reloadSettings, hasSettingsVersion } from '../../../src/shared/lib/settings-sync.js';
+import { prepareSettingsRequest, observeSettingsResponse, reconcileSettings, trackSettingsDraft, resetSettingsSync, settingsConflicts, reloadSettings, hasSettingsVersion, onSettingsInvalidated } from '../../../src/shared/lib/settings-sync.js';
 import { createDefaultSettingsRecords } from '../../../src/features/settings/model/settings-records.js';
 import { applyToolsSettingsPayloadToRecords, buildToolsSettingsPayload } from '../../../src/features/settings/model/settings-payload.js';
 import { createLiveToolsLoader } from '../../../src/features/settings/model/live-tools-settings.js';
@@ -244,4 +244,49 @@ test('desktop forwards settings events and reconnect invalidations without forwa
   assert.match(realtime, /message.type === 'settings.event'/);
   assert.match(main, /runtime:settings-event', \{ type: 'settings.resync' \}/);
   assert.match(preload, /onSettingsEvent:/);
+});
+
+test('写入方先应用响应，被跳过的读在其后恢复，且一次保存只恢复一次', async () => {
+  resetSettingsSync();
+  const order = [];
+  const stop = onSettingsInvalidated(resources => order.push({ at: 'invalidated', resources }));
+  try {
+    const request = write('llm');
+    await response(request, {}, { llm: 'epoch:1' });
+    // 写入方拿到 payload 后才把响应写进 React 状态；恢复不能抢在它前面。
+    order.push({ at: 'applied' });
+    assert.deepEqual(order, [{ at: 'applied' }], '恢复不能在写入方应用响应之前同步发生');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(order, [{ at: 'applied' }, { at: 'invalidated', resources: ['llm'] }]);
+  } finally {
+    stop();
+  }
+});
+
+test('写入期间发起的读被推迟，写完后才允许重新读', async () => {
+  resetSettingsSync();
+  const old = { value: 'old' };
+  trackSettingsDraft('llm', old);
+  const pendingWrite = write('llm');
+  const duringWrite = read('llm');
+  assert.equal(duringWrite.blocked.llm, true);
+  const payload = await response(duringWrite, {}, { llm: 'epoch:9' });
+  // 被推迟的读即使回来了也不认：它可能是写入前的旧快照。
+  assert.equal(reconcileSettings('llm', old, { value: 'from-skipped-read' }, payload).value, 'old');
+  await response(pendingWrite, {}, { llm: 'epoch:9' });
+  assert.equal(read('llm').blocked.llm, false);
+});
+
+test('resetSettingsSync 取消上一轮排着的恢复，不让它污染下一次读', async () => {
+  resetSettingsSync();
+  const seen = [];
+  const stop = onSettingsInvalidated(resources => seen.push(resources));
+  try {
+    await response(write('memory'), {}, { memory: 'e:1' });
+    resetSettingsSync();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(seen, []);
+  } finally {
+    stop();
+  }
 });

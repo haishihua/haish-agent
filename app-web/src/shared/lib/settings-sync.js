@@ -178,18 +178,35 @@ export function observeSettingsResponse(response, request) {
   return response;
 }
 
+// 写入在 `response.json()` 的 finally 里收尾，但调用方要到那之后才把 payload 写进 React 状态。
+// 恢复被跳过的读必须排在这次应用之后，因此只能跨一个宏任务：Promise.then / queueMicrotask
+// 会和写入方的 continuation 抢先后，把还没应用的旧草稿当成当前值。这是全仓唯一的恢复调度点，
+// settings-sync.test.js 的顺序用例守着它——改成同步或微任务会立刻红。
+const recoveryTimers = new Set();
+function scheduleSettingsRecovery(resources) {
+  const timer = setTimeout(() => {
+    recoveryTimers.delete(timer);
+    invalidateSettings(resources);
+  }, 0);
+  recoveryTimers.add(timer);
+}
+
 export function finishSettingsRequest(request) {
   if (!request.submitted || request.finished) return;
   request.finished = true;
   request.resources.forEach(resource => { const state = entry(resource); state.pending = Math.max(0, (state.pending || 0) - 1); });
-  // The writer applies its response first; reads skipped during PUT must recover.
-  setTimeout(() => invalidateSettings(request.resources), 0);
+  scheduleSettingsRecovery(request.resources);
 }
 export function hasSettingsVersion(payload, resource) {
   const versions = responses.get(payload)?.versions || {};
   return resource ? Boolean(versions[resource]) : Object.keys(versions).length > 0;
 }
-export function resetSettingsSync() { entries.clear(); }
+export function resetSettingsSync() {
+  entries.clear();
+  // 只有测试会调它：上一轮排着的恢复不能在下一个用例里凭空 bump epoch。
+  recoveryTimers.forEach(clearTimeout);
+  recoveryTimers.clear();
+}
 
 export function settingsConflicts() { return [...entries].filter(([, state]) => state.conflict).map(([resource]) => resource); }
 export function onSettingsInvalidated(callback) { refreshers.add(callback); return () => refreshers.delete(callback); }

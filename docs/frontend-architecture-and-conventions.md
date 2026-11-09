@@ -317,3 +317,7 @@ workflow 表单的 `[data-slot="select-trigger"]` 因此显式 `display: flex; a
   由 `fetchCoalescedTaskRuntimeBatch` 的 `requestKind` 决定能否并入批请求。
   不要再加一个与种类表达同一件事的布尔参数（旧的 `joinBatch` 已删）；
   `single-confirmation` 是批请求 404 后的独立确认 GET，可并入普通 single，不可并入 batch。
+- **保存后的读恢复**只能走 `shared/lib/settings-sync.js` 的 `scheduleSettingsRecovery`：写入在
+  `response.json()` 的 `finally` 里收尾，调用方之后才把 payload 写进 React 状态，所以恢复必须跨一个
+  宏任务；换成同步调用或微任务会让恢复读拿着尚未应用的旧草稿。该顺序由 `settings-sync.test.js`
+  的顺序用例钉住，改成同步会立刻红。别忘了 `resetSettingsSync()` 会取消待触发的恢复（测试隔离）。
