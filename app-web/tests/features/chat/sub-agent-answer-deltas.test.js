@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSubAgentTimelineItems, buildToolView } from '../../../src/features/chat/model/tool-view.js';
-import { compactStreamEvents, appendStreamEvent } from '../../../src/features/chat/model/stream-events.js';
-import { deduplicateRuntimeEvents } from '../../../src/features/chat/model/event-identity.js';
+import { compactStreamEvents, appendStreamEvent } from '../../../src/core/stream-events.js';
+import { deduplicateRuntimeEvents } from '../../../src/core/event-identity.js';
 
 globalThis.window = {};
 const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');

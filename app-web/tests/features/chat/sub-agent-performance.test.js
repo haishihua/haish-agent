@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendStreamEvent } from '../../../src/features/chat/model/stream-events.js';
+import { appendStreamEvent } from '../../../src/core/stream-events.js';
 import { buildSubAgentTimelineItems, buildToolView } from '../../../src/features/chat/model/tool-view.js';
 import { skillTrigger } from '../../../src/features/chat/model/tool-presentation.js';
 

@@ -1,6 +1,6 @@
 // 一轮运行的起止：run_started 建立运行态，run_finished 用服务端落盘结果收尾
 // （终态正文、图片、附件都以服务端为准）。Stop 相关的判定不在这里，见 event-dispatch。
-import { stripInjectedSkillInstruction } from '../../../chat/model/chat-text.js';
+import { stripInjectedSkillInstruction } from '../../../../core/message-text.js';
 import { usableWorkflowSnapshot } from '../../../workflow/model/workflow-snapshot.js';
 
 export function handleRunStarted(scope, _event) {

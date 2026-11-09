@@ -6,7 +6,7 @@ import {
   taskUpdatedTimestamp,
   timestampValue,
 } from '../../../core/task-record.js';
-import { stripChatImageAugmentation } from '../../chat/model/chat-text.js';
+import { stripChatImageAugmentation } from '../../../core/message-text.js';
 import {
   WORKSPACE_STORAGE_KEY,
   CONVERSATION_STORAGE_KEY,

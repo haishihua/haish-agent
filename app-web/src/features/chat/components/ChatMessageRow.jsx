@@ -6,7 +6,7 @@ import { EditMessage } from '../../../shared/ui/agent-elements/EditMessage.jsx';
 import { FileTree } from '../../../shared/ui/agent-elements/FileTree.jsx';
 import { QuoteBlock } from '../../../shared/ui/agent-elements/Quote.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
-import { stripInjectedSkillInstruction } from '../model/chat-text.js';
+import { stripInjectedSkillInstruction } from '../../../core/message-text.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { AttachmentFileChip } from '../../../shared/ui/AttachmentFileChip.jsx';
 import { localPathReference, splitPathReferenceDraft } from '../model/path-references.js';

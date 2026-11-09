@@ -1,4 +1,4 @@
-import { streamEventUpdate } from '../../chat/model/stream-events.js';
+import { streamEventUpdate } from '../../../core/stream-events.js';
 
 const cache = new WeakMap();
 const EMPTY = [];

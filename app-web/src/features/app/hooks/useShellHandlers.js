@@ -10,7 +10,7 @@ import {
   withAlwaysAllowedAgentTools,
 } from '../../agents/model/agent-settings.js';
 import { createComposerHandlers } from '../../chat/hooks/createComposerHandlers.js';
-import { eventDeltaText, stripChatImageAugmentation } from '../../chat/model/chat-text.js';
+import { eventDeltaText, stripChatImageAugmentation } from '../../../core/message-text.js';
 import { appendAnswerDelta, appendChatProgressText, getChatProgressLine } from '../../chat/model/chat-timeline.js';
 import {
   contextUsageFromConversationDetail,

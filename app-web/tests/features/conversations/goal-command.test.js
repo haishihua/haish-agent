@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createConversationHandlers } from '../../../src/features/conversations/hooks/createConversationHandlers.js';
 import { createDeployHandlers } from '../../../src/features/tasks/hooks/createDeployHandlers.js';
-import { goalInvocation, goalMenuItems, GOAL_WORKFLOW_ID } from '../../../src/features/chat/model/goal-command.js';
+import { goalInvocation, goalMenuItems } from '../../../src/features/chat/model/goal-command.js';
+import { GOAL_WORKFLOW_ID } from '../../../src/core/workflow-ids.js';
 
 function harness({ missing = false, defaultProject = false, fail = '', workflow = { nodes: [{ id: 'worker', type: 'agent', runtime_config: { llm_config_id: 'fixture', model_id: 'model' } }] }, draft = false, interrupt = '' } = {}) {
   const source = { id: 'chat-project', executionMode: 'chat', name: 'Renamed project', workspacePath: defaultProject ? null : '/repo', conversations: [] };

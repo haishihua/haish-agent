@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
-import { createRuntimeEventIngest } from '../../../src/features/chat/model/event-identity.js';
-import { compactStreamEvents, mergeAdjacentStreamEvent } from '../../../src/features/chat/model/stream-events.js';
-import { eventDeltaText } from '../../../src/features/chat/model/chat-text.js';
+import { createRuntimeEventIngest } from '../../../src/core/event-identity.js';
+import { compactStreamEvents, mergeAdjacentStreamEvent } from '../../../src/core/stream-events.js';
+import { eventDeltaText } from '../../../src/core/message-text.js';
 import { buildToolView } from '../../../src/features/chat/model/tool-view.js';
 import * as runtimeEvents from '../../../src/features/tasks/model/runtime-events.js';
 

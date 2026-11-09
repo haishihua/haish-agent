@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { eventDeltaText } from '../../src/features/chat/model/chat-text.js';
+import { eventDeltaText } from '../../src/core/message-text.js';
 import { taskStreamHandlerSource } from '../helpers/handler-source.js';
 import {
   mergeQueuedStreamDelta,

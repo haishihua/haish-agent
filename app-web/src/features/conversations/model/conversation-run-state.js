@@ -20,12 +20,15 @@
 // 在行尾叠在一起——用户看到的就是「状态怎么互相矛盾」。
 
 import { terminalTaskNoticeStatus } from '../../tasks/model/task-completion-notices.js';
-import { isTaskLive, isTaskSettled } from '../../../core/run-status.js';
+import {
+  RUN_STATE_APPROVAL,
+  RUN_STATE_IDLE,
+  RUN_STATE_RUNNING,
+  RUN_STATE_WAITING_INPUT,
+  isTaskLive,
+  isTaskSettled,
+} from '../../../core/run-status.js';
 
-export const RUN_STATE_IDLE = 'idle';
-export const RUN_STATE_RUNNING = 'running';
-export const RUN_STATE_WAITING_INPUT = 'waiting_input';
-export const RUN_STATE_APPROVAL = 'approval';
 // 坑位里放的是「结束还没看过」的终态点（done / failed / cancelled）；RUN_STATE_* 只覆盖「现在」。
 export const STATUS_MARK_TERMINAL = 'terminal';
 

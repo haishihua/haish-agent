@@ -1,4 +1,4 @@
-import { stripInjectedSkillInstruction } from './chat-text.js';
+import { stripInjectedSkillInstruction } from '../../../core/message-text.js';
 import { localPathReference, splitPathReferenceDraft } from './path-references.js';
 
 export const CONVERSATION_LENS_ROWS = 7;

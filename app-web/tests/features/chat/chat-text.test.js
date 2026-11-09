@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { stripInjectedSkillInstruction } from '../../../src/features/chat/model/chat-text.js';
+import { stripInjectedSkillInstruction } from '../../../src/core/message-text.js';
 
 test('stripInjectedSkillInstruction hides the transport-only skill prefix', () => {
   assert.equal(

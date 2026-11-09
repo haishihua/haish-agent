@@ -3,14 +3,8 @@ import { Clock } from 'lucide-react';
 import { useSchedules } from '../../schedules/hooks/useSchedules.js';
 import { ApprovalGlyph, ConversationAction, ConversationPinAction, WaitingInputGlyph } from './ConversationIcons.jsx';
 import { TaskRecordCompact } from './ConversationTaskCards.jsx';
-import {
-  RUN_STATE_APPROVAL,
-  RUN_STATE_RUNNING,
-  RUN_STATE_WAITING_INPUT,
-  isRunStateWaiting,
-  resolveConversationStatusMark,
-  taskIdOf,
-} from '../model/conversation-run-state.js';
+import { isRunStateWaiting, resolveConversationStatusMark, taskIdOf } from '../model/conversation-run-state.js';
+import { RUN_STATE_APPROVAL, RUN_STATE_RUNNING, RUN_STATE_WAITING_INPUT } from '../../../core/run-status.js';
 import { useConversationRunState } from '../hooks/useConversationRunState.js';
 import { PREVIEW_PAGE_SIZE, nextExtraVisible } from '../model/list-preview.js';
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BoundedCache } from '../../src/shared/lib/bounded-cache.js';
 import { startPolling } from '../../src/shared/lib/polling.js';
-import { appendStreamEvent } from '../../src/features/chat/model/stream-events.js';
+import { appendStreamEvent } from '../../src/core/stream-events.js';
 import { workflowControlEvents } from '../../src/features/workflow/model/workflow-control-events.js';
 
 globalThis.window = {};

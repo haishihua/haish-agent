@@ -85,3 +85,9 @@ export function terminalNoticeStatus(status) {
   if (value === 'cancelled' || value === 'canceled' || value === 'aborted') return 'cancelled';
   return '';
 }
+
+// 会话当前处于哪一步；只描述「现在」，终态由 TERMINAL_STATUSES 表达。
+export const RUN_STATE_IDLE = 'idle';
+export const RUN_STATE_RUNNING = 'running';
+export const RUN_STATE_WAITING_INPUT = 'waiting_input';
+export const RUN_STATE_APPROVAL = 'approval';

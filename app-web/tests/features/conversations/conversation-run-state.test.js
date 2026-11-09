@@ -3,18 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { isTaskLive } from '../../../src/core/run-status.js';
-import {
-  RUN_STATE_APPROVAL,
-  RUN_STATE_IDLE,
-  RUN_STATE_RUNNING,
-  RUN_STATE_WAITING_INPUT,
-  STATUS_MARK_TERMINAL,
-  isRunStateLive,
-  resolveConversationRunState,
-  resolveConversationStatusMark,
-  resolveConversationWaitState,
-  settledTaskIds,
-} from '../../../src/features/conversations/model/conversation-run-state.js';
+import { STATUS_MARK_TERMINAL, isRunStateLive, resolveConversationRunState, resolveConversationStatusMark, resolveConversationWaitState, settledTaskIds } from '../../../src/features/conversations/model/conversation-run-state.js';
+import { RUN_STATE_APPROVAL, RUN_STATE_IDLE, RUN_STATE_RUNNING, RUN_STATE_WAITING_INPUT } from '../../../src/core/run-status.js';;
 
 // 用户报的问题：「这会话状态是不是有 bug 啊，暂停之后应该要继续 loading 啊」——面板说在跑、
 // 侧边栏那行什么都没亮。原因是两处各自算「还在跑」：面板看本地运行时任务，侧边栏看服务端
@@ -289,10 +279,9 @@ test('the row keeps a single status slot: the newest state wins', () => {
 });
 
 test('the row table speaks the run-state vocabulary the model exports', () => {
-  assert.match(
-    nodeSource,
-    /import \{\n\s+RUN_STATE_APPROVAL,\n\s+RUN_STATE_RUNNING,\n\s+RUN_STATE_WAITING_INPUT,\n\s+isRunStateWaiting,\n\s+resolveConversationStatusMark,\n\s+taskIdOf,\n\} from '\.\.\/model\/conversation-run-state\.js';/,
-  );
+  // 运行态常量只有 core/run-status.js 一份；行的判据仍来自会话运行态模型。
+  assert.match(nodeSource, /import \{ RUN_STATE_APPROVAL, RUN_STATE_RUNNING, RUN_STATE_WAITING_INPUT \} from '\.\.\/\.\.\/\.\.\/core\/run-status\.js';/);
+  assert.match(nodeSource, /import \{ isRunStateWaiting, resolveConversationStatusMark, taskIdOf \} from '\.\.\/model\/conversation-run-state\.js';/);
   assert.match(nodeSource, /\[RUN_STATE_WAITING_INPUT\]: \{\n\s+className: 'waiting-input',\n\s+label: 'Waiting for your answer',\n\s+Glyph: WaitingInputGlyph,/);
   assert.match(nodeSource, /\[RUN_STATE_APPROVAL\]: \{\n\s+className: 'awaiting-approval',\n\s+label: 'Awaiting approval',\n\s+Glyph: ApprovalGlyph,/);
   assert.doesNotMatch(nodeSource, /runState\.state === 'waiting_input'|runState\.state === 'approval'/);

@@ -1,6 +1,3 @@
-import { GOAL_WORKFLOW_ID } from '../../../core/workflow-ids.js';
-
-export { GOAL_WORKFLOW_ID };
 export const GOAL_COMMAND = { name: 'goal', description: 'Run a task with Goal Loop in this project', command: true };
 
 export function goalInvocation(text) {
@@ -15,11 +12,3 @@ export function goalMenuItems(text, skills, enabled) {
     : skills;
 }
 
-export function matchingWorkflowProject(projects, source) {
-  const path = (value) => String(value || '').trim().replace(/\/+$/, '') || '/';
-  return projects.find((project) => project.execution_mode === 'bot' && (
-    source.workspacePath
-      ? path(project.workspace_path) === path(source.workspacePath)
-      : project.is_default === true
-  )) || null;
-}

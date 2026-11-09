@@ -1,5 +1,5 @@
-import { stripChatImageAugmentation, eventDeltaText } from '../../chat/model/chat-text.js';
-import { deduplicateRuntimeEvents } from '../../chat/model/event-identity.js';
+import { stripChatImageAugmentation, eventDeltaText } from '../../../core/message-text.js';
+import { deduplicateRuntimeEvents } from '../../../core/event-identity.js';
 export const STREAM_EVENT_BATCH_MS = 32;
 
 export const CHAT_FINAL_FOLLOWUP_EVENT_TYPES = new Set([

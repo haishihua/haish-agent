@@ -1,5 +1,5 @@
-import { appendStreamEvent, mergeAdjacentStreamEvent } from '../../chat/model/stream-events.js';
-import { createRuntimeEventIngest } from '../../chat/model/event-identity.js';
+import { appendStreamEvent, mergeAdjacentStreamEvent } from '../../../core/stream-events.js';
+import { createRuntimeEventIngest } from '../../../core/event-identity.js';
 import { runtimeEventToLog } from '../model/runtime-events.js';
 import { contextUsageFromRuntimeEvent } from '../../chat/model/context-usage.js';
 import { admitRuntimeEvent, dispatchRuntimeEvent } from './task-stream/event-dispatch.js';

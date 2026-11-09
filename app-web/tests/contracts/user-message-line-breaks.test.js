@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { stripInjectedSkillInstruction } from '../../src/features/chat/model/chat-text.js';
+import { stripInjectedSkillInstruction } from '../../src/core/message-text.js';
 
 // Regression: CommonMark folds a single newline into a space, so a prompt the
 // user typed on several lines (Shift+Enter) came back as one re-wrapped

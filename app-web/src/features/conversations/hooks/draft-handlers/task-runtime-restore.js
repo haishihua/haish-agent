@@ -1,5 +1,5 @@
-import { eventDeltaText } from '../../../chat/model/chat-text.js';
-import { compactStreamEvents } from '../../../chat/model/stream-events.js';
+import { eventDeltaText } from '../../../../core/message-text.js';
+import { compactStreamEvents } from '../../../../core/stream-events.js';
 import { fetchCoalescedTaskRuntimeBatch } from '../../model/task-runtime-requests.js';
 import { conversationRuntimeHasLiveTurn, createTaskRuntimeRestoreGuard } from '../../model/runtime-restore-guard.js';
 

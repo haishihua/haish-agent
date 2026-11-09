@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendStreamEvent, compactStreamEvents } from '../../../src/features/chat/model/stream-events.js';
+import { appendStreamEvent, compactStreamEvents } from '../../../src/core/stream-events.js';
 
 test('compactStreamEvents collapses adjacent answer deltas without crossing boundaries', () => {
   const events = [
