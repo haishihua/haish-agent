@@ -2,6 +2,7 @@ import { DEFAULT_DIRECT_WORKFLOW, DEFAULT_WORKFLOW_INPUT_SCHEMA } from '../workf
 import {
   DEFAULT_WORKFLOW_OUTPUT_MAPPING,
   DEFAULT_WORKFLOW_OUTPUT_SCHEMA,
+  isWorkflowEdgeBranch,
   normalizeWorkflowRow,
 } from './nodes.js';
 
@@ -57,7 +58,7 @@ export function payloadForCustomWorkflow(workflow) {
     edges: (workflow.edges || []).map((edge) => ({
       from: edge.from,
       to: edge.to,
-      ...(['true', 'false', 'approved', 'rejected', 'retry', 'exhausted'].includes(edge.branch)
+      ...(isWorkflowEdgeBranch(edge.branch)
         ? { branch: edge.branch }
         : {}),
     })),

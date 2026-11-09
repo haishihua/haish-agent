@@ -3,6 +3,9 @@
 import { agentIconNameForAgentId } from '../../../../core/agent-settings.js';
 import { typeLabelForWorkflowNode, workflowNodeIcon } from '../../../../core/workflow-catalog.js';
 import { AppIcon } from '../../../../shared/ui/AppIcon.jsx';
+import { tabNavigationTarget } from '../../../../shared/lib/tab-navigation.js';
+
+const DETAIL_TABS = ['config', 'result'];
 
 export function WorkflowNodeDetailHead({
   node,
@@ -32,13 +35,12 @@ export function WorkflowNodeDetailHead({
       </header>
 
       {isAgent ? <div className="workflow-detail-tabs" role="tablist" aria-label="Node details">
-        {['config', 'result'].map((tab) => <button key={tab} type="button" role="tab" id={`${tabId}-${tab}-tab`} aria-controls={`${tabId}-panel`} aria-selected={detailTab === tab} tabIndex={detailTab === tab ? 0 : -1} onClick={() => selectTab(tab)} onKeyDown={(event) => {
-          if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-            event.preventDefault();
-            const next = event.key === 'Home' ? 'config' : event.key === 'End' ? 'result' : tab === 'config' ? 'result' : 'config';
-            selectTab(next);
-            document.getElementById(`${tabId}-${next}-tab`)?.focus();
-          }
+        {DETAIL_TABS.map((tab) => <button key={tab} type="button" role="tab" id={`${tabId}-${tab}-tab`} aria-controls={`${tabId}-panel`} aria-selected={detailTab === tab} tabIndex={detailTab === tab ? 0 : -1} onClick={() => selectTab(tab)} onKeyDown={(event) => {
+          const next = tabNavigationTarget(event.key, DETAIL_TABS, detailTab);
+          if (!next) return;
+          event.preventDefault();
+          selectTab(next);
+          document.getElementById(`${tabId}-${next}-tab`)?.focus();
         }}>{tab === 'config' ? 'Runtime Config' : 'Run Result'}</button>)}
       </div> : null}
     </>

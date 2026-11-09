@@ -37,6 +37,7 @@ import {
 } from './model/shell-derived-state.js';
 import { useLlmSettings } from '../settings/hooks/useLlmSettings.js';
 import { createSkillInventoryCache } from '../settings/model/skill-inventory.js';
+import { isLlmProviderSection } from '../settings/model/settings-navigation.js';
 import {
   apiFetch,
   buildRunConfigStorageKey,
@@ -251,7 +252,7 @@ export function AppShell() {
   // still write to *its* runtime (not the one currently shown). Acts as an
   // implicit dynamic context — set on flush enter, cleared on flush exit.
   const streamTargetConvIdRef = useRef(null);
-  const { applyContextUsage, resetContextUsage } = useContextUsageBridge({
+  const { applyContextUsage, resetContextUsage, getContextWindowTokens } = useContextUsageBridge({
     contextUsageTrackerRef, conversationIdRef, setContextUsage,
   });
 
@@ -356,7 +357,7 @@ export function AppShell() {
 
   const { providerOptions: llmProviderOptions, catalogReady: llmCatalogReady, beginWrite: beginLlmSettingsWrite } = useLlmSettings({
     draft: llmSettingsDraft, setDraft: setLlmSettingsDraft,
-    settingsOpen: settingsMode && ['llm', 'embedding', 'compact'].includes(settingsSection),
+    settingsOpen: settingsMode && isLlmProviderSection(settingsSection),
     refreshEpoch: settingsSync.epochs.llm,
   });
 
@@ -506,7 +507,7 @@ export function AppShell() {
     loadEarlierTaskRuntimes,
   } = useShellHandlers({
     activationApiRef, activeTab, agentContextKey, agentContextKeyRef,
-    agentSettingsDraft, applyContextUsage, beginLlmSettingsWrite, beginToolsSettingsSave,
+    agentSettingsDraft, applyContextUsage, getContextWindowTokens, beginLlmSettingsWrite, beginToolsSettingsSave,
     busy, chatFinalizedTaskIdsRef, configSync, contextTask,
     conversationActivationSeqRef, conversationDetailAbortRef, conversationError, conversationId,
     conversationIdRef, conversationReady, conversationReorderChainsRef, conversationReorderVersionsRef,
@@ -651,7 +652,7 @@ export function AppShell() {
     currentConversationRunning, uploadActive: uploadState.active, settingsMode,
   });
   useShellTaskRuntimePolling({
-    conversationId, conversationIdRef, currentConversationActive, applyContextUsage, fetchTaskRuntimeDetail,
+    conversationId, conversationIdRef, currentConversationActive, applyContextUsage, getContextWindowTokens, fetchTaskRuntimeDetail,
     fetchTaskRuntimeBatch, getRuntime, notifyTaskComplete, panelWorkspaceState, removeMissingTask,
     restoreLatestTaskRuntime, setWorkspaceState,
   });

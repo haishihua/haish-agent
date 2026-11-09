@@ -25,5 +25,9 @@ export function useContextUsageBridge({ contextUsageTrackerRef, conversationIdRe
     return tracker.reset(conversationIdValue);
   }
 
-  return { applyContextUsage, resetContextUsage };
+  function getContextWindowTokens() {
+    return tracker.getTotalTokens();
+  }
+
+  return { applyContextUsage, resetContextUsage, getContextWindowTokens };
 }

@@ -1,4 +1,13 @@
 export const DIRECT_AGENT_WORKFLOW_ID = 'workflow.direct-agent';
+
+// 会真正执行一次工作并产出详情的节点类型：运行态详情面板、重试入口、待处理请求的
+// 落点都只认这几种。三处曾各抄一份，新增节点类型时容易只改中一处。
+export const WORKFLOW_EXECUTABLE_NODE_TYPES = Object.freeze(['agent', 'llm', 'tool', 'human_approval']);
+
+export function isWorkflowExecutableNode(type) {
+  return WORKFLOW_EXECUTABLE_NODE_TYPES.includes(type);
+}
+
 export const DEFAULT_WORKFLOW_NODE_TYPES = [
   { id: 'agent', label: 'Agent', description: 'Invoke an assistant profile over A2A.' },
   { id: 'llm', label: 'LLM', description: 'Run a direct model call with prompt parameters.' },

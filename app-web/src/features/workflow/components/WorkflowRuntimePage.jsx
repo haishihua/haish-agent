@@ -39,6 +39,7 @@ import {
 } from '../model/workflow-node-ports.js';
 import { workflowNodeAccent } from '../model/workflow-node-presentation.js';
 import { nodeAttempts, visibleNodeAttempts } from '../../../core/node-attempts.js';
+import { isWorkflowExecutableNode } from '../../../core/workflow-defaults.js';
 import { WorkflowNodeDetailHead } from './runtime/WorkflowNodeDetailHead.jsx';
 import { WorkflowNodeAttempts } from './runtime/WorkflowNodeAttempts.jsx';
 import { WorkflowDetailResizer } from './runtime/WorkflowDetailResizer.jsx';
@@ -60,8 +61,6 @@ const STATUS_COPY = {
   failed: 'Failed',
   cancelled: 'Cancelled',
 };
-
-const DETAIL_NODE_TYPES = new Set(['agent', 'llm', 'tool', 'human_approval']);
 
 function workflowIdentity(workflow) {
   return String(workflow?.workflow_id || workflow?.id || '').trim();
@@ -135,7 +134,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
   const canRetry = onRetry
     && ['done', 'failed', 'cancelled'].includes(normalizeTaskStatus(task?.status))
     && visibleAttempts.length > 0
-    && ['agent', 'llm', 'tool', 'human_approval'].includes(node.type);
+    && isWorkflowExecutableNode(node.type);
   const retryLatest = React.useCallback(() => onRetry?.(node.id), [node.id, onRetry]);
 
   return (
@@ -241,7 +240,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
   ]), [run?.nodes, run?.current_node_id, controlEvents]);
   const canOpenNodeDetail = React.useCallback((node) => (
     Boolean(node)
-    && DETAIL_NODE_TYPES.has(node.type)
+    && isWorkflowExecutableNode(node.type)
     && (node.type === 'agent' || executedNodeIds.has(String(node.id)) || String(node.id) === attentionNodeId)
   ), [attentionNodeId, executedNodeIds]);
   // 回环端口（次级→主链那条边的落点）只有一份判断，和配置页调同一个函数。

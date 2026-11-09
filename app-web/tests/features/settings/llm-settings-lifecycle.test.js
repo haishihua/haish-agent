@@ -10,6 +10,7 @@ import {
   loadLlmSettingsDraft, mergeLlmSettingsDraft, runtimeLlmProviderOptions,
 } from '../../../src/features/settings/model/llm-settings.js';
 import { apiFetch, parseResponseMessage } from '../../../src/shared/api/client.js';
+import { isLlmProviderSection } from '../../../src/features/settings/model/settings-navigation.js';
 import { executionConfigError } from '../../../src/core/execution-config.js';
 
 const hookSource = readFileSync(new URL('../../../src/features/settings/hooks/useLlmSettings.js', import.meta.url), 'utf8')
@@ -89,6 +90,7 @@ function harness(t, initial, cache = new Map()) {
     reconcileSettings, hasSettingsVersion, retryWithBackoff, STARTUP_LOAD_RETRY,
     LLM_SETTINGS_STORAGE_KEY, applyLlmSettingsPayloadToDraft, llmDraftForStorage, loadLlmSettingsDraft,
     mergeLlmSettingsDraft, runtimeLlmProviderOptions, window, console: { warn() {} },
+    isLlmProviderSection,
   });
   const setDraft = update => { draft = typeof update === 'function' ? update(draft) : update; render(); };
   function render() {
@@ -98,7 +100,7 @@ function harness(t, initial, cache = new Map()) {
     cursor = 0;
     effects = [];
     trackSettingsDraft('llm', draft);
-    const args = vm.runInNewContext(`(${hookArguments})`, { llmSettingsDraft: draft, setLlmSettingsDraft: setDraft, settingsMode, settingsSection, settingsSync: { epochs: {} } });
+    const args = vm.runInNewContext(`(${hookArguments})`, { llmSettingsDraft: draft, setLlmSettingsDraft: setDraft, settingsMode, settingsSection, settingsSync: { epochs: {} }, isLlmProviderSection });
     result = useLlmSettings(args);
     effects.forEach(effect => effect());
     rendering = false;

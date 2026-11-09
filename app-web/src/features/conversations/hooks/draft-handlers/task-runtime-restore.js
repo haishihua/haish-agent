@@ -22,23 +22,23 @@ export function createTaskRuntimeRestoreHandlers(ctx) {
 
   async function fetchTaskRuntimeDetail(taskId, targetConversationId = null, signal) {
     if (!taskId) return null;
-    const fetchSingle = (joinBatch) => fetchCoalescedTaskRuntimeBatch(
+    const fetchSingle = (requestKind) => fetchCoalescedTaskRuntimeBatch(
       taskRuntimeFetchesRef.current,
       targetConversationId,
       [taskId],
       async (_ids, sharedSignal) => [await requestTaskRuntimeDetail(taskId, targetConversationId, sharedSignal)],
       signal,
-      { requestKind: 'single', joinBatch },
+      { requestKind },
     );
     let details;
     try {
-      details = await fetchSingle(true);
+      details = await fetchSingle('single');
     } catch (error) {
       // Backend batches are all-or-nothing: ANY missing id (or conversation)
       // returns 404 for the group. It says nothing about this joined task.
       // Confirm with a GET, bypassing other batches but still sharing GET leases.
       if (error?.status !== 404 || error.runtimeRequestKind !== 'batch') throw error;
-      details = await fetchSingle(false);
+      details = await fetchSingle('single-confirmation');
     }
     const { normalizedTask } = details[0];
     if (targetConversationId && normalizedTask.conversation_id !== targetConversationId) {

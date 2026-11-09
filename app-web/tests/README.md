@@ -4,6 +4,8 @@
 
 ## 自动测试
 
+- `npm run check:composer-draft`：独立启动离线 Electron 夹具，使用真实 `ChatPanel` / `ChatComposer` 的未受控草稿路径输入 A、切到 B 输入、再切回各自验证。此项不包含在 `npm run check:web` 中，不访问或修改真实会话；需要可运行的 Electron 图形环境。
+
 - 生图展示：`features/chat/image-display.test.js` 约束工具结果及揭幕画布保持原图比例；离线浏览器夹具可用 `npx vite --config app-web/tests/fixtures/image-display.config.mjs` 启动，访问 `/app-web/tests/fixtures/image-display.html`，点击 `Finish generation` 和横图后执行 `window.assertImageDisplay()`，检查历史结果、实时揭幕、竖图与受裁剪祖先内的预览边界。不调用模型。
 
 - Provider 认证标签：`features/settings/provider-auth-badge.test.js` 验证支持 API/OAuth 的 Provider 依据实际认证方式显示标签，其余保持不变；`fixtures/provider-auth-badge.html` 使用生产 Settings、聊天和工作流选择器验证相同名称区分、Badge 样式、无障碍说明及选择的配置 ID。夹具使用离线数据，不写真实设置。

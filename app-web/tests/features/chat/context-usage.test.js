@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  configureContextTotalTokens, createEmptyContextUsage, createContextUsageTracker,
+  createEmptyContextUsage, createContextUsageTracker,
   preferNewerContextUsage, latestContextUsageFromTasks, contextUsageFromTask,
   normalizeContextUsage, loadStoredContextUsage, saveStoredContextUsage,
   estimateContextUsageFromConversationDetail, contextUsageFromRuntimeEvent,
@@ -40,13 +40,14 @@ const compactedEvent = (overrides = {}) => ({
 });
 
 // Exercise the public stream consumer with an offline realtime bridge, not a copied reducer.
-async function replayUsageEvents(events, { background = false } = {}) {
+async function replayUsageEvents(events, { background = false, contextWindowTokens = 0, updateWindowBeforeEvents = null } = {}) {
   let task = { taskId: 'compaction-task', title: 'Continue', originViewMode: 'chat', eventLog: [], requestedProvider: 'fixture', requestedModelId: 'model' };
   const runtime = { cancelledRunIds: new Set(), taskRuntimeState: {} };
   const displayed = [];
   const saved = [];
   // 表盘唯一写入入口（AppShell 里的那个工厂）：线上流、后台流都走它。
   const tracker = createContextUsageTracker({
+    initialContextWindowTokens: contextWindowTokens,
     getActiveConversationId: () => (background ? 'another-conversation' : CONVERSATION_ID),
     onChange: (usage) => displayed.push(usage),
     persist: (usage) => saved.push(usage),
@@ -65,10 +66,12 @@ async function replayUsageEvents(events, { background = false } = {}) {
     setRuntimeActiveTaskId: (id) => { runtime.activeTaskId = id; },
     ensureTaskForEvent: () => task.taskId, getTaskById: () => task,
     updateTaskById: (_id, update) => { task = update(task); },
-    getChatProgressLine: () => '', batchRuntimeMutations: (_id, update) => update(),
+    getChatProgressLine: () => '', getContextWindowTokens: () => tracker.getTotalTokens(),
+    batchRuntimeMutations: (_id, update) => update(),
     normalizeRuntimeEvent, normalizeContextUsage, buildApiHeaders: () => ({}),
     applyContextUsage: (candidate, options) => tracker.apply(candidate, options),
     runTaskStream: async (_command, onEvent) => {
+      if (updateWindowBeforeEvents != null) tracker.setTotalTokens(updateWindowBeforeEvents);
       for (const event of events) onEvent({
         ...event, task_id: task.taskId, conversation_id: CONVERSATION_ID,
       });
@@ -130,12 +133,17 @@ test('skipped, failed, blocked or invalid compaction never resets the meter', as
 });
 
 test('pre-flight compaction uses the configured context window when the event omits it', async () => {
-  configureContextTotalTokens(CONTEXT_LIMIT);
-  try {
-    const { saved } = await replayUsageEvents([compactedEvent({ total_tokens: undefined })]);
-    assert.equal(saved[0]?.totalTokens, CONTEXT_LIMIT);
-    assert.equal(saved[0]?.usedTokens, AFTER_TOKENS);
-  } finally { configureContextTotalTokens(0); }
+  const { saved } = await replayUsageEvents([compactedEvent({ total_tokens: undefined })], { contextWindowTokens: CONTEXT_LIMIT });
+  assert.equal(saved[0]?.totalTokens, CONTEXT_LIMIT);
+  assert.equal(saved[0]?.usedTokens, AFTER_TOKENS);
+});
+
+test('后台流开始后配置更新，缺省窗口的事件使用更新后的分母', async () => {
+  const { saved } = await replayUsageEvents([compactedEvent({ total_tokens: undefined })], {
+    background: true, contextWindowTokens: CONTEXT_LIMIT, updateWindowBeforeEvents: 100000,
+  });
+  assert.equal(saved.at(-1).totalTokens, 100000);
+  assert.equal(saved.at(-1).ratio, AFTER_TOKENS / 100000);
 });
 
 test('restoring a conversation preserves recorded usage instead of the larger history estimate', () => {
@@ -171,24 +179,22 @@ test('a zero or negative reading is not a reading and never lands in storage', (
   globalThis.window = { localStorage: {
     getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value),
   } };
-  configureContextTotalTokens(CONTEXT_LIMIT);
   try {
     // provider 报 0 只说明这次没采到数，不是"上下文空了"。
     saveStoredContextUsage(recordedUsage({ usedTokens: 0 }));
     saveStoredContextUsage(recordedUsage({ usedTokens: -1 }));
     assert.equal(values.size, 0);
-    assert.equal(loadStoredContextUsage(CONVERSATION_ID).usedTokens, 0);
-    assert.equal(loadStoredContextUsage(CONVERSATION_ID).valid, false);
+    assert.equal(loadStoredContextUsage(CONVERSATION_ID, CONTEXT_LIMIT).usedTokens, 0);
+    assert.equal(loadStoredContextUsage(CONVERSATION_ID, CONTEXT_LIMIT).valid, false);
 
     // 真读数才落盘，并且分母按当前窗口归一。
     saveStoredContextUsage(recordedUsage());
-    const restored = loadStoredContextUsage(CONVERSATION_ID);
+    const restored = loadStoredContextUsage(CONVERSATION_ID, CONTEXT_LIMIT);
     assert.equal(restored.usedTokens, AFTER_TOKENS);
     assert.equal(restored.totalTokens, CONTEXT_LIMIT);
     assert.equal(restored.updatedAt, LATER);
   } finally {
     globalThis.window = previousWindow;
-    configureContextTotalTokens(0);
   }
 });
 
@@ -225,16 +231,15 @@ test('restored conversation estimate is pure character counting without a base o
 });
 
 test('history estimates are marked as estimates and never read as over limit', () => {
-  configureContextTotalTokens(CONTEXT_LIMIT);
-  try {
+  {
     const estimate = estimateContextUsageFromConversationDetail({
       conversation_id: CONVERSATION_ID, messages: [{ content: '文'.repeat(CONTEXT_LIMIT) }],
-    });
+    }, CONTEXT_LIMIT);
     assert.equal(estimate.estimated, true);
     assert.ok(estimate.usedTokens > CONTEXT_LIMIT);
     assert.equal(estimate.totalTokens, CONTEXT_LIMIT);
     assert.equal(estimate.overLimit, false);
-  } finally { configureContextTotalTokens(0); }
+  }
 
   // 只有 provider 实测值才可能把表盘标红。
   assert.equal(normalizeContextUsage({ usedTokens: CONTEXT_LIMIT + 1, totalTokens: CONTEXT_LIMIT }).overLimit, true);
@@ -244,12 +249,11 @@ test('history estimates are marked as estimates and never read as over limit', (
 });
 
 test('the measurement the backend persisted is a reading, an absent one is not zero', () => {
-  configureContextTotalTokens(CONTEXT_LIMIT);
-  try {
+  {
     const measured = contextUsageFromConversationDetail({
       conversation_id: CONVERSATION_ID, context_used_tokens: 71859,
       updated_at: '2026-09-18T02:07:28Z',
-    });
+    }, null, CONTEXT_LIMIT);
     assert.equal(measured.usedTokens, 71859);
     assert.equal(measured.estimated, false);
     assert.equal(measured.totalTokens, CONTEXT_LIMIT);
@@ -268,7 +272,7 @@ test('the measurement the backend persisted is a reading, an absent one is not z
     ]) {
       assert.equal(contextUsageFromConversationDetail(detail, CONVERSATION_ID).usedTokens, 0);
     }
-  } finally { configureContextTotalTokens(0); }
+  }
 });
 
 test('estimates never reach local storage and legacy stored ones stop counting', () => {
@@ -277,7 +281,6 @@ test('estimates never reach local storage and legacy stored ones stop counting',
   globalThis.window = { localStorage: {
     getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value),
   } };
-  configureContextTotalTokens(CONTEXT_LIMIT);
   try {
     saveStoredContextUsage(estimateContextUsageFromConversationDetail({
       conversation_id: CONVERSATION_ID, messages: [{ content: '文'.repeat(CONTEXT_LIMIT) }],
@@ -294,7 +297,6 @@ test('estimates never reach local storage and legacy stored ones stop counting',
     assert.equal(restored.overLimit, false);
   } finally {
     globalThis.window = previousWindow;
-    configureContextTotalTokens(0);
   }
 });
 

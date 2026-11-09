@@ -49,13 +49,20 @@ export function normalizeWorkflowNode(node, fallback = {}) {
   };
 }
 
+const WORKFLOW_EDGE_BRANCHES = Object.freeze(['true', 'false', 'approved', 'rejected', 'retry', 'exhausted']);
+
+/** 原样校验，调用方自行决定是否归一化输入。 */
+export function isWorkflowEdgeBranch(branch) {
+  return WORKFLOW_EDGE_BRANCHES.includes(branch);
+}
+
 export function normalizeWorkflowEdge(edge) {
   const rawBranch = String(edge?.branch || edge?.source_handle || edge?.sourceHandle || '').trim().toLowerCase();
   const branch = rawBranch === 'default' ? 'false' : rawBranch;
   return {
     from: String(edge?.from || edge?.source || '').trim(),
     to: String(edge?.to || edge?.target || '').trim(),
-    ...(['true', 'false', 'approved', 'rejected', 'retry', 'exhausted'].includes(branch) ? { branch } : {}),
+    ...(isWorkflowEdgeBranch(branch) ? { branch } : {}),
   };
 }
 

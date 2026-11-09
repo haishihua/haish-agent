@@ -12,12 +12,11 @@
 //   · 工厂 = `function createXxx(<参数>)`，参数要么是解构 `({ a, b })`，要么是单个
 //     标识符且函数体里有 `const { a, b } = ctx;`（本仓是后者为主）。
 //   · 装配点 = 任意源码里的 `createXxx({...})` 字面量调用；`createXxx(someVariable)`
-//     这种变量间接装配**判不了**，整个工厂跳过（宁可漏报）。
-//   · `{ ...ctx, extra }` 这种展开：若 `...ctx` 就是外层工厂自己的 ctx 参数，就把外层
-//     工厂装配点的键并进来（递归，带环保护）；不是这个形状就当未知，整个工厂跳过。
+//     这种变量间接装配**判不了**，该装配点跳过（宁可漏报）。
+//   · `{ ...ctx, extra }` 这种展开：若 `...ctx` 就是外层工厂自己的 ctx 参数，递归取
+//     外层所有装配点共同提供的键（带环保护）；不认识的展开按未知处理。
 //   · 只比对**必填键**：解构里有默认值（`{ a = 1 }`）的键不要求装配点提供。
-//   · 判定按「任何装配点都没提供」算（同一工厂多处装配时取并集），这是任务口径；
-//     单个装配点漏传、另一个补上了的情况不报。
+//   · 每个装配点独立核对；无法确定的装配点单独跳过，不影响其他装配点。
 //
 // 拦不住什么
 //   · 变量间接装配、`Object.assign` 拼装、测试里手工拼的 ctx；
@@ -29,7 +28,7 @@ import { topLevelEntries } from './source-scan.js';
 const FACTORY_DEFINITION = /function\s+(create[A-Z][\w$]*)\s*\(/g;
 
 /** 工厂的必填/可选键。 */
-function factoryProfile(source, masked, parens, match) {
+function factoryProfile(masked, braces, parens, match) {
   const name = match[1];
   const parenOpen = match.index + match[0].length - 1;
   const parenClose = parens.get(parenOpen);
@@ -42,9 +41,10 @@ function factoryProfile(source, masked, parens, match) {
   const parameter = params.trim().match(/^([A-Za-z_$][\w$]*)\s*(?:=[^,]*)?$/);
   if (!parameter) return null;
   const bodyStart = masked.indexOf('{', parenClose);
-  if (bodyStart === -1) return null;
+  const bodyEnd = braces.get(bodyStart);
+  if (bodyStart === -1 || bodyEnd === undefined) return null;
   const destructure = masked
-    .slice(bodyStart)
+    .slice(bodyStart, bodyEnd)
     .match(new RegExp(`const\\s*\\{([\\s\\S]*?)\\}\\s*=\\s*${parameter[1]};`));
   if (!destructure) return null;
   return {
@@ -64,7 +64,7 @@ export function collectCtxWiring(views) {
   const factories = [];
   for (const view of views) {
     for (const match of view.masked.matchAll(FACTORY_DEFINITION)) {
-      const profile = factoryProfile(view.source, view.masked, view.parens, match);
+      const profile = factoryProfile(view.masked, view.braces, view.parens, match);
       if (!profile) continue;
       factories.push({ ...profile, path: view.path, line: view.lineAt(match.index) });
     }
@@ -98,38 +98,6 @@ export function collectCtxWiring(views) {
     }
   }
 
-  // 3) 递归解析 `...ctx`：装配点提供的键 = 外层工厂装配点提供的键
-  const resolved = new Map(); // factory → Set | null
-  const resolving = new Set();
-  const providedKeys = (factory) => {
-    if (resolved.has(factory)) return resolved.get(factory);
-    if (resolving.has(factory)) return null; // 环：按未知处理
-    resolving.add(factory);
-    const sites = callSites.get(factory) || [];
-    if (sites.length === 0) {
-      resolving.delete(factory);
-      resolved.set(factory, null);
-      return null;
-    }
-    const keys = new Set();
-    let complete = true;
-    for (const site of sites) {
-      if (site.unresolved) { complete = false; break; }
-      for (const key of site.provided) keys.add(key);
-      for (const spread of site.spreads) {
-        const ownerSite = enclosingFactoryOf(site, contexts, factories);
-        const inherited = ownerSite && spread === ownerSite.paramName ? providedKeys(ownerSite) : null;
-        if (!inherited) { complete = false; break; }
-        for (const key of inherited) keys.add(key);
-      }
-      if (!complete) break;
-    }
-    resolving.delete(factory);
-    const value = complete ? keys : null;
-    resolved.set(factory, value);
-    return value;
-  };
-
   function enclosingFactoryOf(site, contextsByPath, factoryList) {
     const context = contextsByPath.get(site.path);
     if (!context) return null;
@@ -145,25 +113,56 @@ export function collectCtxWiring(views) {
     return null;
   }
 
+  // 一个展开能保证的键是外层所有装配点的交集，而不是并集。未知展开保守跳过；
+  // 已显式提供的键仍然确定，循环展开不缓存，避免因遍历顺序污染其他路径。
+  const providedAt = (site, stack = new Set()) => {
+    if (site.unresolved) return { keys: new Set(), unknown: true };
+    const keys = new Set(site.provided);
+    let unknown = false;
+    for (const spread of site.spreads) {
+      const owner = enclosingFactoryOf(site, contexts, factories);
+      if (!owner || spread !== owner.paramName || stack.has(owner)) { unknown = true; continue; }
+      const ownerSites = callSites.get(owner) || [];
+      if (ownerSites.length === 0) { unknown = true; continue; }
+      const nextStack = new Set(stack).add(owner);
+      const possibilities = ownerSites.map((ownerSite) => providedAt(ownerSite, nextStack));
+      const common = new Set(possibilities[0].keys);
+      for (const possibility of possibilities) {
+        if (possibility.unknown) unknown = true;
+        for (const key of common) if (!possibility.keys.has(key)) common.delete(key);
+      }
+      for (const key of common) keys.add(key);
+    }
+    return { keys, unknown };
+  };
+
   const violations = [];
   let skipped = 0;
   let checked = 0;
+  let skippedSites = 0;
+  let checkedSites = 0;
   for (const factory of factories) {
     const required = factory.keys.filter((entry) => !entry.optional).map((entry) => entry.key);
     if (required.length === 0) continue;
     const sites = callSites.get(factory) || [];
-    const provided = providedKeys(factory);
-    if (!provided) { skipped += 1; continue; }
-    checked += 1;
-    const missing = required.filter((key) => !provided.has(key));
-    if (missing.length === 0) continue;
-    violations.push({
-      key: `${factory.name}::${missing.join('|')}`,
-      factory: factory.name,
-      file: factory.path,
-      line: factory.line,
-      missing,
-    });
+    let factoryChecked = false;
+    for (const site of sites) {
+      const provided = providedAt(site, new Set([factory]));
+      const missing = required.filter((key) => !provided.keys.has(key));
+      if (provided.unknown && missing.length > 0) { skippedSites += 1; continue; }
+      checkedSites += 1;
+      factoryChecked = true;
+      if (missing.length === 0) continue;
+      violations.push({
+        key: `${factory.name}::${site.path}:${site.line}::${missing.join('|')}`,
+        factory: factory.name,
+        file: site.path,
+        line: site.line,
+        missing,
+      });
+    }
+    if (factoryChecked) checked += 1;
+    else skipped += 1;
   }
 
   return {
@@ -177,10 +176,10 @@ export function collectCtxWiring(views) {
       sites: (callSites.get(factory) || []).length,
     })),
     violations,
-    stats: { factories: factories.length, checked, skipped },
+    stats: { factories: factories.length, checked, skipped, checkedSites, skippedSites },
   };
 }
 
 export function describeCtxWiring(violation) {
-  return `${violation.file}:${violation.line} 的工厂 ${violation.factory} 从 ctx 解构出 ${violation.missing.join(', ')}，但没有任何装配点递进去 —— 这一行要等到运行时才炸成「x is not a function」。把键补进装配点的 ctx 字面量，或给解构加默认值。`;
+  return `${violation.file}:${violation.line} 调用 ${violation.factory} 时缺少必填 ctx 键 ${violation.missing.join(', ')}；请检查该装配点或确认工厂是否需要默认值。`;
 }

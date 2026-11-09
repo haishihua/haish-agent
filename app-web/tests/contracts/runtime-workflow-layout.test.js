@@ -256,7 +256,6 @@ test('live traces stay visible while their tool cards remain collapsed', () => {
 });
 
 test('runtime details use executed node data and real workflow transitions', () => {
-  assert.match(runtimeSource, /DETAIL_NODE_TYPES = new Set\(\['agent', 'llm', 'tool', 'human_approval'\]\)/);
   assert.match(runtimeSource, /executedNodeIds\.has\(String\(node\.id\)\)/);
   assert.doesNotMatch(runtimeSource, /detailText\(node\.input \|\| node\.prompt/);
   // 流动/已走过的边都由共用的 workflowEdgeAppearance 给（配置页选中的边用同一套）。
@@ -479,7 +478,6 @@ test('terminal workflow tasks can rerun an executed business node', () => {
   assert.doesNotMatch(runtimeSource, /workflow-detail-retry-row/);
   assert.doesNotMatch(runtimeSource, /workflow-detail-footer/);
   assert.doesNotMatch(runtimeSource, /Upstream results and previous attempts will be kept/);
-  assert.match(runtimeSource, /\['agent', 'llm', 'tool', 'human_approval'\]\.includes\(node\.type\)/);
   assert.match(runtimeSource, /onRetry\?\.\(node\.id\)/);
   assert.match(taskStreamSource, /rerunningNode \? 'rerun_node' : 'start'/);
   assert.match(taskStreamSource, /node_id: streamRequest\.rerunNodeId/);

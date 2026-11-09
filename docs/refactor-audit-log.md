@@ -45,19 +45,18 @@
 | `contracts/*` 里的 JSX 结构断言 | 仓库没有 JSX 测试基建（无 SSR/jsdom 先例）；先抽可测函数，再逐批替换 |
 | `AppShell.jsx` 881 行 | 组合根，30+ state 全向下分发；逻辑已在 `useShellHandlers` / `useShellRuntimeWiring` |
 
-## 待办
+## 早期待办（第十三批复核）
 
-1. `shared/lib/settings-sync.js` —— 「写入方先应用响应、被跳过的读再恢复」的顺序契约压在一个
-   `setTimeout(…, 0)` 里。改它要么动保存时序、要么让 `finishSettingsRequest` 返回可 await 的收尾，
-   两种都会碰到并发保存的边界。
-2. `core/pet-state.js` —— 为了算一个表情把整棵 chat timeline 构建一遍。轻量化等于重写活动推断，
-   会改变宠物动画的触发时机（用户可见）。
-3. `shared/ui/ImagePreviewOverlay.jsx` —— 复制图片的失败只 `console.error`，界面无反馈。
-   现在有 `notifyToast` 可以接，但这是新增用户可见提示，属于产品决策。
-4. `features/conversations/model/task-runtime-requests.js` —— 通用合并器里混进调用方词汇
-   （`joinBatch` 只为 404 后的独立重取服务）。改动会变请求合并键，需要先确认合并语义。
+1. `shared/lib/settings-sync.js` —— 仍保留。「写入方先应用响应、被跳过的读再恢复」的顺序契约
+   压在一个 `setTimeout(…, 0)` 里；改成 await 会动到并发保存时序，不属纯重构。
+2. `core/pet-state.js` —— 复核后不改。`buildChatTimeline` 读的是 `attemptTask` 裁过的
+   单节点事件，不是整段会话；再写一套轻量活动推断会改变宠物动画的触发时机。
+3. `shared/ui/ImagePreviewOverlay.jsx` —— 仍保留。复制图片失败只 `console.error`，
+   补 toast 是新增用户可见提示，属于产品决策。
+4. `features/conversations/model/task-runtime-requests.js` —— **已处理**：去掉 `joinBatch`，
+   只留 `requestKind`（`batch` / `single` / `single-confirmation`），合并键与 404 兜底语义不变。
 
-这四项都不是「代码级清理」，而是要么触到用户可见行为，要么要先定产品语义。
+前两项要么触到用户可见行为，要么要先定产品语义；不是「代码级清理」。
 
 ## 第四批：special cases 系统审计（分类扫全量）
 
@@ -186,6 +185,38 @@ toast（`useConversationRunConfig.js:92`），再加一条是重复；而 `persi
 没能回滚时才保留错误，因为那种情况下配置确实不可用。测试模拟了 restore 写回 React 状态，
 变异校验确认：把错误状态改回一直保留，该用例立刻红。
 
+## 第八批：未受控草稿的真实交互验证
+
+上一批的 hook 测试验证了读写成对，但没有渲染组件；既有 message-history 夹具又由外部传入受控草稿，不能验证 AppShell 使用的默认路径。新增离线 Electron 夹具，实际输入 A、切换 B 输入、再切回两次验证各自的草稿，通过 `npm run check:composer-draft` 单独运行。该测试不含在 `check:web`，需要图形环境；它覆盖的是 ChatPanel 到输入框的接线，不等于覆盖完整 AppShell 或所有草稿路径。
+
+开发环境里的 Electron 路径可能指向忽略脚本参数的 Haish Dev 启动器，进程可无输出退出 0；运行器优先使用原版 Electron，并要求成功标记和零退出码，避免假绿。
+
+本批没有改变产品行为。`context-usage` 模块默认值、接线静态检查的并集盲区和测试源码断言债仍待单独评估，不因本项测试通过而视为完成。
+
+## 第九批：按装配点检查 ctx
+
+原 `ctx-wiring` 将同名工厂的所有装配键取并集，因此一处传了 `b` 能掩盖另一处漏传 `b`。现在按每个可判定的装配点独立检查；已知外层 `...ctx` 使用所有外层装配点的共同键，未知展开和循环按未知处理，但不再掩盖其他可判定的装配点。输出增加已核对和无法判定的装配点数。检查器仍按名字匹配且不是完整 JS 解析器，传值是否正确、间接装配等仍不受保证。
+
+`contracts/ctx-wiring-rule.test.js` 覆盖不同装配点、嵌套展开、未知展开、循环及函数体边界。新增用例在旧实现下失败、新实现下通过；全仓检查结果未发现新的可判定漏参。
+
+`context-usage` 默认值未在本批删除：当前 setTotalTokens 同时更新 tracker 实例和模块级默认值，而激活、恢复、轮询和事件转换调用仍依赖该默认值。要消除隐式依赖须将上下文窗口的读取能力贯穿这些生产调用并测试配置更新、后台会话和异步恢复，单纯去掉默认值会改变行为；留待下一批处理。
+
+## 第十批：显式零窗口不再借用全局值
+
+`createEmptyContextUsage(id, 0)` 虽然接到显式窗口，内部调用 `normalizeContextUsage` 时却漏传第三个参数；模块级默认值非零时，归一化把零当作空值回退到那个默认值。现在把窗口继续传入，任务、会话详情、估算、空任务列表和空存储的空读数也因此尊重显式零。测试先确认旧实现返回 200000 而失败，修复后通过。此改动仅影响显式指定零窗口且全局窗口非零的情况；不改变调用方省略窗口时的旧默认行为，也没有消除模块级默认值。
+
+## 第十一批：窗口归 tracker 实例所有
+
+删除模块级窗口与全局配置入口。`createContextUsageTracker` 持有当前分母；AppShell 在 agent catalog 更新时设置它，激活、分页恢复通过绑定 tracker 的读数转换器在使用时取值，后台轮询与实时流也显式取得当前值。设置更新后已装配的处理器和后台流仍读取新值，不捕获过期数字；两个 tracker 的窗口互不影响。生产调用不传窗口时纯函数默认零；流和轮询的测试夹具可省略窗口读取器，默认为零，不能因此认为接线错误一定会被静态检查发现。
+
+覆盖包括实例隔离、显式零、读取缓存重算、激活后更改窗口、后台流事件省略分母以及既有压缩/恢复/仲裁测试。未执行全量真实应用交互测试，不能以单元测试替代所有用户路径验收。
+
+剩余决策（其中任务请求合并已在第十三批处理）：设置同步的 timer 涉及并发保存时序；图片复制失败提示及批注高亮寿命属于用户可见产品决定，仍不擅改。
+
+## 第十二批：工作流分支合法值唯一来源
+
+工作流边的读入与 payload 保存过去各自维护六个合法分支，两处必须同步。现在共用 `isWorkflowEdgeBranch`，但读入仍保留大小写、空白和 `default → false` 归一化，保存仍只接受原样合法值；没有把两种输入语义合并。新增行为测试覆盖六个值、别名、大小写、无效值及保存结果，对应重复数组白名单已删除。
+
 ## 第七批：三条接线静态规则、两个大文件第一批、纯逻辑抽 model
 
 ### 接线规则（新增 `scripts/architecture-rules/`）
@@ -223,3 +254,35 @@ toast（`useConversationRunConfig.js:92`），再加一条是重复；而 `persi
 
 两批 worker 都想用「组件文件里 `export { ... }`」保住旧 import 路径，都被改掉了——
 消费方改为直接从 `model/` 取。转发会让「这段规则归谁」重新变成要看两处。
+
+## 第十三批：跨文件重复词表清零
+
+`duplicate-string-arrays` 从 3 组降到 **0 组**，白名单里对应的三条一并删除。
+
+- **工作流可执行节点类型**：运行态详情、重试入口、待处理请求落点三处合到
+  `core/workflow-defaults.js` 的 `isWorkflowExecutableNode`。它们本来就要求同一集合，
+  新增节点类型只改一处。
+- **页签键盘导航**：键表与目标计算抽到 `shared/lib/tab-navigation.js`，消息里的
+  Request/Response 与运行态详情的 Config/Result 共用。现有两处都只有两个页签，
+  Home/End 与左右循环的结果和旧实现逐字等价；单测另外锁定了「3 个以上页签逐格移动」
+  的语义，避免以后新增页签时退回「总是跳到第一个非当前项」。
+- **LLM provider 分区**：`isLlmProviderSection` 收进 `settings-navigation.js`，
+  覆盖导航计数、测试按钮、Add provider 文案、删除与保存路由共 8 处。
+
+`fetchCoalescedTaskRuntimeBatch` 去掉 `joinBatch`，只保留 `requestKind`：
+`single-confirmation` 表示批请求 404 后的独立确认 GET，能否并入批租约由种类推出。
+合并键与旧实现完全相同（`single-confirmation` 后缀）；确认 GET 仍可并入普通 single、
+不并入 batch。`task-runtime-single-batch` 11 条全部通过。
+这是参数收敛，不改变 404 兜底语义。
+
+对拍核对（旧实现在 `requestKind: 'single'` + `joinBatch: false` 下算作 confirmation）：
+两个并发确认在旧实现下同样是 1 次传输，合并键逐字相同，因此不是行为变化。
+
+`runtime-workflow-layout.test.js` 删掉的两条源码断言原本钉的是字面量词表；
+换成 `isWorkflowExecutableNode` 后无法再用字面量匹配。该函数本身由 `workflow-attention`
+的行为测试锁定，但「运行态详情页确实调用它」没有 JSX 测试基座，目前只能靠代码审查。
+
+`pet-state` 复核后不改：`buildChatTimeline` 读的是 `attemptTask` 裁过的单节点事件，
+不是整段会话；再写一套轻量活动推断会改变宠物动画的触发时机。
+`settings-sync` 的 0ms 收尾仍保留：它保证写入方先应用响应，再让被跳过的读恢复；
+改成 await 会碰到并发保存的顺序。图片复制失败提示、批注高亮寿命仍需产品决定。

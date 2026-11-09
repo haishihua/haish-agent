@@ -2,6 +2,7 @@ import { reconcileSettings, copySettingsResponse, hasSettingsVersion } from '../
 import { setImageProviderEnabled, setVisionProviderEnabled } from '../model/llm-settings.js';
 import { withoutStoredSkillInventory } from '../model/live-tools-settings.js';
 import { toolsSettingsPayloadForDraft } from '../model/settings-payload.js';
+import { isLlmProviderSection } from '../model/settings-navigation.js';
 
 export function skillAllowPayload(value) {
   return value === null ? null : (Array.isArray(value) ? value : []);
@@ -71,7 +72,7 @@ export function createSettingsHandlers(ctx) {
   async function handleSaveSettingsDraft(section) {
     if (section === 'tools') return handleSaveToolsSettingsDraft();
     try {
-      if (['llm', 'embedding', 'compact'].includes(section)) {
+      if (isLlmProviderSection(section)) {
         await writeLlmSettings('/api/settings/llm', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

@@ -13,7 +13,7 @@ export async function fetchCoalescedTaskRuntimeBatch(
   taskIds,
   fetchBatch,
   signal,
-  { requestKind = 'batch', joinBatch = true } = {},
+  { requestKind = 'batch' } = {},
 ) {
   if (signal?.aborted) throw abortError();
   const ids = [...new Set(taskIds.filter(Boolean))];
@@ -21,12 +21,16 @@ export async function fetchCoalescedTaskRuntimeBatch(
   // Task ids are globally unique. A GET has no conversation in its URL, so
   // either transport may join that unscoped lease; distinct declared owners
   // remain isolated and callers validate the returned task's owner.
-  // Confirmation GETs must bypass even another still-pending batch. Keep a
-  // separate key so they cannot replace that batch's entry/cleanup ownership.
-  const keyFor = (id) => JSON.stringify(['task-runtime', conversationId, id, ...(!joinBatch ? ['single-confirmation'] : [])]);
+  // A `single-confirmation` is the retry after a batch 404: it bypasses even
+  // another still-pending batch, but may share a plain single GET. Keep its
+  // own key so it cannot replace that batch's entry/cleanup ownership.
+  const joinsBatch = requestKind !== 'single-confirmation';
+  const keyFor = (id) => JSON.stringify(['task-runtime', conversationId, id, ...(!joinsBatch ? [requestKind] : [])]);
   const canJoin = (entry, id) => entry?.taskId === id
     && (!conversationId || !entry.conversationId || entry.conversationId === conversationId)
-    && (joinBatch || entry.group.requestKind === 'single');
+    // Confirmation GETs may share a plain single GET or another confirmation,
+    // but never a batch lease.
+    && (joinsBatch || entry.group.requestKind !== 'batch');
   const entryFor = (id) => {
     const exact = fetches.get(keyFor(id));
     return canJoin(exact, id) ? exact : [...fetches.values()].find((entry) => canJoin(entry, id));

@@ -214,7 +214,8 @@ const wiringSummary =
   `wiring: ${renderRefs.inventory.length} render-phase ref mirrors `
   + `(${renderRefs.violations.length} with a second owner, ${wiringWhitelist.renderRefMirrors ? Object.keys(wiringWhitelist.renderRefMirrors).length : 0} whitelisted); `
   + `${duplicateArrays.inventory.length} string arrays → ${duplicateArrays.violations.length} cross-file duplicates; `
-  + `${ctxWiring.stats.factories} ctx factories (${ctxWiring.stats.checked} checked, ${ctxWiring.stats.skipped} unverifiable)`;
+  + `${ctxWiring.stats.factories} ctx factories (${ctxWiring.stats.checked} checked, ${ctxWiring.stats.skipped} unverifiable); `
+  + `${ctxWiring.stats.checkedSites} ctx call sites checked, ${ctxWiring.stats.skippedSites} unverifiable`;
 
 if (process.argv.includes('--list')) {
   console.log(`render-phase ref mirrors (${renderRefs.inventory.length}):`);

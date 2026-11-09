@@ -20,6 +20,7 @@ export function useTaskRuntimePolling({
   conversationIdRef,
   currentConversationActive,
   applyContextUsage,
+  getContextWindowTokens = () => 0,
   fetchTaskRuntimeDetail,
   fetchTaskRuntimeBatch,
   getRuntime,
@@ -156,7 +157,7 @@ export function useTaskRuntimePolling({
           // 后台会话的表盘读数：只落盘（当前显示的会话不走这条路），切回去时
           // 由激活路径直接复用同一份值。
           applyContextUsage(
-            latestContextUsageFromTasks([detail.normalizedTask], targetConversationId),
+            latestContextUsageFromTasks([detail.normalizedTask], targetConversationId, getContextWindowTokens()),
             { ownerConversationId: targetConversationId },
           );
         }

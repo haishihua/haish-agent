@@ -118,6 +118,7 @@ main.jsx → app.jsx → features/* → core/* → shared/*
 
 - React 生命周期放 hooks；纯事件转换放 model。
 - `create*Handlers(ctx)` 是显式依赖注入的流程模块，不得读取隐藏全局。
+- 上下文用量窗口由 `createContextUsageTracker` 实例持有；读数转换由 `createContextUsageReaders` 或调用方显式传入当前窗口。异步处理应在事件或响应到达时读取 tracker，不能捕获旧窗口。
 - 新增依赖时修改参数和调用点，不增加 `window`、模块级可变注册表或兼容桥。
 
 ### model
@@ -190,7 +191,10 @@ store 却永远是空串，而当时 1604 条测试全绿。三条静态规则�
 | --- | --- | --- |
 | `render-ref-mirrors` | 组件函数体顶层写 `xxxRef.current`（render 期镜写），同一个值还有第二处承载时告警 | 事件处理器/effect 内的写入；两份都写同一个值（那本来就是冗余） |
 | `duplicate-string-arrays` | 两个文件里的字符串数组有 ≥3 个相同成员（工具名表、状态词表这类本该只有一份的） | 成员少于 3 个的表；顺序不同但语义相同的表 |
-| `ctx-wiring` | `createXxxHandlers(ctx)` 从 ctx 解构出的键，没有任何**字面量**装配点递进去 | 变量间接装配、`Object.assign` 拼装、传了但值不对 |
+| `ctx-wiring` | 逐个检查 `createXxx(ctx)` 的字面量装配点是否提供解构出的必填键；已知 `...ctx` 取外层各装配点共同提供的键 | 变量间接装配、未知展开中是否含缺失键、`Object.assign` 拼装、传了但值不对；按名字匹配，不能解析全部 JS 作用域 |
+
+检查器同时输出核对及无法判定的装配点数；结果为 0 不代表所有运行时接线均已验证。
+跨文件重复数组当前为 **0 组**；新增命中先判断是否应共用一份，确需两份才写白名单理由。
 
 白名单在 `scripts/architecture-rules/wiring-whitelist.json`，每条必须带中文理由。新增命中先判断是不是真错误：
 是真错误就改代码；确实要保留才加白名单。条目不再命中时检查器会提示删掉。
@@ -301,3 +305,15 @@ workflow 表单的 `[data-slot="select-trigger"]` 因此显式 `display: flex; a
 - **退避重试**在 `shared/lib/retry-with-backoff.js`，但两处预设不合并：启动期等 runtime 起来
   （8 次、封顶 2000ms）与用户已站在设置页上等（4 次、400ms 递进）是不同预算。
   设置页里那个固定 2s 的是**轮询**（成功也继续），不是重试，别套同一个工具。
+- **可执行工作流节点**在 `core/workflow-defaults.js` 的 `isWorkflowExecutableNode`
+  （`agent` / `llm` / `tool` / `human_approval`）。运行态详情面板、重试入口和待处理请求的
+  落点本来就是同一集合；三处曾各抄一份，新增节点类型时容易只改中一处。
+- **LLM provider 分区**（`llm` / `embedding` / `compact`）在 `settings-navigation.js` 的
+  `isLlmProviderSection`：导航计数、面板测试按钮、Add provider 文案、删除与保存路由都认它。
+- **页签键盘导航**在 `shared/lib/tab-navigation.js`：Home/End 跳首尾，左右方向键循环。
+  消息里的 Request/Response 与运行态详情的 Config/Result 共用键表和目标计算，
+  新增 tablist 不要自己再写一份键表。
+- **任务运行期请求的租约种类**只有 `batch` / `single` / `single-confirmation` 三种，
+  由 `fetchCoalescedTaskRuntimeBatch` 的 `requestKind` 决定能否并入批请求。
+  不要再加一个与种类表达同一件事的布尔参数（旧的 `joinBatch` 已删）；
+  `single-confirmation` 是批请求 404 后的独立确认 GET，可并入普通 single，不可并入 batch。

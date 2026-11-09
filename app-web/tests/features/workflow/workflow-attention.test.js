@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { workflowAttentionRequest } from '../../../src/features/workflow/model/workflow-attention.js';
+import { WORKFLOW_EXECUTABLE_NODE_TYPES, isWorkflowExecutableNode } from '../../../src/core/workflow-defaults.js';
 
 const workflow = { workflow_id: 'goal', nodes: [{ id: 'clarify', type: 'agent' }, { id: 'approve', type: 'human_approval' }, { id: 'end', type: 'output' }] };
 const task = { taskId: 'task', conversationId: 'conv', status: 'running', workflowSnapshot: workflow, workflowRun: { current_node_id: 'clarify' } };
@@ -23,6 +24,12 @@ test('historical requests, other tasks/conversations/workflows and terminal task
     assert.equal(workflowAttentionRequest(workflow, ended, [input]), null);
   }
   assert.equal(workflowAttentionRequest(workflow, { ...task, workflowRun: { status: 'waiting_input', current_node_id: 'clarify' }, eventLog: [{ tool_name: 'ask_user' }] }), null);
+});
+
+test('node types that can hold runtime detail are listed once', () => {
+  assert.deepEqual(WORKFLOW_EXECUTABLE_NODE_TYPES, ['agent', 'llm', 'tool', 'human_approval']);
+  for (const type of WORKFLOW_EXECUTABLE_NODE_TYPES) assert.equal(isWorkflowExecutableNode(type), true);
+  for (const type of ['output', 'end', 'Agent', '', null, undefined]) assert.equal(isWorkflowExecutableNode(type), false);
 });
 
 test('legacy requests map via the matching tool event then the current node', () => {

@@ -1,4 +1,5 @@
 import React from 'react';
+import { tabNavigationTarget } from '../../../../shared/lib/tab-navigation.js';
 
 export function ChatJsonBlock({ text, compact = false }) {
   if (!text) return null;
@@ -29,12 +30,11 @@ export function ChatJsonPair({ requestJson, responseJson }) {
               className={`chat-json-segment ${seg.id === active.id ? 'is-active' : ''}`}
               onClick={() => setActiveId(seg.id)}
               onKeyDown={(event) => {
-                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                const nextId = tabNavigationTarget(event.key, segments.map((segment) => segment.id), active.id);
+                if (!nextId) return;
                 event.preventDefault();
-                const next = event.key === 'Home' ? segments[0] : event.key === 'End' ? segments.at(-1)
-                  : segments.find((segment) => segment.id !== active.id);
-                setActiveId(next.id);
-                document.getElementById(`${id}-${next.id}`)?.focus();
+                setActiveId(nextId);
+                document.getElementById(`${id}-${nextId}`)?.focus();
               }}
             >
               {seg.label}

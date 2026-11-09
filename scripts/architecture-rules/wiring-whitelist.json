@@ -6,7 +6,7 @@
     "三个分区对应三条规则：",
     "  renderRefMirrors      key = `<文件>::<ref 名>`，sites = 允许的 render 期写入点数；",
     "  duplicateStringArrays key = 排序后的数组成员用逗号连接，sites = 允许的定义处数；",
-    "  ctxWiring             key = `<工厂名>::<缺失键>`，工厂解构了、装配点却没递。",
+    "  ctxWiring             key = `<工厂名>::<装配文件>:<行号>::<缺失键>`；",
     "",
     "新增命中请先判断是不是真接线错误：是真错误就修代码，确实要保留两份才在这里加条目。",
     "条目已经不再命中时，check:architecture 会提示删掉。"
@@ -29,23 +29,6 @@
       "reason": "saved 是 state，savedRef 给 useCallback 里的保存流程读最新已保存值；两处同进同出（applySaved 里 savedRef.current = normalized 紧跟着 setSaved(normalized)），是有意的同步镜像。"
     }
   },
-  "duplicateStringArrays": {
-    "agent,human_approval,llm,tool": {
-      "sites": 3,
-      "reason": "工作流节点类型词表：运行页两处（分组标题、筛选）与 workflow-attention 的注意力排序各一份；都在展示层，合并需要动产品代码，本次只做盘点。"
-    },
-    "approved,exhausted,false,rejected,retry,true": {
-      "sites": 2,
-      "reason": "工作流分支名白名单：normalizeWorkflowEdge（nodes.js）与 workflow payload 归一化（payload.js）各一份，两处必须同步；本次只做盘点，不动产品代码。"
-    },
-    "ArrowLeft,ArrowRight,End,Home": {
-      "sites": 2,
-      "reason": "键盘导航键表：JSON trace 节点与工作流节点详情头部两个独立小部件各自处理方向键，语义相同但各自演化风险低。"
-    },
-    "compact,embedding,llm": {
-      "sites": 8,
-      "reason": "设置页按 usage 过滤模型的分区词表：AppShell 的默认分区、SettingsPage 各分区的过滤、createSettingsHandlers 的落库归一化各写了一遍；合并需要动产品代码，本次只做盘点。"
-    }
-  },
+  "duplicateStringArrays": {},
   "ctxWiring": {}
 }

@@ -87,6 +87,7 @@ export function createTaskStreamHandlers(ctx) {
     fetchTaskRuntimeDetail,
     generateHexId,
     getChatProgressLine,
+    getContextWindowTokens = () => 0,
     getRuntime,
     getTaskById,
     getToolResponseTraceStatus,
@@ -222,7 +223,7 @@ export function createTaskStreamHandlers(ctx) {
     });
     if (!taskId) return;
     appendTaskEvent(taskId, event, ownerConvId);
-    const nextContextUsage = contextUsageFromRuntimeEvent(event, ownerConvId || conversationId);
+    const nextContextUsage = contextUsageFromRuntimeEvent(event, ownerConvId || conversationId, getContextWindowTokens());
     if (nextContextUsage) {
       // 走表盘唯一写入入口：当前会话改表盘 + 落盘，后台会话只落盘。哪个会话算
       // “当前”由表盘自己判断（它手上就是最新的 conversationIdRef），这里不重复判一次。

@@ -33,6 +33,7 @@
     "test": "node scripts/run-app-web-tests.mjs",
     "test:release": "node --test scripts/tests/*.test.mjs && python3 -B scripts/tests/test-runtime-dependencies.py",
     "check:architecture": "node scripts/check-app-web-architecture.mjs",
+    "check:composer-draft": "node scripts/check-composer-draft-fixture.mjs",
     "check:web": "npm run check:architecture && npm run check:tests-health && npm test && npm run lint && npm run build:web",
     "lint": "eslint --max-warnings=0 \"app-web/src/**/*.{js,jsx}\" \"app-web/tests/**/*.{js,mjs}\"",
     "format": "prettier --write \"app-web/src/**/*.{js,jsx,css}\" \"src/**/*.{ts,tsx,css}\" \"*.md\"",

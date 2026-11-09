@@ -1,4 +1,5 @@
 import { isTaskSettled } from '../../../core/run-status.js';
+import { isWorkflowExecutableNode } from '../../../core/workflow-defaults.js';
 import { requestBelongsToConversation } from '../../../core/approval-store.js';
 
 // Pending backend requests, not historical tool calls or stale waiting status,
@@ -19,7 +20,7 @@ export function workflowAttentionRequest(workflow, task, inputs = [], approvals 
       const nodeId = String(request.workflow_node_id || request.node_id || request.nodeId
         || event?.workflowNodeId || event?.workflow_node_id || task.workflowRun?.current_node_id || '');
       const node = workflow?.nodes?.find((item) => String(item.id) === nodeId);
-      if (!node || !['agent', 'llm', 'tool', 'human_approval'].includes(node.type)) continue;
+      if (!node || !isWorkflowExecutableNode(node.type)) continue;
       return { nodeId, status, request, key: `${taskId}:${nodeId}:${status}:${request.request_id || callId || ''}` };
     }
   }

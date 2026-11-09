@@ -22,6 +22,14 @@ export const SETTINGS_SECTIONS = [
   },
 ];
 
+// 三类 provider 共用同一套草稿、测试接口和保存分支：导航计数、面板测试按钮、
+// 「Add provider」文案、保存路由都认这一组，新增 provider 类型时只改这里。
+export const LLM_PROVIDER_SECTIONS = ['llm', 'embedding', 'compact'];
+
+export function isLlmProviderSection(section) {
+  return LLM_PROVIDER_SECTIONS.includes(section);
+}
+
 // 平铺查找（含分组 children），供 label / copy 等元数据查询使用。
 export function settingsSectionMeta(sectionId) {
   for (const section of SETTINGS_SECTIONS) {

@@ -1,26 +1,11 @@
 import { CONTEXT_USAGE_STORAGE_KEY } from '../shared/api/client.js';
 
-// 表盘的分母（当前上下文窗口）只有一个注入点：AppShell 拿到运行时的 context_window_tokens
-// 后经 createContextUsageTracker().setTotalTokens() → configureContextTotalTokens() 写一次。
-// 过去读取者把它当隐式默认值读，“这张表盘的分母是谁定的”在参数里完全看不出来；现在每个
-// 读取者的签名里都有 contextWindowTokens（默认值就是这处注入），调用方也能显式传自己的窗口。
-let injectedContextTotalTokens = 0;
-
-/** 唯一的注入点。返回值是归一后的分母，调用方不必再算一遍。 */
-export function configureContextTotalTokens(value) {
-  injectedContextTotalTokens = Math.max(0, Math.round(Number(value) || 0));
-  return injectedContextTotalTokens;
-}
-
-/** 当前注入的窗口：只用作各读取者 contextWindowTokens 参数的默认值。 */
-export function configuredContextTotalTokens() {
-  return injectedContextTotalTokens;
-}
+// 未配置时分母为 0；生产路径由表盘实例显式提供当前窗口。
 
 export function normalizeContextUsage(
   value,
   fallbackConversationId = null,
-  contextWindowTokens = injectedContextTotalTokens,
+  contextWindowTokens = 0,
 ) {
   const rawUsedValue = Number(value?.contextUsedTokens ?? value?.context_used_tokens ?? value?.usedTokens ?? value?.used_tokens ?? 0);
   const rawUsedTokens = Math.max(0, Math.round(rawUsedValue || 0));
@@ -51,19 +36,19 @@ export function normalizeContextUsage(
 
 export function createEmptyContextUsage(
   conversationId = null,
-  contextWindowTokens = injectedContextTotalTokens,
+  contextWindowTokens = 0,
 ) {
   return normalizeContextUsage({
     conversationId,
     usedTokens: 0,
     totalTokens: contextWindowTokens,
-  }, conversationId);
+  }, conversationId, contextWindowTokens);
 }
 
 export function contextUsageFromRuntimeEvent(
   event,
   fallbackConversationId = null,
-  contextWindowTokens = injectedContextTotalTokens,
+  contextWindowTokens = 0,
 ) {
   const compacted = event.type === 'context_compaction_completed';
   // 压缩开始只表示“即将压缩”，其中的 projected/total_prompt_tokens 不是实际
@@ -94,7 +79,7 @@ export function contextUsageFromRuntimeEvent(
   }, fallbackConversationId, contextWindowTokens);
 }
 
-export function loadStoredContextUsage(conversationId, contextWindowTokens = injectedContextTotalTokens) {
+export function loadStoredContextUsage(conversationId, contextWindowTokens = 0) {
   if (!conversationId) return createEmptyContextUsage(null, contextWindowTokens);
   try {
     const raw = window.localStorage.getItem(CONTEXT_USAGE_STORAGE_KEY);
@@ -147,7 +132,7 @@ function estimateTextTokens(text) {
 
 export function estimateContextUsageFromConversationDetail(
   detail,
-  contextWindowTokens = injectedContextTotalTokens,
+  contextWindowTokens = 0,
 ) {
   if (!detail?.conversation_id) return createEmptyContextUsage(null, contextWindowTokens);
   const messages = Array.isArray(detail.messages) ? detail.messages : [];
@@ -180,7 +165,7 @@ export function estimateContextUsageFromConversationDetail(
 export function contextUsageFromConversationDetail(
   detail,
   fallbackConversationId = null,
-  contextWindowTokens = injectedContextTotalTokens,
+  contextWindowTokens = 0,
 ) {
   const conversationId = detail?.conversation_id || fallbackConversationId || null;
   const measured = Number(detail?.context_used_tokens ?? detail?.contextUsedTokens);
@@ -202,7 +187,7 @@ export function contextUsageFromConversationDetail(
 export function contextUsageFromTask(
   task,
   fallbackConversationId = null,
-  contextWindowTokens = injectedContextTotalTokens,
+  contextWindowTokens = 0,
 ) {
   const conversationId = task?.conversation_id || task?.conversationId || fallbackConversationId || null;
   const measured = Number(task?.context_used_tokens ?? task?.contextUsedTokens);
@@ -220,7 +205,7 @@ export function contextUsageFromTask(
 export function latestContextUsageFromTasks(
   tasks,
   fallbackConversationId = null,
-  contextWindowTokens = injectedContextTotalTokens,
+  contextWindowTokens = 0,
 ) {
   let latest = createEmptyContextUsage(fallbackConversationId, contextWindowTokens);
   for (const task of Array.isArray(tasks) ? tasks : []) {
@@ -242,7 +227,7 @@ export function latestContextUsageFromTasks(
  *   服务端会话级值则是服务端自己的最后一次实测；
  * - 两边都没时刻：保持现有读数（不拿没证据的值换来换去）。
  */
-export function preferNewerContextUsage(current, candidate, contextWindowTokens = injectedContextTotalTokens) {
+export function preferNewerContextUsage(current, candidate, contextWindowTokens = 0) {
   const candidateConversationId = candidate?.conversationId
     || candidate?.conversation_id
     || null;
@@ -289,6 +274,16 @@ function sameContextReading(left, right) {
     && left.estimated === right.estimated;
 }
 
+/** 将转换器绑定到当前 tracker，异步回调执行时才读取最新窗口。 */
+export function createContextUsageReaders(getContextWindowTokens) {
+  return {
+    contextUsageFromConversationDetail: (detail, id) => contextUsageFromConversationDetail(detail, id, getContextWindowTokens()),
+    estimateContextUsageFromConversationDetail: (detail) => estimateContextUsageFromConversationDetail(detail, getContextWindowTokens()),
+    latestContextUsageFromTasks: (tasks, id) => latestContextUsageFromTasks(tasks, id, getContextWindowTokens()),
+    loadStoredContextUsage: (id) => loadStoredContextUsage(id, getContextWindowTokens()),
+  };
+}
+
 /**
  * 表盘读数的唯一写入入口。渲染层（AppShell）只负责把 React state 和
  * localStorage 接上：当前会话的读数改 state + 落盘，后台会话只落盘，等切回去时
@@ -301,11 +296,10 @@ export function createContextUsageTracker({
   onChange = () => {},
   persist = saveStoredContextUsage,
   load = loadStoredContextUsage,
+  initialContextWindowTokens = 0,
 } = {}) {
-  // 表盘自己的分母：装配时从注入点拿一次，之后 setTotalTokens 再改。
-  // 这个工厂的每条路径（仲裁 / 换会话 / 清空）都显式带着它，不再依赖读的那一刻
-  // 模块里是什么值。
-  let contextWindowTokens = configuredContextTotalTokens();
+  // 分母归当前实例所有，读数转换必须显式取得最新值。
+  let contextWindowTokens = Math.max(0, Math.round(Number(initialContextWindowTokens) || 0));
   let current = createEmptyContextUsage(null, contextWindowTokens);
 
   function commit(next) {
@@ -361,7 +355,7 @@ export function createContextUsageTracker({
 
   /** 配置里的上下文窗口变了：只换分母，分子还是上一次实测值。 */
   function setTotalTokens(value) {
-    contextWindowTokens = configureContextTotalTokens(value);
+    contextWindowTokens = Math.max(0, Math.round(Number(value) || 0));
     if (!(contextWindowTokens > 0)) return current;
     const splitByTotalTokens = (usage) => normalizeContextUsage(
       { ...usage, totalTokens: contextWindowTokens },
@@ -377,5 +371,9 @@ export function createContextUsageTracker({
     return next;
   }
 
-  return { apply, read, reset, setTotalTokens };
+  function getTotalTokens() {
+    return contextWindowTokens;
+  }
+
+  return { apply, read, reset, setTotalTokens, getTotalTokens };
 }

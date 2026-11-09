@@ -5,9 +5,9 @@ import assert from 'node:assert/strict';
 globalThis.window = globalThis.window || { haish: {} };
 
 const {
-  configureContextTotalTokens, createEmptyContextUsage, createContextUsageTracker,
+  createEmptyContextUsage, createContextUsageTracker, createContextUsageReaders,
   contextUsageFromConversationDetail, estimateContextUsageFromConversationDetail,
-  latestContextUsageFromTasks, loadStoredContextUsage, normalizeContextUsage,
+  loadStoredContextUsage, normalizeContextUsage,
   saveStoredContextUsage,
 } = await import('../../../src/core/context-usage.js');
 const { createConversationActivationHandlers } = await import(
@@ -72,16 +72,17 @@ function createHarness({ workspaceState = { projects: [] } } = {}) {
       setItem: (key, value) => storage.set(key, value),
     },
   };
-  configureContextTotalTokens(CONTEXT_LIMIT);
   const conversationIdRef = { current: null };
   const runtimes = new Map();
   const displayed = [];
   // AppShell 里的表盘工厂：应用侧的写入入口就是它，测试直接接上同一份仲裁逻辑。
   const contextUsageTracker = createContextUsageTracker({
+    initialContextWindowTokens: CONTEXT_LIMIT,
     getActiveConversationId: () => conversationIdRef.current,
     onChange: (usage) => displayed.push(usage),
   });
   const handlers = createConversationActivationHandlers({
+    ...createContextUsageReaders(() => contextUsageTracker.getTotalTokens()),
     API_BASE: 'http://runtime',
     activeRuntimeTargetConvId: (explicit) => explicit || conversationIdRef.current,
     apiFetch: async () => { throw new Error('activation must not fetch on its own'); },
@@ -89,10 +90,8 @@ function createHarness({ workspaceState = { projects: [] } } = {}) {
     buildTaskRuntimeRecord: () => ({}),
     chatImageFallbacksByTaskIdFromMessages: () => new Map(),
     clearDraftConversationState: () => {},
-    contextUsageFromConversationDetail,
     conversationIdRef,
     draftConversationRef: { current: null },
-    estimateContextUsageFromConversationDetail,
     findConversationById,
     findProjectByConversationId: () => null,
     flushRuntimeTasksToWorkspace: () => {},
@@ -101,8 +100,6 @@ function createHarness({ workspaceState = { projects: [] } } = {}) {
     isConversationActivationCurrent: () => true,
     isTaskActuallyActive,
     isTerminalTaskStatus,
-    latestContextUsageFromTasks,
-    loadStoredContextUsage,
     mergeChatImageRefs,
     mutateRuntime: (convId, mutator) => {
       let runtime = runtimes.get(convId);
@@ -134,7 +131,7 @@ function createHarness({ workspaceState = { projects: [] } } = {}) {
     workspaceState,
     workspaceStateWithConversationDetail: (state) => state,
   });
-  return { handlers, displayed, storage };
+  return { handlers, displayed, storage, contextUsageTracker };
 }
 
 const activationDetail = (overrides = {}) => ({
@@ -331,6 +328,17 @@ test('a reading without a sampling time never overwrites the cached sample', asy
   const stored = loadStoredContextUsage(CONVERSATION_ID);
   assert.equal(stored.usedTokens, RECORDED_TOKENS);
   assert.equal(stored.updatedAt, CACHED_AT);
+});
+
+test('激活处理器装配后窗口更新，切回会话使用新窗口', () => {
+  const harness = createHarness({ workspaceState: workspaceWithSnapshot([
+    measuredTaskSummary('task-1', { tokens: MEASURED_TOKENS, at: MEASURED_AT }),
+  ]) });
+  harness.contextUsageTracker.setTotalTokens(100000);
+  harness.handlers.activateConversationShell('project-1', CONVERSATION_ID);
+  assert.equal(harness.displayed.at(-1).usedTokens, MEASURED_TOKENS);
+  assert.equal(harness.displayed.at(-1).totalTokens, 100000);
+  assert.equal(harness.displayed.at(-1).ratio, MEASURED_TOKENS / 100000);
 });
 
 test('coming back to a conversation with an unusable cache reads the snapshot measurement', async () => {

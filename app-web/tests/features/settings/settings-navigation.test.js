@@ -41,6 +41,19 @@ for (const [section, subtab] of [['llm', 'vision'], ['tools', 'tools-mcp'], ['to
   });
 }
 
+test('provider sections share one list and all appear in the Settings tree', async () => {
+  const { LLM_PROVIDER_SECTIONS, SETTINGS_SECTIONS, isLlmProviderSection } = await import('../../../src/features/settings/model/settings-navigation.js');
+  assert.deepEqual(LLM_PROVIDER_SECTIONS, ['llm', 'embedding', 'compact']);
+  const treeIds = SETTINGS_SECTIONS.flatMap((section) => [section.id, ...(section.children || []).map((child) => child.id)]);
+  for (const section of LLM_PROVIDER_SECTIONS) {
+    assert.ok(treeIds.includes(section), `${section} is reachable from Settings navigation`);
+    assert.equal(isLlmProviderSection(section), true);
+  }
+  for (const other of ['memory', 'tools', 'agent', 'workflow', '']) {
+    assert.equal(isLlmProviderSection(other), false);
+  }
+});
+
 test('Settings navigation stays above the conditional page so remounting cannot reset section or subtab', () => {
   assert.match(shell, /activeSection=\{settingsSection\}/);
   assert.match(shell, /selectionBySection=\{settingsSelection\}/);

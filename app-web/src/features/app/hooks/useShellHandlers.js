@@ -13,10 +13,7 @@ import { createComposerHandlers } from '../../chat/hooks/createComposerHandlers.
 import { eventDeltaText, stripChatImageAugmentation } from '../../../core/message-text.js';
 import { appendAnswerDelta, appendChatProgressText, getChatProgressLine } from '../../../core/progress-text.js';
 import {
-  contextUsageFromConversationDetail,
-  estimateContextUsageFromConversationDetail,
-  latestContextUsageFromTasks,
-  loadStoredContextUsage,
+  createContextUsageReaders,
   normalizeContextUsage,
 } from '../../../core/context-usage.js';
 import { getToolResponseTraceStatus } from '../../../core/tool-trace-status.js';
@@ -62,7 +59,7 @@ import { runtimeWorkspace } from '../model/workspace-runtime.js';
  */
 export function useShellHandlers({
   activationApiRef, activeTab, agentContextKey, agentContextKeyRef,
-  agentSettingsDraft, applyContextUsage, beginLlmSettingsWrite, beginToolsSettingsSave,
+  agentSettingsDraft, applyContextUsage, getContextWindowTokens, beginLlmSettingsWrite, beginToolsSettingsSave,
   busy, chatFinalizedTaskIdsRef, configSync, contextTask,
   conversationActivationSeqRef, conversationDetailAbortRef, conversationError, conversationId,
   conversationIdRef, conversationReady, conversationReorderChainsRef, conversationReorderVersionsRef,
@@ -86,6 +83,13 @@ export function useShellHandlers({
   viewMode, viewModeRef, viewedWorkflowTask, workflowSettingsDraft,
   workspaceState,
 }) {
+  const {
+    contextUsageFromConversationDetail,
+    estimateContextUsageFromConversationDetail,
+    latestContextUsageFromTasks,
+    loadStoredContextUsage,
+  } = createContextUsageReaders(getContextWindowTokens);
+
   function updateSettingsConnectionStatus(updater) {
     setSettingsConnectionStatus((prev) => (typeof updater === 'function' ? updater(prev) : updater));
   }
@@ -424,6 +428,7 @@ export function useShellHandlers({
     flushRuntimeTasksToWorkspace,
     generateHexId,
     getChatProgressLine,
+    getContextWindowTokens,
     getRuntime,
     getTaskById,
     getToolResponseTraceStatus,
