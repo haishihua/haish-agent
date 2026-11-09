@@ -353,7 +353,17 @@ export function createConversationCrudHandlers(deps) {
     }
     const requestSeq = invalidateConversationActivation();
     if (window.haish?.pickProjectDirectory) {
-      const pickResult = await window.haish.pickProjectDirectory();
+      let pickResult;
+      try {
+        pickResult = await window.haish.pickProjectDirectory();
+      } catch (error) {
+        // IPC 失败 ≠ 用户取消：取消是 { canceled: true }，抛错说明对话框没走完
+        // （主进程没回复、窗口在选目录期间被重载）。把原始 IPC 错误糊在界面上，
+        // 用户只会看到 "Error invoking remote method ..."，既看不懂也没法重试。
+        console.error('project pick failed', error);
+        showToast('error', 'Could not open the folder picker. Please try again.');
+        return;
+      }
       if (pickResult?.canceled || !pickResult?.project) {
         showToast('info', 'workspace selection cancelled');
         return;
