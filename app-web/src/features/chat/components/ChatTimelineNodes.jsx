@@ -21,10 +21,12 @@ import { normalizeToolName, TOOL_AWAITS_USER_NAMES } from '../../../core/tool-na
 import {
   RuntimeApprovalCard,
   ToolApprovalCard,
-  selectRuntimeRequest,
   useRuntimeRequests,
   useToolApprovalRequests,
 } from '../../approvals/components/ApprovalOverlay.jsx';
+// 选择逻辑住在 model 里，直接从原始位置取——不经组件文件转发，
+// 否则「谁拥有这段规则」又变得要看两处。
+import { selectRuntimeRequest } from '../../approvals/model/approval-presentation.js';
 import { placeToolApprovals } from '../model/approval-placement.js';
 import { approvalStore } from '../../../core/approval-store.js';
 import { buildSubAgentTimelineItems, buildToolView } from '../model/tool-view.js';

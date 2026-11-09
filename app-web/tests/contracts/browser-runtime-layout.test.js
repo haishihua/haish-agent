@@ -14,7 +14,8 @@ const approvalStyles = fs.readFileSync(new URL('../../styles/approvals.css', imp
 
 test('browser runtime request uses the shared runtime card inside the browser_use tool node', () => {
   assert.ok(timelineSource.includes('RuntimeApprovalCard,'));
-  assert.ok(timelineSource.includes('selectRuntimeRequest,'));
+  // 选择逻辑从 model 直接取（不经组件文件转发），守的是「共享而非自己实现」。
+  assert.match(timelineSource, /import \{ selectRuntimeRequest \} from '\.\.\/\.\.\/approvals\/model\/approval-presentation\.js';/);
   assert.ok(timelineSource.includes('useRuntimeRequests,'));
   assert.ok(timelineSource.includes('selectRuntimeRequest(pendingRuntime, {'));
   assert.ok(timelineSource.includes('toolName: item.toolName,'));
@@ -27,19 +28,6 @@ test('browser_use tool node gets its own browser icon instead of the generic def
   // ico-tool (wrench). It now maps to a dedicated ico-browser icon class.
   assert.equal(resolveToolIconClass('browser_use', 'ico-tool'), 'ico-browser');
   assert.equal(resolveToolIconClass('browser', 'ico-tool'), 'ico-browser');
-});
-
-test('shared runtime selection tolerates backend call-id remapping via scope fallback', () => {
-  assert.ok(overlaySource.includes('export function selectRuntimeRequest('));
-  // Primary anchor: exact tool_call_id match.
-  assert.ok(overlaySource.includes('request.tool_call_id && request.tool_call_id === callId'));
-  // Remapped call-id streams attach only to an active matching Runtime tool
-  // when exactly one request is pending in the conversation/task scope.
-  assert.ok(overlaySource.includes("if (normalized === 'browser_use') return isBrowserRuntimeRequest(request);"));
-  assert.ok(overlaySource.includes('request.conversation_id === conversationId'));
-  assert.ok(overlaySource.includes('request.task_id === taskId'));
-  assert.ok(overlaySource.includes("const isActive = status === 'pending' || status === 'running';"));
-  assert.ok(overlaySource.includes('if (!isActive || scoped.length !== 1) return null;'));
 });
 
 test('RuntimeApprovalCard claims its request so ApprovalInline skips the standalone row', () => {

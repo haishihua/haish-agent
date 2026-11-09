@@ -10,12 +10,16 @@ import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { CopyMessageButton } from '../../../shared/ui/CopyMessageButton.jsx';
 import { copyTextToClipboard } from '../../../shared/lib/clipboard.js';
 import { formatMessageClock } from '../../../shared/lib/message-format.js';
+import { postWorkflowApprovalDecision, resolveApprovalDecision } from '../api/approvals.js';
 import {
-  postApprovalDecision,
-  postBrowserRuntimeDecision,
-  postComputerRuntimeDecision,
-  postWorkflowApprovalDecision,
-} from '../api/approvals.js';
+  approvalBusyText,
+  approvalTitle,
+  requestPreview,
+  riskTextFor,
+  runtimeDependency,
+  runtimeOperation,
+  runtimeSummary,
+} from '../model/approval-presentation.js';
 import {
   approvalStore,
   isBrowserRuntimeRequest,
@@ -28,63 +32,6 @@ import {
 
 const { useState, useEffect, useCallback } = React;
 
-function runtimeDependency(request, fallback) {
-  return request?.diagnostic?.dependency || request?.error?.diagnostic?.dependency || fallback;
-}
-
-function runtimeOperation(request) {
-  return request?.remediation?.operation === 'replace' ? 'replace' : 'install';
-}
-
-function runtimeSummary(request) {
-  const replacing = runtimeOperation(request) === 'replace';
-  if (isComputerRuntimeRequest(request)) {
-    return replacing
-      ? 'The shared Computer Runtime is incompatible. Replace it with the required version to continue.'
-      : 'Computer runtime is missing. Install it to continue.';
-  }
-  if (replacing) return 'The Browser Runtime is incompatible. Replace it with the required version to continue.';
-  const dependency = runtimeDependency(request, 'browser runtime');
-  if (String(dependency).includes('chromium')) return 'Browser runtime is missing. Install it to continue.';
-  return 'Browser runtime dependency is missing. Install it to continue.';
-}
-
-function requestPreview(request) {
-  if (isRuntimeRequest(request)) return runtimeSummary(request);
-  if (isWorkflowApprovalRequest(request)) return String(request.summaryText || request.title || '');
-  return request.raw_command || '';
-}
-
-const RISK_TEXT = {
-  destructive_file_delete: 'Recursive file or directory deletion',
-  destructive_git_reset_hard: 'Hard git reset that may discard commits',
-  destructive_git_checkout: 'Git branch switch or worktree restore',
-  destructive_git_clean: 'Git cleanup of untracked files',
-  privilege_escalation: 'Run with root privileges',
-  network_egress_terminal: 'Terminal command initiates outbound network access',
-  remote_data_transfer: 'Remote data transfer',
-  permission_mutation: 'File permission or owner change',
-  external_process_kill: 'Force-kill external process',
-  system_storage_mutation: 'System-level storage mutation',
-  container_runtime: 'Container runtime operation',
-  shell_string_execution: 'Inline shell script execution',
-  python_inline_execution: 'Inline Python script execution',
-  node_inline_execution: 'Inline Node.js script execution',
-  remote_write: 'Push to remote repository',
-  force_push_protected: 'Force-push to protected branch',
-  destroy_root: 'Recursive deletion of root directory',
-  destroy_home: 'Recursive deletion of HOME directory',
-  destroy_dot_git: 'Delete .git directory',
-  pipe_to_shell: 'Pipe remote script directly to shell',
-  dd_to_device: 'Write to raw device',
-  write_system_root: 'Write to system path',
-  write_outside_workspace: 'Write outside workspace',
-  command_outside_workspace: 'Run command outside workspace',
-  sensitive_path_write: 'Write to sensitive file',
-  mcp_server_activation: 'Activate MCP server',
-  strict_mode_default: 'Strict mode requires approval by default',
-};
-
 function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, embedded = false }) {
   const browserRuntime = isBrowserRuntimeRequest(request);
   const computerRuntime = isComputerRuntimeRequest(request);
@@ -92,29 +39,12 @@ function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, e
   const busyDecision = busy === true ? 'working' : String(busy || '');
   const isBusy = Boolean(busyDecision);
   const showAlways = request.allow_always !== false;
-  const riskText = RISK_TEXT[request.risk_code] || request.risk_code || 'Unclassified risk';
+  const riskText = riskTextFor(request);
   const replacingRuntime = runtimeRequest && runtimeOperation(request) === 'replace';
-  const title = computerRuntime
-    ? (replacingRuntime ? 'Computer Runtime Replacement Required' : 'Computer Runtime Required')
-    : browserRuntime
-      ? (replacingRuntime ? 'Browser Runtime Replacement Required' : 'Browser Runtime Required')
-      : 'Approval Required';
+  const title = approvalTitle(request);
   const preview = requestPreview(request);
   const installs = Array.isArray(request.remediation?.installs) ? request.remediation.installs.join(', ') : '';
-  const runtimeLabel = computerRuntime ? 'computer' : 'browser';
-  const busyText = runtimeRequest
-    ? busyDecision === 'deny'
-      ? `Keeping the current ${runtimeLabel} runtime...`
-      : replacingRuntime
-        ? `Replacing ${runtimeLabel} runtime...`
-        : `Installing ${runtimeLabel} runtime...`
-    : busyDecision === 'deny'
-      ? 'Denying request...'
-      : busyDecision === 'allow_always'
-        ? 'Approving and saving rule...'
-        : busyDecision === 'allow_once'
-          ? 'Approving this request...'
-          : 'Resolving approval...';
+  const busyText = approvalBusyText(request, busyDecision);
 
   return (
     <ApprovalSurface
@@ -399,35 +329,8 @@ export function useRuntimeRequests(conversationId, active = true) {
   return active && conversationId ? requests : [];
 }
 
-function runtimeRequestMatchesTool(request, toolName) {
-  const normalized = String(toolName || '').toLowerCase();
-  if (normalized === 'browser_use') return isBrowserRuntimeRequest(request);
-  if (normalized === 'computer_use') return isComputerRuntimeRequest(request);
-  return false;
-}
-
-// The backend may remap tool call ids in workflow streams. Prefer an exact id;
-// otherwise attach only one request from the same conversation/task to an
-// active tool of the matching Runtime kind.
-export function selectRuntimeRequest(
-  requests,
-  { toolName = '', callId = '', status = '', conversationId = '', taskId = '' } = {},
-) {
-  const scoped = (Array.isArray(requests) ? requests : []).filter(
-    (request) =>
-      runtimeRequestMatchesTool(request, toolName) &&
-      (!request.conversation_id || !conversationId || request.conversation_id === conversationId) &&
-      (!request.task_id || !taskId || request.task_id === taskId),
-  );
-  if (!scoped.length) return null;
-  if (callId) {
-    const exact = scoped.find((request) => request.tool_call_id && request.tool_call_id === callId);
-    if (exact) return exact;
-  }
-  const isActive = status === 'pending' || status === 'running';
-  if (!isActive || scoped.length !== 1) return null;
-  return scoped[0];
-}
+// 选择器的实现已经搬进 model；ChatTimelineNodes 目前仍从这个模块取它，
+// 所以先保留一行转发，等调用点改完再删。
 
 export function RuntimeApprovalCard({ request, embedded = false }) {
   return <ToolApprovalCard request={request} embedded={embedded} />;
@@ -470,11 +373,7 @@ export function ToolApprovalCard({ request, embedded = false }) {
       setError('');
       setBusy(decision);
       try {
-        if (isBrowserRuntimeRequest(request)) await postBrowserRuntimeDecision(request, decision);
-        else if (isComputerRuntimeRequest(request)) await postComputerRuntimeDecision(request, decision);
-        else await postApprovalDecision(request.request_id, decision);
-        // Optimistic removal: store will also drop it once the stream confirms.
-        approvalStore.remove(request.request_id);
+        await resolveApprovalDecision(request, decision);
       } catch (err) {
         setError(String(err && err.message ? err.message : err));
         setBusy('');
@@ -544,15 +443,7 @@ export function ApprovalInline({ conversationId }) {
     setError('');
     setBusy((prev) => ({ ...prev, [request.request_id]: decision }));
     try {
-      if (isBrowserRuntimeRequest(request)) {
-        await postBrowserRuntimeDecision(request, decision);
-      } else if (isComputerRuntimeRequest(request)) {
-        await postComputerRuntimeDecision(request, decision);
-      } else {
-        await postApprovalDecision(request.request_id, decision);
-      }
-      // Optimistic removal: store will also drop it once the stream confirms.
-      approvalStore.remove(request.request_id);
+      await resolveApprovalDecision(request, decision);
     } catch (err) {
       setError(String(err && err.message ? err.message : err));
       setBusy((prev) => {

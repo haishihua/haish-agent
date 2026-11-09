@@ -37,7 +37,6 @@ test('computer runtime request reuses the shared runtime card inside computer_us
   assert.match(timelineSource, /useRuntimeRequests\(conversationId, isRuntimeTool\)/);
   assert.match(timelineSource, /selectRuntimeRequest\(pendingRuntime/);
   assert.match(timelineSource, /<RuntimeApprovalCard request=\{runtimeRequest\} embedded \/>/);
-  assert.match(overlaySource, /if \(normalized === 'computer_use'\) return isComputerRuntimeRequest\(request\)/);
   assert.match(overlaySource, /export function RuntimeApprovalCard/);
 });
 
@@ -64,13 +63,11 @@ test('computer_use and its runtime approval use the dedicated desktop-control ic
 });
 
 test('computer runtime card has dedicated install and shared replacement copy', () => {
-  assert.match(overlaySource, /Computer Runtime Required/);
-  assert.match(overlaySource, /Computer Runtime Replacement Required/);
   assert.match(overlaySource, /Install Computer Runtime/);
   assert.match(overlaySource, /Replace and Continue/);
   assert.match(overlaySource, /Keep Current Version/);
   assert.match(overlaySource, /This replaces the shared Cua Driver app used by other sessions on this Mac/);
-  assert.match(overlaySource, /postComputerRuntimeDecision\(request, decision\)/);
+  assert.match(overlaySource, /resolveApprovalDecision\(request, decision\)/);
   assert.match(approvalApiSource, /postRuntimeDecision\('computer_runtime', request, decision\)/);
   assert.match(desktopApiSource, /'computer_runtime'/);
 });

@@ -1,5 +1,5 @@
 {
-  "total": 1408,
+  "total": 1398,
   "files": {
     "contracts/activity-orb-revive.test.js": 24,
     "contracts/agent-catalog.test.js": 64,
@@ -7,12 +7,12 @@
     "contracts/approval-picker-boundary.test.js": 18,
     "contracts/appshell-ctx-wiring.test.js": 2,
     "contracts/assistant-avatar-timer-icon.test.js": 13,
-    "contracts/browser-runtime-layout.test.js": 27,
+    "contracts/browser-runtime-layout.test.js": 20,
     "contracts/chat-detail-scrollbar.test.js": 17,
     "contracts/chat-image-preview-sharpness.test.js": 37,
     "contracts/chat-timeline-text-markdown.test.js": 17,
     "contracts/checkpoint-history-element.test.js": 25,
-    "contracts/computer-runtime-layout.test.js": 19,
+    "contracts/computer-runtime-layout.test.js": 16,
     "contracts/context-compaction-timeline.test.js": 3,
     "contracts/context-usage-icon-rendering.test.js": 4,
     "contracts/conversation-panel-toggle.test.js": 20,
