@@ -1,6 +1,11 @@
 import { eventDeltaText, stripInjectedSkillInstruction } from './message-text.js';
 import { cachedStreamEventBase, recordStreamEventUpdate, streamEventUpdate } from './stream-events.js';
-import { normalizeToolName, TOOL_SHELL_NAMES } from './tool-names.js';
+import {
+  normalizeToolName,
+  TOOL_SHELL_NAMES,
+  TOOL_TERMINAL_INPUT_NAMES,
+  TOOL_TIMELINE_HIDDEN_NAMES,
+} from './tool-names.js';
 import { getToolResponseTraceStatus, getToolTraceStatus } from './tool-trace-status.js';
 import { createTerminalTimeline } from './terminal-timeline.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from './run-status.js';
@@ -448,8 +453,8 @@ export function buildChatTimeline(task, taskStatus) {
       if (textBuf.trim()) flushText();
       const callId = event.callId || '';
       const eventToolName = normalizeToolName(event.toolName);
-      if (eventToolName === 'todo_write') continue;
-      if (eventToolName === 'write_stdin') {
+      if (TOOL_TIMELINE_HIDDEN_NAMES.has(eventToolName)) continue;
+      if (TOOL_TERMINAL_INPUT_NAMES.has(eventToolName)) {
         const parent = findTerminalForInput(event.toolInput || event.tool_input);
         if (parent) {
           parent.status = getToolTraceStatus('running', finalStatus);
@@ -571,8 +576,8 @@ export function buildChatTimeline(task, taskStatus) {
   for (const call of toolCalls) {
     if (!call?.callId || seenToolIds.has(call.callId)) continue;
     const callToolName = normalizeToolName(call.toolName);
-    if (callToolName === 'todo_write') continue;
-    if (callToolName === 'write_stdin') {
+    if (TOOL_TIMELINE_HIDDEN_NAMES.has(callToolName)) continue;
+    if (TOOL_TERMINAL_INPUT_NAMES.has(callToolName)) {
       const parent = findTerminalForInput(call.toolInput);
       if (parent) {
         toolItemsByCallId.set(call.callId, parent);

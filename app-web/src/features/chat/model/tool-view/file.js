@@ -14,6 +14,7 @@ import {
   toolJsonText,
   toolPlainObject,
 } from '../../../../core/tool-view-shared.js';
+import { TOOL_ACTIVE_LABELS } from '../../../../core/tool-names.js';
 
 function toolLineDelta(item, diffText) {
   const data = item.toolResponse && typeof item.toolResponse === 'object' && item.toolResponse.data
@@ -67,7 +68,7 @@ export function buildDiffToolView(item, name, path) {
     added,
     removed,
     label: ['pending', 'running'].includes(item.status)
-      ? `${name === 'write_file' ? 'Writing' : 'Editing'} ${target}`
+      ? `${TOOL_ACTIVE_LABELS.get(name) || 'Editing'} ${target}`
       : `${toolActionLabel(item)} ${target}${added || removed ? ` (+${added} -${removed})` : ' (no changes)'}`,
     body: diff ? compactToolText(diff) : '',
   };

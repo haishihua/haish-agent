@@ -2,7 +2,7 @@
 
 import { eventDeltaText } from './message-text.js';
 import { subAgentEventText } from './progress-text.js';
-import { normalizeToolName } from './tool-names.js';
+import { normalizeToolName, TOOL_PAST_VERBS, TOOL_PRESENT_VERBS } from './tool-names.js';
 import { skillDisplayName } from './runtime-events.js';
 import { skillTrigger } from './tool-presentation.js';
 import { RUN_STATE_APPROVAL, RUN_STATE_WAITING_INPUT } from './run-status.js';
@@ -101,12 +101,16 @@ function classifyToolForGroup(item) {
   if (name.includes('memory') || name.includes('remember') || name.includes('recall') || name.startsWith('note_')) {
     return { bucket: 'noted', verbPast: 'recorded', verbPresent: 'recording', subject: '', unitSingular: 'note', unitPlural: 'notes' };
   }
-  if (name === 'list_checkpoints') {
-    // 只查不改：分组 chip 不能写 “snapshotted”（那是回滚那一半的动词）。
-    return { bucket: 'snapshot', verbPast: 'checked', verbPresent: 'checking', subject: '', unitSingular: 'checkpoint', unitPlural: 'checkpoints' };
-  }
   if (name.includes('checkpoint') || name.includes('rollback')) {
-    return { bucket: 'snapshot', verbPast: 'snapshotted', verbPresent: 'snapshotting', subject: '', unitSingular: 'checkpoint', unitPlural: 'checkpoints' };
+    // 只查不改的 list_checkpoints 用登记表给的 checked / checking，不能跟着回滚那一半写 “snapshotted”。
+    return {
+      bucket: 'snapshot',
+      verbPast: TOOL_PAST_VERBS.get(name) || 'snapshotted',
+      verbPresent: TOOL_PRESENT_VERBS.get(name) || 'snapshotting',
+      subject: '',
+      unitSingular: 'checkpoint',
+      unitPlural: 'checkpoints',
+    };
   }
   // category 兜底：MCP 工具按 server 聚合。
   if (category === 'mcp') {

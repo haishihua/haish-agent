@@ -1,10 +1,11 @@
 // 工具调用 / 输出 / 结果。toolCalls 数组的 upsert 规则仍由 ctx 的 upsertToolCall
 // 负责，这里只决定每次事件要写哪些字段。
+import { normalizeToolName, TOOL_AWAITS_USER_NAMES } from '../../../../core/tool-names.js';
 
 export function handleToolCallStarted(scope, event) {
   const { taskId, loopIndex, updateTaskById, upsertToolCall } = scope;
   updateTaskById(taskId, (run) => {
-    const waitingForInput = String(event.tool_name || '').toLowerCase() === 'ask_user';
+    const waitingForInput = TOOL_AWAITS_USER_NAMES.has(normalizeToolName(event.tool_name));
     const nodeId = event.workflow_node_id || run.workflowRun?.current_node_id;
     return {
       ...run,
@@ -55,7 +56,7 @@ export function handleToolCallCompleted(scope, event) {
     } else if (responseState === 'done') {
       nextState = 'completed';
     }
-    const askUserResolved = String(existingToolCall?.toolName || event.tool_name || '').toLowerCase() === 'ask_user'
+    const askUserResolved = TOOL_AWAITS_USER_NAMES.has(normalizeToolName(existingToolCall?.toolName || event.tool_name))
       && event.type === 'tool_call_completed';
     const nodeId = event.workflow_node_id || run.workflowRun?.current_node_id;
     return {

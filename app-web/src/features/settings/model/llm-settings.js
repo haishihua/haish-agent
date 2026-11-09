@@ -3,6 +3,7 @@ import {
   LLM_PROVIDER_MODELS,
   LLM_PROVIDER_OPTIONS,
   getLlmProvider,
+  getProviderCapabilities,
   normalizeLlmProviderId,
   normalizeProviderToken as normalizeToken,
 } from '../../../core/provider-catalog.js';
@@ -20,7 +21,7 @@ export function formatAuthModeLabel(mode) {
 }
 
 export function modelChoicesFor(provider) {
-  const configured = provider === 'custom' ? [] : (LLM_PROVIDER_MODELS[provider] || []);
+  const configured = getProviderCapabilities(provider).hasPresetModels ? (LLM_PROVIDER_MODELS[provider] || []) : [];
   return Array.from(new Set(configured));
 }
 
@@ -65,14 +66,16 @@ export function llmModelCatalogPatch(config, catalog) {
 }
 
 export function configuredModelOptions(config) {
-  if (config?.provider === 'ollama') return [];
+  // 不回模型清单的 provider（ollama）即使本地缓存了选项也不能拿去当候选。
+  if (!getProviderCapabilities(config?.provider).exposesModelOptions) return [];
   return config?.model_options || [];
 }
 
 export function runtimeProviderLabel(config) {
   const provider = getLlmProvider(config.provider);
   const name = String(config.name || config.custom_provider || '').trim();
-  return config.provider === 'custom' && name ? name : provider.label;
+  // 用户自建端点的供应商显示用户起的名字，目录里的 provider 仍显示固定 label。
+  return getProviderCapabilities(config.provider).requiresBaseUrl && name ? name : provider.label;
 }
 
 export function runtimeLlmProviderOptions(draft) {
@@ -92,6 +95,7 @@ export function runtimeLlmProviderOptions(draft) {
     if (!id || id.length > 256 || reserved.has(id.toLowerCase()) || id.toLowerCase().startsWith('custom:') || idCounts.get(id) !== 1) return null;
     const requestProvider = id;
     const provider = normalizeLlmProviderId(config.provider);
+    const capabilities = getProviderCapabilities(provider);
     const modelOptions = uniqueModelChoices(config.model, configuredModelOptions(config), customModelIds(config));
     return {
       id,
@@ -100,9 +104,10 @@ export function runtimeLlmProviderOptions(draft) {
       requestProvider,
       legacySelectors: Array.isArray(config.legacy_selectors) ? config.legacy_selectors : [],
       authMode: String(config.auth_mode || getLlmProvider(provider).defaultAuth || '').trim(),
-      customProvider: provider === 'custom' ? String(config.name || config.custom_provider || '').trim() : '',
-      baseUrl: provider === 'custom' ? String(config.base_url || '').trim() : '',
-      ...(provider === 'custom' ? { protocol: config.protocol || 'openai' } : {}),
+      customProvider: capabilities.requiresBaseUrl ? String(config.name || config.custom_provider || '').trim() : '',
+      baseUrl: capabilities.requiresBaseUrl ? String(config.base_url || '').trim() : '',
+      // 非自定义端点连 protocol 字段都不该出现：下游按字段存在与否判断能不能改协议。
+      ...(capabilities.requiresBaseUrl ? { protocol: config.protocol || 'openai' } : {}),
       defaultModelId: String(config.model || '').trim(),
       defaultReasoningEffort: normalizeReasoningEffort(config.reasoning_effort),
       customModelIds: customModelIds(config),
@@ -150,7 +155,7 @@ function normalizeVisionProvider(entry, index = 0) {
     _persisted: source.id ? source._persisted : false,
     enabled: source.enabled === true,
     provider,
-    auth_mode: authMode || (provider === 'ollama' ? 'none' : 'api_key'),
+    auth_mode: authMode || getProviderCapabilities(provider).defaultAuthMode,
     custom_provider: String(source.custom_provider || '').trim(),
     name: String(source.name || source.custom_provider || '').trim(),
     model: String(source.model || '').trim(),
@@ -354,7 +359,8 @@ function normalizeLlmModelConfig(config) {
   if (!config || typeof config !== 'object') return {};
   const provider = normalizeLlmProviderId(config.provider);
   if (!provider) return { ...config, provider: '' };
-  if (provider === 'custom' && !config.name && config.custom_provider) {
+  // 旧草稿把自定义供应商的名字只存在 custom_provider，回填到 name 才不会丢显示名。
+  if (getProviderCapabilities(provider).requiresBaseUrl && !config.name && config.custom_provider) {
     return { ...config, provider, name: config.custom_provider, reasoning_effort: normalizeReasoningEffort(config.reasoning_effort) };
   }
   return { ...config, provider, reasoning_effort: normalizeReasoningEffort(config.reasoning_effort) };

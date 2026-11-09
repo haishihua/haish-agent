@@ -106,7 +106,6 @@ export function ChatPanel({
   earlierTaskRuntimesPending = false,
   earlierTaskRuntimeIds,
 }) {
-  const [localDraft, setLocalDraft] = React.useState('');
   const [searchActive, setSearchActive] = React.useState(false);
   const [searchExpandedConversation, setSearchExpandedConversation] = React.useState(null);
   const searchExpanded = searchExpandedConversation === conversationId;
@@ -122,8 +121,6 @@ export function ChatPanel({
     setSearchActive(active);
   }, []);
   const [sendScrollKey, setSendScrollKey] = React.useState(0);
-  const draft = draftProp !== undefined ? draftProp : localDraft;
-  const setDraft = draftProp !== undefined ? onDraftChangeProp : setLocalDraft;
   const selectAnnotationMessages = React.useMemo(() => createAnnotationMessageSelector(), []);
   const annotationMessages = selectAnnotationMessages(messages, conversationId);
   const { items: annotationSnapshots, update: updateAnnotations, storageError } = useAnnotationDraft(conversationId, annotationMessages);
@@ -536,8 +533,8 @@ export function ChatPanel({
         ensureApprovalConversation={ensureApprovalConversation}
         scopeId={composerScopeId}
         inputRef={composerInputRef}
-        draft={draft}
-        onDraftChange={setDraft}
+        draft={draftProp}
+        onDraftChange={onDraftChangeProp}
         onSend={onSend}
         onGoalCommand={onGoalCommand}
         onToast={onToast}

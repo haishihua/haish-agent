@@ -5,6 +5,7 @@ import { ShieldCheck } from 'lucide-react';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { normalizeWorkflowApprovalMarkdown } from '../../../core/workflow-approval-markdown.js';
+import { normalizeToolName, TOOL_APPROVAL_LABELS } from '../../../core/tool-names.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { CopyMessageButton } from '../../../shared/ui/CopyMessageButton.jsx';
 import { copyTextToClipboard } from '../../../shared/lib/clipboard.js';
@@ -175,7 +176,7 @@ function ApprovalCard({ request, busy, onDecide, collapsed, onToggleCollapsed, e
           {!runtimeRequest ? (
             <>
               <div className="haish-approval-cmd-label">
-                <span>{request.tool_name === 'exec_command' ? 'Command (runs in terminal)' : 'Requested operation'}</span>
+                <span>{TOOL_APPROVAL_LABELS.get(normalizeToolName(request.tool_name)) || 'Requested operation'}</span>
               </div>
               <pre className="haish-approval-cmd-pre">{request.raw_command || '(empty)'}</pre>
             </>

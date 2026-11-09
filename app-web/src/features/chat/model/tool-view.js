@@ -7,6 +7,7 @@
 import {
   normalizeToolName,
   TOOL_CHANGE_NAMES,
+  TOOL_CHECKPOINT_CARD_NAMES,
   TOOL_DIFF_NAMES,
   TOOL_READ_NAMES,
   TOOL_SHELL_NAMES,
@@ -40,7 +41,7 @@ export function buildToolView(item, { details = true } = {}) {
   if (TOOL_READ_NAMES.has(name)) return buildReadToolView(item, path);
   if (TOOL_SHELL_NAMES.has(name)) return buildTerminalToolView(item, name);
   // 已完成但结构化结果缺失时保留通用卡，避免把旧记录误报为空列表。
-  if (name === 'list_checkpoints' && (['pending', 'running'].includes(item.status)
+  if (TOOL_CHECKPOINT_CARD_NAMES.has(name) && (['pending', 'running'].includes(item.status)
       || isToolFailure(item) || Array.isArray(item.toolResponse?.data?.groups))) return buildCheckpointToolView(item);
   return buildJsonToolView(item);
 }

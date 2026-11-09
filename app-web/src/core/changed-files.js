@@ -2,7 +2,7 @@
 // （subject.path + data.added_lines / data.removed_lines），绝不解析 final answer 正文。
 // 依据：最近三条改过文件的 trace 里 61% 的回答一个改动文件名都不提，面向正文渲染会大面积空树。
 // 事件来自 task.eventLog（实时与历史回放同一份投影），toolCalls 只作为 eventLog 缺失时的兜底。
-import { normalizeToolName } from './tool-names.js';
+import { normalizeToolName, TOOL_TARGET_FIELDS } from './tool-names.js';
 import { getToolSubject, toolPlainObject } from './tool-view-shared.js';
 
 // 真正写文件的工具。create_dir / delete_dir / rollback_workspace 不产出文件行：前两者是目录，
@@ -63,10 +63,11 @@ function lineDeltaOf(response) {
   return { additions, deletions };
 }
 
-// copy_file 的 subject 同时带源和目的地，真正被写到的是 destination_path。
+// copy_file 的 subject 同时带源和目的地，真正被写到的是目的地；哪个字段算目标由登记表给。
 function targetPathOf(item, toolName, response) {
   const subject = getToolSubject(item);
-  if (toolName === 'copy_file' && subject.destination_path) return normalizeFilePath(subject.destination_path);
+  const targetField = TOOL_TARGET_FIELDS.get(toolName);
+  if (targetField && subject[targetField]) return normalizeFilePath(subject[targetField]);
   return normalizeFilePath(subject.path || response.subject?.path || subject.destination_path);
 }
 

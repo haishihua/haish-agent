@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { TOOL_CHECKPOINT_CARD_NAMES } from '../../src/core/tool-names.js';
 
 const element = fs.readFileSync(
   new URL('../../src/shared/ui/agent-elements/CheckpointHistory.jsx', import.meta.url),
@@ -54,7 +55,9 @@ test('checkpoint rows keep the official dot / current / ahead states', () => {
 });
 
 test('only list_checkpoints switches the tool card to the checkpoint list', () => {
-  assert.match(toolView, /name === 'list_checkpoints'/);
+  // 名字只在登记表里出现一次，tool-view 只问「这个工具要不要 checkpoint 卡」。
+  assert.deepEqual([...TOOL_CHECKPOINT_CARD_NAMES], ['list_checkpoints']);
+  assert.match(toolView, /TOOL_CHECKPOINT_CARD_NAMES\.has\(name\)/);
   assert.match(toolView, /return buildCheckpointToolView\(item\)/);
   assert.match(timeline, /import \{ CheckpointHistory \} from '\.\.\/\.\.\/\.\.\/shared\/ui\/agent-elements\/CheckpointHistory\.jsx';/);
   assert.match(timeline, /if \(view\.mode === 'checkpoints'\) \{/);

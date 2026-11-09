@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { TOOL_APPROVAL_LABELS } from '../../src/core/tool-names.js';
 import { resolveToolIconClass } from '../../src/features/chat/components/nodes/shared.js';
 
 const overlaySource = fs.readFileSync(new URL('../../src/features/approvals/components/ApprovalOverlay.jsx', import.meta.url), 'utf8');
@@ -83,7 +84,9 @@ test('browser runtime card no longer shows a redundant Runtime action row', () =
   // shell command for regular approvals). The Install Browser Runtime button
   // already conveys the action, so the block is gated behind !browserRuntime.
   assert.ok(overlaySource.includes('{!runtimeRequest ? ('));
-  assert.ok(overlaySource.includes("request.tool_name === 'exec_command' ? 'Command (runs in terminal)' : 'Requested operation'"));
+  // 命令块的字段名跟着工具走：exec_command 的说法登记在审批用的 approvalLabel 里（不是工具栏的 'Shell'）。
+  assert.equal(TOOL_APPROVAL_LABELS.get('exec_command'), 'Command (runs in terminal)');
+  assert.ok(overlaySource.includes("TOOL_APPROVAL_LABELS.get(normalizeToolName(request.tool_name)) || 'Requested operation'"));
   assert.ok(overlaySource.includes("request.raw_command || '(empty)'"));
   assert.ok(!overlaySource.includes("'Runtime action'"));
 });

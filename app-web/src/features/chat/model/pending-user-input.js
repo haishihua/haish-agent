@@ -1,3 +1,5 @@
+import { normalizeToolName, TOOL_AWAITS_USER_NAMES } from '../../../core/tool-names.js';
+
 function questionKey(value) {
   const questions = Array.isArray(value?.questions) ? value.questions : [];
   if (!questions.length) return '';
@@ -26,7 +28,7 @@ export function selectPendingUserInput(pending, scope) {
 
 export function selectActiveAskUserItemId(items, live = false) {
   const latest = [...(Array.isArray(items) ? items : [])].reverse().find((item) => (
-    item?.kind === 'tool' && String(item.toolName || '').toLowerCase() === 'ask_user'
+    item?.kind === 'tool' && TOOL_AWAITS_USER_NAMES.has(normalizeToolName(item?.toolName))
   ));
   if (!latest) return '';
   const status = String(latest.status || 'pending').toLowerCase();

@@ -265,3 +265,25 @@ workflow 表单的 `[data-slot="select-trigger"]` 因此显式 `display: flex; a
 
 同一条原则适用于任何 `window.haish` 调用：一律写 `window.haish?.api?.()`。
 `useSchedules` 曾有唯一一处不带可选链的调用，preload 缺失时同样会推到顶层错误页。
+
+### 隐式契约先找一处落脚点
+
+这几处过去都靠「两个文件各写一份、看起来一样」维持，改一侧不会报错，只会静默错：
+
+- **工具名的全部身份**在 `core/tool-names.js` 的 `TOOL_REGISTRY`（图标、动词过去式/进行时、
+  卡片形状、失败文案、审批文案、产物字段名）。加工具只加一行；`ask_user`、`write_stdin`、
+  `todo_write` 这类「按名字判断」的调用点一律查它导出的集合，不再比字面量。
+- **能不能发**在 `features/chat/model/send-gate.js` 的 `resolveSendGate`。主发送与运行中纠偏
+  条件不同（前者要等配置同步、校验 Agent 与模型路由，后者看上一笔纠偏是否还在飞），但那是
+  语义差异，不是 UI 差异，所以同在一个函数里；组件只保留图标与 tooltip 挂载。
+- **浏览器高亮登记表**是全局的（`CSS.highlights` 按名字覆盖），批注和会话搜索各用一组名字，
+  统一走 `shared/lib/css-highlights.js`，避免一方清理时擦掉另一方。
+- **供应商能力**（有无预设模型 / 是否要 baseUrl 与协议 / 默认鉴权方式）在
+  `core/provider-catalog.js` 的 `PROVIDER_CAPABILITIES`，只登记偏离默认的 custom 与 ollama。
+  查表函数刻意不做大小写归一：调用点比对的就是原始值，归一化会改掉 `'Ollama'` 这类脏数据的判定。
+- **设置记录的四个业务 id**（tools-mcp / tools-skills / tools-web / memory-qdrant）在
+  `settings-payload.js` 的 `RECORD_KINDS`。records 的 id 是前端本地约定（默认草稿 + localStorage），
+  服务端 payload 只有资源名，所以这张表放在前端，不给 record 硬造字段。
+- **退避重试**在 `shared/lib/retry-with-backoff.js`，但两处预设不合并：启动期等 runtime 起来
+  （8 次、封顶 2000ms）与用户已站在设置页上等（4 次、400ms 递进）是不同预算。
+  设置页里那个固定 2s 的是**轮询**（成功也继续），不是重试，别套同一个工具。

@@ -3,6 +3,7 @@ import React from 'react';
 import { AskUserInlineForm } from '../../../chat/components/AskUserInlineForm.jsx';
 import { ChatMessageRow } from '../../../chat/components/ChatMessageRow.jsx';
 import { buildChatTimeline } from '../../../../core/chat-timeline.js';
+import { normalizeToolName, TOOL_AWAITS_USER_NAMES } from '../../../../core/tool-names.js';
 import { workflowApprovalInput } from '../../../../core/workflow-approval-markdown.js';
 import { workflowInputDisplayText } from '../../../../core/workflow-catalog.js';
 import { WorkflowApprovalInline } from '../../../approvals/components/ApprovalOverlay.jsx';
@@ -64,7 +65,7 @@ export function NodeConversation({ node, task, attempt, result, status, running,
     firstTokenAt: taskFirstStreamTimestamp(scopedTask),
   }), [agentName, attempt?.id, completedAt, createdAt, node.agent_id, node.id, node.type, resultText, running, scopedTask, task?.conversationId, task?.taskId, timeline?.latestTodos, timelineItems, timelineStatus]);
   const hasAskUser = (items) => items.some((item) => (
-    String(item.toolName || '').toLowerCase() === 'ask_user'
+    TOOL_AWAITS_USER_NAMES.has(normalizeToolName(item?.toolName))
     || hasAskUser(item.children || item.tools || [])
   ));
   const showAssistant = node.type !== 'human_approval'

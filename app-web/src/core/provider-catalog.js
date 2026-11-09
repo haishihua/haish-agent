@@ -46,6 +46,30 @@ export function getLlmProvider(id) {
   return LLM_PROVIDER_OPTIONS.find((item) => item.id === id) || LLM_PROVIDER_OPTIONS[0];
 }
 
+// provider 之间真正影响 Settings 表单与运行时的差异只有这几项。原先散在各处的
+// `=== 'custom'` / `=== 'ollama'` 全部改成查这张表：加新例外只改这里一行。
+// 未登记的 provider 一律按默认能力处理。
+const DEFAULT_PROVIDER_CAPABILITIES = {
+  hasPresetModels: true,
+  exposesModelOptions: true,
+  requiresBaseUrl: false,
+  defaultAuthMode: 'api_key',
+};
+
+const PROVIDER_CAPABILITIES = {
+  // 自定义供应商：模型清单由用户填或现场发现，baseUrl、协议、显示名也都得用户自己给。
+  custom: { ...DEFAULT_PROVIDER_CAPABILITIES, hasPresetModels: false, requiresBaseUrl: true },
+  // 本地 Ollama：没有预设模型，运行时也不回模型清单，本地服务不用 key。
+  ollama: { ...DEFAULT_PROVIDER_CAPABILITIES, hasPresetModels: false, exposesModelOptions: false, defaultAuthMode: 'none' },
+};
+
+// 这里不做归一化：各调用点比对的就是它自己拿到的原始值（例如 configuredModelOptions
+// 只认小写 'ollama'），顺手归一化会改掉这些既有判定。
+export function getProviderCapabilities(providerId) {
+  // 只认自有键：'toString' 这类原型链上的键必须落到默认能力，而不是拿到函数。
+  return Object.hasOwn(PROVIDER_CAPABILITIES, providerId) ? PROVIDER_CAPABILITIES[providerId] : DEFAULT_PROVIDER_CAPABILITIES;
+}
+
 // Provider ids and auth modes share one loose spelling ('API-KEY', 'api_key ').
 export const normalizeProviderToken = (value) => String(value || '').trim().toLowerCase().replace(/-/g, '_');
 

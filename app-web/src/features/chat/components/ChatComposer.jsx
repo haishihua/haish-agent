@@ -117,13 +117,15 @@ export function ChatComposer({
     : [];
   const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : DEFAULT_AGENT_OPTIONS;
   const resolvedDefaultAgentId = defaultAgentId || resolvedAgentOptions[0]?.id || DEFAULT_AGENT_OPTIONS[0].id;
-  const [localDraft, setLocalDraft] = React.useState('');
   // 未受控时（调用方不传 draft）直接订阅草稿 store：击键只重渲染 composer，
   // 不再沿着 AppShell 的 React state 一路重渲染整个 shell。键与 skillScopeId
   // 同构——draft 会话的 scope 按项目固定，但草稿文本跟着会话 id 走（materialize
   // 时 rekey），所以订阅键优先 conversationId。
-  const storeDraft = usePerConversationDraft(conversationId || scopeId).draft;
-  const resolvedDraftProp = draftProp !== undefined ? draftProp : storeDraft;
+  const draftStore = usePerConversationDraft(conversationId || scopeId);
+  const resolvedDraftProp = draftProp !== undefined ? draftProp : draftStore.draft;
+  // 读和写必须来自同一处：只把 store 的 draft 拿来当值、却继续往 localDraft 里写，
+  // 屏幕上会回显文字但 store 永远是空串——切会话再切回来，草稿就消失了。
+  const resolvedOnDraftChange = draftProp !== undefined ? onDraftChangeProp : draftStore.setDraft;
   const [runtimeInputPending, setRuntimeInputPending] = React.useState(false);
   const [goalPending, setGoalPending] = React.useState(false);
   const goalPendingRef = React.useRef(false);
@@ -151,8 +153,8 @@ export function ChatComposer({
   const selectedSkillNameRef = React.useRef('');
   const skillSelectionPendingRef = React.useRef(false);
   const { draft, setDraft, navigate: navigateHistory, restore: restoreHistory } = useComposerHistory({
-    scopeId, draft: resolvedDraftProp !== undefined ? resolvedDraftProp : localDraft,
-    onDraftChange: resolvedDraftProp !== undefined ? onDraftChangeProp : setLocalDraft, history,
+    scopeId, draft: resolvedDraftProp,
+    onDraftChange: resolvedOnDraftChange, history,
   });
   const currentDraftRef = React.useRef(draft);
   currentDraftRef.current = draft;

@@ -58,3 +58,43 @@
    （`joinBatch` 只为 404 后的独立重取服务）。改动会变请求合并键，需要先确认合并语义。
 
 这四项都不是「代码级清理」，而是要么触到用户可见行为，要么要先定产品语义。
+
+## 第四批：special cases 系统审计（分类扫全量）
+
+按 skill 的五类（单值 if / 单调用者参数 / 吞异常 / retry-sleep 魔法数字 / 禁用测试）扫
+`app-web/src` 全量，61 组约 93 个站点，判定「真该改」23 组。禁用测试确认为 0，销项。
+
+已修：
+- **工具名特判补进登记表**：`ask_user` 四份副本、`write_stdin`/`todo_write` 在 chat-timeline 各两份、
+  `list_checkpoints` 两处、`write_file` 进行时 label、`copy_file` 产物字段、`exec_command` 审批文案。
+  chat-timeline 的两处只有谓词一致、动作体不同（`tool_call_started` 只置 running 并登记 callId，
+  回填循环要 `mergeTerminalResult` 且总是标 seen），所以只收谓词、两份体各自保留。
+- **设置记录 id 簇** 13 个站点收敛成 `RECORD_KINDS` 表；测试把改前实现逐字留作 legacy 基准，
+  24 组输入深比较，并做变异校验证明对拍不是空转。
+- **设置加载退避**两处共用 `retryWithBackoff`，数值各自保留（见架构文档）。
+- **供应商能力** 8 处 `=== 'custom'` / `=== 'ollama'` 收敛成 `PROVIDER_CAPABILITIES` 三列。
+  多出的一列 `exposesModelOptions` 是按行为倒推的：custom 没有预设模型，但它发现到的
+  `model_options` 必须继续可用，两点不能合成一列。
+- **活动词表翻译** 原先靠 `ChatTimelineNodes` 一行三元把 composing/working 对调缝合，
+  现在只在 `ActivityOrb` 的库边界发生。
+- **CSS.highlights** 收进 `shared/lib/css-highlights.js`，按特性分组清理。
+- **上下文表盘分母**从模块级 `let` 改成签名可见的 `contextWindowTokens`。没做全量线程化：
+  读这个值的源码调用点有 11 处、散在四个文件，而「当前窗口」只在 AppShell 的 agent-catalog
+  回调里出现；漏掉任何一条通道都会让分母变 0、比例与超限判定静默变化。只做到签名可见 +
+  单一注入点，并补了基线测试供后续对拍。
+
+### 测试覆盖不到的地方（人工守）
+
+`ChatComposer` 未受控时应该订阅草稿 store 的**读写两侧**。曾经有一版只把 store 的 `draft`
+拿来当值、却继续往组件内 `localDraft` 里写：屏幕上能回显文字，store 永远是空串，切会话再切回来
+草稿就没了——而全部 1604 条测试仍然全绿，因为没有任何测试渲染 `ChatComposer` 的这条接线
+（`per-conversation-draft.test.js` 只驱动 hook 本身）。这类「组件内部接线」在现有测试栈里测不到，
+只能靠 review 和 Electron 冒烟；改草稿相关代码时请显式检查读与写是否来自同一处。
+
+### 明知的重复，不动
+
+- `ProviderIcon` 的品牌映射与 `normalizeProviderKey` 的协议标签：一个是图标品牌，一个是协议名。
+- `resolveAgentActivity` 能产出的词与 thinking-orbs 库的词：已用冻结表翻译，但两套词表仍并存
+  （库还有 connecting/weaving/breathing/shaping 等应用不产出的状态）。
+- `settings-payload.js` 里 `RECORD_KINDS.defaultAuthMode` 与 `LLM_PROVIDER_OPTIONS[].defaultAuth`
+  取值相同：前者是能力表一列，后者是设置目录一列，合并要动目录形状。
