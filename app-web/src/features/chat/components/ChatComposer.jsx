@@ -33,7 +33,7 @@ import {
 } from './composer/shared.js';
 import { useConversationRunConfig } from '../../conversations/hooks/useConversationRunConfig.js';
 import { useSchedules } from '../../schedules/hooks/useSchedules.js';
-import { scheduleInvocation, scheduleMenuItems } from '../../schedules/model/schedule.js';
+import { scheduleInvocation, scheduleMenuItems } from '../../../core/schedule.js';
 import { useComposerHistory } from '../hooks/useComposerHistory.js';
 import { LexicalComposerInput } from './LexicalComposerInput.jsx';
 import { GOAL_COMMAND, goalInvocation, goalMenuItems } from '../model/goal-command.js';

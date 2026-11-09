@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyScheduleEvent } from '../../../src/features/schedules/model/schedule.js';
+import { applyScheduleEvent } from '../../../src/core/schedule.js';
 import { deferred, scheduleHookHarness } from './hook-harness.js';
 
 function fixture() {

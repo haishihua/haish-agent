@@ -5,7 +5,7 @@ import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { AnimateDialog } from '../../../shared/ui/AnimateDialog.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../../shared/ui/settings-elements/ui/select.tsx';
 import { ScheduleDateTimePicker } from './ScheduleDateTimePicker.jsx';
-import { buildScheduleSpec, scheduleFields } from '../model/schedule.js';
+import { buildScheduleSpec, scheduleFields } from '../../../core/schedule.js';
 
 function ScheduleForm({ job, initialMessage = '', busy, onSave, onCancel }) {
   const [message, setMessage] = React.useState(job?.message || initialMessage);

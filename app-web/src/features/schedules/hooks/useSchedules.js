@@ -1,6 +1,6 @@
 import React from 'react';
 import { schedulesApi } from '../api/schedules.js';
-import { applyScheduleEvent } from '../model/schedule.js';
+import { applyScheduleEvent } from '../../../core/schedule.js';
 
 export const SchedulesContext = React.createContext(null);
 export const useSchedules = () => React.useContext(SchedulesContext);

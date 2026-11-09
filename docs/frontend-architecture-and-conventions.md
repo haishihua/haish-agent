@@ -66,6 +66,7 @@ app-web/
 | 任务记录 | `task-record`、`task-runtime`、`task-runtime-paging`、`task-pill`、`task-completion-notices`、`task-attempts`、`pending-task` | app、chat、conversations、tasks、workflow |
 | 消息与流 | `message-text`、`stream-events`、`event-identity`、`runtime-events`、`terminal-timeline`、`tool-names`、`tool-presentation`、`tool-trace-status`、`context-usage`、`quest-ack`、`chat-timeline`、`tool-grouping`、`tool-view-shared`、`progress-text`、`assistant-name`、`changed-files`、`pet-state`、`conversation-loading` | app、chat、conversations、tasks、workflow |
 | 工作流目录 | `workflow-catalog`、`workflow-catalog/*`、`workflow-defaults`、`workflow-snapshot`、`workflow-layout-store`、`runtime-workflow-layout`、`node-attempts`、`node-runtime-config`、`execution-config` | chat、settings、tasks、workflow |
+| 定时规则 | `schedule`：时间规则与下次运行计算 | app、chat、schedules |
 | 审批与配置 | `approval-store`、`workflow-approval-markdown`、`agent-settings`、`agent-catalog-loading`、`provider-catalog`、`project-matching`、`run-config`、`run-config-sync` | app、chat、conversations、schedules、settings、workflow |
 
 判据：**一个领域的 `model/` 只保留该领域自己的算法**；一旦第二个领域也要读，就搬到 `core/` 并在调用方直接改路径，不留 re-export。

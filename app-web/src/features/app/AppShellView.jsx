@@ -3,7 +3,7 @@ import { LoadingState } from '../../shared/ui/agent-elements/LoadingState.jsx';
 import { MetalFxRuntimeKeeper } from '../../shared/ui/MotionEffects.jsx';
 import { ResultDialog } from '../../shared/ui/ResultDialog.jsx';
 import { SchedulesProvider } from '../schedules/components/SchedulesProvider.jsx';
-import { createScheduleBinding } from '../schedules/model/schedule.js';
+import { createScheduleBinding } from '../../core/schedule.js';
 import { ConversationsPanel } from '../conversations/components/ConversationsPanel.jsx';
 import { ChatPanel } from '../chat/components/ChatPanel.jsx';
 import { DraftProjectPicker } from '../chat/components/DraftProjectPicker.jsx';

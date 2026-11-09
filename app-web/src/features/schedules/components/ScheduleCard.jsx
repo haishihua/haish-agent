@@ -1,6 +1,6 @@
 import React from 'react';
 import { CalendarDays, Clock3, FileText, Globe2 } from 'lucide-react';
-import { scheduleSummary } from '../model/schedule.js';
+import { scheduleSummary } from '../../../core/schedule.js';
 
 function DetailRow({ icon: Icon, label, children }) {
   return <div className="schedule-detail-row">

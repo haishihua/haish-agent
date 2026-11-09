@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyScheduleEvent, buildScheduleSpec, createScheduleBinding, localDateTime, scheduleFields, scheduleInvocation, scheduleMenuItems, scheduleSummary } from '../../../src/features/schedules/model/schedule.js';
+import { applyScheduleEvent, buildScheduleSpec, createScheduleBinding, localDateTime, scheduleFields, scheduleInvocation, scheduleMenuItems, scheduleSummary } from '../../../src/core/schedule.js';
 import { createScheduledRuntimeHandlers } from '../../../src/features/schedules/model/runtime-handlers.js';
 
 test('schedule shares slash menu with skills but is an action, not a skill', () => {
