@@ -17,6 +17,29 @@ const files = walk(sourceRoot).filter((path) => sourceExtensions.has(extname(pat
 const sourceSet = new Set(files);
 const graph = new Map(files.map((file) => [file, []]));
 
+// 导入的具名符号必须真的存在：测试和 lint 都看不出来，只有打包时才炸。
+const exportCache = new Map();
+function namedExportsOf(file) {
+  if (exportCache.has(file)) return exportCache.get(file);
+  const source = readFileSync(file, 'utf8');
+  const names = new Set();
+  for (const match of source.matchAll(/export\s+(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)/g)) {
+    names.add(match[1]);
+  }
+  for (const match of source.matchAll(/export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)) {
+    names.add(match[1]);
+  }
+  for (const match of source.matchAll(/export\s*\{([^}]*)\}/g)) {
+    for (const entry of match[1].split(',')) {
+      const alias = entry.split(/\sas\s/).pop().trim();
+      if (alias) names.add(alias);
+    }
+  }
+  if (/export\s+default\b/.test(source)) names.add('default');
+  exportCache.set(file, names);
+  return names;
+}
+
 for (const file of files) {
   const source = readFileSync(file, 'utf8');
   const localPath = relative(sourceRoot, file).split(sep).join('/');
@@ -68,6 +91,20 @@ for (const file of files) {
     }
     if (segments.includes('model') && /\/(?:components|hooks)\//.test(`/${targetPath}`)) {
       errors.push(`${localPath}: models cannot import components or hooks (${targetPath})`);
+    }
+  }
+
+  for (const match of source.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g)) {
+    const specifier = match[2].replace(/\?.*$/, '');
+    if (!specifier.startsWith('.')) continue;
+    const target = resolve(file, '..', specifier);
+    if (!sourceSet.has(target)) continue;
+    const available = namedExportsOf(target);
+    for (const entry of match[1].split(',')) {
+      const imported = entry.split(/\sas\s/)[0].trim();
+      if (imported && !available.has(imported)) {
+        errors.push(`${localPath}: imports '${imported}' which ${relative(sourceRoot, target).split(sep).join('/')} does not export`);
+      }
     }
   }
 }

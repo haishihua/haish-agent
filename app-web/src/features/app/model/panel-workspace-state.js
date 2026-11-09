@@ -1,9 +1,5 @@
-import {
-  findConversationById,
-  mergeConversationTasks,
-  normalizeWorkspaceOrdering,
-  taskUpdatedTimestamp,
-} from '../../conversations/model/workspace-state.js';
+import { findConversationById, mergeConversationTasks, normalizeWorkspaceOrdering } from '../../conversations/model/workspace-state.js';
+import { taskUpdatedTimestamp } from '../../../core/task-record.js';
 
 /**
  * 会话面板用的工作区投影：把当前会话的本地运行态任务合并进服务端目录那份拷贝。

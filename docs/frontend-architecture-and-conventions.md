@@ -156,13 +156,15 @@ app-web/tests/**        # 所有 test/spec
 
 | 命令 | 内容 |
 | --- | --- |
-| `npm run check:architecture` | 目录、依赖、循环、导入解析（剥离 `?inline` 等查询串）、`shared`/`core` 不得反向 import `features`、动态 CSS、全局请求等边界 |
+| `npm run check:architecture` | 目录、依赖、循环、导入解析（剥离 `?inline` 等查询串）与具名导出存在性、`shared`/`core` 不得反向 import `features`、动态 CSS、全局请求等边界 |
 | `npm test` | 运行 `app-web/tests` 中所有 `*.test.js` / `*.test.mjs` 自动测试 |
 | `npm run lint` | 生产代码和测试代码 ESLint；warning 也会失败 |
 | `npm run build:web` | Vite 生产构建 |
 | `npm run check:web` | 依次执行以上四项 |
 
 合并前必须运行 `npm run check:web`。新增架构规则时，先把规则写进 `scripts/check-app-web-architecture.mjs`，再更新本文。
+
+移动或下沉模块时必须改完所有调用方：`eslint` 和 `npm test` 都不会报「导入了不存在的名字」，只有打包才炸。`check:architecture` 现在会核对每个具名 import 是否真的由目标模块导出，这类漏改在提交前就会失败。
 
 当前硬门禁：
 
