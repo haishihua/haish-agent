@@ -15,6 +15,7 @@ import {
 import { PATH_IMAGE_RETRY_DELAYS_MS, probeImageStatus, withRetryParam } from '../lib/markdown-image-retry.js';
 import { prefersReducedMotion } from '../lib/reduced-motion.js';
 import { localFileHref, localFilePath, openLocalFile } from '../lib/local-file-link.js';
+import { notifyToast } from '../lib/toast.js';
 import { MarkdownBlockCode } from './deferred-code-block.jsx';
 import { AppIcon } from './AppIcon.jsx';
 import '../../../styles/markdown.css';
@@ -93,7 +94,7 @@ function MarkdownLink({ href, children, className, node, title, ...rest }) {
         event.stopPropagation();
         openLocalFile(value).then((result) => {
           if (result.ok) return;
-          window.dispatchEvent(new CustomEvent('haish:toast', { detail: { kind: 'error', message: result.error } }));
+          notifyToast('error', result.error);
         });
       }}
     >{children}</a>

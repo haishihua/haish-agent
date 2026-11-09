@@ -1,5 +1,6 @@
 import React from 'react';
 import { setLocalFileRoot } from '../../../shared/lib/local-file-link.js';
+import { onToast } from '../../../shared/lib/toast.js';
 
 // Answers link to the files a task produced. Relative targets resolve against
 // the conversation's own cwd (the workspace path), and a failed open is reported
@@ -8,12 +9,7 @@ export function useLocalFileLinks(workspacePath, showToast) {
   React.useEffect(() => { setLocalFileRoot(workspacePath || ''); }, [workspacePath]);
   const showToastRef = React.useRef(showToast);
   showToastRef.current = showToast;
-  React.useEffect(() => {
-    const onToast = (event) => {
-      const detail = event.detail || {};
-      showToastRef.current(detail.kind || 'info', String(detail.message || ''));
-    };
-    window.addEventListener('haish:toast', onToast);
-    return () => window.removeEventListener('haish:toast', onToast);
-  }, []);
+  React.useEffect(() => onToast((detail) => {
+    showToastRef.current(detail.kind || 'info', String(detail.message || ''));
+  }), []);
 }

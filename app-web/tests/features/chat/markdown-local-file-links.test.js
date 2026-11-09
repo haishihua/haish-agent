@@ -84,13 +84,13 @@ test('production markdown and desktop wiring keep local links clickable', () => 
   assert.match(markdown, /return localFileHref\(value\) \|\| null;/);
   assert.match(markdown, /a: MarkdownLink/);
   // 打开失败要有反馈，不能安静失败。
-  assert.match(markdown, /new CustomEvent\('haish:toast'/);
+  assert.match(markdown, /notifyToast\('error', result\.error\)/);
 
   const shell = read('app-web/src/features/app/AppShell.jsx');
   assert.match(shell, /useLocalFileLinks\(localWorkspace\.path, showToast\);/);
   const bridge = read('app-web/src/features/app/hooks/useLocalFileLinks.js');
   assert.match(bridge, /setLocalFileRoot\(workspacePath \|\| ''\)/);
-  assert.match(bridge, /window\.addEventListener\('haish:toast'/);
+  assert.match(bridge, /onToast\(/);
 
   const preload = read('src/preload/preload.ts');
   assert.match(preload, /openLocalPath: \(absolutePath: string\) =>/);
@@ -101,4 +101,25 @@ test('production markdown and desktop wiring keep local links clickable', () => 
   assert.match(main, /await shell\.openPath\(value\)/);
   // 相对路径不能进 shell：只接受绝对路径。
   assert.match(main, /!path\.isAbsolute\(value\)/);
+});
+
+test('the toast channel carries kind and message, and stops after unsubscribe', async () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = new EventTarget();
+  try {
+    const { notifyToast, onToast } = await import('../../../src/shared/lib/toast.js');
+    const received = [];
+    const unsubscribe = onToast((detail) => received.push(detail));
+    notifyToast('error', 'cannot open that file');
+    assert.deepEqual(received, [{ kind: 'error', message: 'cannot open that file' }]);
+    // 缺 kind 时要落到 info，否则接收方拿到 undefined 会丢提示。
+    notifyToast('', 'plain');
+    assert.deepEqual(received.at(-1), { kind: 'info', message: 'plain' });
+    unsubscribe();
+    notifyToast('error', 'after unsubscribe');
+    assert.equal(received.length, 2, 'unsubscribed listeners must stop receiving');
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
 });
