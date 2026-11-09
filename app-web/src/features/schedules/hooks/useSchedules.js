@@ -66,13 +66,18 @@ export function useSchedulesState({ api = schedulesApi, onRuntimeEvent, onRecove
     refresh();
     return () => { alive = false; stop(); window.removeEventListener('focus', focus); };
   }, [api, subscribe]);
-  const upsert = (job) => {
+  // 返回值稳定化：SchedulesProvider 把这份对象放进 context value 的 useMemo 依赖，
+  // 各字段引用不变时（items/loading/error/dialog 未变）不能因重渲染而换新对象，
+  // 否则每个消费 useSchedules 的会话行都会跟着父组件一起重渲染。
+  const upsert = React.useCallback((job) => {
     itemsRef.current = applyScheduleEvent(itemsRef.current, { type: 'schedule.event', event: { schedule: job } });
     setItems(itemsRef.current);
-  };
-  return { items, loading, error, dialog, setDialog, upsert,
-    remove: (id) => { itemsRef.current = itemsRef.current.filter((item) => item.id !== id); setItems(itemsRef.current); },
-    openCreate: (request) => setDialog({ mode: 'create', ...request }),
-    openManage: (conversationId) => setDialog({ mode: 'manage', conversationId }),
-  };
+  }, []);
+  const remove = React.useCallback((id) => {
+    itemsRef.current = itemsRef.current.filter((item) => item.id !== id); setItems(itemsRef.current);
+  }, []);
+  const openCreate = React.useCallback((request) => setDialog({ mode: 'create', ...request }), []);
+  const openManage = React.useCallback((conversationId) => setDialog({ mode: 'manage', conversationId }), []);
+  return React.useMemo(() => ({ items, loading, error, dialog, setDialog, upsert, remove, openCreate, openManage }),
+    [items, loading, error, dialog, upsert, remove, openCreate, openManage]);
 }

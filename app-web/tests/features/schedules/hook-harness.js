@@ -33,6 +33,13 @@ export function scheduleHookHarness(path, exportName, initialProps, globals = {}
         slots[index] = { deps, cleanup: effect() };
       });
     },
+    useCallback(callback) {
+      // Stable identities match real React closely enough for these hooks.
+      return callback;
+    },
+    useMemo(factory) {
+      return factory();
+    },
   };
   const source = readFileSync(new URL(path, import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/\bexport /g, '');
   const compiled = transformSync(source, { loader: 'jsx', jsx: 'transform' }).code;

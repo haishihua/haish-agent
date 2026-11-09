@@ -231,11 +231,9 @@ export function AppShell() {
   const draftConversationIdsRef = useRef(new Map());
   // Unsent composer text is stored per conversation so switching chats keeps
   // each input box independent. Declared early so draft materialization can rekey it.
-  const {
-    draft: chatDraft,
-    setDraft: setChatDraft,
-    rekeyDraft: rekeyChatDraft,
-  } = usePerConversationDraft(conversationId);
+  // 只拿动作、不订阅草稿值：草稿存在模块级外置 store 里，由 ChatComposer 自己
+  // 订阅（见 usePerConversationDraft），打字不再重渲染整个 shell。
+  const { rekeyDraft: rekeyChatDraft } = usePerConversationDraft(conversationId);
   // Server conversation created for a draft (e.g. image/file upload) but not yet
   // revealed in the sidebar because the user still has not sent a message.
   const pendingCreatedDetailRef = useRef(null);
@@ -869,7 +867,7 @@ export function AppShell() {
         handleDeploy, handleGoalCommand, handleStop, handleAttachmentSelect, handleAttachmentClear,
         composerImageDraftsRef, composerAttachment, uploadState, contextUsage, localWorkspace, activeTaskText,
         llmProviderOptions, llmCatalogReady, openAddChatProvider, chatAgentSelection, defaultAgentId, agentLoading, agentState, setAgentRetry,
-        runConfigStorageKey, chatDraft, setChatDraft, handleForkMessage, getTaskById,
+        runConfigStorageKey, handleForkMessage, getTaskById,
       }}
       workflow={{
         selectedWorkflow, agentOptions, openWorkflowConfig, botNodeConfigs, nodeConfigSelection,

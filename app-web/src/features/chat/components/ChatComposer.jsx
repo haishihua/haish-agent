@@ -34,6 +34,7 @@ import { useConversationRunConfig } from '../../conversations/hooks/useConversat
 import { useSchedules } from '../../schedules/hooks/useSchedules.js';
 import { scheduleInvocation, scheduleMenuItems } from '../../../core/schedule.js';
 import { useComposerHistory } from '../hooks/useComposerHistory.js';
+import { usePerConversationDraft } from '../hooks/usePerConversationDraft.js';
 import { LexicalComposerInput } from './LexicalComposerInput.jsx';
 import { GOAL_COMMAND, goalInvocation, goalMenuItems } from '../model/goal-command.js';
 import { ComposerSkillMenu } from './ComposerSkillMenu.jsx';
@@ -116,6 +117,12 @@ export function ChatComposer({
   const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : DEFAULT_AGENT_OPTIONS;
   const resolvedDefaultAgentId = defaultAgentId || resolvedAgentOptions[0]?.id || DEFAULT_AGENT_OPTIONS[0].id;
   const [localDraft, setLocalDraft] = React.useState('');
+  // 未受控时（调用方不传 draft）直接订阅草稿 store：击键只重渲染 composer，
+  // 不再沿着 AppShell 的 React state 一路重渲染整个 shell。键与 skillScopeId
+  // 同构——draft 会话的 scope 按项目固定，但草稿文本跟着会话 id 走（materialize
+  // 时 rekey），所以订阅键优先 conversationId。
+  const storeDraft = usePerConversationDraft(conversationId || scopeId).draft;
+  const resolvedDraftProp = draftProp !== undefined ? draftProp : storeDraft;
   const [runtimeInputPending, setRuntimeInputPending] = React.useState(false);
   const [goalPending, setGoalPending] = React.useState(false);
   const goalPendingRef = React.useRef(false);
@@ -143,8 +150,8 @@ export function ChatComposer({
   const selectedSkillNameRef = React.useRef('');
   const skillSelectionPendingRef = React.useRef(false);
   const { draft, setDraft, navigate: navigateHistory, restore: restoreHistory } = useComposerHistory({
-    scopeId, draft: draftProp !== undefined ? draftProp : localDraft,
-    onDraftChange: draftProp !== undefined ? onDraftChangeProp : setLocalDraft, history,
+    scopeId, draft: resolvedDraftProp !== undefined ? resolvedDraftProp : localDraft,
+    onDraftChange: resolvedDraftProp !== undefined ? onDraftChangeProp : setLocalDraft, history,
   });
   const currentDraftRef = React.useRef(draft);
   currentDraftRef.current = draft;
@@ -231,7 +238,7 @@ export function ChatComposer({
     // "wait for configuration" failure; ensureSaved remains the authority.
     onRunConfigChange?.({ provider: providerRequest, modelId, reasoningEffort,
       agentId: effectiveAgentId, ensureSaved: configSync.ensureSaved });
-  });
+  }, [onRunConfigChange, providerRequest, modelId, reasoningEffort, effectiveAgentId, configSync]);
 
   // Switching conversations restores that conversation's own skill choice;
   // only the transient menu/pending state is dropped.

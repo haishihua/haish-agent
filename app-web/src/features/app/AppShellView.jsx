@@ -59,7 +59,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
     handleDeploy, handleGoalCommand, handleStop, handleAttachmentSelect, handleAttachmentClear,
     composerImageDraftsRef, composerAttachment, uploadState, contextUsage, localWorkspace, activeTaskText,
     llmProviderOptions, llmCatalogReady, openAddChatProvider, chatAgentSelection, defaultAgentId, agentLoading, agentState, setAgentRetry,
-    runConfigStorageKey, chatDraft, setChatDraft, handleForkMessage, getTaskById,
+    runConfigStorageKey, handleForkMessage, getTaskById,
   } = chat;
   const {
     selectedWorkflow, agentOptions, openWorkflowConfig, botNodeConfigs, nodeConfigSelection,
@@ -205,8 +205,6 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                     agentError={agentState.error}
                     onAgentRetry={() => setAgentRetry((attempt) => attempt + 1)}
                     selectionStorageKey={runConfigStorageKey}
-                    draft={chatDraft}
-	                    onDraftChange={setChatDraft}
                     onForkMessage={handleForkMessage}
                     onEditMessage={(taskId, text, runConfig) => handleRetryTask(getTaskById(taskId, conversationId), text, runConfig)}
                     onRetryTask={(taskId, runConfig) => {
@@ -247,8 +245,6 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                       onToast={showToast}
                       scheduleNodeRuntimeConfigs={nodeConfigSelection.conversationConfigs} onRestoreNodeConfigs={nodeConfigSelection.restore}
                       scopeId={draftConversationRef.current?.id === conversationId ? draftConversationRef.current.composerScopeId : conversationId}
-                      draft={chatDraft}
-                      onDraftChange={setChatDraft}
                       onSend={(...args) => handleDeploy(...args.slice(0, 9), args[9] ?? botNodeConfigs)}
                       onStop={handleStop}
                       activeTaskText={activeTaskText}
