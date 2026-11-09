@@ -53,7 +53,7 @@ import { nextEarlierTaskRuntimeIds, pendingTaskRuntimeIds } from '../../../core/
 import { applyTerminalTaskState, buildTaskRuntimeRecord, createEmptyTaskRuntimeState, createPendingTaskDraft, sortTaskIdsForRestore, taskDetailToRuntimeTask, taskHasAssistantStreamContent, taskSummaryToRuntimeTask, upsertToolCall } from '../../../core/task-runtime.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
 import { createDefaultCustomWorkflowPayload, normalizeWorkflowSettings, payloadForCustomWorkflow, workflowById } from '../../../core/workflow-catalog.js';
-import { conversationDetailToWorkspaceConversation, replaceWorkspaceModeFromProjects, workspaceStateWithConversationDetail } from '../model/workspace-runtime.js';
+import { runtimeWorkspace } from '../model/workspace-runtime.js';
 
 /**
  * AppShell 的 handlers 装配：把各个 create*Handlers / createConversationRuntime 工厂
@@ -164,7 +164,7 @@ export function useShellHandlers({
     userCancelledTaskIdsRef,
     viewModeRef,
     workspaceState,
-    workspaceStateWithConversationDetail,
+    workspaceStateWithConversationDetail: runtimeWorkspace.withConversationDetail,
   });
 
   draftApiRef.current = { materializeDraftConversationForSend, switchDraftProject };
@@ -270,7 +270,7 @@ export function useShellHandlers({
     userCancelledTaskIdsRef,
     viewModeRef,
     workspaceState,
-    workspaceStateWithConversationDetail,
+    workspaceStateWithConversationDetail: runtimeWorkspace.withConversationDetail,
   });
 
   activationApiRef.current = {
@@ -487,7 +487,7 @@ export function useShellHandlers({
     applyConversationSnapshot,
     apiFetch,
     buildApiHeaders,
-    replaceWorkspaceModeFromProjects,
+    replaceWorkspaceModeFromProjects: runtimeWorkspace.modeFromProjects,
     conversationReorderChainsRef,
     conversationReorderVersionsRef,
     projectReorderChainRef,
@@ -525,7 +525,7 @@ export function useShellHandlers({
     taskUpdatedTimestamp,
     viewModeRef,
     workspaceState,
-    workspaceStateWithConversationDetail,
+    workspaceStateWithConversationDetail: runtimeWorkspace.withConversationDetail,
   });
 
   const {
@@ -545,7 +545,7 @@ export function useShellHandlers({
     cancelActiveTask, recoverConversationTasks,
     queueTaskInput,
     chatFinalizedTaskIdsRef,
-    conversationDetailToWorkspaceConversation,
+    conversationDetailToWorkspaceConversation: runtimeWorkspace.conversationFromDetail,
     conversationError,
     conversationId,
     conversationIdRef,
@@ -592,7 +592,7 @@ export function useShellHandlers({
     viewModeRef,
     workflowSettingsDraft,
     workspaceState,
-    workspaceStateWithConversationDetail,
+    workspaceStateWithConversationDetail: runtimeWorkspace.withConversationDetail,
     workspaceStateWithTouchedConversation,
   });
 

@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 globalThis.window = { HAISH_API_BASE: 'http://fixture.invalid', location: { origin: 'http://fixture.invalid' } };
+const { runtimeWorkspace } = await import('../../../src/features/app/model/workspace-runtime.js');
 const {
-  conversationDetailToWorkspaceConversation,
-  buildWorkspaceStateFromProjects,
-  replaceWorkspaceModeFromProjects,
-  workspaceStateWithConversationDetail,
-} = await import('../../../src/features/app/model/workspace-runtime.js');
+  conversationFromDetail: conversationDetailToWorkspaceConversation,
+  fromProjects: buildWorkspaceStateFromProjects,
+  modeFromProjects: replaceWorkspaceModeFromProjects,
+  withConversationDetail: workspaceStateWithConversationDetail,
+} = runtimeWorkspace;
 
 const task = {
   task_id: 'task-1',

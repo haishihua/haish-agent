@@ -95,10 +95,7 @@ import { createScheduledRuntimeHandlers } from '../schedules/model/runtime-handl
 import { usePerConversationDraft } from '../chat/hooks/usePerConversationDraft.js';
 import { saveLastLocation } from '../conversations/model/last-location.js';
 import { useViewedTaskCompletionNotice } from '../tasks/hooks/useViewedTaskCompletionNotice.js';
-import {
-  buildWorkspaceStateFromProjects,
-  replaceWorkspaceModeFromProjects,
-} from './model/workspace-runtime.js';
+import { runtimeWorkspace } from './model/workspace-runtime.js';
 import { AppShellView } from './AppShellView.jsx';
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -564,7 +561,7 @@ export function AppShell() {
   useLocalFileLinks(localWorkspace.path, showToast);
 
   useShellConversationBootstrap({
-    activationApiRef, buildWorkspaceStateFromProjects, ownerIdRef, setConversationError, setConversationReady,
+    activationApiRef, buildWorkspaceStateFromProjects: runtimeWorkspace.fromProjects, ownerIdRef, setConversationError, setConversationReady,
     setOwnerId, setWorkspaceLoading, setWorkspaceState, setViewedWorkflowTask,
   });
 
@@ -580,7 +577,7 @@ export function AppShell() {
   directorySelectionApiRef.current.handleActiveConversationRemoved = handleConversationRemoved;
   useShellConversationListPolling({
     workspaceState, conversationId, conversationIdRef, directorySelectionApiRef, draftConversationRef,
-    conversationReady, settingsMode, viewMode, replaceWorkspaceModeFromProjects, setWorkspaceState,
+    conversationReady, settingsMode, viewMode, replaceWorkspaceModeFromProjects: runtimeWorkspace.modeFromProjects, setWorkspaceState,
   });
   const quests = useMemo(() => questsFromRuntimeState(taskRuntimeState), [taskRuntimeState]);
 
