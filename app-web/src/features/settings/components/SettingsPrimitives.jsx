@@ -4,7 +4,7 @@ import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import { Input } from '../../../shared/ui/settings-elements/ui/input.tsx';
 import { Field, FieldLabel, FieldDescription } from '../../../shared/ui/settings-elements/ui/field.tsx';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../../shared/ui/settings-elements/ui/select.tsx';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '../../../shared/ui/settings-elements/ui/select.tsx';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from '../../../shared/ui/settings-elements/ui/sheet.tsx';
 import { Item, ItemContent, ItemDescription, ItemTitle, ItemMedia, ItemActions } from '../../../shared/ui/settings-elements/ui/item.tsx';
 import { Switch } from '../../../shared/ui/settings-elements/ui/switch.tsx';
@@ -24,11 +24,16 @@ export function SecretKeyField({ id, value = '', onChange, configured, disabled,
   return <div className="settings-secret-modern"><Input {...props} id={id} type={visible ? 'text' : 'password'} value={value} onChange={onChange} disabled={disabled} placeholder={configured ? 'Leave blank to keep saved key' : placeholder} autoComplete="off" spellCheck={false} /><Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label={visible ? 'Hide secret' : 'Show secret'} onClick={() => setVisible(!visible)}>{visible ? <EyeOff /> : <Eye />}</Button>{configured && <span className="settings-key-saved"><ShieldCheck size={12} />Saved</span>}</div>;
 }
 
-export function SettingsMenuSelect({ id, value, options, onChange, disabled = false, placeholder = 'Select' }) {
+export function SettingsMenuSelect({ id, value, options, onChange, disabled = false, placeholder = 'Select', header = '', className = '' }) {
   // Radix Select reserves the empty value for its placeholder.
   const choices = options.filter(item => item.id);
   if (value && !choices.some(item => item.id === value)) choices.push({ id: value, label: value });
-  return <Select value={value || ''} onValueChange={onChange} disabled={disabled}><SelectTrigger id={id} className="w-full"><SelectValue placeholder={placeholder} /></SelectTrigger><SelectContent position="popper">{choices.map(item => <SelectItem key={item.id} value={item.id}>{item.label || item.id}</SelectItem>)}</SelectContent></Select>;
+  const items = choices.map(item => <SelectItem key={item.id} value={item.id}>{item.label || item.id}</SelectItem>);
+  // header 只是列表顶部的小标题（工作流的「project tools」），无分组语义，所以整段共用一个组。
+  const body = header
+    ? <SelectGroup><SelectLabel>{header}</SelectLabel>{items}</SelectGroup>
+    : items;
+  return <Select value={value || ''} onValueChange={onChange} disabled={disabled}><SelectTrigger id={id} className={className ? `w-full ${className}` : 'w-full'}><SelectValue placeholder={placeholder} /></SelectTrigger><SelectContent position="popper">{body}</SelectContent></Select>;
 }
 
 export function SettingsSearch({ value, onChange, label }) {

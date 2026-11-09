@@ -5,7 +5,7 @@ import {
   workflowOutputMappingEntries,
   workflowVariableTypeForValue,
 } from '../../../../core/workflow-catalog.js';
-import { SettingsMenuSelect } from '../settings-ui.jsx';
+import { SettingsMenuSelect } from '../SettingsPrimitives.jsx';
 import { WorkflowDetailSection, WorkflowDetailSelect } from '../WorkflowNodeDetails.jsx';
 import { WorkflowTemplateTextarea, WorkflowVariableSelect } from '../WorkflowFormControls.jsx';
 

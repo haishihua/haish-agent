@@ -10,9 +10,7 @@ import {
 import { WorkflowDetailSection, WorkflowDetailFields, workflowDetailFieldIcon } from './WorkflowNodeDetails.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
-import {
-  SettingsMenuSelect,
-} from './settings-ui.jsx';
+import { SettingsMenuSelect } from './SettingsPrimitives.jsx';
 
 const { useRef } = React;
 

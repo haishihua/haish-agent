@@ -32,6 +32,24 @@ function Stage() {
 }
 createRoot(document.getElementById('stage')).render(<Stage />);
 const tick = (ms = 100) => new Promise((resolve) => setTimeout(resolve, ms));
+// Radix Select 用 pointerdown 打开、选项渲染到 body 的 portal 里，所以要按 DOM 契约操作而不是点容器。
+// className 直接传给 Radix Trigger（如 .workflow-variable-menu-select），所以 scope 可能就是 trigger 本身。
+const selectTrigger = (scope) => (scope.matches('[data-slot="select-trigger"]')
+  ? scope
+  : scope.querySelector('[data-slot="select-trigger"]'));
+const openSelect = async (trigger) => {
+  const opts = { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true };
+  trigger.dispatchEvent(new PointerEvent('pointerdown', opts));
+  trigger.dispatchEvent(new PointerEvent('pointerup', opts));
+  await tick(250);
+};
+const pickOption = async (label) => {
+  const option = [...document.querySelectorAll('[role="option"]')].find((el) => el.textContent.trim() === label);
+  if (!option) throw new Error(`missing select option: ${label}`);
+  option.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true }));
+  option.click();
+  await tick(250);
+};
 const report = document.getElementById('checks');
 const rows = [];
 let failed = false;
@@ -82,12 +100,12 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
   check(inputBody.hidden && inputToggle.getAttribute('aria-expanded') === 'false', 'Inputs collapse independently');
   inputToggle.click(); await tick();
   check(!inputBody.hidden && panel.querySelector('[aria-label="Message"]') === originalMessage && originalMessage.value === originalValue, 'Input collapse keeps editor mounted and preserves content');
-  panel.querySelector('.workflow-agent-selector .model-picker-trigger').click(); await tick();
-  check(Boolean(panel.querySelector('.workflow-agent-selector [role="listbox"]')), 'Agent selector opens');
-  panel.querySelector('.workflow-agent-selector [role="option"]').click(); await tick();
+  await openSelect(selectTrigger(panel.querySelector('.workflow-agent-selector')));
+  check(document.querySelectorAll('[role="listbox"]').length === 1, 'Agent selector opens');
+  await pickOption('Goal Worker');
   check(worker().agent_id === 'goal.worker', 'Agent selection persists');
-  panel.querySelector('.workflow-variable-menu-select .model-picker-trigger').click(); await tick();
-  const option = panel.querySelector('.workflow-variable-menu-select [role="option"]');
+  await openSelect(selectTrigger(panel.querySelector('.workflow-variable-menu-select')));
+  const option = document.querySelector('[role="option"]');
   const rect = option.getBoundingClientRect();
   check(option.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)), 'Input menu remains visible and clickable outside row');
   option.click(); await tick();
@@ -102,7 +120,7 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
   const alignedSelect = () => {
     const selector = panel.querySelector('.workflow-detail-select');
     const label = selector.querySelector('.workflow-detail-select-text');
-    const value = selector.querySelector('.workflow-detail-select-static, .model-picker-value');
+    const value = selector.querySelector('.workflow-detail-select-static, [data-slot="select-value"]');
     const textRect = (el) => { const range = document.createRange(); range.selectNodeContents(el); return range.getBoundingClientRect(); };
     const a = textRect(label), b = textRect(value);
     return Math.abs(a.bottom - b.bottom) < 0.5
@@ -199,8 +217,8 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
         check(Boolean(panel.querySelector('[aria-label="Condition"] .workflow-template-compact')) && !panel.querySelector('[aria-label="Condition"] .workflow-io-panel'), 'Condition uses a flat compact expression editor');
         setValue(panel.querySelector('[aria-label="Expression"]'), '{{input.message}} != ""'); await tick();
         check(getNode(id).expression === '{{input.message}} != ""', 'Flat condition expression edits save');
-        panel.querySelector('.workflow-variable-panel .model-picker-trigger').click(); await tick();
-        panel.querySelector('.workflow-variable-panel [role="option"]').click(); await tick();
+        await openSelect(selectTrigger(panel.querySelector('.workflow-variable-panel')));
+        (document.querySelector('[role="option"]')).click(); await tick();
         check(panel.querySelector('[aria-label="Expression"]').value === getNode(id).expression, 'Condition data insertion updates saved expression');
       }
     }
@@ -221,17 +239,17 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
       check(getNode(id).max_loops === 5, 'Loop rerun limit persists');
       const policy = panel.querySelector('.workflow-retry-policy');
       check([...policy.querySelectorAll('.workflow-detail-select')].every((row) => row.getBoundingClientRect().height <= 44), 'Retry policy uses compact aligned rows');
-      policy.querySelector('.model-picker-trigger').click(); await tick();
-      [...policy.querySelectorAll('[role="option"]')].find((el) => el.textContent.trim() === 'Unlimited').click(); await tick();
+      await openSelect(selectTrigger(policy));
+      await pickOption('Unlimited');
       check(getNode(id).max_loops === null && !policy.querySelector('input'), 'Unlimited hides count and preserves null semantics');
-      policy.querySelector('.model-picker-trigger').click(); await tick();
-      [...policy.querySelectorAll('[role="option"]')].find((el) => el.textContent.trim() === 'Limited').click(); await tick();
+      await openSelect(selectTrigger(policy));
+      await pickOption('Limited');
       check(getNode(id).max_loops === 3 && Boolean(policy.querySelector('input')), 'Limited restores editable rerun count');
     }
     if (id === 'output') {
       check(alignedSelect(), 'Editable Response type icon, label and value visually align');
       const selector = panel.querySelector('.workflow-detail-select');
-      check(Math.abs(centerY(selector.querySelector('.workflow-detail-select-label')) - centerY(selector.querySelector('.model-picker-trigger'))) < 1 && selector.getBoundingClientRect().height <= 44, 'Response type uses a compact aligned single row');
+      check(Math.abs(centerY(selector.querySelector('.workflow-detail-select-label')) - centerY(selector.querySelector('[data-slot="select-trigger"]'))) < 1 && selector.getBoundingClientRect().height <= 44, 'Response type uses a compact aligned single row');
       const endToggle = panel.querySelector('[aria-label="Outputs"] .workflow-section-toggle');
       endToggle.click(); await tick();
       check(document.getElementById(endToggle.getAttribute('aria-controls')).hidden, 'End structured Outputs can collapse');
@@ -270,8 +288,8 @@ const worker = () => window.__detailsState.custom[0].nodes.find((node) => node.i
   window.__detailsReadOnly(false); await tick();
   check(panel.querySelector('[aria-label="Agent prompt"]')?.disabled === false, 'Empty editable prompt remains available');
   await select('output');
-  panel.querySelector('.settings-field .model-picker-trigger').click(); await tick();
-  [...panel.querySelectorAll('[role="option"]')].find((el) => el.textContent.trim() === 'Text').click(); await tick();
+  await openSelect(selectTrigger(panel.querySelector('.settings-field')));
+  await pickOption('Text');
   const finalText = panel.querySelector('[aria-label="Final text"]');
   check(Boolean(finalText) && !panel.querySelector('[aria-label="Outputs"] .workflow-io-panel'), 'End Text uses one card, no nested Final text frame');
   setValue(finalText, 'Final result'); await tick();

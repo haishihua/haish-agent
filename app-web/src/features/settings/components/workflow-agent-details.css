@@ -51,11 +51,11 @@
 .workflow-detail-select-text { display: block; line-height: 20px; }
 .workflow-detail-select-label .app-icon { display: block; color: var(--workflow-detail-tint); flex: 0 0 auto; }
 .workflow-detail-select-value { min-width: 0; }
-.workflow-agent-detail .workflow-detail-select .model-picker-trigger {
+.workflow-agent-detail .workflow-detail-select [data-slot="select-trigger"] {
     width: 100%; height: 32px; min-height: 32px; padding: 5px 9px; border: 1px solid rgba(144, 177, 217, 0.13);
     border-radius: 7px; background: rgba(120, 155, 207, 0.045); color: #d1def0; font-size: 12px; line-height: 20px; font-weight: 500;
 }
-.workflow-agent-detail .workflow-detail-select .model-picker-value { line-height: 20px; }
+.workflow-agent-detail .workflow-detail-select [data-slot="select-value"] { line-height: 20px; }
 .workflow-agent-detail .workflow-retry-policy { gap: 4px; }
 .workflow-agent-detail .workflow-retry-policy .workflow-detail-select { grid-template-columns: minmax(0, 1fr) 104px; gap: 8px; }
 .workflow-agent-detail .workflow-retry-policy input[type="number"] {
@@ -66,10 +66,10 @@
 .workflow-agent-detail .workflow-retry-policy input:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(105, 200, 246, 0.3); }
 .workflow-agent-detail .workflow-detail-hint { margin: 4px 0 0; color: #8295af; font-size: 11px; line-height: 1.5; }
 .workflow-detail-select-static { display: block; padding: 0; color: #cfdded; font-size: 12px; line-height: 20px; font-weight: 500; overflow-wrap: anywhere; }
-.workflow-agent-detail .workflow-detail-select .model-picker-trigger:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(105, 200, 246, 0.3); }
-.workflow-agent-detail .workflow-detail-select .model-picker-trigger:active { background: rgba(105, 200, 246, 0.12); }
+.workflow-agent-detail .workflow-detail-select [data-slot="select-trigger"]:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(105, 200, 246, 0.3); }
+.workflow-agent-detail .workflow-detail-select [data-slot="select-trigger"]:active { background: rgba(105, 200, 246, 0.12); }
 @media (hover: hover) and (pointer: fine) {
-    .workflow-agent-detail .workflow-detail-select .model-picker-trigger:hover { background: rgba(105, 200, 246, 0.07); border-color: rgba(144, 177, 217, 0.28); }
+    .workflow-agent-detail .workflow-detail-select [data-slot="select-trigger"]:hover { background: rgba(105, 200, 246, 0.07); border-color: rgba(144, 177, 217, 0.28); }
 }
 .workflow-agent-detail .workflow-parameter-head + .workflow-input-panel.is-embedded { border-top: 0; }
 /* Grid's auto minimum collapses an overflow-hidden section to its two borders. */
@@ -165,7 +165,7 @@
 .workflow-agent-detail .workflow-parameter-name { max-width: 100%; min-width: 4ch; height: 25px; min-height: 0; padding: 2px 4px; color: #d8e5f7; font-size: 12px; background: transparent; }
 .workflow-parameter-heading { grid-column: 2; grid-row: 1; min-width: 0; }
 .workflow-agent-detail .workflow-variable-menu-select { grid-column: 2 / -1; grid-row: 2; min-width: 0; }
-.workflow-agent-detail .workflow-parameter-row .model-picker-trigger { padding: 0; min-height: 24px; color: var(--workflow-detail-tint); background: transparent; }
+.workflow-agent-detail .workflow-parameter-row [data-slot="select-trigger"] { padding: 0; min-height: 24px; color: var(--workflow-detail-tint); background: transparent; }
 .workflow-agent-detail .workflow-parameter-delete { grid-column: 3; grid-row: 1; width: 22px; height: 24px; color: #8295af; border-radius: 5px; }
 .workflow-agent-output-row { grid-template-columns: 26px minmax(0, 1fr); align-items: center; row-gap: 2px; }
 .workflow-agent-output-row > .workflow-agent-row-icon { grid-column: 1; grid-row: 1; }
@@ -246,12 +246,12 @@
 /* Node identity accents; data-type badges and destructive actions keep semantic colors. */
 .workflow-agent-detail .workflow-detail-mapping { border-color: var(--workflow-detail-border); background: color-mix(in srgb, var(--workflow-detail-accent) 3%, #0c1521); }
 .workflow-agent-detail :is(.workflow-parameter-add, .workflow-json-add) { color: var(--workflow-detail-tint); border-color: var(--workflow-detail-border); background: color-mix(in srgb, var(--workflow-detail-accent) 8%, transparent); }
-.workflow-agent-detail :is(.workflow-parameter-add, .workflow-json-add, .workflow-detail-select .model-picker-trigger):active { background: color-mix(in srgb, var(--workflow-detail-accent) 20%, transparent); }
-.workflow-agent-detail :is(.workflow-parameter-add, .workflow-json-add, .workflow-parameter-delete, .workflow-json-delete, .workflow-agent-prompt-hint, .workflow-detail-select .model-picker-trigger, .workflow-retry-policy input):focus-visible,
+.workflow-agent-detail :is(.workflow-parameter-add, .workflow-json-add, .workflow-detail-select [data-slot="select-trigger"]):active { background: color-mix(in srgb, var(--workflow-detail-accent) 20%, transparent); }
+.workflow-agent-detail :is(.workflow-parameter-add, .workflow-json-add, .workflow-parameter-delete, .workflow-json-delete, .workflow-agent-prompt-hint, .workflow-detail-select [data-slot="select-trigger"], .workflow-retry-policy input):focus-visible,
 .workflow-agent-detail :is(.workflow-input-panel-body textarea, .workflow-output-mapping-name):focus { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--workflow-detail-accent) 40%, transparent); }
 .workflow-agent-detail .workflow-agent-code textarea:focus { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workflow-detail-accent) 45%, transparent); }
 @media (hover: hover) and (pointer: fine) {
-    .workflow-agent-detail :is(.workflow-parameter-add, .workflow-json-add, .workflow-detail-select .model-picker-trigger):hover { background: color-mix(in srgb, var(--workflow-detail-accent) 12%, transparent); border-color: var(--workflow-detail-border); }
+    .workflow-agent-detail :is(.workflow-parameter-add, .workflow-json-add, .workflow-detail-select [data-slot="select-trigger"]):hover { background: color-mix(in srgb, var(--workflow-detail-accent) 12%, transparent); border-color: var(--workflow-detail-border); }
 }
 
 @container (max-width: 285px) {

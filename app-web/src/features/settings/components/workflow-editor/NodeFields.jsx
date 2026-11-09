@@ -7,7 +7,7 @@ import {
   workflowSchemaFields,
   workflowTemplateWithParameterAliases,
 } from '../../../../core/workflow-catalog.js';
-import { FieldRow, SettingsMenuSelect } from '../settings-ui.jsx';
+import { FieldRow, SettingsMenuSelect } from '../SettingsPrimitives.jsx';
 import { WorkflowDetailSection, WorkflowDetailSelect } from '../WorkflowNodeDetails.jsx';
 import {
   WorkflowOutputContract,

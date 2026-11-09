@@ -209,3 +209,21 @@ app-web/tests/**        # 所有 test/spec
 - 不允许通过“props 搬家”制造无职责的壳组件，也不为降低行数引入额外状态框架。
 
 迁移历史和旧路径对照见 [`frontend-giant-file-refactor-plan.md`](./frontend-giant-file-refactor-plan.md)。
+
+### 设置页字段原语只有一套
+
+`FieldRow`、`SecretKeyField`、`SettingsMenuSelect` 只存在于
+`features/settings/components/SettingsPrimitives.jsx`。历史上 `settings-ui.jsx`
+另有一份手写实现（自定义下拉 + tooltip 提示），workflow 编辑器和主设置页各用一套，
+同一个"字段行"在两处长得不一样。合并成 Radix 版后：
+
+- `hint` 从悬浮 tooltip 变成字段下方的描述文字（workflow 的调用点本来就不传 hint，所以没有可见变化）。
+- 下拉从 `.model-picker` 换成 Radix `Select`，需要分组标题时用 `header` 参数（渲染成 `SelectLabel`）。
+
+### Radix 组件的 tailwind 工具类在本仓不生效
+
+`styles/markdown.css` 把 tailwind utilities `@scope` 在 `.haish-markdown` 内，
+所以 `shared/ui/settings-elements/*` 里的 `flex`、`h-9`、`border` 等类**不会**作用到
+应用 UI 上。给这些组件写样式必须显式声明属性；尤其是 `<button>` 默认
+`display: inline-block`，会让 trigger 里的文字压在基线上、比左侧标签低半行。
+workflow 表单的 `[data-slot="select-trigger"]` 因此显式 `display: flex; align-items: center`。
