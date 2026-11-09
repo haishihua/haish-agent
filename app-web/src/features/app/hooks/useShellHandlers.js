@@ -11,7 +11,7 @@ import {
 } from '../../../core/agent-settings.js';
 import { createComposerHandlers } from '../../chat/hooks/createComposerHandlers.js';
 import { eventDeltaText, stripChatImageAugmentation } from '../../../core/message-text.js';
-import { appendAnswerDelta, appendChatProgressText, getChatProgressLine } from '../../chat/model/chat-timeline.js';
+import { appendAnswerDelta, appendChatProgressText, getChatProgressLine } from '../../chat/model/progress-text.js';
 import {
   contextUsageFromConversationDetail,
   estimateContextUsageFromConversationDetail,

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 globalThis.window = {};
-const { buildChatTimeline, llmRetrySummary } = await import('../../../src/features/chat/model/chat-timeline.js');
+const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
+const { llmRetrySummary } = await import('../../../src/features/chat/model/progress-text.js');
 
 test('output continuation reuses the retry card with English state labels', () => {
   const expected = {

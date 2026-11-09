@@ -7,7 +7,7 @@ const { createDeployHandlers } = await import('../../../src/features/tasks/hooks
 const { createConversationRuntime } = await import('../../../src/features/conversations/hooks/createConversationRuntime.js');
 const { createConversationActivationHandlers } = await import('../../../src/features/conversations/hooks/createConversationActivationHandlers.js');
 const { buildTaskRuntimeRecord, createEmptyTaskRuntimeState, createPendingTaskDraft, runtimeTaskToQuest } = await import('../../../src/core/task-runtime.js');
-const { pendingTaskToQuest } = await import('../../../src/features/chat/model/chat-timeline.js');
+const { pendingTaskToQuest } = await import('../../../src/features/chat/model/pending-task.js');
 const {
   conversationDetailToWorkspaceConversation, findConversationById, isDefaultConversationName,
   mergeConversationTasks, normalizeWorkspaceOrdering, projectWorkflowTasks,

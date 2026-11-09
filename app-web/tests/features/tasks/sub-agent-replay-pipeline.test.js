@@ -12,7 +12,8 @@ const { createConversationRuntime } = await import('../../../src/features/conver
 const { createConversationActivationHandlers } = await import('../../../src/features/conversations/hooks/createConversationActivationHandlers.js');
 const { createDraftConversationHandlers } = await import('../../../src/features/conversations/hooks/createDraftConversationHandlers.js');
 const { createTaskStreamHandlers } = await import('../../../src/features/tasks/hooks/createTaskStreamHandlers.js');
-const { buildChatTimeline, appendAnswerDelta } = await import('../../../src/features/chat/model/chat-timeline.js');
+const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
+const { appendAnswerDelta } = await import('../../../src/features/chat/model/progress-text.js');
 const tasks = await import('../../../src/core/task-runtime.js');
 const runStatus = await import('../../../src/core/run-status.js');
 

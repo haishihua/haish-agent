@@ -1,6 +1,6 @@
 import { normalizeWorkflowSettings } from '../../../core/workflow-catalog.js';
 import { runtimeTaskToQuest } from '../../../core/task-runtime.js';
-import { pendingTaskToQuest } from '../../chat/model/chat-timeline.js';
+import { pendingTaskToQuest } from '../../chat/model/pending-task.js';
 import { pendingTaskRuntimeIds } from '../../../core/task-runtime-paging.js';
 
 /**
