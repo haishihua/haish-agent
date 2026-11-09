@@ -51,7 +51,9 @@ for (const file of files) {
   }
 
   for (const match of source.matchAll(/(?:from\s*|import\s*)['"](\.{1,2}\/[^'"]+)['"]/g)) {
-    const target = resolve(file, '..', match[1]);
+    // 资源可以带查询串（`?inline`），解析前先剥离，否则会把查询串当成文件名。
+    const specifier = match[1].replace(/\?.*$/, '');
+    const target = resolve(file, '..', specifier);
     if (!existsSync(target) || !statSync(target).isFile()) {
       errors.push(`${localPath}: unresolved import ${match[1]}`);
       continue;
@@ -60,6 +62,9 @@ for (const file of files) {
     const targetPath = relative(sourceRoot, target).split(sep).join('/');
     if (segments[0] === 'shared' && targetPath.startsWith('features/')) {
       errors.push(`${localPath}: shared modules cannot import feature code (${targetPath})`);
+    }
+    if (segments[0] === 'core' && targetPath.startsWith('features/')) {
+      errors.push(`${localPath}: core modules cannot import feature code (${targetPath})`);
     }
     if (segments.includes('model') && /\/(?:components|hooks)\//.test(`/${targetPath}`)) {
       errors.push(`${localPath}: models cannot import components or hooks (${targetPath})`);

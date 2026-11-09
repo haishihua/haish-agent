@@ -10,6 +10,10 @@ const row = fs.readFileSync(
   new URL('../../src/features/chat/components/ChatMessageRow.jsx', import.meta.url),
   'utf8',
 );
+const panel = fs.readFileSync(
+  new URL('../../src/features/chat/components/ChatPanel.jsx', import.meta.url),
+  'utf8',
+);
 const css = fs.readFileSync(new URL('../../styles/chat.css', import.meta.url), 'utf8');
 
 // 预览浮层的尺寸模型是对齐主流 lightbox（GPT / react-photo-view / PhotoSwipe）的
@@ -57,11 +61,10 @@ test('image preview zooms at the pointer and pans by dragging', () => {
   assert.match(overlaySource, /onDoubleClick=\{\(\) => zoomAt\(scale > 1\.001 \? 1 : 2, null\)\}/);
 });
 
-test('image preview stays reusable from the chat module', () => {
-  // 浮层抽到 shared/ui；ChatMessageRow 保持具名 re-export，旧引用不必改。
-  assert.match(row, /import \{ ImagePreviewOverlay \} from '\.\.\/\.\.\/\.\.\/shared\/ui\/ImagePreviewOverlay\.jsx';/);
-  assert.match(row, /export \{ ImagePreviewOverlay \};/);
-  // 旧实现不能残留在聊天模块里（否则两份实现会漂移）。
+test('the chat module owns no image preview implementation of its own', () => {
+  // 浮层只有 shared/ui 一份；聊天面板直接 import 它，不再经 ChatMessageRow 转发。
+  assert.match(panel, /import \{ ImagePreviewOverlay \} from '\.\.\/\.\.\/\.\.\/shared\/ui\/ImagePreviewOverlay\.jsx';/);
+  assert.doesNotMatch(row, /ImagePreviewOverlay/);
   assert.doesNotMatch(row, /export function ImagePreviewOverlay/);
   assert.doesNotMatch(row, /blobToDataUrl/);
 });

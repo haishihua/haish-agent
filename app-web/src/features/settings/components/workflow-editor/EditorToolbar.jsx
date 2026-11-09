@@ -1,7 +1,7 @@
 import React from 'react';
 import { AppIcon } from '../../../../shared/ui/AppIcon.jsx';
 import { PortalTooltip } from '../../../../shared/ui/PortalTooltip.jsx';
-import { workflowNodeMeta } from '../../../workflow/components/WorkflowFlowNode.jsx';
+import { workflowNodeIcon } from '../../../workflow/model/workflow-catalog.js';
 import { SettingsTooltipIconButton } from '../settings-ui.jsx';
 import { WORKFLOW_NODE_DRAG_TYPE } from './shared.js';
 
@@ -28,7 +28,7 @@ export function EditorToolbar({
         {isEditable ? (
           <div className="workflow-toolbar-add-group" role="group" aria-label="Add node">
             {typeOptions.map((type) => {
-              const meta = workflowNodeMeta(type.id);
+              const icon = workflowNodeIcon(type.id);
               return (
                 <PortalTooltip key={type.id} text={`Add ${type.label}`} position="below">
                   <button
@@ -47,7 +47,7 @@ export function EditorToolbar({
                     onClick={() => onAddNode(type.id)}
                   >
                     <span className="workflow-toolbar-add-icon" aria-hidden="true">
-                      <AppIcon name={meta.icon} size={16} />
+                      <AppIcon name={icon} size={16} />
                     </span>
                     <span>{type.label}</span>
                   </button>

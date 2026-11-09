@@ -1,4 +1,3 @@
-// 画布排布：新增节点的落点、拖放吸附与整图自动排版。
 import { normalizeWorkflowNode } from './nodes.js';
 
 const WORKFLOW_NODE_LAYOUT_STEP_X = 280;

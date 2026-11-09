@@ -22,11 +22,7 @@ import {
   ChatTimelineElapsedPill,
 } from './ChatTimelineNodes.jsx';
 import { ChatImageThumb } from './ChatImageThumb.jsx';
-import { ImagePreviewOverlay } from '../../../shared/ui/ImagePreviewOverlay.jsx';
 import { AgentAvatar } from '../../agents/components/AgentAvatar.jsx';
-
-// 预览浮层已抽到 shared/ui，聊天附件、Markdown 插图、生图卡共用一份实现。
-export { ImagePreviewOverlay };
 
 function FinalAnswerMarkdown({ source, streaming, sourceMessageId }) {
   const text = String(source || '');
@@ -34,7 +30,7 @@ function FinalAnswerMarkdown({ source, streaming, sourceMessageId }) {
   if (!text || streaming) return null;
   return (
     <div className="chat-bubble-text" data-annotation-source={sourceMessageId}>
-      {Markdown ? <Markdown source={text} pathImages={false} /> : text}
+      <Markdown source={text} pathImages={false} />
     </div>
   );
 }

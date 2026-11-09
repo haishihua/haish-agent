@@ -1,4 +1,3 @@
-// 画布上的两处纯渲染覆盖层：自动 fitView 同步器 + 选中节点的连线。
 import React from 'react';
 import { useReactFlow, useStore } from '@xyflow/react';
 import { workflowFitOptions } from '../../model/workflow-canvas-preferences.js';

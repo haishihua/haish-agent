@@ -78,10 +78,7 @@ test('the retry command body carries provider, model and reasoning overrides', (
 
 test('the sidebar retry uses the persisted current server selection, not stale local storage', () => {
   assert.match(appShellSource, /onRetryTask=\{\(task\) => handleRetryTask\(task\)\}/);
-  assert.doesNotMatch(appShellSource, /storedRunConfigRequest/);
-  // Legacy local helper remains unused here; missing Chat configuration must not replay the source Task.
-  const stored = runConfigSource.slice(runConfigSource.indexOf('export function storedRunConfigRequest'));
-  assert.match(stored, /if \(!stored\?\.providerId \|\| !stored\.modelId\) return null;/);
-  assert.match(stored, /if \(!request\) return null;/);
-  assert.doesNotMatch(stored, /firstRunProvider/);
+  // 重跑只认服务端当前选择：本地缓存解析器已经删掉，别让它长回来。
+  assert.doesNotMatch(runConfigSource, /storedRunConfigRequest/);
+  assert.doesNotMatch(runConfigSource, /firstRunProvider/);
 });

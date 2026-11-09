@@ -16,7 +16,7 @@ import {
   usePersistentRunConfig,
   useProviderModels,
 } from '../hooks/useRunConfig.js';
-import { DEFAULT_AGENT_OPTIONS } from '../model/run-catalog.js';
+import { DEFAULT_AGENT_OPTIONS } from '../../../core/run-catalog.js';
 import { executionConfigError } from '../../workflow/model/execution-config.js';
 import { nodeRuntimeConfigsForWorkflow } from '../../workflow/model/node-runtime-config.js';
 import { ApprovalModePicker, AgentPicker } from './ModelPickers.jsx';

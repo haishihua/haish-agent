@@ -65,19 +65,8 @@ import {
 } from '../../tasks/model/runtime-events.js';
 import { clearTaskCompletionNotice } from '../../tasks/model/task-completion-notices.js';
 import { nextEarlierTaskRuntimeIds, pendingTaskRuntimeIds } from '../../tasks/model/task-runtime-paging.js';
-import {
-  applyTerminalTaskState,
-  buildTaskRuntimeRecord,
-  createEmptyTaskRuntimeState,
-  createPendingTaskDraft,
-  isTerminalTaskStatus,
-  normalizeTaskStatus,
-  sortTaskIdsForRestore,
-  taskDetailToRuntimeTask,
-  taskHasAssistantStreamContent,
-  taskSummaryToRuntimeTask,
-  upsertToolCall,
-} from '../../tasks/model/task-runtime.js';
+import { applyTerminalTaskState, buildTaskRuntimeRecord, createEmptyTaskRuntimeState, createPendingTaskDraft, sortTaskIdsForRestore, taskDetailToRuntimeTask, taskHasAssistantStreamContent, taskSummaryToRuntimeTask, upsertToolCall } from '../../tasks/model/task-runtime.js';
+import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
 import { createDefaultCustomWorkflowPayload, normalizeWorkflowSettings, payloadForCustomWorkflow, workflowById } from '../../workflow/model/workflow-catalog.js';
 import { conversationDetailToWorkspaceConversation, replaceWorkspaceModeFromProjects, workspaceStateWithConversationDetail } from '../model/workspace-runtime.js';
 

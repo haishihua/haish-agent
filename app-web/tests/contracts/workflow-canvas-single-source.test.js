@@ -22,7 +22,7 @@ const runtimePartSource = (path) => fs.readFileSync(
 const runtimePageSource = runtimePartSource('WorkflowRuntimePage.jsx');
 const runtimeSource = [
   'WorkflowRuntimePage.jsx',
-  'runtime/node-attempts.js',
+  '../model/node-attempts.js',
   'runtime/WorkflowNodeConversation.jsx',
   'runtime/WorkflowNodeAttempts.jsx',
   'runtime/WorkflowNodeDetailHead.jsx',
@@ -273,7 +273,7 @@ test('the canvas background, dot grid and edge roles stay in the shared layer', 
 test('reference UI uses wider cards, large icons, subtitles and shared viewport options', () => {
   assert.match(baseStyles, /\.workflow-flow-node \{[^}]*min-width: 160px;/);
   assert.match(baseStyles, /\.workflow-flow-node-icon \{\s*width: 36px;\s*height: 36px;/);
-  assert.match(flowNodeSource, /start: 'Trigger', output: 'Complete'/);
+  assert.match(flowNodeSource, /typeLabelForWorkflowNode\(nodeType\)/);
   assert.match(baseStyles, /font-family: var\(--workflow-canvas-font\)/);
   for (const source of [editorSource, runtimeSource]) {
     assert.match(source, /fitViewOptions=\{workflowFitOptions\([^\n]+WORKFLOW_FIT_OPTIONS\)\}/);

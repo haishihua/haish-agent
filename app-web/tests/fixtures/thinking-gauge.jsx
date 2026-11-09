@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ModelPicker } from '../../src/features/chat/components/ModelPickers.jsx';
-import { REASONING_EFFORT_OPTIONS } from '../../src/features/chat/model/run-catalog.js';
+import { REASONING_EFFORT_OPTIONS } from '../../src/core/run-catalog.js';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import '../../styles.css';
 

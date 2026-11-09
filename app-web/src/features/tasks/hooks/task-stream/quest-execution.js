@@ -3,7 +3,7 @@
 // 全部依赖（含 ctx 本身）由 createTaskStreamHandlers 显式传入；这里不持有任何
 // 模块级可变状态，只在调用时建一次闭包。
 import { executionConfigError } from '../../../workflow/model/execution-config.js';
-import { normalizeReasoningEffort } from '../../../chat/model/run-catalog.js';
+import { normalizeReasoningEffort } from '../../../../core/run-catalog.js';
 import { nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest } from '../../../workflow/model/node-runtime-config.js';
 import { waitForAttemptConfigOperation } from '../../../conversations/model/attempt-run-config.js';
 import { RESYNC_REQUIRED_TYPE } from './recovery.js';
@@ -145,7 +145,6 @@ export function createQuestExecutor({
       chatFinalizedTaskIdsRef.current.delete(runId);
       userCancelledTaskIdsRef.current.delete(runId);
     }
-    // Ensure the runtime exists and prime its run-local state.
     mutateRuntime(runConversationId, (rt) => {
       rt.runGeneration = (rt.runGeneration || 0) + 1;
       rt.activeRunId = runId;

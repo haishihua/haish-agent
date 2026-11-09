@@ -3,7 +3,6 @@ import {
   rememberDraftConversationId,
 } from '../../model/draft-conversation-id.js';
 
-// 草稿的生命周期：新建空壳、识别草稿、标记「要留着」、回收。
 export function createDraftLifecycleHandlers(ctx) {
   const {
     API_BASE,
@@ -158,7 +157,6 @@ export function createDraftLifecycleHandlers(ctx) {
     }
     draftConversationRef.current = null;
     pendingCreatedDetailRef.current = null;
-    // 新开一张空白对话：上一笔首条发送的占用标记到此为止。
     draftFirstSendRef.current = null;
 
     // Stable per project: leaving the draft and opening a new conversation again

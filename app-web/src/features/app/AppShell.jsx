@@ -488,7 +488,6 @@ export function AppShell() {
     markConversationTaskCompletionsViewed(conversationId);
   }, [activeTab, conversationId, markConversationTaskCompletionsViewed, ownerId, viewMode, windowFocused]);
 
-  // 部署工厂要用这两条派生值：先算出来再喂给 handlers。
   const selectedConversationId = workspaceState.activeConversationId || null;
   const conversationSelectionPending = Boolean(
     selectedConversationId

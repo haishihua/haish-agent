@@ -3,7 +3,6 @@ import { workflowNodeAccent } from '../../../workflow/components/WorkflowFlowNod
 import { SettingsTooltipIconButton } from '../settings-ui.jsx';
 import { WorkflowNodeHeading } from '../WorkflowNodeDetails.jsx';
 
-// 右侧节点面板的外壳：标题、删除按钮、可拖拽的分隔条；字段区由调用方作为 children 传进来。
 export function NodeInspector({
   selectedNode,
   agentOptions,

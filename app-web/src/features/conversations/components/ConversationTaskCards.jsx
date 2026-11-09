@@ -3,10 +3,10 @@ import { AnimateDialog } from '../../../shared/ui/AnimateDialog.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { PortalTooltip, closeAllPortalTooltips } from '../../../shared/ui/PortalTooltip.jsx';
-import { isTerminalTaskStatus, normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
+import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
 import { getTaskPillMeta } from '../../tasks/model/task-pill.js';
 import { TaskStatusIcon } from './ConversationIcons.jsx';
-import { workflowTaskDisplayStatus } from '../model/conversation-status.js';
+import { workflowTaskDisplayStatus } from '../../../core/run-status.js';
 
 export function TaskRecordCompact({
   task,

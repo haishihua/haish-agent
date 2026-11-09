@@ -15,7 +15,6 @@ function draftText(draft) {
   return typeof draft?.text === 'string' ? draft.text : '';
 }
 
-/** 读一道题的草稿（题没动过就是空草稿）。 */
 export function readDraft(drafts, questionId) {
   const draft = drafts?.[questionId];
   return { values: [...draftValues(draft)], text: draftText(draft) };
@@ -40,12 +39,10 @@ export function toggleDraftSelection(draft, label, multiple = false) {
   return { values: nextValues, text: draftText(draft) };
 }
 
-/** 写备注：只动 text，已勾选的选项保留。 */
 export function writeDraftText(draft, text) {
   return { values: [...draftValues(draft)], text: String(text ?? '') };
 }
 
-/** 一题的答案；没勾也没写返回 null。 */
 export function buildAnswer(question, draft) {
   const values = draftValues(draft);
   const text = draftText(draft).trim();
@@ -64,7 +61,6 @@ export function buildAnswers(questions, drafts) {
   });
 }
 
-/** 每题都能交（选了选项，或写了字，或两者都有）。 */
 export function allQuestionsAnswered(questions, drafts) {
   const list = Array.isArray(questions) ? questions : [];
   return list.length > 0

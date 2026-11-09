@@ -1,4 +1,3 @@
-// 工作流目录：设置项规范化、列表投影与按 id 查找。
 import {
   DIRECT_AGENT_WORKFLOW_ID,
   DEFAULT_WORKFLOW_NODE_TYPES,

@@ -1,4 +1,4 @@
-import { normalizeReasoningEffort } from '../../chat/model/run-catalog.js';
+import { normalizeReasoningEffort } from '../../../core/run-catalog.js';
 import { migrateExecutionRoute } from '../../settings/model/execution-identity.js';
 
 const FIELDS = ['llm_config_id', 'provider', 'model_id', 'reasoning_effort', 'agent_id'];

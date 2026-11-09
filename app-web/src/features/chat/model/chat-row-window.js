@@ -27,7 +27,6 @@ export function windowRows(rows, count) {
   return size >= list.length ? list : list.slice(list.length - size);
 }
 
-/** 补一页，最多到全量。 */
 export function growRowWindow(count, total) {
   const size = clampRowWindow(count, total);
   return Math.min(size + CHAT_ROW_WINDOW_PAGE, Array.isArray(total) ? total.length : Math.max(size, Number(total) || size));
@@ -42,7 +41,6 @@ export function rowWindowCovering(index, total) {
   return clampRowWindow(Math.ceil(limit) - Math.floor(line), limit);
 }
 
-/** 滚动位置是否已经进入补页区间。 */
 export function shouldGrowRowWindow(scrollTop, triggerPx = CHAT_ROW_WINDOW_TRIGGER_PX) {
   const top = Number(scrollTop);
   const trigger = Number(triggerPx);
@@ -81,7 +79,6 @@ export function rememberRowWindow(memory, conversationId, count, limit = CHAT_RO
   return memory;
 }
 
-/** 读回某个会话的行窗口；没记过（或记的是坏值）就回到首屏窗口。 */
 export function recallRowWindow(memory, conversationId, fallback = CHAT_ROW_WINDOW_INITIAL) {
   const value = memory && typeof memory.get === 'function' ? Number(memory.get(conversationId)) : Number.NaN;
   return Number.isFinite(value) && value >= CHAT_ROW_WINDOW_INITIAL ? value : fallback;

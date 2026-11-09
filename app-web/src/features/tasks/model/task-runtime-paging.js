@@ -1,5 +1,5 @@
-import { isTerminalTaskStatus } from './task-runtime.js';
-import { isTaskSettled } from '../../conversations/model/conversation-status.js';
+import { isTerminalTaskStatus } from '../../../core/run-status.js';
+import { isTaskSettled } from '../../../core/run-status.js';
 
 /**
  * Opening a conversation hydrates only the newest slice of task runtimes.

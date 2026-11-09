@@ -99,13 +99,3 @@ export function resolveToolIconClass(toolName, defaultClass) {
   }
   return defaultClass;
 }
-
-/**
- * 复用的 collapse/expand chevron。
- * 用 inline SVG 而不是 <img src=...png>——因为全局 body 有 `image-rendering: pixelated`
- * 会把任何位图强制走最邻近缩放、变得很糊。SVG 是矢量，不受影响。
- * fill="currentColor" 让箭头颜色跟随容器 color（比如折叠胶囊的金色）。
- *
- * open=false → ▸ (next, 朝右)
- * open=true  → ▾ (down, 朝下)
- */

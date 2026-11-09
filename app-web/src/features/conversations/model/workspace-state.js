@@ -1,4 +1,4 @@
-import { isTaskLive, isTaskSettled } from './conversation-status.js';
+import { isTaskLive, isTaskSettled } from '../../../core/run-status.js';
 import { stripChatImageAugmentation } from '../../chat/model/chat-text.js';
 import { chatImagePreviewUrl } from '../../../shared/api/chat-image.js';
 import {
@@ -337,7 +337,7 @@ export function taskOrderTimestamp(task) {
   // stable anchor, so a run moves its conversation exactly once — when the task
   // is created. A settled task ranks by when it settled instead, so finished
   // work still floats above untouched rows and then stays put.
-  // 落地判据走共享的那一份（conversation-status.js），别名不会再在这里漏；
+  // 落地判据走共享的那一份（core/run-status.js），别名不会再在这里漏；
   // 未落地（running / queued / 在等人）的任务按创建时间锚定。
   return isTaskSettled(task) ? taskUpdatedTimestamp(task) : taskCreatedTimestamp(task);
 }

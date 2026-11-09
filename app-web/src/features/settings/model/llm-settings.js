@@ -1,5 +1,5 @@
 // Settings domain model.
-import { REASONING_EFFORT_OPTIONS, normalizeReasoningEffort } from '../../chat/model/run-catalog.js';
+import { REASONING_EFFORT_OPTIONS, normalizeReasoningEffort } from '../../../core/run-catalog.js';
 const LLM_PROVIDER_MODELS = {
   openai: ['gpt-5.5', 'gpt-5.4'],
   xai: ['grok-4.5'],

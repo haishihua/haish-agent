@@ -1,4 +1,3 @@
-// 变量目录：把上游节点的输出字段摊成模板变量可选列表。
 import { typeLabelForWorkflowNode, workflowFriendlyVariableLabel } from './labels.js';
 import { workflowOutputFields, workflowSchemaFields } from './nodes.js';
 

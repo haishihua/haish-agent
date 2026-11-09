@@ -9,10 +9,8 @@ import { QuoteBlock } from '../../../shared/ui/agent-elements/Quote.jsx';
 import { useAnnotationDraft } from '../hooks/useAnnotationDraft.js';
 import { annotationError, createAnnotationMessageSelector, isSubmittedAnnotationMessage, numberAnnotations, visibleAnnotationDrafts } from '../model/message-annotations.js';
 import { ApprovalInline } from '../../approvals/components/ApprovalOverlay.jsx';
-import {
-  ChatMessageRow,
-  ImagePreviewOverlay,
-} from './ChatMessageRow.jsx';
+import { ChatMessageRow } from './ChatMessageRow.jsx';
+import { ImagePreviewOverlay } from '../../../shared/ui/ImagePreviewOverlay.jsx';
 import { ChatDaySeparator } from './DaySeparator.jsx';
 import { withDaySeparators } from '../model/day-separators.js';
 import { CHAT_ROW_WINDOW_INITIAL, CHAT_ROW_WINDOW_TRIGGER_PX, growRowWindow, recallRowWindow, rememberRowWindow, rowWindowCovering, shouldGrowRowWindow, visiblePendingTaskIdsIn, windowRows } from '../model/chat-row-window.js';

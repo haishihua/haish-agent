@@ -1,16 +1,9 @@
 
-function normalizedTerminalStatus(status) {
-  const value = String(status || '').toLowerCase();
-  if (value === 'done' || value === 'completed' || value === 'success') return 'done';
-  if (value === 'failed' || value === 'error') return 'failed';
-  if (value === 'cancelled' || value === 'canceled' || value === 'aborted') return 'cancelled';
-  return '';
-}
+import { terminalNoticeStatus } from '../../../core/run-status.js';
 
 export function terminalTaskNoticeStatus(taskOrStatus) {
-  if (typeof taskOrStatus === 'string') return normalizedTerminalStatus(taskOrStatus);
-  return normalizedTerminalStatus(taskOrStatus?.status)
-    || normalizedTerminalStatus(taskOrStatus?.workflowRun?.status);
+  if (typeof taskOrStatus === 'string') return terminalNoticeStatus(taskOrStatus);
+  return terminalNoticeStatus(taskOrStatus?.status) || terminalNoticeStatus(taskOrStatus?.workflowRun?.status);
 }
 
 export function taskCompletionNoticeKey(conversationId, taskId) {

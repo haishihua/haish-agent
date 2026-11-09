@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 globalThis.window = { HAISH_API_BASE: '' };
 const { createTaskStreamHandlers } = await import('../../../src/features/tasks/hooks/createTaskStreamHandlers.js');
 const { createConversationActivationHandlers } = await import('../../../src/features/conversations/hooks/createConversationActivationHandlers.js');
-const { buildTaskRuntimeRecord, normalizeTaskStatus, isTerminalTaskStatus, applyTerminalTaskState } = await import('../../../src/features/tasks/model/task-runtime.js');
+const { buildTaskRuntimeRecord, applyTerminalTaskState } = await import('../../../src/features/tasks/model/task-runtime.js');
+const { normalizeTaskStatus, isTerminalTaskStatus } = await import('../../../src/core/run-status.js');
 const { normalizeRuntimeEvent, CHAT_FINAL_FOLLOWUP_EVENT_TYPES } = await import('../../../src/features/tasks/model/runtime-events.js');
 
 test('scheduled stream writes answers, task records and busy state only to its owner', () => {

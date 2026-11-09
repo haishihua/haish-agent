@@ -14,6 +14,7 @@ const { createDraftConversationHandlers } = await import('../../../src/features/
 const { createTaskStreamHandlers } = await import('../../../src/features/tasks/hooks/createTaskStreamHandlers.js');
 const { buildChatTimeline, appendAnswerDelta } = await import('../../../src/features/chat/model/chat-timeline.js');
 const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
+const runStatus = await import('../../../src/core/run-status.js');
 
 const delta = (id, text, parent = 'delegate') => ({ type: 'sub_agent_answer_delta', event_id: id,
   parent_call_id: parent, delta: text, task_id: 'task', conversation_id: 'conversation' });
@@ -24,7 +25,7 @@ const answer = (task) => buildToolView(buildChatTimeline(task).items.find((item)
 function harness(transport = async () => {}, initial = null) {
   const noop = () => {};
   const ctx = {
-    ...tasks, ...runtimeEvents, providerOptions: [{ id: 'fixture', provider: 'custom' }],
+    ...tasks, ...runStatus, ...runtimeEvents, providerOptions: [{ id: 'fixture', provider: 'custom' }],
     conversationIdRef: { current: 'conversation' }, streamTargetConvIdRef: { current: null },
     runtimesRef: { current: new Map() }, taskImageAttachmentsRef: { current: new Map() },
     userCancelledTaskIdsRef: { current: new Set() }, chatFinalizedTaskIdsRef: { current: new Set() },

@@ -1,4 +1,4 @@
-import { normalizeTaskStatus } from './task-runtime.js';
+import { normalizeTaskStatus } from '../../../core/run-status.js';
 
 const STAGE_PILL_TEXT = {
   assigned: 'PENDING',

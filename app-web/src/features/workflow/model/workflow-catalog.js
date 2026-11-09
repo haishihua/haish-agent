@@ -16,7 +16,7 @@ import {
   workflowOutputMappingEntries,
   workflowSchemaFields,
 } from './workflow-catalog/nodes.js';
-import { typeLabelForWorkflowNode } from './workflow-catalog/labels.js';
+import { typeLabelForWorkflowNode, workflowNodeIcon } from './workflow-catalog/labels.js';
 import {
   reconcileWorkflowParameterTemplate,
   sanitizeWorkflowTemplateValue,
@@ -55,6 +55,7 @@ export {
   reconcileWorkflowParameterTemplate,
   sanitizeWorkflowTemplateValue,
   typeLabelForWorkflowNode,
+  workflowNodeIcon,
   workflowArgumentsText,
   workflowById,
   workflowInputDisplayText,

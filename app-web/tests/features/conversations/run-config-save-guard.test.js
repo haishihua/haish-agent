@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { migrateExecutionRoute, savedExecutionConfigId } from '../../../src/features/settings/model/execution-identity.js';
-import { normalizeReasoningEffort, REASONING_EFFORT_OPTIONS } from '../../../src/features/chat/model/run-catalog.js';
+import { normalizeReasoningEffort, REASONING_EFFORT_OPTIONS } from '../../../src/core/run-catalog.js';
 import { executionConfigError } from '../../../src/features/workflow/model/execution-config.js';
 import { createRunConfigSync } from '../../../src/features/conversations/model/run-config-sync.js';
 import { waitForAttemptRunConfig } from '../../../src/features/conversations/model/attempt-run-config.js';

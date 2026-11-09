@@ -5,7 +5,7 @@ import { runtimeLlmProviderOptions } from '../../../src/features/settings/model/
 import { executionConfigError } from '../../../src/features/workflow/model/execution-config.js';
 import { nodeRuntimeConfigRequest, nodeRuntimeConfigsForWorkflow, workflowNodeRuntimeConfig } from '../../../src/features/workflow/model/node-runtime-config.js';
 globalThis.window = { localStorage: { getItem: () => null } };
-const { resolveRunConfigSelection, storedRunConfigRequest } = await import('../../../src/features/chat/hooks/useRunConfig.js');
+const { resolveRunConfigSelection } = await import('../../../src/features/chat/hooks/useRunConfig.js');
 
 const options = runtimeLlmProviderOptions({ chat: { id: 'record-a', provider: 'custom', name: 'renamed',
   model: 'new-default', reasoning_effort: 'xhigh', legacy_selectors: ['custom:router'] } });
@@ -75,10 +75,8 @@ test('old cached selections migrate without changing the model or borrowing a re
     assert.equal(restored.providerId, 'record-a');
     assert.equal(restored.modelId, 'private-model');
     assert.equal(restored.reasoningEffort, 'low');
-    assert.equal(storedRunConfigRequest('old', options).provider, 'record-a');
     const replacement = [{ ...options[0], id: 'replacement', legacySelectors: [] }];
     assert.equal(resolveRunConfigSelection('old', replacement, [], 'agent').providerId, 'custom:router');
-    assert.equal(storedRunConfigRequest('old', replacement), null);
   } finally {
     globalThis.window = previous;
   }

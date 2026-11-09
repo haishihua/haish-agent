@@ -1,4 +1,3 @@
-// Conversations side panel shell (leaf components live in sibling modules).
 import React from 'react';
 import { Bell, ListTodo, MessagesSquare } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';

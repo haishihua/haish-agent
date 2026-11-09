@@ -3,12 +3,9 @@ import { assistantAgentIdForTask, assistantNameForTask } from '../../chat/model/
 import { changedFilesForTask } from '../../chat/model/changed-files.js';
 import { stripInjectedSkillInstruction } from '../../chat/model/chat-text.js';
 import { buildChatTimeline } from '../../chat/model/chat-timeline.js';
-import { isTaskLive } from '../../conversations/model/conversation-status.js';
-import {
-  normalizeTaskStatus,
-  taskHasAssistantStreamContent,
-  taskFirstStreamTimestamp,
-} from '../../tasks/model/task-runtime.js';
+import { isTaskLive } from '../../../core/run-status.js';
+import { taskHasAssistantStreamContent, taskFirstStreamTimestamp } from '../../tasks/model/task-runtime.js';
+import { normalizeTaskStatus } from '../../../core/run-status.js';
 
 // A failed draft that was never accepted is the current local turn, not a
 // historical server task. Keep the server's latestTaskId untouched: persisted

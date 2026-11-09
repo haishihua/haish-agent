@@ -1,5 +1,5 @@
-import { isTaskLive, isTaskSettled, workflowTaskDisplayStatus } from '../../conversations/model/conversation-status.js';
-import { isTerminalTaskStatus, normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
+import { isTaskLive, isTaskSettled, workflowTaskDisplayStatus } from '../../../core/run-status.js';
+import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
 import { workflowApprovalDecisionStatus } from './runtime-workflow-layout.js';
 
 export function workflowRuntimeDisplayStatus(task) {

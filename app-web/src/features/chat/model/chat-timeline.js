@@ -3,7 +3,7 @@ import { cachedStreamEventBase, recordStreamEventUpdate, streamEventUpdate } fro
 import { normalizeToolName } from './tool-names.js';
 import { getToolResponseTraceStatus, getToolTraceStatus } from './tool-trace-status.js';
 import { createTerminalTimeline } from './terminal-timeline.js';
-import { isTerminalTaskStatus, normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
+import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
 import { skillDisplayName } from '../../tasks/model/runtime-events.js';
 import { skillTrigger } from './tool-presentation.js';
 import { mergeChatImageRefs, normalizeChatImageRefs } from '../../conversations/model/workspace-state.js';
@@ -992,7 +992,6 @@ export function buildChatTimeline(task, taskStatus) {
     }
   }
 
-  // Tail flush: streaming text still in buffer becomes a live segment.
   if (thinkingBuf.trim()) {
     flushThinking(isRunning);
   }

@@ -1,4 +1,3 @@
-// 自定义工作流的创建模板与保存 payload。
 import { DEFAULT_DIRECT_WORKFLOW, DEFAULT_WORKFLOW_INPUT_SCHEMA } from '../workflow-defaults.js';
 import {
   DEFAULT_WORKFLOW_OUTPUT_MAPPING,

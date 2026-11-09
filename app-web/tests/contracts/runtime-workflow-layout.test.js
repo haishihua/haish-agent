@@ -20,7 +20,7 @@ const runtimePartSource = (path) => fs.readFileSync(
 );
 const runtimeSource = [
   'WorkflowRuntimePage.jsx',
-  'runtime/node-attempts.js',
+  '../model/node-attempts.js',
   'runtime/WorkflowNodeConversation.jsx',
   'runtime/WorkflowNodeAttempts.jsx',
   'runtime/WorkflowNodeDetailHead.jsx',
@@ -295,7 +295,8 @@ test('runtime details use executed node data and real workflow transitions', () 
   assert.match(runtimeSource, /status === 'waiting_input'/);
   assert.doesNotMatch(flowNodeSource, /WORKFLOW_RUNTIME_STATUS_ICON|workflow-run-node-status/);
   assert.match(flowNodeSource, /data.runtimeStatusLabel \|\| runtimeStatus/);
-  assert.match(flowNodeSource, /NODE_TYPE_LABEL\[nodeType\]/);
+  // 节点文案只从共享目录取，画布和详情面板不许各自维护一张表。
+  assert.match(flowNodeSource, /typeLabelForWorkflowNode\(nodeType\)/);
   // 折叠按钮上的数字只能是量出来的时长：算不出来就什么都不显示，既不退回 'Trace'
   // 也不编一个 '0s'（用户截图里那个「› 0s」就是这么来的）。
   assert.match(chatMessageSource, /label=\{elapsed\}/);

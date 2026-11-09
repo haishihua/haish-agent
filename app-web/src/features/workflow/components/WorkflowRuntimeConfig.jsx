@@ -1,6 +1,6 @@
 import React from 'react';
 import { useProviderModels } from '../../chat/hooks/useRunConfig.js';
-import { normalizeReasoningEffort } from '../../chat/model/run-catalog.js';
+import { normalizeReasoningEffort } from '../../../core/run-catalog.js';
 import { nodeReasoningOptions } from '../model/node-reasoning-options.js';
 import { runtimeProviderDisplay } from '../model/runtime-provider-display.js';
 import { providerAuthBadge } from '../../settings/model/llm-settings.js';

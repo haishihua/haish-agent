@@ -11,6 +11,7 @@ const { createWorkflowTaskSelectionHandler } = await import('../../../src/featur
 const { createTaskStreamHandlers } = await import('../../../src/features/tasks/hooks/createTaskStreamHandlers.js');
 const { createDeployHandlers } = await import('../../../src/features/tasks/hooks/createDeployHandlers.js');
 const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
+const runStatus = await import('../../../src/core/run-status.js');
 const events = await import('../../../src/features/tasks/model/runtime-events.js');
 const workspace = await import('../../../src/features/conversations/model/workspace-state.js');
 const { conversationRuntimeHasLiveTurn } = await import('../../../src/features/conversations/model/runtime-restore-guard.js');
@@ -32,7 +33,7 @@ function harness(records = [task('history'), task('latest', 'running')]) {
   const removed = [];
   let state = { projects: [{ id: 'p', conversations: [{ id: 'c', tasks: records.map((record) => tasks.taskSummaryToRuntimeTask(record)) }] }] };
   const ctx = {
-    ...tasks, ...events, API_BASE: '', workspaceState: state,
+    ...tasks, ...runStatus, ...events, API_BASE: '', workspaceState: state,
     conversationIdRef: ref('other'), runtimesRef: ref(new Map()), streamTargetConvIdRef: ref(null),
     taskImageAttachmentsRef: ref(new Map()), taskRuntimeFetchesRef: ref(new Map()), taskRuntimeEventCacheRef: ref(new Map()),
     conversationActivationSeqRef: ref(0), conversationDetailAbortRef: ref(null),

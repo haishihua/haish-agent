@@ -1,4 +1,4 @@
-// 一次节点尝试的对话投影：输入气泡 + 回复气泡（或审批卡）。纯 props in / JSX out。
+// 一次节点尝试的对话投影：输入气泡 + 回复气泡（或审批卡）。
 import React from 'react';
 import { AskUserInlineForm } from '../../../chat/components/AskUserInlineForm.jsx';
 import { ChatMessageRow } from '../../../chat/components/ChatMessageRow.jsx';
@@ -6,14 +6,15 @@ import { buildChatTimeline } from '../../../chat/model/chat-timeline.js';
 import { workflowApprovalInput } from '../../model/workflow-approval-markdown.js';
 import { workflowInputDisplayText } from '../../model/workflow-catalog.js';
 import { WorkflowApprovalInline } from '../../../approvals/components/ApprovalOverlay.jsx';
-import { isTerminalTaskStatus, normalizeTaskStatus, taskFirstStreamTimestamp } from '../../../tasks/model/task-runtime.js';
+import { taskFirstStreamTimestamp } from '../../../tasks/model/task-runtime.js';
+import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../../core/run-status.js';
 import {
   attemptTask,
   detailText,
   goalJudgeInput,
   nodeConversationInputValue,
   timestampMs,
-} from './node-attempts.js';
+} from '../../model/node-attempts.js';
 
 export function NodeConversation({ node, task, attempt, result, status, running, showApproval, onRetry, agentName = '', pendingInput = null }) {
   const scopedTask = React.useMemo(() => attemptTask(task, attempt, result), [attempt, result, task]);
@@ -51,7 +52,6 @@ export function NodeConversation({ node, task, attempt, result, status, running,
     taskId: task?.taskId || '',
     conversationId: task?.conversationId || '',
     role: 'agent',
-    // 回复气泡署名节点配置里的 agent；非 agent 节点没名字，气泡显示 "Assistant"。
     agentName,
     agentId: node.type === 'agent' ? (node.agent_id || '') : '',
     text: running ? '' : resultText,

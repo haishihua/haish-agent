@@ -22,7 +22,7 @@ const {
 } = await import('../../../src/features/conversations/model/conversation-run-state.js');
 const {
   isTaskSettled,
-} = await import('../../../src/features/conversations/model/conversation-status.js');
+} = await import('../../../src/core/run-status.js');
 const {
   mergeConversationTasks,
 } = await import('../../../src/features/conversations/model/workspace-state.js');

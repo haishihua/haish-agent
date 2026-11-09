@@ -19,7 +19,7 @@ import {
   runtimeProviderLabel,
   providerAuthBadge,
 } from './llm-settings.js';
-import { DEFAULT_REASONING_EFFORT } from '../../chat/model/run-catalog.js';
+import { DEFAULT_REASONING_EFFORT } from '../../../core/run-catalog.js';
 import { agentListItems } from '../../agents/model/agent-settings.js';
 import {
   workflowListItems,

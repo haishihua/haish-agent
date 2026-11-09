@@ -109,7 +109,6 @@ export function handleToolOutputDelta(scope, event) {
       stage: 'in_progress',
       loopIndex,
       toolCalls: upsertToolCall(run.toolCalls, callId, {
-        // 实时追加命令输出，卡片在 running 状态直接展示，像终端一样滚动。
         toolOutput: `${existingToolCall.toolOutput || ''}${delta}`,
       }),
     };

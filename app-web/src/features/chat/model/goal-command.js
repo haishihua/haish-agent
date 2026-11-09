@@ -1,4 +1,6 @@
-export const GOAL_WORKFLOW_ID = 'workflow.goal-loop';
+import { GOAL_WORKFLOW_ID } from '../../../core/workflow-ids.js';
+
+export { GOAL_WORKFLOW_ID };
 export const GOAL_COMMAND = { name: 'goal', description: 'Run a task with Goal Loop in this project', command: true };
 
 export function goalInvocation(text) {

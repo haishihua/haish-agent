@@ -2,28 +2,12 @@ import React from 'react';
 import { BaseEdge, EdgeLabelRenderer, Handle, Position } from '@xyflow/react';
 import { agentIconNameForAgentId } from '../../agents/model/agent-settings.js';
 import { workflowEdgePath } from '../model/workflow-edge-path.js';
+import { typeLabelForWorkflowNode, workflowNodeIcon } from '../model/workflow-catalog.js';
 import { WORKFLOW_PORT_SIDES, workflowSideHandle } from '../model/workflow-canvas-editing.js';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { ProviderIcon } from '../../settings/components/settings-ui.jsx';
 
 export const WORKFLOW_FIT_OPTIONS = { padding: 0.2, minZoom: 0.3, maxZoom: 0.9 };
-
-const WORKFLOW_NODE_META = {
-  start: { icon: 'play' },
-  agent: { icon: 'workflow-agent' },
-  llm: { icon: 'workflow-llm' },
-  tool: { icon: 'workflow-tool' },
-  condition: { icon: 'workflow-condition' },
-  human_approval: { icon: 'workflow-approval' },
-  loop: { icon: 'workflow-loop' },
-  output: { icon: 'workflow-output' },
-};
-
-const NODE_TYPE_LABEL = {
-  start: 'Trigger', output: 'Complete',
-  agent: 'Agent', llm: 'Model', tool: 'Tool', condition: 'Condition',
-  human_approval: 'Approval', loop: 'Loop',
-};
 
 export const WORKFLOW_BRANCHES = {
   condition: ['true', 'false'],
@@ -41,10 +25,6 @@ export const WORKFLOW_BRANCH_META = {
   retry: { label: 'Retry', edgeLabel: 'Need retry' },
   exhausted: { label: 'Exhausted', edgeLabel: 'Max retries' },
 };
-
-export function workflowNodeMeta(nodeType) {
-  return WORKFLOW_NODE_META[nodeType] || { icon: 'box' };
-}
 
 // 类型色只有一份（app-shell.css 里 .workflow-canvas 上的 --workflow-accent-*）：节点的描边/图标色
 // 与连线的渐变都从这里取色，JS 里不再抄一份十六进制颜色。
@@ -308,13 +288,12 @@ export function WorkflowCanvasEdge({
 export function WorkflowFlowNode({ data, selected, sourcePosition, targetPosition }) {
   const node = data?.workflowNode || {};
   const nodeType = node.type || 'agent';
+  const runtimeStatus = String(data?.runtimeStatus || '');
   const nodeTitle = data?.runtimeAgentName || node.label || nodeType;
   const nodeLabel = `${nodeTitle}${runtimeStatus ? ` · ${data.runtimeStatusLabel || runtimeStatus}` : ''}`;
-  const meta = workflowNodeMeta(nodeType);
   const iconName = nodeType === 'agent'
     ? (data?.agentIconName || agentIconNameForAgentId(node.agent_id, data?.agentOptions))
-    : meta.icon;
-  const runtimeStatus = String(data?.runtimeStatus || '');
+    : workflowNodeIcon(nodeType);
   const runtimeDetailAvailable = Boolean(data?.runtimeDetailAvailable);
   const resolvedSourcePosition = data?.sourcePosition || sourcePosition || Position.Right;
   const resolvedTargetPosition = data?.targetPosition || targetPosition || Position.Left;
@@ -345,7 +324,7 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
       </span>
       <span className="workflow-flow-node-copy">
         <strong>{nodeTitle}</strong>
-        {NODE_TYPE_LABEL[nodeType] ? <small className={data?.runtimeModelId ? 'workflow-node-model' : undefined}>{data?.runtimeModelId ? <><ProviderIcon provider={data.runtimeProvider} /><span>{data.runtimeModelId}</span></> : NODE_TYPE_LABEL[nodeType]}</small> : null}
+        {typeLabelForWorkflowNode(nodeType) ? <small className={data?.runtimeModelId ? 'workflow-node-model' : undefined}>{data?.runtimeModelId ? <><ProviderIcon provider={data.runtimeProvider} /><span>{data.runtimeModelId}</span></> : typeLabelForWorkflowNode(nodeType)}</small> : null}
       </span>
       {WORKFLOW_BRANCHES[nodeType]
         ? WORKFLOW_BRANCHES[nodeType].map((branch, index) => (

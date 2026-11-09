@@ -1,6 +1,6 @@
 import React from 'react';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
-import { workflowNodeMeta } from '../../workflow/components/WorkflowFlowNode.jsx';
+import { workflowNodeIcon } from '../../workflow/model/workflow-catalog.js';
 import { SettingsMenuSelect } from './settings-ui.jsx';
 import './workflow-agent-details.css';
 
@@ -21,7 +21,7 @@ export function WorkflowNodeHeading({ node, agentOptions = [] }) {
   const agent = node.type === 'agent' ? agentOptions.find((item) => item.id === node.agent_id) : null;
   return (
     <div className="workflow-agent-heading" data-node-type={node.type}>
-      <span className="workflow-agent-avatar"><AppIcon name={node.type === 'agent' ? 'sparkles' : workflowNodeMeta(node.type).icon} size={26} /></span>
+      <span className="workflow-agent-avatar"><AppIcon name={node.type === 'agent' ? 'sparkles' : workflowNodeIcon(node.type)} size={26} /></span>
       <div className="workflow-agent-heading-copy">
         <div className="workflow-agent-heading-title">
           <strong>{node.label || node.id}</strong>

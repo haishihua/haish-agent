@@ -1,12 +1,12 @@
-// 节点执行列表：等待输入的提示条、历史尝试折叠区、最新一次尝试与空态。纯 props in / JSX out。
+// 节点执行列表：等待输入的提示条、历史尝试折叠区、最新一次尝试与空态。
 import React from 'react';
 import { ChatTimelineChevron } from '../../../chat/components/ChatTimelineNodes.jsx';
-import { isTaskSettled } from '../../../conversations/model/conversation-status.js';
+import { isTaskSettled } from '../../../../core/run-status.js';
 import { workflowAgentName } from '../../../chat/model/assistant-name.js';
 import { workflowResultForAttempt } from '../../model/runtime-workflow-layout.js';
 import { AppIcon } from '../../../../shared/ui/AppIcon.jsx';
 import { NodeConversation } from './WorkflowNodeConversation.jsx';
-import { visibleNodeAttempts } from './node-attempts.js';
+import { visibleNodeAttempts } from '../../model/node-attempts.js';
 
 export function WorkflowNodeAttempts({
   node,

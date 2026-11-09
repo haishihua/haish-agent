@@ -4,7 +4,7 @@ import { ChatComposer } from '../../src/features/chat/components/ChatComposer.js
 import { LlmConfigEditor } from '../../src/features/settings/components/LlmConfigEditor.jsx';
 import { runtimeLlmProviderOptions } from '../../src/features/settings/model/llm-settings.js';
 import { usePersistentRunConfig } from '../../src/features/chat/hooks/useRunConfig.js';
-import { REASONING_EFFORT_OPTIONS } from '../../src/features/chat/model/run-catalog.js';
+import { REASONING_EFFORT_OPTIONS } from '../../src/core/run-catalog.js';
 import { createRunConfigSync } from '../../src/features/conversations/model/run-config-sync.js';
 import { SchedulesContext } from '../../src/features/schedules/hooks/useSchedules.js';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { isTaskLive } from '../../../src/features/conversations/model/conversation-status.js';
+import { isTaskLive } from '../../../src/core/run-status.js';
 import {
   RUN_STATE_APPROVAL,
   RUN_STATE_IDLE,

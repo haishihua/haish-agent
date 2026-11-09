@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { reasoningGaugeRotation } from '../../../src/features/chat/model/reasoning-gauge.js';
-import { REASONING_EFFORT_OPTIONS } from '../../../src/features/chat/model/run-catalog.js';
+import { REASONING_EFFORT_OPTIONS } from '../../../src/core/run-catalog.js';
 
 const levels = (ids) => ids.map((id) => ({ id, label: id }));
 

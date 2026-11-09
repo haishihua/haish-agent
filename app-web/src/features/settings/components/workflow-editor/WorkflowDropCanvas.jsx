@@ -14,7 +14,6 @@ import { WORKFLOW_NODE_DRAG_TYPE } from './shared.js';
 
 const { useState, useEffect, useRef } = React;
 
-// 画布本体：节点/边的视觉交给 WorkflowFlowNode，这里只管拖放、吸附与画布内部状态。
 // 所有持久化动作通过 props 上的回调交回 WorkflowConfigEditor（状态仍由主编辑器持有）。
 export function WorkflowDropCanvas({
   nodes,

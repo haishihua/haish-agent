@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
-import { normalizeReasoningEffort } from '../../chat/model/run-catalog.js';
+import { normalizeReasoningEffort } from '../../../core/run-catalog.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import {
   getLlmProvider,

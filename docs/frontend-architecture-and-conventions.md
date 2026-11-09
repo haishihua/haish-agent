@@ -35,6 +35,7 @@ app-web/
   src/
     main.jsx                 # 样式和 React 入口
     app.jsx                  # ErrorBoundary + AppShell 挂载
+    core/                    # 跨领域运行态语义（状态词表、运行目录、内置 id）；不依赖 features
     features/
       agents/model/          # Agent 配置领域模型
       app/                   # 应用组合根、顶栏和主布局
@@ -61,7 +62,7 @@ app-web/
 ## 3. 依赖方向
 
 ```text
-main.jsx → app.jsx → features/* → shared/*
+main.jsx → app.jsx → features/* → core/* → shared/*
                          │
                          ├─ components → hooks / model / api
                          ├─ hooks      → model / api
@@ -70,12 +71,14 @@ main.jsx → app.jsx → features/* → shared/*
 
 强制规则：
 
-1. `shared` 不得 import `features`。
+1. `shared` 和 `core` 不得 import `features`。
 2. `model` 不得 import React、组件或 hooks。
-3. 组件可以组合其他 feature 的公开组件，但不能从对方页面壳或内部编辑器“借”实现。可复用原语应下沉到 `shared/ui`；明确属于一个领域的组件留在该领域。
-4. 网络调用放在领域 `api/` 或 `shared/api/`；普通请求直接 import `apiFetch`。
-5. 禁止静态 import 环、注册回调式破环、late-bound 全局和隐式初始化副作用。
-6. 禁止为了旧路径保留 re-export、barrel、兼容文件或双份实现。迁移时一次修改全部调用方并删除旧文件。
+3. 多个 feature 都要读的运行态语义（状态词表、终态判据、运行目录、内置工作流 id）放 `core/`，一个领域都不能为了拿它去 import 另一个领域。领域自己的算法仍留在该领域的 `model/`。
+4. 组件可以组合其他 feature 的公开组件，但不能从对方页面壳或内部编辑器“借”实现。可复用原语应下沉到 `shared/ui`；明确属于一个领域的组件留在该领域。
+5. 网络调用放在领域 `api/` 或 `shared/api/`；普通请求直接 import `apiFetch`。
+6. 禁止静态 import 环、注册回调式破环、late-bound 全局和隐式初始化副作用。
+7. 禁止为了旧路径保留 re-export、barrel、兼容文件或双份实现。迁移时一次修改全部调用方并删除旧文件。
+8. 同一张表（状态词表、节点图标与文案、节点尝试投影）只允许一份实现。两份一旦分开就会**实际漂移**（画布显示方块、详情面板显示勾圈就是这么来的），不是理论风险。
 
 ## 4. 领域所有权
 
@@ -122,6 +125,7 @@ main.jsx → app.jsx → features/* → shared/*
 
 - 会话切换、任务取消、stream abort 必须带明确 owner（conversation/task id）和 abort controller。
 - 服务端快照、本地草稿、运行中状态分别建模，不能靠一个“大对象”覆盖全部阶段。
+- 状态词表只有一处：`core/run-status.js`（原始串别名归一、终态清单、`isTaskLive` / `isTaskSettled` / `terminalNoticeStatus` / `workflowTaskDisplayStatus`）。chat、conversations、tasks、workflow、approvals 都读它，谁都不 import 对方。
 - 会话“还在不在跑”只有一处判据：`conversations/model/conversation-run-state.js`（任务自身未落终态 = 在跑；后端实时快照 `approvalStore` 有未决提问/审批 = 在等人；落地终态 = 熄灯）。侧边栏状态灯、面板 streaming、面板活动文案都读它。禁止在组件里重新推导运行态，也不准把 `workflowRun` 快照、在飞工具卡当状态源——那些是轮询旧值/渲染结果，会让两侧慢半拍而互相矛盾。
 - 自动创建 Chat/Bot 会话时不发送 `title`（包括首发草稿落地、附件提前建会话、`/goal`、启动和删除后的空会话兜底）。占位标题由后端首任务路径持久化，前端可按显示需求在本地乐观显示 48 字符占位，但不能通过标题 PATCH 写回；标题 PATCH 只用于用户主动改名，哪怕改名文字与占位相同。生成结果复用现有会话目录刷新进入侧栏，不在前端另发模型请求。
 - 循环执行和审批历史按 attempt 追加；旧 attempt 折叠展示，不覆盖历史输入输出。
@@ -152,7 +156,7 @@ app-web/tests/**        # 所有 test/spec
 
 | 命令 | 内容 |
 | --- | --- |
-| `npm run check:architecture` | 目录、依赖、循环、导入解析、动态 CSS、全局请求等边界 |
+| `npm run check:architecture` | 目录、依赖、循环、导入解析（剥离 `?inline` 等查询串）、`shared`/`core` 不得反向 import `features`、动态 CSS、全局请求等边界 |
 | `npm test` | 运行 `app-web/tests` 中所有 `*.test.js` / `*.test.mjs` 自动测试 |
 | `npm run lint` | 生产代码和测试代码 ESLint；warning 也会失败 |
 | `npm run build:web` | Vite 生产构建 |

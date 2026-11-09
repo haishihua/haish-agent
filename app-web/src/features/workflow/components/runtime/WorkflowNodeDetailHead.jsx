@@ -1,19 +1,8 @@
 // 运行态面板头部：图标 / 名称 / 状态副标题 / 关闭键 + Runtime Config|Run Result 页签。
-// 纯 props in / JSX out，页签切换仍由主页面选中的 detailTab 驱动。
+// 页签切换仍由主页面选中的 detailTab 驱动。
 import { agentIconNameForAgentId } from '../../../agents/model/agent-settings.js';
-import { typeLabelForWorkflowNode } from '../../model/workflow-catalog.js';
+import { typeLabelForWorkflowNode, workflowNodeIcon } from '../../model/workflow-catalog.js';
 import { AppIcon } from '../../../../shared/ui/AppIcon.jsx';
-
-const NODE_ICON = {
-  start: 'play',
-  agent: 'workflow-agent',
-  llm: 'workflow-llm',
-  tool: 'workflow-tool',
-  condition: 'workflow-condition',
-  human_approval: 'workflow-approval',
-  loop: 'workflow-loop',
-  output: 'circle-check',
-};
 
 export function WorkflowNodeDetailHead({
   node,
@@ -31,7 +20,7 @@ export function WorkflowNodeDetailHead({
     <>
       <header className="workflow-detail-head">
         <span className="workflow-detail-icon" aria-hidden="true">
-          <AppIcon name={node.type === 'agent' ? agentIconNameForAgentId(node.agent_id, agentOptions) : NODE_ICON[node.type] || 'box'} size={26} />
+          <AppIcon name={node.type === 'agent' ? agentIconNameForAgentId(node.agent_id, agentOptions) : workflowNodeIcon(node.type)} size={26} />
         </span>
         <span className="workflow-detail-heading">
           <span className="workflow-detail-name"><strong>{agentName || node.label || typeLabelForWorkflowNode(node.type)}</strong></span>

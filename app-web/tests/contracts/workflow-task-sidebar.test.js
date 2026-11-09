@@ -7,7 +7,7 @@ import {
   isTaskSettled,
   isTerminalStatus,
   workflowTaskDisplayStatus,
-} from '../../src/features/conversations/model/conversation-status.js';
+} from '../../src/core/run-status.js';
 
 globalThis.window = {
   localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
@@ -21,11 +21,8 @@ const {
   taskOrderTimestamp,
   withDefaultExpansion,
 } = await import('../../src/features/conversations/model/workspace-state.js');
-const {
-  isTerminalTaskStatus,
-  normalizeTaskStatus,
-  taskSummaryToRuntimeTask,
-} = await import('../../src/features/tasks/model/task-runtime.js');
+const { taskSummaryToRuntimeTask } = await import('../../src/features/tasks/model/task-runtime.js');
+const { isTerminalTaskStatus, normalizeTaskStatus } = await import('../../src/core/run-status.js');
 const { getTaskPillMeta } = await import('../../src/features/tasks/model/task-pill.js');
 const projectNodeSource = fs.readFileSync(new URL('../../src/features/conversations/components/ProjectNode.jsx', import.meta.url), 'utf8');
 const taskCardsSource = fs.readFileSync(new URL('../../src/features/conversations/components/ConversationTaskCards.jsx', import.meta.url), 'utf8');
@@ -247,7 +244,7 @@ test('a landed task beats a stale workflow snapshot, aliases included', () => {
 });
 
 test('one landed judge feeds the lamps and the sidebar ordering anchor', () => {
-  // 同一份判据（conversation-status 的 isTaskSettled）以前在 workspace-state 里另抄了一份
+  // 同一份判据（core/run-status 的 isTaskSettled）以前在 workspace-state 里另抄了一份
   // 更窄的清单：'success' / 'error' / 'canceled' 这些历史别名在那边漏了，已收工的任务
   // 会被当成「还在跑」，侧边栏排序锚点跟着乱跳。
   const running = { taskId: 'task-1', status: 'running', createdAt: 1000, updatedAt: 2000 };
@@ -264,8 +261,8 @@ test('one landed judge feeds the lamps and the sidebar ordering anchor', () => {
 });
 
 test('every raw terminal alias normalizes to one of the canonical statuses', () => {
-  // 两张词表各司其职：原始串判「落地了没」（conversation-status 的 TERMINAL_STATUSES）、
-  // 归一后判终态（task-runtime 的 isTerminalTaskStatus）。但别名必须对得上——少归一个，
+  // 两张词表各司其职：原始串判「落地了没」（core/run-status 的 TERMINAL_STATUSES）、
+  // 归一后判终态（同文件的 isTerminalTaskStatus）。但别名必须对得上——少归一个，
   // 「任务卡写着 PENDING、行却按已收工排序」就会当场出现（success / error / canceled
   // 以前就漏在归一表外面：卡片是 PENDING，分页和灯却已经把它当收工）。
   for (const alias of ['completed', 'aborted', 'canceled', 'success', 'error']) {

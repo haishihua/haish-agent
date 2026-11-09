@@ -1,7 +1,7 @@
 import React from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
-import { REASONING_EFFORT_OPTIONS, normalizeReasoningEffort } from '../model/run-catalog.js';
+import { REASONING_EFFORT_OPTIONS, normalizeReasoningEffort } from '../../../core/run-catalog.js';
 import { migrateExecutionRoute, savedExecutionConfigId } from '../../settings/model/execution-identity.js';
 
 const PROVIDER_MODELS_STORAGE_KEY = 'haish_provider_models_v1';
@@ -203,26 +203,6 @@ export function resolveRunConfigSelection(storageKey, providerOptions, agentOpti
     providerDefaultModelId,
     agentId: agentSource?.agentId || defaultAgentId,
     reasoningEffort: normalizeReasoningEffort(providerSource?.reasoningEffort, provider?.defaultReasoningEffort),
-  };
-}
-
-/**
- * 该会话（或该模式）真正存过的选择 → 可直接发给后端的 run config。
- *
- * 本地缓存解析工具（当前 Chat 重试已不使用它）；它不回落到第一个 provider。
- * 缺少有效缓存返回 null，调用方必须读取服务端当前选择或明确拒绝，不能恢复来源任务配置。
- */
-export function storedRunConfigRequest(storageKey, providerOptions) {
-  const stored = safeReadRunConfigSelection(storageKey);
-  if (!stored?.providerId || !stored.modelId) return null;
-  const configId = savedExecutionConfigId(stored.providerId, providerOptions, true);
-  const provider = (providerOptions || []).find((item) => item.id === configId);
-  const request = String(provider?.id || '').trim();
-  if (!request) return null;
-  return {
-    provider: request,
-    modelId: stored.modelId,
-    reasoningEffort: normalizeReasoningEffort(stored.reasoningEffort, provider.defaultReasoningEffort),
   };
 }
 

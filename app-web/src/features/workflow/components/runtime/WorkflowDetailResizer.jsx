@@ -1,4 +1,4 @@
-// 面板宽度拖拽条：指针拖拽 + 左右方向键 24px 步进。纯 props in / JSX out。
+// 面板宽度拖拽条：指针拖拽 + 左右方向键 24px 步进。
 export function WorkflowDetailResizer({ onResize, onResizeBy }) {
   return (
     <div

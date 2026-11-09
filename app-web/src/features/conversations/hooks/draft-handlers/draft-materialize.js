@@ -1,7 +1,6 @@
 import { forgetDraftConversationId } from '../../model/draft-conversation-id.js';
 
 // 草稿落地：首条发送前把本地空壳换成真会话，并把 runtime / 输入草稿整份交给它。
-// isConversationActivationCurrent / clearDraftFirstSendInFlight 来自 draft-lifecycle。
 export function createDraftMaterializeHandlers(ctx) {
   const {
     applyConversationSnapshot,

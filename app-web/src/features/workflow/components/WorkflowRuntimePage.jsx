@@ -12,7 +12,7 @@ import {
   useNodesState,
 } from '@xyflow/react';
 import { workflowAgentName } from '../../chat/model/assistant-name.js';
-import { normalizeTaskStatus } from '../../tasks/model/task-runtime.js';
+import { normalizeTaskStatus } from '../../../core/run-status.js';
 import { workflowRuntimeDisplayStatus, workflowRuntimeNodeStatus } from '../model/runtime-status.js';
 import {
   layoutRuntimeWorkflow,
@@ -36,7 +36,7 @@ import {
   workflowNodePorts,
   workflowNodeAccent,
 } from './WorkflowFlowNode.jsx';
-import { nodeAttempts, visibleNodeAttempts } from './runtime/node-attempts.js';
+import { nodeAttempts, visibleNodeAttempts } from '../model/node-attempts.js';
 import { WorkflowNodeDetailHead } from './runtime/WorkflowNodeDetailHead.jsx';
 import { WorkflowNodeAttempts } from './runtime/WorkflowNodeAttempts.jsx';
 import { WorkflowDetailResizer } from './runtime/WorkflowDetailResizer.jsx';

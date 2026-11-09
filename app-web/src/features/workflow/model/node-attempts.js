@@ -2,9 +2,9 @@
 import {
   mergeWorkflowNodeAttempts,
   workflowToolCallsForAttempt,
-} from '../../model/runtime-workflow-layout.js';
-import { workflowArgumentsText } from '../../model/workflow-catalog.js';
-import { GOAL_WORKFLOW_ID } from '../../../chat/model/goal-command.js';
+} from './runtime-workflow-layout.js';
+import { workflowArgumentsText } from './workflow-catalog.js';
+import { GOAL_WORKFLOW_ID } from '../../../core/workflow-ids.js';
 
 function eventNodeId(event) {
   return String(event?.workflowNodeId || event?.workflow_node_id || event?.nodeId || event?.node_id || '');

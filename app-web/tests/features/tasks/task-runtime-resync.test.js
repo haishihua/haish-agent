@@ -9,6 +9,7 @@ const { createTaskStreamHandlers } = await import('../../../src/features/tasks/h
 const { buildChatTimeline, appendAnswerDelta } = await import('../../../src/features/chat/model/chat-timeline.js');
 const { eventDeltaText } = await import('../../../src/features/chat/model/chat-text.js');
 const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
+const runStatus = await import('../../../src/core/run-status.js');
 const runtimeEvents = await import('../../../src/features/tasks/model/runtime-events.js');
 
 const delta = (id, text) => ({
@@ -22,7 +23,7 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
 function harness(transport, overrides = {}, initial = null) {
   const noop = () => {};
   const ctx = {
-    ...tasks, ...runtimeEvents, providerOptions: [{ id: 'fixture', provider: 'custom' }],
+    ...tasks, ...runStatus, ...runtimeEvents, providerOptions: [{ id: 'fixture', provider: 'custom' }],
     conversationIdRef: { current: 'conversation' }, streamTargetConvIdRef: { current: null },
     runtimesRef: { current: new Map() }, taskImageAttachmentsRef: { current: new Map() },
     userCancelledTaskIdsRef: { current: new Set() }, chatFinalizedTaskIdsRef: { current: new Set() },

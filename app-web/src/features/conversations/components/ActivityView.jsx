@@ -7,7 +7,7 @@ import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { ConversationAction, ConversationPinAction, ApprovalGlyph, WaitingInputGlyph } from './ConversationIcons.jsx';
 import { useConversationRunState } from '../hooks/useConversationRunState.js';
 import { RUN_STATE_APPROVAL, RUN_STATE_RUNNING, RUN_STATE_WAITING_INPUT, resolveConversationStatusMark } from '../model/conversation-run-state.js';
-import { isTaskLive } from '../model/conversation-status.js';
+import { isTaskLive } from '../../../core/run-status.js';
 import { ACTIVITY_PAGE_SIZE, activityEntries, filterActivityEntries } from '../model/activity.js';
 import { terminalTaskNoticeStatus } from '../../tasks/model/task-completion-notices.js';
 

@@ -1,4 +1,3 @@
-// Runtime model, agent, reasoning, and timeline display catalogs.
 
 export const DEFAULT_AGENT_OPTIONS = [
   { id: 'preset.general', label: 'Task Assistant', description: 'All-purpose agent with full tools for everyday work.' },

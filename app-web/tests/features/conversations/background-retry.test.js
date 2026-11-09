@@ -11,6 +11,7 @@ const { createDeployHandlers } = await import('../../../src/features/tasks/hooks
 const { evictInactiveRuntimes } = await import('../../../src/features/conversations/model/runtime-cache.js');
 const { waitForAttemptRunConfig } = await import('../../../src/features/conversations/model/attempt-run-config.js');
 const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
+const runStatus = await import('../../../src/core/run-status.js');
 const events = await import('../../../src/features/tasks/model/runtime-events.js');
 const workspace = await import('../../../src/features/conversations/model/workspace-state.js');
 
@@ -28,7 +29,7 @@ function harness({ transport, configSync, configTimeoutMs } = {}) {
   let retryPending = false;
   const noop = () => {};
   const ctx = {
-    ...tasks, ...events, API_BASE: '', providerOptions: [{ id: route.llm_config_id, provider: 'custom' }],
+    ...tasks, ...runStatus, ...events, API_BASE: '', providerOptions: [{ id: route.llm_config_id, provider: 'custom' }],
     configSync, attemptConfigTimeoutMs: configTimeoutMs,
     canStartDeployForConversation: id => conversationIdRef.current === id,
     conversationIdRef, runtimesRef: { current: runtimes },

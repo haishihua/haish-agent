@@ -7,6 +7,7 @@ import {
 } from '../../conversations/model/workspace-state.js';
 import { stripChatImageAugmentation, stripInjectedSkillInstruction } from '../../chat/model/chat-text.js';
 import { compactStreamEvents } from '../../chat/model/stream-events.js';
+import { normalizeTaskStatus } from '../../../core/run-status.js';
 import { usableWorkflowSnapshot } from '../../workflow/model/workflow-snapshot.js';
 import {
   normalizeRuntimeEvents,
@@ -27,21 +28,6 @@ export function createEmptyTaskRuntimeState() {
 export function isPendingTaskId(runtime, taskId) {
   const pending = runtime?.taskRuntimeState?.pendingTask;
   return Boolean(taskId && pending && (pending.taskId || pending.id) === taskId);
-}
-
-export function normalizeTaskStatus(status) {
-  // 原始状态串的别名归一在这里，词表和 conversations/model/conversation-status.js 的
-  // TERMINAL_STATUSES 对齐：少归一个，「卡片写着 PENDING、行却按已收工排序」就会出现
-  // （success / error / canceled 这三个以前就这么漏过去了）。
-  if (status === 'aborted' || status === 'canceled') return 'cancelled';
-  if (status === 'completed' || status === 'success') return 'done';
-  if (status === 'error') return 'failed';
-  return status || 'queued';
-}
-
-export function isTerminalTaskStatus(status) {
-  const normalized = normalizeTaskStatus(status);
-  return normalized === 'done' || normalized === 'failed' || normalized === 'cancelled';
 }
 
 /**

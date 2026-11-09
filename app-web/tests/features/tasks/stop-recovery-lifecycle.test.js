@@ -9,6 +9,7 @@ const { createTaskStreamHandlers } = await import('../../../src/features/tasks/h
 const { createDeployHandlers } = await import('../../../src/features/tasks/hooks/createDeployHandlers.js');
 const { evictInactiveRuntimes } = await import('../../../src/features/conversations/model/runtime-cache.js');
 const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
+const runStatus = await import('../../../src/core/run-status.js');
 const events = await import('../../../src/features/tasks/model/runtime-events.js');
 const workspace = await import('../../../src/features/conversations/model/workspace-state.js');
 const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
@@ -35,7 +36,7 @@ function makeHarness({ fetchDetail = async () => Response.json(detail()),
   const projections = [];
   const noop = () => {};
   const ctx = {
-    ...tasks, ...events, API_BASE: '', providerOptions: [{ id: 'fixture', provider: 'custom' }],
+    ...tasks, ...runStatus, ...events, API_BASE: '', providerOptions: [{ id: 'fixture', provider: 'custom' }],
     conversationIdRef: currentId, runtimesRef: { current: runtimes },
     streamTargetConvIdRef: { current: null }, taskImageAttachmentsRef: { current: new Map() },
     chatFinalizedTaskIdsRef: { current: new Set() }, userCancelledTaskIdsRef: { current: new Set() },

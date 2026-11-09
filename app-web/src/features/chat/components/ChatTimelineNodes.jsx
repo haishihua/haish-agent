@@ -16,7 +16,7 @@ import { VisionToolDetail } from './VisionToolDetail.jsx';
 import { ImageGenerateToolDetail } from './ImageGenerateToolDetail.jsx';
 import { toolCardHeading } from '../model/tool-presentation.js';
 import { selectActiveAskUserItemId } from '../model/pending-user-input.js';
-import { CATEGORY_ICON_CLASS } from '../model/run-catalog.js';
+import { CATEGORY_ICON_CLASS } from '../../../core/run-catalog.js';
 import {
   RuntimeApprovalCard,
   ToolApprovalCard,

@@ -61,7 +61,6 @@ export const WEB_SEARCH_BRAND_LOGOS = {
 };
 
 // Logos render through a CSS mask, so each file only needs an opaque silhouette.
-// Unlisted providers keep a monogram tile instead of an empty media slot.
 export function WebSearchProviderIcon({ provider, label }) {
   const logo = WEB_SEARCH_BRAND_LOGOS[provider];
   if (logo) return <BrandLogoIcon logo={logo} scaleKey={provider} />;
@@ -223,10 +222,8 @@ function useMenuMaxHeight(rootRef, open, itemsCount) {
       const triggerRect = trigger.getBoundingClientRect();
       // 触发控件下方到容器底缘的可用空间（减去 6px 间距 + 2px 边框余量）。
       const spaceBelow = Math.max(0, clipRect.bottom - triggerRect.bottom - 8);
-      // 菜单理想高度按实际选项数量估算（上限 260px）。
       const count = Math.max(1, Number(itemsCount) || 1);
       const ideal = Math.min(260, 46 + count * 36);
-      // 始终向下展开；放不下就压缩高度，菜单内部滚动。
       setMenuMaxHeight(Math.max(72, Math.min(ideal, spaceBelow)));
     };
 

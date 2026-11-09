@@ -29,7 +29,7 @@ const runtimePartSource = (path) => fs.readFileSync(
 );
 const runtimeSource = [
   'WorkflowRuntimePage.jsx',
-  'runtime/node-attempts.js',
+  '../model/node-attempts.js',
   'runtime/WorkflowNodeConversation.jsx',
   'runtime/WorkflowNodeAttempts.jsx',
   'runtime/WorkflowNodeDetailHead.jsx',
@@ -38,7 +38,7 @@ const runtimeSource = [
 ].map(runtimePartSource).join('\n');
 
 test('workflow editor exposes a configurable human approval node', () => {
-  assert.match(flowNodeSource, /human_approval: \{ icon: 'workflow-approval' \}/);
+  assert.match(flowNodeSource, /workflowNodeIcon\(nodeType\)/);
   assert.match(editorSource, /baseType === 'human_approval'/);
   assert.match(nodeFieldsSource, /selectedNode\.type === 'human_approval'/);
   assert.match(editorSource, /summaryText: '\{\{input\.message\}\}'/);

@@ -9,6 +9,7 @@ const { createConversationHandlers } = await import('../../src/features/conversa
 const { createScheduledRuntimeHandlers } = await import('../../src/features/schedules/model/runtime-handlers.js');
 const { createTaskStreamHandlers } = await import('../../src/features/tasks/hooks/createTaskStreamHandlers.js');
 const tasks = await import('../../src/features/tasks/model/task-runtime.js');
+const runStatus = await import('../../src/core/run-status.js');
 const events = await import('../../src/features/tasks/model/runtime-events.js');
 const workspace = await import('../../src/features/conversations/model/workspace-state.js');
 
@@ -31,7 +32,7 @@ function makeHarness() {
   const noOp = () => {};
   const ref = (current) => ({ current });
   const ctx = {
-    ...tasks, ...events,
+    ...tasks, ...runStatus, ...events,
     API_BASE: '', workspaceState: state, conversationIdRef: ref('currently-open'),
     draftConversationRef: ref(null), pendingCreatedDetailRef: ref(null),
     runtimesRef: ref(new Map()), streamTargetConvIdRef: ref(null),

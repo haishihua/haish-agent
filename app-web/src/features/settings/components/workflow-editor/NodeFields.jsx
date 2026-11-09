@@ -18,7 +18,6 @@ import {
 import { WorkflowAgentDetails } from '../WorkflowAgentDetails.jsx';
 import { OutputNodeFields } from './OutputNodeFields.jsx';
 
-// 节点属性面板的字段区：按节点类型分派，只有选中节点的字段会渲染。
 export function NodeFields({ selectedNode, workflowInputSchema, agentOptions, toolOptions, availableVariables, isEditable, updateNode }) {
   const renderNodeFields = () => {
     if (!selectedNode) return null;

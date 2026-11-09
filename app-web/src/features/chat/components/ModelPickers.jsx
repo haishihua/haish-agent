@@ -4,7 +4,7 @@ import { approvalStore } from '../../approvals/model/approval-store.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
-import { REASONING_EFFORT_OPTIONS } from '../model/run-catalog.js';
+import { REASONING_EFFORT_OPTIONS } from '../../../core/run-catalog.js';
 import { reasoningGaugeRotation } from '../model/reasoning-gauge.js';
 import { providerAuthBadge } from '../../settings/model/llm-settings.js';
 import { ProviderAuthBadge } from '../../../shared/ui/ProviderAuthBadge.jsx';
