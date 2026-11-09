@@ -5,7 +5,7 @@
 import { executionConfigError } from '../../../workflow/model/execution-config.js';
 import { normalizeReasoningEffort } from '../../../../core/run-catalog.js';
 import { nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest } from '../../../workflow/model/node-runtime-config.js';
-import { waitForAttemptConfigOperation } from '../../../conversations/model/attempt-run-config.js';
+import { waitForAttemptConfigOperation } from '../../../../shared/lib/attempt-run-config.js';
 import { RESYNC_REQUIRED_TYPE } from './recovery.js';
 
 const realtimeRequestId = () => globalThis.crypto?.randomUUID?.()

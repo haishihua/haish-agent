@@ -1,6 +1,7 @@
 import { isTaskLive, isTaskSettled } from '../../../core/run-status.js';
 import { taskCompletionNoticeKey } from '../../tasks/model/task-completion-notices.js';
-import { compareConversationOrder, mergeConversationTasks, timestampValue } from './workspace-state.js';
+import { compareConversationOrder, mergeConversationTasks } from './workspace-state.js';
+import { timestampValue } from '../../../core/task-record.js';;
 
 export const ACTIVITY_PAGE_SIZE = 20;
 

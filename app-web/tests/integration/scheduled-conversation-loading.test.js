@@ -12,6 +12,7 @@ const tasks = await import('../../src/features/tasks/model/task-runtime.js');
 const runStatus = await import('../../src/core/run-status.js');
 const events = await import('../../src/features/tasks/model/runtime-events.js');
 const workspace = await import('../../src/features/conversations/model/workspace-state.js');
+const taskRecord = await import('../../src/core/task-record.js');
 
 const cid = 'scheduled-conversation';
 function makeHarness() {
@@ -46,8 +47,8 @@ function makeHarness() {
     findConversationById: workspace.findConversationById,
     findProjectByConversationId: workspace.findProjectByConversationId,
     isTaskActuallyActive: workspace.isTaskActuallyActive,
-    taskUpdatedTimestamp: workspace.taskUpdatedTimestamp,
-    timestampValue: workspace.timestampValue, mergeChatImageRefs: workspace.mergeChatImageRefs,
+    taskUpdatedTimestamp: taskRecord.taskUpdatedTimestamp,
+    timestampValue: taskRecord.timestampValue, mergeChatImageRefs: taskRecord.mergeChatImageRefs,
     chatImageFallbacksByTaskIdFromMessages: () => new Map(),
     loadStoredContextUsage: () => null, latestContextUsageFromTasks: () => null,
     contextUsageFromConversationDetail: () => null, estimateContextUsageFromConversationDetail: () => null,

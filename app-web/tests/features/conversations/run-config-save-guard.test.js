@@ -6,7 +6,7 @@ import { migrateExecutionRoute, savedExecutionConfigId } from '../../../src/core
 import { normalizeReasoningEffort, REASONING_EFFORT_OPTIONS } from '../../../src/core/run-catalog.js';
 import { executionConfigError } from '../../../src/features/workflow/model/execution-config.js';
 import { createRunConfigSync } from '../../../src/features/conversations/model/run-config-sync.js';
-import { waitForAttemptRunConfig } from '../../../src/features/conversations/model/attempt-run-config.js';
+import { waitForAttemptRunConfig } from '../../../src/shared/lib/attempt-run-config.js';
 import { createConversationHandlers } from '../../../src/features/conversations/hooks/createConversationHandlers.js';
 
 const source = readFileSync(new URL('../../../src/features/conversations/hooks/useConversationRunConfig.js', import.meta.url), 'utf8');

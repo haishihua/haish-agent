@@ -6,7 +6,7 @@ import { createTerminalTimeline } from './terminal-timeline.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
 import { skillDisplayName } from '../../tasks/model/runtime-events.js';
 import { skillTrigger } from './tool-presentation.js';
-import { mergeChatImageRefs, normalizeChatImageRefs } from '../../conversations/model/workspace-state.js';
+import { mergeChatImageRefs, normalizeChatImageRefs } from '../../../core/task-record.js';;
 import {
   RUN_STATE_APPROVAL,
   RUN_STATE_WAITING_INPUT,

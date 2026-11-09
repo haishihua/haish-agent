@@ -14,6 +14,7 @@ const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
 const runStatus = await import('../../../src/core/run-status.js');
 const events = await import('../../../src/features/tasks/model/runtime-events.js');
 const workspace = await import('../../../src/features/conversations/model/workspace-state.js');
+const taskRecord = await import('../../../src/core/task-record.js');
 const { conversationRuntimeHasLiveTurn } = await import('../../../src/features/conversations/model/runtime-restore-guard.js');
 const { nextEarlierTaskRuntimeIds, pendingTaskRuntimeIds } = await import('../../../src/features/tasks/model/task-runtime-paging.js');
 
@@ -41,8 +42,8 @@ function harness(records = [task('history'), task('latest', 'running')]) {
     chatFinalizedTaskIdsRef: ref(new Set()), userCancelledTaskIdsRef: ref(new Set()),
     viewModeRef: ref('chat'), toastTimerRef: ref(null), buildApiHeaders: () => ({}),
     findConversationById: workspace.findConversationById, findProjectByConversationId: workspace.findProjectByConversationId,
-    isTaskActuallyActive: workspace.isTaskActuallyActive, timestampValue: workspace.timestampValue,
-    taskUpdatedTimestamp: workspace.taskUpdatedTimestamp, mergeChatImageRefs: workspace.mergeChatImageRefs,
+    isTaskActuallyActive: workspace.isTaskActuallyActive, timestampValue: taskRecord.timestampValue,
+    taskUpdatedTimestamp: taskRecord.taskUpdatedTimestamp, mergeChatImageRefs: taskRecord.mergeChatImageRefs,
     chatImageFallbacksByTaskIdFromMessages: () => new Map(),
     loadStoredContextUsage: () => null, latestContextUsageFromTasks: () => null,
     contextUsageFromConversationDetail: () => null, estimateContextUsageFromConversationDetail: () => null,

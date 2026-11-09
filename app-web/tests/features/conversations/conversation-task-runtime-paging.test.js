@@ -19,9 +19,10 @@ const { createConversationActivationHandlers } = await import(
 const { sortTaskIdsForRestore, taskSummaryToRuntimeTask, isTerminalTaskStatus } = await import(
   '../../../src/features/tasks/model/task-runtime.js'
 );
-const { isTaskActuallyActive, mergeChatImageRefs } = await import(
+const { isTaskActuallyActive } = await import(
   '../../../src/features/conversations/model/workspace-state.js'
 );
+const { mergeChatImageRefs } = await import('../../../src/core/task-record.js');
 
 const CONVERSATION_ID = 'conversation-1';
 

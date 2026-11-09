@@ -1,5 +1,5 @@
 import React from 'react';
-import { waitForAttemptRunConfig } from '../model/attempt-run-config.js';
+import { waitForAttemptRunConfig } from '../../../shared/lib/attempt-run-config.js';
 
 export function useConversationRunConfig({ sync, conversationId, scopeId, config, restore, loading, saveBlockedReason = '', validateConfig, readOnly, initialAgentId, hasSentMessage, onAgentSaved, onToast }) {
   const [ready, setReady] = React.useState('');

@@ -12,6 +12,7 @@ const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
 const runStatus = await import('../../../src/core/run-status.js');
 const events = await import('../../../src/features/tasks/model/runtime-events.js');
 const workspace = await import('../../../src/features/conversations/model/workspace-state.js');
+const taskRecord = await import('../../../src/core/task-record.js');
 const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
 
 function deferred() {
@@ -43,8 +44,8 @@ function makeHarness({ fetchDetail = async () => Response.json(detail()),
     setConversationStopState: (update) => { stopState = update(stopState); stopProjections += 1; },
     setBusy: noop, setShellSeeded: noop, setTaskRuntimeState: (state) => projections.push(state),
     setWorkspaceState: noop, normalizeWorkspaceOrdering: (state) => state, notifyTaskComplete: noop,
-    isTaskActuallyActive: workspace.isTaskActuallyActive, taskUpdatedTimestamp: workspace.taskUpdatedTimestamp,
-    timestampValue: workspace.timestampValue, normalizeChatImageRefs: (images) => images,
+    isTaskActuallyActive: workspace.isTaskActuallyActive, taskUpdatedTimestamp: taskRecord.taskUpdatedTimestamp,
+    timestampValue: taskRecord.timestampValue, normalizeChatImageRefs: (images) => images,
     normalizeRuntimeEvent: (event) => event, toDisplayText: String,
     stripChatImageAugmentation: (text) => ({ text: text || '' }), getChatProgressLine: () => '',
     appendAnswerDelta: (text, delta) => text + delta, eventDeltaText: (event) => event.delta || '',

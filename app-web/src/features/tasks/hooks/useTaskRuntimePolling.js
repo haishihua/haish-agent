@@ -1,10 +1,6 @@
 import React from 'react';
-import {
-  findConversationById,
-  isTaskActuallyActive,
-  taskUpdatedTimestamp,
-  workspaceStateWithConversationRuntimeTask,
-} from '../../conversations/model/workspace-state.js';
+import { findConversationById, isTaskActuallyActive, workspaceStateWithConversationRuntimeTask } from '../../conversations/model/workspace-state.js';
+import { taskUpdatedTimestamp } from '../../../core/task-record.js';;
 import { isPendingTaskId, taskSummaryToRuntimeTask } from '../model/task-runtime.js';
 import { terminalTaskNoticeStatus } from '../model/task-completion-notices.js';
 import { latestContextUsageFromTasks } from '../../chat/model/context-usage.js';

@@ -13,10 +13,11 @@ const {
 const { createConversationActivationHandlers } = await import(
   '../../../src/features/conversations/hooks/createConversationActivationHandlers.js'
 );
+const { mergeChatImageRefs } = await import('../../../src/core/task-record.js');
 const { sortTaskIdsForRestore, taskSummaryToRuntimeTask, isTerminalTaskStatus } = await import(
   '../../../src/features/tasks/model/task-runtime.js'
 );
-const { findConversationById, isTaskActuallyActive, mergeChatImageRefs } = await import(
+const { findConversationById, isTaskActuallyActive } = await import(
   '../../../src/features/conversations/model/workspace-state.js'
 );
 

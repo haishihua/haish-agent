@@ -25,23 +25,8 @@ import { createConversationHandlers } from '../../conversations/hooks/createConv
 import { createConversationRuntime } from '../../conversations/hooks/createConversationRuntime.js';
 import { createDraftConversationHandlers } from '../../conversations/hooks/createDraftConversationHandlers.js';
 import { createWorkflowTaskSelectionHandler } from '../../conversations/hooks/createWorkflowTaskSelectionHandler.js';
-import {
-  chatImageFallbacksByTaskIdFromMessages,
-  createDefaultProject,
-  findConversationById,
-  findProjectByConversationId,
-  generateHexId,
-  isDefaultConversationName,
-  isTaskActuallyActive,
-  mergeChatImageRefs,
-  normalizeChatImageRefs,
-  normalizeWorkspaceOrdering,
-  setStoredConversationId,
-  taskUpdatedTimestamp,
-  timestampValue,
-  titleFromTaskText,
-  workspaceStateWithTouchedConversation,
-} from '../../conversations/model/workspace-state.js';
+import { chatImageFallbacksByTaskIdFromMessages, createDefaultProject, findConversationById, findProjectByConversationId, isDefaultConversationName, isTaskActuallyActive, normalizeWorkspaceOrdering, setStoredConversationId, titleFromTaskText, workspaceStateWithTouchedConversation } from '../../conversations/model/workspace-state.js';
+import { generateHexId, mergeChatImageRefs, normalizeChatImageRefs, taskUpdatedTimestamp, timestampValue } from '../../../core/task-record.js';;
 import { createSettingsHandlers } from '../../settings/hooks/createSettingsHandlers.js';
 import {
   applyMemorySettingsPayloadToRecords,

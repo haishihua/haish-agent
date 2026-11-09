@@ -9,11 +9,12 @@ const { createConversationHandlers } = await import('../../../src/features/conve
 const { createTaskStreamHandlers } = await import('../../../src/features/tasks/hooks/createTaskStreamHandlers.js');
 const { createDeployHandlers } = await import('../../../src/features/tasks/hooks/createDeployHandlers.js');
 const { evictInactiveRuntimes } = await import('../../../src/features/conversations/model/runtime-cache.js');
-const { waitForAttemptRunConfig } = await import('../../../src/features/conversations/model/attempt-run-config.js');
+const { waitForAttemptRunConfig } = await import('../../../src/shared/lib/attempt-run-config.js');
 const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
 const runStatus = await import('../../../src/core/run-status.js');
 const events = await import('../../../src/features/tasks/model/runtime-events.js');
 const workspace = await import('../../../src/features/conversations/model/workspace-state.js');
+const taskRecord = await import('../../../src/core/task-record.js');
 
 function deferred() {
   let resolve, reject;
@@ -38,8 +39,8 @@ function harness({ transport, configSync, configTimeoutMs } = {}) {
     setBusy: noop, setShellSeeded: noop, setWorkspaceState: noop, setTaskRuntimeState: state => projections.push(state),
     setConversationRetryPending: value => { retryPending = value; },
     normalizeWorkspaceOrdering: state => state, notifyTaskComplete: noop,
-    isTaskActuallyActive: workspace.isTaskActuallyActive, taskUpdatedTimestamp: workspace.taskUpdatedTimestamp,
-    timestampValue: workspace.timestampValue, normalizeChatImageRefs: images => images,
+    isTaskActuallyActive: workspace.isTaskActuallyActive, taskUpdatedTimestamp: taskRecord.taskUpdatedTimestamp,
+    timestampValue: taskRecord.timestampValue, normalizeChatImageRefs: images => images,
     normalizeRuntimeEvent: event => event, toDisplayText: String,
     stripChatImageAugmentation: text => ({ text: text || '' }), getChatProgressLine: () => '',
     generateHexId: () => 'pending-attempt', removeConversationTaskFromWorkspace: noop,

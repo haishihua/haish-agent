@@ -65,13 +65,8 @@ import {
 import {
   createEmptyContextUsage,
 } from '../chat/model/context-usage.js';
-import {
-  saveWorkspaceState,
-  findConversationById,
-  createEmptyWorkspaceState,
-  taskUpdatedTimestamp,
-  isTaskActuallyActive,
-} from '../conversations/model/workspace-state.js';
+import { saveWorkspaceState, findConversationById, createEmptyWorkspaceState, isTaskActuallyActive } from '../conversations/model/workspace-state.js';
+import { taskUpdatedTimestamp } from '../../core/task-record.js';;
 import {
   isRunStateLive,
   settledTaskIds,
