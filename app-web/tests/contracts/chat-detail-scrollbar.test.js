@@ -32,9 +32,8 @@ test('the list reserves the same strip for the turn rail whether or not the conv
   assert.ok(chatListRule, 'the chat pane list needs its own padding rule');
   assert.match(chatListRule[0], /scrollbar-width: none;/);
   const workspace = cssBlock(chatCss, '.chat-workspace {');
-  assert.match(workspace, /--chat-scrollbar-width: 24px;/);
-  const strip = Number(workspace.match(/--chat-scrollbar-width:\s*(\d+)px/)?.[1]);
-  assert.equal(strip, 24, '24px hit target, 12px default tick');
+  // 24px 命中区、默认 12px 细刻度：同一个声明只断言一次。
+  assert.match(workspace, /--chat-scrollbar-width: 24px;/, '24px hit target, 12px default tick');
   assert.match(
     chatListRule[0],
     /padding: 24px var\(--chat-scrollbar-width, 24px\) 24px var\(--chat-gutter, 10px\);/,

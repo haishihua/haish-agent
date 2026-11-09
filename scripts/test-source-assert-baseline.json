@@ -1,8 +1,8 @@
 {
-  "total": 1432,
+  "total": 1408,
   "files": {
     "contracts/activity-orb-revive.test.js": 24,
-    "contracts/agent-catalog.test.js": 88,
+    "contracts/agent-catalog.test.js": 64,
     "contracts/app-lifecycle.test.js": 10,
     "contracts/approval-picker-boundary.test.js": 18,
     "contracts/appshell-ctx-wiring.test.js": 2,

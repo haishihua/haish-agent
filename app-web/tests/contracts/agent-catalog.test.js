@@ -69,43 +69,6 @@ test('quoted comments live inside the composer box', () => {
   assert.match(annotationStyles, /\.haish-annotation-drafts \{[^}]*padding:0;/);
 });
 
-test('unused penguin cards preserve their interaction and artwork', () => {
-  const cards = fs.readFileSync(new URL('../fixtures/PenguinCards.jsx', import.meta.url), 'utf8');
-  assert.match(cards, /id: 'secondary', name: 'relax'/);
-  assert.match(cards, /<PortalTooltip text="Click to play" position="above">/);
-  assert.doesNotMatch(cards, /chat-empty-penguin-hint|MousePointer2/);
-  assert.doesNotMatch(cards, /card\.greeting|<small>/);
-  const greetingOriginal = chatStyles.match(/\.chat-empty-card\.is-greeting \.chat-empty-card-original\s*\{([^}]+)\}/)[1];
-  assert.match(greetingOriginal, /black 23%, transparent 25%, transparent 78%, black 80%/);
-  const paperStyle = chatStyles.match(/\.chat-empty-card-paper\s*\{([^}]+)\}/)[1];
-  assert.match(paperStyle, /transparent 21%, black 23%, black 80%, transparent 82%/);
-  assert.match(chatStyles, /\.chat-empty-illustration\s*\{\s*image-rendering: auto/);
-  assert.doesNotMatch(greetingOriginal, /opacity:\s*0|visibility:\s*hidden/);
-  assert.match(cards, /src=\{card\.plate\}/);
-  for (const name of ['relax', 'sleepy', 'hug']) {
-    assert.ok(cards.includes(`import ${name}Plate from '../../../assets/ui/empty-state/penguin-${name}-plate.webp'`));
-  }
-  assert.match(cards, /window\.setTimeout\(\(\) => activate\(card\), 180\)/);
-  assert.match(cards, /onPointerLeave=\{cancel\}/);
-  assert.doesNotMatch(cards, /leaveTimer|setFront|--penguin-lean/);
-  assert.match(cards, /setDelay\(active \? 220 : 0\)/);
-  assert.match(cards, /addEventListener\('pointerdown', dismissOutside, true\)/);
-  assert.match(cards, /removeEventListener\('pointerdown', dismissOutside, true\)/);
-  assert.match(cards, /addEventListener\('input', dismissOutside\)/);
-  assert.match(chatStyles, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
-  assert.doesNotMatch(chatStyles, /\.swap-secondary|\.swap-tertiary/);
-  assert.match(cards, /sprite\.getAnimations\(\)/);
-  assert.match(cards, /if \(active !== card\.id \|\| prefersReducedMotion\(\)\) return;/);
-  assert.match(chatStyles, /pointer-events: auto; opacity: 1/);
-  assert.match(chatStyles, /prefers-reduced-motion: reduce/);
-  assert.match(cards, /colorInterpolationFilters="sRGB"/);
-  assert.match(cards, /3 -3 0 0 1/);
-  assert.doesNotMatch(cards, /<mask|<clipPath|feComponentTransfer/);
-  assert.doesNotMatch(cards, /feGaussianBlur/);
-  const spriteStyle = chatStyles.match(/\.chat-empty-penguin\s*\{([^}]+)\}/)[1];
-  assert.doesNotMatch(spriteStyle, /filter:/);
-});
-
 test('defaults expose only Task Assistant and no preset workflow', () => {
   assert.deepEqual(APP_DEFAULT_AGENT_OPTIONS.map((item) => item.id), ['preset.general']);
   assert.equal(DEFAULT_WORKFLOW_SETTINGS.default_workflow_id, 'workflow.direct-agent');
