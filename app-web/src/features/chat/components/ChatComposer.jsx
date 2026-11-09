@@ -8,7 +8,7 @@ import {
   extractAgentSkillInvocation,
   matchingAgentSkills,
   withSelectedSkillInstruction,
-} from '../../agents/model/agent-settings.js';
+} from '../../../core/agent-settings.js';
 import { formatContextUsageLabel } from '../../../shared/lib/message-format.js';
 import { BoundedCache } from '../../../shared/lib/bounded-cache.js';
 import { contextSectorPath } from '../../../shared/lib/context-usage-ring.js';

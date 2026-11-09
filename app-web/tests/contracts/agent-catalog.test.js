@@ -13,7 +13,7 @@ import {
   matchingAgentSkills,
   toolsForAgentGroups,
   withSelectedSkillInstruction,
-} from '../../src/features/agents/model/agent-settings.js';
+} from '../../src/core/agent-settings.js';
 import {
   DEFAULT_WORKFLOW_NODE_TYPES,
   DEFAULT_WORKFLOW_SETTINGS,

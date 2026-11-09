@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { nodeConfigHasRouteOverride, nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest, workflowNodeRuntimeConfig } from '../../../src/features/workflow/model/node-runtime-config.js';
 import { createTaskStreamHandlers, workflowNodeFinishedState, workflowNodeConfiguredState } from '../../../src/features/tasks/hooks/createTaskStreamHandlers.js';
 globalThis.window = { HAISH_API_BASE: 'http://fixture.invalid', location: { origin: 'http://fixture.invalid' } };
-const { taskSummaryToRuntimeTask } = await import('../../../src/features/tasks/model/task-runtime.js');
+const { taskSummaryToRuntimeTask } = await import('../../../src/core/task-runtime.js');
 import { createDeployHandlers } from '../../../src/features/tasks/hooks/createDeployHandlers.js';
 
 const { nodeReasoningOptions } = await import('../../../src/features/workflow/model/node-reasoning-options.js');

@@ -6,7 +6,7 @@ import { ChatMessageRow, ImagePreviewOverlay } from '../../src/features/chat/com
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import { chatImagePreviewUrl } from '../../src/shared/api/chat-image.js';
 import { buildChatTimeline } from '../../src/features/chat/model/chat-timeline.js';
-import { taskDetailToRuntimeTask } from '../../src/features/tasks/model/task-runtime.js';
+import { taskDetailToRuntimeTask } from '../../src/core/task-runtime.js';
 
 // 离线回归启动：npx vite app-web --config app-web/tests/fixtures/answer-image-lifecycle.config.mjs
 // 打开 /tests/fixtures/answer-image-lifecycle.html，先“生成完成”，再“显示最终回答”。

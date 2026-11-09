@@ -1,5 +1,5 @@
 import { saveLastLocation } from '../model/last-location.js';
-import { clearTaskCompletionNotice } from '../../tasks/model/task-completion-notices.js';
+import { clearTaskCompletionNotice } from '../../../core/task-completion-notices.js';
 import { conversationRuntimeHasLiveTurn } from '../model/runtime-restore-guard.js';
 
 export function createWorkflowTaskSelectionHandler(ctx) {

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import {
   loadTaskCompletionNotices,
   saveTaskCompletionNotices,
-} from '../../tasks/model/task-completion-notices.js';
+} from '../../../core/task-completion-notices.js';
 import { buildOwnerScopedStorageKey } from '../../../shared/api/client.js';
 
 const TASK_COMPLETION_NOTICES_STORAGE_KEY = 'haish.task-completion-notices.v1';

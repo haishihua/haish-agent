@@ -6,7 +6,7 @@ import {
   settingsSectionMeta,
 } from '../model/settings-navigation.js';
 import { isSkillPage, skillGroups } from '../model/skill-inventory.js';
-import { normalizeAgentSettings } from '../../agents/model/agent-settings.js';
+import { normalizeAgentSettings } from '../../../core/agent-settings.js';
 import {
   normalizeWorkflowSettings,
   workflowById,

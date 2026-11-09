@@ -1,8 +1,8 @@
 // Offline transport around the real attempt and runtime-projection handlers.
 import { createTaskStreamHandlers } from '../../src/features/tasks/hooks/createTaskStreamHandlers.js';
 import { createConversationActivationHandlers } from '../../src/features/conversations/hooks/createConversationActivationHandlers.js';
-import { applyTerminalTaskState, buildTaskRuntimeRecord } from '../../src/features/tasks/model/task-runtime.js';
-import { CHAT_FINAL_FOLLOWUP_EVENT_TYPES, STREAM_EVENT_BATCH_MS, STREAM_IMMEDIATE_EVENT_TYPES } from '../../src/features/tasks/model/runtime-events.js';
+import { applyTerminalTaskState, buildTaskRuntimeRecord } from '../../src/core/task-runtime.js';
+import { CHAT_FINAL_FOLLOWUP_EVENT_TYPES, STREAM_EVENT_BATCH_MS, STREAM_IMMEDIATE_EVENT_TYPES } from '../../src/core/runtime-events.js';
 
 export function createAttemptHarness(source, { reject = false, hold = false, transport = null, recover = null, attemptConfigTimeoutMs } = {}) {
   // reject=true：每次都 409（模拟“上一轮永远没收尾”）；reject=N：前 N 次 409。

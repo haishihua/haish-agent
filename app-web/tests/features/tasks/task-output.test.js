@@ -9,7 +9,7 @@ globalThis.window = {
 };
 
 const { taskFinalOutputText, taskRunOutputText } = await import(
-  '../../../src/features/tasks/model/runtime-events.js'
+  '../../../src/core/runtime-events.js'
 );
 
 const WORKER_REPORT = '扫描完成。以下是只读分析结果。\n\n## 结论（BLUF）\n\n三天 trace 里确实存在两处层间提示词冲突。';

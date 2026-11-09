@@ -4,7 +4,7 @@ import { setImmediate } from 'node:timers/promises';
 import { createDeployHandlers } from '../../../src/features/tasks/hooks/createDeployHandlers.js';
 
 globalThis.window = {};
-const { createPendingTaskDraft } = await import('../../../src/features/tasks/model/task-runtime.js');
+const { createPendingTaskDraft } = await import('../../../src/core/task-runtime.js');
 
 test('image upload failure is model-visible but does not trigger frontend recovery', async () => {
   const conversationId = 'existing-conversation';

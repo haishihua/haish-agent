@@ -9,7 +9,7 @@ import { SchedulesContext } from '../../src/features/schedules/hooks/useSchedule
 import { createRunConfigSync } from '../../src/features/conversations/model/run-config-sync.js';
 import { createConversationHandlers } from '../../src/features/conversations/hooks/createConversationHandlers.js';
 import { createConversationActivationHandlers } from '../../src/features/conversations/hooks/createConversationActivationHandlers.js';
-import { sortTaskIdsForRestore, taskSummaryToRuntimeTask, taskDetailToRuntimeTask } from '../../src/features/tasks/model/task-runtime.js';
+import { sortTaskIdsForRestore, taskSummaryToRuntimeTask, taskDetailToRuntimeTask } from '../../src/core/task-runtime.js';
 import { buildChatRows, latestChatTaskId } from '../../src/features/app/model/chat-rows.js';
 import { createAttemptHarness } from './task-attempt-runtime.js';
 import '../../styles.css';

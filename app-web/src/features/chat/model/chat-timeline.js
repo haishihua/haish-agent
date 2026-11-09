@@ -1,11 +1,11 @@
 import { eventDeltaText, stripInjectedSkillInstruction } from '../../../core/message-text.js';
 import { cachedStreamEventBase, recordStreamEventUpdate, streamEventUpdate } from '../../../core/stream-events.js';
-import { normalizeToolName } from './tool-names.js';
-import { getToolResponseTraceStatus, getToolTraceStatus } from './tool-trace-status.js';
-import { createTerminalTimeline } from './terminal-timeline.js';
+import { normalizeToolName } from '../../../core/tool-names.js';
+import { getToolResponseTraceStatus, getToolTraceStatus } from '../../../core/tool-trace-status.js';
+import { createTerminalTimeline } from '../../../core/terminal-timeline.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
-import { skillDisplayName } from '../../tasks/model/runtime-events.js';
-import { skillTrigger } from './tool-presentation.js';
+import { skillDisplayName } from '../../../core/runtime-events.js';
+import { skillTrigger } from '../../../core/tool-presentation.js';
 import { mergeChatImageRefs, normalizeChatImageRefs } from '../../../core/task-record.js';
 import { RUN_STATE_APPROVAL, RUN_STATE_WAITING_INPUT } from '../../../core/run-status.js';
 

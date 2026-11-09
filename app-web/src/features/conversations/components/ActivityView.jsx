@@ -10,7 +10,7 @@ import { resolveConversationStatusMark } from '../model/conversation-run-state.j
 import { RUN_STATE_APPROVAL, RUN_STATE_RUNNING, RUN_STATE_WAITING_INPUT } from '../../../core/run-status.js';
 import { isTaskLive } from '../../../core/run-status.js';
 import { ACTIVITY_PAGE_SIZE, activityEntries, filterActivityEntries } from '../model/activity.js';
-import { terminalTaskNoticeStatus } from '../../tasks/model/task-completion-notices.js';
+import { terminalTaskNoticeStatus } from '../../../core/task-completion-notices.js';
 
 function ActivityStatus({ entry, mode, terminalStatus }) {
   const runState = useConversationRunState({ conversationId: entry.conversation.id, tasks: entry.conversation.tasks });

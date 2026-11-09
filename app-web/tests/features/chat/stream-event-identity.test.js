@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { createRuntimeEventIngest } from '../../../src/core/event-identity.js';
 import { appendStreamEvent, compactStreamEvents, mergeAdjacentStreamEvent } from '../../../src/core/stream-events.js';
-import { normalizeRuntimeEvents, runtimeEventToLog } from '../../../src/features/tasks/model/runtime-events.js';
+import { normalizeRuntimeEvents, runtimeEventToLog } from '../../../src/core/runtime-events.js';
 
 const types = ['llm_answer_delta', 'llm_thinking_delta', 'tool_output_delta', 'sub_agent_answer_delta'];
 const delta = (type, eventId, text, callId = 'call') => ({

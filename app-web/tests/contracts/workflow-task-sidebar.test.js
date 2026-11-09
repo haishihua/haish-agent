@@ -21,9 +21,9 @@ const {
   taskOrderTimestamp,
   withDefaultExpansion,
 } = await import('../../src/features/conversations/model/workspace-state.js');
-const { taskSummaryToRuntimeTask } = await import('../../src/features/tasks/model/task-runtime.js');
+const { taskSummaryToRuntimeTask } = await import('../../src/core/task-runtime.js');
 const { isTerminalTaskStatus, normalizeTaskStatus } = await import('../../src/core/run-status.js');
-const { getTaskPillMeta } = await import('../../src/features/tasks/model/task-pill.js');
+const { getTaskPillMeta } = await import('../../src/core/task-pill.js');
 const projectNodeSource = fs.readFileSync(new URL('../../src/features/conversations/components/ProjectNode.jsx', import.meta.url), 'utf8');
 const taskCardsSource = fs.readFileSync(new URL('../../src/features/conversations/components/ConversationTaskCards.jsx', import.meta.url), 'utf8');
 const appShellSource = [

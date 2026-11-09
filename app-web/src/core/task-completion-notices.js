@@ -1,5 +1,5 @@
 
-import { terminalNoticeStatus } from '../../../core/run-status.js';
+import { terminalNoticeStatus } from './run-status.js';
 
 export function terminalTaskNoticeStatus(taskOrStatus) {
   if (typeof taskOrStatus === 'string') return terminalNoticeStatus(taskOrStatus);

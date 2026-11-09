@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 globalThis.window = {};
-const { isPendingTaskId, buildTaskRuntimeRecord } = await import('../../../src/features/tasks/model/task-runtime.js');
+const { isPendingTaskId, buildTaskRuntimeRecord } = await import('../../../src/core/task-runtime.js');
 const shell = fs.readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
 const removeSource = shell.slice(shell.indexOf('  function removeMissingTask('), shell.indexOf('  const panelWorkspaceState'));
 

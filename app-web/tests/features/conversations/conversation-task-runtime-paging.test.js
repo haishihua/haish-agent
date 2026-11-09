@@ -8,16 +8,16 @@ const { createDraftConversationHandlers } = await import(
   '../../../src/features/conversations/hooks/createDraftConversationHandlers.js'
 );
 const { nextEarlierTaskRuntimeIds } = await import(
-  '../../../src/features/tasks/model/task-runtime-paging.js'
+  '../../../src/core/task-runtime-paging.js'
 );
 const { taskDetailToRuntimeTask } = await import(
-  '../../../src/features/tasks/model/task-runtime.js'
+  '../../../src/core/task-runtime.js'
 );
 const { createConversationActivationHandlers } = await import(
   '../../../src/features/conversations/hooks/createConversationActivationHandlers.js'
 );
 const { sortTaskIdsForRestore, taskSummaryToRuntimeTask, isTerminalTaskStatus } = await import(
-  '../../../src/features/tasks/model/task-runtime.js'
+  '../../../src/core/task-runtime.js'
 );
 const { isTaskActuallyActive } = await import(
   '../../../src/features/conversations/model/workspace-state.js'

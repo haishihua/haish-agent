@@ -4,7 +4,7 @@ import { changedFilesForTask } from '../../chat/model/changed-files.js';
 import { stripInjectedSkillInstruction } from '../../../core/message-text.js';
 import { buildChatTimeline } from '../../chat/model/chat-timeline.js';
 import { isTaskLive } from '../../../core/run-status.js';
-import { taskHasAssistantStreamContent, taskFirstStreamTimestamp } from '../../tasks/model/task-runtime.js';
+import { taskHasAssistantStreamContent, taskFirstStreamTimestamp } from '../../../core/task-runtime.js';
 import { normalizeTaskStatus } from '../../../core/run-status.js';
 
 // A failed draft that was never accepted is the current local turn, not a

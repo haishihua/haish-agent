@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ChatMessageRow, ImagePreviewOverlay } from '../../src/features/chat/components/ChatMessageRow.jsx';
-import { taskDetailToRuntimeTask } from '../../src/features/tasks/model/task-runtime.js';
+import { taskDetailToRuntimeTask } from '../../src/core/task-runtime.js';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import '../../styles.css';
 

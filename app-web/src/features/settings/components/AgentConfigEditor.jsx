@@ -9,7 +9,7 @@ import {
   effectiveAgentTools,
   groupPresetTools,
   toggleAgentToolGroup,
-} from '../../agents/model/agent-settings.js';
+} from '../../../core/agent-settings.js';
 import { FieldRow, SettingsMenuSelect, SettingsToggleRow } from './SettingsPrimitives.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { API_BASE } from '../../../shared/api/base.js';

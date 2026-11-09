@@ -1,5 +1,5 @@
 // 搜索 / 浏览器类工具：web_search、web_fetch、browser_use。
-import { browserPresentation, fetchPresentation, searchPresentation } from '../tool-presentation.js';
+import { browserPresentation, fetchPresentation, searchPresentation } from '../../../../core/tool-presentation.js';
 import {
   isToolFailure,
   outputJsonText,

@@ -4,7 +4,7 @@ import { buildSubAgentTimelineItems, buildToolView } from '../../../src/features
 
 globalThis.window = {};
 const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
-const { runtimeEventToLog } = await import('../../../src/features/tasks/model/runtime-events.js');
+const { runtimeEventToLog } = await import('../../../src/core/runtime-events.js');
 
 const start = (callId, toolName, toolInput) => ({
   type: 'sub_agent_tool_call_started', callId, toolName, toolInput,

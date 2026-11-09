@@ -11,7 +11,7 @@ import { ChatComposer } from '../chat/components/ChatComposer.jsx';
 import { petActivityFromWorkflow } from '../chat/model/pet-state.js';
 import { WorkflowRuntimeEntry as WorkflowRuntimePage } from '../workflow/components/WorkflowRuntimeEntry.jsx';
 import { nodeRuntimeConfigRequest } from '../workflow/model/node-runtime-config.js';
-import { conversationNoticesFromTasks, taskNoticesByTaskId } from '../tasks/model/task-completion-notices.js';
+import { conversationNoticesFromTasks, taskNoticesByTaskId } from '../../core/task-completion-notices.js';
 import { TopBar } from './components/TopBar.jsx';
 import { BottomNav, TabPlaceholder } from './components/Shell.jsx';
 import { AppToastStack } from './components/AppToast.jsx';

@@ -11,7 +11,7 @@ import {
   workflowTraversedLoopNodeIds,
 } from '../../src/features/workflow/model/runtime-workflow-layout.js';
 import { appShellSource as readAppShellSource } from '../helpers/shell-source.js';
-import { runtimeEventToLog } from '../../src/features/tasks/model/runtime-events.js';
+import { runtimeEventToLog } from '../../src/core/runtime-events.js';
 import { taskStreamHandlerSource } from '../helpers/handler-source.js';
 
 const runtimePartSource = (path) => fs.readFileSync(

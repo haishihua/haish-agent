@@ -7,7 +7,7 @@ globalThis.window = {};
 const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
 
 const agentSettingsSource = fs.readFileSync(
-  new URL('../../../src/features/agents/model/agent-settings.js', import.meta.url),
+  new URL('../../../src/core/agent-settings.js', import.meta.url),
   'utf8',
 );
 const chatTimelineSource = fs.readFileSync(

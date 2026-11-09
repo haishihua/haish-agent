@@ -23,7 +23,7 @@ import {
   agentCatalogFromSettings,
   agentIconNameForAgentId,
   workflowToolOptionsFromAgentSettings,
-} from '../../agents/model/agent-settings.js';
+} from '../../../core/agent-settings.js';
 import {
   layoutRuntimeWorkflow,
   workflowArrangementPositions,

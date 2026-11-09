@@ -1,4 +1,4 @@
-import { taskFinalOutputText } from '../../tasks/model/runtime-events.js';
+import { taskFinalOutputText } from '../../../core/runtime-events.js';
 import { createGoalCommandHandler } from './createGoalCommandHandler.js';
 import { createConversationCrudHandlers } from './conversation-handlers/crud.js';
 import { createConversationMessageHandlers } from './conversation-handlers/messages.js';

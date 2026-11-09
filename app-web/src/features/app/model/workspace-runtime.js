@@ -4,7 +4,7 @@ import {
   replaceWorkspaceModeFromProjects as replaceWorkspaceModeFromProjectDetails,
   workspaceStateWithConversationDetail as mergeConversationDetailIntoWorkspace,
 } from '../../conversations/model/workspace-state.js';
-import { taskSummaryToRuntimeTask } from '../../tasks/model/task-runtime.js';
+import { taskSummaryToRuntimeTask } from '../../../core/task-runtime.js';
 
 export const conversationDetailToWorkspaceConversation = (detail, previousConversation = null) => (
   mapConversationDetailToWorkspace(detail, previousConversation, taskSummaryToRuntimeTask)

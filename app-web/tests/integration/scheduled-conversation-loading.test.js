@@ -8,9 +8,9 @@ const { createDraftConversationHandlers } = await import('../../src/features/con
 const { createConversationHandlers } = await import('../../src/features/conversations/hooks/createConversationHandlers.js');
 const { createScheduledRuntimeHandlers } = await import('../../src/features/schedules/model/runtime-handlers.js');
 const { createTaskStreamHandlers } = await import('../../src/features/tasks/hooks/createTaskStreamHandlers.js');
-const tasks = await import('../../src/features/tasks/model/task-runtime.js');
+const tasks = await import('../../src/core/task-runtime.js');
 const runStatus = await import('../../src/core/run-status.js');
-const events = await import('../../src/features/tasks/model/runtime-events.js');
+const events = await import('../../src/core/runtime-events.js');
 const workspace = await import('../../src/features/conversations/model/workspace-state.js');
 const taskRecord = await import('../../src/core/task-record.js');
 

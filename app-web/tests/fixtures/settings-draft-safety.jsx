@@ -4,7 +4,7 @@ import { AgentConfigEditor } from '../../src/features/settings/components/AgentC
 import { useLiveToolsSettings } from '../../src/features/settings/hooks/useLiveToolsSettings.js';
 import { applyToolsSettingsPayloadToRecords } from '../../src/features/settings/model/settings-payload.js';
 import { createDefaultSettingsRecords } from '../../src/features/settings/model/settings-records.js';
-import { normalizeAgentSettings, agentCatalogFromSettings, withAlwaysAllowedAgentTools } from '../../src/features/agents/model/agent-settings.js';
+import { normalizeAgentSettings, agentCatalogFromSettings, withAlwaysAllowedAgentTools } from '../../src/core/agent-settings.js';
 import { createSettingsHandlers } from '../../src/features/settings/hooks/createSettingsHandlers.js';
 import { createSkillInventoryCache } from '../../src/features/settings/model/skill-inventory.js';
 import '../../styles.css';

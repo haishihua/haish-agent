@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 test('cancelling a task also terminates its active workflow node', async () => {
   globalThis.window = { HAISH_API_BASE: '' };
-  const { applyTerminalTaskState } = await import('../../../src/features/tasks/model/task-runtime.js');
+  const { applyTerminalTaskState } = await import('../../../src/core/task-runtime.js');
   const task = {
     status: 'running',
     workflowRun: {
@@ -23,7 +23,7 @@ test('cancelling a task also terminates its active workflow node', async () => {
 
 test('cancelling a task preserves an active node that already finished successfully', async () => {
   globalThis.window = { HAISH_API_BASE: '' };
-  const { applyTerminalTaskState } = await import('../../../src/features/tasks/model/task-runtime.js');
+  const { applyTerminalTaskState } = await import('../../../src/core/task-runtime.js');
   const task = {
     status: 'running',
     workflowRun: {
@@ -43,7 +43,7 @@ test('cancelling a task preserves an active node that already finished successfu
 });
 
 test('an empty terminal snapshot cannot erase the visible workflow', async () => {
-  const { usableWorkflowSnapshot } = await import('../../../src/features/workflow/model/workflow-snapshot.js');
+  const { usableWorkflowSnapshot } = await import('../../../src/core/workflow-snapshot.js');
   const current = { id: 'development-loop', nodes: [{ id: 'start' }], edges: [] };
 
   assert.equal(usableWorkflowSnapshot({}, current), current);

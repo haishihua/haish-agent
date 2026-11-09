@@ -10,7 +10,7 @@ import { ActivityView } from './ActivityView.jsx';
 import { useActivityProjects } from '../hooks/useActivityProjects.js';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch } from '../../../shared/api/client.js';
-import { taskDetailToRuntimeTask } from '../../tasks/model/task-runtime.js';
+import { taskDetailToRuntimeTask } from '../../../core/task-runtime.js';
 
 // Chevron direction follows the action; the curved border is shared by both states.
 const EDGE_CHEVRON_COLLAPSE = 'M7.15 2.5 3.65 6l3.5 3.5';

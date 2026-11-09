@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 globalThis.window = {};
 const { createConversationHandlers } = await import('../../../src/features/conversations/hooks/createConversationHandlers.js');
 const { createConversationActivationHandlers } = await import('../../../src/features/conversations/hooks/createConversationActivationHandlers.js');
-const { sortTaskIdsForRestore, taskSummaryToRuntimeTask, taskDetailToRuntimeTask } = await import('../../../src/features/tasks/model/task-runtime.js');
+const { sortTaskIdsForRestore, taskSummaryToRuntimeTask, taskDetailToRuntimeTask } = await import('../../../src/core/task-runtime.js');
 const { collapseFullTaskAttempts } = await import('../../../src/features/chat/model/task-attempts.js');
 const { createAttemptHarness } = await import('../../fixtures/task-attempt-runtime.js');
 const tick = () => new Promise(resolve => setImmediate(resolve));

@@ -12,7 +12,7 @@ import { settingsSectionMeta } from './settings-navigation.js';
 import { getLlmProvider, normalizeLlmProviderId, providerAuthBadge } from '../../../core/provider-catalog.js';
 import { modelChoicesFor, uniqueModelChoices, configuredModelOptions, customModelIds, runtimeProviderLabel } from './llm-settings.js';
 import { DEFAULT_REASONING_EFFORT } from '../../../core/run-catalog.js';
-import { agentListItems } from '../../agents/model/agent-settings.js';
+import { agentListItems } from '../../../core/agent-settings.js';
 import {
   workflowListItems,
 } from '../../workflow/model/workflow-catalog.js';

@@ -11,7 +11,7 @@ import {
   saveTaskCompletionNotices,
   taskNoticesByTaskId,
   terminalTaskNoticeStatus,
-} from '../../../src/features/tasks/model/task-completion-notices.js';
+} from '../../../src/core/task-completion-notices.js';
 
 test('distinct completed tasks increment the unread count without duplicating receipts', () => {
   let notices = {};

@@ -5,7 +5,7 @@ import { createRuntimeEventIngest } from '../../../src/core/event-identity.js';
 import { compactStreamEvents, mergeAdjacentStreamEvent } from '../../../src/core/stream-events.js';
 import { eventDeltaText } from '../../../src/core/message-text.js';
 import { buildToolView } from '../../../src/features/chat/model/tool-view.js';
-import * as runtimeEvents from '../../../src/features/tasks/model/runtime-events.js';
+import * as runtimeEvents from '../../../src/core/runtime-events.js';
 
 globalThis.window = {};
 const { createConversationRuntime } = await import('../../../src/features/conversations/hooks/createConversationRuntime.js');
@@ -13,7 +13,7 @@ const { createConversationActivationHandlers } = await import('../../../src/feat
 const { createDraftConversationHandlers } = await import('../../../src/features/conversations/hooks/createDraftConversationHandlers.js');
 const { createTaskStreamHandlers } = await import('../../../src/features/tasks/hooks/createTaskStreamHandlers.js');
 const { buildChatTimeline, appendAnswerDelta } = await import('../../../src/features/chat/model/chat-timeline.js');
-const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
+const tasks = await import('../../../src/core/task-runtime.js');
 const runStatus = await import('../../../src/core/run-status.js');
 
 const delta = (id, text, parent = 'delegate') => ({ type: 'sub_agent_answer_delta', event_id: id,

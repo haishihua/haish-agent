@@ -8,7 +8,7 @@ const { createDeployHandlers } = await import(
   '../../../src/features/tasks/hooks/createDeployHandlers.js'
 );
 const { applyTerminalTaskState } = await import(
-  '../../../src/features/tasks/model/task-runtime.js'
+  '../../../src/core/task-runtime.js'
 );
 
 function emptyRuntime() {

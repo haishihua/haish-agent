@@ -2,7 +2,7 @@ import React from 'react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch } from '../../../shared/api/client.js';
 import { startPolling } from '../../../shared/lib/polling.js';
-import { taskSummaryToRuntimeTask } from '../../tasks/model/task-runtime.js';
+import { taskSummaryToRuntimeTask } from '../../../core/task-runtime.js';
 import { buildWorkspaceStateFromProjects } from '../model/workspace-state.js';
 
 export function useActivityProjects(enabled, ownerId, mode) {

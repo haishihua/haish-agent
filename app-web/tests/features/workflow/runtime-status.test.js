@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 globalThis.window = { HAISH_API_BASE: '' };
 const { workflowRuntimeDisplayStatus, workflowRuntimeNodeStatus } = await import('../../../src/features/workflow/model/runtime-status.js');
 import { workflowNodeOutcomesFromEvents } from '../../../src/features/workflow/model/runtime-workflow-layout.js';
-const { applyTerminalTaskState } = await import('../../../src/features/tasks/model/task-runtime.js');
+const { applyTerminalTaskState } = await import('../../../src/core/task-runtime.js');
 
 const node = { id: 'active', type: 'agent' };
 const run = { status: 'running', current_node_id: 'active', nodes: { active: { status: 'running' }, completed: { status: 'done', summary: 'Keep this answer' } } };

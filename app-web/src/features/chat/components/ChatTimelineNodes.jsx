@@ -14,7 +14,7 @@ import { AskUserInlineForm } from './AskUserInlineForm.jsx';
 import { BrowserToolDetail } from './BrowserToolDetail.jsx';
 import { VisionToolDetail } from './VisionToolDetail.jsx';
 import { ImageGenerateToolDetail } from './ImageGenerateToolDetail.jsx';
-import { toolCardHeading } from '../model/tool-presentation.js';
+import { toolCardHeading } from '../../../core/tool-presentation.js';
 import { selectActiveAskUserItemId } from '../model/pending-user-input.js';
 import { CATEGORY_ICON_CLASS } from '../../../core/run-catalog.js';
 import {

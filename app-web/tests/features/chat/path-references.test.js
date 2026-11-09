@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { $createParagraphNode, $createTextNode, $getRoot, $getState, $setState, createEditor, HISTORY_PUSH_TAG, UNDO_COMMAND } from 'lexical';
 import { createEmptyHistoryState, registerHistory } from '@lexical/history';
 import { composerReferenceState } from '../../../src/features/chat/model/composer-reference-state.js';
-import { extractAgentSkillInvocation, matchingAgentSkills, withSelectedSkillInstruction } from '../../../src/features/agents/model/agent-settings.js';
+import { extractAgentSkillInvocation, matchingAgentSkills, withSelectedSkillInstruction } from '../../../src/core/agent-settings.js';
 import { composePathReferenceDraft, localPathReference, splitPathReferenceDraft, splitPathReferences, transferredLocalPaths } from '../../../src/features/chat/model/path-references.js';
 
 const PROJECT_PATH = '/Users/test/projects/haish-agent-core';

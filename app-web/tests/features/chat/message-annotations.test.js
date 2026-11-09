@@ -215,7 +215,7 @@ test('markers re-measure when a row resumes rendering and never draw outside the
 
 test('runtime projections retain annotations and genuinely empty message text', async () => {
   globalThis.window = { HAISH_API_BASE: '' };
-  const { buildTaskRuntimeRecord, taskSummaryToRuntimeTask } = await import('../../../src/features/tasks/model/task-runtime.js');
+  const { buildTaskRuntimeRecord, taskSummaryToRuntimeTask } = await import('../../../src/core/task-runtime.js');
   const live = buildTaskRuntimeRecord({ task_id: 't1', user_message_id: 'u1', annotations: [quote], display_text: '' }, null);
   assert.deepEqual(live.annotations, [quote]);
   assert.equal(live.displayText, '');

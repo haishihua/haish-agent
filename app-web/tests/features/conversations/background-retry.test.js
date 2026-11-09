@@ -10,9 +10,9 @@ const { createTaskStreamHandlers } = await import('../../../src/features/tasks/h
 const { createDeployHandlers } = await import('../../../src/features/tasks/hooks/createDeployHandlers.js');
 const { evictInactiveRuntimes } = await import('../../../src/features/conversations/model/runtime-cache.js');
 const { waitForAttemptRunConfig } = await import('../../../src/shared/lib/attempt-run-config.js');
-const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
+const tasks = await import('../../../src/core/task-runtime.js');
 const runStatus = await import('../../../src/core/run-status.js');
-const events = await import('../../../src/features/tasks/model/runtime-events.js');
+const events = await import('../../../src/core/runtime-events.js');
 const workspace = await import('../../../src/features/conversations/model/workspace-state.js');
 const taskRecord = await import('../../../src/core/task-record.js');
 

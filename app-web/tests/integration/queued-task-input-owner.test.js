@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDeployHandlers } from '../../src/features/tasks/hooks/createDeployHandlers.js';
 import { createDraftConversationHandlers } from '../../src/features/conversations/hooks/createDraftConversationHandlers.js';
-import { normalizeRuntimeEvents, runtimeEventToLog } from '../../src/features/tasks/model/runtime-events.js';
+import { normalizeRuntimeEvents, runtimeEventToLog } from '../../src/core/runtime-events.js';
 
 globalThis.window = { HAISH_API_BASE: '', haish: {} };
 const { buildChatTimeline } = await import('../../src/features/chat/model/chat-timeline.js');

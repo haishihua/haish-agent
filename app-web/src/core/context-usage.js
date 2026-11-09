@@ -1,4 +1,4 @@
-import { CONTEXT_USAGE_STORAGE_KEY } from '../../../shared/api/client.js';
+import { CONTEXT_USAGE_STORAGE_KEY } from '../shared/api/client.js';
 
 let runtimeContextTotalTokens = 0;
 

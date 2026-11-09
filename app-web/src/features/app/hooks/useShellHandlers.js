@@ -8,7 +8,7 @@ import {
   createDefaultCustomAgentPayload,
   normalizeAgentSettings,
   withAlwaysAllowedAgentTools,
-} from '../../agents/model/agent-settings.js';
+} from '../../../core/agent-settings.js';
 import { createComposerHandlers } from '../../chat/hooks/createComposerHandlers.js';
 import { eventDeltaText, stripChatImageAugmentation } from '../../../core/message-text.js';
 import { appendAnswerDelta, appendChatProgressText, getChatProgressLine } from '../../chat/model/chat-timeline.js';
@@ -18,8 +18,8 @@ import {
   latestContextUsageFromTasks,
   loadStoredContextUsage,
   normalizeContextUsage,
-} from '../../chat/model/context-usage.js';
-import { getToolResponseTraceStatus } from '../../chat/model/tool-trace-status.js';
+} from '../../../core/context-usage.js';
+import { getToolResponseTraceStatus } from '../../../core/tool-trace-status.js';
 import { createConversationActivationHandlers } from '../../conversations/hooks/createConversationActivationHandlers.js';
 import { createConversationHandlers } from '../../conversations/hooks/createConversationHandlers.js';
 import { createConversationRuntime } from '../../conversations/hooks/createConversationRuntime.js';
@@ -47,10 +47,10 @@ import {
   normalizeRuntimeEvents,
   resolveProviderMeta,
   toDisplayText,
-} from '../../tasks/model/runtime-events.js';
-import { clearTaskCompletionNotice } from '../../tasks/model/task-completion-notices.js';
-import { nextEarlierTaskRuntimeIds, pendingTaskRuntimeIds } from '../../tasks/model/task-runtime-paging.js';
-import { applyTerminalTaskState, buildTaskRuntimeRecord, createEmptyTaskRuntimeState, createPendingTaskDraft, sortTaskIdsForRestore, taskDetailToRuntimeTask, taskHasAssistantStreamContent, taskSummaryToRuntimeTask, upsertToolCall } from '../../tasks/model/task-runtime.js';
+} from '../../../core/runtime-events.js';
+import { clearTaskCompletionNotice } from '../../../core/task-completion-notices.js';
+import { nextEarlierTaskRuntimeIds, pendingTaskRuntimeIds } from '../../../core/task-runtime-paging.js';
+import { applyTerminalTaskState, buildTaskRuntimeRecord, createEmptyTaskRuntimeState, createPendingTaskDraft, sortTaskIdsForRestore, taskDetailToRuntimeTask, taskHasAssistantStreamContent, taskSummaryToRuntimeTask, upsertToolCall } from '../../../core/task-runtime.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
 import { createDefaultCustomWorkflowPayload, normalizeWorkflowSettings, payloadForCustomWorkflow, workflowById } from '../../workflow/model/workflow-catalog.js';
 import { conversationDetailToWorkspaceConversation, replaceWorkspaceModeFromProjects, workspaceStateWithConversationDetail } from '../model/workspace-runtime.js';

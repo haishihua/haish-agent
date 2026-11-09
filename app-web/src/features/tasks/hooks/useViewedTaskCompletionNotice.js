@@ -1,5 +1,5 @@
 import React from 'react';
-import { clearTaskCompletionNotice, taskCompletionNoticeKey, terminalTaskNoticeStatus } from '../model/task-completion-notices.js';
+import { clearTaskCompletionNotice, taskCompletionNoticeKey, terminalTaskNoticeStatus } from '../../../core/task-completion-notices.js';
 
 // Selecting a task is not the only acknowledgement point: a receipt can arrive
 // later, or the window can regain focus while the same task stays selected.

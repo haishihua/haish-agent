@@ -1,7 +1,7 @@
 import { normalizeWorkflowSettings } from '../../workflow/model/workflow-catalog.js';
-import { runtimeTaskToQuest } from '../../tasks/model/task-runtime.js';
+import { runtimeTaskToQuest } from '../../../core/task-runtime.js';
 import { pendingTaskToQuest } from '../../chat/model/chat-timeline.js';
-import { pendingTaskRuntimeIds } from '../../tasks/model/task-runtime-paging.js';
+import { pendingTaskRuntimeIds } from '../../../core/task-runtime-paging.js';
 
 /**
  * 工作流选择器里的选项：只留启用、可执行、不是草稿的目录项。

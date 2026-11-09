@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildToolView } from '../../../src/features/chat/model/tool-view.js';
-import { skillTrigger, toolCardHeading } from '../../../src/features/chat/model/tool-presentation.js';
+import { skillTrigger, toolCardHeading } from '../../../src/core/tool-presentation.js';
 
 globalThis.window = {};
 const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');

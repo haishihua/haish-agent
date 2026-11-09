@@ -1,4 +1,4 @@
-import { createContextUsageTracker } from '../../chat/model/context-usage.js';
+import { createContextUsageTracker } from '../../../core/context-usage.js';
 
 /**
  * 表盘（context usage）的唯一写入入口：实时流 / 任务轮询 / 恢复分页 / 会话激活 / fork 都从这里进。

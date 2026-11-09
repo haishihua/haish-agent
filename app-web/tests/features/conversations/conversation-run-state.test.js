@@ -41,7 +41,7 @@ const appShellSource = readFileSync(
   'utf8',
 );
 const pagingSource = readFileSync(
-  new URL('../../../src/features/tasks/model/task-runtime-paging.js', import.meta.url),
+  new URL('../../../src/core/task-runtime-paging.js', import.meta.url),
   'utf8',
 );
 const timelineNodesSource = readFileSync(

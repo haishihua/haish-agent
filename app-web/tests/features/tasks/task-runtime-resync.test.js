@@ -8,9 +8,9 @@ const { createConversationActivationHandlers } = await import('../../../src/feat
 const { createTaskStreamHandlers } = await import('../../../src/features/tasks/hooks/createTaskStreamHandlers.js');
 const { buildChatTimeline, appendAnswerDelta } = await import('../../../src/features/chat/model/chat-timeline.js');
 const { eventDeltaText } = await import('../../../src/core/message-text.js');
-const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
+const tasks = await import('../../../src/core/task-runtime.js');
 const runStatus = await import('../../../src/core/run-status.js');
-const runtimeEvents = await import('../../../src/features/tasks/model/runtime-events.js');
+const runtimeEvents = await import('../../../src/core/runtime-events.js');
 
 const delta = (id, text) => ({
   type: 'llm_answer_delta', event_id: id, delta: text, task_id: 'task', conversation_id: 'conversation',

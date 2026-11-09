@@ -11,12 +11,12 @@ const {
   pendingTaskRuntimeIds,
   splitTaskRuntimeRestoreOrder,
   staleTaskRuntimeIds,
-} = await import('../../../src/features/tasks/model/task-runtime-paging.js');
+} = await import('../../../src/core/task-runtime-paging.js');
 const {
   runtimeTaskToQuest,
   taskDetailToRuntimeTask,
   taskSummaryToRuntimeTask,
-} = await import('../../../src/features/tasks/model/task-runtime.js');
+} = await import('../../../src/core/task-runtime.js');
 const {
   settledTaskIds,
 } = await import('../../../src/features/conversations/model/conversation-run-state.js');

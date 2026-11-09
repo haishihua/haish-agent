@@ -1,5 +1,5 @@
-import { isTerminalTaskStatus } from '../../../core/run-status.js';
-import { isTaskSettled } from '../../../core/run-status.js';
+import { isTerminalTaskStatus } from './run-status.js';
+import { isTaskSettled } from './run-status.js';
 
 /**
  * Opening a conversation hydrates only the newest slice of task runtimes.

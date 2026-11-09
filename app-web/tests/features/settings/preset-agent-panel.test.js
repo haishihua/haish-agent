@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { DEFAULT_AGENT_TOOL_GROUPS, groupPresetTools } from '../../../src/features/agents/model/agent-settings.js';
+import { DEFAULT_AGENT_TOOL_GROUPS, groupPresetTools } from '../../../src/core/agent-settings.js';
 
 const editor = readFileSync(new URL('../../../src/features/settings/components/AgentConfigEditor.jsx', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../../../src/features/settings/settings.css', import.meta.url), 'utf8');

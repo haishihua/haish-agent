@@ -1,5 +1,5 @@
 import { conversationLoadPerf } from '../../../shared/lib/conversation-load-perf.js';
-import { splitTaskRuntimeRestoreOrder } from '../../tasks/model/task-runtime-paging.js';
+import { splitTaskRuntimeRestoreOrder } from '../../../core/task-runtime-paging.js';
 import { conversationRuntimeHasLiveTurn } from '../model/runtime-restore-guard.js';
 
 export function createConversationActivationHandlers(ctx) {

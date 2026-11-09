@@ -10,7 +10,7 @@
 //   3. 会话记录的 profile_display_name / agent id：会话开始时选定的 agent，兜住
 //      早期没有记 agent 的任务；
 // 三者都拿不到返回 ''，由气泡决定显示什么。
-import { APP_DEFAULT_AGENT_OPTIONS, agentDisplayNameForId } from '../../agents/model/agent-settings.js';
+import { APP_DEFAULT_AGENT_OPTIONS, agentDisplayNameForId } from '../../../core/agent-settings.js';
 
 const DEFAULT_AGENT_NAME = agentDisplayNameForId('preset.general', APP_DEFAULT_AGENT_OPTIONS);
 

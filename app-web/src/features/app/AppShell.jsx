@@ -46,7 +46,7 @@ import {
   APP_DEFAULT_AGENT_OPTIONS,
   DEFAULT_AGENT_SETTINGS,
   normalizeAgentSettings,
-} from '../agents/model/agent-settings.js';
+} from '../../core/agent-settings.js';
 import { startAgentCatalogLoad, staleAgentCatalog } from '../agents/model/agent-catalog-loading.js';
 import {
   DEFAULT_WORKFLOW_SETTINGS,
@@ -64,7 +64,7 @@ import {
 } from '../workflow/model/workflow-catalog.js';
 import {
   createEmptyContextUsage,
-} from '../chat/model/context-usage.js';
+} from '../../core/context-usage.js';
 import { saveWorkspaceState, findConversationById, createEmptyWorkspaceState, isTaskActuallyActive } from '../conversations/model/workspace-state.js';
 import { taskUpdatedTimestamp } from '../../core/task-record.js';;
 import {
@@ -76,10 +76,10 @@ import { useConversationRunState } from '../conversations/hooks/useConversationR
 import {
   createEmptyTaskRuntimeState,
   isPendingTaskId,
-} from '../tasks/model/task-runtime.js';
+} from '../../core/task-runtime.js';
 import {
   staleTaskRuntimeIds,
-} from '../tasks/model/task-runtime-paging.js';
+} from '../../core/task-runtime-paging.js';
 import {
   addTaskCompletionNotice,
   clearConversationCompletionNotices,
@@ -87,7 +87,7 @@ import {
   mergeConversationReadCursors,
   taskCompletionNoticeKey,
   terminalTaskNoticeStatus,
-} from '../tasks/model/task-completion-notices.js';
+} from '../../core/task-completion-notices.js';
 
 import { createRunConfigSync } from '../conversations/model/run-config-sync.js';
 import { runConfigApi } from '../conversations/api/run-config.js';

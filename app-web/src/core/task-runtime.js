@@ -1,8 +1,8 @@
-import { normalizeChatImageRefs, mergeChatImageRefs, generateHexId, taskUpdatedTimestamp, taskCreatedTimestamp } from '../../../core/task-record.js';;
-import { stripChatImageAugmentation, stripInjectedSkillInstruction } from '../../../core/message-text.js';
-import { compactStreamEvents } from '../../../core/stream-events.js';
-import { normalizeTaskStatus } from '../../../core/run-status.js';
-import { usableWorkflowSnapshot } from '../../workflow/model/workflow-snapshot.js';
+import { normalizeChatImageRefs, mergeChatImageRefs, generateHexId, taskUpdatedTimestamp, taskCreatedTimestamp } from './task-record.js';;
+import { stripChatImageAugmentation, stripInjectedSkillInstruction } from './message-text.js';
+import { compactStreamEvents } from './stream-events.js';
+import { normalizeTaskStatus } from './run-status.js';
+import { usableWorkflowSnapshot } from './workflow-snapshot.js';
 import {
   normalizeRuntimeEvents,
   runtimeEventToLog,

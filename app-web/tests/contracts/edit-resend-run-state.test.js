@@ -11,7 +11,7 @@ const rowBuilderSource = fs.readFileSync(
   'utf8',
 );
 const ackSource = fs.readFileSync(
-  new URL('../../src/features/tasks/model/quest-ack.js', import.meta.url),
+  new URL('../../src/core/quest-ack.js', import.meta.url),
   'utf8',
 );
 

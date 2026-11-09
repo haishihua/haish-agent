@@ -1,4 +1,4 @@
-import { terminalTaskNoticeStatus } from '../../tasks/model/task-completion-notices.js';
+import { terminalTaskNoticeStatus } from '../../../core/task-completion-notices.js';
 import { buildChatTimeline, resolveAgentActivity } from './chat-timeline.js';
 import { attemptTask, nodeAttempts } from '../../workflow/model/node-attempts.js';
 

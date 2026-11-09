@@ -1,6 +1,6 @@
 // 发消息的动作域：fork、重试 / 编辑重发（含 preflight 配置等待、Stop 栅栏、
 // 失败兜底）。它们只读 ctx 的运行时与配置服务，不在这里缓存任何东西。
-import { createQuestAck } from '../../../tasks/model/quest-ack.js';
+import { createQuestAck } from '../../../../core/quest-ack.js';
 import { waitForAttemptConfigOperation } from '../../../../shared/lib/attempt-run-config.js';
 
 export function createConversationMessageHandlers(deps) {

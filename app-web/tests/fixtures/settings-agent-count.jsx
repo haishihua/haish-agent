@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { SettingsPage } from '../../src/features/settings/components/SettingsPage.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
-import { normalizeAgentSettings } from '../../src/features/agents/model/agent-settings.js';
+import { normalizeAgentSettings } from '../../src/core/agent-settings.js';
 import '../../styles.css';
 
 const payload = { presets: [{ agent_id: 'preset.default', display_name: 'Default' }, { agent_id: 'preset.disabled', display_name: 'Disabled preset', enabled: false }], custom: [{ agent_id: 'custom.one', display_name: 'Custom', custom: true }, { agent_id: 'custom.disabled', display_name: 'Disabled custom', custom: true, enabled: false }] };

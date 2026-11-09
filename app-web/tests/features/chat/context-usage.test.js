@@ -6,12 +6,12 @@ import {
   normalizeContextUsage, loadStoredContextUsage, saveStoredContextUsage,
   estimateContextUsageFromConversationDetail, contextUsageFromRuntimeEvent,
   contextUsageFromConversationDetail,
-} from '../../../src/features/chat/model/context-usage.js';
+} from '../../../src/core/context-usage.js';
 import { createTaskStreamHandlers } from '../../../src/features/tasks/hooks/createTaskStreamHandlers.js';
 import {
   normalizeRuntimeEvent, STREAM_IMMEDIATE_EVENT_TYPES, STREAM_EVENT_BATCH_MS,
   CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
-} from '../../../src/features/tasks/model/runtime-events.js';
+} from '../../../src/core/runtime-events.js';
 
 const CONVERSATION_ID = 'compaction-conversation';
 const CONTEXT_LIMIT = 256000;

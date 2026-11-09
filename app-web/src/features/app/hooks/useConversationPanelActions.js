@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { clearConversationCompletionNotices } from '../../tasks/model/task-completion-notices.js';
+import { clearConversationCompletionNotices } from '../../../core/task-completion-notices.js';
 
 /**
  * 会话面板（侧边栏）那一整组动作的装配。

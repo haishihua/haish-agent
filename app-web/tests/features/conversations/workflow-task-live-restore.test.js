@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorkflowTaskSelectionHandler } from '../../../src/features/conversations/hooks/createWorkflowTaskSelectionHandler.js';
 import { createDraftConversationHandlers } from '../../../src/features/conversations/hooks/createDraftConversationHandlers.js';
-import { normalizeRuntimeEvents } from '../../../src/features/tasks/model/runtime-events.js';
+import { normalizeRuntimeEvents } from '../../../src/core/runtime-events.js';
 
 globalThis.window = { HAISH_API_BASE: '', haish: {} };
-const { taskDetailToRuntimeTask } = await import('../../../src/features/tasks/model/task-runtime.js');
+const { taskDetailToRuntimeTask } = await import('../../../src/core/task-runtime.js');
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 function deferred() {

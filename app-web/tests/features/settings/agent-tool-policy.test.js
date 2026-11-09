@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSettingsHandlers } from '../../../src/features/settings/hooks/createSettingsHandlers.js';
-import { normalizeAgentSettings, agentCatalogFromSettings, withAlwaysAllowedAgentTools, effectiveAgentTools, toggleAgentToolGroup } from '../../../src/features/agents/model/agent-settings.js';
+import { normalizeAgentSettings, agentCatalogFromSettings, withAlwaysAllowedAgentTools, effectiveAgentTools, toggleAgentToolGroup } from '../../../src/core/agent-settings.js';
 
 const groups = [{ id: 'files', tools: ['read_file', 'list_dir'] }, { id: 'shell', tools: ['exec_command'] }];
 for (const allow of [null, [], ['read_file', 'future_tool']]) {

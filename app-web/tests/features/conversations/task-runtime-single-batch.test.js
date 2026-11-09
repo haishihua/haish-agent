@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDraftConversationHandlers } from '../../../src/features/conversations/hooks/createDraftConversationHandlers.js';
-import { normalizeRuntimeEvents } from '../../../src/features/tasks/model/runtime-events.js';
+import { normalizeRuntimeEvents } from '../../../src/core/runtime-events.js';
 import { eventDeltaText } from '../../../src/core/message-text.js';
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));

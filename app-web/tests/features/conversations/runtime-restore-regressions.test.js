@@ -10,13 +10,13 @@ const { createConversationHandlers } = await import('../../../src/features/conve
 const { createWorkflowTaskSelectionHandler } = await import('../../../src/features/conversations/hooks/createWorkflowTaskSelectionHandler.js');
 const { createTaskStreamHandlers } = await import('../../../src/features/tasks/hooks/createTaskStreamHandlers.js');
 const { createDeployHandlers } = await import('../../../src/features/tasks/hooks/createDeployHandlers.js');
-const tasks = await import('../../../src/features/tasks/model/task-runtime.js');
+const tasks = await import('../../../src/core/task-runtime.js');
 const runStatus = await import('../../../src/core/run-status.js');
-const events = await import('../../../src/features/tasks/model/runtime-events.js');
+const events = await import('../../../src/core/runtime-events.js');
 const workspace = await import('../../../src/features/conversations/model/workspace-state.js');
 const taskRecord = await import('../../../src/core/task-record.js');
 const { conversationRuntimeHasLiveTurn } = await import('../../../src/features/conversations/model/runtime-restore-guard.js');
-const { nextEarlierTaskRuntimeIds, pendingTaskRuntimeIds } = await import('../../../src/features/tasks/model/task-runtime-paging.js');
+const { nextEarlierTaskRuntimeIds, pendingTaskRuntimeIds } = await import('../../../src/core/task-runtime-paging.js');
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const task = (id, status = 'done', updated = 1) => ({

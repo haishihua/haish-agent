@@ -1,5 +1,5 @@
 import { isTaskLive, isTaskSettled } from '../../../core/run-status.js';
-import { taskCompletionNoticeKey } from '../../tasks/model/task-completion-notices.js';
+import { taskCompletionNoticeKey } from '../../../core/task-completion-notices.js';
 import { compareConversationOrder, mergeConversationTasks } from './workspace-state.js';
 import { timestampValue } from '../../../core/task-record.js';;
 

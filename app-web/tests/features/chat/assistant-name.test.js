@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { assistantNameForTask, workflowAgentName, workflowNodeAgentName } from '../../../src/features/chat/model/assistant-name.js';
-import { agentDisplayNameForId } from '../../../src/features/agents/model/agent-settings.js';
+import { agentDisplayNameForId } from '../../../src/core/agent-settings.js';
 
 const AGENT_OPTIONS = [
   { id: 'preset.general', label: 'Task Assistant' },

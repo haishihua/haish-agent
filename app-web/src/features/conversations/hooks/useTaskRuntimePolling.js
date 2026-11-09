@@ -1,9 +1,9 @@
 import React from 'react';
-import { findConversationById, isTaskActuallyActive, workspaceStateWithConversationRuntimeTask } from '../../conversations/model/workspace-state.js';
-import { taskUpdatedTimestamp } from '../../../core/task-record.js';;
-import { isPendingTaskId, taskSummaryToRuntimeTask } from '../model/task-runtime.js';
-import { terminalTaskNoticeStatus } from '../model/task-completion-notices.js';
-import { latestContextUsageFromTasks } from '../../chat/model/context-usage.js';
+import { findConversationById, isTaskActuallyActive, workspaceStateWithConversationRuntimeTask } from '../model/workspace-state.js';
+import { taskUpdatedTimestamp } from '../../../core/task-record.js';
+import { isPendingTaskId, taskSummaryToRuntimeTask } from '../../../core/task-runtime.js';
+import { terminalTaskNoticeStatus } from '../../../core/task-completion-notices.js';
+import { latestContextUsageFromTasks } from '../../../core/context-usage.js';
 import { startPolling } from '../../../shared/lib/polling.js';
 
 function latestActiveTaskId(tasks) {

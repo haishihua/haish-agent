@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { WorkflowRuntimePage } from '../../src/features/workflow/components/WorkflowRuntimePage.jsx';
 import { TaskRecordCompact } from '../../src/features/conversations/components/ConversationTaskCards.jsx';
 import { useViewedTaskCompletionNotice } from '../../src/features/tasks/hooks/useViewedTaskCompletionNotice.js';
-import { addTaskCompletionNotice, taskNoticesByTaskId } from '../../src/features/tasks/model/task-completion-notices.js';
+import { addTaskCompletionNotice, taskNoticesByTaskId } from '../../src/core/task-completion-notices.js';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import '../../styles.css';
 

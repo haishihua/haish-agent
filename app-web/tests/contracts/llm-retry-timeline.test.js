@@ -4,7 +4,7 @@ import fs from 'node:fs';
 
 globalThis.window = {};
 const { buildChatTimeline } = await import('../../src/features/chat/model/chat-timeline.js');
-const { runtimeEventToLog } = await import('../../src/features/tasks/model/runtime-events.js');
+const { runtimeEventToLog } = await import('../../src/core/runtime-events.js');
 
 function retryEvent(state, attempt = 2) {
   return runtimeEventToLog({

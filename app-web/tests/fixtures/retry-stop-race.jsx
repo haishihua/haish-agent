@@ -8,7 +8,7 @@ import { SchedulesContext } from '../../src/features/schedules/hooks/useSchedule
 import { createRunConfigSync } from '../../src/features/conversations/model/run-config-sync.js';
 import { createConversationHandlers } from '../../src/features/conversations/hooks/createConversationHandlers.js';
 import { createDeployHandlers } from '../../src/features/tasks/hooks/createDeployHandlers.js';
-import { applyTerminalTaskState } from '../../src/features/tasks/model/task-runtime.js';
+import { applyTerminalTaskState } from '../../src/core/task-runtime.js';
 import { collapseFullTaskAttempts } from '../../src/features/chat/model/task-attempts.js';
 import { createAttemptHarness } from './task-attempt-runtime.js';
 import '../../styles.css';

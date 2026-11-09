@@ -6,7 +6,7 @@ import { buildChatTimeline } from '../../../chat/model/chat-timeline.js';
 import { workflowApprovalInput } from '../../model/workflow-approval-markdown.js';
 import { workflowInputDisplayText } from '../../model/workflow-catalog.js';
 import { WorkflowApprovalInline } from '../../../approvals/components/ApprovalOverlay.jsx';
-import { taskFirstStreamTimestamp } from '../../../tasks/model/task-runtime.js';
+import { taskFirstStreamTimestamp } from '../../../../core/task-runtime.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../../core/run-status.js';
 import {
   attemptTask,

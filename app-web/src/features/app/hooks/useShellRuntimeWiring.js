@@ -1,6 +1,6 @@
 import { useConversationBootstrap } from '../../conversations/hooks/useConversationBootstrap.js';
 import { useConversationListPolling } from '../../conversations/hooks/useConversationListPolling.js';
-import { useTaskRuntimePolling } from '../../tasks/hooks/useTaskRuntimePolling.js';
+import { useTaskRuntimePolling } from '../../conversations/hooks/useTaskRuntimePolling.js';
 import { findConversationById } from '../../conversations/model/workspace-state.js';
 
 /**

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 
 globalThis.window = {};
 const { buildChatTimeline } = await import('../../src/features/chat/model/chat-timeline.js');
-const { runtimeEventToLog } = await import('../../src/features/tasks/model/runtime-events.js');
+const { runtimeEventToLog } = await import('../../src/core/runtime-events.js');
 
 test('completed context compaction keeps its summary snapshot and metrics', () => {
   const started = runtimeEventToLog({

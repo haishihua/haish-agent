@@ -19,7 +19,7 @@
 // 之前「在跑 / 在等人」和「结束还没看过」各占一个坑位、各亮各的，同一行会同时亮两盏灯、
 // 在行尾叠在一起——用户看到的就是「状态怎么互相矛盾」。
 
-import { terminalTaskNoticeStatus } from '../../tasks/model/task-completion-notices.js';
+import { terminalTaskNoticeStatus } from '../../../core/task-completion-notices.js';
 import {
   RUN_STATE_APPROVAL,
   RUN_STATE_IDLE,

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDraftConversationHandlers } from '../../../src/features/conversations/hooks/createDraftConversationHandlers.js';
-import { normalizeRuntimeEvents } from '../../../src/features/tasks/model/runtime-events.js';
+import { normalizeRuntimeEvents } from '../../../src/core/runtime-events.js';
 
 // 游标恢复的两条分支：增量（events_delta: true）追加、截断（truncated / next_cursor）
 // 整份替换。截断时若把新一页拼到旧缓存后面，服务端已经丢掉的旧历史会被原样拼回来

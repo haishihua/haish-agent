@@ -1,6 +1,6 @@
 import React from 'react';
 import { BaseEdge, EdgeLabelRenderer, Handle, Position } from '@xyflow/react';
-import { agentIconNameForAgentId } from '../../agents/model/agent-settings.js';
+import { agentIconNameForAgentId } from '../../../core/agent-settings.js';
 import { workflowEdgePath } from '../model/workflow-edge-path.js';
 import { typeLabelForWorkflowNode, workflowNodeIcon } from '../model/workflow-catalog.js';
 import { WORKFLOW_PORT_SIDES, workflowSideHandle } from '../model/workflow-canvas-editing.js';

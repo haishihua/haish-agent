@@ -6,7 +6,7 @@ import { WorkflowRuntimePage } from '../../src/features/workflow/components/Work
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import { createWorkflowTaskSelectionHandler } from '../../src/features/conversations/hooks/createWorkflowTaskSelectionHandler.js';
 import { pendingTaskToQuest } from '../../src/features/chat/model/chat-timeline.js';
-import { buildTaskRuntimeRecord, runtimeTaskToQuest } from '../../src/features/tasks/model/task-runtime.js';
+import { buildTaskRuntimeRecord, runtimeTaskToQuest } from '../../src/core/task-runtime.js';
 import { mergeConversationTasks } from '../../src/features/conversations/model/workspace-state.js';
 import '../../styles.css';
 
