@@ -25,8 +25,7 @@ const server = http.createServer((req, res) => {
     res.on('close', () => active--);
   } else if (req.url === '/store.js') {
     res.setHeader('Content-Type', 'text/javascript');
-    res.end(fs.readFileSync('app-web/src/features/approvals/model/approval-store.js', 'utf8')
-      .replace(/import .*?from .*?;\n/, "const API_BASE = '';\n"));
+    res.end(fs.readFileSync('app-web/src/core/approval-store.js', 'utf8'));
   } else {
     res.end('<!doctype html><title>Approval transport check</title>');
   }

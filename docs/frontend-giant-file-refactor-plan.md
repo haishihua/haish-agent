@@ -30,7 +30,7 @@
 | `src/api/*` | `src/shared/api/*` 或 `features/<domain>/api/*` |
 | `src/lib/agent-catalog.js` | `features/agents/model`、`features/workflow/model`、`features/settings/model` |
 | `src/lib/workspace-state.js` | `features/conversations/model` |
-| `src/lib/task-runtime.js` | `features/tasks/model` |
+| `src/lib/task-runtime.js` | `core/task-runtime.js` |
 | `src/panels/*` | 对应领域的 `components`、`hooks`、`model` |
 | `panels.jsx` / 页面 re-export | 删除；调用方直接 import owner |
 | `src/**/*.test.*` | `app-web/tests/**` |

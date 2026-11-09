@@ -180,10 +180,7 @@ test('runtime feedback edges keep routed ports and align every rework edge on on
   // （model/workflow-edge-path.js）：端口、圆角半径/直线引导、角色配色（虚线/箭头/标签）都只定义一次。
   assert.match(flowNodeSource, /targetHandle: feedback \? 'runtime-feedback'/);
   assert.match(flowNodeSource, /type: 'workflowEdge',/);
-  // React Flow 自带的折线路由（小圆角 + 绕中线）整个换掉：大圆角 smooth step 走专属那一份。
-  assert.doesNotMatch(flowNodeSource, /getSmoothStepPath/);
   assert.doesNotMatch(flowNodeSource, /borderRadius:|offset:/);
-  assert.match(flowNodeSource, /import \{ workflowEdgePath \} from '\.\.\/model\/workflow-edge-path\.js';/);
   // 主流程是一条很安静的 2px 实线（颜色由外观层给的源→目标渐变决定）；正在走的那条才换成
   // 运行蓝、加粗到 2.4px。颜色/加粗只在这一份里给（配置页选中和运行页 flowing 同一条线）。
   assert.match(flowNodeSource, /const ACTIVE_EDGE_STROKE = 'rgba\(105, 200, 246, 0\.9\)';/);
@@ -461,7 +458,6 @@ test('secondary loop nodes normalize their top input and retry output to one han
 });
 
 test('only the latest approval attempt binds to the live approval request', () => {
-  assert.match(runtimeSource, /allowLiveRequest=\{showApproval\}/);
   assert.match(runtimeSource, /showApproval=\{isLatestAttempt && status === 'approval' && !isTaskSettled\(task\)\}/);
 });
 

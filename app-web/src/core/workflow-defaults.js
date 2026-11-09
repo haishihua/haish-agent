@@ -1,4 +1,3 @@
-// Settings domain model.
 export const DIRECT_AGENT_WORKFLOW_ID = 'workflow.direct-agent';
 export const DEFAULT_WORKFLOW_NODE_TYPES = [
   { id: 'agent', label: 'Agent', description: 'Invoke an assistant profile over A2A.' },

@@ -1,6 +1,5 @@
 import { SKILL_TABS } from './skill-inventory.js';
 
-// Settings domain model.
 export const SETTINGS_SECTIONS = [
   { id: 'llm', label: 'Providers' },
   { id: 'tools', label: 'Tools' },

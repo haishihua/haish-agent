@@ -1,4 +1,3 @@
-// Settings domain model.
 import { REASONING_EFFORT_OPTIONS, normalizeReasoningEffort } from '../../../core/run-catalog.js';
 import {
   LLM_PROVIDER_MODELS,

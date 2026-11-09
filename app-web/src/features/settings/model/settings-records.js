@@ -1,4 +1,3 @@
-// Settings domain model.
 import { withoutStoredSkillInventory } from './live-tools-settings.js';
 export const SETTINGS_RECORDS_STORAGE_KEY = 'haish.settingsRecordsDraft.v1';
 export const DEFAULT_MCP_CONFIG_JSON = JSON.stringify({ servers: {} }, null, 2);

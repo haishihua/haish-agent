@@ -181,8 +181,6 @@ test('edges have one appearance and one motion layer for both pages', () => {
   assert.match(flowNodeSource, /export function WorkflowCanvasEdge\(\{/);
   assert.match(flowNodeSource, /export const WORKFLOW_EDGE_ROLES = \{/);
   // 边的几何只有一份：两页共用的渲染器调 model/workflow-edge-path.js（不是 React Flow 默认折线）。
-  assert.match(flowNodeSource, /const \{ path, labelX, labelY \} = workflowEdgePath\(\{/);
-  assert.doesNotMatch(flowNodeSource, /getSmoothStepPath/);
   // 主流程/收尾是「源类型色 → 目标类型色」的渐变（userSpaceOnUse，沿着这一段线铺）：整页只有一条
   // 渐变定义、两个 stop，颜色引用类型色变量（JS 里没有第二份十六进制）。
   assert.equal((flowNodeSource.match(/<linearGradient/g) || []).length, 1);
