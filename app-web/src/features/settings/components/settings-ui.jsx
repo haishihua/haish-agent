@@ -28,7 +28,7 @@ const CONNECTION_BRAND_LOGOS = {
   qdrant: qdrantLogo,
 };
 
-export const WEB_SEARCH_BRAND_LOGOS = {
+const WEB_SEARCH_BRAND_LOGOS = {
   tavily: tavilyLogo,
   serpapi: serpapiLogo,
   exa: exaLogo,

@@ -94,7 +94,7 @@ function avatarStorage() {
   }
 }
 
-export function isAgentAvatarId(value) {
+function isAgentAvatarId(value) {
   return AVATAR_IDS.has(String(value || ''));
 }
 
@@ -104,7 +104,7 @@ export function agentAvatarById(avatarId) {
 
 // 换设计稿时文件名不变，浏览器/Electron 的图片缓存会按 URL 命中旧文件，
 // 结果就是弹窗里新旧混排。只要改素材就同步抬这个版本号，URL 变了旧缓存自然失效。
-export const AGENT_AVATAR_ASSET_VERSION = '7';
+const AGENT_AVATAR_ASSET_VERSION = '7';
 
 export function agentAvatarImageSrc(avatarId) {
   const id = isAgentAvatarId(avatarId) ? String(avatarId) : DEFAULT_AGENT_AVATAR_ID;

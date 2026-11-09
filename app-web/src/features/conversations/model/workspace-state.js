@@ -188,7 +188,7 @@ export function getWorkspaceConversationIds(state) {
     .filter(Boolean);
 }
 
-export function projectNameFromPath(workspacePath, fallback = 'Custom project') {
+function projectNameFromPath(workspacePath, fallback = 'Custom project') {
   const raw = String(workspacePath || '').trim();
   if (!raw) return fallback;
   const parts = raw.split(/[\\/]/).filter(Boolean);
@@ -269,7 +269,7 @@ export function taskOrderTimestamp(task) {
   return isTaskSettled(task) ? taskUpdatedTimestamp(task) : taskCreatedTimestamp(task);
 }
 
-export function conversationOrderTimestamp(conversation) {
+function conversationOrderTimestamp(conversation) {
   if (!conversation) return 0;
   const manualOrderAt = timestampValue(conversation.manualOrderAt);
   const tasks = Array.isArray(conversation.tasks) ? conversation.tasks : [];
@@ -353,7 +353,7 @@ export function withDefaultExpansion(project) {
   };
 }
 
-export function conversationHasActiveTask(conversation) {
+function conversationHasActiveTask(conversation) {
   const tasks = Array.isArray(conversation?.tasks) ? conversation.tasks : [];
   return tasks.some((task) => isTaskActuallyActive(task));
 }

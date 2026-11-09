@@ -12,7 +12,7 @@ const FALLBACK_MAX_HEIGHT_PX = 400;
 const EMPTY_CONTEXT = React.createContext(null);
 
 /** 块级代码的原文与语言（和 streamdown 默认渲染器的取法一致）。 */
-export function codeBlockSource(children) {
+function codeBlockSource(children) {
   const className = typeof children?.props?.className === 'string' ? children.props.className : '';
   const raw = children?.props?.children;
   return {
@@ -32,7 +32,7 @@ export function MarkdownBlockCode({ children }) {
   return <DeferredCodeBlock language={language} code={code}>{block}</DeferredCodeBlock>;
 }
 
-export function DeferredCodeBlock({ language, code, children, revealMargin = DEFAULT_REVEAL_MARGIN_PX }) {
+function DeferredCodeBlock({ language, code, children, revealMargin = DEFAULT_REVEAL_MARGIN_PX }) {
   const [revealed, setRevealed] = React.useState(false);
   const hostRef = React.useRef(null);
   const { codeBlockMaxHeight } = React.useContext(StreamdownContext ?? EMPTY_CONTEXT) || {};

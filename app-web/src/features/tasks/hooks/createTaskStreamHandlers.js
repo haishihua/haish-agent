@@ -10,7 +10,7 @@ import { createQuestExecutor } from './task-stream/quest-execution.js';
 // 才释放。用户点“停止”后立刻编辑重发时，上一轮可能还在收尾（最长几秒）→ 409。
 // 这里不把它当错误：保持“发送中”，用**同一个 request_id** 轮询重发（后端幂等 / 可 replay），
 // 占用释放后自动发出，超时才算失败。
-export const ACTIVE_TASK_CONFLICT_DETAIL = 'Conversation already has an active task.';
+const ACTIVE_TASK_CONFLICT_DETAIL = 'Conversation already has an active task.';
 const ACTIVE_TASK_CONFLICT_MAX_WAITS = 20;
 const ACTIVE_TASK_CONFLICT_WAIT_MS = 500;
 

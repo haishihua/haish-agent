@@ -19,10 +19,6 @@ export function setLocalFileRoot(root) {
   workspaceRoot = String(root || '').replace(/[\\/]+$/, '');
 }
 
-export function localFileRoot() {
-  return workspaceRoot;
-}
-
 function homePath() {
   return String(globalThis.window?.haish?.homePath || '');
 }

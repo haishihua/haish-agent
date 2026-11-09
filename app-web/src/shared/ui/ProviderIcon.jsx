@@ -14,7 +14,7 @@ import zhipuLogo from '@lobehub/icons-static-svg/icons/zhipu.svg?inline';
 import { AppIcon } from './AppIcon.jsx';
 import { providerLogoSize } from '../lib/provider-logo-metrics.js';
 
-export const PROVIDER_LOGOS = {
+const PROVIDER_LOGOS = {
   openai: openaiLogo,
   xai: xaiLogo,
   anthropic: anthropicLogo,

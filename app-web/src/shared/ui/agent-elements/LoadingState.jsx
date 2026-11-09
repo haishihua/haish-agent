@@ -15,7 +15,7 @@ const CELL_SHAPES = {
 /** Upstream standalone contract: the caller owns the clock, 120ms per tick. */
 export const LOADER_TICK_MS = 120;
 
-export function GenerationLoader({ label, tick, variant = 'dots', className = '', ...props }) {
+function GenerationLoader({ label, tick, variant = 'dots', className = '', ...props }) {
   const pixelOffset = Math.floor(tick / 3);
 
   return (

@@ -1,12 +1,12 @@
 import { stripInjectedSkillInstruction } from '../../../core/message-text.js';
 import { localPathReference, splitPathReferenceDraft } from './path-references.js';
 
-export const CONVERSATION_LENS_ROWS = 7;
-export const CONVERSATION_LENS_ROW_HEIGHT = 18;
-export const CONVERSATION_LENS_INSET = 10;
+const CONVERSATION_LENS_ROWS = 7;
+const CONVERSATION_LENS_ROW_HEIGHT = 18;
+const CONVERSATION_LENS_INSET = 10;
 // Below 8px per turn the overview becomes hard to target; content length alone
 // is not a reason to add the local lens (a few long replies still have few ticks).
-export const CONVERSATION_LENS_MIN_STEP = 8;
+const CONVERSATION_LENS_MIN_STEP = 8;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const previewText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 

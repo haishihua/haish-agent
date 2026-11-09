@@ -1,7 +1,6 @@
 // Saved snapshots, editable drafts and API revisions are deliberately separate.
 // Events contain invalidations only: never settings, credentials or file paths.
 const entries = new Map();
-const listeners = new Set();
 const refreshers = new Set();
 const responses = new WeakMap();
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -11,13 +10,7 @@ const draftEqual = (resource, a, b) => {
   const withoutCatalog = value => value && typeof value === 'object' ? { ...value, mcp_servers: undefined } : value;
   return equal(withoutCatalog(a), withoutCatalog(b));
 };
-let scheduled = false;
 let sequence = 0;
-function changed() {
-  if (scheduled) return;
-  scheduled = true;
-  queueMicrotask(() => { scheduled = false; listeners.forEach(fn => fn()); });
-}
 const entry = resource => {
   if (!entries.has(resource)) entries.set(resource, {});
   return entries.get(resource);
@@ -68,7 +61,6 @@ export function reconcileSettings(resource, current, incoming, payload) {
     state.current = incoming;
     state.version = version;
     state.conflict = false;
-    changed();
     return accept(incoming);
   }
   if (!Object.hasOwn(state, 'baseline')) state.baseline = current;
@@ -85,7 +77,6 @@ export function reconcileSettings(resource, current, incoming, payload) {
     state.conflict = false;
     state.discard = false;
     state.current = next;
-    changed();
     return accept(state.current);
   }
   // Redacted secrets can change without changing the visible response body.
@@ -99,7 +90,6 @@ export function reconcileSettings(resource, current, incoming, payload) {
   const next = resource === 'agents' && Object.hasOwn(incoming, 'mcp_servers')
     ? { ...current, mcp_servers: incoming.mcp_servers } : current;
   state.current = next;
-  changed();
   return accept(next);
 }
 
@@ -112,7 +102,7 @@ export function settingsResponseIsCurrent(payload, resource) {
     && meta.sequence >= (state.appliedSequence || 0);
 }
 
-export function settingsResources(input, init = {}) {
+function settingsResources(input, init = {}) {
   const path = String(input).split('?')[0].replace(/^https?:\/\/[^/]+/, '');
   const route = path.split('/api/settings/')[1];
   if (!route || ['memory/test', 'tools/mcp/validate', 'tools/web-search/test'].includes(route) || route.startsWith('tools/browser')) return [];
@@ -173,7 +163,6 @@ export function observeSettingsResponse(response, request) {
   try { versions = JSON.parse(response.headers?.get('x-haish-settings-versions') || '{}'); } catch { /* Old runtime. */ }
   if (response.status === 409) {
     request.resources.forEach(resource => { entry(resource).conflict = true; });
-    changed();
     invalidateSettings(request.resources);
   }
   const json = response.json.bind(response);
@@ -200,9 +189,8 @@ export function hasSettingsVersion(payload, resource) {
   const versions = responses.get(payload)?.versions || {};
   return resource ? Boolean(versions[resource]) : Object.keys(versions).length > 0;
 }
-export function resetSettingsSync() { entries.clear(); changed(); }
+export function resetSettingsSync() { entries.clear(); }
 
-export function subscribeSettingsStatus(callback) { listeners.add(callback); return () => listeners.delete(callback); }
 export function settingsConflicts() { return [...entries].filter(([, state]) => state.conflict).map(([resource]) => resource); }
 export function onSettingsInvalidated(callback) { refreshers.add(callback); return () => refreshers.delete(callback); }
 export function invalidateSettings(resources) { refreshers.forEach(fn => fn(resources)); }

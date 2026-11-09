@@ -60,7 +60,7 @@ function mcpServerNameFromToolName(toolName) {
 // 'cancelled'`); `verbPresent` (present continuous) shows while at least one
 // tool in the group is still in flight, so the chip reads "using chrome
 // devtools 4 tools" → "used chrome devtools 4 tools" as it transitions.
-export function classifyToolForGroup(item) {
+function classifyToolForGroup(item) {
   const category = item?.category || 'tool';
   const name = String(item?.toolName || '').toLowerCase();
   const fileUnit = { unitSingular: 'file', unitPlural: 'files' };
@@ -122,7 +122,7 @@ export function classifyToolForGroup(item) {
   return { bucket: 'other', verbPast: 'used', verbPresent: 'using', subject: '', unitSingular: 'tool', unitPlural: 'tools' };
 }
 
-export function summarizeToolGroup(tools, status = 'done') {
+function summarizeToolGroup(tools, status = 'done') {
   const buckets = new Map();
   for (const tool of tools) {
     const meta = classifyToolForGroup(tool);
@@ -174,7 +174,7 @@ export function summarizeToolGroup(tools, status = 'done') {
   return { short: joined };
 }
 
-export function aggregateGroupStatus(tools) {
+function aggregateGroupStatus(tools) {
   let anyRunning = false;
   let anyFailed = false;
   let anyPending = false;
@@ -283,7 +283,7 @@ export function timelineToolLabel(call, category) {
   return chatTraceToolName(call.toolName);
 }
 
-export function toolProgressSummary(event) {
+function toolProgressSummary(event) {
   const toolName = chatTraceToolName(event.toolName);
   const message = String(event.message || '').trim();
   switch (event.type) {

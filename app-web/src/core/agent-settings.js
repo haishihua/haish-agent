@@ -20,7 +20,7 @@ const PRESET_AGENT_ICON_NAMES = {
   'preset.general': 'sparkles',
 };
 
-export function agentIconNameForItem(item) {
+function agentIconNameForItem(item) {
   if (item?.custom) return 'box';
   return PRESET_AGENT_ICON_NAMES[item?.id] || 'sparkles';
 }
