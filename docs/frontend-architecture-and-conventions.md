@@ -162,6 +162,12 @@ app-web/tests/**        # 所有 test/spec
 
 测试文件按被测领域放置；跨领域行为进入 `integration`；静态架构与历史 bug 契约进入 `contracts`。禁止在生产目录旁放 `*.test.*` 或 `*.spec.*`。
 
+**断言要落在行为上。** 一个好的测试只在行为回归时失败：给它输入，断言输出。`assert.match(readFileSync(...), /const foo = bar\(/)` 这种断言的是源码文本，改个变量名、拆个函数就红，行为却没变——它消耗的维护成本远高于它挡住的回归。
+
+需要守「某个值只有一处定义」时，断言不变量（出现次数、另一侧不存在），不要断言具体写法。需要守「某段接线没被拆掉」时，先把接线抽成 model 里可调用的纯函数（例如 `conversationSettledTaskIds`），再测那个函数的输入输出。
+
+存量的源码断言由 `npm run check:tests-health` 钉住基线（`scripts/test-source-assert-baseline.json`），只许降不许升。要让某条断言合规，先改测试再更新基线：`node scripts/check-test-health.mjs --write-baseline`。
+
 依赖真实浏览器 DOM 的回归页放在 `app-web/tests/fixtures`，加载后自动执行断言并显示 `PASS` / `FAIL`，不调用模型或写入会话。运行 `npx vite --config vite.app-web.config.ts` 后，可访问 `/tests/fixtures/conversation-search.html`、`/tests/fixtures/message-annotations.html` 和 `/tests/fixtures/tool-cards.html`；修改相关 DOM 逻辑时需单独运行，`npm test` 不包含这些浏览器检查。临时演示页、手工造数和全局请求 mock 不作为长期测试保留，当前入口见 [回归测试说明](../app-web/tests/README.md)。
 
 ## 9. 自动门禁
@@ -169,10 +175,11 @@ app-web/tests/**        # 所有 test/spec
 | 命令 | 内容 |
 | --- | --- |
 | `npm run check:architecture` | 目录、依赖、循环、导入解析（剥离 `?inline` 等查询串）与具名导出存在性、`shared`/`core` 不得反向 import `features`、动态 CSS、全局请求等边界 |
+| `npm run check:tests-health` | 源码断言的存量预算：超过基线即失败，防止「改个变量名就红」的测试继续增加 |
 | `npm test` | 运行 `app-web/tests` 中所有 `*.test.js` / `*.test.mjs` 自动测试 |
 | `npm run lint` | 生产代码和测试代码 ESLint；warning 也会失败 |
 | `npm run build:web` | Vite 生产构建 |
-| `npm run check:web` | 依次执行以上四项 |
+| `npm run check:web` | 依次执行以上五项 |
 
 合并前必须运行 `npm run check:web`。新增架构规则时，先把规则写进 `scripts/check-app-web-architecture.mjs`，再更新本文。
 

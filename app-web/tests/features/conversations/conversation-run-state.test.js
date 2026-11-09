@@ -3,8 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { isTaskLive } from '../../../src/core/run-status.js';
-import { STATUS_MARK_TERMINAL, isRunStateLive, resolveConversationRunState, resolveConversationStatusMark, resolveConversationWaitState, settledTaskIds } from '../../../src/features/conversations/model/conversation-run-state.js';
-import { RUN_STATE_APPROVAL, RUN_STATE_IDLE, RUN_STATE_RUNNING, RUN_STATE_WAITING_INPUT } from '../../../src/core/run-status.js';;
+import { STATUS_MARK_TERMINAL, conversationSettledTaskIds, isRunStateLive, resolveConversationRunState, resolveConversationStatusMark, resolveConversationWaitState, settledTaskIds } from '../../../src/features/conversations/model/conversation-run-state.js';
+
+import { RUN_STATE_APPROVAL, RUN_STATE_IDLE, RUN_STATE_RUNNING, RUN_STATE_WAITING_INPUT } from '../../../src/core/run-status.js';
+
+// chat-rows 一路引到 shared/api/base.js，那里在模块顶层读 window。
+globalThis.window = { HAISH_API_BASE: 'http://fixture.invalid', location: { origin: 'http://fixture.invalid' } };
+const { buildChatRows } = await import('../../../src/features/app/model/chat-rows.js');
 
 // 用户报的问题：「这会话状态是不是有 bug 啊，暂停之后应该要继续 loading 啊」——面板说在跑、
 // 侧边栏那行什么都没亮。原因是两处各自算「还在跑」：面板看本地运行时任务，侧边栏看服务端
@@ -49,10 +54,6 @@ const timelineNodesSource = readFileSync(
   'utf8',
 );
 // settled / live / streaming 在 model/chat-rows.js 里算。
-const rowBuilderSource = readFileSync(
-  new URL('../../../src/features/app/model/chat-rows.js', import.meta.url),
-  'utf8',
-);
 const panelStyles = readFileSync(new URL('../../../styles/panels.css', import.meta.url), 'utf8');
 
 const runningTask = (taskId, extra = {}) => ({ taskId, status: 'running', ...extra });
@@ -291,16 +292,45 @@ test('the message panel reads the same judge for streaming and for the activity 
   // 气泡还在转圈 = 这一轮还活着：任务自身在跑，且没有任何一份拷贝落地终态。
   // 收工判据读的两份权威快照：本地运行时拷贝 + 会话目录拷贝（服务端列表）；渲染用的
   // currentConversation.tasks 是合并出来的，不能拿来判——它会藏掉目录的落地标记。
-  assert.match(appShellSource, /const directoryConversation = useMemo\(\n\s+\(\) => findConversationById\(workspaceState, conversationId\),\n\s+\[conversationId, workspaceState\],\n\s+\);/);
-  assert.match(appShellSource, /const settledRuntimeTaskIds = useMemo\(\(\) => settledTaskIds\(\[\n\s+\.\.\.taskRuntimeState\.taskOrder\.map\(\(taskId\) => taskRuntimeState\.tasksById\[taskId\]\),\n\s+\.\.\.\(directoryConversation\?\.tasks \|\| \[\]\),\n\s+\]\), \[directoryConversation, taskRuntimeState\]\);/);
-  assert.match(rowBuilderSource, /const settled = settledRuntimeTaskIds;/);
-  assert.match(rowBuilderSource, /const live = isTaskLive\(task\) && !settled\.has\(String\(task\.taskId \|\| task\.id \|\| ''\)\);/);
-  assert.match(rowBuilderSource, /const streaming = live;/);
   assert.match(appShellSource, /const currentConversationRunState = useConversationRunState\(\{/);
   assert.match(appShellSource, /const currentConversationActive = isRunStateLive\(currentConversationRunState\.state\);/);
   // 活动文案的「在等人」也来自同一份快照，不再看 ask_user 卡片在不在飞。
   assert.match(timelineNodesSource, /const waitState = useConversationWaitState\(conversationId\);/);
   assert.match(timelineNodesSource, /resolveAgentActivity\(safeItems, streaming, waitState\.state\)/);
+});
+
+test('the settle judge folds both authoritative snapshots into one set', () => {
+  // 本地运行时拷贝说「还在跑」，服务端目录拷贝说「已落地」——后者说了算：
+  // 渲染用的合并列表会拿本地拷贝覆写目录的落地标记，拿它判定就会一直转圈。
+  const settled = conversationSettledTaskIds(
+    ['local-running', 'local-settled', 'missing-copy'],
+    {
+      'local-running': { taskId: 'local-running', status: 'running' },
+      'local-settled': { taskId: 'local-settled', status: 'done' },
+    },
+    [{ task_id: 'directory-settled', status: 'completed' }, { task_id: 'directory-running', status: 'running' }, {}],
+  );
+  assert.deepEqual([...settled].sort(), ['directory-settled', 'local-settled']);
+});
+
+test('a bubble stops streaming once any copy of its task has settled', () => {
+  const task = { taskId: 'turn-1', id: 'turn-1', status: 'running', title: 'hi', annotations: [] };
+  const rowsFor = (settled) => buildChatRows({
+    agentOptions: [],
+    chatMessageRowsCache: new Map(),
+    conversationId: 'conversation-1',
+    currentConversation: { id: 'conversation-1' },
+    settledRuntimeTaskIds: settled,
+    taskRuntimeState: {
+      taskOrder: ['turn-1'],
+      tasksById: { 'turn-1': task },
+      pendingTask: null,
+      activeTaskId: 'turn-1',
+    },
+  });
+  const assistantRow = (rows) => rows.find((row) => row.role === 'agent');
+  assert.equal(assistantRow(rowsFor(new Set()))?.streaming, true, 'a live task with no settled copy still streams');
+  assert.equal(assistantRow(rowsFor(new Set(['turn-1'])))?.streaming, false, 'the settled copy wins over the local one');
 });
 
 test('a copy that is behind while the turn already settled gets rebuilt instead of rendered around', () => {
