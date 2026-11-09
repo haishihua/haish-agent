@@ -22,6 +22,8 @@
 | `features/conversations/hooks/createConversationRuntime.js` | 四个字段 setter 逐字复制同一骨架，合成 `runtimeFieldWriter` |
 | `features/conversations/model/workspace-state.js` | 任务映射参数默认恒等，漏传会静默产出 summary 形状；改为必需，并补上 `createDeployHandlers` 那处漏传 |
 | `features/app/AppShell.jsx` → `conversations/model` | 「本地拷贝 + 目录拷贝」合并抽成 `conversationSettledTaskIds`，接线从此可测 |
+| `shared/lib/toast.js` | 跨层提示的事件名与 payload 形状原先分散硬写；收成 `notifyToast` / `onToast`，并补行为测试 |
+| `features/app/hooks/useLocalFileLinks.js` | 解析根在 effect 里写，Markdown 首帧读到空根、相对链接晚一帧才成立；改为渲染期幂等写入 |
 
 ## 测试锁定的误解
 
@@ -45,11 +47,14 @@
 
 ## 待办
 
-1. `core/pet-state.js` —— 为了算一个表情把整棵 chat timeline 构建一遍；需要一条轻量活动投影。
-2. `shared/lib/local-file-link.js` —— 解析根是模块级可变全局，靠别处 effect 注入；应改成显式参数或独立 store。
-3. `shared/lib/settings-sync.js` —— 「写入方先应用响应、被跳过的读再恢复」的顺序契约压在一个 `setTimeout(…, 0)` 里。
-4. `shared/ui/Markdown.jsx` —— 打开本机文件失败靠 `haish:toast` 自定义事件字符串约定，接收方在 features 里。
-5. `shared/ui/ImagePreviewOverlay.jsx` —— 复制图片的失败只 `console.error`，界面无反馈（属产品行为，需产品决策）。
-6. `features/conversations/model/task-runtime-requests.js` —— 通用合并器里混进调用方词汇（`joinBatch`）。
+1. `shared/lib/settings-sync.js` —— 「写入方先应用响应、被跳过的读再恢复」的顺序契约压在一个
+   `setTimeout(…, 0)` 里。改它要么动保存时序、要么让 `finishSettingsRequest` 返回可 await 的收尾，
+   两种都会碰到并发保存的边界。
+2. `core/pet-state.js` —— 为了算一个表情把整棵 chat timeline 构建一遍。轻量化等于重写活动推断，
+   会改变宠物动画的触发时机（用户可见）。
+3. `shared/ui/ImagePreviewOverlay.jsx` —— 复制图片的失败只 `console.error`，界面无反馈。
+   现在有 `notifyToast` 可以接，但这是新增用户可见提示，属于产品决策。
+4. `features/conversations/model/task-runtime-requests.js` —— 通用合并器里混进调用方词汇
+   （`joinBatch` 只为 404 后的独立重取服务）。改动会变请求合并键，需要先确认合并语义。
 
-第 1–3 项是纯结构调整，第 4 项要定一个跨层通知出口，第 5 项要产品决策，第 6 项影响请求合并键。
+这四项都不是「代码级清理」，而是要么触到用户可见行为，要么要先定产品语义。
