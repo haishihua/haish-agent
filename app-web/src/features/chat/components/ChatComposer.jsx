@@ -492,14 +492,11 @@ export function ChatComposer({
     if ((!running || goal) && (!goal || goal.prompt) && modelConfigError) return;
     let savedConfig = null;
     if ((!running && !goal) || goal?.prompt) {
-      try {
-        savedConfig = await configSync.ensureSaved();
-      } catch (error) {
-        // 配置预检失败（超时、切走会话、保存被拒）必须让用户看见：这里以前直接 return，
-        // 结果就是「按了发送没反应，草稿还在」。payload 原样保留，用户改完配置能直接重发。
-        onToast?.('error', error?.message || 'Could not save the current configuration. Your message was not sent.');
-        return;
-      }
+      // 预检失败就不发：配置保存失败的那次操作自己已经 toast 过（persist 的 catch 与
+      // changeAgent 的 catch 都会提示），这里再报一次是重复。所以这里保持静默。
+      // 已知缺口：persist 失败后虽然会把选择回滚，但 error 状态没清，下一次
+      // ensureSaved 会撞上它直接抛错——表现是「回滚之后按发送仍然没反应」。
+      try { savedConfig = await configSync.ensureSaved(); } catch { return; }
       const current = submissionContextRef.current;
       if (!submissionMountedRef.current || current.owner !== owner || current.disabled || current.submitPending || current.stopError || (!running && current.running)) return;
       if (currentSelection?.disabled) return;

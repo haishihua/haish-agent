@@ -26,13 +26,23 @@ const collect = () => {
   const perFile = {};
   for (const file of walk(TESTS_DIR)) {
     const source = readFileSync(file, 'utf8');
-    const vars = [...source.matchAll(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\([^)]*\)\s*=>\s*)?\s*(?:\n\s*)?fs\.readFileSync|const\s+([A-Za-z_$][\w$]*)\s*=\s*readFileSync/g)]
-      .map((match) => match[1] || match[2]);
+    // 同一个测试文件里常见 `const source = readFileSync(...)` 反复出现（每个用例读一次），
+    // 去重后按变量名统计，否则同名变量会被按出现次数重复累加——基线因此虚高，
+    // 而虚高的基线等于放行回涨：新增的断言只要没顶破那个假数字就静默通过。
+    const vars = [...new Set(
+      [...source.matchAll(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\([^)]*\)\s*=>\s*)?\s*(?:\n\s*)?fs\.readFileSync|const\s+([A-Za-z_$][\w$]*)\s*=\s*readFileSync/g)]
+        .map((match) => match[1] || match[2]),
+    )];
     if (vars.length === 0) continue;
     let count = 0;
     for (const variable of vars) {
-      const pattern = new RegExp(`assert\\.(?:match|doesNotMatch|equal)\\(\\s*${variable}\\b`, 'g');
-      count += (source.match(pattern) || []).length;
+      // 直接断言：assert.match / doesNotMatch / equal 把源码变量当对象。
+      const direct = new RegExp(`assert\\.(?:match|doesNotMatch|equal)\\(\\s*${variable}\\b`, 'g');
+      // 间接断言：assert.ok(source.includes('...')) 同样是「源码文本变了就红」，
+      // 以前完全不计，等于给这类断言开了免检通道。
+      const viaIncludes = new RegExp(`assert\\.(?:ok|equal)\\(\\s*!?\\s*${variable}\\.includes\\(`, 'g');
+      count += (source.match(direct) || []).length;
+      count += (source.match(viaIncludes) || []).length;
     }
     if (count > 0) perFile[relative(TESTS_DIR, file)] = count;
   }

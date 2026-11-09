@@ -1,5 +1,6 @@
 import React from 'react';
-import { waitForAttemptRunConfig } from '../../../shared/lib/attempt-run-config.js';
+import { CONVERSATION_CONFIG_TIMEOUT_MESSAGE, waitForAttemptRunConfig } from '../../../shared/lib/attempt-run-config.js';
+import { pollUntil } from '../../../shared/lib/poll-until.js';
 
 export function useConversationRunConfig({ sync, conversationId, scopeId, config, restore, loading, saveBlockedReason = '', validateConfig, readOnly, initialAgentId, hasSentMessage, onAgentSaved, onToast }) {
   const [ready, setReady] = React.useState('');
@@ -132,28 +133,37 @@ export function useConversationRunConfig({ sync, conversationId, scopeId, config
       const deadline = Date.now() + timeoutMs;
       let saving = null;
       let saveFailure = null;
+      let settled;
       const waitForSave = (operation) => {
         saving = operation;
         // Observe settlement without blocking the ownership/timeout checks.
         operation.then(() => { saving = null; }, (failure) => { saveFailure = failure; saving = null; });
       };
-      while (true) {
-        if (signal?.aborted) throw new Error('Retry was stopped. Your changes have not been sent.');
-        if (!mountedRef.current || ownerRef.current !== owner) throw new Error('Conversation changed while waiting for configuration. Your changes have not been sent.');
-        if (saveFailure) throw saveFailure;
-        const current = readinessRef.current;
-        if (current.error && !operationRef.current) throw new Error(current.error);
-        if (!saving && operationRef.current) {
-          waitForSave(operationRef.current);
-        } else if (!saving && current.ready === key && !current.loading) {
-          if (currentRef.current.saveBlockedReason) throw new Error(currentRef.current.saveBlockedReason);
-          if (JSON.stringify(committedRef.current) === JSON.stringify(currentRef.current.config)) return committedRef.current;
-          waitForSave(current.persist(currentRef.current.config));
-        }
-        if (Date.now() >= deadline) throw new Error('Timed out waiting for conversation configuration. Your changes have not been sent. Please try again.');
-        // Poll local state only: the in-flight load/save is not resubmitted.
-        await new Promise((resolve) => setTimeout(resolve, Math.min(50, deadline - Date.now())));
-      }
+      // 只共用轮询节奏和超时文案；归属判定留在这里，而且每拍只读本地状态，
+      // 已经在飞的 load/save 不会被重投一次。
+      await pollUntil({
+        deadline,
+        timeoutMessage: CONVERSATION_CONFIG_TIMEOUT_MESSAGE,
+        check: () => {
+          if (signal?.aborted) throw new Error('Retry was stopped. Your changes have not been sent.');
+          if (!mountedRef.current || ownerRef.current !== owner) throw new Error('Conversation changed while waiting for configuration. Your changes have not been sent.');
+          if (saveFailure) throw saveFailure;
+          const current = readinessRef.current;
+          if (current.error && !operationRef.current) throw new Error(current.error);
+          if (!saving && operationRef.current) {
+            waitForSave(operationRef.current);
+          } else if (!saving && current.ready === key && !current.loading) {
+            if (currentRef.current.saveBlockedReason) throw new Error(currentRef.current.saveBlockedReason);
+            if (JSON.stringify(committedRef.current) === JSON.stringify(currentRef.current.config)) {
+              settled = committedRef.current;
+              return 'done';
+            }
+            waitForSave(current.persist(currentRef.current.config));
+          }
+          return 'continue';
+        },
+      });
+      return settled;
     },
     changeAgent: async (agentId) => {
       try {

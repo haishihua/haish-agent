@@ -140,3 +140,36 @@
 - `context-usage` 的 11 个调用点仍靠默认参数兜底。
 - 两处 50ms 忙等循环整段复制（`waitForAttemptRunConfig` vs `ensureSaved`）。
 - `ApprovalOverlay 714` / `createDeployHandlers 694` 未拆。
+
+## 第六批：修准源码断言的度量，合并忙等循环
+
+### 健康度检查器原来在骗人
+
+`check-test-health.mjs` 有两个口径缺陷，合起来让「基线只许降」形同虚设：
+
+1. **同名变量重复累加**。同一测试文件里常见 `const source = readFileSync(...)` 每个用例读一次，
+   收集变量时没去重，于是 `source` 在数组里出现 5 次，它的每条断言被算 5 遍。
+   `error-surface-unification.test.js` 实际 25 条，基线记的是 **110**。
+2. **`assert.ok(src.includes('...'))` 完全不计**。这同样是「源码文本变了就红」，
+   却整类开了免检通道；`browser-runtime-layout`（27 条）、`compact-providers`（11 条）、
+   `image-providers`（3 条）在基线里干脆是 0。
+
+两处都修掉后重锁基线：**1531 → 1432**。其中去重修正 −174，口径补全 +75。
+虚高的基线比没有基线更糟：它让新增断言只要没顶破那个假数字就静默通过。
+
+教训：度量工具本身也需要一次对拍——拿一个已知条数的文件比一下。
+
+### 50ms 忙等循环合并
+
+`shared/lib/poll-until.js` 收走了「deadline + `min(50, 剩余)` 休眠 + 超时抛错」这段骨架，
+`waitForAttemptRunConfig` 与 `ensureSaved` 各自只保留「怎么算落定」的检查函数。
+关键细节照旧：间隔是 `min(50, 剩余时间)`（收尾会出现 20ms 那拍），deadline 判定在 check **之后**。
+超时文案此前两处各写一遍字面量，现在只有 `attempt-run-config.js` 一处定义。
+对拍用假时钟记录每拍休眠毫秒数，9 + 6 个场景的序列与错误文案逐字节相同。
+
+### 一处行为回退
+
+上一批给「发送时配置预检失败」加的 toast 撤掉了。查证后发现两件事：切 Agent 失败本来就会
+toast（`useConversationRunConfig.js:92`），再加一条是重复；而 `persist` 失败时会把选择回滚，
+配置其实已经干净，真正卡住发送的是残留的 `error` 状态（`ensureSaved` 见它非空就直接抛）。
+所以那不是「缺提示」，是「回滚后没清错误」。改动已回退，缺口记在待办里，等定了方案再动。

@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import vm from 'node:vm';
 import { migrateExecutionRoute, savedExecutionConfigId } from '../../../src/core/execution-identity.js';
 import { normalizeReasoningEffort, REASONING_EFFORT_OPTIONS } from '../../../src/core/run-catalog.js';
 import { executionConfigError } from '../../../src/core/execution-config.js';
 import { createRunConfigSync } from '../../../src/core/run-config-sync.js';
-import { waitForAttemptRunConfig } from '../../../src/shared/lib/attempt-run-config.js';
+import { CONVERSATION_CONFIG_TIMEOUT_MESSAGE, waitForAttemptRunConfig } from '../../../src/shared/lib/attempt-run-config.js';
+import { pollUntil } from '../../../src/shared/lib/poll-until.js';
 import { createConversationHandlers } from '../../../src/features/conversations/hooks/createConversationHandlers.js';
 
 const source = readFileSync(new URL('../../../src/features/conversations/hooks/useConversationRunConfig.js', import.meta.url), 'utf8');
@@ -49,7 +50,7 @@ function hookHarness(initial, makeHook = null) {
       }
     },
   };
-  const persistence = vm.runInNewContext(`${source.replace(/^import .*;\n/gm, '').replace('export function', 'function')}\nuseConversationRunConfig;`, { React, setTimeout, structuredClone, waitForAttemptRunConfig });
+  const persistence = vm.runInNewContext(`${source.replace(/^import .*;\n/gm, '').replace('export function', 'function')}\nuseConversationRunConfig;`, { React, setTimeout, structuredClone, waitForAttemptRunConfig, pollUntil, CONVERSATION_CONFIG_TIMEOUT_MESSAGE });
   const hook = makeHook ? makeHook(React, persistence) : persistence;
   function render() {
     cursor = 0; dirty = false; effects = [];
@@ -483,4 +484,24 @@ test('composer passes the route error to persistence and retains the restored id
   const syncCall = composer.slice(composer.indexOf('useConversationRunConfig({'), composer.indexOf('async function changeAgent'));
   assert.match(syncCall, /saveBlockedReason: modelConfigError/);
   assert.match(syncCall, /llm_config_id: executionMode === 'bot' \? null : providerId/);
+});
+
+// 两处等待的骨架已经合并，文案再各写一遍就又会分叉。
+function sourceFiles(directory = new URL('../../../src/', import.meta.url)) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const child = new URL(`${entry.name}${entry.isDirectory() ? '/' : ''}`, directory);
+    if (entry.isDirectory()) return sourceFiles(child);
+    return /\.jsx?$/.test(entry.name) ? [child] : [];
+  });
+}
+
+test('the timeout copy is written once and both waits read the same constant', () => {
+  const owners = sourceFiles()
+    .filter((path) => readFileSync(path, 'utf8').includes('Timed out waiting for conversation configuration.'))
+    .map((path) => decodeURIComponent(path.pathname).split('/src/')[1]);
+  assert.deepEqual(owners, ['shared/lib/attempt-run-config.js']);
+  const root = new URL('../../../src/', import.meta.url);
+  for (const path of ['shared/lib/attempt-run-config.js', 'features/conversations/hooks/useConversationRunConfig.js']) {
+    assert.match(readFileSync(new URL(path, root), 'utf8'), /timeoutMessage: CONVERSATION_CONFIG_TIMEOUT_MESSAGE/);
+  }
 });
