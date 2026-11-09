@@ -41,7 +41,11 @@ test('both logo renderers size the mark through its box, not a transform', () =>
 
   const brandMark = read('app-web/src/shared/ui/ProviderIcon.jsx');
   assert.match(brandMark, /const size = providerLogoSize\(provider, opticalSize\)/);
-  assert.match(brandMark, /<colored style=\{sized\} \/>/);
+  // JSX 组件变量必须大写：小写的 <colored/> 会被当成 DOM 自定义元素，
+  // OpenAI/Anthropic/Gemini 的 logo 会渲染成空壳（曾经的回归）。
+  assert.match(brandMark, /const Logo = \{ openai: OpenAILogo, anthropic: ClaudeLogo, gemini: GeminiLogo \}\[provider\]/);
+  assert.match(brandMark, /<Logo style=\{sized\} \/>/);
+  assert.doesNotMatch(brandMark, /<colored/, 'component tags must stay capitalized');
   assert.match(brandMark, /<img src=\{brand\} alt="" style=\{sized\} \/>/);
   assert.match(brandMark, /<ProviderIcon provider=\{provider\} opticalSize=\{opticalSize\} \/>/);
   assert.doesNotMatch(

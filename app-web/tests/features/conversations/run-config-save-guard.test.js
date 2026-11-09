@@ -505,3 +505,32 @@ test('the timeout copy is written once and both waits read the same constant', (
     assert.match(readFileSync(new URL(path, root), 'utf8'), /timeoutMessage: CONVERSATION_CONFIG_TIMEOUT_MESSAGE/);
   }
 });
+
+// 切换 Agent 失败的产品约定是「回退到原选择 + toast 提示失败」。既然已经回退，
+// 配置就回到了服务端存着的那一份、是可用的，下一次发送必须能照常进行。
+// 曾经这里会把失败状态留在 error 上，ensureSaved 一看非空就直接抛，
+// 于是「回滚之后按发送」变成点了没反应，草稿还留在输入框里。
+test('a failed save rolls the selection back and leaves sending usable', async () => {
+  const observed = [];
+  const restored = [];
+  const sync = {
+    load: async () => structuredClone(route),
+    observe: (_scope, next) => observed.push(structuredClone(next)),
+    flush: async () => { throw new Error('Settings service rejected the write.'); },
+  };
+  // restore 在真实代码里是写回 React 状态（usePersistentRunConfig 的 restoreConfig），
+  // 这里必须同样模拟，否则配置会一直被认为是脏的、ensureSaved 会一直重试保存。
+  let harness = null;
+  const restore = (next) => { restored.push(next); harness?.update({ config: structuredClone(next) }); };
+  harness = hookHarness({ sync, conversationId: 'history', scopeId: 'history',
+    config: { ...route, agent_id: 'other-agent' }, restore });
+  await harness.settle();
+
+  await assert.rejects(harness.result.changeAgent('other-agent'), /Settings service rejected the write\./);
+  await harness.settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(restored.at(-1))), route, '失败的切换必须回退到原配置');
+
+  // 回退之后再发一次：配置等于已保存的那份，应当直接返回而不是被历史错误挡住。
+  const config = await harness.result.ensureSaved();
+  assert.deepEqual(JSON.parse(JSON.stringify(config)), route, '回滚后必须还能发送，且用的是原配置');
+});

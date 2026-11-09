@@ -86,10 +86,16 @@ export function useConversationRunConfig({ sync, conversationId, scopeId, config
         }
         return saved;
       } catch (failure) {
-        owner.error = failure.message;
+        // 回滚成功 = 选择已经回到服务端存着的那一份，配置可用。此时不能把失败状态留着：
+        // ensureSaved 看到非空的 error 会直接抛错，于是「切换失败 → 已回滚 → 按发送」
+        // 变成点了没反应。失败本身由 toast 通知（切换由 changeAgent 的 catch 报，
+        // 其余由下面这行报），错误态不需要再挂在这里。
+        // 没能回滚（没有 before）时才保留错误：那种情况下配置确实不可用。
+        const rolledBack = Boolean(before) && ownerRef.current === owner && mountedRef.current;
+        owner.error = rolledBack ? '' : failure.message;
         if (ownerRef.current === owner && mountedRef.current) {
           if (before) { sync?.observe(scopeId, before); currentRef.current.restore(before); }
-          setError(failure.message);
+          if (!rolledBack) setError(failure.message);
           if (mountedRef.current && !switching) currentRef.current.onToast?.('error', failure.message);
         }
         throw failure;

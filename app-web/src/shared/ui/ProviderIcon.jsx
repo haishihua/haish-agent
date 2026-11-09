@@ -56,7 +56,9 @@ export function ProviderIcon({ provider, opticalSize }) {
 // 彩色品牌标记：设置列表和模型选择器要能一眼认出厂商，所以用带色的 logo；
 // 画布、运行配置那种跟文字同色的小标记用上面的 ProviderIcon（mask 剪影）。
 export function ProviderBrandMark({ provider, name = '', opticalSize }) {
-  const colored = { openai: OpenAILogo, anthropic: ClaudeLogo, gemini: GeminiLogo }[provider];
+  // JSX 里小写的组件标签名会被当成 DOM 自定义元素而不是 React 组件，
+  // 渲染成空壳——OpenAI/Anthropic/Gemini 的 logo 就是这么丢的。组件变量必须大写。
+  const Logo = { openai: OpenAILogo, anthropic: ClaudeLogo, gemini: GeminiLogo }[provider];
   const brand = { deepseek: deepseekBrand, zhipu: zhipuBrand, siliconflow: siliconflowBrand }[
     String(name).toLowerCase() === 'siliconflow' ? 'siliconflow' : provider
   ];
@@ -64,7 +66,7 @@ export function ProviderBrandMark({ provider, name = '', opticalSize }) {
   const sized = size ? { width: size, height: size } : undefined;
   return (
     <span className="settings-brand" aria-hidden="true">
-      {colored ? <colored style={sized} /> : brand ? <img src={brand} alt="" style={sized} /> : provider === 'custom'
+      {Logo ? <Logo style={sized} /> : brand ? <img src={brand} alt="" style={sized} /> : provider === 'custom'
         ? <span className="settings-initials">{String(name).trim().split(/[\s_.-]+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'API'}</span>
         : <ProviderIcon provider={provider} opticalSize={opticalSize} />}
     </span>
