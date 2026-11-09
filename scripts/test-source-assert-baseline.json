@@ -1,5 +1,5 @@
 {
-  "total": 1533,
+  "total": 1531,
   "files": {
     "contracts/activity-orb-revive.test.js": 24,
     "contracts/agent-catalog.test.js": 87,
@@ -23,7 +23,7 @@
     "contracts/final-answer-file-tree.test.js": 69,
     "contracts/human-approval-layout.test.js": 28,
     "contracts/image-copy-safety.test.js": 6,
-    "contracts/llm-retry-timeline.test.js": 17,
+    "contracts/llm-retry-timeline.test.js": 16,
     "contracts/loading-state.test.js": 13,
     "contracts/loop-node-layout.test.js": 17,
     "contracts/macos-app-icon.test.js": 8,
@@ -44,7 +44,6 @@
     "contracts/settings-form-polish.test.js": 2,
     "contracts/settings-test-connection.test.js": 2,
     "contracts/skill-detail-toggle.test.js": 3,
-    "contracts/tool-icon-mapping.test.js": 1,
     "contracts/user-message-line-breaks.test.js": 6,
     "contracts/workflow-canvas-single-source.test.js": 117,
     "contracts/workflow-task-sidebar.test.js": 18,

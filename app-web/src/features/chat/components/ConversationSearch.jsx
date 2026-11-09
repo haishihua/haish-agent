@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { collectConversationMatches, conversationMatchPositions, scrollToConversationMatch } from '../model/conversation-search.js';
+import { HIGHLIGHT_NAMES, clearHighlights, setHighlight } from '../../../shared/lib/css-highlights.js';
 
 export function ConversationSearch({ scrollRef, onSearchChange, loading = false }) {
   const [open, setOpen] = React.useState(false);
@@ -47,9 +48,10 @@ export function ConversationSearch({ scrollRef, onSearchChange, loading = false 
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [open, hits, scrollRef]);
   React.useEffect(() => {
-    if (!globalThis.CSS?.highlights || !globalThis.Highlight || !hits.length) return undefined;
-    CSS.highlights.set('conversation-matches', new Highlight(...hits.map((hit) => hit.range)));
-    return () => CSS.highlights.delete('conversation-matches');
+    if (!hits.length) return undefined;
+    setHighlight(HIGHLIGHT_NAMES.conversationMatches, hits.map((hit) => hit.range));
+    // 只收自己那张：当前选中的高亮由下面那个 effect 自己管。
+    return () => clearHighlights([HIGHLIGHT_NAMES.conversationMatches]);
   }, [hits]);
   // A refreshed Range is not a navigation request. Streaming/DOM updates can
   // rebuild hits while the reader is scrolling, so jump only for a new query
@@ -64,11 +66,9 @@ export function ConversationSearch({ scrollRef, onSearchChange, loading = false 
     scrollToConversationMatch(scrollRef.current, active.range);
   }, [open, query, index, hits.length, active, scrollRef]);
   React.useEffect(() => {
-    if (!globalThis.CSS?.highlights || !globalThis.Highlight || !active) return undefined;
-    const highlight = new Highlight(active.range);
-    highlight.priority = 1;
-    CSS.highlights.set('conversation-active-match', highlight);
-    return () => CSS.highlights.delete('conversation-active-match');
+    if (!active) return undefined;
+    setHighlight(HIGHLIGHT_NAMES.conversationActiveMatch, [active.range], { priority: 1 });
+    return () => clearHighlights([HIGHLIGHT_NAMES.conversationActiveMatch]);
   }, [active]);
   const step = (delta) => {
     if (!hits.length) return;

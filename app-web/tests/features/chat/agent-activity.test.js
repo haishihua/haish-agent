@@ -3,7 +3,7 @@ import test from 'node:test';
 
 globalThis.window = {};
 
-const { resolveAgentActivity } = await import('../../../src/core/tool-grouping.js');
+const { resolveAgentActivity, orbStateForActivity } = await import('../../../src/core/tool-grouping.js');
 
 const tool = (toolName, status = 'running') => ({ kind: 'tool', toolName, status });
 const supportedOrbStates = new Set(['working', 'searching', 'solving', 'listening', 'composing']);
@@ -41,4 +41,50 @@ test('every emitted activity uses a supported Thinking Orb state', () => {
   samples.forEach(([items, streaming, waitState]) => {
     assert.equal(supportedOrbStates.has(resolveAgentActivity(items, streaming, waitState).state), true);
   });
+});
+
+// 改前基线（重构前 ChatTimelineNodes 里那一行三元）：
+//   state={activity.state === 'composing' ? 'working' : activity.state === 'working' ? 'composing' : activity.state}
+// 这里把它抄成数据，改动后逐条对拍——活动词表到 orb 词表的映射必须一模一样。
+const ORB_STATE_BEFORE_REFACTOR = {
+  composing: 'working',
+  working: 'composing',
+  searching: 'searching',
+  solving: 'solving',
+  listening: 'listening',
+};
+
+test('activity state reaches the orb in exactly the pre-refactor word', () => {
+  for (const [activityState, orbState] of Object.entries(ORB_STATE_BEFORE_REFACTOR)) {
+    assert.equal(orbStateForActivity(activityState), orbState, `${activityState} → ${orbState}`);
+  }
+});
+
+test('every state the activity resolver emits has a pinned orb word', () => {
+  const samples = [
+    [[], true, ''],
+    [[tool('ask_user')], true, 'waiting_input'],
+    [[tool('ask_user')], true, 'approval'],
+    [[tool('search_text')], true, ''],
+    [[tool('exec_command')], true, ''],
+    [[tool('read_file', 'done')], true, ''],
+    [[{ kind: 'thinking', streaming: true }], true, ''],
+  ];
+  for (const [items, streaming, waitState] of samples) {
+    const { state } = resolveAgentActivity(items, streaming, waitState);
+    assert.equal(
+      orbStateForActivity(state),
+      ORB_STATE_BEFORE_REFACTOR[state],
+      `no pinned orb word for activity state ${state}`,
+    );
+  }
+});
+
+test('orb words the app does not use pass through untouched', () => {
+  // 库自己还有 connecting / weaving / breathing / shaping；翻译表只该改它认识的词，
+  // 否则以后换一个库状态会被静默改成别的动画。
+  for (const orbState of ['connecting', 'weaving', 'breathing', 'shaping']) {
+    assert.equal(orbStateForActivity(orbState), orbState);
+  }
+  assert.equal(orbStateForActivity(undefined), undefined);
 });

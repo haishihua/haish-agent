@@ -193,6 +193,25 @@ function aggregateGroupStatus(tools) {
 
 const SEARCH_ACTIVITY_BUCKETS = new Set(['read', 'searched', 'fetched', 'visualized']);
 
+// 活动状态有两套词表，交界只允许有一处：
+// - 对外（本模块产出的 `state`）：应用的词表，composing = 在想、working = 工具在跑。
+//   时间线的 `state-*` class、宠物状态（core/pet-state.js）都读这套词；
+// - 对内（thinking-orbs 的 OrbState）：working = 环绕粒子、composing = 飘带。
+// 两套词表里 composing / working 的含义正好相反，过去靠时间线的一行三元对调缝合，
+// 任一侧改词都会静默换成错误的动画。翻译固定在这里，渲染层只认应用的词表；
+// 库独有的状态（connecting / weaving / breathing / shaping）原样透传。
+export const ORB_STATE_BY_ACTIVITY = Object.freeze({
+  composing: 'working',
+  working: 'composing',
+  searching: 'searching',
+  solving: 'solving',
+  listening: 'listening',
+});
+
+export function orbStateForActivity(activityState) {
+  return ORB_STATE_BY_ACTIVITY[activityState] || activityState;
+}
+
 export function resolveAgentActivity(items, streaming = false, waitState = '') {
   if (!streaming) return null;
   // 「在等人」由会话状态判据给（后端实时快照），不再看时间线上有没有 ask_user 卡片：

@@ -73,10 +73,8 @@ test('retry status is accessible and replaces generic activity while running', (
   assert.match(source, /<AppIcon name="retry" size=\{13\} className="chat-timeline-retry-icon" \/>/);
   assert.match(source, /activity && !retrying/);
   // The orb itself is rendered through <ActivityOrb> (the liveness guard in
-  // contracts/activity-orb-revive.test.js), but the state mapping this contract pins - a
-  // retry replaces the generic activity row, and the mapping stays as it was - still has to
-  // reach the library as the orb's state prop.
-  assert.match(source, /<ActivityOrb\s+state=\{activity\.state === 'composing' \? 'working' : activity\.state === 'working' \? 'composing' : activity\.state\}/);
+  // contracts/activity-orb-revive.test.js). 「词表翻译」这件事已由
+  // tests/features/chat/agent-activity.test.js 按输入输出钉住，这里不再断言源码写法。
 });
 
 test('retry cards and actions use the shared vector icon', () => {

@@ -232,7 +232,7 @@ export function ChatAgentTimeline({
       {activity && !retrying ? (
         <div className={`chat-timeline-activity state-${activity.state}`} role="status" aria-live="polite">
           <ActivityOrb
-            state={activity.state === 'composing' ? 'working' : activity.state === 'working' ? 'composing' : activity.state}
+            state={activity.state}
             size={64}
             theme="dark"
             style={{ width: 40, height: 40 }}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { ThinkingOrb } from 'thinking-orbs';
 import { prefersReducedMotion } from '../../../shared/lib/reduced-motion.js';
+import { orbStateForActivity } from '../../../core/tool-grouping.js';
 import {
   ORB_LIVENESS_SAMPLE_MS,
   createOrbLiveness,
@@ -49,7 +50,10 @@ function isOnScreen(element) {
   return rect.bottom > 0 && rect.top < viewportHeight && rect.right > 0 && rect.left < viewportWidth;
 }
 
-export function ActivityOrb(props) {
+// `state` 收的是应用的活动词表（resolveAgentActivity 产出的 composing / working / …），
+// 不是 thinking-orbs 的词表：这里是唯一 import 那个库的地方，两套词表的翻译就落在这一层，
+// 调用点不再各自对调（见 core/tool-grouping.js 的 ORB_STATE_BY_ACTIVITY）。
+export function ActivityOrb({ state, ...props }) {
   const hostRef = React.useRef(null);
   const [generation, setGeneration] = React.useState(0);
 
@@ -84,7 +88,7 @@ export function ActivityOrb(props) {
   return (
     // `display: contents` keeps the canvas a direct flex item of .chat-timeline-activity.
     <span ref={hostRef} style={{ display: 'contents' }}>
-      <ThinkingOrb key={generation} {...props} />
+      <ThinkingOrb key={generation} {...props} state={orbStateForActivity(state)} />
     </span>
   );
 }

@@ -1,16 +1,30 @@
 import { CONTEXT_USAGE_STORAGE_KEY } from '../shared/api/client.js';
 
-let runtimeContextTotalTokens = 0;
+// 表盘的分母（当前上下文窗口）只有一个注入点：AppShell 拿到运行时的 context_window_tokens
+// 后经 createContextUsageTracker().setTotalTokens() → configureContextTotalTokens() 写一次。
+// 过去读取者把它当隐式默认值读，“这张表盘的分母是谁定的”在参数里完全看不出来；现在每个
+// 读取者的签名里都有 contextWindowTokens（默认值就是这处注入），调用方也能显式传自己的窗口。
+let injectedContextTotalTokens = 0;
 
+/** 唯一的注入点。返回值是归一后的分母，调用方不必再算一遍。 */
 export function configureContextTotalTokens(value) {
-  runtimeContextTotalTokens = Math.max(0, Math.round(Number(value) || 0));
-  return runtimeContextTotalTokens;
+  injectedContextTotalTokens = Math.max(0, Math.round(Number(value) || 0));
+  return injectedContextTotalTokens;
 }
 
-export function normalizeContextUsage(value, fallbackConversationId = null) {
+/** 当前注入的窗口：只用作各读取者 contextWindowTokens 参数的默认值。 */
+export function configuredContextTotalTokens() {
+  return injectedContextTotalTokens;
+}
+
+export function normalizeContextUsage(
+  value,
+  fallbackConversationId = null,
+  contextWindowTokens = injectedContextTotalTokens,
+) {
   const rawUsedValue = Number(value?.contextUsedTokens ?? value?.context_used_tokens ?? value?.usedTokens ?? value?.used_tokens ?? 0);
   const rawUsedTokens = Math.max(0, Math.round(rawUsedValue || 0));
-  const totalTokens = Math.max(0, Math.round(Number(value?.contextTotalTokens ?? value?.context_total_tokens ?? value?.totalTokens ?? value?.total_tokens ?? value?.effective_budget ?? runtimeContextTotalTokens) || runtimeContextTotalTokens));
+  const totalTokens = Math.max(0, Math.round(Number(value?.contextTotalTokens ?? value?.context_total_tokens ?? value?.totalTokens ?? value?.total_tokens ?? value?.effective_budget ?? contextWindowTokens) || contextWindowTokens));
   const valid = value?.valid !== false && Number.isFinite(rawUsedValue) && rawUsedValue >= 0;
   const usedTokens = valid ? rawUsedTokens : 0;
   const compressedCount = Math.max(0, Math.round(Number(value?.compressedCount ?? value?.compressed_count ?? 0) || 0));
@@ -35,15 +49,22 @@ export function normalizeContextUsage(value, fallbackConversationId = null) {
   };
 }
 
-export function createEmptyContextUsage(conversationId = null) {
+export function createEmptyContextUsage(
+  conversationId = null,
+  contextWindowTokens = injectedContextTotalTokens,
+) {
   return normalizeContextUsage({
     conversationId,
     usedTokens: 0,
-    totalTokens: runtimeContextTotalTokens,
+    totalTokens: contextWindowTokens,
   }, conversationId);
 }
 
-export function contextUsageFromRuntimeEvent(event, fallbackConversationId = null) {
+export function contextUsageFromRuntimeEvent(
+  event,
+  fallbackConversationId = null,
+  contextWindowTokens = injectedContextTotalTokens,
+) {
   const compacted = event.type === 'context_compaction_completed';
   // 压缩开始只表示“即将压缩”，其中的 projected/total_prompt_tokens 不是实际
   // 发给模型的输入，不能写入表盘；保持压缩前最后一次真实值。
@@ -70,28 +91,29 @@ export function contextUsageFromRuntimeEvent(event, fallbackConversationId = nul
       : event.compressed_count,
     updatedAt: event.created_at || event.timestamp || new Date().toISOString(),
     source: 'sample',
-  }, fallbackConversationId);
+  }, fallbackConversationId, contextWindowTokens);
 }
 
-export function loadStoredContextUsage(conversationId) {
-  if (!conversationId) return createEmptyContextUsage(null);
+export function loadStoredContextUsage(conversationId, contextWindowTokens = injectedContextTotalTokens) {
+  if (!conversationId) return createEmptyContextUsage(null, contextWindowTokens);
   try {
     const raw = window.localStorage.getItem(CONTEXT_USAGE_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
     const stored = parsed?.[conversationId] || {};
     return normalizeContextUsage({
       ...stored,
-      totalTokens: runtimeContextTotalTokens,
+      // 存档里的分母是上一次的窗口（可能已经改了设置）：读回来一律按当前窗口重算。
+      totalTokens: contextWindowTokens,
       // 本地存的是“上一次会话看到的读数”（缓存）：它可能已经过期好几天，所以仲裁时
       // 不冒充本会话的实测样本，服务端会话级实测值可以压过它。
       source: 'stored',
       // 只有真正落在 provider 采样上的读数才带时间戳；旧版本把无时间戳的历史估算
       // 也存进来过，这里把这类脏数据降级成"没有读数"（既有的 valid=false 保持不服从）。
       valid: stored?.valid !== false && Boolean(stored?.updatedAt),
-    }, conversationId);
+    }, conversationId, contextWindowTokens);
   } catch (error) {
     console.warn('Failed to load context usage:', error);
-    return createEmptyContextUsage(conversationId);
+    return createEmptyContextUsage(conversationId, contextWindowTokens);
   }
 }
 
@@ -123,8 +145,11 @@ function estimateTextTokens(text) {
   return Math.ceil(cjk + (latin / 4));
 }
 
-export function estimateContextUsageFromConversationDetail(detail) {
-  if (!detail?.conversation_id) return createEmptyContextUsage(null);
+export function estimateContextUsageFromConversationDetail(
+  detail,
+  contextWindowTokens = injectedContextTotalTokens,
+) {
+  if (!detail?.conversation_id) return createEmptyContextUsage(null, contextWindowTokens);
   const messages = Array.isArray(detail.messages) ? detail.messages : [];
   const tasks = Array.isArray(detail.tasks) ? detail.tasks : [];
   let usedTokens = messages.reduce((total, message) => (
@@ -140,11 +165,11 @@ export function estimateContextUsageFromConversationDetail(detail) {
   return normalizeContextUsage({
     conversationId: detail.conversation_id,
     usedTokens,
-    totalTokens: runtimeContextTotalTokens,
+    totalTokens: contextWindowTokens,
     // 标成估算：可以在没有实测值时展示（前缀 ~），但不参与超限判定。
     estimated: true,
     source: 'estimate',
-  }, detail.conversation_id);
+  }, detail.conversation_id, contextWindowTokens);
 }
 
 /**
@@ -152,42 +177,58 @@ export function estimateContextUsageFromConversationDetail(detail) {
  * 这份读数没有采样时刻（它可能来自 fork 继承，不是本会话刚跑出来的），所以只当
  * “没有带时刻的读数可用”时的兜底；没有实测值时返回空表盘。
  */
-export function contextUsageFromConversationDetail(detail, fallbackConversationId = null) {
+export function contextUsageFromConversationDetail(
+  detail,
+  fallbackConversationId = null,
+  contextWindowTokens = injectedContextTotalTokens,
+) {
   const conversationId = detail?.conversation_id || fallbackConversationId || null;
   const measured = Number(detail?.context_used_tokens ?? detail?.contextUsedTokens);
-  if (!Number.isFinite(measured) || measured <= 0) return createEmptyContextUsage(conversationId);
+  if (!Number.isFinite(measured) || measured <= 0) return createEmptyContextUsage(conversationId, contextWindowTokens);
   return normalizeContextUsage({
     conversationId,
     usedTokens: measured,
-    totalTokens: runtimeContextTotalTokens,
+    totalTokens: contextWindowTokens,
     // 服务端会话级落盘值没有采样时刻（它可能来自 fork 继承）：只当“没有带时刻的
     // 读数可用”时的服务端真相，压过本地缓存，但压不过本会话里看到的实测采样。
     source: 'conversation',
-  }, conversationId);
+  }, conversationId, contextWindowTokens);
 }
 
 /**
  * 任务记录上的实测快照（服务端在流、轮询、恢复、详情各条通道上都带这一份）：
  * 值 + 采样时刻。没有采样过的任务返回空表盘，由调用方决定退回哪个来源。
  */
-export function contextUsageFromTask(task, fallbackConversationId = null) {
+export function contextUsageFromTask(
+  task,
+  fallbackConversationId = null,
+  contextWindowTokens = injectedContextTotalTokens,
+) {
   const conversationId = task?.conversation_id || task?.conversationId || fallbackConversationId || null;
   const measured = Number(task?.context_used_tokens ?? task?.contextUsedTokens);
-  if (!Number.isFinite(measured) || measured <= 0) return createEmptyContextUsage(conversationId);
+  if (!Number.isFinite(measured) || measured <= 0) return createEmptyContextUsage(conversationId, contextWindowTokens);
   return normalizeContextUsage({
     conversationId,
     usedTokens: measured,
-    totalTokens: runtimeContextTotalTokens,
+    totalTokens: contextWindowTokens,
     updatedAt: task?.context_used_tokens_at || task?.contextUsedTokensAt || null,
     source: 'sample',
-  }, conversationId);
+  }, conversationId, contextWindowTokens);
 }
 
 /** 一组任务里最新的那一份实测读数（同一会话内的任务，按采样时刻取新）。 */
-export function latestContextUsageFromTasks(tasks, fallbackConversationId = null) {
-  let latest = createEmptyContextUsage(fallbackConversationId);
+export function latestContextUsageFromTasks(
+  tasks,
+  fallbackConversationId = null,
+  contextWindowTokens = injectedContextTotalTokens,
+) {
+  let latest = createEmptyContextUsage(fallbackConversationId, contextWindowTokens);
   for (const task of Array.isArray(tasks) ? tasks : []) {
-    latest = preferNewerContextUsage(latest, contextUsageFromTask(task, fallbackConversationId));
+    latest = preferNewerContextUsage(
+      latest,
+      contextUsageFromTask(task, fallbackConversationId, contextWindowTokens),
+      contextWindowTokens,
+    );
   }
   return latest;
 }
@@ -201,17 +242,17 @@ export function latestContextUsageFromTasks(tasks, fallbackConversationId = null
  *   服务端会话级值则是服务端自己的最后一次实测；
  * - 两边都没时刻：保持现有读数（不拿没证据的值换来换去）。
  */
-export function preferNewerContextUsage(current, candidate) {
+export function preferNewerContextUsage(current, candidate, contextWindowTokens = injectedContextTotalTokens) {
   const candidateConversationId = candidate?.conversationId
     || candidate?.conversation_id
     || null;
   const currentConversationId = current?.conversationId
     || current?.conversation_id
     || null;
-  const next = normalizeContextUsage(candidate, candidateConversationId || currentConversationId);
+  const next = normalizeContextUsage(candidate, candidateConversationId || currentConversationId, contextWindowTokens);
   // prev 保留自己的会话 id（可能是 null）：空读数不靠一次比较就偷偷换上别人的 id，
   // 否则“读数没变”的判定会被一次归一化动作打破，“换会话”由调用方显式处理。
-  const prev = normalizeContextUsage(current, currentConversationId);
+  const prev = normalizeContextUsage(current, currentConversationId, contextWindowTokens);
   if (currentConversationId && next.conversationId && currentConversationId !== next.conversationId) {
     return next;
   }
@@ -261,7 +302,11 @@ export function createContextUsageTracker({
   persist = saveStoredContextUsage,
   load = loadStoredContextUsage,
 } = {}) {
-  let current = createEmptyContextUsage(null);
+  // 表盘自己的分母：装配时从注入点拿一次，之后 setTotalTokens 再改。
+  // 这个工厂的每条路径（仲裁 / 换会话 / 清空）都显式带着它，不再依赖读的那一刻
+  // 模块里是什么值。
+  let contextWindowTokens = configuredContextTotalTokens();
+  let current = createEmptyContextUsage(null, contextWindowTokens);
 
   function commit(next) {
     current = next;
@@ -281,14 +326,14 @@ export function createContextUsageTracker({
       || ownerConversationId
       || activeConversationId;
     if (!targetConversationId) return current;
-    const normalizedCandidate = normalizeContextUsage(candidate, targetConversationId);
+    const normalizedCandidate = normalizeContextUsage(candidate, targetConversationId, contextWindowTokens);
     const candidateHasReading = normalizedCandidate.valid && normalizedCandidate.usedTokens > 0;
     if (targetConversationId !== activeConversationId) {
       // 不是当前显示的会话：只把读数记下来（没有读数不写），已经落盘的是同一条
       // 就不再重复写 localStorage（后台轮询两秒一次）。
       if (!candidateHasReading) return current;
-      const stored = load(targetConversationId);
-      const merged = preferNewerContextUsage(stored, normalizedCandidate);
+      const stored = load(targetConversationId, contextWindowTokens);
+      const merged = preferNewerContextUsage(stored, normalizedCandidate, contextWindowTokens);
       if (!sameContextReading(stored, merged)) persist(merged);
       return current;
     }
@@ -299,7 +344,7 @@ export function createContextUsageTracker({
       persist(normalizedCandidate);
       return commit(normalizedCandidate);
     }
-    const merged = preferNewerContextUsage(current, normalizedCandidate);
+    const merged = preferNewerContextUsage(current, normalizedCandidate, contextWindowTokens);
     // 读数没变就不写 state：两秒一次的轮询不该把界面重渲染一遍。preferNewerContextUsage
     // 返回的是新对象（比较用的是里面的读数），所以这里按内容判，不按引用判。
     if (sameContextReading(current, merged)) return current;
@@ -311,15 +356,18 @@ export function createContextUsageTracker({
 
   /** 新建/切到空白会话：换一块空表盘（不写存储，历史会话的读数不受影响）。 */
   function reset(conversationId = null) {
-    return commit(createEmptyContextUsage(conversationId));
+    return commit(createEmptyContextUsage(conversationId, contextWindowTokens));
   }
 
   /** 配置里的上下文窗口变了：只换分母，分子还是上一次实测值。 */
   function setTotalTokens(value) {
-    configureContextTotalTokens(value);
-    const totalTokens = Math.max(0, Math.round(Number(value) || 0));
-    if (!(totalTokens > 0)) return current;
-    const splitByTotalTokens = (usage) => normalizeContextUsage({ ...usage, totalTokens }, usage?.conversationId || null);
+    contextWindowTokens = configureContextTotalTokens(value);
+    if (!(contextWindowTokens > 0)) return current;
+    const splitByTotalTokens = (usage) => normalizeContextUsage(
+      { ...usage, totalTokens: contextWindowTokens },
+      usage?.conversationId || null,
+      contextWindowTokens,
+    );
     if (current.estimated) {
       // 估算值不落盘：它只是现场算出来的占位数字。
       return commit(splitByTotalTokens(current));

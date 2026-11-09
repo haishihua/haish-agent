@@ -3,6 +3,11 @@ import { autoUpdate, flip, FloatingFocusManager, FloatingPortal, inline, offset,
 import { QuoteBlock, SelectionToolbar } from '../../../shared/ui/agent-elements/Quote.jsx';
 import { annotationError, annotationRange, annotationRectFitsRow, annotationText, captureAnnotationSelection, findAnnotationRange } from '../model/message-annotations.js';
 import { scrollToConversationMatch } from '../model/conversation-search.js';
+import {
+  HIGHLIGHT_NAMES,
+  clearHighlightGroup,
+  setHighlight,
+} from '../../../shared/lib/css-highlights.js';
 import './message-annotations.css';
 
 /** Selection is snapshotted before focus moves into the comment editor. */
@@ -41,7 +46,7 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
     onError('');
     onNavigate?.();
     scrollToConversationMatch(listRef.current, range);
-    if (globalThis.CSS?.highlights && globalThis.Highlight) CSS.highlights.set('annotation-focus', new Highlight(range));
+    setHighlight(HIGHLIGHT_NAMES.annotationFocus, [range]);
   }, [listRef, onError, onNavigate]);
   React.useImperativeHandle(ref, () => ({ edit, jump }), [edit, jump]);
 
@@ -104,7 +109,7 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
           rangesChanged = true;
         }
         const located = [...sources.values()].flatMap((group) => group.located);
-        if (rangesChanged && globalThis.CSS?.highlights && globalThis.Highlight) CSS.highlights.set('message-annotations', new Highlight(...located.map((entry) => entry.range)));
+        if (rangesChanged) setHighlight(HIGHLIGHT_NAMES.messageAnnotations, located.map((entry) => entry.range));
         const viewport = container.getBoundingClientRect();
         const next = [];
         const occupied = [];
@@ -188,8 +193,8 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
       window.visualViewport?.removeEventListener('scroll', refresh);
       window.visualViewport?.removeEventListener('resize', refresh);
       window.removeEventListener('resize', refresh);
-      globalThis.CSS?.highlights?.delete('message-annotations');
-      globalThis.CSS?.highlights?.delete('annotation-focus');
+      // 批注这一组自己清：会话搜索的高亮在同一条登记表的另一组里，清不到。
+      clearHighlightGroup('annotations');
     };
   }, [items, listRef]);
 

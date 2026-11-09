@@ -26,7 +26,7 @@ test('the library is only reachable from the wrapper', () => {
 });
 
 test('a stuck canvas is revived by remounting the library component', () => {
-  assert.match(activityOrb, /<ThinkingOrb key=\{generation\} \{\.\.\.props\} \/>/);
+  assert.match(activityOrb, /<ThinkingOrb key=\{generation\} \{\.\.\.props\} state=\{orbStateForActivity\(state\)\} \/>/);
   assert.match(activityOrb, /if \(result\.revive\) setGeneration\(\(value\) => value \+ 1\);/);
   assert.match(activityOrb, /const \[generation, setGeneration\] = React\.useState\(0\);/);
 });
