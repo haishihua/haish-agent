@@ -1,4 +1,5 @@
 import { executionConfigError } from '../../../core/execution-config.js';
+import { taskSummaryToRuntimeTask } from '../../../core/task-runtime.js';
 
 export function resolveDeployTargetConversationId({
   draftConversation,
@@ -444,7 +445,7 @@ export function createDeployHandlers(ctx) {
     pendingTask.conversationId = deployConvId;
     const nextConversationTitle = titleFromTaskText(request.displayText || text);
     const currentConversation = findConversationById(workspaceState, deployConvId)
-      || (seedDetail ? conversationDetailToWorkspaceConversation(seedDetail) : null);
+      || (seedDetail ? conversationDetailToWorkspaceConversation(seedDetail, null, taskSummaryToRuntimeTask) : null);
     // 本地簿记缺失不该让用户的消息变成一条 toast：真会话的 runtime 被回收时补一块
     // 空的继续发（服务端才是权威方），只留一条控制台线索。真正的启动失败仍走下面
     // launch().catch 的失败分支。

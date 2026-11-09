@@ -414,7 +414,7 @@ export function normalizeWorkspaceOrdering(state) {
 export function conversationDetailToWorkspaceConversation(
   detail,
   previousConversation = null,
-  mapTask = (task) => task,
+  mapTask,
 ) {
   const detailName = detail.title || detail.label || '';
   const previousName = previousConversation?.name || '';
@@ -451,7 +451,7 @@ export function conversationDetailToWorkspaceConversation(
 export function buildWorkspaceStateFromProjects(
   projectDetails,
   previousState,
-  mapTask = (task) => task,
+  mapTask,
 ) {
   const previous = previousState || createEmptyWorkspaceState();
   const previousProjects = new Map(previous.projects.map((project) => [project.id, project]));
@@ -542,7 +542,7 @@ export function replaceWorkspaceModeFromProjects(
   executionMode,
   projectDetails,
   previousState,
-  mapTask = (task) => task,
+  mapTask,
   activeDraft = null,
 ) {
   if (executionMode !== 'chat' && executionMode !== 'bot') {
@@ -580,7 +580,7 @@ export function workspaceStateWithConversationDetail(
   state,
   detail,
   activate = true,
-  mapTask = (task) => task,
+  mapTask,
 ) {
   const workspacePath = String(detail?.workspace_path || '').trim();
   const projectId = detail?.project_id;

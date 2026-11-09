@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 globalThis.window = {};
 const { activityEntries, filterActivityEntries, ACTIVITY_PAGE_SIZE } = await import('../../../src/features/conversations/model/activity.js');
 const { buildWorkspaceStateFromProjects } = await import('../../../src/features/conversations/model/workspace-state.js');
+const { taskSummaryToRuntimeTask } = await import('../../../src/core/task-runtime.js');
 
 const project = (id, mode, tasks) => ({ id, name: id, executionMode: mode, conversations: [{ id: `c-${id}`, name: `Conversation ${id}`, tasks }] });
 
@@ -107,7 +108,7 @@ test('project projection retains tasks in each mode for activity', () => {
   const state = buildWorkspaceStateFromProjects([
     { project_id: 'p-chat', name: 'Chat', execution_mode: 'chat', conversations: [{ conversation_id: 'c-chat', execution_mode: 'chat', title: 'Chat conversation', tasks: [chat] }] },
     { project_id: 'p-bot', name: 'Bot', execution_mode: 'bot', conversations: [{ conversation_id: 'c-bot', execution_mode: 'bot' }], tasks: [bot] },
-  ]);
+  ], undefined, taskSummaryToRuntimeTask);
   assert.deepEqual(activityEntries(state.projects, {}, 'chat').map((entry) => entry.conversation.name), ['Chat conversation']);
   assert.deepEqual(activityEntries(state.projects, {}, 'bot').map((entry) => entry.taskId), ['bot-task']);
 });

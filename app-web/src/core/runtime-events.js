@@ -1,5 +1,6 @@
 import { stripChatImageAugmentation, eventDeltaText } from './message-text.js';
 import { deduplicateRuntimeEvents } from './event-identity.js';
+import { skillNameFromPath } from './tool-presentation.js';
 export const STREAM_EVENT_BATCH_MS = 32;
 
 export const CHAT_FINAL_FOLLOWUP_EVENT_TYPES = new Set([
@@ -151,9 +152,8 @@ export function taskFinalOutputText(task, fallback = '') {
 export function skillDisplayName(event) {
   if (event?.skill_name) return `${event.skill_name} skill`;
   if (event?.skill_path) {
-    const parts = String(event.skill_path).split('/').filter(Boolean);
-    const markerIndex = parts.findIndex((part) => part === '.skills' || part === '.skills-src');
-    if (markerIndex >= 0 && parts[markerIndex + 1]) return `${parts[markerIndex + 1]} skill`;
+    const name = skillNameFromPath(event.skill_path);
+    if (name) return `${name} skill`;
   }
   const text = `${event?.input_summary || ''} ${event?.output_summary || ''} ${event?.message || ''}`;
   const match = text.match(/(?:^|\s)\.skills(?:-src)?\/([^/\s"'`]+)\/SKILL\.md/i);

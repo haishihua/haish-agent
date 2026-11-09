@@ -11,6 +11,16 @@ function object(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+// skill 的安装根：真实安装目录、各家的约定目录、以及挂载进来的目录。
+// 路径解析只在这一处，事件流与工具卡片都从这里取名。
+const SKILL_PATH_PATTERN = /(?:^|\/)(?:\.haish\/skills|\.agents\/skills|\.codex\/skills|\.mounted-skills|\.skills(?:-src)?)\/([^/]+)\/SKILL\.md$/i;
+
+/** `/…/.haish/skills/<name>/SKILL.md` → `<name>`；不是 skill 入口就返回空串。 */
+export function skillNameFromPath(value) {
+  const path = String(value || '').replace(/\\/g, '/');
+  return path.match(SKILL_PATH_PATTERN)?.[1] || '';
+}
+
 export function skillTrigger(item) {
   const name = normalizeToolName(item?.toolName || item?.tool_name);
   if (!['read_file', 'load_skill', 'skill'].includes(name)) return null;
@@ -21,9 +31,9 @@ export function skillTrigger(item) {
   // A Skill's references and scripts may carry the same metadata. Only its
   // entry document counts as loading instructions; writes never count.
   if (path && !/\/SKILL\.md$/i.test(path)) return null;
-  const match = path.match(/(?:^|\/)(?:\.haish\/skills|\.agents\/skills|\.codex\/skills|\.mounted-skills|\.skills(?:-src)?)\/([^/]+)\/SKILL\.md$/i);
-  if (!match && !skillName && !explicitPath) return null;
-  const displayName = String(skillName || match?.[1] || path.split('/').at(-2) || '').trim();
+  const pathSkillName = skillNameFromPath(path);
+  if (!pathSkillName && !skillName && !explicitPath) return null;
+  const displayName = String(skillName || pathSkillName || path.split('/').at(-2) || '').trim();
   return displayName ? { name: displayName, path } : null;
 }
 

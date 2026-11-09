@@ -13,9 +13,11 @@
 //
 // 两条都要求以图片扩展名结尾；服务端按“丢掉前面若干段再找”的方式解析，所以前端把
 // 前缀截短（例如路径里带空格时）也不会影响结果。
-const IMAGE_EXTENSION = /\.(?:png|jpe?g|webp|gif|avif|bmp)$/i;
+// 图片扩展名只写一次：正则与拼进大正则的片段都从这一个源生成，加格式不用改两处。
+const IMAGE_EXTENSION_SOURCE = String.raw`\.(?:png|jpe?g|webp|gif|avif|bmp)`;
+const IMAGE_EXTENSION = new RegExp(`${IMAGE_EXTENSION_SOURCE}$`, 'i');
 const WINDOWS_ABSOLUTE = /^[A-Za-z]:[\\/]/;
-const EXTENSION = String.raw`\.(?:png|jpe?g|webp|gif|avif|bmp)`;
+const EXTENSION = IMAGE_EXTENSION_SOURCE;
 // 换行、中日韩文字/标点、引号（`` ` `` " '）处一律断开；空格在路径里是合法的
 // （运行时目录就叫 `Haish (Dev)`），所以只对付“单 token”那种形状排除空白。
 const PATH_CHAR = String.raw`[^\n\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef\u0060"']`;
