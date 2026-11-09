@@ -1,5 +1,5 @@
 // Agent / 子 Agent / 视觉类工具：进度流、最终回答与子 Agent 时间线。
-import { normalizeToolName } from '../../../../core/tool-names.js';
+import { normalizeToolName, TOOL_PROCESS_NAMES, TOOL_VISUAL_NAMES } from '../../../../core/tool-names.js';
 import { createTerminalTimeline } from '../../../../core/terminal-timeline.js';
 import { cachedStreamEventBase } from '../../../../core/stream-events.js';
 import { getToolResponseTraceStatus, getToolTraceStatus } from '../../../../core/tool-trace-status.js';
@@ -13,16 +13,6 @@ import {
   toolJsonText,
   toolPlainObject,
 } from '../../../../core/tool-view-shared.js';
-
-const TOOL_PROCESS_NAMES = new Set([
-  'dispatch_sub_agent',
-  'sub_agent',
-  'subagent',
-  'vision_analyze',
-  'visual_inspect',
-  'image_describe',
-  'image_generate',
-]);
 
 // The backend publishes generated images under artifacts.images[].path; the
 // preview endpoint turns that path into a URL the renderer can load.
@@ -41,10 +31,10 @@ function firstGeneratedImagePath(toolResponse) {
   return '';
 }
 
+// 视觉别名（video_analyze、acceptance_check 之类）没登记在表里，靠名字里的
+// visual / vision 兜底，否则它们会从过程卡掉回通用 JSON 卡。
 function isVisualProcessTool(name) {
-  return name === 'vision_analyze'
-    || name === 'visual_inspect'
-    || name === 'image_describe'
+  return TOOL_VISUAL_NAMES.has(name)
     || name === 'acceptance_check'
     || name.includes('visual')
     || name.includes('vision');

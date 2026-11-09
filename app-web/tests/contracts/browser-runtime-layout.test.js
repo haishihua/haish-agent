@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { resolveToolIconClass } from '../../src/features/chat/components/nodes/shared.js';
 
 const overlaySource = fs.readFileSync(new URL('../../src/features/approvals/components/ApprovalOverlay.jsx', import.meta.url), 'utf8');
 // 节点按类型分文件：工具节点本体在 ChatTimelineNodes.jsx，图标映射在 nodes/shared.js。
@@ -23,8 +24,8 @@ test('browser runtime request uses the shared runtime card inside the browser_us
 test('browser_use tool node gets its own browser icon instead of the generic default', () => {
   // browser_use used to fall through resolveToolIconClass to the generic
   // ico-tool (wrench). It now maps to a dedicated ico-browser icon class.
-  assert.ok(timelineSource.includes("if (name === 'browser_use' || name === 'browser') {"));
-  assert.ok(timelineSource.includes("return 'ico-browser';"));
+  assert.equal(resolveToolIconClass('browser_use', 'ico-tool'), 'ico-browser');
+  assert.equal(resolveToolIconClass('browser', 'ico-tool'), 'ico-browser');
 });
 
 test('shared runtime selection tolerates backend call-id remapping via scope fallback', () => {

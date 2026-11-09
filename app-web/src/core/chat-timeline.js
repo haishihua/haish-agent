@@ -1,6 +1,6 @@
 import { eventDeltaText, stripInjectedSkillInstruction } from './message-text.js';
 import { cachedStreamEventBase, recordStreamEventUpdate, streamEventUpdate } from './stream-events.js';
-import { normalizeToolName } from './tool-names.js';
+import { normalizeToolName, TOOL_SHELL_NAMES } from './tool-names.js';
 import { getToolResponseTraceStatus, getToolTraceStatus } from './tool-trace-status.js';
 import { createTerminalTimeline } from './terminal-timeline.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from './run-status.js';
@@ -212,8 +212,7 @@ export function buildChatTimeline(task, taskStatus) {
     if (!callId) return;
     const toolItem = toolItemsByCallId.get(callId);
     if (!toolItem) return;
-    if (event && (normalizeToolName(toolItem.toolName) === 'exec_command'
-      || normalizeToolName(toolItem.toolName) === 'write_stdin')) {
+    if (event && TOOL_SHELL_NAMES.has(normalizeToolName(toolItem.toolName))) {
       mergeTerminalResult(toolItem, event, terminalState);
     } else {
       const responseState = getToolResponseTraceStatus(event?.toolResponse, terminalState);
@@ -225,8 +224,7 @@ export function buildChatTimeline(task, taskStatus) {
     if (!event) return;
     toolItem.outputSummary = event.outputSummary || toolItem.outputSummary || '';
     toolItem.toolResponse = event.toolResponse || toolItem.toolResponse || null;
-    if (normalizeToolName(toolItem.toolName) !== 'exec_command'
-      && normalizeToolName(toolItem.toolName) !== 'write_stdin') {
+    if (!TOOL_SHELL_NAMES.has(normalizeToolName(toolItem.toolName))) {
       toolItem.toolOutput = event.toolOutput || toolItem.toolOutput || '';
     }
     appendToolProgress(toolItem, event, terminalState);
@@ -491,7 +489,7 @@ export function buildChatTimeline(task, taskStatus) {
         state: 'requested',
       };
       const toolItem = buildToolItem(call, finalStatus, callId || `tool-${seenToolIds.size}`);
-      if (eventToolName === 'exec_command' || eventToolName === 'write_stdin') {
+      if (TOOL_SHELL_NAMES.has(eventToolName)) {
         mergeTerminalResult(toolItem, call, call.state || 'requested', true);
       }
       appendToolProgress(toolItem, event, 'requested');
@@ -518,8 +516,7 @@ export function buildChatTimeline(task, taskStatus) {
         if (toolItem) {
           const delta = String(event.delta || event.text || event.contentDelta || event.content || '');
           if (delta) {
-            if (normalizeToolName(toolItem.toolName) === 'exec_command'
-              || normalizeToolName(toolItem.toolName) === 'write_stdin') {
+            if (TOOL_SHELL_NAMES.has(normalizeToolName(toolItem.toolName))) {
               updateTerminalOutput(toolItem, callId, delta, true);
             } else {
               toolItem.toolOutput = `${toolItem.toolOutput || ''}${delta}`;
@@ -585,7 +582,7 @@ export function buildChatTimeline(task, taskStatus) {
       continue;
     }
     const toolItem = buildToolItem(call, finalStatus, call.callId);
-    if (callToolName === 'exec_command' || callToolName === 'write_stdin') {
+    if (TOOL_SHELL_NAMES.has(callToolName)) {
       mergeTerminalResult(toolItem, call, call.state || 'requested');
     }
     seenToolIds.add(call.callId);

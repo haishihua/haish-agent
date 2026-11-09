@@ -1,6 +1,10 @@
 // 工具视图的共用底座：文本压缩、JSON 清洗、失败判定与标签文案。
 // 各工具类型（terminal / file / search / agent）都从这里取同一套原语。
-import { normalizeToolName } from './tool-names.js';
+import {
+  normalizeToolName,
+  TOOL_ACTION_LABELS,
+  TOOL_FAILURE_ACTION_LABELS,
+} from './tool-names.js';
 import { getToolResponseTraceStatus } from './tool-trace-status.js';
 
 export const TOOL_BLOCK_LIMIT = 16000;
@@ -219,37 +223,15 @@ export function toolDisplayOutput(item) {
   return item.toolOutput || item.outputSummary || undefined;
 }
 
+// 动作文案跟着工具名走，所以名字→文案的表在 core/tool-names.js；这里只负责取不到时的兜底。
 export function toolActionLabel(item) {
-  const name = normalizeToolName(item.toolName);
-  if (name === 'write_file') return 'Wrote';
-  if (name === 'edit_file') return 'Edited';
-  if (name === 'replace_lines') return 'Replaced lines';
-  if (name === 'multi_edit') return 'Edited';
-  if (name === 'apply_patch') return 'Patched';
-  if (name === 'create_file') return 'Created';
-  if (name === 'delete_file') return 'Deleted';
-  if (name === 'copy_file') return 'Copied';
-  if (name === 'create_dir') return 'Created dir';
-  if (name === 'read_file') return 'Read';
-  if (name === 'search_text') return 'Search text';
-  if (name === 'glob_files') return 'Glob files';
-  if (name === 'list_dir') return 'List dir';
-  if (name === 'exec_command') return 'Shell';
-  if (name === 'write_stdin') return 'Process';
-  return item.label || item.toolName || 'Tool';
+  return TOOL_ACTION_LABELS.get(normalizeToolName(item.toolName))
+    || item.label || item.toolName || 'Tool';
 }
 
 export function toolFailureActionLabel(item) {
-  const name = normalizeToolName(item.toolName);
-  if (name === 'write_file') return 'Write failed';
-  if (name === 'edit_file') return 'Edit failed';
-  if (name === 'replace_lines') return 'Replace lines failed';
-  if (name === 'multi_edit') return 'Edit failed';
-  if (name === 'apply_patch') return 'Apply patch failed';
-  if (name === 'create_file') return 'Create failed';
-  if (name === 'delete_file') return 'Delete failed';
-  if (name === 'copy_file') return 'Copy failed';
-  return `${toolActionLabel(item)} failed`;
+  return TOOL_FAILURE_ACTION_LABELS.get(normalizeToolName(item.toolName))
+    || `${toolActionLabel(item)} failed`;
 }
 
 // 认不出类型的工具落到通用 JSON 卡：请求体 + 响应体，两段都按同一套规则清洗。

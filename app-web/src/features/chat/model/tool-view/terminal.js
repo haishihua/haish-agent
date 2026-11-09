@@ -1,4 +1,5 @@
 // 终端类工具（exec_command / write_stdin）：命令、cwd、退出码与尾部输出。
+// 哪些工具算终端由 core/tool-names.js 的 TOOL_SHELL_NAMES 决定。
 import {
   compactToolValue,
   firstToolDisplayValue,
@@ -9,11 +10,6 @@ import {
   toolJsonText,
   toolPlainObject,
 } from '../../../../core/tool-view-shared.js';
-
-export const TOOL_SHELL_NAMES = new Set([
-  'exec_command',
-  'write_stdin',
-]);
 
 function extractTerminalOutput(item, response, artifacts, data) {
   const rawToolOutput = isRawToolResponseText(item.toolOutput) ? '' : item.toolOutput;

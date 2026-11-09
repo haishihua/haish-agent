@@ -1,3 +1,5 @@
+import { isLocalDraftConversationId } from '../model/local-draft-conversation.js';
+
 export function createComposerHandlers(ctx) {
   const {
     API_BASE,
@@ -40,7 +42,7 @@ export function createComposerHandlers(ctx) {
 
   async function uploadChatImage(file, signal, targetConversationId = conversationIdRef.current || conversationId) {
     const resolvedConversationId = targetConversationId;
-    if (!file || !resolvedConversationId || String(resolvedConversationId).startsWith('draft-')) {
+    if (!file || !resolvedConversationId || isLocalDraftConversationId(resolvedConversationId)) {
       throw new Error('No active conversation.');
     }
     const formData = new FormData();
@@ -67,10 +69,13 @@ export function createComposerHandlers(ctx) {
   async function handleAttachmentSelect(file, selectionId, executionMode = viewModeRef.current || viewMode) {
     const activationSeq = conversationActivationSeqRef.current;
     let targetConversationId = conversationIdRef.current || conversationId;
+    // 这里两个判据都要：isDraftConversationId 认的是「当前这条草稿记录」（materialize
+    // 之后它的 id 已经是真会话 id，所以这一步只会在还没落地时命中），而本地 id 形态
+    // 兜住切走之后仍留在 conversationIdRef 里的旧草稿 id。任一个成立都得先建会话。
     if (file && draftConversationRef.current && (
       !targetConversationId
       || isDraftConversationId(targetConversationId)
-      || String(targetConversationId).startsWith('draft-')
+      || isLocalDraftConversationId(targetConversationId)
     )) {
       try {
         const detail = await ensureServerConversationForActiveDraft();
@@ -82,7 +87,7 @@ export function createComposerHandlers(ctx) {
       }
     }
     if (conversationActivationSeqRef.current !== activationSeq) return;
-    if (!file || !targetConversationId || String(targetConversationId).startsWith('draft-')) return;
+    if (!file || !targetConversationId || isLocalDraftConversationId(targetConversationId)) return;
     // 选文件 = 这条会话已经有用户的真实内容：解析成功、失败都算，切走时不能被当成空壳
     // 回收（见 createDraftConversationHandlers 的 markDraftConversationKept）。先落标记
     // 再发请求，上传被取消 / 报错也不会把这条会话弄丢。

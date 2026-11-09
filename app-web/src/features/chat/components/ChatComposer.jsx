@@ -4,6 +4,7 @@ import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { firstPastedDocument } from '../model/document-paste.js';
 import { composePathReferenceDraft, splitPathReferenceDraft, transferredLocalPaths } from '../model/path-references.js';
+import { resolveSendGate } from '../model/send-gate.js';
 import {
   extractAgentSkillInvocation,
   matchingAgentSkills,
@@ -393,8 +394,13 @@ export function ChatComposer({
   const contextSector = contextSectorPath(visibleContextRatio);
   const runConfigReadOnly = running || submitPending || waitingForSend || goalPending || configSync.pending || !configSync.ready;
   const runConfigDisabled = !runConfigReadOnly && (disabled || submitPending);
-  const sendBlockedReason = ((!goal || goal.prompt) && modelConfigError)
-    || (currentSelection?.disabled ? 'This Agent is disabled. Select an enabled Agent before starting.' : '');
+  // 「能不能发 / 为什么不能发」只有一份判据（model/send-gate.js）：按钮禁用态和这里的
+  // 提示文案必须同源，否则会出现「有提示却能点」或者「按钮灰着、回车能发」的分裂。
+  const sendGate = resolveSendGate({
+    disabled, waitingForSend, goalPending, canSubmitPayload, modelConfigError, goal,
+    configReady: configSync.ready,
+    selectionDisabled: Boolean(currentSelection?.disabled),
+  });
   // The send/stop metal ring is a state signal, not decoration: it lights up as
   // soon as the composer holds something sendable (typed text, images, or
   // annotation drafts) and keeps running while work is in flight. Gating on
@@ -817,8 +823,7 @@ export function ChatComposer({
             sendState={{
               submitPending, stopError, running, allowRuntimeInput, hasComposerPayload,
               pendingCommentCount, disabled, waitingForSend, runtimeInputPending, goalPending,
-              canSubmitPayload, sendBeamActive, modelConfigError, goal, sendBlockedReason,
-              configSync, currentSelection,
+              canSubmitPayload, sendBeamActive, goal, sendGate,
             }}
             onStopPress={handleStopPress}
             onStopKey={handleStopKey}

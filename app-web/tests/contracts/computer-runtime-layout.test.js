@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { resolveToolIconClass } from '../../src/features/chat/components/nodes/shared.js';
 
 const overlaySource = fs.readFileSync(
   new URL('../../src/features/approvals/components/ApprovalOverlay.jsx', import.meta.url),
@@ -53,8 +54,7 @@ test('computer runtime request stays scoped to its owning conversation', () => {
 });
 
 test('computer_use and its runtime approval use the dedicated desktop-control icon', () => {
-  assert.match(timelineSource, /if \(name === 'computer_use'\) \{/);
-  assert.match(timelineSource, /return 'ico-computer-use';/);
+  assert.equal(resolveToolIconClass('computer_use', 'ico-tool'), 'ico-computer-use');
   assert.match(overlaySource, /computerRuntime \? 'ico-computer-use' : 'ico-browser'/);
   const rule = baseStyles.match(/\.ico-computer-use\s*\{([^}]+)\}/);
   assert.ok(rule, '.ico-computer-use must be declared in base.css');

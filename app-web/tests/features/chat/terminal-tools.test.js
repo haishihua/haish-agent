@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { buildToolView, TOOL_SHELL_NAMES } from '../../../src/features/chat/model/tool-view.js';
+import { buildToolView } from '../../../src/features/chat/model/tool-view.js';
+// 终端工具名单的唯一来源是 core/tool-names.js，卡片不再自己维护一份。
+import { TOOL_SHELL_NAMES } from '../../../src/core/tool-names.js';
 
 globalThis.window = {};
 const { buildChatTimeline } = await import('../../../src/core/chat-timeline.js');

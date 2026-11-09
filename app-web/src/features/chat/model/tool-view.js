@@ -4,25 +4,25 @@
 //   search    搜索与浏览器
 //   agent     子 Agent / 视觉 / 生成图片
 //   shared    文本压缩、JSON 清洗、失败判定与标签文案
-import { normalizeToolName } from '../../../core/tool-names.js';
-import { skillTrigger } from '../../../core/tool-presentation.js';
-import { buildJsonToolView, firstToolPath, isToolFailure } from '../../../core/tool-view-shared.js';
-import { TOOL_SHELL_NAMES, buildTerminalToolView } from './tool-view/terminal.js';
 import {
+  normalizeToolName,
   TOOL_CHANGE_NAMES,
   TOOL_DIFF_NAMES,
   TOOL_READ_NAMES,
-  buildChangeToolView,
-  buildDiffToolView,
-  buildReadToolView,
-} from './tool-view/file.js';
+  TOOL_SHELL_NAMES,
+  TOOL_WEB_NAMES,
+} from '../../../core/tool-names.js';
+import { skillTrigger } from '../../../core/tool-presentation.js';
+import { buildJsonToolView, firstToolPath, isToolFailure } from '../../../core/tool-view-shared.js';
+import { buildTerminalToolView } from './tool-view/terminal.js';
+import { buildChangeToolView, buildDiffToolView, buildReadToolView } from './tool-view/file.js';
 import { buildSearchToolView } from './tool-view/search.js';
 // checkpoint 历史是只读列表（不再落回原始 JSON 卡），只接 list_checkpoints；
 // rollback_workspace 是一次执行结果，形状不同，仍走 JSON 卡。
 import { buildCheckpointToolView } from './tool-view/checkpoint.js';
 import { buildProcessToolSummary, buildProcessToolView, buildSubAgentTimelineItems, isProcessTool } from './tool-view/agent.js';
 
-export { TOOL_SHELL_NAMES, buildSubAgentTimelineItems };
+export { buildSubAgentTimelineItems };
 
 export function buildToolView(item, { details = true } = {}) {
   const name = normalizeToolName(item.toolName);
@@ -33,9 +33,7 @@ export function buildToolView(item, { details = true } = {}) {
   const path = firstToolPath(item);
   const skill = skillTrigger(item);
   if (skill) return { mode: 'skill', label: skill.name, skill, failed: isToolFailure(item) };
-  if (name === 'web_search' || name === 'web_fetch' || name === 'browser_use') {
-    return buildSearchToolView(item, name);
-  }
+  if (TOOL_WEB_NAMES.has(name)) return buildSearchToolView(item, name);
   if (isProcessTool(item, name)) return buildProcessToolView(item, name);
   if (TOOL_DIFF_NAMES.has(name)) return buildDiffToolView(item, name, path);
   if (TOOL_CHANGE_NAMES.has(name)) return buildChangeToolView(item, path);

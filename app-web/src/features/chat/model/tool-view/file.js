@@ -1,4 +1,5 @@
 // 文件类工具：读 / 写 / 改 / 删除 / 复制 / 建目录。diff 卡与 JSON 卡都从这里出。
+// 哪些工具归哪张卡由 core/tool-names.js 的登记表决定，这里只负责各自的卡片形状。
 import {
   TOOL_BLOCK_LIMIT,
   compactToolJsonPayload,
@@ -13,20 +14,6 @@ import {
   toolJsonText,
   toolPlainObject,
 } from '../../../../core/tool-view-shared.js';
-
-const TOOL_READ_NAMES = new Set(['read_file', 'search_text', 'glob_files', 'list_dir']);
-const TOOL_DIFF_NAMES = new Set(['write_file', 'edit_file', 'replace_lines', 'multi_edit', 'apply_patch']);
-const TOOL_CHANGE_NAMES = new Set([
-  'write_file',
-  'edit_file',
-  'replace_lines',
-  'multi_edit',
-  'apply_patch',
-  'create_file',
-  'delete_file',
-  'copy_file',
-  'create_dir',
-]);
 
 function toolLineDelta(item, diffText) {
   const data = item.toolResponse && typeof item.toolResponse === 'object' && item.toolResponse.data
@@ -108,5 +95,3 @@ export function buildReadToolView(item, path) {
     body: '',
   };
 }
-
-export { TOOL_CHANGE_NAMES, TOOL_DIFF_NAMES, TOOL_READ_NAMES };

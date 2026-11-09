@@ -1,21 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { TOOL_ICON_CLASSES } from '../../src/core/tool-names.js';
+import { resolveToolIconClass } from '../../src/features/chat/components/nodes/shared.js';
 
-// 图标映射在 nodes/shared.js（工具节点与时间线共用）。
-const timelineSource = fs.readFileSync(
-  new URL('../../src/features/chat/components/nodes/shared.js', import.meta.url),
-  'utf8',
-);
 const baseStyles = fs.readFileSync(new URL('../../styles/base.css', import.meta.url), 'utf8');
+const iconDeclared = (className) => new RegExp(`\\.${className}\\s*\\{`).test(baseStyles);
 
 test('ask_user gets a dedicated icon instead of the mcp magic wand', () => {
   // ask_user is a platform control tool (backend tool_group=external), so without
   // an explicit rule it fell through to CATEGORY_ICON_CLASS.mcp (magic-wand.png).
-  const resolve = timelineSource.match(/export function resolveToolIconClass[\s\S]*?\n\}/);
-  assert.ok(resolve, 'resolveToolIconClass must stay exported for the timeline');
-  assert.ok(resolve[0].includes("if (name === 'ask_user') {"));
-  assert.ok(resolve[0].includes("return 'ico-ask-user';"));
+  assert.equal(resolveToolIconClass('ask_user', 'ico-mcp'), 'ico-ask-user');
   // The dedicated class must exist and must not reuse the mcp/skill artwork.
   const rule = baseStyles.match(/\.ico-ask-user\s*\{([^}]+)\}/);
   assert.ok(rule, '.ico-ask-user must be declared in base.css');
@@ -27,19 +22,30 @@ test('ask_user gets a dedicated icon instead of the mcp magic wand', () => {
 test('image_generate reuses the Settings → Image framed-glyph icon', () => {
   // 生图卡片曾经落回 ico-tool 的通用工具图标；现在与 Settings 里的 Image
   // 分组共用同一枚 lucide `image` 相框。
-  const resolve = timelineSource.match(/export function resolveToolIconClass[\s\S]*?\n\}/)[0];
-  assert.match(resolve, /if \(name === 'image_generate'\) \{\s*\/\/[\s\S]*?return 'ico-image-generate';/);
+  assert.equal(resolveToolIconClass('image_generate', 'ico-tool'), 'ico-image-generate');
   const rule = baseStyles.match(/\.ico-image-generate\s*\{([^}]+)\}/);
   assert.ok(rule, '.ico-image-generate must be declared in base.css');
   assert.match(rule[1], /url\("\.\.\/assets\/ui\/icons\/image-generate\.svg"\)/);
   assert.ok(fs.existsSync(new URL('../../assets/ui/icons/image-generate.svg', import.meta.url)));
 });
 
-test('every resolveToolIconClass return value is a real base.css icon class', () => {
-  const resolve = timelineSource.match(/export function resolveToolIconClass[\s\S]*?\n\}/)[0];
-  const classes = [...resolve.matchAll(/return '(ico-[a-z0-9-]+)';/g)].map((match) => match[1]);
-  assert.ok(classes.length > 10, 'the tool icon map must stay populated');
-  for (const className of new Set(classes)) {
-    assert.match(baseStyles, new RegExp(`\\.${className}\\s*\\{`), `${className} must be declared in base.css`);
+test('every registered tool icon is a real base.css icon class', () => {
+  assert.ok(TOOL_ICON_CLASSES.size > 10, 'the tool icon map must stay populated');
+  for (const className of new Set(TOOL_ICON_CLASSES.values())) {
+    assert.ok(iconDeclared(className), `${className} must be declared in base.css`);
+  }
+});
+
+test('keyword fallbacks for unregistered names also resolve to real icon classes', () => {
+  // 未登记的名字（新 checkpoint / note / memory 工具、旧别名）靠名字里的关键词兜底，
+  // 这组图标同样必须在 base.css 里存在。
+  const fallbackSamples = [
+    'list_checkpoints', 'note_take', 'memory_search', 'weather_lookup',
+    'save_file', 'cat_file', 'fetch_url',
+  ];
+  for (const name of fallbackSamples) {
+    const className = resolveToolIconClass(name, '');
+    assert.ok(className, `${name} must fall back to a keyword icon`);
+    assert.ok(iconDeclared(className), `${className} must be declared in base.css`);
   }
 });
