@@ -1,5 +1,5 @@
 import React from 'react';
-import { approvalStore } from '../../approvals/model/approval-store.js';
+import { approvalStore } from '../../../core/approval-store.js';
 import {
   resolveConversationRunState,
   resolveConversationWaitState,

@@ -3,10 +3,10 @@ import React from 'react';
 import { ChatTimelineChevron } from '../../../chat/components/ChatTimelineNodes.jsx';
 import { isTaskSettled } from '../../../../core/run-status.js';
 import { workflowAgentName } from '../../../chat/model/assistant-name.js';
-import { workflowResultForAttempt } from '../../model/runtime-workflow-layout.js';
+import { workflowResultForAttempt } from '../../../../core/runtime-workflow-layout.js';
 import { AppIcon } from '../../../../shared/ui/AppIcon.jsx';
 import { NodeConversation } from './WorkflowNodeConversation.jsx';
-import { visibleNodeAttempts } from '../../model/node-attempts.js';
+import { visibleNodeAttempts } from '../../../../core/node-attempts.js';
 
 export function WorkflowNodeAttempts({
   node,

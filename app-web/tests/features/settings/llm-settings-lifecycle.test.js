@@ -9,7 +9,7 @@ import {
   loadLlmSettingsDraft, mergeLlmSettingsDraft, runtimeLlmProviderOptions,
 } from '../../../src/features/settings/model/llm-settings.js';
 import { apiFetch, parseResponseMessage } from '../../../src/shared/api/client.js';
-import { executionConfigError } from '../../../src/features/workflow/model/execution-config.js';
+import { executionConfigError } from '../../../src/core/execution-config.js';
 
 const hookSource = readFileSync(new URL('../../../src/features/settings/hooks/useLlmSettings.js', import.meta.url), 'utf8')
   .replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '').replace(/\bexport /g, '');

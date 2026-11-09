@@ -1,4 +1,3 @@
-// Settings domain model.
 export const APP_DEFAULT_AGENT_OPTIONS = [
   { id: 'preset.general', label: 'Task Assistant', description: 'All-purpose agent with full tools for everyday work.' },
 ];

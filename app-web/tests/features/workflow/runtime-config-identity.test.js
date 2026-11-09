@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { workflowNodeRuntimeConfig } from '../../../src/features/workflow/model/node-runtime-config.js';
+import { workflowNodeRuntimeConfig } from '../../../src/core/node-runtime-config.js';
 import { runtimeProviderDisplay } from '../../../src/features/workflow/model/runtime-provider-display.js';
 
 const node = { id: 'worker', type: 'agent' };

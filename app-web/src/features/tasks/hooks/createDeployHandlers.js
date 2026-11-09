@@ -1,4 +1,4 @@
-import { executionConfigError } from '../../workflow/model/execution-config.js';
+import { executionConfigError } from '../../../core/execution-config.js';
 
 export function resolveDeployTargetConversationId({
   draftConversation,

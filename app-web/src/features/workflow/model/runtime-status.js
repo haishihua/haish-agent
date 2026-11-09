@@ -1,6 +1,6 @@
 import { isTaskLive, isTaskSettled, workflowTaskDisplayStatus } from '../../../core/run-status.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
-import { workflowApprovalDecisionStatus } from './runtime-workflow-layout.js';
+import { workflowApprovalDecisionStatus } from '../../../core/runtime-workflow-layout.js';
 
 export function workflowRuntimeDisplayStatus(task) {
   const status = normalizeTaskStatus(workflowTaskDisplayStatus(task));

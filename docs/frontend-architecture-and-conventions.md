@@ -35,7 +35,7 @@ app-web/
   src/
     main.jsx                 # 样式和 React 入口
     app.jsx                  # ErrorBoundary + AppShell 挂载
-    core/                    # 跨领域运行态语义（状态词表、运行目录、内置 id）；不依赖 features
+    core/                    # 跨领域运行态语义；不依赖 features（见下表）
     features/
       agents/model/          # Agent 配置领域模型
       app/                   # 应用组合根、顶栏和主布局
@@ -44,8 +44,8 @@ app-web/
       conversations/         # 项目/会话树、持久化和激活流程
       schedules/             # 定时任务 API、时间规则、实时状态和管理 UI
       settings/              # 设置页面、编辑器和设置模型
-      tasks/                 # 任务部署、任务流和委派 UI
-      workflow/              # 工作流模型、画布和运行详情
+      tasks/                 # 任务部署、任务流和委派（只剩编排 hooks）
+      workflow/              # 工作流画布、运行详情与领域算法
     shared/
       api/                   # API base、普通请求与通用 header
       lib/                   # 无业务归属的纯工具
@@ -58,6 +58,18 @@ app-web/
 ```
 
 `src` 根目录只允许 `main.jsx` 和 `app.jsx`。不存在 `src/api`、`src/lib`、`src/panels` 或聚合 barrel。
+
+`core/` 承载「两个以上领域都要读、且没有 UI」的运行态语义。归属靠用途而不是原产地：
+
+| 分组 | 模块 | 谁在读 |
+| --- | --- | --- |
+| 状态词表 | `run-status`、`run-catalog`、`workflow-ids`、`execution-identity` | 全部领域 |
+| 任务记录 | `task-record`、`task-runtime`、`task-runtime-paging`、`task-pill`、`task-completion-notices` | app、conversations、tasks、workflow |
+| 消息与流 | `message-text`、`stream-events`、`event-identity`、`runtime-events`、`terminal-timeline`、`tool-names`、`tool-presentation`、`tool-trace-status`、`context-usage`、`quest-ack` | chat、conversations、tasks、workflow |
+| 工作流目录 | `workflow-catalog`、`workflow-catalog/*`、`workflow-defaults`、`workflow-snapshot`、`workflow-layout-store`、`runtime-workflow-layout`、`node-attempts`、`node-runtime-config`、`execution-config` | chat、settings、tasks、workflow |
+| 审批与配置 | `approval-store`、`workflow-approval-markdown`、`agent-settings`、`provider-catalog`、`project-matching`、`run-config`、`run-config-sync` | chat、conversations、schedules、settings、workflow |
+
+判据：**一个领域的 `model/` 只保留该领域自己的算法**；一旦第二个领域也要读，就搬到 `core/` 并在调用方直接改路径，不留 re-export。
 
 ## 3. 依赖方向
 
@@ -73,7 +85,7 @@ main.jsx → app.jsx → features/* → core/* → shared/*
 
 1. `shared` 和 `core` 不得 import `features`。
 2. `model` 不得 import React、组件或 hooks。
-3. 多个 feature 都要读的运行态语义（状态词表、终态判据、运行目录、内置工作流 id）放 `core/`，一个领域都不能为了拿它去 import 另一个领域。领域自己的算法仍留在该领域的 `model/`。
+3. 多个 feature 都要读的运行态语义（状态词表、终态判据、运行目录、内置 id、任务记录、工作流目录、审批存储、运行参数）放 `core/`，一个领域都不能为了拿它去 import 另一个领域。领域自己的算法仍留在该领域的 `model/`。**feature 之间不允许出现双向依赖**：`A → B` 存在时，`B → A` 必须是零（组件层复用同一方向也算边）。
 4. 组件可以组合其他 feature 的公开组件，但不能从对方页面壳或内部编辑器“借”实现。可复用原语应下沉到 `shared/ui`；明确属于一个领域的组件留在该领域。
 5. 网络调用放在领域 `api/` 或 `shared/api/`；普通请求直接 import `apiFetch`。
 6. 禁止静态 import 环、注册回调式破环、late-bound 全局和隐式初始化副作用。
@@ -87,9 +99,9 @@ main.jsx → app.jsx → features/* → core/* → shared/*
 | `app` | 应用级组合与页面切换 | `AppShell` 只编排，不承接领域算法 |
 | `chat` | 消息、工具卡片、输入与运行参数 | 不持有项目树规则 |
 | `conversations` | 项目/会话树、激活、草稿、持久化 | 任务摘要转换由调用方显式传入，不反向注册 |
-| `tasks` | 任务 runtime、stream、部署和委派 | 不把 UI 状态写入通用 shared |
-| `workflow` | 工作流 schema、布局、节点 UI、运行详情 | 运行页和设置编辑器共用 workflow 自己的画布组件 |
-| `approvals` | 审批/问答 API、状态和卡片 | 静态 CSS；不使用全局请求函数 |
+| `tasks` | 任务部署、任务流事件分派和委派（`hooks/` 编排） | 运行态记录在 `core/task-runtime.js`，此处不留 `model/` |
+| `workflow` | 工作流画布、运行详情与领域算法 | 目录/布局/尝试投影在 `core/`；运行页和设置编辑器共用 workflow 自己的画布组件 |
+| `approvals` | 审批/问答 API、定位算法和卡片 | 审批存储 `core/approval-store.js`；静态 CSS；不使用全局请求函数 |
 | `schedules` | 定时定义、时间规则、会话绑定和管理 | 通过 context 显式装配；执行复用 tasks runtime，不另建消息入口 |
 | `settings` | 设置页与各类配置编辑器 | `SettingsPage` 不是导出中转站 |
 | `agents` | Agent 配置与纯模型 | 不依赖 settings UI |
@@ -125,6 +137,7 @@ main.jsx → app.jsx → features/* → core/* → shared/*
 
 - 会话切换、任务取消、stream abort 必须带明确 owner（conversation/task id）和 abort controller。
 - 服务端快照、本地草稿、运行中状态分别建模，不能靠一个“大对象”覆盖全部阶段。
+- 跨领域运行态只有一处：任务运行记录 `core/task-runtime.js`、工作流目录 `core/workflow-catalog.js`、审批存储 `core/approval-store.js`。任何领域都不得为拿这些去 import 另一个领域。
 - 状态词表只有一处：`core/run-status.js`（原始串别名归一、终态清单、`isTaskLive` / `isTaskSettled` / `terminalNoticeStatus` / `workflowTaskDisplayStatus`）。chat、conversations、tasks、workflow、approvals 都读它，谁都不 import 对方。
 - 会话“还在不在跑”只有一处判据：`conversations/model/conversation-run-state.js`（任务自身未落终态 = 在跑；后端实时快照 `approvalStore` 有未决提问/审批 = 在等人；落地终态 = 熄灯）。侧边栏状态灯、面板 streaming、面板活动文案都读它。禁止在组件里重新推导运行态，也不准把 `workflowRun` 快照、在飞工具卡当状态源——那些是轮询旧值/渲染结果，会让两侧慢半拍而互相矛盾。
 - 自动创建 Chat/Bot 会话时不发送 `title`（包括首发草稿落地、附件提前建会话、`/goal`、启动和删除后的空会话兜底）。占位标题由后端首任务路径持久化，前端可按显示需求在本地乐观显示 48 字符占位，但不能通过标题 PATCH 写回；标题 PATCH 只用于用户主动改名，哪怕改名文字与占位相同。生成结果复用现有会话目录刷新进入侧栏，不在前端另发模型请求。
@@ -176,7 +189,8 @@ app-web/tests/**        # 所有 test/spec
 - 禁止运行时样式注入和全局请求函数；
 - model React-free、不得依赖 components/hooks；
 - 相对 import 必须可解析；
-- `shared → features` 禁止；
+- `shared → features` 禁止、`core → features` 禁止；
+- feature 之间不得双向依赖；
 - 静态 import 不得成环。
 
 ## 10. 新增功能的标准路径

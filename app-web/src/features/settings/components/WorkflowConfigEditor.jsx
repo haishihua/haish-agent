@@ -18,7 +18,7 @@ import {
   DEFAULT_WORKFLOW_OUTPUT_SCHEMA,
   placeAddedWorkflowNode,
   placeDroppedWorkflowNode,
-} from '../../workflow/model/workflow-catalog.js';
+} from '../../../core/workflow-catalog.js';
 import {
   agentCatalogFromSettings,
   agentIconNameForAgentId,
@@ -27,12 +27,12 @@ import {
 import {
   layoutRuntimeWorkflow,
   workflowArrangementPositions,
-} from '../../workflow/model/runtime-workflow-layout.js';
+} from '../../../core/runtime-workflow-layout.js';
 import {
   clearWorkflowLayout,
   saveWorkflowLayout,
   savedWorkflowLayout,
-} from '../../workflow/model/workflow-layout-store.js';
+} from '../../../core/workflow-layout-store.js';
 import { workflowRouteHandles, workflowRouteKey, workflowReconnectRoute, workflowUsedSideHandles } from '../../workflow/model/workflow-canvas-editing.js';
 import { useWorkflowCanvasPreferences } from '../../workflow/hooks/useWorkflowCanvasPreferences.js';
 import { saveWorkflowCanvasPreferences, workflowFitOptions } from '../../workflow/model/workflow-canvas-preferences.js';

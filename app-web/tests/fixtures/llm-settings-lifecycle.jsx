@@ -6,7 +6,7 @@ import { useLlmSettings } from '../../src/features/settings/hooks/useLlmSettings
 import { createSettingsHandlers } from '../../src/features/settings/hooks/createSettingsHandlers.js';
 import { LLM_SETTINGS_STORAGE_KEY, loadLlmSettingsDraft, llmDraftForStorage } from '../../src/features/settings/model/llm-settings.js';
 import { apiFetch, parseResponseMessage } from '../../src/shared/api/client.js';
-import { createRunConfigSync } from '../../src/features/conversations/model/run-config-sync.js';
+import { createRunConfigSync } from '../../src/core/run-config-sync.js';
 import { SchedulesContext } from '../../src/features/schedules/hooks/useSchedules.js';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import '../../styles.css';

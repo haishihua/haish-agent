@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRunConfigSync } from '../../../src/features/conversations/model/run-config-sync.js';
+import { createRunConfigSync } from '../../../src/core/run-config-sync.js';
 
 test('conversation model writes are serialized and save waits for latest selection', async () => {
   const calls = [];
@@ -48,7 +48,7 @@ test('switching conversation never writes another scope and failures are explici
 
 test('run configuration API is independent of schedule definitions and rejects errors', async () => {
   globalThis.window = { HAISH_API_BASE: '' };
-  const { createRunConfigApi } = await import('../../../src/features/conversations/api/run-config.js');
+  const { createRunConfigApi } = await import('../../../src/core/run-config.js');
   const calls = [];
   const api = createRunConfigApi(async (url, init) => { calls.push({ url, ...init }); return Response.json(null); }, '/runtime');
   await api.get('c/1'); await api.save('c/1', { provider: 'p', model_id: 'm' });

@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { useConversationRunConfig } from '../../src/features/conversations/hooks/useConversationRunConfig.js';
-import { createRunConfigSync } from '../../src/features/conversations/model/run-config-sync.js';
+import { createRunConfigSync } from '../../src/core/run-config-sync.js';
 import { createConversationHandlers } from '../../src/features/conversations/hooks/createConversationHandlers.js';
 import { createConversationRuntime } from '../../src/features/conversations/hooks/createConversationRuntime.js';
 import { AppToastStack } from '../../src/features/app/components/AppToast.jsx';

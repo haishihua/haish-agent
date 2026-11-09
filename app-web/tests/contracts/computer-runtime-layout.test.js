@@ -12,7 +12,7 @@ const timelineSource = [
   fs.readFileSync(new URL('../../src/features/chat/components/nodes/shared.js', import.meta.url), 'utf8'),
 ].join('\n');
 const storeSource = fs.readFileSync(
-  new URL('../../src/features/approvals/model/approval-store.js', import.meta.url),
+  new URL('../../src/core/approval-store.js', import.meta.url),
   'utf8',
 );
 const approvalApiSource = fs.readFileSync(

@@ -1,5 +1,5 @@
-import { normalizeReasoningEffort } from '../../../core/run-catalog.js';
-import { migrateExecutionRoute } from '../../../core/execution-identity.js';
+import { normalizeReasoningEffort } from './run-catalog.js';
+import { migrateExecutionRoute } from './execution-identity.js';
 
 const FIELDS = ['llm_config_id', 'provider', 'model_id', 'reasoning_effort', 'agent_id'];
 // Agent 身份是节点的默认值（workflowNodeRuntimeConfig 会补上），不是可以「清掉」的路由覆盖。

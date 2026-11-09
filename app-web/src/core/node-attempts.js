@@ -4,7 +4,7 @@ import {
   workflowToolCallsForAttempt,
 } from './runtime-workflow-layout.js';
 import { workflowArgumentsText } from './workflow-catalog.js';
-import { GOAL_WORKFLOW_ID } from '../../../core/workflow-ids.js';
+import { GOAL_WORKFLOW_ID } from './workflow-ids.js';
 
 function eventNodeId(event) {
   return String(event?.workflowNodeId || event?.workflow_node_id || event?.nodeId || event?.node_id || '');

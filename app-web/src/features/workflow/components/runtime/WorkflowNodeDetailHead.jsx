@@ -1,7 +1,7 @@
 // 运行态面板头部：图标 / 名称 / 状态副标题 / 关闭键 + Runtime Config|Run Result 页签。
 // 页签切换仍由主页面选中的 detailTab 驱动。
 import { agentIconNameForAgentId } from '../../../../core/agent-settings.js';
-import { typeLabelForWorkflowNode, workflowNodeIcon } from '../../model/workflow-catalog.js';
+import { typeLabelForWorkflowNode, workflowNodeIcon } from '../../../../core/workflow-catalog.js';
 import { AppIcon } from '../../../../shared/ui/AppIcon.jsx';
 
 export function WorkflowNodeDetailHead({

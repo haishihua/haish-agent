@@ -6,7 +6,7 @@ import {
   sanitizeWorkflowTemplateValue,
   workflowTokenRangeAt,
   workflowVariableTypeForValue,
-} from '../../workflow/model/workflow-catalog.js';
+} from '../../../core/workflow-catalog.js';
 import { WorkflowDetailSection, WorkflowDetailFields, workflowDetailFieldIcon } from './WorkflowNodeDetails.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';

@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { normalizeWorkflowNode, payloadForCustomWorkflow } from '../../src/features/workflow/model/workflow-catalog.js';
-import { workflowArrangementPositions } from '../../src/features/workflow/model/runtime-workflow-layout.js';
+import { normalizeWorkflowNode, payloadForCustomWorkflow } from '../../src/core/workflow-catalog.js';
+import { workflowArrangementPositions } from '../../src/core/runtime-workflow-layout.js';
 import {
   clearWorkflowLayout,
   saveWorkflowLayout,
   savedWorkflowLayout,
-} from '../../src/features/workflow/model/workflow-layout-store.js';
+} from '../../src/core/workflow-layout-store.js';
 
 const baseStyles = fs.readFileSync(new URL('../../styles/app-shell.css', import.meta.url), 'utf8');
 const runtimeStyles = fs.readFileSync(new URL('../../styles/workflow-runtime.css', import.meta.url), 'utf8');
@@ -22,13 +22,13 @@ const runtimePartSource = (path) => fs.readFileSync(
 const runtimePageSource = runtimePartSource('WorkflowRuntimePage.jsx');
 const runtimeSource = [
   'WorkflowRuntimePage.jsx',
-  '../model/node-attempts.js',
   'runtime/WorkflowNodeConversation.jsx',
   'runtime/WorkflowNodeAttempts.jsx',
   'runtime/WorkflowNodeDetailHead.jsx',
   'runtime/WorkflowDetailResizer.jsx',
   'runtime/WorkflowCanvasOverlays.jsx',
-].map(runtimePartSource).join('\n');
+].map(runtimePartSource).join('\n')
+  + fs.readFileSync(new URL('../../src/core/node-attempts.js', import.meta.url), 'utf8');
 const flowNodeSource = fs.readFileSync(
   new URL('../../src/features/workflow/components/WorkflowFlowNode.jsx', import.meta.url),
   'utf8',

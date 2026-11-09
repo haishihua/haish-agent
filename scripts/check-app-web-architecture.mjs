@@ -127,6 +127,28 @@ function visit(file, stack = []) {
 }
 for (const file of files) visit(file);
 
+// feature 之间不得双向依赖：A → B 存在时 B → A 必须为零。
+// 反向边一旦出现，两个领域就互为前提，任何一侧的改动都会拖着另一侧一起改。
+const featureEdges = new Set();
+const featureOf = (path) => {
+  const segments = path.split('/');
+  return segments[0] === 'features' ? segments[1] : null;
+};
+for (const file of files) {
+  const from = featureOf(relative(sourceRoot, file).split(sep).join('/'));
+  if (!from) continue;
+  for (const dependency of graph.get(file) || []) {
+    const to = featureOf(relative(sourceRoot, dependency).split(sep).join('/'));
+    if (to && to !== from) featureEdges.add(`${from} -> ${to}`);
+  }
+}
+for (const edge of featureEdges) {
+  const [from, to] = edge.split(' -> ');
+  if (from < to && featureEdges.has(`${to} -> ${from}`)) {
+    errors.push(`features must not depend on each other both ways: ${from} <-> ${to}`);
+  }
+}
+
 if (errors.length) {
   console.error(errors.map((error) => `- ${error}`).join('\n'));
   process.exit(1);

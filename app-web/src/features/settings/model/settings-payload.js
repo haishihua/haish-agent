@@ -15,7 +15,7 @@ import { DEFAULT_REASONING_EFFORT } from '../../../core/run-catalog.js';
 import { agentListItems } from '../../../core/agent-settings.js';
 import {
   workflowListItems,
-} from '../../workflow/model/workflow-catalog.js';
+} from '../../../core/workflow-catalog.js';
 
 function getLlmConfigItems(draft, activeSubtab = 'chat') {
   const titleForConfig = (config) => {

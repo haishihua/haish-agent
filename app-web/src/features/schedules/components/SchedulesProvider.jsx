@@ -2,8 +2,8 @@ import React from 'react';
 import { SchedulesContext, useSchedulesState } from '../hooks/useSchedules.js';
 import { schedulesApi } from '../api/schedules.js';
 import { ScheduleDialog } from './ScheduleDialog.jsx';
-import { runConfigApi } from '../../conversations/api/run-config.js';
-import { createRunConfigSync } from '../../conversations/model/run-config-sync.js';
+import { runConfigApi } from '../../../core/run-config.js';
+import { createRunConfigSync } from '../../../core/run-config-sync.js';
 
 export function SchedulesProvider({ children, ensureConversation, currentConversationId, onRuntimeEvent, onRecover, api = schedulesApi, configApi = runConfigApi, configSync: suppliedConfigSync, subscribe }) {
   const state = useSchedulesState({ api, subscribe, onRuntimeEvent, onRecover });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { workflowInputDisplayText } from '../../../src/features/workflow/model/workflow-catalog.js';
+import { workflowInputDisplayText } from '../../../src/core/workflow-catalog.js';
 
 test('workflow input displays the message instead of escaped transport JSON', () => {
   const result = workflowInputDisplayText({

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nodeConfigHasRouteOverride, nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest, workflowNodeRuntimeConfig } from '../../../src/features/workflow/model/node-runtime-config.js';
+import { nodeConfigHasRouteOverride, nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest, workflowNodeRuntimeConfig } from '../../../src/core/node-runtime-config.js';
 import { createTaskStreamHandlers, workflowNodeFinishedState, workflowNodeConfiguredState } from '../../../src/features/tasks/hooks/createTaskStreamHandlers.js';
 globalThis.window = { HAISH_API_BASE: 'http://fixture.invalid', location: { origin: 'http://fixture.invalid' } };
 const { taskSummaryToRuntimeTask } = await import('../../../src/core/task-runtime.js');

@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { savedExecutionConfigId, migrateExecutionRoute } from '../../../src/core/execution-identity.js';
 import { runtimeLlmProviderOptions } from '../../../src/features/settings/model/llm-settings.js';
-import { executionConfigError } from '../../../src/features/workflow/model/execution-config.js';
-import { nodeRuntimeConfigRequest, nodeRuntimeConfigsForWorkflow, workflowNodeRuntimeConfig } from '../../../src/features/workflow/model/node-runtime-config.js';
+import { executionConfigError } from '../../../src/core/execution-config.js';
+import { nodeRuntimeConfigRequest, nodeRuntimeConfigsForWorkflow, workflowNodeRuntimeConfig } from '../../../src/core/node-runtime-config.js';
 globalThis.window = { localStorage: { getItem: () => null } };
 const { resolveRunConfigSelection } = await import('../../../src/features/chat/hooks/useRunConfig.js');
 

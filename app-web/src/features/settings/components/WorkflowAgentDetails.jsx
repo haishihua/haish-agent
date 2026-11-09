@@ -7,7 +7,7 @@ import {
   workflowParameterEntries,
   workflowTemplateWithParameterAliases,
   reconcileWorkflowParameterTemplate,
-} from '../../workflow/model/workflow-catalog.js';
+} from '../../../core/workflow-catalog.js';
 import './workflow-agent-details.css';
 
 export function WorkflowAgentDetails({ node, agentOptions, variables, disabled, onChange }) {

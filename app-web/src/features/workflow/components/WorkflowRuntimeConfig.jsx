@@ -8,7 +8,7 @@ import { ProviderAuthBadge } from '../../../shared/ui/ProviderAuthBadge.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { ProviderIcon } from '../../../shared/ui/ProviderIcon.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../../shared/ui/settings-elements/ui/select.tsx';
-import { nodeConfigHasRouteOverride } from '../model/node-runtime-config.js';
+import { nodeConfigHasRouteOverride } from '../../../core/node-runtime-config.js';
 
 // Empty values are placeholders, not selectable fallback options.
 function ConfigSelect({ label, value, options, disabled, onChange }) {

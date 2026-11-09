@@ -6,7 +6,7 @@ const { workflowRuntimeNodeStatus } = await import('../../src/features/workflow/
 import {
   normalizeWorkflowApprovalMarkdown,
   workflowApprovalInput,
-} from '../../src/features/workflow/model/workflow-approval-markdown.js';
+} from '../../src/core/workflow-approval-markdown.js';
 
 const editorSource = fs.readFileSync(
   new URL('../../src/features/settings/components/WorkflowConfigEditor.jsx', import.meta.url),
@@ -22,20 +22,20 @@ const flowNodeSource = fs.readFileSync(
 );
 const overlaySource = fs.readFileSync(new URL('../../src/features/approvals/components/ApprovalOverlay.jsx', import.meta.url), 'utf8');
 const approvalApiSource = fs.readFileSync(new URL('../../src/features/approvals/api/approvals.js', import.meta.url), 'utf8');
-const approvalStoreSource = fs.readFileSync(new URL('../../src/features/approvals/model/approval-store.js', import.meta.url), 'utf8');
+const approvalStoreSource = fs.readFileSync(new URL('../../src/core/approval-store.js', import.meta.url), 'utf8');
 const runtimePartSource = (path) => fs.readFileSync(
   new URL(`../../src/features/workflow/components/${path}`, import.meta.url),
   'utf8',
 );
 const runtimeSource = [
   'WorkflowRuntimePage.jsx',
-  '../model/node-attempts.js',
   'runtime/WorkflowNodeConversation.jsx',
   'runtime/WorkflowNodeAttempts.jsx',
   'runtime/WorkflowNodeDetailHead.jsx',
   'runtime/WorkflowDetailResizer.jsx',
   'runtime/WorkflowCanvasOverlays.jsx',
-].map(runtimePartSource).join('\n');
+].map(runtimePartSource).join('\n')
+  + fs.readFileSync(new URL('../../src/core/node-attempts.js', import.meta.url), 'utf8');
 
 test('workflow editor exposes a configurable human approval node', () => {
   assert.match(flowNodeSource, /workflowNodeIcon\(nodeType\)/);

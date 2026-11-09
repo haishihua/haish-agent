@@ -36,11 +36,11 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { WorkflowConfigEditor } from '../../src/features/settings/components/WorkflowConfigEditor.jsx';
 import { WorkflowRuntimePage } from '../../src/features/workflow/components/WorkflowRuntimePage.jsx';
-import { normalizeWorkflowSettings } from '../../src/features/workflow/model/workflow-catalog.js';
+import { normalizeWorkflowSettings } from '../../src/core/workflow-catalog.js';
 import {
   clearWorkflowLayout,
   savedWorkflowLayout,
-} from '../../src/features/workflow/model/workflow-layout-store.js';
+} from '../../src/core/workflow-layout-store.js';
 import { saveWorkflowCanvasPreferences } from '../../src/features/workflow/model/workflow-canvas-preferences.js';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import '../../styles/base.css';

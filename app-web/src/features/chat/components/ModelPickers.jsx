@@ -1,6 +1,6 @@
 import React from 'react';
 import { resolveApiBase } from '../../../shared/api/base.js';
-import { approvalStore } from '../../approvals/model/approval-store.js';
+import { approvalStore } from '../../../core/approval-store.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';

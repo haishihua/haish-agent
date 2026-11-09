@@ -3,8 +3,8 @@ import React from 'react';
 import { AskUserInlineForm } from '../../../chat/components/AskUserInlineForm.jsx';
 import { ChatMessageRow } from '../../../chat/components/ChatMessageRow.jsx';
 import { buildChatTimeline } from '../../../chat/model/chat-timeline.js';
-import { workflowApprovalInput } from '../../model/workflow-approval-markdown.js';
-import { workflowInputDisplayText } from '../../model/workflow-catalog.js';
+import { workflowApprovalInput } from '../../../../core/workflow-approval-markdown.js';
+import { workflowInputDisplayText } from '../../../../core/workflow-catalog.js';
 import { WorkflowApprovalInline } from '../../../approvals/components/ApprovalOverlay.jsx';
 import { taskFirstStreamTimestamp } from '../../../../core/task-runtime.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../../core/run-status.js';
@@ -14,7 +14,7 @@ import {
   goalJudgeInput,
   nodeConversationInputValue,
   timestampMs,
-} from '../../model/node-attempts.js';
+} from '../../../../core/node-attempts.js';
 
 export function NodeConversation({ node, task, attempt, result, status, running, showApproval, onRetry, agentName = '', pendingInput = null }) {
   const scopedTask = React.useMemo(() => attemptTask(task, attempt, result), [attempt, result, task]);

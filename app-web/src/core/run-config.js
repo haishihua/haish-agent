@@ -1,5 +1,5 @@
-import { API_BASE } from '../../../shared/api/base.js';
-import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
+import { API_BASE } from '../shared/api/base.js';
+import { apiFetch, parseResponseMessage } from '../shared/api/client.js';
 
 export function createRunConfigApi(request = apiFetch, base = API_BASE) {
   async function call(id, config) {

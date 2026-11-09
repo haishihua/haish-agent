@@ -2,9 +2,9 @@
 // 本地运行态装配、附件上传、请求体构造、事件批次队列与背压补齐、失败回滚。
 // 全部依赖（含 ctx 本身）由 createTaskStreamHandlers 显式传入；这里不持有任何
 // 模块级可变状态，只在调用时建一次闭包。
-import { executionConfigError } from '../../../workflow/model/execution-config.js';
+import { executionConfigError } from '../../../../core/execution-config.js';
 import { normalizeReasoningEffort } from '../../../../core/run-catalog.js';
-import { nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest } from '../../../workflow/model/node-runtime-config.js';
+import { nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest } from '../../../../core/node-runtime-config.js';
 import { waitForAttemptConfigOperation } from '../../../../shared/lib/attempt-run-config.js';
 import { RESYNC_REQUIRED_TYPE } from './recovery.js';
 

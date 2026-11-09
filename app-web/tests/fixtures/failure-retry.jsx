@@ -6,7 +6,7 @@ import { flushSync } from 'react-dom';
 import { ChatPanel } from '../../src/features/chat/components/ChatPanel.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import { SchedulesContext } from '../../src/features/schedules/hooks/useSchedules.js';
-import { createRunConfigSync } from '../../src/features/conversations/model/run-config-sync.js';
+import { createRunConfigSync } from '../../src/core/run-config-sync.js';
 import { createConversationHandlers } from '../../src/features/conversations/hooks/createConversationHandlers.js';
 import { createConversationActivationHandlers } from '../../src/features/conversations/hooks/createConversationActivationHandlers.js';
 import { sortTaskIdsForRestore, taskSummaryToRuntimeTask, taskDetailToRuntimeTask } from '../../src/core/task-runtime.js';

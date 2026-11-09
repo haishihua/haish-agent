@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   requestBelongsToConversation,
   selectConversationApprovalRequests,
-} from '../../../src/features/approvals/model/approval-store.js';
+} from '../../../src/core/approval-store.js';
 
 const requests = [
   { request_id: 'tool-a', conversation_id: 'conversation-a', type: 'approval_requested' },

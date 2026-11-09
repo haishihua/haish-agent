@@ -8,7 +8,7 @@ import {
 import {
   placeDroppedWorkflowNode,
   typeLabelForWorkflowNode,
-} from '../../../workflow/model/workflow-catalog.js';
+} from '../../../../core/workflow-catalog.js';
 import { workflowSnapPosition } from '../../../workflow/model/workflow-canvas-editing.js';
 import { WORKFLOW_NODE_DRAG_TYPE } from './shared.js';
 

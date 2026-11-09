@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDeployHandlers } from '../../../src/features/tasks/hooks/createDeployHandlers.js';
-import { executionConfigError } from '../../../src/features/workflow/model/execution-config.js';
-import { nodeRuntimeConfigRequest, nodeRuntimeConfigsForWorkflow, workflowNodeRuntimeConfig } from '../../../src/features/workflow/model/node-runtime-config.js';
+import { executionConfigError } from '../../../src/core/execution-config.js';
+import { nodeRuntimeConfigRequest, nodeRuntimeConfigsForWorkflow, workflowNodeRuntimeConfig } from '../../../src/core/node-runtime-config.js';
 
 const providerOptions = [{ id: 'configured', provider: 'custom' }];
 const workflow = { nodes: [{ id: 'first', type: 'agent' }, { id: 'second', type: 'agent' }] };

@@ -1,6 +1,6 @@
 import React from 'react';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
-import { workflowNodeIcon } from '../../workflow/model/workflow-catalog.js';
+import { workflowNodeIcon } from '../../../core/workflow-catalog.js';
 import { SettingsMenuSelect } from './settings-ui.jsx';
 import './workflow-agent-details.css';
 

@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { AskUserInlineForm } from '../../src/features/chat/components/AskUserInlineForm.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
-import { approvalStore } from '../../src/features/approvals/model/approval-store.js';
+import { approvalStore } from '../../src/core/approval-store.js';
 import '../../styles/base.css';
 import '../../styles/approvals.css';
 

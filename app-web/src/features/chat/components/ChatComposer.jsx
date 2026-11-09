@@ -17,8 +17,8 @@ import {
   useProviderModels,
 } from '../hooks/useRunConfig.js';
 import { DEFAULT_AGENT_OPTIONS } from '../../../core/run-catalog.js';
-import { executionConfigError } from '../../workflow/model/execution-config.js';
-import { nodeRuntimeConfigsForWorkflow } from '../../workflow/model/node-runtime-config.js';
+import { executionConfigError } from '../../../core/execution-config.js';
+import { nodeRuntimeConfigsForWorkflow } from '../../../core/node-runtime-config.js';
 import { ApprovalModePicker, AgentPicker } from './ModelPickers.jsx';
 import { AttachmentChips } from './composer/AttachmentChips.jsx';
 import { ComposerToolbar } from './composer/ComposerToolbar.jsx';

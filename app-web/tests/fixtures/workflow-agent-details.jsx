@@ -2,7 +2,7 @@ import React from 'react';
 import 'lxgw-wenkai-screen-webfont/lxgwwenkaiscreen.css';
 import { createRoot } from 'react-dom/client';
 import { WorkflowConfigEditor } from '../../src/features/settings/components/WorkflowConfigEditor.jsx';
-import { normalizeWorkflowSettings, workflowOutputFields } from '../../src/features/workflow/model/workflow-catalog.js';
+import { normalizeWorkflowSettings, workflowOutputFields } from '../../src/core/workflow-catalog.js';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import '../../styles.css';
 

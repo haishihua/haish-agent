@@ -1,7 +1,7 @@
 import { GOAL_WORKFLOW_ID } from '../../../core/workflow-ids.js';
 import { matchingWorkflowProject } from '../../../core/project-matching.js';
-import { executionConfigError } from '../../workflow/model/execution-config.js';
-import { nodeRuntimeConfigsForWorkflow } from '../../workflow/model/node-runtime-config.js';
+import { executionConfigError } from '../../../core/execution-config.js';
+import { nodeRuntimeConfigsForWorkflow } from '../../../core/node-runtime-config.js';
 
 // Explicit routing: never infer the destination from the currently displayed
 // mode after an await, or let /goal become a chat steering instruction.

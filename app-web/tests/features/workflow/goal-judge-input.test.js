@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { goalJudgeInput } from '../../../src/features/workflow/model/node-attempts.js';
+import { goalJudgeInput } from '../../../src/core/node-attempts.js';
 
 const judge = { id: 'judge', type: 'llm' };
 const task = { workflowSnapshot: { workflow_id: 'workflow.goal-loop' } };

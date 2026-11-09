@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { migrateExecutionRoute, savedExecutionConfigId } from '../../../src/core/execution-identity.js';
 import { normalizeReasoningEffort, REASONING_EFFORT_OPTIONS } from '../../../src/core/run-catalog.js';
-import { executionConfigError } from '../../../src/features/workflow/model/execution-config.js';
-import { createRunConfigSync } from '../../../src/features/conversations/model/run-config-sync.js';
+import { executionConfigError } from '../../../src/core/execution-config.js';
+import { createRunConfigSync } from '../../../src/core/run-config-sync.js';
 import { waitForAttemptRunConfig } from '../../../src/shared/lib/attempt-run-config.js';
 import { createConversationHandlers } from '../../../src/features/conversations/hooks/createConversationHandlers.js';
 

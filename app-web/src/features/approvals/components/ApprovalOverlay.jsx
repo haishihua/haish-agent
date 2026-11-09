@@ -4,7 +4,7 @@ import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
-import { normalizeWorkflowApprovalMarkdown } from '../../workflow/model/workflow-approval-markdown.js';
+import { normalizeWorkflowApprovalMarkdown } from '../../../core/workflow-approval-markdown.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { copyTextToClipboard } from '../../../shared/lib/clipboard.js';
 import { formatMessageClock } from '../../../shared/lib/message-format.js';
@@ -22,7 +22,7 @@ import {
   isWorkflowApprovalRequest,
   requestBelongsToConversation,
   selectConversationApprovalRequests,
-} from '../model/approval-store.js';
+} from '../../../core/approval-store.js';
 
 const { useState, useEffect, useCallback } = React;
 

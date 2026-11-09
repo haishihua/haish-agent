@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ApprovalInline } from '../../src/features/approvals/components/ApprovalOverlay.jsx';
-import { approvalStore } from '../../src/features/approvals/model/approval-store.js';
+import { approvalStore } from '../../src/core/approval-store.js';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import '../../styles.css';
 

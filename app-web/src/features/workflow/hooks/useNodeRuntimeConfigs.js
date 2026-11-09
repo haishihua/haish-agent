@@ -1,5 +1,5 @@
 import React from 'react';
-import { nodeRuntimeConfigsForWorkflow } from '../model/node-runtime-config.js';
+import { nodeRuntimeConfigsForWorkflow } from '../../../core/node-runtime-config.js';
 
 export function useNodeRuntimeConfigs(storageKey, workflow, savedConfigs, taskId = '', providerOptions = []) {
   const key = `${storageKey}:nodes:${workflow?.workflow_id || workflow?.id || ''}`;

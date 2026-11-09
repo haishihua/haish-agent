@@ -1,7 +1,7 @@
 import React from 'react';
 import { WorkflowRuntimeConfig } from './WorkflowRuntimeConfig.jsx';
-import { workflowNodeRuntimeConfig } from '../model/node-runtime-config.js';
-import { approvalStore } from '../../approvals/model/approval-store.js';
+import { workflowNodeRuntimeConfig } from '../../../core/node-runtime-config.js';
+import { approvalStore } from '../../../core/approval-store.js';
 import { workflowAttentionRequest } from '../model/workflow-attention.js';
 import { workflowControlEvents } from '../model/workflow-control-events.js';
 import { reconcileRuntimeFlowNodes } from '../model/runtime-flow-nodes.js';
@@ -19,7 +19,7 @@ import {
   workflowArrangementPositions,
   workflowNodeOutcomesFromEvents,
   workflowTraversedLoopNodeIds,
-} from '../model/runtime-workflow-layout.js';
+} from '../../../core/runtime-workflow-layout.js';
 import { useWorkflowCanvasWidth } from '../hooks/useWorkflowCanvasWidth.js';
 import { ScrollToBottomButton } from '../../../shared/ui/ScrollToBottomButton.jsx';
 import { workflowRouteHandles, workflowUsedSideHandles } from '../model/workflow-canvas-editing.js';
@@ -36,7 +36,7 @@ import {
   workflowNodePorts,
   workflowNodeAccent,
 } from './WorkflowFlowNode.jsx';
-import { nodeAttempts, visibleNodeAttempts } from '../model/node-attempts.js';
+import { nodeAttempts, visibleNodeAttempts } from '../../../core/node-attempts.js';
 import { WorkflowNodeDetailHead } from './runtime/WorkflowNodeDetailHead.jsx';
 import { WorkflowNodeAttempts } from './runtime/WorkflowNodeAttempts.jsx';
 import { WorkflowDetailResizer } from './runtime/WorkflowDetailResizer.jsx';

@@ -9,7 +9,7 @@ import {
   workflowResultForAttempt,
   workflowToolCallsForAttempt,
   workflowTraversedLoopNodeIds,
-} from '../../src/features/workflow/model/runtime-workflow-layout.js';
+} from '../../src/core/runtime-workflow-layout.js';
 import { appShellSource as readAppShellSource } from '../helpers/shell-source.js';
 import { runtimeEventToLog } from '../../src/core/runtime-events.js';
 import { taskStreamHandlerSource } from '../helpers/handler-source.js';
@@ -20,13 +20,13 @@ const runtimePartSource = (path) => fs.readFileSync(
 );
 const runtimeSource = [
   'WorkflowRuntimePage.jsx',
-  '../model/node-attempts.js',
   'runtime/WorkflowNodeConversation.jsx',
   'runtime/WorkflowNodeAttempts.jsx',
   'runtime/WorkflowNodeDetailHead.jsx',
   'runtime/WorkflowDetailResizer.jsx',
   'runtime/WorkflowCanvasOverlays.jsx',
-].map(runtimePartSource).join('\n');
+].map(runtimePartSource).join('\n')
+  + fs.readFileSync(new URL('../../src/core/node-attempts.js', import.meta.url), 'utf8');
 const statusSource = fs.readFileSync(
   new URL('../../src/features/workflow/model/runtime-status.js', import.meta.url),
   'utf8',
@@ -44,7 +44,7 @@ const flowNodeSource = fs.readFileSync(
   'utf8',
 );
 const layoutSource = fs.readFileSync(
-  new URL('../../src/features/workflow/model/runtime-workflow-layout.js', import.meta.url),
+  new URL('../../src/core/runtime-workflow-layout.js', import.meta.url),
   'utf8',
 );
 const chatMessageSource = fs.readFileSync(

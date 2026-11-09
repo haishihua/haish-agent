@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { normalizeWorkflowEdge, payloadForCustomWorkflow } from '../../src/features/workflow/model/workflow-catalog.js';
+import { normalizeWorkflowEdge, payloadForCustomWorkflow } from '../../src/core/workflow-catalog.js';
 
 const editorSource = fs.readFileSync(
   new URL('../../src/features/settings/components/WorkflowConfigEditor.jsx', import.meta.url),

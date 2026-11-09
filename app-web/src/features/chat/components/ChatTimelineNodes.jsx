@@ -25,7 +25,7 @@ import {
   useToolApprovalRequests,
 } from '../../approvals/components/ApprovalOverlay.jsx';
 import { placeToolApprovals } from '../../approvals/model/approval-placement.js';
-import { approvalStore } from '../../approvals/model/approval-store.js';
+import { approvalStore } from '../../../core/approval-store.js';
 import { buildSubAgentTimelineItems, buildToolView } from '../model/tool-view.js';
 import { resolveAgentActivity } from '../model/chat-timeline.js';
 import { useConversationWaitState } from '../../conversations/hooks/useConversationRunState.js';

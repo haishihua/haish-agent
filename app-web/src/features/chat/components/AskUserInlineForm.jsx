@@ -3,7 +3,7 @@ import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { Markdown } from '../../../shared/ui/Markdown.jsx';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import React from 'react';
-import { approvalStore } from '../../approvals/model/approval-store.js';
+import { approvalStore } from '../../../core/approval-store.js';
 import { markdownPlainText } from '../../../shared/lib/markdown-text.js';
 import { selectPendingUserInput } from '../model/pending-user-input.js';
 import {

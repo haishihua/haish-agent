@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { approvalStore } from '../../../src/features/approvals/model/approval-store.js';
+import { approvalStore } from '../../../src/core/approval-store.js';
 
 test('mode updates and reconnect snapshots keep each conversation independent', t => {
   const originalWindow = globalThis.window;

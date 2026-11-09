@@ -8,7 +8,7 @@ const realtimeSource = fs.readFileSync(new URL('../../../src/main/realtime-clien
 const preloadSource = fs.readFileSync(new URL('../../../src/preload/preload.ts', import.meta.url), 'utf8');
 const taskSource = taskStreamHandlerSource();
 const approvalSource = fs.readFileSync(
-  new URL('../../src/features/approvals/model/approval-store.js', import.meta.url),
+  new URL('../../src/core/approval-store.js', import.meta.url),
   'utf8',
 );
 const runtimeRequirementsSource = fs.readFileSync(

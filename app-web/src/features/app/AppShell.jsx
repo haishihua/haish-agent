@@ -1,7 +1,7 @@
 import React from 'react';
 import { conversationContentLoading } from '../chat/model/conversation-loading.js';
 import { BoundedCache } from '../../shared/lib/bounded-cache.js';
-import { approvalStore } from '../approvals/model/approval-store.js';
+import { approvalStore } from '../../core/approval-store.js';
 import { useNodeRuntimeConfigs } from '../workflow/hooks/useNodeRuntimeConfigs.js';
 import { useConversationAgentSelection } from '../conversations/hooks/useConversationAgentSelection.js';
 import {
@@ -51,7 +51,7 @@ import { startAgentCatalogLoad, staleAgentCatalog } from '../agents/model/agent-
 import {
   DEFAULT_WORKFLOW_SETTINGS,
   DIRECT_AGENT_WORKFLOW_ID,
-} from '../workflow/model/workflow-defaults.js';
+} from '../../core/workflow-defaults.js';
 import {
   loadLlmSettingsDraft,
 } from '../settings/model/llm-settings.js';
@@ -61,7 +61,7 @@ import {
 import {
   normalizeWorkflowSettings,
   workflowById,
-} from '../workflow/model/workflow-catalog.js';
+} from '../../core/workflow-catalog.js';
 import {
   createEmptyContextUsage,
 } from '../../core/context-usage.js';
@@ -89,8 +89,8 @@ import {
   terminalTaskNoticeStatus,
 } from '../../core/task-completion-notices.js';
 
-import { createRunConfigSync } from '../conversations/model/run-config-sync.js';
-import { runConfigApi } from '../conversations/api/run-config.js';
+import { createRunConfigSync } from '../../core/run-config-sync.js';
+import { runConfigApi } from '../../core/run-config.js';
 import { createScheduledRuntimeHandlers } from '../schedules/model/runtime-handlers.js';
 import { usePerConversationDraft } from '../chat/hooks/usePerConversationDraft.js';
 import { saveLastLocation } from '../conversations/model/last-location.js';

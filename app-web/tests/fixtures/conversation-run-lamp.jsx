@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ConversationNode } from '../../src/features/conversations/components/ConversationNode.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
-import { approvalStore } from '../../src/features/approvals/model/approval-store.js';
+import { approvalStore } from '../../src/core/approval-store.js';
 import '../../styles/base.css';
 // 终态点的大小/颜色在 chat.css 的 .chat-timeline-status 里（应用里也是这样加载的，
 // 且必须排在 panels.css 前面，否则 .status-cancelled 的覆盖关系就和应用不一致了）。

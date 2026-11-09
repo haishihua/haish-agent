@@ -1,5 +1,5 @@
 import { workflowNodeRuntimeConfig } from './node-runtime-config.js';
-import { migrateExecutionRoute } from '../../../core/execution-identity.js';
+import { migrateExecutionRoute } from './execution-identity.js';
 
 export function executionConfigError({ executionMode = 'chat', provider, legacyProvider, modelId, workflow, nodeRuntimeConfigs = {}, providerOptions = [] }) {
   function routeError(route, label) {

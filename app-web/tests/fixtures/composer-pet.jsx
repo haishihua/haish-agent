@@ -6,7 +6,7 @@ import { ChatComposer } from '../../src/features/chat/components/ChatComposer.js
 import { DraftProjectPicker } from '../../src/features/chat/components/DraftProjectPicker.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import { SchedulesContext } from '../../src/features/schedules/hooks/useSchedules.js';
-import { createRunConfigSync } from '../../src/features/conversations/model/run-config-sync.js';
+import { createRunConfigSync } from '../../src/core/run-config-sync.js';
 import '../../styles.css';
 
 window.__petErrors = [];

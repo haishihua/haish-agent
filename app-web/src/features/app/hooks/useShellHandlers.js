@@ -52,7 +52,7 @@ import { clearTaskCompletionNotice } from '../../../core/task-completion-notices
 import { nextEarlierTaskRuntimeIds, pendingTaskRuntimeIds } from '../../../core/task-runtime-paging.js';
 import { applyTerminalTaskState, buildTaskRuntimeRecord, createEmptyTaskRuntimeState, createPendingTaskDraft, sortTaskIdsForRestore, taskDetailToRuntimeTask, taskHasAssistantStreamContent, taskSummaryToRuntimeTask, upsertToolCall } from '../../../core/task-runtime.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
-import { createDefaultCustomWorkflowPayload, normalizeWorkflowSettings, payloadForCustomWorkflow, workflowById } from '../../workflow/model/workflow-catalog.js';
+import { createDefaultCustomWorkflowPayload, normalizeWorkflowSettings, payloadForCustomWorkflow, workflowById } from '../../../core/workflow-catalog.js';
 import { conversationDetailToWorkspaceConversation, replaceWorkspaceModeFromProjects, workspaceStateWithConversationDetail } from '../model/workspace-runtime.js';
 
 /**

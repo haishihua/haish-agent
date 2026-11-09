@@ -16,7 +16,7 @@ test('application owns one stream across view switches and snapshots replace sta
     globalThis.window = originalWindow;
   });
 
-  const { approvalStore } = await import('../../../src/features/approvals/model/approval-store.js');
+  const { approvalStore } = await import('../../../src/core/approval-store.js');
   t.after(() => approvalStore.dispose());
   approvalStore.start();
   const unsubscribeState = approvalStore.subscribe(() => {});

@@ -4,7 +4,7 @@ import {
   buildWorkflowOutputPatch,
   workflowOutputMappingEntries,
   workflowVariableTypeForValue,
-} from '../../../workflow/model/workflow-catalog.js';
+} from '../../../../core/workflow-catalog.js';
 import { SettingsMenuSelect } from '../settings-ui.jsx';
 import { WorkflowDetailSection, WorkflowDetailSelect } from '../WorkflowNodeDetails.jsx';
 import { WorkflowTemplateTextarea, WorkflowVariableSelect } from '../WorkflowFormControls.jsx';

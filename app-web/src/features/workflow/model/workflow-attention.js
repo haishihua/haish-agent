@@ -1,5 +1,5 @@
 import { isTaskSettled } from '../../../core/run-status.js';
-import { requestBelongsToConversation } from '../../approvals/model/approval-store.js';
+import { requestBelongsToConversation } from '../../../core/approval-store.js';
 
 // Pending backend requests, not historical tool calls or stale waiting status,
 // decide which node needs a user's attention.

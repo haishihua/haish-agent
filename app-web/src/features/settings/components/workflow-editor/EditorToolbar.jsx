@@ -1,7 +1,7 @@
 import React from 'react';
 import { AppIcon } from '../../../../shared/ui/AppIcon.jsx';
 import { PortalTooltip } from '../../../../shared/ui/PortalTooltip.jsx';
-import { workflowNodeIcon } from '../../../workflow/model/workflow-catalog.js';
+import { workflowNodeIcon } from '../../../../core/workflow-catalog.js';
 import { SettingsTooltipIconButton } from '../settings-ui.jsx';
 import { WORKFLOW_NODE_DRAG_TYPE } from './shared.js';
 

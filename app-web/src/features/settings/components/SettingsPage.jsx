@@ -11,7 +11,7 @@ import {
   normalizeWorkflowSettings,
   workflowById,
   normalizeWorkflowRow,
-} from '../../workflow/model/workflow-catalog.js';
+} from '../../../core/workflow-catalog.js';
 import { closeAllPortalTooltips } from '../../../shared/ui/PortalTooltip.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';

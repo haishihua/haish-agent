@@ -1,6 +1,6 @@
 import { terminalTaskNoticeStatus } from '../../../core/task-completion-notices.js';
 import { buildChatTimeline, resolveAgentActivity } from './chat-timeline.js';
-import { attemptTask, nodeAttempts } from '../../workflow/model/node-attempts.js';
+import { attemptTask, nodeAttempts } from '../../../core/node-attempts.js';
 
 export function nextPetCompletion(previous, current) {
   if (!current?.conversationId) return { tracked: null, celebrate: false };

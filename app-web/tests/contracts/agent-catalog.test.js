@@ -18,8 +18,8 @@ import {
   DEFAULT_WORKFLOW_NODE_TYPES,
   DEFAULT_WORKFLOW_SETTINGS,
   WORKFLOW_NODE_OUTPUT_FIELDS,
-} from '../../src/features/workflow/model/workflow-defaults.js';
-import { normalizeWorkflowSettings } from '../../src/features/workflow/model/workflow-catalog.js';
+} from '../../src/core/workflow-defaults.js';
+import { normalizeWorkflowSettings } from '../../src/core/workflow-catalog.js';
 import { appShellSource as readAppShellSource } from '../helpers/shell-source.js';
 
 const appShellSource = [

@@ -4,7 +4,7 @@ import { useProviderModels, PROVIDER_MODELS_TIMEOUT_MS } from '../../src/feature
 import { ModelPicker } from '../../src/features/chat/components/ModelPickers.jsx';
 import { ChatComposer } from '../../src/features/chat/components/ChatComposer.jsx';
 import { WorkflowRuntimeConfig } from '../../src/features/workflow/components/WorkflowRuntimeConfig.jsx';
-import { createRunConfigSync } from '../../src/features/conversations/model/run-config-sync.js';
+import { createRunConfigSync } from '../../src/core/run-config-sync.js';
 import { SchedulesContext } from '../../src/features/schedules/hooks/useSchedules.js';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import '../../styles.css';
