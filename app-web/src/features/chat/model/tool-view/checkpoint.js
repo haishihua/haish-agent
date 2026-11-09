@@ -3,7 +3,7 @@
 // 只读：桌面端没有 checkpoint 的 IPC，回滚只能由 agent 调 rollback_workspace（Write 权限、走审批），
 // 所以这里不产出 onRestore——官方元素在不给回调时本来就不渲染 Restore 按钮。
 // 工作区整体的当前历史位置无法可靠推断，因此不使用旧响应里的 current 标记。
-import { TOOL_BLOCK_LIMIT, compactToolValue, isToolFailure, toolPlainObject } from './shared.js';
+import { TOOL_BLOCK_LIMIT, compactToolValue, isToolFailure, toolPlainObject } from '../../../../core/tool-view-shared.js';
 
 const pad2 = (value) => String(value).padStart(2, '0');
 

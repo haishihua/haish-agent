@@ -5,7 +5,7 @@ import {
   outputJsonText,
   toolDisplayOutput,
   toolJsonText,
-} from './shared.js';
+} from '../../../../core/tool-view-shared.js';
 
 export function buildSearchToolView(item, name) {
   const output = toolDisplayOutput(item);

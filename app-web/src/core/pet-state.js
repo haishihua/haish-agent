@@ -1,7 +1,7 @@
-import { terminalTaskNoticeStatus } from '../../../core/task-completion-notices.js';
-import { buildChatTimeline } from '../../../core/chat-timeline.js';
-import { resolveAgentActivity } from '../../../core/tool-grouping.js';
-import { attemptTask, nodeAttempts } from '../../../core/node-attempts.js';
+import { terminalTaskNoticeStatus } from './task-completion-notices.js';
+import { buildChatTimeline } from './chat-timeline.js';
+import { resolveAgentActivity } from './tool-grouping.js';
+import { attemptTask, nodeAttempts } from './node-attempts.js';
 
 export function nextPetCompletion(previous, current) {
   if (!current?.conversationId) return { tracked: null, celebrate: false };

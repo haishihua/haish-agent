@@ -11,7 +11,7 @@ import sleep from '../../../../assets/ui/pet/sleep.png';
 import jump from '../../../../assets/ui/pet/jump.png';
 import dragLift from '../../../../assets/ui/pet/drag-lift.png';
 import dragLand from '../../../../assets/ui/pet/drag-land.png';
-import { nextPetCompletion, petTargetState } from '../model/pet-state.js';
+import { nextPetCompletion, petTargetState } from '../../../core/pet-state.js';
 import { readPetPosition, savePetPosition } from '../model/pet-position.js';
 import { chooseIdleAction, idleRestDuration } from '../model/pet-idle.js';
 import { jumpPoint, jumpTarget, pickerPlatform, platformEdge } from '../model/pet-obstacle.js';

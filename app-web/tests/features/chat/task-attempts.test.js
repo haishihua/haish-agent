@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collapseFullTaskAttempts } from '../../../src/features/chat/model/task-attempts.js';
+import { collapseFullTaskAttempts } from '../../../src/core/task-attempts.js';
 
 globalThis.window = {};
 const { createAttemptHarness } = await import('../../fixtures/task-attempt-runtime.js');

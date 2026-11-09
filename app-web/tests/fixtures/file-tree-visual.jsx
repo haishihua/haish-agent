@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ChatMessageRow } from '../../src/features/chat/components/ChatMessageRow.jsx';
-import { changedFilesForTask } from '../../src/features/chat/model/changed-files.js';
+import { changedFilesForTask } from '../../src/core/changed-files.js';
 import { compactStreamEvents } from '../../src/core/stream-events.js';
 import { runtimeEventToLog } from '../../src/core/runtime-events.js';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';

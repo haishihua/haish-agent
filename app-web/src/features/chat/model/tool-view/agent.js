@@ -12,7 +12,7 @@ import {
   toolActionLabel,
   toolJsonText,
   toolPlainObject,
-} from './shared.js';
+} from '../../../../core/tool-view-shared.js';
 
 const TOOL_PROCESS_NAMES = new Set([
   'dispatch_sub_agent',

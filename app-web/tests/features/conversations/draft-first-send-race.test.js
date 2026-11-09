@@ -31,7 +31,7 @@ const { createConversationRuntime } = await import(
   '../../../src/features/conversations/hooks/createConversationRuntime.js'
 );
 const { conversationContentLoading } = await import(
-  '../../../src/features/chat/model/conversation-loading.js'
+  '../../../src/core/conversation-loading.js'
 );
 
 const { workspaceStateWithConversationDetail, workspaceStateWithTouchedConversation } = await import(

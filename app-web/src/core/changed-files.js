@@ -2,8 +2,8 @@
 // （subject.path + data.added_lines / data.removed_lines），绝不解析 final answer 正文。
 // 依据：最近三条改过文件的 trace 里 61% 的回答一个改动文件名都不提，面向正文渲染会大面积空树。
 // 事件来自 task.eventLog（实时与历史回放同一份投影），toolCalls 只作为 eventLog 缺失时的兜底。
-import { normalizeToolName } from '../../../core/tool-names.js';
-import { getToolSubject, toolPlainObject } from './tool-view/shared.js';
+import { normalizeToolName } from './tool-names.js';
+import { getToolSubject, toolPlainObject } from './tool-view-shared.js';
 
 // 真正写文件的工具。create_dir / delete_dir / rollback_workspace 不产出文件行：前两者是目录，
 // 后者是把文件改回旧内容，行数增减会变成负数，不属于「本轮改了什么」。

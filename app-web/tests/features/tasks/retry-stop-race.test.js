@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 globalThis.window = {};
 const { createAttemptHarness } = await import('../../fixtures/task-attempt-runtime.js');
 const { createDeployHandlers } = await import('../../../src/features/tasks/hooks/createDeployHandlers.js');
-const { collapseFullTaskAttempts } = await import('../../../src/features/chat/model/task-attempts.js');
+const { collapseFullTaskAttempts } = await import('../../../src/core/task-attempts.js');
 const { applyTerminalTaskState, sortTaskIdsForRestore, taskSummaryToRuntimeTask } = await import('../../../src/core/task-runtime.js');
 const { createConversationActivationHandlers } = await import('../../../src/features/conversations/hooks/createConversationActivationHandlers.js');
 const { createConversationHandlers } = await import('../../../src/features/conversations/hooks/createConversationHandlers.js');

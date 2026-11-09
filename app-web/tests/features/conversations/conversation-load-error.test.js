@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createConversationHandlers } from '../../../src/features/conversations/hooks/createConversationHandlers.js';
-import { conversationContentLoading } from '../../../src/features/chat/model/conversation-loading.js';
+import { conversationContentLoading } from '../../../src/core/conversation-loading.js';
 
 function createHarness() {
   let error = '';

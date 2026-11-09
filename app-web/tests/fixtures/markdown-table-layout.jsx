@@ -5,7 +5,7 @@
 //   1. 气泡的固定宽度上限（助手 960px）先于消息列宽生效；
 //   2. 单元格里的行内代码带着正文用的 `word-break: break-all` + 继承来的
 //      `overflow-wrap: anywhere`，列的最小宽度因此只有一个字符，浏览器可以把列压到
-//      路径中间断行（`app-web/src/features/chat/model/conversation-loading.js` 这种）；
+//      路径中间断行（`app-web/src/core/conversation-loading.js` 这种）；
 //   3. 表格容器还有上游默认的 300px 高度上限：行数一多就变成一个内部滚动的盒子
 //      （macOS 的浮层滚动条平时不显示，看起来就是「表格少了几行」）。
 // 结果就是用户反馈的「要滚轮才看得全」。

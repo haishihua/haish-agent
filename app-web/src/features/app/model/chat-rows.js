@@ -1,6 +1,6 @@
-import { collapseFullTaskAttempts } from '../../chat/model/task-attempts.js';
+import { collapseFullTaskAttempts } from '../../../core/task-attempts.js';
 import { assistantAgentIdForTask, assistantNameForTask } from '../../../core/assistant-name.js';
-import { changedFilesForTask } from '../../chat/model/changed-files.js';
+import { changedFilesForTask } from '../../../core/changed-files.js';
 import { stripInjectedSkillInstruction } from '../../../core/message-text.js';
 import { buildChatTimeline } from '../../../core/chat-timeline.js';
 import { isTaskLive } from '../../../core/run-status.js';

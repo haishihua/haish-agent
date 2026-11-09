@@ -4,7 +4,7 @@ import {
   changedFilesForTask,
   collectChangedFiles,
   fileTreeNodes,
-} from '../../../src/features/chat/model/changed-files.js';
+} from '../../../src/core/changed-files.js';
 
 // chat-rows 的依赖链里有读 window 的 api 基地址模块，测试里先补一个空壳再动态导入。
 globalThis.window = {};
@@ -132,18 +132,18 @@ test('the tree groups files under their folder and keeps first-touch order', () 
 });
 
 test('a file whose folder already appeared never lands under the previous folder', () => {
-  // 真实例子：FileTree.jsx（agent-elements）→ changed-files.js（chat/model）→ file-tree.css（又回
-  // agent-elements），只按「目录首次出现」插目录行会把 file-tree.css 挂到 chat/model 下。
+  // 真实例子：FileTree.jsx（agent-elements）→ changed-files.js（core）→ file-tree.css（又回
+  // agent-elements），只按「目录首次出现」插目录行会把 file-tree.css 挂到 core 下。
   const nodes = fileTreeNodes([
     { path: 'app-web/src/shared/ui/agent-elements/FileTree.jsx', additions: 3, deletions: 24 },
-    { path: 'app-web/src/features/chat/model/changed-files.js', additions: 10, deletions: 25 },
+    { path: 'app-web/src/core/changed-files.js', additions: 10, deletions: 25 },
     { path: 'app-web/src/shared/ui/agent-elements/file-tree.css', additions: 9, deletions: 38 },
   ]);
   assert.deepEqual(nodes.map((node) => [node.name, node.depth, node.kind]), [
     ['app-web/src/shared/ui/agent-elements', 0, 'folder'],
     ['FileTree.jsx', 1, 'file'],
     ['file-tree.css', 1, 'file'],
-    ['app-web/src/features/chat/model', 0, 'folder'],
+    ['app-web/src/core', 0, 'folder'],
     ['changed-files.js', 1, 'file'],
   ]);
 });

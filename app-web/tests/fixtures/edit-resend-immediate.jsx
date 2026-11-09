@@ -18,7 +18,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ChatPanel } from '../../src/features/chat/components/ChatPanel.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
-import { collapseFullTaskAttempts } from '../../src/features/chat/model/task-attempts.js';
+import { collapseFullTaskAttempts } from '../../src/core/task-attempts.js';
 import { createConversationHandlers } from '../../src/features/conversations/hooks/createConversationHandlers.js';
 import { createAttemptHarness } from './task-attempt-runtime.js';
 import '../../styles/chat.css';

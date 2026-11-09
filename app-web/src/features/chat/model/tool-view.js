@@ -6,7 +6,7 @@
 //   shared    文本压缩、JSON 清洗、失败判定与标签文案
 import { normalizeToolName } from '../../../core/tool-names.js';
 import { skillTrigger } from '../../../core/tool-presentation.js';
-import { buildJsonToolView, firstToolPath, isToolFailure } from './tool-view/shared.js';
+import { buildJsonToolView, firstToolPath, isToolFailure } from '../../../core/tool-view-shared.js';
 import { TOOL_SHELL_NAMES, buildTerminalToolView } from './tool-view/terminal.js';
 import {
   TOOL_CHANGE_NAMES,

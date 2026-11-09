@@ -17,7 +17,7 @@ import { CHAT_ROW_WINDOW_INITIAL, CHAT_ROW_WINDOW_TRIGGER_PX, growRowWindow, rec
 import { ScrollToBottomButton } from '../../../shared/ui/ScrollToBottomButton.jsx';
 import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
 import { ChatComposer } from './ChatComposer.jsx';
-import { petActivityFromMessages } from '../model/pet-state.js';
+import { petActivityFromMessages } from '../../../core/pet-state.js';
 // 回拉执行记录的对象是「视口里那些还没补水的行」，不再按 scrollTop 阈值预取：
 // 用距离触发的分页会把最新一页当成下一批，见 model/chat-row-window.js。
 // 跳转落点要能居中：窗口若刚好只盖住目标行，它永远贴在顶部，scrollTop 只能是 0。

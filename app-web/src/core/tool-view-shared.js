@@ -1,6 +1,6 @@
 // 工具视图的共用底座：文本压缩、JSON 清洗、失败判定与标签文案。
 // 各工具类型（terminal / file / search / agent）都从这里取同一套原语。
-import { normalizeToolName } from '../../../../core/tool-names.js';
+import { normalizeToolName } from './tool-names.js';
 
 export const TOOL_BLOCK_LIMIT = 16000;
 const TOOL_SHELL_TAIL_LINES = 80;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { conversationContentLoading } from '../chat/model/conversation-loading.js';
+import { conversationContentLoading } from '../../core/conversation-loading.js';
 import { BoundedCache } from '../../shared/lib/bounded-cache.js';
 import { approvalStore } from '../../core/approval-store.js';
 import { useNodeRuntimeConfigs } from '../workflow/hooks/useNodeRuntimeConfigs.js';

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { conversationContentLoading } = await import('../../../src/features/chat/model/conversation-loading.js');
+const { conversationContentLoading } = await import('../../../src/core/conversation-loading.js');
 
 // 会话刚打开：这份时间线是工作区快照搭的（只有标题和状态），正文要等会话详情 + 任务运行
 // 记录。这一窗口整段会话在正中间占位一次，而不是每一轮助手气泡各转一个圈。

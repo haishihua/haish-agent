@@ -12,7 +12,7 @@ import {
   toolFailureActionLabel,
   toolJsonText,
   toolPlainObject,
-} from './shared.js';
+} from '../../../../core/tool-view-shared.js';
 
 const TOOL_READ_NAMES = new Set(['read_file', 'search_text', 'glob_files', 'list_dir']);
 const TOOL_DIFF_NAMES = new Set(['write_file', 'edit_file', 'replace_lines', 'multi_edit', 'apply_patch']);

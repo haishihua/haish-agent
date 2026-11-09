@@ -8,7 +8,7 @@ import { ConversationsPanel } from '../conversations/components/ConversationsPan
 import { ChatPanel } from '../chat/components/ChatPanel.jsx';
 import { DraftProjectPicker } from '../chat/components/DraftProjectPicker.jsx';
 import { ChatComposer } from '../chat/components/ChatComposer.jsx';
-import { petActivityFromWorkflow } from '../chat/model/pet-state.js';
+import { petActivityFromWorkflow } from '../../core/pet-state.js';
 import { WorkflowRuntimeEntry as WorkflowRuntimePage } from '../workflow/components/WorkflowRuntimeEntry.jsx';
 import { nodeRuntimeConfigRequest } from '../../core/node-runtime-config.js';
 import { conversationNoticesFromTasks, taskNoticesByTaskId } from '../../core/task-completion-notices.js';

@@ -66,5 +66,5 @@ test('only list_checkpoints switches the tool card to the checkpoint list', () =
 test('the checkpoint model layer stays free of components and hooks', () => {
   assert.doesNotMatch(checkpointView, /from 'react'/);
   assert.doesNotMatch(checkpointView, /components\//);
-  assert.match(checkpointView, /from '\.\/shared\.js'/);
+  assert.match(checkpointView, /from '\.\/shared\.js'|from '\.\.\/\.\.\/\.\.\/\.\.\/core\/tool-view-shared\.js'/);
 });

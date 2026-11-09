@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { chooseIdleAction, idleRestDuration } from '../../../src/features/chat/model/pet-idle.js';
 import { pickerPlatform, jumpPoint, jumpTarget, platformEdge } from '../../../src/features/chat/model/pet-obstacle.js';
 globalThis.window = { HAISH_API_BASE: '' };
-const { nextPetCompletion, petActivityFromMessages, petActivityFromWorkflow, petTargetState } = await import('../../../src/features/chat/model/pet-state.js');
+const { nextPetCompletion, petActivityFromMessages, petActivityFromWorkflow, petTargetState } = await import('../../../src/core/pet-state.js');
 
 test('pet does not add an outline or a text bubble', () => {
   const css = readFileSync(new URL('../../../src/features/chat/components/composer-pet.css', import.meta.url), 'utf8');

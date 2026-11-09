@@ -8,7 +8,7 @@ import {
   tailToolOutput,
   toolJsonText,
   toolPlainObject,
-} from './shared.js';
+} from '../../../../core/tool-view-shared.js';
 
 export const TOOL_SHELL_NAMES = new Set([
   'exec_command',

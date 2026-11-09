@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 //   2. Our prose rules (`word-break: break-all` on inline code, `overflow-wrap:
 //      anywhere` inherited from `.haish-markdown`) also shrink a table cell's
 //      min-content width to a single character, so the browser was free to break
-//      `app-web/src/features/chat/model/conversation-loading.js` mid-token and to lay the
+//      `app-web/src/core/conversation-loading.js` mid-token and to lay the
 //      table out narrower than its content.
 //   3. The bubble width cap (user 680px / assistant 960px) applied to the message, so
 //      the table could never use the message column even on a wide window.
