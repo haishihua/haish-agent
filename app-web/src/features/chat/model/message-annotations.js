@@ -1,3 +1,5 @@
+import { isLiveTaskStatus } from '../../../core/run-status.js';
+
 const ANNOTATION_LIMIT = 20;
 const STORAGE_PREFIX = 'haish:message-annotations:v1:';
 const EXCLUDED = 'button, input, textarea, [aria-hidden="true"], [hidden], script, style';
@@ -51,7 +53,7 @@ export function withoutAcknowledgedAnnotations(drafts, messages) {
 }
 
 export function isSubmittedAnnotationMessage(message) {
-  return message.role === 'user' && Boolean(message.messageId || message.status === 'queued' || message.status === 'running');
+  return message.role === 'user' && Boolean(message.messageId || isLiveTaskStatus(message.status));
 }
 
 // Ignore answer deltas and task-runtime changes. Keep only the fields that

@@ -7,6 +7,7 @@ import {
   isRuntimeRequest,
   isWorkflowApprovalRequest,
 } from '../../../core/approval-store.js';
+import { isToolInFlight } from '../../../core/tool-status.js';
 
 export function runtimeDependency(request, fallback) {
   return request?.diagnostic?.dependency || request?.error?.diagnostic?.dependency || fallback;
@@ -119,7 +120,7 @@ export function selectRuntimeRequest(
     const exact = scoped.find((request) => request.tool_call_id && request.tool_call_id === callId);
     if (exact) return exact;
   }
-  const isActive = status === 'pending' || status === 'running';
+  const isActive = isToolInFlight(status);
   if (!isActive || scoped.length !== 1) return null;
   return scoped[0];
 }

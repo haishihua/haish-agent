@@ -8,7 +8,8 @@ import {
 } from './tool-names.js';
 import { getToolResponseTraceStatus, getToolTraceStatus } from './tool-trace-status.js';
 import { createTerminalTimeline } from './terminal-timeline.js';
-import { isTerminalTaskStatus, normalizeTaskStatus } from './run-status.js';
+import { isLiveTaskStatus, isTerminalTaskStatus, normalizeTaskStatus } from './run-status.js';
+import { isToolInFlight } from './tool-status.js';
 import { skillTrigger } from './tool-presentation.js';
 import { mergeChatImageRefs, normalizeChatImageRefs } from './task-record.js';
 import { llmRetrySummary } from './progress-text.js';
@@ -29,7 +30,7 @@ function incrementalSubAgentTimeline(task, status) {
   const base = cachedStreamEventBase(events, EVENT_TIMELINE_CACHE);
   if (!base) return null;
   const { cached, prefixLength, events: previous } = base;
-  if (cached.status !== status || !['running', 'queued'].includes(status)
+  if (cached.status !== status || !isLiveTaskStatus(status)
     || cached.toolCalls !== task.toolCalls || cached.conversationId !== (task.conversationId || task.conversation_id || '')
     || prefixLength < previous.length - 1) return null;
   const state = cached.subAgentState;
@@ -85,7 +86,7 @@ function incrementalTextTimeline(task, status) {
   const update = streamEventUpdate(events);
   const previousEvents = update?.previous.deref();
   const cached = previousEvents && EVENT_TIMELINE_CACHE.get(previousEvents);
-  if (!cached || cached.status !== status || !['running', 'queued'].includes(status)
+  if (!cached || cached.status !== status || !isLiveTaskStatus(status)
     || cached.toolCalls !== task.toolCalls || cached.conversationId !== (task.conversationId || task.conversation_id || '')
     || events.length !== previousEvents.length || update.prefixLength !== events.length - 1) return null;
   const event = events.at(-1);
@@ -165,7 +166,7 @@ export function buildChatTimeline(task, taskStatus) {
   for (const call of toolCalls) {
     if (call?.callId) toolByCallId.set(call.callId, call);
   }
-  const isRunning = finalStatus === 'running' || finalStatus === 'queued';
+  const isRunning = isLiveTaskStatus(finalStatus);
 
   const items = [];
   let textBuf = '';
@@ -192,7 +193,7 @@ export function buildChatTimeline(task, taskStatus) {
   const canNestToolChildren = (toolItem) => {
     if (!toolItem) return false;
     const status = String(toolItem.status || '').toLowerCase();
-    return status === 'pending' || status === 'running';
+    return isToolInFlight(status);
   };
   let lastProgress = null;
   const appendToolProgress = (toolItem, event, state = '') => {

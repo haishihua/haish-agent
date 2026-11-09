@@ -5,6 +5,7 @@ import { createConversationWithRetry } from '../api/conversations.js';
 import { readLastLocation, resolveStoredWorkflowTask } from '../model/last-location.js';
 import {
   createEmptyWorkspaceState,
+  EXECUTION_MODES,
   getStoredConversationId,
   getWorkspaceConversationIds,
   loadStoredWorkspaceState,
@@ -31,7 +32,7 @@ export function useConversationBootstrap({
     );
     (async () => {
       try {
-        const responses = await Promise.all(['chat', 'bot'].map((executionMode) => (
+        const responses = await Promise.all(EXECUTION_MODES.map((executionMode) => (
           apiFetch(`${API_BASE}/api/projects?execution_mode=${executionMode}&summary_only=true`, {
             method: 'GET',
           }, { json: false })

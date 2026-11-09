@@ -15,6 +15,7 @@ import {
 } from '../../../core/tool-names.js';
 import { skillTrigger } from '../../../core/tool-presentation.js';
 import { buildJsonToolView, firstToolPath, isToolFailure } from '../../../core/tool-view-shared.js';
+import { isToolInFlight } from '../../../core/tool-status.js';
 import { buildTerminalToolView } from './tool-view/terminal.js';
 import { buildChangeToolView, buildDiffToolView, buildReadToolView } from './tool-view/file.js';
 import { buildSearchToolView } from './tool-view/search.js';
@@ -41,7 +42,7 @@ export function buildToolView(item, { details = true } = {}) {
   if (TOOL_READ_NAMES.has(name)) return buildReadToolView(item, path);
   if (TOOL_SHELL_NAMES.has(name)) return buildTerminalToolView(item, name);
   // 已完成但结构化结果缺失时保留通用卡，避免把旧记录误报为空列表。
-  if (TOOL_CHECKPOINT_CARD_NAMES.has(name) && (['pending', 'running'].includes(item.status)
+  if (TOOL_CHECKPOINT_CARD_NAMES.has(name) && (isToolInFlight(item.status)
       || isToolFailure(item) || Array.isArray(item.toolResponse?.data?.groups))) return buildCheckpointToolView(item);
   return buildJsonToolView(item);
 }

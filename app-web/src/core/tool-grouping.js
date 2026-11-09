@@ -6,6 +6,7 @@ import { normalizeToolName, TOOL_AWAITS_USER_NAMES, TOOL_PAST_VERBS, TOOL_PRESEN
 import { skillDisplayName } from './runtime-events.js';
 import { skillTrigger } from './tool-presentation.js';
 import { RUN_STATE_APPROVAL, RUN_STATE_WAITING_INPUT } from './run-status.js';
+import { isToolInFlight } from './tool-status.js';
 
 function chatTraceToolName(value) {
   return String(value || 'tool').replace(/[_-]+/g, ' ').trim() || 'tool';
@@ -143,7 +144,7 @@ function summarizeToolGroup(tools, status = 'done') {
   // Any in-flight tool in the run → present continuous ("using" / "reading").
   // Otherwise → past tense ("used" / "read"). Keeps the chip reading naturally
   // as it transitions live.
-  const inFlight = status === 'running' || status === 'pending';
+  const inFlight = isToolInFlight(status);
   const renderEntry = (e) => {
     const unit = e.count === 1 ? e.unitSingular : e.unitPlural;
     const verb = inFlight ? e.verbPresent : e.verbPast;
@@ -228,7 +229,7 @@ export function resolveAgentActivity(items, streaming = false, waitState = '') {
   const tools = safeItems.flatMap((item) => (
     item?.kind === 'tool_group' ? item.tools || [] : item?.kind === 'tool' ? [item] : []
   ));
-  const activeTools = tools.filter((item) => ['pending', 'running'].includes(String(item?.status || '')));
+  const activeTools = tools.filter((item) => isToolInFlight(item?.status));
 
   if (activeTools.some((item) => SEARCH_ACTIVITY_BUCKETS.has(classifyToolForGroup(item).bucket))) {
     return { state: 'searching', label: 'Searching…' };

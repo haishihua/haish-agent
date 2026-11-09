@@ -6,7 +6,9 @@ import {
 import { workflowArgumentsText } from './workflow-catalog.js';
 import { GOAL_WORKFLOW_ID } from './workflow-ids.js';
 
-function eventNodeId(event) {
+// 工作流事件里的节点 id：四种字段名都能出现（camel/snake × workflowNode/node）。
+// 事件订阅方与尝试投影都读这一份，字段别名加一处就够了。
+export function eventNodeId(event) {
   return String(event?.workflowNodeId || event?.workflow_node_id || event?.nodeId || event?.node_id || '');
 }
 

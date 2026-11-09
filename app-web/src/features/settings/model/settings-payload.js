@@ -21,7 +21,7 @@ import {
 // mcp / skills / web_search / memory 这些资源名，没有「哪一行记录」这回事，所以不能指望
 // 服务端给记录贴 kind。把「哪个 id 属于哪类记录、摘要怎么算、payload 落到哪些字段」
 // 全集中到这张表，其余模块按 kind 查表，不再逐处写死业务 id。
-export const RECORD_KINDS = {
+const RECORD_KINDS = {
   'tools-mcp': {
     kind: 'mcp',
     section: 'tools',

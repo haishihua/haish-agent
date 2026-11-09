@@ -6,6 +6,7 @@ import {
   toolDisplayOutput,
   toolJsonText,
 } from '../../../../core/tool-view-shared.js';
+import { isToolInFlight } from '../../../../core/tool-status.js';
 
 export function buildSearchToolView(item, name) {
   const output = toolDisplayOutput(item);
@@ -13,7 +14,7 @@ export function buildSearchToolView(item, name) {
     mode: name === 'browser_use' ? 'browser' : 'web-search',
     label: item.label || name.replaceAll('_', ' '),
     failed: isToolFailure(item),
-    running: ['running', 'pending'].includes(item.status || 'pending'),
+    running: isToolInFlight(item.status || 'pending'),
     cancelled: item.status === 'cancelled',
     requestJson: toolJsonText(item.toolInput),
     responseJson: outputJsonText(output),

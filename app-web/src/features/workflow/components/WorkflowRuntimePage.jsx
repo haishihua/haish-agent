@@ -38,7 +38,7 @@ import {
   workflowNodePorts,
 } from '../model/workflow-node-ports.js';
 import { workflowNodeAccent } from '../model/workflow-node-presentation.js';
-import { nodeAttempts, visibleNodeAttempts } from '../../../core/node-attempts.js';
+import { eventNodeId, nodeAttempts, visibleNodeAttempts } from '../../../core/node-attempts.js';
 import { isWorkflowExecutableNode } from '../../../core/workflow-defaults.js';
 import { WorkflowNodeDetailHead } from './runtime/WorkflowNodeDetailHead.jsx';
 import { WorkflowNodeAttempts } from './runtime/WorkflowNodeAttempts.jsx';
@@ -68,10 +68,6 @@ function workflowIdentity(workflow) {
 
 const NODE_TYPES = { workflowNode: WorkflowFlowNode };
 const EDGE_TYPES = { workflowEdge: WorkflowCanvasEdge };
-
-function eventNodeId(event) {
-  return String(event?.workflowNodeId || event?.workflow_node_id || event?.nodeId || event?.node_id || '');
-}
 
 function activeNodeIdsFromEvents(eventLog) {
   const active = new Set();

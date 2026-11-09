@@ -14,6 +14,7 @@ import {
   toolJsonText,
   toolPlainObject,
 } from '../../../../core/tool-view-shared.js';
+import { isToolInFlight } from '../../../../core/tool-status.js';
 import { TOOL_ACTIVE_LABELS } from '../../../../core/tool-names.js';
 
 function toolLineDelta(item, diffText) {
@@ -67,7 +68,7 @@ export function buildDiffToolView(item, name, path) {
     path,
     added,
     removed,
-    label: ['pending', 'running'].includes(item.status)
+    label: isToolInFlight(item.status)
       ? `${TOOL_ACTIVE_LABELS.get(name) || 'Editing'} ${target}`
       : `${toolActionLabel(item)} ${target}${added || removed ? ` (+${added} -${removed})` : ' (no changes)'}`,
     body: diff ? compactToolText(diff) : '',

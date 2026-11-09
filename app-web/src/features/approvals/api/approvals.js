@@ -1,6 +1,6 @@
 import { approvalStore, isBrowserRuntimeRequest, isComputerRuntimeRequest } from '../../../core/approval-store.js';
 
-export async function postApprovalDecision(requestId, decision) {
+async function postApprovalDecision(requestId, decision) {
   await window.haish.resolveApproval('tool', requestId, { decision });
 }
 
@@ -15,7 +15,7 @@ async function postRuntimeDecision(kind, request, decision) {
   });
 }
 
-export async function postBrowserRuntimeDecision(request, decision) {
+async function postBrowserRuntimeDecision(request, decision) {
   await postRuntimeDecision('browser_runtime', request, decision);
 }
 

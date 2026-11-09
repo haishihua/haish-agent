@@ -62,7 +62,7 @@ app-web/
 
 | 分组 | 模块 | 谁在读 |
 | --- | --- | --- |
-| 状态词表 | `run-status`、`run-catalog`、`workflow-ids`、`execution-identity` | 全部领域 |
+| 状态词表 | `run-status`、`tool-status`、`run-catalog`、`workflow-ids`、`execution-identity` | 全部领域 |
 | 任务记录 | `task-record`、`task-runtime`、`task-runtime-paging`、`task-pill`、`task-completion-notices`、`task-attempts`、`pending-task` | app、chat、conversations、tasks、workflow |
 | 消息与流 | `message-text`、`stream-events`、`event-identity`、`runtime-events`、`terminal-timeline`、`tool-names`、`tool-presentation`、`tool-trace-status`、`context-usage`、`quest-ack`、`chat-timeline`、`tool-grouping`、`tool-view-shared`、`progress-text`、`assistant-name`、`changed-files`、`pet-state`、`conversation-loading` | app、chat、conversations、tasks、workflow |
 | 工作流目录 | `workflow-catalog`、`workflow-catalog/*`、`workflow-defaults`、`workflow-snapshot`、`workflow-layout-store`、`runtime-workflow-layout`、`node-attempts`、`node-runtime-config`、`execution-config` | chat、settings、tasks、workflow |
@@ -138,7 +138,7 @@ main.jsx → app.jsx → features/* → core/* → shared/*
 - 会话切换、任务取消、stream abort 必须带明确 owner（conversation/task id）和 abort controller。
 - 服务端快照、本地草稿、运行中状态分别建模，不能靠一个“大对象”覆盖全部阶段。
 - 跨领域运行态只有一处：任务运行记录 `core/task-runtime.js`、工作流目录 `core/workflow-catalog.js`、审批存储 `core/approval-store.js`。任何领域都不得为拿这些去 import 另一个领域。
-- 状态词表只有一处：`core/run-status.js`（原始串别名归一、终态清单、`isTaskLive` / `isTaskSettled` / `terminalNoticeStatus` / `workflowTaskDisplayStatus`）。chat、conversations、tasks、workflow、approvals 都读它，谁都不 import 对方。
+- 状态词表只有一处：`core/run-status.js`（原始串别名归一、终态清单、`isLiveTaskStatus` / `isTaskLive` / `isTaskSettled` / `terminalNoticeStatus` / `workflowTaskDisplayStatus`）。chat、conversations、tasks、workflow、approvals 都读它，谁都不 import 对方。工具调用自己的状态只认 `core/tool-status.js` 的 `isToolInFlight`（`pending` / `running`）：工具卡文案、时间线嵌套、审批落点都是它。
 - 会话“还在不在跑”只有一处判据：`conversations/model/conversation-run-state.js`（任务自身未落终态 = 在跑；后端实时快照 `approvalStore` 有未决提问/审批 = 在等人；落地终态 = 熄灯）。侧边栏状态灯、面板 streaming、面板活动文案都读它。禁止在组件里重新推导运行态，也不准把 `workflowRun` 快照、在飞工具卡当状态源——那些是轮询旧值/渲染结果，会让两侧慢半拍而互相矛盾。
 - 自动创建 Chat/Bot 会话时不发送 `title`（包括首发草稿落地、附件提前建会话、`/goal`、启动和删除后的空会话兜底）。占位标题由后端首任务路径持久化，前端可按显示需求在本地乐观显示 48 字符占位，但不能通过标题 PATCH 写回；标题 PATCH 只用于用户主动改名，哪怕改名文字与占位相同。生成结果复用现有会话目录刷新进入侧栏，不在前端另发模型请求。
 - 循环执行和审批历史按 attempt 追加；旧 attempt 折叠展示，不覆盖历史输入输出。
@@ -321,3 +321,13 @@ workflow 表单的 `[data-slot="select-trigger"]` 因此显式 `display: flex; a
   `response.json()` 的 `finally` 里收尾，调用方之后才把 payload 写进 React 状态，所以恢复必须跨一个
   宏任务；换成同步调用或微任务会让恢复读拿着尚未应用的旧草稿。该顺序由 `settings-sync.test.js`
   的顺序用例钉住，改成同步会立刻红。别忘了 `resetSettingsSync()` 会取消待触发的恢复（测试隔离）。
+- **执行模式词表**（`chat` / `bot`）在 `conversations/model/workspace-state.js` 的
+  `EXECUTION_MODES` / `isExecutionMode`。项目与会话的落盘校验、隐藏分组过滤、启动时拉两种
+  模式都读它；加第三种模式只改这里。分支判断（`mode === 'bot'` 渲染不同内容）仍写在各处，
+  那是行为差异，不是词表。
+- **工作流事件的节点 id** 在 `core/node-attempts.js` 的 `eventNodeId`：事件里四种字段名
+  （camel/snake × workflowNode/node）都可能出现。尝试投影和运行页的事件订阅都读它，
+  新增别名只改一处。
+- **`features/schedules` 的 hook 测试基座**（`tests/features/schedules/hook-harness.js`）
+  把源文件的 `import` 剥掉后放沙箱执行，会自动 `require` 同名模块补上具名绑定，调用方传的
+  stub 优先。给 hook 新增 import 不需要再改测试；手工沙箱绑定只留给要替换的行为。

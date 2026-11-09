@@ -65,6 +65,16 @@ export function isTaskSettled(task) {
 }
 
 /**
+ * 任务状态是否「还在跑」（running / queued），不看落地标记。
+ *
+ * 拆出来是因为时间线缓存也要问同一个问题：只要状态还在跑，缓存才能拿来做增量。
+ * 词表改这里一处，别再在消费方各自列 running/queued。
+ */
+export function isLiveTaskStatus(status) {
+  return status === 'running' || status === 'queued';
+}
+
+/**
  * 任务级唯一判据：这个任务现在还活着吗（在跑 / 在排队）。
  *
  * 会话状态灯、面板的 streaming、轮询开关全部只认这一个函数——它只看两件事：
@@ -73,7 +83,7 @@ export function isTaskSettled(task) {
  */
 export function isTaskLive(task) {
   const status = String(task?.status || '').toLowerCase();
-  if (status !== 'running' && status !== 'queued') return false;
+  if (!isLiveTaskStatus(status)) return false;
   return !taskHasFinishedMarker(task);
 }
 

@@ -4,6 +4,7 @@
 // 所以这里不产出 onRestore——官方元素在不给回调时本来就不渲染 Restore 按钮。
 // 工作区整体的当前历史位置无法可靠推断，因此不使用旧响应里的 current 标记。
 import { TOOL_BLOCK_LIMIT, compactToolValue, isToolFailure, toolPlainObject } from '../../../../core/tool-view-shared.js';
+import { isToolInFlight } from '../../../../core/tool-status.js';
 
 const pad2 = (value) => String(value).padStart(2, '0');
 
@@ -56,7 +57,7 @@ export function buildCheckpointToolView(item) {
   const groups = Array.isArray(data.groups)
     ? data.groups.filter((group) => group && typeof group === 'object')
     : [];
-  const running = ['pending', 'running'].includes(item.status);
+  const running = isToolInFlight(item.status);
   const failed = isToolFailure(item);
   const view = {
     mode: 'checkpoints',

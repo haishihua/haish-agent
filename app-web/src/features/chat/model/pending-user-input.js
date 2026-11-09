@@ -1,4 +1,5 @@
 import { normalizeToolName, TOOL_AWAITS_USER_NAMES } from '../../../core/tool-names.js';
+import { isToolInFlight } from '../../../core/tool-status.js';
 
 function questionKey(value) {
   const questions = Array.isArray(value?.questions) ? value.questions : [];
@@ -32,5 +33,5 @@ export function selectActiveAskUserItemId(items, live = false) {
   ));
   if (!latest) return '';
   const status = String(latest.status || 'pending').toLowerCase();
-  return live || status === 'pending' || status === 'running' ? latest.id : '';
+  return live || isToolInFlight(status) ? latest.id : '';
 }

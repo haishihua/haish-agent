@@ -1,4 +1,4 @@
-import { isTaskLive, isTaskSettled, workflowTaskDisplayStatus } from '../../../core/run-status.js';
+import { isTaskLive, isTaskSettled, isLiveTaskStatus, workflowTaskDisplayStatus } from '../../../core/run-status.js';
 import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
 import { workflowApprovalDecisionStatus } from '../../../core/runtime-workflow-layout.js';
 
@@ -50,7 +50,7 @@ export function workflowRuntimeNodeStatus(
   if (runStatus === 'cancelled' && current) return 'cancelled';
   if (normalized === 'waiting_input') return 'waiting_input';
   if (result?.success === false || normalized === 'failed') return 'failed';
-  if (current && (!result || normalized === 'running' || normalized === 'queued') && isTaskLive(task)) {
+  if (current && (!result || isLiveTaskStatus(normalized)) && isTaskLive(task)) {
     return node.type === 'human_approval' ? 'approval' : 'running';
   }
   if (result) return 'done';

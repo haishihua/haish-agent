@@ -305,3 +305,35 @@ toast（`useConversationRunConfig.js:92`），再加一条是重复；而 `persi
 剩下的风险写在明处：这条顺序靠宏任务边界保证，不是类型或结构强制；若将来某个写入方在响应之后
 再 `await` 一次才应用状态，边界仍可能被绕过。要彻底消除得把「应用响应」变成显式的
 `applySettingsResponse(payload)` 并让每个写入方调用，那会新增 8 个必须记得的调用点，本批不做。
+
+## 第十五批：阈值以下的重复词表与测试基座耦合
+
+前几轮只看到检查器报出来的重复（成员 ≥3 的数组）。这次按「这两处必须一起改吗」重扫，
+找出四组阈值以下、一直绿着的隐藏链接：
+
+- **工具进行中状态** `pending|running` 散在 10 处（`core/tool-grouping`、`core/chat-timeline`、
+  `tool-view/{checkpoint,file,terminal,search}`、`tool-view.js`、`approval-placement`、
+  `pending-user-input`、`approval-presentation`）。新增 `core/tool-status.js` 的
+  `isToolInFlight`，全部改读它；刻意不做大小写归一，保持各调用点原先的严格比较。
+  `tool-view/agent.js` 的 vision 特例保留——它问的是另一个问题（空状态在 vision 下算 pending）。
+- **任务存活状态** `running|queued` 在 `core/run-status.js` 与 `core/chat-timeline` 各写一份。
+  拆出 `isLiveTaskStatus(status)`（只判状态、不看落地标记），`isTaskLive` 与时间线缓存共用；
+  `isTaskLive` 仍先做小写归一，时间线仍按原样比较，两处语义不变。
+- **执行模式校验** `['chat','bot']` 在 `workspace-state.js` 四处、`useConversationBootstrap`
+  一处。加 `EXECUTION_MODES` / `isExecutionMode`，五处改读；渲染分支里的 `mode === 'bot'`
+  不动，那是行为差异不是词表。
+- **工作流事件节点 id** `eventNodeId` 在 `core/node-attempts.js` 与 `WorkflowRuntimePage.jsx`
+  各一份（探测脚本按函数体比对出来的唯一一组跨文件重复）。改成 core 导出、运行页 import。
+
+顺带清掉三个只在本文件内使用的导出（`postApprovalDecision`、`postBrowserRuntimeDecision`、
+`RECORD_KINDS`），减少死的对外接口。
+
+**测试基座**：`tests/features/schedules/hook-harness.js` 原来把源文件的 import 全剥掉，要求每个
+用例手写沙箱绑定——hook 多一个 import 就 `ReferenceError`（本批加 `isLiveTaskStatus` 时当场炸）。
+现在基座自己 `require` 同名模块补具名绑定，调用方的 stub 优先；以后给 hook 加 import 不用连带改测试。
+
+验证：`check:web` 全绿（1662 测试通过、334 源码模块、跨文件重复数组 0 组、lint 零警告、构建通过），
+`git diff --check` 干净。改动都是同一布尔判断的等价替换，未触碰用户可见行为。
+
+剩余的系统性问题不在「词表抄了几份」这一层：`AppShell.jsx` 仍是 884 行组合根，`contracts/*`
+里约 542 条源码结构断言缺 JSX 测试基座，图片复制失败提示与批注高亮寿命需要产品决定。

@@ -31,6 +31,14 @@ export function setStoredConversationId(ownerId, conversationId) {
   window.localStorage.setItem(key, conversationId);
 }
 
+// 执行模式词表：会话是 chat，任务（bot）是 bot。项目、会话、隐藏分组都按它校验；
+// 新增模式时只改这里，不要在消费方再列一遍 ['chat', 'bot']。
+export const EXECUTION_MODES = ['chat', 'bot'];
+
+export function isExecutionMode(mode) {
+  return EXECUTION_MODES.includes(mode);
+}
+
 function defaultProjectIdForMode(executionMode = 'chat') {
   return `default-project-${executionMode === 'bot' ? 'bot' : 'chat'}`;
 }
@@ -69,7 +77,7 @@ function parseStoredWorkspaceState(raw) {
     const parsed = JSON.parse(raw);
     if (!parsed || !Array.isArray(parsed.projects)) return null;
     const orderedProjects = parsed.projects.filter(
-      (project) => project?.id && ['chat', 'bot'].includes(project.executionMode),
+      (project) => project?.id && isExecutionMode(project.executionMode),
     );
     const projects = orderedProjects.map((project) => {
       const isDefault = project.type === 'system';
@@ -94,11 +102,11 @@ function parseStoredWorkspaceState(raw) {
         pinned: Boolean(project.pinned),
         sortOrder: typeof project.sortOrder === 'number' ? project.sortOrder : 0,
         hiddenModes: Array.isArray(project.hiddenModes)
-          ? project.hiddenModes.filter((mode) => mode === 'chat' || mode === 'bot')
+          ? project.hiddenModes.filter(isExecutionMode)
           : [],
         conversations: Array.isArray(project.conversations)
           ? project.conversations.flatMap((conversation) => {
-            if (!conversation?.id || !['chat', 'bot'].includes(conversation.executionMode)) return [];
+            if (!conversation?.id || !isExecutionMode(conversation.executionMode)) return [];
             return [{
               id: conversation.id,
               name: conversation.name || DEFAULT_SESSION_NAME,
@@ -463,7 +471,7 @@ export function buildWorkspaceStateFromProjects(
     if (!projectId) return null;
     const previousProject = previousProjects.get(projectId);
     const executionMode = detail.execution_mode;
-    if (!['chat', 'bot'].includes(executionMode)) return null;
+    if (!isExecutionMode(executionMode)) return null;
     const botTasksByConversationId = executionMode === 'bot'
       ? (Array.isArray(detail.tasks) ? detail.tasks : []).reduce((groups, task) => {
         const conversationId = task?.conversation_id;

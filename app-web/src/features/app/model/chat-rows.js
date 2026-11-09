@@ -3,9 +3,8 @@ import { assistantAgentIdForTask, assistantNameForTask } from '../../../core/ass
 import { changedFilesForTask } from '../../../core/changed-files.js';
 import { stripInjectedSkillInstruction } from '../../../core/message-text.js';
 import { buildChatTimeline } from '../../../core/chat-timeline.js';
-import { isTaskLive } from '../../../core/run-status.js';
+import { isTaskLive, isLiveTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
 import { taskHasAssistantStreamContent, taskFirstStreamTimestamp } from '../../../core/task-runtime.js';
-import { normalizeTaskStatus } from '../../../core/run-status.js';
 
 // A failed draft that was never accepted is the current local turn, not a
 // historical server task. Keep the server's latestTaskId untouched: persisted
@@ -89,7 +88,7 @@ export function buildChatRows({
         images: Array.isArray(task.imageAttachments) ? task.imageAttachments : [],
       });
     }
-    if (!(task.inherited && status === 'cancelled') && (answer || progress || error || status === 'running' || status === 'queued' || status === 'failed' || status === 'cancelled')) {
+    if (!(task.inherited && status === 'cancelled') && (answer || progress || error || isLiveTaskStatus(status) || status === 'failed' || status === 'cancelled')) {
       const progressLines = progress
         ? progress.split('\n').map((line) => line.trim()).filter(Boolean)
         : [];
@@ -162,7 +161,7 @@ export function buildChatRows({
       completedAt: pendingTurn.completedAt,
       images: Array.isArray(pendingTurn.imageAttachments) ? pendingTurn.imageAttachments : [],
     });
-    if (pendingError || pendingStatus === 'failed' || pendingStatus === 'cancelled' || pendingStatus === 'running' || pendingStatus === 'queued') {
+    if (pendingError || pendingStatus === 'failed' || pendingStatus === 'cancelled' || isLiveTaskStatus(pendingStatus)) {
       const pendingStreaming = isTaskLive(pendingTurn)
         && !settled.has(String(pendingTurn.taskId || pendingTurn.id || ''));
       rows.push({

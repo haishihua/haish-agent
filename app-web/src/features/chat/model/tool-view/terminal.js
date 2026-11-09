@@ -10,6 +10,7 @@ import {
   toolJsonText,
   toolPlainObject,
 } from '../../../../core/tool-view-shared.js';
+import { isToolInFlight } from '../../../../core/tool-status.js';
 import { TOOL_TERMINAL_COMMAND_NAMES } from '../../../../core/tool-names.js';
 
 function extractTerminalOutput(item, response, artifacts, data) {
@@ -71,7 +72,7 @@ export function buildTerminalToolView(item, name) {
       : (failed ? compactToolValue(fallback, 1200) : ''),
     stderr: stderr ? tailToolOutput(stderr) : '',
     exitCode,
-    running: item.status === 'running' || item.status === 'pending',
+    running: isToolInFlight(item.status),
     defaultOpen: false,
   };
 }

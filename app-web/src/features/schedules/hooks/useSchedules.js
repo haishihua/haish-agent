@@ -1,6 +1,7 @@
 import React from 'react';
 import { schedulesApi } from '../api/schedules.js';
 import { applyScheduleEvent } from '../../../core/schedule.js';
+import { isLiveTaskStatus } from '../../../core/run-status.js';
 
 export const SchedulesContext = React.createContext(null);
 export const useSchedules = () => React.useContext(SchedulesContext);
@@ -48,7 +49,7 @@ export function useSchedulesState({ api = schedulesApi, onRuntimeEvent, onRecove
         setItems(itemsRef.current);
         // Run metadata may precede the task stream; recover only its terminal receipt.
         const run = message.event.run;
-        if (run?.task_id && !['running', 'queued'].includes(run.status)) {
+        if (run?.task_id && !isLiveTaskStatus(run.status)) {
           recover({ conversation_id: message.event.conversation_id, last_run: run })?.catch((failure) => setError(failure.message));
         }
       } else if (message.type === 'task.event') {
