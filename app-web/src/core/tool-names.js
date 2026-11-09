@@ -21,7 +21,9 @@ export function normalizeToolName(toolName) {
 const TOOL_REGISTRY = [
   // 终端：exec_command 与它的写回 write_stdin 共用一张终端卡。
   // approvalLabel 单独给：审批弹层要说明「这条命令会在终端里跑」，与工具栏的 label 'Shell' 不是一回事。
-  { name: 'exec_command', icon: 'ico-terminal', label: 'Shell', terminal: true, approvalLabel: 'Command (runs in terminal)' },
+  // terminalCommand：自己开终端、带 command 输入的那一个。write_stdin 没有 command，它的 label
+  // 说的是「对已有进程做了什么」（Sent input / Interrupted process），两者不能共用一个判断。
+  { name: 'exec_command', icon: 'ico-terminal', label: 'Shell', terminal: true, terminalCommand: true, approvalLabel: 'Command (runs in terminal)' },
   // write_stdin 的 label 是 Process：它表示「在一次已有终端里继续操作」，不是新开的 shell。
   // terminalInput：不新建卡片，而是把输入/结果并回它续写的那条终端卡。
   { name: 'write_stdin', icon: 'ico-terminal', label: 'Process', terminal: true, terminalInput: true },
@@ -84,6 +86,8 @@ const lookupWith = (field) => new Map(
 
 /** 终端卡：exec_command 及其写回 write_stdin。 */
 export const TOOL_SHELL_NAMES = toolNamesWith('terminal');
+/** 开终端的命令工具（exec_command）：只有它念 "Shell <cmd>"，写回的那一半念的是动作。 */
+export const TOOL_TERMINAL_COMMAND_NAMES = toolNamesWith('terminalCommand');
 /** 读卡：只读且结果带 path 的工具，比分组用的 read 桶窄（那边要认 cat_file 等别名）。 */
 export const TOOL_READ_NAMES = toolNamesWith('read');
 /** diff 卡：结果里能拿到 unified diff 的写入工具。 */

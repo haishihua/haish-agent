@@ -10,6 +10,7 @@ import {
   toolJsonText,
   toolPlainObject,
 } from '../../../../core/tool-view-shared.js';
+import { TOOL_TERMINAL_COMMAND_NAMES } from '../../../../core/tool-names.js';
 
 function extractTerminalOutput(item, response, artifacts, data) {
   const rawToolOutput = isRawToolResponseText(item.toolOutput) ? '' : item.toolOutput;
@@ -44,7 +45,9 @@ export function buildTerminalToolView(item, name) {
   const failed = isToolFailure(item);
   const operation = String(response.operation || '');
   let label;
-  if (name === 'exec_command') {
+  // 只有自己开终端、带 command 输入的工具才念 "Shell <cmd>"；write_stdin 是续写已有进程，
+  // 它的 label 要走下面的 Sent input / Interrupted process / Process finished。
+  if (TOOL_TERMINAL_COMMAND_NAMES.has(name)) {
     label = command ? `Shell ${command}` : 'Shell';
   } else if (operation === 'interrupt' || input.chars === '\u0003') {
     label = 'Interrupted process';

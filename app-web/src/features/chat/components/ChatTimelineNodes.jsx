@@ -17,6 +17,7 @@ import { ImageGenerateToolDetail } from './ImageGenerateToolDetail.jsx';
 import { toolCardHeading } from '../../../core/tool-presentation.js';
 import { selectActiveAskUserItemId } from '../model/pending-user-input.js';
 import { CATEGORY_ICON_CLASS } from '../../../core/run-catalog.js';
+import { normalizeToolName, TOOL_AWAITS_USER_NAMES } from '../../../core/tool-names.js';
 import {
   RuntimeApprovalCard,
   ToolApprovalCard,
@@ -502,7 +503,8 @@ export function ChatTimelineToolNode({ item, ...props }) {
 function ChatTimelineToolNodeComponent({
   item, conversationId = '', taskId = '', askUserActive = false, awaitingInput = false, onPreviewImage, approvalRequest,
 }) {
-  const isAskUser = String(item.toolName || '').toLowerCase() === 'ask_user';
+  // 「会等人回答的工具」由登记表给：以后再加提问类工具，内联回答表单自动跟上。
+  const isAskUser = TOOL_AWAITS_USER_NAMES.has(normalizeToolName(item.toolName));
   const status = item.status || 'pending';
   const category = item.category || 'tool';
   const defaultIconClass = CATEGORY_ICON_CLASS[category] || CATEGORY_ICON_CLASS.tool;

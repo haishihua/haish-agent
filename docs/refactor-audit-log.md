@@ -98,3 +98,45 @@
   （库还有 connecting/weaving/breathing/shaping 等应用不产出的状态）。
 - `settings-payload.js` 里 `RECORD_KINDS.defaultAuthMode` 与 `LLM_PROVIDER_OPTIONS[].defaultAuth`
   取值相同：前者是能力表一列，后者是设置目录一列，合并要动目录形状。
+
+## 第五批：接线可测化 + 特判收尾
+
+### 草稿接线从「组件内部」提到可测的 hook
+
+`useComposerDraft`（`features/chat/hooks/useComposerDraft.js`）只返回成对的
+`{ draft, onDraftChange }`：受控走 props，未受控走外置 store。读写分叉在结构上不再可能。
+`composer-draft-wiring.test.js` 六条覆盖两种模式、切会话、空串受控、多订阅者共享。
+变异校验：把写入改回不落 store，4 条立刻红——证明这组测试真的守着那条断链。
+
+原来这条接线在 `ChatComposer` 里是两个三元表达式，没有任何测试渲染它；上一轮那次
+「屏幕能回显、store 永远空」的断链就是从这个盲区漏过去的。
+
+### 工具名特判全部收干净
+
+上一批遗留 6 处 + 1 处同类（`tool-grouping.js` 里 ask_user 不进分组），现在源码里
+不再有 `=== 'ask_user'` / `=== 'write_stdin'` / `=== 'exec_command'` 这类字面量判断。
+两处需要独立的窄集合而不是复用终端全集：
+
+- `TOOL_TERMINAL_COMMAND_NAMES`（只有 exec_command）：`write_stdin` 虽共用终端卡，
+  但它的标题必须走 `Sent input` / `Interrupted process`，用宽集合会把它变成 `Shell yes\n`。
+- `tool-view/agent.js:276` 的结果合并反过来要用终端全集，因为那里问的是「这张卡是不是终端卡」。
+
+对拍 136 行逐字一致，唯一差异是带空格的 `' ask_user '`：以前判 false，现在判 true。
+这是与其余四处同类判据（本来就走 `normalizeToolName`）对齐的结果，属修正而非回归。
+
+### 批注跳转高亮的归属错位：查清了，决定不动
+
+`jump()` 在 effect 之外设 `annotation-focus`，而同组 effect 的 cleanup 会整组清掉它。
+把时序摊开后的实际情况是：常见路径（目标行已在窗口内）ChatPanel 不重渲染，高亮能停住；
+只有在下一次批注记账时悄悄**降级**成普通批注底色（同色相，alpha 46% → 21%），
+不是每次跳转都闪一下消失。
+
+不修的理由：高亮该活多久从没定义过（全仓没有计时器、没有测试、没有文档），
+改成「保持到下次跳转」是产品决定，不该混进纯重构。已在 `jump()` 处留注释写明归属。
+
+### 待办里剩下的
+
+- 源码文本断言 1531 条（`tests/contracts/` 占大头）。
+- `context-usage` 的 11 个调用点仍靠默认参数兜底。
+- 两处 50ms 忙等循环整段复制（`waitForAttemptRunConfig` vs `ensureSaved`）。
+- `ApprovalOverlay 714` / `createDeployHandlers 694` 未拆。

@@ -35,7 +35,7 @@ import { useConversationRunConfig } from '../../conversations/hooks/useConversat
 import { useSchedules } from '../../schedules/hooks/useSchedules.js';
 import { scheduleInvocation, scheduleMenuItems } from '../../../core/schedule.js';
 import { useComposerHistory } from '../hooks/useComposerHistory.js';
-import { usePerConversationDraft } from '../hooks/usePerConversationDraft.js';
+import { useComposerDraft } from '../hooks/useComposerDraft.js';
 import { LexicalComposerInput } from './LexicalComposerInput.jsx';
 import { GOAL_COMMAND, goalInvocation, goalMenuItems } from '../model/goal-command.js';
 import { ComposerSkillMenu } from './ComposerSkillMenu.jsx';
@@ -121,11 +121,7 @@ export function ChatComposer({
   // 不再沿着 AppShell 的 React state 一路重渲染整个 shell。键与 skillScopeId
   // 同构——draft 会话的 scope 按项目固定，但草稿文本跟着会话 id 走（materialize
   // 时 rekey），所以订阅键优先 conversationId。
-  const draftStore = usePerConversationDraft(conversationId || scopeId);
-  const resolvedDraftProp = draftProp !== undefined ? draftProp : draftStore.draft;
-  // 读和写必须来自同一处：只把 store 的 draft 拿来当值、却继续往 localDraft 里写，
-  // 屏幕上会回显文字但 store 永远是空串——切会话再切回来，草稿就消失了。
-  const resolvedOnDraftChange = draftProp !== undefined ? onDraftChangeProp : draftStore.setDraft;
+  const composerDraft = useComposerDraft({ conversationId, scopeId, draftProp, onDraftChangeProp });
   const [runtimeInputPending, setRuntimeInputPending] = React.useState(false);
   const [goalPending, setGoalPending] = React.useState(false);
   const goalPendingRef = React.useRef(false);
@@ -153,8 +149,8 @@ export function ChatComposer({
   const selectedSkillNameRef = React.useRef('');
   const skillSelectionPendingRef = React.useRef(false);
   const { draft, setDraft, navigate: navigateHistory, restore: restoreHistory } = useComposerHistory({
-    scopeId, draft: resolvedDraftProp,
-    onDraftChange: resolvedOnDraftChange, history,
+    scopeId, draft: composerDraft.draft,
+    onDraftChange: composerDraft.onDraftChange, history,
   });
   const currentDraftRef = React.useRef(draft);
   currentDraftRef.current = draft;

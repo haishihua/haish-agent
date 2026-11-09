@@ -46,6 +46,11 @@ export const MessageAnnotations = React.forwardRef(function MessageAnnotations({
     onError('');
     onNavigate?.();
     scrollToConversationMatch(listRef.current, range);
+    // 这个高亮写在 effect 作用域之外，却和 message-annotations 同属 'annotations' 组，
+    // 于是下面那个 effect 的 cleanup（整组清）会顺带把它清掉。现状下这不是「跳转后立刻
+    // 消失」：常见路径里 ChatPanel 不重渲染、高亮能停住，只是等到下一次批注记账时
+    // 悄悄降级成普通批注底色。高亮该活多久从没定义过（没有计时器、没有测试），
+    // 要改成「保持到下次跳转」属于产品决定，所以先保持原样并在这里写明归属。
     setHighlight(HIGHLIGHT_NAMES.annotationFocus, [range]);
   }, [listRef, onError, onNavigate]);
   React.useImperativeHandle(ref, () => ({ edit, jump }), [edit, jump]);

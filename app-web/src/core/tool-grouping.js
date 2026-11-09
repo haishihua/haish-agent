@@ -2,7 +2,7 @@
 
 import { eventDeltaText } from './message-text.js';
 import { subAgentEventText } from './progress-text.js';
-import { normalizeToolName, TOOL_PAST_VERBS, TOOL_PRESENT_VERBS } from './tool-names.js';
+import { normalizeToolName, TOOL_AWAITS_USER_NAMES, TOOL_PAST_VERBS, TOOL_PRESENT_VERBS, TOOL_SHELL_NAMES } from './tool-names.js';
 import { skillDisplayName } from './runtime-events.js';
 import { skillTrigger } from './tool-presentation.js';
 import { RUN_STATE_APPROVAL, RUN_STATE_WAITING_INPUT } from './run-status.js';
@@ -88,7 +88,9 @@ function classifyToolForGroup(item) {
       || (name.includes('search') && !name.includes('web'))) {
     return { bucket: 'searched', verbPast: 'searched', verbPresent: 'searching', subject: '', unitSingular: 'time', unitPlural: 'times' };
   }
-  if (name === 'exec_command' || name === 'write_stdin') {
+  // 终端工具（登记表 terminal: true）统一念 executed / executing：加终端工具时摘要自己跟上。
+  // 这里用本函数已小写化的 name 直接比对，不再 trim——旧行为就是逐字比对，别改了。
+  if (TOOL_SHELL_NAMES.has(name)) {
     return { bucket: 'executed', verbPast: 'executed', verbPresent: 'executing', subject: '', unitSingular: 'command', unitPlural: 'commands' };
   }
   if (name === 'vision_analyze' || name === 'visual_inspect' || name === 'image_describe'
@@ -256,7 +258,7 @@ export function groupConsecutiveTools(items) {
     && it.category !== 'subagent'
     // ask_user owns an inline answer form and must remain a stable top-level
     // timeline item. Grouping it would remove its chip/slot during rerenders.
-    && normalizeToolName(it.toolName) !== 'ask_user'
+    && !TOOL_AWAITS_USER_NAMES.has(normalizeToolName(it.toolName))
   );
   let groupIdx = 0;
   let i = 0;

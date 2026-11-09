@@ -1,5 +1,5 @@
 // Agent / 子 Agent / 视觉类工具：进度流、最终回答与子 Agent 时间线。
-import { normalizeToolName, TOOL_PROCESS_NAMES, TOOL_VISUAL_NAMES } from '../../../../core/tool-names.js';
+import { normalizeToolName, TOOL_PROCESS_NAMES, TOOL_SHELL_NAMES, TOOL_TERMINAL_INPUT_NAMES, TOOL_VISUAL_NAMES } from '../../../../core/tool-names.js';
 import { createTerminalTimeline } from '../../../../core/terminal-timeline.js';
 import { cachedStreamEventBase } from '../../../../core/stream-events.js';
 import { getToolResponseTraceStatus, getToolTraceStatus } from '../../../../core/tool-trace-status.js';
@@ -204,7 +204,9 @@ export function buildSubAgentTimelineItems(view) {
     }
     if (type === 'sub_agent_tool_call_started') {
       const key = subAgentToolEventKey(event) || `pending-${index}`;
-      if (normalizeToolName(event.toolName) === 'write_stdin') {
+      // 「写回已有终端」的工具（登记表 terminalInput）不新建卡片，只续写父终端；
+      // 名单收在登记表里，别再写死单个名字。
+      if (TOOL_TERMINAL_INPUT_NAMES.has(normalizeToolName(event.toolName))) {
         const parent = findTerminalForInput(event.toolInput);
         if (parent) {
           parent.status = getToolTraceStatus('running', finalStatus);
@@ -242,7 +244,7 @@ export function buildSubAgentTimelineItems(view) {
       flushText(false);
       const key = subAgentToolEventKey(event);
       let item = key ? toolItemsByKey.get(key) : null;
-      if (normalizeToolName(event.toolName) === 'write_stdin') {
+      if (TOOL_TERMINAL_INPUT_NAMES.has(normalizeToolName(event.toolName))) {
         item ||= findTerminalForInput(event.toolInput);
         if (item) {
           if (key) toolItemsByKey.set(key, item);
@@ -273,7 +275,9 @@ export function buildSubAgentTimelineItems(view) {
         if (key) toolItemsByKey.set(key, item);
       }
       pendingTools.delete(item);
-      if (normalizeToolName(item.toolName) === 'exec_command') {
+      // 终端卡的结果得并进终端输出（以及 session 映射），不能只写到通用字段；
+      // 哪些工具是终端卡由登记表 terminal 给（写回类在上面已经早退，走不到这里）。
+      if (TOOL_SHELL_NAMES.has(normalizeToolName(item.toolName))) {
         mergeTerminalResult(item, event, 'completed');
         return;
       }

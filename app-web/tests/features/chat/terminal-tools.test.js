@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { buildToolView } from '../../../src/features/chat/model/tool-view.js';
 // 终端工具名单的唯一来源是 core/tool-names.js，卡片不再自己维护一份。
-import { TOOL_SHELL_NAMES } from '../../../src/core/tool-names.js';
+import { TOOL_SHELL_NAMES, TOOL_TERMINAL_COMMAND_NAMES } from '../../../src/core/tool-names.js';
 
 globalThis.window = {};
 const { buildChatTimeline } = await import('../../../src/core/chat-timeline.js');
@@ -82,6 +82,24 @@ test('failed diff retains the error rather than rendering a successful change', 
   });
   assert.equal(view.failed, true);
   assert.equal(view.body, 'permission denied');
+});
+
+test('the Shell label belongs to the opening command, its write-back keeps process wording', () => {
+  // 终端卡共用一形，但只有自己开终端、带 command 输入的那个念 "Shell <cmd>"；
+  // 写回类工具说的是「对已有进程做了什么」，并进过宽的名单就会变成 "Shell ..."。
+  assert.deepEqual([...TOOL_TERMINAL_COMMAND_NAMES], ['exec_command']);
+  assert.ok([...TOOL_TERMINAL_COMMAND_NAMES].every((name) => TOOL_SHELL_NAMES.has(name)));
+  const writeBack = [...TOOL_SHELL_NAMES].filter((name) => !TOOL_TERMINAL_COMMAND_NAMES.has(name));
+  assert.deepEqual(writeBack, ['write_stdin']);
+  for (const name of writeBack) {
+    const view = buildToolView({
+      toolName: name,
+      status: 'done',
+      toolInput: { session_id: 'session-1', chars: 'yes\n' },
+      toolResponse: { status: 'ok', operation: 'interact', data: { session_id: 'session-1' } },
+    });
+    assert.equal(view.label, 'Sent input');
+  }
 });
 
 test('write_stdin view keeps interaction details available outside the chat projection', () => {
