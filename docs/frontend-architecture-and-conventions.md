@@ -99,9 +99,9 @@ main.jsx → app.jsx → features/* → core/* → shared/*
 | `app` | 应用级组合与页面切换 | `AppShell` 只编排，不承接领域算法 |
 | `chat` | 消息、工具卡片、输入与运行参数 | 不持有项目树规则 |
 | `conversations` | 项目/会话树、激活、草稿、持久化 | 任务摘要转换由调用方显式传入，不反向注册 |
-| `tasks` | 任务部署、任务流事件分派和委派（`hooks/` 编排） | 运行态记录在 `core/task-runtime.js`，此处不留 `model/` |
-| `workflow` | 工作流画布、运行详情与领域算法 | 目录/布局/尝试投影在 `core/`；运行页和设置编辑器共用 workflow 自己的画布组件 |
-| `approvals` | 审批/问答 API、定位算法和卡片 | 审批存储 `core/approval-store.js`；静态 CSS；不使用全局请求函数 |
+| `tasks` | 任务部署、任务流事件分派和委派（`hooks/` 编排） | 运行态记录在 `core/task-runtime.js`；`model/` 只放部署请求构造、停止回滚快照、活动任务选择这类纯函数，不放运行态 |
+| `workflow` | 工作流画布、运行详情与领域算法 | 目录/布局/尝试投影在 `core/`；节点端口、边外观、节点展示这三类纯函数在 `model/`；运行页和设置编辑器共享模型，直接从 `model/` 取，不经组件文件转发 |
+| `approvals` | 审批/问答 API、定位算法和卡片 | 审批存储 `core/approval-store.js`；`model/` 放标题/风险文案/运行时摘要与请求选择，`api/` 放决策分发；静态 CSS；不使用全局请求函数 |
 | `schedules` | 定时定义、时间规则、会话绑定和管理 | 通过 context 显式装配；执行复用 tasks runtime，不另建消息入口 |
 | `settings` | 设置页与各类配置编辑器 | `SettingsPage` 不是导出中转站；provider 标记与头像用 `shared/` |
 
@@ -174,12 +174,26 @@ app-web/tests/**        # 所有 test/spec
 
 | 命令 | 内容 |
 | --- | --- |
-| `npm run check:architecture` | 目录、依赖、循环、导入解析（剥离 `?inline` 等查询串）与具名导出存在性、`shared`/`core` 不得反向 import `features`、动态 CSS、全局请求等边界 |
+| `npm run check:architecture` | 目录、依赖、循环、导入解析（剥离 `?inline` 等查询串）与具名导出存在性、`shared`/`core` 不得反向 import `features`、动态 CSS、全局请求等边界；另有三条**接线规则**（见下） |
 | `npm run check:tests-health` | 源码断言的存量预算：超过基线即失败，防止「改个变量名就红」的测试继续增加 |
 | `npm test` | 运行 `app-web/tests` 中所有 `*.test.js` / `*.test.mjs` 自动测试 |
 | `npm run lint` | 生产代码和测试代码 ESLint；warning 也会失败 |
 | `npm run build:web` | Vite 生产构建 |
 | `npm run check:web` | 依次执行以上五项 |
+
+### 接线规则（`scripts/architecture-rules/`）
+
+测试栈没有 DOM，所以「读一处、写另一处」这类接线错误测不出来——它曾经让草稿在屏幕上正常回显、
+store 却永远是空串，而当时 1604 条测试全绿。三条静态规则补这个洞，都是纯检查、不改产品代码：
+
+| 规则 | 拦什么 | 拦不住什么 |
+| --- | --- | --- |
+| `render-ref-mirrors` | 组件函数体顶层写 `xxxRef.current`（render 期镜写），同一个值还有第二处承载时告警 | 事件处理器/effect 内的写入；两份都写同一个值（那本来就是冗余） |
+| `duplicate-string-arrays` | 两个文件里的字符串数组有 ≥3 个相同成员（工具名表、状态词表这类本该只有一份的） | 成员少于 3 个的表；顺序不同但语义相同的表 |
+| `ctx-wiring` | `createXxxHandlers(ctx)` 从 ctx 解构出的键，没有任何**字面量**装配点递进去 | 变量间接装配、`Object.assign` 拼装、传了但值不对 |
+
+白名单在 `scripts/architecture-rules/wiring-whitelist.json`，每条必须带中文理由。新增命中先判断是不是真错误：
+是真错误就改代码；确实要保留才加白名单。条目不再命中时检查器会提示删掉。
 
 合并前必须运行 `npm run check:web`。新增架构规则时，先把规则写进 `scripts/check-app-web-architecture.mjs`，再更新本文。
 

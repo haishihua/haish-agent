@@ -1,5 +1,5 @@
 {
-  "total": 1398,
+  "total": 1383,
   "files": {
     "contracts/activity-orb-revive.test.js": 24,
     "contracts/agent-catalog.test.js": 64,
@@ -39,14 +39,14 @@
     "contracts/release-size.test.js": 4,
     "contracts/remote-control.test.js": 36,
     "contracts/runtime-input-images.test.js": 16,
-    "contracts/runtime-workflow-layout.test.js": 55,
+    "contracts/runtime-workflow-layout.test.js": 51,
     "contracts/scheduled-task-sleep.test.js": 7,
     "contracts/settings-agent-count.test.js": 6,
     "contracts/settings-form-polish.test.js": 2,
     "contracts/settings-test-connection.test.js": 4,
     "contracts/skill-detail-toggle.test.js": 3,
     "contracts/user-message-line-breaks.test.js": 6,
-    "contracts/workflow-canvas-single-source.test.js": 117,
+    "contracts/workflow-canvas-single-source.test.js": 106,
     "contracts/workflow-task-sidebar.test.js": 18,
     "features/chat/agent-catalog-loading.test.js": 5,
     "features/chat/agent-picker-avatar.test.js": 5,

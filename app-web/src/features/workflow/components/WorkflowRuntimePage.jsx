@@ -32,10 +32,12 @@ import {
   WorkflowFlowNode,
   WORKFLOW_FIT_OPTIONS,
   workflowEdgeAppearance,
+} from './WorkflowFlowNode.jsx';
+import {
   workflowFeedbackTargetIds,
   workflowNodePorts,
-  workflowNodeAccent,
-} from './WorkflowFlowNode.jsx';
+} from '../model/workflow-node-ports.js';
+import { workflowNodeAccent } from '../model/workflow-node-presentation.js';
 import { nodeAttempts, visibleNodeAttempts } from '../../../core/node-attempts.js';
 import { WorkflowNodeDetailHead } from './runtime/WorkflowNodeDetailHead.jsx';
 import { WorkflowNodeAttempts } from './runtime/WorkflowNodeAttempts.jsx';

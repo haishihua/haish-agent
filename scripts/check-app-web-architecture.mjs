@@ -1,5 +1,9 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { extname, relative, resolve, sep } from 'node:path';
+import { applyWhitelist, buildViews } from './architecture-rules/source-scan.js';
+import { collectRenderRefMirrors, describeRenderRefMirror } from './architecture-rules/render-ref-mirrors.js';
+import { collectDuplicateStringArrays, describeDuplicateStringArray } from './architecture-rules/duplicate-string-arrays.js';
+import { collectCtxWiring, describeCtxWiring } from './architecture-rules/ctx-wiring.js';
 
 const sourceRoot = resolve('app-web/src');
 const allowedRootFiles = new Set(['app.jsx', 'main.jsx']);
@@ -15,6 +19,7 @@ function walk(directory) {
 
 const files = walk(sourceRoot).filter((path) => sourceExtensions.has(extname(path)));
 const sourceSet = new Set(files);
+const sourceCache = new Map(files.map((file) => [file, readFileSync(file, 'utf8')]));
 const graph = new Map(files.map((file) => [file, []]));
 
 // 导入的具名符号必须真的存在：测试和 lint 都看不出来，只有打包时才炸。
@@ -41,7 +46,7 @@ function namedExportsOf(file) {
 }
 
 for (const file of files) {
-  const source = readFileSync(file, 'utf8');
+  const source = sourceCache.get(file);
   const localPath = relative(sourceRoot, file).split(sep).join('/');
   const segments = localPath.split('/');
 
@@ -149,9 +154,93 @@ for (const edge of featureEdges) {
   }
 }
 
+// ------------------------------------------------------------------------------ 接线错误（T2）
+// 前三块（依赖方向 / 循环依赖 / core 边界）守的是「模块之间怎么连」，下面这三条守的是
+// 「值在哪个文件里被读、在哪个文件里被写」——这类错误都能编译、能过 lint、能让上千条
+// 行为测试全绿，只在用户操作到那一步时才炸。三条规则各自在文件头写了「能拦住什么 /
+// 拦不住什么」，这里只负责汇总、比对白名单、报错。
+//
+// 白名单是显式清单（scripts/architecture-rules/wiring-whitelist.json）：
+//   · 一个新命中就红一次，把「这笔新债是谁欠的、为什么」写进理由才放行；
+//   · 条目里的 sites 是「允许几处」，多一处也红；
+//   · 已经不再命中的条目会在通过时提醒删掉，不会默默变成永久豁免。
+const wiringWhitelistPath = resolve('scripts/architecture-rules/wiring-whitelist.json');
+if (!existsSync(wiringWhitelistPath)) {
+  errors.push(`missing scripts/architecture-rules/wiring-whitelist.json; the wiring rules need their explicit whitelist`);
+}
+const wiringWhitelist = existsSync(wiringWhitelistPath)
+  ? JSON.parse(readFileSync(wiringWhitelistPath, 'utf8'))
+  : {};
+
+const modules = files.map((file) => ({
+  path: relative(sourceRoot, file).split(sep).join('/'),
+  source: sourceCache.get(file),
+}));
+// 三条规则共用一次源码扫描：掩码文本 + 括号配对 + 函数作用域区间。
+const views = buildViews(modules);
+
+const renderRefs = collectRenderRefMirrors(views);
+const duplicateArrays = collectDuplicateStringArrays(views);
+const ctxWiring = collectCtxWiring(views);
+
+const wiringNotices = [];
+for (const [rule, whitelist, violations, describe] of [
+  ['render-ref', wiringWhitelist.renderRefMirrors, renderRefs.violations, describeRenderRefMirror],
+  ['dup-array', wiringWhitelist.duplicateStringArrays, duplicateArrays.violations, describeDuplicateStringArray],
+  ['ctx-wiring', wiringWhitelist.ctxWiring, ctxWiring.violations, describeCtxWiring],
+]) {
+  const { unresolved, idle } = applyWhitelist(violations, whitelist || {});
+  for (const violation of unresolved) {
+    const stale = violation.stale
+      ? `（白名单记录 ${violation.allowed} 处，现在是 ${violation.sites} 处：新增的那处请单独写理由）`
+      : '';
+    errors.push(`[${rule}] ${describe(violation)}${stale}`);
+  }
+  for (const key of idle) {
+    wiringNotices.push(`[${rule}] wiring-whitelist.json 里的 ${key} 已经不再命中，可以删掉`);
+  }
+}
+
+// 解析器自检：数量突然大幅下降说明扫描器失效，而不是代码变干净了。
+// 如果确实是大规模删代码，把这两个阈值一起改小即可。
+if (renderRefs.inventory.length < 15) {
+  errors.push(`[render-ref] 只解析到 ${renderRefs.inventory.length} 处 render 期 ref 镜写（预期 ≥15）：扫描器可能失效，规则正在静默放行`);
+}
+if (ctxWiring.stats.checked < 12) {
+  errors.push(`[ctx-wiring] 只核对了 ${ctxWiring.stats.checked} 个工厂的 ctx 装配（预期 ≥12）：扫描器可能失效，规则正在静默放行`);
+}
+
+const wiringSummary =
+  `wiring: ${renderRefs.inventory.length} render-phase ref mirrors `
+  + `(${renderRefs.violations.length} with a second owner, ${wiringWhitelist.renderRefMirrors ? Object.keys(wiringWhitelist.renderRefMirrors).length : 0} whitelisted); `
+  + `${duplicateArrays.inventory.length} string arrays → ${duplicateArrays.violations.length} cross-file duplicates; `
+  + `${ctxWiring.stats.factories} ctx factories (${ctxWiring.stats.checked} checked, ${ctxWiring.stats.skipped} unverifiable)`;
+
+if (process.argv.includes('--list')) {
+  console.log(`render-phase ref mirrors (${renderRefs.inventory.length}):`);
+  for (const mirror of renderRefs.inventory) {
+    const carriers = mirror.carriers.map((carrier) => `${carrier.name}:${carrier.kind}`).join(' ');
+    console.log(`  ${mirror.file}:${mirror.line} [${mirror.fn}] ${mirror.ref}.current = …${carriers ? `  ← second owner: ${carriers}` : ''}`);
+  }
+  console.log(`\nstring arrays with identical members in 2+ files (${duplicateArrays.violations.length} groups):`);
+  for (const violation of duplicateArrays.violations) {
+    console.log(`  [${violation.members.join(', ')}] x${violation.sites}: ${violation.locations.join(', ')}`);
+  }
+  console.log(`\nctx factories (${ctxWiring.inventory.length}):`);
+  for (const factory of ctxWiring.inventory) {
+    console.log(`  ${factory.path}:${factory.line} ${factory.name} keys=${factory.keys} required=${factory.required} assembly=${factory.sites} (${factory.form})`);
+  }
+  console.log('');
+}
+
 if (errors.length) {
   console.error(errors.map((error) => `- ${error}`).join('\n'));
   process.exit(1);
 }
 
+if (wiringNotices.length) {
+  console.warn(wiringNotices.map((notice) => `! ${notice}`).join('\n'));
+}
+
 console.log(`Architecture check passed (${files.length} source modules).`);
+console.log(wiringSummary);

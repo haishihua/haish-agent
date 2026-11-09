@@ -1,5 +1,5 @@
 import React from 'react';
-import { workflowNodeAccent } from '../../../workflow/components/WorkflowFlowNode.jsx';
+import { workflowNodeAccent } from '../../../workflow/model/workflow-node-presentation.js';
 import { SettingsTooltipIconButton } from '../settings-ui.jsx';
 import { WorkflowNodeHeading } from '../WorkflowNodeDetails.jsx';
 

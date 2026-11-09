@@ -56,8 +56,8 @@ test('workflow node palette has a single home and the runtime layer only consume
     assert.doesNotMatch(flowNodeSource, new RegExp(accent), '类型色只在 CSS 里写一次，JS 只引用变量');
   }
   assert.match(baseStyles, /\.workflow-canvas \{[^}]*--workflow-accent-start: #24dd98;/);
-  assert.match(flowNodeSource, /const WORKFLOW_ACCENT_VARS = \{\n {2}start: 'var\(--workflow-accent-start\)',/);
-  assert.match(flowNodeSource, /export function workflowNodeAccent\(nodeType\) \{/);
+  // 类型 → 变量那张表在 model/workflow-node-presentation.js（节点描边/图标与连线渐变都从这里取色），
+  // 八种类型与兜底色由 tests/features/workflow/workflow-node-presentation.test.js 按输入输出对拍。
   // 运行层不许再自带一套类型色：完成/审批态通过 var(--node-type-accent) 复用同一份。
   assert.doesNotMatch(runtimeStyles, /--node-type-accent:/);
   assert.match(runtimeStyles, /--node-accent: var\(--node-type-accent\);/);
@@ -152,13 +152,12 @@ test('one handle look for both pages: a solid glowing dot in the node accent', (
 });
 
 test('node ports and the rework target come from one helper for both pages', () => {
-  // 端口（含 loop 的 retry 出口）只有一份来源：两页都调 workflowNodePorts。
-  assert.match(flowNodeSource, /export function workflowNodePorts\(node, layoutMeta\) \{/);
-  assert.match(flowNodeSource, /branchSourcePositions: secondary && node\?\.type === 'loop' \? \{ retry: sourcePosition \} : undefined,/);
+  // 端口（含 loop 的 retry 出口）与回环落点的函数本体在 model/workflow-node-ports.js：两页都调它，
+  // 调用点在本测试里守着；端口/落点本身的行为（方向、次级链、loop 的 retry、exhausted）由
+  // tests/features/workflow/workflow-node-ports.test.js 对拍，这里不再盯源码写法。
   assert.match(editorSource, /\.\.\.workflowNodePorts\(node, layout\.meta\.get\(String\(node\.id\)\)\),/);
   assert.match(runtimeSource, /\.\.\.workflowNodePorts\(node, layoutMeta\),/);
   // 回环端口（次级→主链那条边的落点）同样只有一份判断。
-  assert.match(flowNodeSource, /export function workflowFeedbackTargetIds\(edges, layoutMeta\) \{/);
   assert.match(editorSource, /workflowFeedbackTargetIds\(edges, layout\.meta\)/);
   assert.match(runtimeSource, /workflowFeedbackTargetIds\(workflow\?\.edges, layout\.meta\)/);
   // 两页都不许再各写一份端口数学：配置页曾把 loop 的 retry 出口画在节点顶部、运行页画在
@@ -176,10 +175,11 @@ test('editor and runtime register the very same node component', () => {
 });
 
 test('edges have one appearance and one motion layer for both pages', () => {
-  // 角色配色（主流程/支路/回环/收尾）只有 WORKFLOW_EDGE_ROLES 一份，画法只有 WorkflowCanvasEdge 一份：
-  // 两页只是把 layout + 目标类型交给同一个函数，不自己配色、不自己画箭头/标签。
+  // 角色配色（主流程/支路/回环/收尾）只有 WORKFLOW_EDGE_ROLES 一份（在
+  // model/workflow-edge-appearance.js，由 tests/features/workflow/workflow-edge-appearance.test.js 对拍），
+  // 画法只有 WorkflowCanvasEdge 一份：两页只是把 layout + 目标类型交给同一个函数，
+  // 不自己配色、不自己画箭头/标签。
   assert.match(flowNodeSource, /export function WorkflowCanvasEdge\(\{/);
-  assert.match(flowNodeSource, /export const WORKFLOW_EDGE_ROLES = \{/);
   // 边的几何只有一份：两页共用的渲染器调 model/workflow-edge-path.js（不是 React Flow 默认折线）。
   // 主流程/收尾是「源类型色 → 目标类型色」的渐变（userSpaceOnUse，沿着这一段线铺）：整页只有一条
   // 渐变定义、两个 stop，颜色引用类型色变量（JS 里没有第二份十六进制）。
@@ -188,11 +188,6 @@ test('edges have one appearance and one motion layer for both pages', () => {
   assert.equal((flowNodeSource.match(/<stop /g) || []).length, 2);
   assert.match(flowNodeSource, /<stop offset="0%" style=\{\{ stopColor: paint\.from \}\} \/>/);
   assert.match(flowNodeSource, /<stop offset="100%" style=\{\{ stopColor: paint\.to \}\} \/>/);
-  assert.match(flowNodeSource, /const ACTIVE_EDGE_STROKE = 'rgba\(105, 200, 246, 0\.9\)';/);
-  assert.match(flowNodeSource, /main: \{ gradient: true, strokeWidth: 2, opacity: 0\.78 \},/);
-  assert.match(flowNodeSource, /end: \{ gradient: true, strokeWidth: 2, opacity: 0\.62, arrow: true \},/);
-  assert.match(flowNodeSource, /detour: \{ stroke: 'rgba\(122, 176, 245, 0\.92\)', strokeWidth: 2, dash: '10 7', arrow: true \},/);
-  assert.match(flowNodeSource, /loopback: \{ stroke: 'rgba\(104, 220, 240, 0\.95\)', strokeWidth: 2, dash: '10 7', arrow: true \},/);
   // 渐变的两端就是节点的类型色变量（和描边/图标同一份色板）；纯色边走 solid。
   assert.match(
     flowNodeSource,
@@ -201,8 +196,8 @@ test('edges have one appearance and one motion layer for both pages', () => {
   assert.match(flowNodeSource, /className: active \? 'is-flowing' : \(traversed \? 'is-traversed' : ''\)/);
   assert.match(flowNodeSource, /sourceHandle: branch \|\| undefined,/);
   assert.match(flowNodeSource, /interactionWidth: 28,/);
-  // 主流程不打虚线、不画标签/箭头：虚线（10/7 均匀间距）与 7px 小三角只给回路/支路/收尾。
-  assert.equal((flowNodeSource.match(/dash: '10 7'/g) || []).length, 2);
+  // 主流程不打虚线、不画标签/箭头：虚线（10/7 均匀间距，只在 model 的角色表里给 detour/loopback）
+  // 与 7px 小三角只给回路/支路/收尾。
   assert.match(flowNodeSource, /label: circuit && branch/);
   assert.match(flowNodeSource, /defaultCase && targetType === 'loop' \? 'Need retry'/);
   assert.equal((flowNodeSource.match(/<marker/g) || []).length, 1);

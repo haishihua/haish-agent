@@ -53,9 +53,12 @@ import {
   WorkflowCanvasEdge,
   WorkflowFlowNode,
   workflowEdgeAppearance,
+} from '../../workflow/components/WorkflowFlowNode.jsx';
+// 布局纯函数住在 model 里；这里直接取原始位置，不经组件文件转发。
+import {
   workflowFeedbackTargetIds,
   workflowNodePorts,
-} from '../../workflow/components/WorkflowFlowNode.jsx';
+} from '../../workflow/model/workflow-node-ports.js';
 
 const { useState, useEffect, useRef } = React;
 const ReactFlowNS = {

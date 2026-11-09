@@ -2,6 +2,12 @@ import React from 'react';
 import { BaseEdge, EdgeLabelRenderer, Handle, Position } from '@xyflow/react';
 import { agentIconNameForAgentId } from '../../../core/agent-settings.js';
 import { workflowEdgePath } from '../model/workflow-edge-path.js';
+import { workflowEdgePaintState, WORKFLOW_EDGE_ROLES } from '../model/workflow-edge-appearance.js';
+import {
+  workflowNodeAccent,
+  workflowNodeCardClassName,
+  workflowNodeCardText,
+} from '../model/workflow-node-presentation.js';
 import { typeLabelForWorkflowNode, workflowNodeIcon } from '../../../core/workflow-catalog.js';
 import { WORKFLOW_PORT_SIDES, workflowSideHandle } from '../model/workflow-canvas-editing.js';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
@@ -26,38 +32,10 @@ export const WORKFLOW_BRANCH_META = {
   exhausted: { label: 'Exhausted', edgeLabel: 'Max retries' },
 };
 
-// 类型色只有一份（app-shell.css 里 .workflow-canvas 上的 --workflow-accent-*）：节点的描边/图标色
-// 与连线的渐变都从这里取色，JS 里不再抄一份十六进制颜色。
-const WORKFLOW_ACCENT_VARS = {
-  start: 'var(--workflow-accent-start)',
-  agent: 'var(--workflow-accent-agent)',
-  llm: 'var(--workflow-accent-llm)',
-  tool: 'var(--workflow-accent-tool)',
-  condition: 'var(--workflow-accent-condition)',
-  human_approval: 'var(--workflow-accent-human_approval)',
-  loop: 'var(--workflow-accent-loop)',
-  output: 'var(--workflow-accent-output)',
-};
 
-export function workflowNodeAccent(nodeType) {
-  return WORKFLOW_ACCENT_VARS[nodeType] || WORKFLOW_ACCENT_VARS.agent;
-}
-
-// 画布上的边只有这一套外观（配置页与运行页共用），按「这条边在图里扮演什么」分四种角色：
-//   main     主流程：源类型色 → 目标类型色的渐变实线（绿→蓝→蓝→紫顺着链路走），2px，不打虚线/标签/箭头；
-//   detour   支路（判定走 false 进次级链）：蓝色虚线；
-//   loopback 回环（次级链回到主链，retry / exhausted）：青色虚线，间距均匀；
-//   end      收尾（进 output 那条）：源类型色 → End 紫的渐变，亮度低一档。
-// 正在走的那条（.is-flowing）与走过的（.is-traversed）在上面这层配色上再叠一档；颜色/线宽/
-// 虚线/标签/箭头都只在这里给一次，画法只有 WorkflowCanvasEdge 一份。
-export const WORKFLOW_EDGE_ROLES = {
-  main: { gradient: true, strokeWidth: 2, opacity: 0.78 },
-  detour: { stroke: 'rgba(122, 176, 245, 0.92)', strokeWidth: 2, dash: '10 7', arrow: true },
-  loopback: { stroke: 'rgba(104, 220, 240, 0.95)', strokeWidth: 2, dash: '10 7', arrow: true },
-  end: { gradient: true, strokeWidth: 2, opacity: 0.62, arrow: true },
-};
-
-const ACTIVE_EDGE_STROKE = 'rgba(105, 200, 246, 0.9)';
+// 四条角色各自的线宽/不透明度/虚线/箭头在 model/workflow-edge-appearance.js 里只定义一次；这里
+// 按「这条边在图里扮演什么」挑角色，再交给下面唯一那份画法 WorkflowCanvasEdge。正在走的那条
+// （.is-flowing）与走过的（.is-traversed）叠加的那一档同样在 model 里（workflowEdgePaintState）。
 
 export function workflowEdgeAppearance(edge, {
   active = false,
@@ -109,41 +87,6 @@ export function workflowEdgeAppearance(edge, {
 }
 
 /**
- * 节点端口（两页共用的唯一一份）：主链按行走向给左右出入端口；副链（返工）节点输入统一走顶部、
- * 出口跟节点自己那一侧；loop 的 retry 出口永远和它自己的出端口同侧。配置页和运行页都必须调这里
- * ——两边各写一份就会悄悄长歪（配置页曾把 retry 画在节点顶部、运行页画在左侧，同一条边在两页
- * 形状不同，看起来就是「边的端点两个都不一样」）。
- */
-export function workflowNodePorts(node, layoutMeta) {
-  const direction = layoutMeta?.direction || 'right';
-  const secondary = node?.type === 'loop' || layoutMeta?.kind === 'secondary';
-  const sourcePosition = secondary
-    ? (direction === 'right' ? Position.Left : Position.Right)
-    : (direction === 'right' ? Position.Right : Position.Left);
-  return {
-    sourcePosition,
-    targetPosition: secondary
-      ? (node?.type === 'loop' ? (direction === 'right' ? Position.Right : Position.Left) : Position.Top)
-      : (direction === 'right' ? Position.Left : Position.Right),
-    branchSourcePositions: secondary && node?.type === 'loop' ? { retry: sourcePosition } : undefined,
-  };
-}
-
-/** 次级节点回到主链的那条边落在主节点底部的回环端口（两页共用同一份判断）。 */
-export function workflowFeedbackTargetIds(edges, layoutMeta) {
-  const targets = new Set();
-  for (const edge of Array.isArray(edges) ? edges : []) {
-    const source = String(edge?.from || edge?.source || '');
-    const target = String(edge?.to || edge?.target || '');
-    if (edge?.branch === 'retry'
-      || (layoutMeta?.get(source)?.kind === 'secondary' && layoutMeta?.get(target)?.kind === 'primary')) {
-      targets.add(target);
-    }
-  }
-  return targets;
-}
-
-/**
  * 两页共用的边渲染器（core line + subtle outer glow 两层）：同一段 path 先铺一层很淡的
  * glow（CSS 里 blur 5px，只糊它自己），再叠清晰的核心线；正在走的那条再多一道沿线亮斑。
  * 路径几何不在这里，也不在 React Flow 的默认路由里，而在 model/workflow-edge-path.js（唯一一份）：
@@ -191,17 +134,15 @@ export function WorkflowCanvasEdge({
     targetPosition: targetPosition || Position.Left,
   });
   // 颜色来源（渐变 / 纯色）由 workflowEdgeAppearance 给；这里只负责把它画出来，两页同一份。
-  const paint = data?.paint || { solid: 'rgba(170, 192, 224, 0.34)' };
-  const gradient = Boolean(paint.from && paint.to);
+  // 叠加档（active 的运行蓝/加粗、traversed 的提亮、箭头取色）在 model 的纯函数里，
+  // 渐变引用要等这里那个整页唯一的 id 才拼得出来，所以只有这一步留在组件。
+  const {
+    paint, gradient, stroke: activeStroke, coreOpacity, coreWidth, arrowFill,
+  } = workflowEdgePaintState({ data, style, active, traversed });
   const roleStroke = gradient ? `url(#${paintUid})` : paint.solid;
-  const stroke = active ? ACTIVE_EDGE_STROKE : roleStroke;
-  const baseOpacity = Number(data?.opacity ?? 1);
-  const coreOpacity = active ? 1 : Math.min(1, traversed ? baseOpacity + 0.22 : baseOpacity);
-  const coreWidth = active ? Number(style?.strokeWidth || 2) + 0.4 : style?.strokeWidth;
+  const stroke = activeStroke || roleStroke;
   const dash = style?.strokeDasharray;
   const arrow = Boolean(data?.arrow);
-  // 箭头颜色：纯色边用自己那一档；渐变边用渐变末端（目标类型色）那一档。
-  const arrowFill = paint.solid || paint.to;
   return (
     <>
       {gradient ? (
@@ -286,13 +227,11 @@ export function WorkflowCanvasEdge({
 }
 
 export function WorkflowFlowNode({ data, selected, sourcePosition, targetPosition }) {
-  const node = data?.workflowNode || {};
-  const nodeType = node.type || 'agent';
-  const runtimeStatus = String(data?.runtimeStatus || '');
-  const nodeTitle = data?.runtimeAgentName || node.label || nodeType;
-  const nodeLabel = `${nodeTitle}${runtimeStatus ? ` · ${data.runtimeStatusLabel || runtimeStatus}` : ''}`;
+  const {
+    nodeType, runtimeStatus, nodeTitle, nodeLabel,
+  } = workflowNodeCardText(data);
   const iconName = nodeType === 'agent'
-    ? (data?.agentIconName || agentIconNameForAgentId(node.agent_id, data?.agentOptions))
+    ? (data?.agentIconName || agentIconNameForAgentId(data?.workflowNode?.agent_id, data?.agentOptions))
     : workflowNodeIcon(nodeType);
   const runtimeDetailAvailable = Boolean(data?.runtimeDetailAvailable);
   const resolvedSourcePosition = data?.sourcePosition || sourcePosition || Position.Right;
@@ -302,7 +241,9 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
 
   return (
     <div
-      className={`workflow-flow-node ${nodeType} ${selected ? 'active' : ''}${data?.dropPreview ? ' is-drop-preview' : ''}${runtimeStatus ? ` is-runtime status-${runtimeStatus}` : ''}${runtimeDetailAvailable ? ' has-runtime-detail' : ''}${data?.reconnectType ? ' is-reconnecting' : ''}`}
+      className={workflowNodeCardClassName({
+        nodeType, selected, data, runtimeStatus, runtimeDetailAvailable,
+      })}
       title={nodeLabel}
       aria-label={nodeLabel}
     >

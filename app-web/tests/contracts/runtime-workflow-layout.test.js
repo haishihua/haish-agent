@@ -181,12 +181,9 @@ test('runtime feedback edges keep routed ports and align every rework edge on on
   assert.match(flowNodeSource, /targetHandle: feedback \? 'runtime-feedback'/);
   assert.match(flowNodeSource, /type: 'workflowEdge',/);
   assert.doesNotMatch(flowNodeSource, /borderRadius:|offset:/);
-  // 主流程是一条很安静的 2px 实线（颜色由外观层给的源→目标渐变决定）；正在走的那条才换成
-  // 运行蓝、加粗到 2.4px。颜色/加粗只在这一份里给（配置页选中和运行页 flowing 同一条线）。
-  assert.match(flowNodeSource, /const ACTIVE_EDGE_STROKE = 'rgba\(105, 200, 246, 0\.9\)';/);
-  assert.match(flowNodeSource, /const coreWidth = active \? Number\(style\?\.strokeWidth \|\| 2\) \+ 0\.4 : style\?\.strokeWidth;/);
-  // 虚线（10/7 均匀间距）与 7px 小三角只留给回环/支路/收尾：主流程不画标签、不画箭头。
-  assert.match(flowNodeSource, /loopback: \{ stroke: 'rgba\(104, 220, 240, 0\.95\)', strokeWidth: 2, dash: '10 7', arrow: true \},/);
+  // 正在走的那条换运行蓝、加粗 0.4、走过的提亮一档：这些叠加值在 model/workflow-edge-appearance.js
+  // 的纯函数里，由 tests/features/workflow/workflow-edge-appearance.test.js 对拍；这里只守
+  // 「虚线（10/7）与 7px 小三角只给回环/支路/收尾」——主流程不画标签、不画箭头。
   assert.match(flowNodeSource, /const circuit = role === 'detour' \|\| role === 'loopback';/);
   assert.match(flowNodeSource, /label: circuit && branch/);
 });
@@ -291,7 +288,8 @@ test('runtime details use executed node data and real workflow transitions', () 
   assert.match(runtimeSource, /inputEvent\?\.nodeInput/);
   assert.match(runtimeSource, /status === 'waiting_input'/);
   assert.doesNotMatch(flowNodeSource, /WORKFLOW_RUNTIME_STATUS_ICON|workflow-run-node-status/);
-  assert.match(flowNodeSource, /data.runtimeStatusLabel \|\| runtimeStatus/);
+  // 「标题 + 运行状态词（runtimeStatusLabel 优先，没有就用原始状态词；空状态词不接尾巴）」的拼法在
+  // model/workflow-node-presentation.js，由 tests/features/workflow/workflow-node-presentation.test.js 对拍。
   // 节点文案只从共享目录取，画布和详情面板不许各自维护一张表。
   assert.match(flowNodeSource, /typeLabelForWorkflowNode\(nodeType\)/);
   // 折叠按钮上的数字只能是量出来的时长：算不出来就什么都不显示，既不退回 'Trace'

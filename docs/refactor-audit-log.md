@@ -185,3 +185,41 @@ toast（`useConversationRunConfig.js:92`），再加一条是重复；而 `persi
 修法：回滚成功（有 `before` 且仍挂在当前 owner 上）时不保留错误状态，失败只由 toast 通知；
 没能回滚时才保留错误，因为那种情况下配置确实不可用。测试模拟了 restore 写回 React 状态，
 变异校验确认：把错误状态改回一直保留，该用例立刻红。
+
+## 第七批：三条接线静态规则、两个大文件第一批、纯逻辑抽 model
+
+### 接线规则（新增 `scripts/architecture-rules/`）
+
+测试栈没有 DOM，「读一处、写另一处」这类错误测不出来。三条静态规则补洞，全部纯检查：
+
+- `render-ref-mirrors`：盘点 29 处 render 期 ref 镜写，其中 4 处有第二处承载、4 处进白名单。
+- `duplicate-string-arrays`：88 个字符串数组 → 4 组跨文件重复。
+- `ctx-wiring`：24 个工厂，21 个可静态核对，0 个「无法判定」。这条能拦住本仓真实发生过的事故
+  ——`createDraftConversationHandlers` 少递两个键，整条「向上翻页加载更早步骤」挂在
+  `applyContextUsage(latestContextUsageFromTasks(...))` 上，当时 1604 条测试全绿。
+
+白名单每条带中文理由，条目失效时会提示删掉。变异校验：临时从 `createSettingsHandlers` 的装配点
+删掉 `API_BASE`，检查器准确报出「解构出但没有任何装配点递进去」，还原后通过。
+
+### 两个大文件
+
+- `ApprovalOverlay` 714 → 605：展示规则进 `model/approval-presentation.js`，决策分发进 api。
+  `selectRuntimeRequest` 此前零行为测试、只有 7 条源码断言；`RISK_TEXT` / `runtimeSummary`
+  此前没有任何断言，现在按全表覆盖。
+- `createDeployHandlers` 694 → 633：抽活动任务选择、停止回滚快照、部署请求构造、上传包装到
+  `tasks/model/`。三件套 `handleStop` / `startDeploy` / `handleDeploy` 保持同文件——三者共用
+  `stopPromise` / `stopError` 竞速协议。13 条源码断言一条都没改。
+
+两处都做了大规模对拍（1302 组 / 338 组），并坚持「构造期不读 ctx」，所以 `node-runtime-config`
+只传 4 个键、`deploy-target` 只传 9 个键的测试照旧通过。
+
+### 纯逻辑抽 model 换行为断言
+
+`WorkflowFlowNode.jsx` 的节点端口、边外观、节点展示三类纯函数进 `workflow/model/`，
+16 条源码断言换成行为断言（端口矩阵、角色表 deepEqual、paintState 的 1008 组对拍）。
+基线 1398 → 1383。
+
+### 一条纪律：不留 re-export 转发
+
+两批 worker 都想用「组件文件里 `export { ... }`」保住旧 import 路径，都被改掉了——
+消费方改为直接从 `model/` 取。转发会让「这段规则归谁」重新变成要看两处。

@@ -1,5 +1,8 @@
-import { executionConfigError } from '../../../core/execution-config.js';
 import { taskSummaryToRuntimeTask } from '../../../core/task-runtime.js';
+import { activeTaskKeys, latestActiveTaskRecord } from '../model/active-task.js';
+import { createDeployRequest, deployRequestConfigError } from '../model/deploy-request.js';
+import { createImageUploader } from '../model/image-upload.js';
+import { resetRuntimeAfterStop, resolveStopRollback } from '../model/stop-rollback.js';
 
 export function resolveDeployTargetConversationId({
   draftConversation,
@@ -67,6 +70,10 @@ export function createDeployHandlers(ctx) {
     workspaceStateWithTouchedConversation,
   } = ctx;
 
+  // 上传实现来自 composer，只能从 ctx 注入；是个工厂而不是普通函数，为的是让上传这一侧
+  // 保持「只管顺序和尽力而为」，不把 composer 的上传细节带进部署流程。
+  const uploadImagesBestEffort = createImageUploader(uploadChatImage);
+
   function removeConversationTaskFromWorkspace(convId, taskKey) {
     if (!convId || !taskKey) return;
     setWorkspaceState((state) => {
@@ -111,11 +118,8 @@ export function createDeployHandlers(ctx) {
     let taskId = targetRuntime?.activeTaskId
       || currentTaskState?.activeTaskId
       || null;
-    if (!taskId && currentTaskState) {
-      const tasksById = currentTaskState.tasksById || {};
-      const candidates = Object.values(tasksById).filter((task) => isTaskActuallyActive(task));
-      candidates.sort((a, b) => taskUpdatedTimestamp(b) - taskUpdatedTimestamp(a));
-      const fallback = candidates[0];
+    if (!taskId) {
+      const fallback = latestActiveTaskRecord(currentTaskState, { isTaskActuallyActive, taskUpdatedTimestamp });
       if (fallback?.taskId) taskId = fallback.taskId;
     }
     const runId = targetRuntime?.activeRunId || null;
@@ -123,19 +127,16 @@ export function createDeployHandlers(ctx) {
     const runtimeBusy = Boolean(targetRuntime?.busy);
     const pendingTask = currentTaskState?.pendingTask || null;
     const activeTask = taskId ? (currentTaskState?.tasksById?.[taskId] || null) : null;
-    const restoreText = String(
-      activeTask?.title
-      || pendingTask?.title
-      || queuedRequest?.text
-      || ''
-    ).trim();
-    // Local bookkeeping only controls what this window rolls back below — it
-    // never controls whether the stop request is sent.
-    const hasLocalBookkeeping = runtimeBusy
-      || taskId
-      || pendingTask
-      || controllerToAbort
-      || hadQueuedDeploy;
+    const { restoreText, hasLocalBookkeeping, turnStaysVisible } = resolveStopRollback({
+      activeTask,
+      pendingTask,
+      pendingRun,
+      queuedRequest,
+      taskId,
+      runtimeBusy,
+      controllerToAbort,
+      hadQueuedDeploy,
+    });
     // Mark abort BEFORE any async cancel / abort side effects so in-flight
     // NDJSON flushes and late applyRuntimeEvent calls cannot recreate the turn.
     if (targetRuntime) {
@@ -157,13 +158,10 @@ export function createDeployHandlers(ctx) {
     }
     // Also mark every currently-active task in this conversation, so a pending
     // local draft that later resolves to a server task_id cannot reappear.
-    Object.values(currentTaskState?.tasksById || {}).forEach((task) => {
-      if (!isTaskActuallyActive(task)) return;
-      const key = task?.taskId || task?.task_id || task?.id;
-      if (!key) return;
+    for (const key of activeTaskKeys(currentTaskState, isTaskActuallyActive)) {
       userCancelledTaskIdsRef.current.add(key);
       chatFinalizedTaskIdsRef.current.add(key);
-    });
+    }
     // The server is the sole authority on what is running: always ask it to
     // cancel this conversation's active task and let the server resolve which
     // task that is. A missing local runtime entry must never suppress the
@@ -244,48 +242,24 @@ export function createDeployHandlers(ctx) {
       // Queued deploy only — nothing rendered yet; just restore composer text.
     }
     if (targetRuntime) {
-      mutateRuntime(targetConvId, (rt) => {
-        // Keep abortRequested=true until the next executeQuest starts a fresh run.
-        rt.abortRequested = true;
-        if (runId) rt.cancelledRunIds.add(runId);
-        rt.activeTaskId = null;
-        rt.activeRunId = null;
-        rt.fetchController = null;
-        rt.answerBuffer = '';
-        rt.busy = false;
-      });
+      mutateRuntime(targetConvId, (rt) => resetRuntimeAfterStop(rt, runId));
       // Only mirror the local snapshot when this window actually rolled back
       // its own bookkeeping; a plain server-side stop (empty local runtime)
       // must not overwrite the server-owned task list with an empty one.
       if (hasLocalBookkeeping) flushRuntimeTasksToWorkspace(targetConvId);
     }
-    // 这一轮已经在时间线上（已落地任务，或连接还没建立、被标成 cancelled 的 pending turn）
-    // 时，停止不再把用户消息塞回输入框：消息就在上面，重发走那一行的编辑。
-    const turnStaysVisible = Boolean(taskId)
-      || Boolean(pendingTask && pendingRun && !pendingRun.taskId);
     return turnStaysVisible ? '' : restoreText;
   }
 
   function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, selectionId, providerRequest, displayText = text, annotations = [], nodeRuntimeConfigs = {}) {
-    const sanitizedImageAttachments = Array.isArray(imageAttachments)
-      ? imageAttachments
-          .filter((ref) => ref && (ref.file || (ref.image_id && ref.path)))
-          .map((ref) => ({
-            image_id: ref.image_id,
-            file: ref.file,
-            path: ref.path,
-            mime: ref.mime || null,
-            previewUrl: ref.previewUrl || null,
-          }))
-      : [];
-    return {
-      id: `queued-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    return createDeployRequest({
       text,
-      displayText: String(displayText || text || '').trim(),
-      annotations: annotations.map((item) => ({ ...item })),
-      nodeRuntimeConfigs: structuredClone(nodeRuntimeConfigs),
+      displayText,
+      annotations,
+      nodeRuntimeConfigs,
       // 「以任务产出为上下文」：只带引用（task_id / title / conversation_id），报告正文
-      // 由服务端在起跑时取；没挂上下文就是空数组。
+      // 由服务端在起跑时取；没挂上下文就是空数组。投影留在工厂里，因为 contextTask 是
+      // shell 的输入框状态，只有工厂知道它此刻指向哪一条任务。
       contextTasks: contextTask
         ? [{
           taskId: contextTask.taskId || contextTask.task_id || '',
@@ -296,48 +270,16 @@ export function createDeployHandlers(ctx) {
       attachment,
       modelId,
       reasoningEffort,
-      imageAttachments: sanitizedImageAttachments,
-      executionMode: viewModeRef.current === 'chat' ? 'chat' : 'bot',
-      agentId: viewModeRef.current === 'chat' ? selectionId : null,
-      workflowId: viewModeRef.current === 'chat' ? null : selectionId,
-      providerRequest: providerRequest || '',
+      imageAttachments,
+      selectionId,
+      providerRequest,
+      viewMode: viewModeRef.current,
       targetConversationId: resolveDeployTargetConversationId({
         draftConversation: draftConversationRef.current,
         selectedConversationId,
         currentConversationId: conversationIdRef.current || conversationId,
       }),
-    };
-  }
-
-  function imageFailureNotice(image, error) {
-    const name = image?.file?.name || image?.path || image?.image_id || 'image';
-    return `[image could not be uploaded: ${name} — ${String(error?.message || error)}. No pixels were sent; continue with the remaining images and task.]`;
-  }
-
-  async function uploadImagesBestEffort(images, targetConversationId, signal) {
-    const uploaded = [];
-    const failures = [];
-    for (const image of images) {
-      if (signal?.aborted) return { uploaded, failures, aborted: true };
-      if (!image.file) {
-        uploaded.push(image);
-        continue;
-      }
-      try {
-        const result = await uploadChatImage(image.file, signal, targetConversationId);
-        if (!result?.image_id || !result?.path) throw new Error('Image upload response is incomplete.');
-        uploaded.push({
-          image_id: result.image_id,
-          path: result.path,
-          mime: result.mime,
-          previewUrl: image.previewUrl,
-        });
-      } catch (error) {
-        if (signal?.aborted || error?.name === 'AbortError') return { uploaded, failures, aborted: true };
-        failures.push(imageFailureNotice(image, error));
-      }
-    }
-    return { uploaded, failures, aborted: false };
+    });
   }
 
   function preparePendingTask(request) {
@@ -420,10 +362,9 @@ export function createDeployHandlers(ctx) {
   }
 
   function requestConfigError(request) {
-    const workflows = request.executionMode === 'bot' ? normalizeWorkflowSettings(workflowSettingsDraft) : { presets: [], custom: [] };
-    return executionConfigError({ executionMode: request.executionMode, provider: request.providerRequest, modelId: request.modelId,
-      workflow: [...workflows.presets, ...workflows.custom].find((item) => item.workflow_id === request.workflowId),
-      nodeRuntimeConfigs: request.nodeRuntimeConfigs, providerOptions: ctx.providerOptions || [] });
+    // 只有 bot 模式才去读工作流目录：chat 模式没有工作流可查，不必付一次全量归一。
+    const workflows = request.executionMode === 'bot' ? normalizeWorkflowSettings(workflowSettingsDraft) : null;
+    return deployRequestConfigError(request, { workflows, providerOptions: ctx.providerOptions });
   }
 
   function startDeploy(request, deployConvId, seedDetail = null) {
@@ -601,10 +542,8 @@ export function createDeployHandlers(ctx) {
     const activeState = activeRuntime.taskRuntimeState;
     let runningTaskId = activeRuntime.activeTaskId || activeState.activeTaskId || null;
     if (!runningTaskId) {
-      const candidates = Object.values(activeState.tasksById || {})
-        .filter((task) => isTaskActuallyActive(task))
-        .sort((a, b) => taskUpdatedTimestamp(b) - taskUpdatedTimestamp(a));
-      runningTaskId = candidates[0]?.taskId || candidates[0]?.task_id || candidates[0]?.id || null;
+      const fallback = latestActiveTaskRecord(activeState, { isTaskActuallyActive, taskUpdatedTimestamp });
+      runningTaskId = fallback?.taskId || fallback?.task_id || fallback?.id || null;
     }
     const runtimeRunning = Boolean(
       activeRuntime?.busy

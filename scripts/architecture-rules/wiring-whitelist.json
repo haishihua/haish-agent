@@ -1,0 +1,51 @@
+{
+  "$comment": [
+    "接线规则的白名单。每条都必须带一句中文理由，说明「为什么这里可以有两份」——",
+    "理由为空等于没写，check:architecture 会红。",
+    "",
+    "三个分区对应三条规则：",
+    "  renderRefMirrors      key = `<文件>::<ref 名>`，sites = 允许的 render 期写入点数；",
+    "  duplicateStringArrays key = 排序后的数组成员用逗号连接，sites = 允许的定义处数；",
+    "  ctxWiring             key = `<工厂名>::<缺失键>`，工厂解构了、装配点却没递。",
+    "",
+    "新增命中请先判断是不是真接线错误：是真错误就修代码，确实要保留两份才在这里加条目。",
+    "条目已经不再命中时，check:architecture 会提示删掉。"
+  ],
+  "renderRefMirrors": {
+    "features/app/AppShell.jsx::deployApiRef": {
+      "sites": 1,
+      "reason": "createDeployHandlers 晚于会话/任务工厂装配，deployApiRef 是这几个工厂的延迟绑定接线板：buildDeployRequest / startDeploy 在会话工厂里只以 (...args) => deployApiRef.current.xxx(...) 的形式被调用。ref 里存的 handler 由 useShellHandlers 一次性产出，没有第二处写入，也不参与渲染。"
+    },
+    "features/chat/components/ChatComposer.jsx::currentDraftRef": {
+      "sites": 1,
+      "reason": "草稿正文的权威副本在 useComposerHistory 的 store 里（draft 由它订阅给出）；currentDraftRef 只在提交/快捷操作的回调里读「最新一帧的草稿」，唯一写入点就是这里，不存在第二处写。"
+    },
+    "features/conversations/hooks/useConversationRunConfig.js::readinessRef": {
+      "sites": 1,
+      "reason": "ready / loading / error 是渲染用的 state；readinessRef 供 await 之后重读（源码注释：An action can outlive the render that started it），只在异步流程里读，不再写回。"
+    },
+    "features/settings/hooks/useLlmSettings.js::savedRef": {
+      "sites": 1,
+      "reason": "saved 是 state，savedRef 给 useCallback 里的保存流程读最新已保存值；两处同进同出（applySaved 里 savedRef.current = normalized 紧跟着 setSaved(normalized)），是有意的同步镜像。"
+    }
+  },
+  "duplicateStringArrays": {
+    "agent,human_approval,llm,tool": {
+      "sites": 3,
+      "reason": "工作流节点类型词表：运行页两处（分组标题、筛选）与 workflow-attention 的注意力排序各一份；都在展示层，合并需要动产品代码，本次只做盘点。"
+    },
+    "approved,exhausted,false,rejected,retry,true": {
+      "sites": 2,
+      "reason": "工作流分支名白名单：normalizeWorkflowEdge（nodes.js）与 workflow payload 归一化（payload.js）各一份，两处必须同步；本次只做盘点，不动产品代码。"
+    },
+    "ArrowLeft,ArrowRight,End,Home": {
+      "sites": 2,
+      "reason": "键盘导航键表：JSON trace 节点与工作流节点详情头部两个独立小部件各自处理方向键，语义相同但各自演化风险低。"
+    },
+    "compact,embedding,llm": {
+      "sites": 8,
+      "reason": "设置页按 usage 过滤模型的分区词表：AppShell 的默认分区、SettingsPage 各分区的过滤、createSettingsHandlers 的落库归一化各写了一遍；合并需要动产品代码，本次只做盘点。"
+    }
+  },
+  "ctxWiring": {}
+}
