@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ModelPicker, AgentPicker } from '../../src/features/chat/components/ModelPickers.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
-import { startAgentCatalogLoad, staleAgentCatalog } from '../../src/features/agents/model/agent-catalog-loading.js';
+import { startAgentCatalogLoad, staleAgentCatalog } from '../../src/core/agent-catalog-loading.js';
 import '../../styles.css';
 
 const attempts = [];

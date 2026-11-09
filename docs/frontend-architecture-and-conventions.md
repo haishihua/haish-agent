@@ -37,7 +37,6 @@ app-web/
     app.jsx                  # ErrorBoundary + AppShell 挂载
     core/                    # 跨领域运行态语义；不依赖 features（见下表）
     features/
-      agents/model/          # Agent 配置领域模型
       app/                   # 应用组合根、顶栏和主布局
       approvals/             # 审批 API、状态和 UI
       chat/                  # 对话时间线、输入框、流式消息模型
@@ -67,7 +66,7 @@ app-web/
 | 任务记录 | `task-record`、`task-runtime`、`task-runtime-paging`、`task-pill`、`task-completion-notices` | app、conversations、tasks、workflow |
 | 消息与流 | `message-text`、`stream-events`、`event-identity`、`runtime-events`、`terminal-timeline`、`tool-names`、`tool-presentation`、`tool-trace-status`、`context-usage`、`quest-ack` | chat、conversations、tasks、workflow |
 | 工作流目录 | `workflow-catalog`、`workflow-catalog/*`、`workflow-defaults`、`workflow-snapshot`、`workflow-layout-store`、`runtime-workflow-layout`、`node-attempts`、`node-runtime-config`、`execution-config` | chat、settings、tasks、workflow |
-| 审批与配置 | `approval-store`、`workflow-approval-markdown`、`agent-settings`、`provider-catalog`、`project-matching`、`run-config`、`run-config-sync` | chat、conversations、schedules、settings、workflow |
+| 审批与配置 | `approval-store`、`workflow-approval-markdown`、`agent-settings`、`agent-catalog-loading`、`provider-catalog`、`project-matching`、`run-config`、`run-config-sync` | app、chat、conversations、schedules、settings、workflow |
 
 判据：**一个领域的 `model/` 只保留该领域自己的算法**；一旦第二个领域也要读，就搬到 `core/` 并在调用方直接改路径，不留 re-export。
 
@@ -103,8 +102,7 @@ main.jsx → app.jsx → features/* → core/* → shared/*
 | `workflow` | 工作流画布、运行详情与领域算法 | 目录/布局/尝试投影在 `core/`；运行页和设置编辑器共用 workflow 自己的画布组件 |
 | `approvals` | 审批/问答 API、定位算法和卡片 | 审批存储 `core/approval-store.js`；静态 CSS；不使用全局请求函数 |
 | `schedules` | 定时定义、时间规则、会话绑定和管理 | 通过 context 显式装配；执行复用 tasks runtime，不另建消息入口 |
-| `settings` | 设置页与各类配置编辑器 | `SettingsPage` 不是导出中转站 |
-| `agents` | Agent 配置与纯模型 | 不依赖 settings UI |
+| `settings` | 设置页与各类配置编辑器 | `SettingsPage` 不是导出中转站；provider 标记与头像用 `shared/` |
 
 ## 5. 模块职责
 

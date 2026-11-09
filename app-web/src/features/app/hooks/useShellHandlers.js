@@ -1,7 +1,7 @@
 import { API_BASE } from '../../../shared/api/base.js';
 import { DEFAULT_SESSION_NAME, apiFetch, buildApiHeaders, parseResponseMessage } from '../../../shared/api/client.js';
 import { copySettingsResponse } from '../../../shared/lib/settings-sync.js';
-import { staleAgentCatalog } from '../../agents/model/agent-catalog-loading.js';
+import { staleAgentCatalog } from '../../../core/agent-catalog-loading.js';
 import {
   APP_DEFAULT_AGENT_OPTIONS,
   agentCatalogFromSettings,

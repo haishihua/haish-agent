@@ -28,7 +28,7 @@
 | 旧位置/形态 | 当前归属 |
 | --- | --- |
 | `src/api/*` | `src/shared/api/*` 或 `features/<domain>/api/*` |
-| `src/lib/agent-catalog.js` | `features/agents/model`、`features/workflow/model`、`features/settings/model` |
+| `src/lib/agent-catalog.js` | `core/agent-settings.js`、`core/agent-catalog-loading.js`、`core/workflow-catalog.js`、`features/settings/model` |
 | `src/lib/workspace-state.js` | `features/conversations/model` |
 | `src/lib/task-runtime.js` | `core/task-runtime.js` |
 | `src/panels/*` | 对应领域的 `components`、`hooks`、`model` |

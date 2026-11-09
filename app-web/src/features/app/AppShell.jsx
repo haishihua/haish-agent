@@ -47,7 +47,7 @@ import {
   DEFAULT_AGENT_SETTINGS,
   normalizeAgentSettings,
 } from '../../core/agent-settings.js';
-import { startAgentCatalogLoad, staleAgentCatalog } from '../agents/model/agent-catalog-loading.js';
+import { startAgentCatalogLoad, staleAgentCatalog } from '../../core/agent-catalog-loading.js';
 import {
   DEFAULT_WORKFLOW_SETTINGS,
   DIRECT_AGENT_WORKFLOW_ID,

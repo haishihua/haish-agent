@@ -1,4 +1,4 @@
-import { agentCatalogFromProfiles } from '../../../core/agent-settings.js';
+import { agentCatalogFromProfiles } from './agent-settings.js';
 
 // One cancellable attempt. A stale/aborted response never publishes state,
 // even if the request implementation resolves after abort. Retry is explicit.

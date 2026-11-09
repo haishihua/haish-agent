@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { startAgentCatalogLoad, staleAgentCatalog } from '../../../src/features/agents/model/agent-catalog-loading.js';
+import { startAgentCatalogLoad, staleAgentCatalog } from '../../../src/core/agent-catalog-loading.js';
 
 const payload = { agents: [{ agent_id: 'preset.general', display_name: 'Assistant', effective_skill_items: [{ name: 'demo', description: 'Demo' }] }] };
 const deferred = () => { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; };
