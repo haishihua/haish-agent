@@ -3,7 +3,7 @@ import test from 'node:test';
 
 globalThis.window = {};
 
-const { resolveAgentActivity } = await import('../../../src/features/chat/model/tool-grouping.js');
+const { resolveAgentActivity } = await import('../../../src/core/tool-grouping.js');
 
 const tool = (toolName, status = 'running') => ({ kind: 'tool', toolName, status });
 const supportedOrbStates = new Set(['working', 'searching', 'solving', 'listening', 'composing']);

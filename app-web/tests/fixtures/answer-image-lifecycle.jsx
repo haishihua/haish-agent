@@ -5,7 +5,7 @@ import { ImageGenerateToolDetail } from '../../src/features/chat/components/Imag
 import { ChatMessageRow, ImagePreviewOverlay } from '../../src/features/chat/components/ChatMessageRow.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import { chatImagePreviewUrl } from '../../src/shared/api/chat-image.js';
-import { buildChatTimeline } from '../../src/features/chat/model/chat-timeline.js';
+import { buildChatTimeline } from '../../src/core/chat-timeline.js';
 import { taskDetailToRuntimeTask } from '../../src/core/task-runtime.js';
 
 // 离线回归启动：npx vite app-web --config app-web/tests/fixtures/answer-image-lifecycle.config.mjs

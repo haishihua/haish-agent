@@ -11,7 +11,7 @@ import {
   ReactFlowProvider,
   useNodesState,
 } from '@xyflow/react';
-import { workflowAgentName } from '../../chat/model/assistant-name.js';
+import { workflowAgentName } from '../../../core/assistant-name.js';
 import { normalizeTaskStatus } from '../../../core/run-status.js';
 import { workflowRuntimeDisplayStatus, workflowRuntimeNodeStatus } from '../model/runtime-status.js';
 import {

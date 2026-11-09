@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { assistantAgentIdForTask } from '../../src/features/chat/model/assistant-name.js';
+import { assistantAgentIdForTask } from '../../src/core/assistant-name.js';
 
 const row = readFileSync(new URL('../../src/features/chat/components/ChatMessageRow.jsx', import.meta.url), 'utf8');
 const timeline = readFileSync(new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url), 'utf8');

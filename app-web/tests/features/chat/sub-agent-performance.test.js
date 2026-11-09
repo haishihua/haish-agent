@@ -5,7 +5,7 @@ import { buildSubAgentTimelineItems, buildToolView } from '../../../src/features
 import { skillTrigger } from '../../../src/core/tool-presentation.js';
 
 globalThis.window = {};
-const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
+const { buildChatTimeline } = await import('../../../src/core/chat-timeline.js');
 
 const start = (id) => ({ type: 'tool_call_started', callId: id, toolName: 'dispatch_sub_agent', toolInput: { agent: id, task: 'Review' } });
 const delta = (id, text) => ({ type: 'sub_agent_answer_delta', parentCallId: id, delta: text, message: text });

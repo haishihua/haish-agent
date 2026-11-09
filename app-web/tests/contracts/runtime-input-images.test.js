@@ -4,7 +4,7 @@ import fs from 'node:fs';
 
 globalThis.window = {};
 
-const { buildChatTimeline } = await import('../../src/features/chat/model/chat-timeline.js');
+const { buildChatTimeline } = await import('../../src/core/chat-timeline.js');
 
 const chatPanelSource = fs.readFileSync(
   new URL('../../src/features/chat/components/ChatPanel.jsx', import.meta.url),

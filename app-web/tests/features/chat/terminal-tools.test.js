@@ -4,14 +4,14 @@ import fs from 'node:fs';
 import { buildToolView, TOOL_SHELL_NAMES } from '../../../src/features/chat/model/tool-view.js';
 
 globalThis.window = {};
-const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
+const { buildChatTimeline } = await import('../../../src/core/chat-timeline.js');
 
 const agentSettingsSource = fs.readFileSync(
   new URL('../../../src/core/agent-settings.js', import.meta.url),
   'utf8',
 );
 const chatTimelineSource = fs.readFileSync(
-  new URL('../../../src/features/chat/model/chat-timeline.js', import.meta.url),
+  new URL('../../../src/core/chat-timeline.js', import.meta.url),
   'utf8',
 );
 const terminalComponentSource = fs.readFileSync(

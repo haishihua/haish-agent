@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ChatAgentTimeline } from '../../src/features/chat/components/ChatTimelineNodes.jsx';
-import { buildChatTimeline } from '../../src/features/chat/model/chat-timeline.js';
+import { buildChatTimeline } from '../../src/core/chat-timeline.js';
 import { runtimeEventToLog } from '../../src/core/runtime-events.js';
 import 'lxgw-wenkai-screen-webfont/lxgwwenkaiscreen.css';
 import '../../styles/base.css';

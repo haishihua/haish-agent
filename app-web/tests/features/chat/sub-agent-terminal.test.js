@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { buildSubAgentTimelineItems, buildToolView } from '../../../src/features/chat/model/tool-view.js';
 
 globalThis.window = {};
-const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
+const { buildChatTimeline } = await import('../../../src/core/chat-timeline.js');
 const { runtimeEventToLog } = await import('../../../src/core/runtime-events.js');
 
 const start = (callId, toolName, toolInput) => ({

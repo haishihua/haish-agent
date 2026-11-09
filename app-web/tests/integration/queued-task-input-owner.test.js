@@ -5,7 +5,7 @@ import { createDraftConversationHandlers } from '../../src/features/conversation
 import { normalizeRuntimeEvents, runtimeEventToLog } from '../../src/core/runtime-events.js';
 
 globalThis.window = { HAISH_API_BASE: '', haish: {} };
-const { buildChatTimeline } = await import('../../src/features/chat/model/chat-timeline.js');
+const { buildChatTimeline } = await import('../../src/core/chat-timeline.js');
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 function deferred() {

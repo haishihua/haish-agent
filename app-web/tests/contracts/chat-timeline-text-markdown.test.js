@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 globalThis.window = {};
-const { buildChatTimeline } = await import('../../src/features/chat/model/chat-timeline.js');
+const { buildChatTimeline } = await import('../../src/core/chat-timeline.js');
 
 const editor = fs.readFileSync(
   new URL('../../src/features/chat/components/ChatTimelineNodes.jsx', import.meta.url),

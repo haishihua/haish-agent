@@ -4,7 +4,7 @@ import { buildToolView } from '../../../src/features/chat/model/tool-view.js';
 import { skillTrigger, toolCardHeading } from '../../../src/core/tool-presentation.js';
 
 globalThis.window = {};
-const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
+const { buildChatTimeline } = await import('../../../src/core/chat-timeline.js');
 
 test('only reading a skill entry document loads a Skill, including catalog paths without metadata', () => {
   for (const root of ['.haish/skills', '.mounted-skills', '.skills', '.skills-src', '.agents/skills', '.codex/skills']) {

@@ -5,7 +5,7 @@ import { compactStreamEvents, appendStreamEvent } from '../../../src/core/stream
 import { deduplicateRuntimeEvents } from '../../../src/core/event-identity.js';
 
 globalThis.window = {};
-const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
+const { buildChatTimeline } = await import('../../../src/core/chat-timeline.js');
 
 const start = (parent) => ({ type: 'tool_call_started', callId: parent, toolName: 'dispatch_sub_agent' });
 const delta = (parent, text, eventId) => ({ type: 'sub_agent_answer_delta', parentCallId: parent, message: text, delta: text, eventId });

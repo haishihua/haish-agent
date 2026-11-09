@@ -27,7 +27,7 @@ import {
 import { placeToolApprovals } from '../model/approval-placement.js';
 import { approvalStore } from '../../../core/approval-store.js';
 import { buildSubAgentTimelineItems, buildToolView } from '../model/tool-view.js';
-import { resolveAgentActivity } from '../model/tool-grouping.js';
+import { resolveAgentActivity } from '../../../core/tool-grouping.js';
 import { useConversationWaitState } from '../../conversations/hooks/useConversationRunState.js';
 import { resolveToolIconClass, ToolApprovalsContext } from './nodes/shared.js';
 import { ChatJsonBlock, ChatJsonPair } from './nodes/JsonTraceNode.jsx';

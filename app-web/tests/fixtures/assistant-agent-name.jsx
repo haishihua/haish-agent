@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ChatMessageRow } from '../../src/features/chat/components/ChatMessageRow.jsx';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
-import { assistantAgentIdForTask, assistantNameForTask } from '../../src/features/chat/model/assistant-name.js';
+import { assistantAgentIdForTask, assistantNameForTask } from '../../src/core/assistant-name.js';
 import { saveAgentAvatar } from '../../src/shared/lib/agent-avatars.js';
 import '../../styles/base.css';
 import '../../styles/chat.css';

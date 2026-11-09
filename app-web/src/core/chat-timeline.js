@@ -1,11 +1,11 @@
-import { eventDeltaText, stripInjectedSkillInstruction } from '../../../core/message-text.js';
-import { cachedStreamEventBase, recordStreamEventUpdate, streamEventUpdate } from '../../../core/stream-events.js';
-import { normalizeToolName } from '../../../core/tool-names.js';
-import { getToolResponseTraceStatus, getToolTraceStatus } from '../../../core/tool-trace-status.js';
-import { createTerminalTimeline } from '../../../core/terminal-timeline.js';
-import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../core/run-status.js';
-import { skillTrigger } from '../../../core/tool-presentation.js';
-import { mergeChatImageRefs, normalizeChatImageRefs } from '../../../core/task-record.js';
+import { eventDeltaText, stripInjectedSkillInstruction } from './message-text.js';
+import { cachedStreamEventBase, recordStreamEventUpdate, streamEventUpdate } from './stream-events.js';
+import { normalizeToolName } from './tool-names.js';
+import { getToolResponseTraceStatus, getToolTraceStatus } from './tool-trace-status.js';
+import { createTerminalTimeline } from './terminal-timeline.js';
+import { isTerminalTaskStatus, normalizeTaskStatus } from './run-status.js';
+import { skillTrigger } from './tool-presentation.js';
+import { mergeChatImageRefs, normalizeChatImageRefs } from './task-record.js';
 import { llmRetrySummary } from './progress-text.js';
 import {
   atPath,

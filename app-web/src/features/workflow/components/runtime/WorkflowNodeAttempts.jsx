@@ -2,7 +2,7 @@
 import React from 'react';
 import { ChatTimelineChevron } from '../../../chat/components/ChatTimelineNodes.jsx';
 import { isTaskSettled } from '../../../../core/run-status.js';
-import { workflowAgentName } from '../../../chat/model/assistant-name.js';
+import { workflowAgentName } from '../../../../core/assistant-name.js';
 import { workflowResultForAttempt } from '../../../../core/runtime-workflow-layout.js';
 import { AppIcon } from '../../../../shared/ui/AppIcon.jsx';
 import { NodeConversation } from './WorkflowNodeConversation.jsx';

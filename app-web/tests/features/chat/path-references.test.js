@@ -115,7 +115,7 @@ test('branch names, versions and prose with a slash stay body text instead of be
   for (const value of [
     'release/20260917', 'feature/requirement-21555', 'pipeline/stage2', 'v1.2/3', 'release/1.2',
     '.worktrees/release-20260917', '明天/后天', '修复release/20260917分支',
-    '帮我看看src/a.py', '看下app-web/src/features/chat/model/chat-timeline.js',
+    '帮我看看src/a.py', '看下app-web/src/core/chat-timeline.js',
     '那就把修复分支合并到release/20260917。',
   ]) {
     // 两层判定必须同口径：模型说不是引用，气泡就一个字都不能搬走。

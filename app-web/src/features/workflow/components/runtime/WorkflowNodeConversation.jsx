@@ -2,7 +2,7 @@
 import React from 'react';
 import { AskUserInlineForm } from '../../../chat/components/AskUserInlineForm.jsx';
 import { ChatMessageRow } from '../../../chat/components/ChatMessageRow.jsx';
-import { buildChatTimeline } from '../../../chat/model/chat-timeline.js';
+import { buildChatTimeline } from '../../../../core/chat-timeline.js';
 import { workflowApprovalInput } from '../../../../core/workflow-approval-markdown.js';
 import { workflowInputDisplayText } from '../../../../core/workflow-catalog.js';
 import { WorkflowApprovalInline } from '../../../approvals/components/ApprovalOverlay.jsx';

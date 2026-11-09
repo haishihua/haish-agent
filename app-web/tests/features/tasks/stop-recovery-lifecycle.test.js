@@ -13,7 +13,7 @@ const runStatus = await import('../../../src/core/run-status.js');
 const events = await import('../../../src/core/runtime-events.js');
 const workspace = await import('../../../src/features/conversations/model/workspace-state.js');
 const taskRecord = await import('../../../src/core/task-record.js');
-const { buildChatTimeline } = await import('../../../src/features/chat/model/chat-timeline.js');
+const { buildChatTimeline } = await import('../../../src/core/chat-timeline.js');
 
 function deferred() {
   let resolve;

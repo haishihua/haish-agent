@@ -7,7 +7,7 @@ import { workflowControlEvents } from '../../src/features/workflow/model/workflo
 
 globalThis.window = {};
 const { evictInactiveRuntimes, releaseWorkspaceRuntimeDetails } = await import('../../src/features/conversations/model/runtime-cache.js');
-const { buildChatTimeline } = await import('../../src/features/chat/model/chat-timeline.js');
+const { buildChatTimeline } = await import('../../src/core/chat-timeline.js');
 
 test('streamed text and reasoning reuse historical timeline items without replaying events', () => {
   for (const type of ['llm_answer_delta', 'llm_thinking_delta']) {

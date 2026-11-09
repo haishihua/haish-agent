@@ -1,11 +1,11 @@
 // 工具调用的分类、连续分组、分组摘要与活动判定。时间线只消费这里的结果。
 
-import { eventDeltaText } from '../../../core/message-text.js';
+import { eventDeltaText } from './message-text.js';
 import { subAgentEventText } from './progress-text.js';
-import { normalizeToolName } from '../../../core/tool-names.js';
-import { skillDisplayName } from '../../../core/runtime-events.js';
-import { skillTrigger } from '../../../core/tool-presentation.js';
-import { RUN_STATE_APPROVAL, RUN_STATE_WAITING_INPUT } from '../../../core/run-status.js';
+import { normalizeToolName } from './tool-names.js';
+import { skillDisplayName } from './runtime-events.js';
+import { skillTrigger } from './tool-presentation.js';
+import { RUN_STATE_APPROVAL, RUN_STATE_WAITING_INPUT } from './run-status.js';
 
 function chatTraceToolName(value) {
   return String(value || 'tool').replace(/[_-]+/g, ' ').trim() || 'tool';

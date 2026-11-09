@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import { ChatAgentTimeline } from '../../src/features/chat/components/ChatTimelineNodes.jsx';
 import { ToolApprovalsContext } from '../../src/features/chat/components/nodes/shared.js';
 import { appendStreamEvent } from '../../src/core/stream-events.js';
-import { buildChatTimeline } from '../../src/features/chat/model/chat-timeline.js';
+import { buildChatTimeline } from '../../src/core/chat-timeline.js';
 import { AppTooltipProvider } from '../../src/shared/ui/PortalTooltip.jsx';
 import '../../styles/chat.css';
 
