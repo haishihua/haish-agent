@@ -100,6 +100,15 @@ const api: HaishDesktopApi = {
       ipcRenderer.send('runtime:settings-unsubscribe');
     };
   },
+  onConversationEvent: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, message: Record<string, unknown>) => callback(message);
+    ipcRenderer.on('runtime:conversation-event', listener);
+    ipcRenderer.send('runtime:conversation-subscribe');
+    return () => {
+      ipcRenderer.removeListener('runtime:conversation-event', listener);
+      ipcRenderer.send('runtime:conversation-unsubscribe');
+    };
+  },
   onScheduleEvent: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, message: Record<string, unknown>) => callback(message);
     ipcRenderer.on('runtime:schedule-event', listener);

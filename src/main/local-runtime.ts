@@ -1,6 +1,7 @@
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
+import { processAlive } from './process-liveness.js';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -237,15 +238,6 @@ function removePidRecord(workdir: string): void {
     fs.rmSync(runtimePidFile(workdir), { force: true });
   } catch {
     // 清理失败忽略。
-  }
-}
-
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException)?.code === 'EPERM';
   }
 }
 

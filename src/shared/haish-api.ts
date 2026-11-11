@@ -148,6 +148,7 @@ export type HaishDesktopApi = {
   copyImage: (dataUrl: string) => Promise<boolean>;
   getPathForFile: (file: File) => string;
   runTaskStream: (command: RealtimeTaskCommand, onEvent: (event: Record<string, unknown>) => void) => Promise<void>;
+  onConversationEvent: (callback: (event: Record<string, unknown>) => void) => () => void;
   onScheduleEvent: (callback: (event: Record<string, unknown>) => void) => () => void;
   onSettingsEvent: (callback: (event: Record<string, unknown>) => void) => () => void;
   onApprovalEvent: (callback: (event: Record<string, unknown>) => void) => () => void;

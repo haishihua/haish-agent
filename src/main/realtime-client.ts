@@ -53,9 +53,12 @@ let realtimeSocketPromise: Promise<WebSocket> | null = null;
 let realtimeReconnectTimer: NodeJS.Timeout | null = null;
 const realtimeCommandWaiters = new Map<string, CommandWaiter>();
 const realtimeTaskOwners = new Map<string, RealtimeTaskOwner>();
-const realtimeApprovalSubscribers = new Set<number>();
+const realtimeApprovalSubscribers = new Map<number, symbol>();
+const approvalSnapshotRetries = new Map<number, NodeJS.Timeout>();
+const approvalSnapshotRefreshes = new Map<number, { subscription: symbol; promise: Promise<void> }>();
 const realtimeScheduleSubscribers = new Set<number>();
 const realtimeSettingsSubscribers = new Set<number>();
+const realtimeConversationSubscribers = new Set<number>();
 
 const scheduledTaskActivity = createScheduledTaskActivity();
 let scheduleActivityTimer: NodeJS.Timeout | null = null;
@@ -99,8 +102,7 @@ function reattachRunningTaskStreams(socket: WebSocket): void {
   realtimeTaskOwners.clear();
   for (const [requestId, owner] of owners) {
     realtimeTaskOwners.set(requestId, owner);
-    // 没见过服务端分配的 task_id 时没有可挂的任务，等它自己跑出来再说。
-    if (!owner.taskId) continue;
+    // 即使尚未收到 task_id，也可用原 request_id 重挂服务端已接受的流。
     try {
       socket.send(JSON.stringify({
         type: 'task.attach',
@@ -135,11 +137,27 @@ function handleRealtimeMessage(event: MessageEvent): void {
   const requestId = String(message.request_id || '');
   if (message.type === 'command.result') {
     const waiter = realtimeCommandWaiters.get(requestId);
-    if (!waiter) return;
+    if (!waiter) {
+      // Reattach is sent without a command waiter. A missing pre-start stream
+      // must settle its renderer promise rather than leave it pending forever.
+      const owner = realtimeTaskOwners.get(requestId);
+      if (owner && message.ok === false) {
+        sendToWebContents(owner.ownerId, 'runtime:task-message', { type: 'task.error', request_id: requestId, status: message.status, detail: message.detail });
+        sendToWebContents(owner.ownerId, 'runtime:task-message', { type: 'task.end', request_id: requestId });
+        realtimeTaskOwners.delete(requestId);
+      }
+      return;
+    }
     clearTimeout(waiter.timer);
     realtimeCommandWaiters.delete(requestId);
     if (message.ok) waiter.resolve((message.result as Record<string, unknown>) || { ok: true });
     else waiter.reject(Object.assign(new Error(String(message.detail || 'Runtime command failed.')), { status: message.status }));
+    return;
+  }
+  if (message.type === 'conversation.updated') {
+    for (const subscriberId of realtimeConversationSubscribers) {
+      sendToWebContents(subscriberId, 'runtime:conversation-event', message);
+    }
     return;
   }
   if (message.type === 'settings.event' || message.type === 'settings.resync') {
@@ -167,7 +185,7 @@ function handleRealtimeMessage(event: MessageEvent): void {
     return;
   }
   if (message.type === 'approval.event') {
-    for (const subscriberId of realtimeApprovalSubscribers) {
+    for (const subscriberId of realtimeApprovalSubscribers.keys()) {
       sendToWebContents(subscriberId, 'runtime:approval-event', message.event);
     }
     return;
@@ -202,6 +220,12 @@ export async function ensureRealtimeSocket(): Promise<WebSocket> {
           sendToWebContents(subscriberId, 'runtime:schedule-event', { type: 'schedule.resync' });
         }
         resolve(socket);
+        // Do not await snapshots here: commands themselves await the open socket.
+        for (const subscriberId of realtimeApprovalSubscribers.keys()) {
+          void refreshApprovalSnapshot(subscriberId).catch((error) => {
+            console.warn('[realtime] failed to recover approval snapshot; retry scheduled', error);
+          });
+        }
         if (scheduleActivityTimer) clearInterval(scheduleActivityTimer);
         scheduleActivityTimer = setInterval(() => void refreshScheduleActivity(), 15_000);
         void refreshScheduleActivity();
@@ -216,6 +240,10 @@ export async function ensureRealtimeSocket(): Promise<WebSocket> {
         if (scheduleActivityTimer) clearInterval(scheduleActivityTimer);
         scheduleActivityTimer = null;
         // Unlike manual streams, scheduled executions survive socket loss.
+        // Invalidate synchronously, before rejected command continuations run.
+        // The next open must start a fresh snapshot, not join the closed socket's
+        // refresh; its late result/failure must not deliver or schedule a retry.
+        approvalSnapshotRefreshes.clear();
         failRealtimeConnection();
         scheduleRealtimeReconnect();
       });
@@ -263,18 +291,53 @@ export async function sendRealtimeCommand(command: RealtimeMessage, timeoutMs = 
   });
 }
 
-export async function refreshApprovalSnapshot(subscriberId: number): Promise<void> {
-  const result = await sendRealtimeCommand({
-    type: 'approval.snapshot',
-    request_id: randomUUID(),
+export function refreshApprovalSnapshot(subscriberId: number): Promise<void> {
+  const subscription = realtimeApprovalSubscribers.get(subscriberId);
+  if (!subscription || isRuntimeStopping()) return Promise.resolve();
+  const existing = approvalSnapshotRefreshes.get(subscriberId);
+  if (existing?.subscription === subscription) return existing.promise;
+  const refresh = { subscription, promise: Promise.resolve() };
+  // Publish before starting: initial refresh waits for open, whose recovery
+  // callback joins this same subscription-lifetime operation.
+  approvalSnapshotRefreshes.set(subscriberId, refresh);
+  refresh.promise = performApprovalSnapshotRefresh(subscriberId, subscription, refresh).finally(() => {
+    if (approvalSnapshotRefreshes.get(subscriberId) === refresh) approvalSnapshotRefreshes.delete(subscriberId);
   });
-  if (!realtimeApprovalSubscribers.has(subscriberId)) return;
-  const state = result.state;
-  if (!state || typeof state !== 'object') throw new Error('Runtime returned an invalid approval snapshot.');
-  sendToWebContents(subscriberId, 'runtime:approval-event', {
-    type: 'approval_snapshot',
-    state,
-  });
+  return refresh.promise;
+}
+
+async function performApprovalSnapshotRefresh(
+  subscriberId: number,
+  subscription: symbol,
+  refresh: { subscription: symbol; promise: Promise<void> },
+): Promise<void> {
+  const retry = approvalSnapshotRetries.get(subscriberId);
+  if (retry) clearTimeout(retry);
+  approvalSnapshotRetries.delete(subscriberId);
+  try {
+    const result = await sendRealtimeCommand({
+      type: 'approval.snapshot',
+      request_id: randomUUID(),
+    }, 10_000);
+    // A removed and re-added owner is a different subscription lifetime.
+    if (realtimeApprovalSubscribers.get(subscriberId) !== subscription || approvalSnapshotRefreshes.get(subscriberId) !== refresh || isRuntimeStopping()) return;
+    const state = result.state;
+    if (!state || typeof state !== 'object') throw new Error('Runtime returned an invalid approval snapshot.');
+    sendToWebContents(subscriberId, 'runtime:approval-event', {
+      type: 'approval_snapshot',
+      state,
+    });
+  } catch (error) {
+    if (realtimeApprovalSubscribers.get(subscriberId) === subscription && approvalSnapshotRefreshes.get(subscriberId) === refresh && !isRuntimeStopping() && !approvalSnapshotRetries.has(subscriberId)) {
+      approvalSnapshotRetries.set(subscriberId, setTimeout(() => {
+        approvalSnapshotRetries.delete(subscriberId);
+        void refreshApprovalSnapshot(subscriberId).catch((retryError) => {
+          console.warn('[realtime] failed to recover approval snapshot; retry scheduled', retryError);
+        });
+      }, 1_000));
+    }
+    throw error;
+  }
 }
 
 // —— 状态读写：main.ts 的 IPC 处理器和退出流程只通过下面这些函数动实时状态 ——
@@ -286,6 +349,14 @@ export function registerTaskStreamOwner(requestId: string, ownerId: number): voi
 
 export function forgetTaskStreamOwner(requestId: string): void {
   realtimeTaskOwners.delete(requestId);
+}
+
+export function addConversationSubscriber(senderId: number): void {
+  realtimeConversationSubscribers.add(senderId);
+}
+
+export function removeConversationSubscriber(senderId: number): void {
+  realtimeConversationSubscribers.delete(senderId);
 }
 
 export function addSettingsSubscriber(senderId: number): void {
@@ -301,11 +372,15 @@ export function removeSettingsSubscriber(senderId: number): void {
 }
 
 export function addApprovalSubscriber(senderId: number): void {
-  realtimeApprovalSubscribers.add(senderId);
+  if (!realtimeApprovalSubscribers.has(senderId)) realtimeApprovalSubscribers.set(senderId, Symbol());
 }
 
 export function removeApprovalSubscriber(senderId: number): void {
   realtimeApprovalSubscribers.delete(senderId);
+  approvalSnapshotRefreshes.delete(senderId);
+  const retry = approvalSnapshotRetries.get(senderId);
+  if (retry) clearTimeout(retry);
+  approvalSnapshotRetries.delete(senderId);
 }
 
 export function addScheduleSubscriber(senderId: number): void {
@@ -322,6 +397,9 @@ export function removeScheduleSubscriber(senderId: number): void {
 
 /** 退出前收尾：停掉重连和 15 秒快照、清空登记与定时任务活动、关掉 socket。 */
 export function stopRealtimeClient(): void {
+  approvalSnapshotRefreshes.clear();
+  for (const timer of approvalSnapshotRetries.values()) clearTimeout(timer);
+  approvalSnapshotRetries.clear();
   if (realtimeReconnectTimer) clearTimeout(realtimeReconnectTimer);
   realtimeReconnectTimer = null;
   if (scheduleActivityTimer) clearInterval(scheduleActivityTimer);

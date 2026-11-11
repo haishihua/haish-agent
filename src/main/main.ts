@@ -12,6 +12,7 @@ import {
 } from 'electron';
 import { existsSync } from 'node:fs';
 import { proxyResponse } from './proxy-response.js';
+import { trackSubscriberOwner } from './subscriber-owner.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -48,6 +49,7 @@ import {
 import { createAppSleepGuard } from './app-sleep-guard.js';
 import {
   addApprovalSubscriber,
+  addConversationSubscriber,
   addScheduleSubscriber,
   addSettingsSubscriber,
   configureRealtimeClient,
@@ -58,6 +60,7 @@ import {
   refreshApprovalSnapshot,
   registerTaskStreamOwner,
   removeApprovalSubscriber,
+  removeConversationSubscriber,
   removeScheduleSubscriber,
   removeSettingsSubscriber,
   scheduleRealtimeReconnect,
@@ -441,13 +444,22 @@ ipcMain.handle('runtime:command', async (event, command: RealtimeMessage) => {
     throw error;
   }
 });
+ipcMain.on('runtime:conversation-subscribe', (event) => {
+  const sender = new URL(event.senderFrame?.url || 'about:blank');
+  if (sender.protocol !== 'haish:' || sender.hostname !== 'app') return;
+  const senderId = event.sender.id;
+  addConversationSubscriber(senderId);
+  trackSubscriberOwner(event.sender, removeConversationSubscriber);
+  ensureRealtimeSocket().catch(() => scheduleRealtimeReconnect());
+});
+ipcMain.on('runtime:conversation-unsubscribe', (event) => {
+  removeConversationSubscriber(event.sender.id);
+});
 ipcMain.on('runtime:settings-subscribe', (event) => {
   const sender = new URL(event.senderFrame?.url || 'about:blank');
   if (sender.protocol !== 'haish:' || sender.hostname !== 'app') return;
   const senderId = event.sender.id;
-  if (!hasSettingsSubscriber(senderId)) {
-    event.sender.once('destroyed', () => removeSettingsSubscriber(senderId));
-  }
+  trackSubscriberOwner(event.sender, removeSettingsSubscriber);
   addSettingsSubscriber(senderId);
   ensureRealtimeSocket().then(() => {
     if (hasSettingsSubscriber(senderId)) sendToWebContents(senderId, 'runtime:settings-event', { type: 'settings.resync' });
@@ -461,7 +473,7 @@ ipcMain.on('runtime:approval-subscribe', (event) => {
   if (sender.protocol !== 'haish:' || sender.hostname !== 'app') return;
   const senderId = event.sender.id;
   addApprovalSubscriber(senderId);
-  event.sender.once('destroyed', () => removeApprovalSubscriber(senderId));
+  trackSubscriberOwner(event.sender, removeApprovalSubscriber);
   refreshApprovalSnapshot(senderId).catch((error) => {
     console.warn('[realtime] failed to refresh approval snapshot', error);
     scheduleRealtimeReconnect();
@@ -475,7 +487,7 @@ ipcMain.on('runtime:schedule-subscribe', (event) => {
   if (sender.protocol !== 'haish:' || sender.hostname !== 'app') return;
   const senderId = event.sender.id;
   addScheduleSubscriber(senderId);
-  event.sender.once('destroyed', () => removeScheduleSubscriber(senderId));
+  trackSubscriberOwner(event.sender, removeScheduleSubscriber);
   ensureRealtimeSocket().then(() => {
     if (hasScheduleSubscriber(senderId)) sendToWebContents(senderId, 'runtime:schedule-event', { type: 'schedule.resync' });
   }).catch(() => scheduleRealtimeReconnect());

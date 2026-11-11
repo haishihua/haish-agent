@@ -1,5 +1,6 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
+import { processAlive } from './process-liveness.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -66,15 +67,6 @@ function settingsPath(userDataPath: string): string {
 
 function pidPath(userDataPath: string): string {
   return path.join(userDataPath, PID_FILE);
-}
-
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException)?.code === 'EPERM';
-  }
 }
 
 // The frozen adapter is a PyInstaller one-file build: the launched process is a
