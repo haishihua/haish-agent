@@ -276,6 +276,7 @@ export function createQuestExecutor({
     } : {
       message: pendingTask.requestText ?? pendingTask.title,
       annotations: pendingTask.annotations || [],
+      history_source_task_id: pendingTask.historySourceTaskId || null,
       // 「以任务产出为上下文」：只传任务引用，报告正文由服务端在起跑时取
       // （没挂上下文就是空数组）。
       context_tasks: (Array.isArray(pendingTask.contextTasks) ? pendingTask.contextTasks : [])
@@ -402,6 +403,7 @@ export function createQuestExecutor({
         flushTimer = setTimeout(flushQueuedEvents, streamEventBatchMs);
       }
     };
+    let recoveryPending = Promise.resolve();
     try {
       for (let attempt = 0; ; attempt += 1) {
         const command = {
@@ -420,7 +422,7 @@ export function createQuestExecutor({
             // 背压丢事件：控制面提示，不是任务事件（更不是失败）。按游标补一次，
             // 下面的归一化/应用管线不认识它。
             if (event?.type === RESYNC_REQUIRED_TYPE) {
-              void resyncTaskRuntimeAfterBackpressure(event, runConversationId, { flushPending: flushQueuedEvents });
+              recoveryPending = recoveryPending.then(() => resyncTaskRuntimeAfterBackpressure(event, runConversationId, { flushPending: flushQueuedEvents }));
               return;
             }
             const normalized = normalizeRuntimeEvent(event);
@@ -441,6 +443,7 @@ export function createQuestExecutor({
             if (!acceptRuntimeEvent(normalized, runConversationId)) return;
             queueRuntimeEvent(normalized);
           });
+          await recoveryPending;
           break;
         } catch (error) {
           const detail = String(error?.message || error || '');

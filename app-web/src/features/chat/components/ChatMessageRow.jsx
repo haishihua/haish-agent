@@ -36,7 +36,7 @@ function FinalAnswerMarkdown({ source, streaming, sourceMessageId }) {
   );
 }
 
-function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, onRetry, onFork, onEdit, onAnnotationJump, actionsDisabled = false, forceTraceOpen = false, retryPending = false }) {
+function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, onRetry, onFork, onEdit, onAnnotationJump, actionsDisabled = false, forceTraceOpen = false, retryPending = false, mcpUserInput = true }) {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState('');
   const [actionBusy, setActionBusy] = React.useState(false);
@@ -206,6 +206,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
               latestTodos={message.traceLatestTodos || null}
               conversationId={message.conversationId || ''}
               taskId={message.taskId || ''}
+              mcpUserInput={mcpUserInput}
               onPreviewImage={onPreviewImage}
             />
           ) : null}
@@ -288,5 +289,6 @@ export const ChatMessageRow = React.memo(
     && previous.actionsDisabled === next.actionsDisabled
     && previous.retryPending === next.retryPending
     && previous.forceTraceOpen === next.forceTraceOpen
+    && previous.mcpUserInput === next.mcpUserInput
   ),
 );

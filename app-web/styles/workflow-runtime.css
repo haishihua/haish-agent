@@ -453,7 +453,8 @@
 .workflow-runtime-select > [data-slot="select-value"] { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; }
 .workflow-runtime-select [data-slot="select-value"] > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workflow-runtime-select > svg { width: 16px; height: 16px; flex-shrink: 0; color: #a8c1e6; }
-.workflow-runtime-select .settings-provider-icon, .workflow-runtime-select-menu .settings-provider-icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: 0 0 18px; color: #dce6f5; }
+.workflow-runtime-select .settings-provider-icon, .workflow-runtime-select-menu .settings-provider-icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: 0 0 18px; color: #dce6f5; --settings-provider-glyph-size: 16px; /* 图标自己就是标记，不要再套一层描边/底色的圆环（settings 的 44px 媒体格样式别跟过来）。 */ border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.workflow-runtime-select .settings-provider-icon.settings-provider-initials, .workflow-runtime-select-menu .settings-provider-icon.settings-provider-initials { font: 600 11px/1 var(--conversation-font); letter-spacing: .04em; }
 .workflow-runtime-select .settings-provider-logo, .workflow-runtime-select-menu .settings-provider-logo { width: 18px; height: 18px; }
 .workflow-runtime-select-menu { z-index: 1000; width: var(--radix-select-trigger-width); min-width: 180px; max-width: calc(100vw - 24px); max-height: min(320px, var(--radix-select-content-available-height)); overflow: hidden; padding: 4px; border: 1px solid #36597f; border-radius: 10px; background: linear-gradient(145deg, #142438, #0c1828); color: #dce6f5; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); font: 12px/1.5 var(--conversation-font); animation: none; }
 .workflow-runtime-select-menu [data-radix-select-viewport] { padding: 0; }
@@ -467,7 +468,9 @@
 .workflow-runtime-config .workflow-runtime-select:focus-visible, .workflow-runtime-config .workflow-runtime-select[data-state="open"] { outline: none; box-shadow: 0 0 0 2px var(--workflow-detail-accent, #76b9fa); }
 .workflow-runtime-config .workflow-runtime-select:active { background: #203049; }
 .workflow-run-canvas .workflow-node-model { display: flex; align-items: center; gap: 5px; min-width: 0; }
-.workflow-run-canvas .workflow-node-model .settings-provider-icon, .workflow-run-canvas .workflow-node-model .settings-provider-logo { width: 14px; height: 14px; flex: 0 0 14px; color: inherit; }
+.workflow-run-canvas .workflow-node-model .settings-provider-icon { width: 14px; height: 14px; flex: 0 0 14px; color: inherit; --settings-provider-glyph-size: 14px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+/* logo 的墨色就是 background: currentColor + mask，这里不能再碰 background，否则图标直接消失。 */
+.workflow-run-canvas .workflow-node-model .settings-provider-logo { width: 14px; height: 14px; flex: 0 0 14px; color: inherit; }
 .workflow-node-model > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workflow-composer-selector .workflow-picker-trigger { display: inline-flex; align-items: center; justify-content: center; width: 32px; min-width: 32px; height: 32px; padding: 4px; border: 0; border-radius: 7px; background: transparent; color: #a0a0a0; box-shadow: none; cursor: pointer; transition: background-color 120ms ease, box-shadow 120ms ease, transform 120ms ease; }
 .workflow-composer-selector .workflow-picker-trigger > svg:first-child { flex: 0 0 24px; width: 24px; height: 24px; color: inherit; }

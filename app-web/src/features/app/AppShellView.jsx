@@ -8,6 +8,9 @@ import { ConversationsPanel } from '../conversations/components/ConversationsPan
 import { ChatPanel } from '../chat/components/ChatPanel.jsx';
 import { DraftProjectPicker } from '../chat/components/DraftProjectPicker.jsx';
 import { ChatComposer } from '../chat/components/ChatComposer.jsx';
+import { useAnnotationDraft } from '../chat/hooks/useAnnotationDraft.js';
+import { annotationError } from '../chat/model/message-annotations.js';
+import { QuoteBlock } from '../../shared/ui/agent-elements/Quote.jsx';
 import { petActivityFromWorkflow } from '../../core/pet-state.js';
 import { WorkflowRuntimeEntry as WorkflowRuntimePage } from '../workflow/components/WorkflowRuntimeEntry.jsx';
 import { nodeRuntimeConfigRequest } from '../../core/node-runtime-config.js';
@@ -67,6 +70,18 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
     setViewedWorkflowTask, executeWorkflowNodeRerun, workflowLoading, workflowOptions, defaultWorkflowId,
     setSelectedWorkflowId, botRunConfigStorageKey,
   } = workflow;
+
+  const workflowAnnotationScope = currentWorkflowTask?.taskId ? `workflow:${currentWorkflowTask.taskId}` : '';
+  const acknowledgedWorkflowAnnotations = React.useMemo(() => Object.values(taskRuntimeState?.tasksById || {})
+    .filter((task) => task?.runtimeHydrated && task?.annotations?.length)
+    .map((task) => ({ role: 'user', messageId: task.taskId, annotations: task.annotations })), [taskRuntimeState]);
+  const { items: workflowAnnotations, update: updateWorkflowAnnotations } = useAnnotationDraft(workflowAnnotationScope, acknowledgedWorkflowAnnotations);
+  const saveWorkflowAnnotation = (item) => {
+    const error = annotationError([...workflowAnnotations.filter((draft) => draft.id !== item.id), item]);
+    if (error) { showToast?.('warn', error); return false; }
+    updateWorkflowAnnotations((drafts) => [...drafts.filter((draft) => draft.id !== item.id), item]);
+    return true;
+  };
 
   const draftProjectSelector = activityOpen && draftConversationRef.current?.id === conversationId
     && !draftConversationRef.current?.serverCreated ? <DraftProjectPicker
@@ -229,11 +244,14 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                     task={currentWorkflowTask}
                     agentOptions={agentOptions}
                     onOpenConfig={openWorkflowConfig}
+                    annotationDrafts={workflowAnnotations}
+                    onSaveAnnotation={saveWorkflowAnnotation}
+                    onAnnotationError={(error) => { if (error) showToast?.('warn', error); }}
                     {...{ providerOptions: llmProviderOptions, nodeRuntimeConfigs: currentConversationRunning ? (currentWorkflowTask?.nodeRuntimeConfigs || {}) : botNodeConfigs, onNodeRuntimeConfigChange: nodeConfigSelection.change, configReadOnly: currentConversationRunning || submitPending }}
                     onRetry={(nodeId) => {
                       if (!currentWorkflowTask) return;
                       setViewedWorkflowTask(null);
-                      executeWorkflowNodeRerun(currentWorkflowTask, nodeId, selectedWorkflow?.nodes?.find((node) => node.id === nodeId)?.type === 'agent' ? nodeRuntimeConfigRequest(botNodeConfigs[nodeId], llmProviderOptions) : null).catch((error) => {
+                      executeWorkflowNodeRerun(currentWorkflowTask, nodeId, ['agent', 'llm'].includes(selectedWorkflow?.nodes?.find((node) => node.id === nodeId)?.type) ? nodeRuntimeConfigRequest(botNodeConfigs[nodeId], llmProviderOptions) : null).catch((error) => {
                         console.error('workflow node rerun failed', error);
                         showToast('error', String(error?.message || error));
                       });
@@ -247,6 +265,12 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                       scheduleNodeRuntimeConfigs={nodeConfigSelection.conversationConfigs} onRestoreNodeConfigs={nodeConfigSelection.restore}
                       scopeId={draftConversationRef.current?.id === conversationId ? draftConversationRef.current.composerScopeId : conversationId}
                       onSend={(...args) => handleDeploy(...args.slice(0, 9), args[9] ?? botNodeConfigs)}
+                      pendingCommentCount={workflowAnnotations.length}
+                      prepareSubmit={(text) => ({ error: annotationError(workflowAnnotations, text), annotations: workflowAnnotations })}
+                      beforeInput={workflowAnnotations.length ? <div className="haish-annotation-drafts" aria-label="Comment drafts">
+                        {workflowAnnotations.map((item, index) => <QuoteBlock key={item.id} item={item} index={index + 1} preview
+                          onRemove={() => updateWorkflowAnnotations((drafts) => drafts.filter((draft) => draft.id !== item.id))} />)}
+                      </div> : null}
                       onStop={handleStop}
                       activeTaskText={activeTaskText}
                       petRunState={currentConversationRunState.state}
@@ -257,7 +281,8 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                       submitPending={submitPending} stopError={conversationStopState.error}
                       idlePlaceholder="Describe the task you want to delegate..."
                       disabledPlaceholder="Agents are currently busy executing..."
-                      allowRuntimeInput={false}
+                      imageStore={composerImageDraftsRef.current}
+                      allowRuntimeInput
                       attachment={composerAttachment}
                       contextTask={contextTask}
                       onClearContextTask={() => setContextTask(null)}

@@ -83,7 +83,8 @@ test('resync_required is forwarded as a control message and never applied as a t
     taskSource.indexOf('await runTaskStream(command, (event) => {'),
     taskSource.indexOf('const normalized = normalizeRuntimeEvent(event);'),
   );
-  assert.match(stream, /void resyncTaskRuntimeAfterBackpressure\(/, 'resync must not fall into the task-event pipeline');
+  assert.match(stream, /recoveryPending\.then\(\(\) => resyncTaskRuntimeAfterBackpressure\(/, 'resync must not fall into the task-event pipeline');
+  assert.match(taskSource, /await recoveryPending;/, 'stream completion must wait for recovery');
   assert.match(stream, /\breturn;/);
   // 恢复路径本身不能把背压提示当错误弹给用户。
   // 补齐逻辑在 task-stream/recovery.js 的工厂里：只取这个工厂体（结束标记也只看该文件）。

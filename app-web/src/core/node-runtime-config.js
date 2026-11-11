@@ -24,11 +24,13 @@ export function nodeConfigHasRouteOverride(config = {}) {
 }
 
 export function nodeRuntimeConfigsForWorkflow(workflow, configs = {}, providerOptions = []) {
-  return Object.fromEntries((workflow?.nodes || []).filter((node) => node.type === 'agent').flatMap((node) => {
+  return Object.fromEntries((workflow?.nodes || []).filter((node) => node.type === 'agent' || node.type === 'llm').flatMap((node) => {
     const config = configs[node.id];
     if (!config || typeof config !== 'object') return [];
     const effective = workflowNodeRuntimeConfig(node, null, configs, false, providerOptions);
-    return [[node.id, configFields(config, providerOptions, effective.llm_config_id)]];
+    const fields = configFields(config, providerOptions, effective.llm_config_id);
+    if (node.type === 'llm') delete fields.agent_id;
+    return [[node.id, fields]];
   }));
 }
 
@@ -50,6 +52,15 @@ export function workflowNodeRuntimeConfig(node, task, configs = {}, readOnly = f
   }
   if (node?.type === 'agent' && !value.agent_id) value.agent_id = node.agent_id || 'preset.general';
   return migrateExecutionRoute(value, providerOptions);
+}
+
+export function inheritedTaskNodeConfigs(workflow, task, configs = {}, providerOptions = []) {
+  const effective = Object.fromEntries((workflow?.nodes || [])
+    .filter((node) => node.type === 'agent' || (node.type === 'llm' && configs[node.id]))
+    .map((node) => [node.id, node.type === 'agent'
+      ? workflowNodeRuntimeConfig(node, task, configs, true, providerOptions)
+      : configs[node.id]]));
+  return nodeRuntimeConfigsForWorkflow(workflow, effective, providerOptions);
 }
 
 export function nodeRuntimeConfigRequest(config = {}, providerOptions = []) {

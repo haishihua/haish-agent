@@ -6,6 +6,8 @@ import { workflowAgentName } from '../../../../core/assistant-name.js';
 import { workflowResultForAttempt } from '../../../../core/runtime-workflow-layout.js';
 import { AppIcon } from '../../../../shared/ui/AppIcon.jsx';
 import { NodeConversation } from './WorkflowNodeConversation.jsx';
+import { taskFinalOutputText } from '../../../../core/runtime-events.js';
+import { Markdown } from '../../../../shared/ui/Markdown.jsx';
 import { visibleNodeAttempts } from '../../../../core/node-attempts.js';
 
 export function WorkflowNodeAttempts({
@@ -26,6 +28,13 @@ export function WorkflowNodeAttempts({
   const historicalAttempts = visibleAttempts.slice(0, -1);
   const latestAttempt = visibleAttempts.at(-1) || null;
 
+  if (node.type === 'output') {
+    const text = taskFinalOutputText(task, task?.answerText || latestResult?.summary || task?.error || '');
+    return text ? <div className="workflow-final-output chat-bubble-text">
+      <Markdown source={text} pathImages={false} />
+    </div>
+      : <div className="workflow-detail-empty" role="status">No final result yet.</div>;
+  }
   const renderAttempt = (attempt, index, isLatestAttempt) => {
     const attemptNumber = attempt?.result?.attempt || index + 1;
     const attemptAgent = attempt?.result?.runtime_config?.agent_id;
@@ -39,7 +48,6 @@ export function WorkflowNodeAttempts({
             Attempt #{attemptNumber}
           </div>
         ) : null}
-        {attempt?.result?.runtime_config ? <p className="workflow-runtime-actual-config">Executed with {attempt.result.runtime_config.model_id || 'provider default'} · thinking {attempt.result.runtime_config.reasoning_effort || 'Unspecified'}</p> : null}
         <NodeConversation
           node={node}
           task={task}
@@ -50,6 +58,7 @@ export function WorkflowNodeAttempts({
           showApproval={isLatestAttempt && status === 'approval' && !isTaskSettled(task)}
           onRetry={isLatestAttempt && canRetry ? retryLatest : null}
           agentName={attemptAgentName}
+          annotationAttempt={attemptNumber}
           pendingInput={isLatestAttempt && attention?.status === 'waiting_input' ? attention.request : null}
         />
       </section>

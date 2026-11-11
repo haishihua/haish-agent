@@ -43,6 +43,7 @@ import { isWorkflowExecutableNode } from '../../../core/workflow-defaults.js';
 import { WorkflowNodeDetailHead } from './runtime/WorkflowNodeDetailHead.jsx';
 import { WorkflowNodeAttempts } from './runtime/WorkflowNodeAttempts.jsx';
 import { WorkflowDetailResizer } from './runtime/WorkflowDetailResizer.jsx';
+import { MessageAnnotations } from '../../chat/components/MessageAnnotations.jsx';
 import { FitWorkflow, RuntimeSelectionLink } from './runtime/WorkflowCanvasOverlays.jsx';
 
 const EMPTY_OPTIONS = [];
@@ -85,11 +86,11 @@ function activeNodeIdsFromEvents(eventLog) {
 
 // 面板 = 头部（WorkflowNodeDetailHead）+ 执行列表（WorkflowNodeAttempts）+ 拖拽条
 // （WorkflowDetailResizer）。这里只留页签/折叠/滚动这些必须跨子组件存活的状态。
-function NodeDetail({ node, task, run, status, attention = null, onClose, onResize, onResizeBy, onRetry, agentName = '', agentOptions = [], providerOptions = [], runtimeConfig = {}, onRuntimeConfigChange, configReadOnly = false }) {
+function NodeDetail({ node, task, run, status, attention = null, onClose, onResize, onResizeBy, onRetry, agentName = '', agentOptions = [], providerOptions = [], runtimeConfig = {}, inheritedConfig = false, onRuntimeConfigChange, configReadOnly = false, annotationDrafts = [], onSaveAnnotation, onAnnotationError }) {
   const detailBodyRef = React.useRef(null);
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const live = ['running', 'waiting_input', 'approval'].includes(status);
-  const [detailTab, setDetailTab] = React.useState(() => live ? 'result' : 'config');
+  const [detailTab, setDetailTab] = React.useState(() => live || ['agent', 'llm'].includes(node.type) ? 'result' : 'config');
   const wasLiveRef = React.useRef(live);
   React.useEffect(() => {
     // Follow the transition into execution once, without overriding a user's
@@ -117,7 +118,8 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
     return () => observer.disconnect();
   }, [attentionKey]);
   const isAgent = node.type === 'agent';
-  const showResult = !isAgent || detailTab === 'result';
+  const hasRuntimeConfig = isAgent || node.type === 'llm';
+  const showResult = !hasRuntimeConfig || detailTab === 'result';
   const tabId = React.useId();
   const selectTab = (tab) => {
     setDetailTab(tab);
@@ -134,13 +136,14 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
   const retryLatest = React.useCallback(() => onRetry?.(node.id), [node.id, onRetry]);
 
   return (
-    <aside className={`workflow-detail-panel is-${status}${isAgent ? ' has-runtime-tabs' : ''}`} data-node-id={node.id} aria-label={`${agentName || node.label || node.id} execution details`}>
+    <aside className={`workflow-detail-panel is-${status}${hasRuntimeConfig ? ' has-runtime-tabs' : ''}`} data-node-id={node.id} aria-label={`${agentName || node.label || node.id} execution details`}>
       <WorkflowDetailResizer onResize={onResize} onResizeBy={onResizeBy} />
       <WorkflowNodeDetailHead
         node={node}
         status={status}
         statusCopy={STATUS_COPY[status] || status}
         isAgent={isAgent}
+        hasRuntimeConfig={hasRuntimeConfig}
         agentOptions={agentOptions}
         agentName={agentName}
         detailTab={detailTab}
@@ -149,8 +152,8 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
         onClose={onClose}
       />
       <div className="workflow-detail-scroll-region">
-        <div ref={detailBodyRef} className={`workflow-detail-body chat-message-list${showResult ? '' : ' is-config'}`} aria-live="polite" role={isAgent ? 'tabpanel' : undefined} id={isAgent ? `${tabId}-panel` : undefined} aria-labelledby={isAgent ? `${tabId}-${detailTab}-tab` : undefined}>
-          {isAgent && !showResult ? <WorkflowRuntimeConfig value={runtimeConfig} providerOptions={providerOptions} agentOptions={agentOptions} readOnly={configReadOnly} onChange={onRuntimeConfigChange} /> : null}
+        <div ref={detailBodyRef} className={`workflow-detail-body chat-message-list${showResult ? '' : ' is-config'}`} aria-live="polite" role={hasRuntimeConfig ? 'tabpanel' : undefined} id={hasRuntimeConfig ? `${tabId}-panel` : undefined} aria-labelledby={hasRuntimeConfig ? `${tabId}-${detailTab}-tab` : undefined}>
+          {hasRuntimeConfig && !showResult ? <WorkflowRuntimeConfig nodeType={node.type} inherited={inheritedConfig} value={runtimeConfig} providerOptions={providerOptions} agentOptions={agentOptions} readOnly={configReadOnly} onChange={onRuntimeConfigChange} /> : null}
           {showResult ? (
             <WorkflowNodeAttempts
               node={node}
@@ -168,6 +171,9 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
             />
           ) : null}
         </div>
+        {showResult && onSaveAnnotation ? <MessageAnnotations listRef={detailBodyRef}
+          drafts={annotationDrafts} items={annotationDrafts.map((item, index) => ({ item, index: index + 1, key: item.id }))}
+          onSave={onSaveAnnotation} onError={onAnnotationError || (() => {})} /> : null}
         {showResult ? <ScrollToBottomButton
           scrollRef={detailBodyRef}
           autoFollow
@@ -179,7 +185,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
   );
 }
 
-function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPTY_OPTIONS, onOpenConfig = null, providerOptions = [], nodeRuntimeConfigs = {}, onNodeRuntimeConfigChange, configReadOnly = false }) {
+function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPTY_OPTIONS, onOpenConfig = null, providerOptions = [], nodeRuntimeConfigs = {}, onNodeRuntimeConfigChange, configReadOnly = false, annotationDrafts = [], onSaveAnnotation, onAnnotationError }) {
   const controlEvents = workflowControlEvents(task?.eventLog);
   const [pendingInputs, setPendingInputs] = React.useState([]);
   const [pendingApprovals, setPendingApprovals] = React.useState([]);
@@ -236,8 +242,8 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
   ]), [run?.nodes, run?.current_node_id, controlEvents]);
   const canOpenNodeDetail = React.useCallback((node) => (
     Boolean(node)
-    && isWorkflowExecutableNode(node.type)
-    && (node.type === 'agent' || executedNodeIds.has(String(node.id)) || String(node.id) === attentionNodeId)
+    && (node.type === 'output' || isWorkflowExecutableNode(node.type))
+    && (node.type === 'output' || node.type === 'agent' || executedNodeIds.has(String(node.id)) || String(node.id) === attentionNodeId)
   ), [attentionNodeId, executedNodeIds]);
   // 回环端口（次级→主链那条边的落点）只有一份判断，和配置页调同一个函数。
   const feedbackTargetIds = React.useMemo(
@@ -353,13 +359,19 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     selected: node.id === selectedNodeId && node.data.runtimeDetailAvailable,
   })), [nodes, selectedNodeId]);
   const selectedNodeCandidate = selectedNodeId ? nodeById.get(selectedNodeId) || null : null;
+  const sourceNode = selectedNodeCandidate?.type === 'llm' && selectedNodeCandidate.runtime_config_from
+    ? nodeById.get(selectedNodeCandidate.runtime_config_from) : null;
+  const ownConfig = nodeRuntimeConfigs[selectedNodeId] || {};
+  const inheritsRoute = Boolean(sourceNode && !ownConfig.llm_config_id && !ownConfig.provider);
+  const inheritedRoute = inheritsRoute ? workflowNodeRuntimeConfig(sourceNode, task, nodeRuntimeConfigs, configReadOnly, providerOptions) : {};
   const selectedRuntimeConfig = selectedNodeCandidate
-    ? workflowNodeRuntimeConfig(selectedNodeCandidate, task, nodeRuntimeConfigs, configReadOnly, providerOptions) : {};
+    ? workflowNodeRuntimeConfig(selectedNodeCandidate, task, { ...nodeRuntimeConfigs,
+      ...(inheritsRoute ? { [selectedNodeId]: { ...inheritedRoute, ...ownConfig, agent_id: undefined } } : {}) }, configReadOnly, providerOptions) : {};
   const selectedNode = canOpenNodeDetail(selectedNodeCandidate)
     ? selectedNodeCandidate.type === 'agent' ? { ...selectedNodeCandidate, agent_id: selectedRuntimeConfig.agent_id } : selectedNodeCandidate
     : null;
   // 节点详情的回复按节点配置的 agent 署名（catalog 与节点图标同一份）。
-  const selectedNodeAgentName = selectedNode
+  const selectedNodeAgentName = selectedNode?.type === 'agent'
     ? workflowAgentName(selectedRuntimeConfig.agent_id, task, agentOptions)
     : '';
   const selectedStatus = selectedNodeId === attentionNodeId && attentionStatus ? attentionStatus : selectedNode
@@ -506,7 +518,11 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
           agentOptions={agentOptions}
           providerOptions={providerOptions}
           runtimeConfig={selectedRuntimeConfig}
+          inheritedConfig={inheritsRoute}
           onRuntimeConfigChange={(config) => onNodeRuntimeConfigChange?.(selectedNode.id, config)}
+          annotationDrafts={annotationDrafts}
+          onSaveAnnotation={onSaveAnnotation}
+          onAnnotationError={onAnnotationError}
           configReadOnly={configReadOnly || !onNodeRuntimeConfigChange}
         />
       ) : null}

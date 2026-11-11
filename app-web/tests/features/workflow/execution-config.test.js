@@ -71,3 +71,24 @@ test('old node null is normalized before save/rerun while raw merge preserves mi
   assert.deepEqual(nodeRuntimeConfigRequest(route).nodeRuntimeConfig, { ...route, reasoning_effort: 'high' });
   assert.equal(workflowNodeRuntimeConfig({ id: 'first', runtime_config: { ...route, reasoning_effort: 'high' } }, null, { first: { reasoning_effort: null } }).reasoning_effort, null);
 });
+
+test('configured Goal nodes ignore incomplete or stale unused workflow defaults', () => {
+  const goal = { nodes: [{ id: 'agent', type: 'agent' },
+    { id: 'judge', type: 'llm', runtime_config_from: 'agent' }] };
+  for (const defaults of [
+    { modelId: 'stale-model' },
+    { provider: 'removed', modelId: 'stale-model' },
+    { provider: 'configured' },
+    { provider: 'auto', modelId: 'auto' },
+  ]) {
+    assert.equal(executionConfigError({ executionMode: 'bot', workflow: goal,
+      providerOptions, nodeRuntimeConfigs: { agent: route }, ...defaults }), '');
+  }
+});
+
+test('nodes actually relying on incomplete workflow defaults still report the node error', () => {
+  assert.match(executionConfigError({ executionMode: 'bot', workflow,
+    providerOptions, modelId: 'stale-model' }), /Node first.*configuration/);
+  assert.match(executionConfigError({ executionMode: 'bot', workflow,
+    providerOptions, provider: 'configured' }), /Node first.*concrete model/);
+});

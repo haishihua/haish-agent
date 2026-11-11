@@ -542,7 +542,7 @@ export function useShellHandlers({
     startDeploy,
     handleDeploy: deployTask,
   } = createDeployHandlers({
-    uploadChatImage, providerOptions: llmProviderOptions,
+    uploadChatImage, providerOptions: llmProviderOptions, viewedWorkflowTask, setViewedWorkflowTask,
     APP_DEFAULT_AGENT_OPTIONS,
     applyTerminalTaskState,
     busy,
@@ -672,6 +672,6 @@ export function useShellHandlers({
     handleOpenTaskReport, handleRetryTask, handleForkMessage, removeConversationTaskFromWorkspace,
     handleStop, buildDeployRequest, canStartDeployForConversation, failPendingDeploy,
     startDeploy, deployTask, handleSelectWorkflowTask, handleDeleteWorkflowTask,
-    loadEarlierTaskRuntimes,
+    loadEarlierTaskRuntimes, recoverConversationTasks,
   };
 }

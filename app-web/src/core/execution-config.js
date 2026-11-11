@@ -17,10 +17,7 @@ export function executionConfigError({ executionMode = 'chat', provider, legacyP
   const agentRoutes = new Map(workflow.nodes.filter((node) => node.type === 'agent').map((node) => [
     node.id, workflowNodeRuntimeConfig(node, taskDefaults, nodeRuntimeConfigs, true, providerOptions),
   ]));
-  if (provider || modelId) {
-    const error = routeError({ llm_config_id: provider, model_id: modelId }, 'Workflow default');
-    if (error) return error;
-  }
+  // Validate effective node routes below, not unused task-level defaults.
   let modelNodes = 0;
   for (const node of workflow.nodes) {
     if (node.type === 'agent') {
@@ -33,10 +30,13 @@ export function executionConfigError({ executionMode = 'chat', provider, legacyP
       const label = `Node ${node.label || node.id}`;
       const inherited = node.runtime_config_from ? agentRoutes.get(node.runtime_config_from) : null;
       if (node.runtime_config_from && !inherited) return `${label}: requires the configured route of agent node ${node.runtime_config_from}.`;
-      const ownRoute = Boolean(node.llm_config_id || node.provider);
       const base = inherited || { llm_config_id: provider, model_id: modelId };
-      const error = routeError({ llm_config_id: node.llm_config_id || (ownRoute ? '' : base.llm_config_id), provider: node.provider,
-        model_id: node.model || (ownRoute ? '' : base.model_id) }, label);
+      const declared = node.llm_config_id || node.provider
+        ? { llm_config_id: node.llm_config_id, provider: node.provider, model_id: node.model }
+        : { ...base, ...(node.model ? { model_id: node.model } : {}) };
+      const override = nodeRuntimeConfigs[node.id] || {};
+      const effective = override.llm_config_id || override.provider ? override : { ...declared, ...override };
+      const error = routeError(effective, label);
       if (error) return error;
     }
   }

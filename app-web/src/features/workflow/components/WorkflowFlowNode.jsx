@@ -257,15 +257,12 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
           style={{ left: '50%' }}
         />
       ) : null}
-      {runtimeStatus === 'running' ? (
-        <span className="workflow-node-live-badge" role="status"><i aria-hidden="true" />Running</span>
-      ) : null}
       <span className="workflow-flow-node-icon" aria-hidden="true">
         <AppIcon name={iconName} size={22} />
       </span>
       <span className="workflow-flow-node-copy">
         <strong>{nodeTitle}</strong>
-        {typeLabelForWorkflowNode(nodeType) ? <small className={data?.runtimeModelId ? 'workflow-node-model' : undefined}>{data?.runtimeModelId ? <><ProviderIcon provider={data.runtimeProvider} /><span>{data.runtimeModelId}</span></> : typeLabelForWorkflowNode(nodeType)}</small> : null}
+        {typeLabelForWorkflowNode(nodeType) ? <small className={data?.runtimeModelId ? 'workflow-node-model' : undefined}>{data?.runtimeModelId ? <><ProviderIcon provider={data.runtimeProvider} modelId={data.runtimeModelId} /><span>{data.runtimeModelId}</span></> : typeLabelForWorkflowNode(nodeType)}</small> : null}
       </span>
       {WORKFLOW_BRANCHES[nodeType]
         ? WORKFLOW_BRANCHES[nodeType].map((branch, index) => (

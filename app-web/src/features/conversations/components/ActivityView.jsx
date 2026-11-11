@@ -3,7 +3,6 @@ import { Search, SquarePen, X } from 'lucide-react';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
-import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { ConversationAction, ConversationPinAction, ApprovalGlyph, WaitingInputGlyph } from './ConversationIcons.jsx';
 import { useConversationRunState } from '../hooks/useConversationRunState.js';
 import { resolveConversationStatusMark } from '../model/conversation-run-state.js';
@@ -34,7 +33,7 @@ function formatTime(timestamp) {
 }
 
 export function ActivityView({ projects, workspaceProjects, activeConversationId, activeTaskId, notices, terminalNotices = {}, taskTerminalNotices = {}, mode, onSelect, onPin, onDeleteConversation,
-  onDeleteTask, onOpenReport, onNewEntry, isDraftSelected = false, loading, error }) {
+  onDeleteTask, onNewEntry, isDraftSelected = false, loading, error }) {
   const [limit, setLimit] = React.useState(ACTIVITY_PAGE_SIZE);
   const [query, setQuery] = React.useState('');
   const entries = React.useMemo(() => activityEntries(loading ? null : projects, notices, mode, workspaceProjects, activeConversationId),
@@ -102,12 +101,6 @@ export function ActivityView({ projects, workspaceProjects, activeConversationId
                     <ConversationPinAction pinned={Boolean(conversation.pinned)} onClick={() => onPin?.(entry.project.id, conversation.id)} />
                     <ConversationAction label="Delete conversation" icon="trash" onClick={() => onDeleteConversation(entry.project, conversation)} />
                   </> : <>
-                    <PortalTooltip text="View report" position="above">
-                      <button type="button" className="conversation-icon-btn" aria-label="View report"
-                        onClick={(event) => { event.stopPropagation(); onOpenReport(entry); }}>
-                        <AppIcon name="report" size={15} />
-                      </button>
-                    </PortalTooltip>
                     <ConversationAction label="Delete task" icon="trash" onClick={() => onDeleteTask(entry.project, entry.conversation, entry.task)} />
                   </>}
                 </span>

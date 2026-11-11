@@ -4,6 +4,8 @@
 
 ## 自动测试
 
+- 会话事件订阅生命周期：启动 `npx vite --config vite.app-web.config.ts --host 127.0.0.1 --port 5189`，再用原版 Electron 运行 `scripts/check-dom-fixture.cjs http://127.0.0.1:5189/tests/fixtures/conversation-event-recovery.html`。夹具运行生产 hook、真实 React DOM 和 StrictMode，验证替换处理器及卸载清理；桥为离线替身，不覆盖真实 runtime IPC，不修改会话。通用运行器要求页面在 `#result` 写出 `PASS:` / `FAIL:`，超时会失败。
+
 - `npm run check:composer-draft`：独立启动离线 Electron 夹具，使用真实 `ChatPanel` / `ChatComposer` 的未受控草稿路径输入 A、切到 B 输入、再切回各自验证。此项不包含在 `npm run check:web` 中，不访问或修改真实会话；需要可运行的 Electron 图形环境。
 
 - 生图展示：`features/chat/image-display.test.js` 约束工具结果及揭幕画布保持原图比例；离线浏览器夹具可用 `npx vite --config app-web/tests/fixtures/image-display.config.mjs` 启动，访问 `/app-web/tests/fixtures/image-display.html`，点击 `Finish generation` 和横图后执行 `window.assertImageDisplay()`，检查历史结果、实时揭幕、竖图与受裁剪祖先内的预览边界。不调用模型。
@@ -106,8 +108,8 @@
 | --- | --- |
 | [sub-agent-performance.html](fixtures/sub-agent-performance.html) | 20 次折叠流更新零详情读取；展开/收起/重新展开内容正确；未变化兄弟与已完成子工具不重渲染；完成、失败、取消及审批切换。 |
 | [runtime-update-stability.html](fixtures/runtime-update-stability.html) | 30 次状态/流式更新节点与边保持可见；当前任务完成、延迟通知、回前台和返回任务页自动清绿点，不清其他任务/会话及后台未读。 |
-| [workflow-all-node-models.html](fixtures/workflow-all-node-models.html) | Clarifier / Worker / Verifier 在完成、运行、待执行时均显示模型配置；画布与详情一致，实际执行配置立即覆盖本节点，其他节点配置不受影响；旧任务空节点配置表使用本任务记录的默认路由，只读且不修改任务。 |
-| [workflow-provider-icons.html](fixtures/workflow-provider-icons.html) | Provider / Model 的收起字段与菜单均展示图标；只读历史品牌键（openai）显示 OpenAI 与品牌图标，不误用当前同品牌配置；已删除配置显示通用图标，空值保留占位；仅显示不改写运行配置。 |
+| [workflow-all-node-models.html](fixtures/workflow-all-node-models.html) | Clarifier / Worker / Verifier 在完成、运行、待执行时均显示模型配置；画布与详情一致，实际执行配置立即覆盖本节点，其他节点配置不受影响；custom 中转站节点（`ai router-ds` + `deepseek-v4-flash`）画布上的标记按模型名认成厂商（deepseek）而不是通用方块，且不超出 14px 槽位、不套描边圆环、mask 墨色不被洗成透明且确实是 DeepSeek 鲸鱼矢量，运行配置的 Model 行同样在 18px 槽位内且无圆环；旧任务空节点配置表使用本任务记录的默认路由，只读且不修改任务。 |
+| [workflow-provider-icons.html](fixtures/workflow-provider-icons.html) | Provider / Model 的收起字段与菜单均展示图标；只读历史品牌键（openai）显示 OpenAI 与品牌图标，不误用当前同品牌配置；已删除配置、认不出厂商的模型显示通用图标，空值保留占位；custom 中转站（`ai router-ds`）的 Provider 行保持中转站自己的首字母（AR），Model 行按模型名显示厂商（deepseek 鲸鱼），两行标记都留在 18px 槽位内且不带描边圆环；仅显示不改写运行配置。 |
 | [workflow-agent-details.html](fixtures/workflow-agent-details.html) | Inputs/Outputs 可折叠，Inputs 与 End 可编辑 Outputs 默认展开，生成的 Outputs 默认收起；标题按钮可键盘操作，隐藏时保留编辑器和内容，添加输入/输出字段自动展开，只读仍可折叠；控制节点精简：Approval 使用统一 12px 标签、34px 标题输入及扁平待审内容编辑器，无嵌套卡片、通用 Inputs/Outputs 或 payload 选择器，编辑保留已有 payload 及其他字段；Condition 使用紧凑表达式编辑器和数据插入，无参数时隐藏空 Inputs，已有别名可编辑/删除；Retry 保留重试策略，均不展示生成的 Outputs；编辑/只读、280/340/520px 无溢出及其他节点原有字段回归。 |
 | [mcp-tool-picker.html](fixtures/mcp-tool-picker.html) | Agent MCP tools 逐条选择、旧授权迁移、未勾选但可用的列表、无服务器/全空清单/全部停用时单条空状态、无空服务器标题及连接错误保留。 |
 | [scheduled-tasks.html](fixtures/scheduled-tasks.html) | 共用 slash 面板及 Clock、无会话选择器、复用 Radix 非原生下拉/月历与时分输入、跨月/方向键/Escape/焦点返回、编辑保留时间、保存失败重试只绑定一次、固定模型且不执行、侧栏常驻提醒与运行灯不重叠、管理不切会话、暂停/历史/确认删除及实时刷新；离线 fixture 不调用模型。 |

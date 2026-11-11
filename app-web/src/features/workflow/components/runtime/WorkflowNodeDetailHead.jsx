@@ -12,6 +12,7 @@ export function WorkflowNodeDetailHead({
   status,
   statusCopy,
   isAgent,
+  hasRuntimeConfig,
   agentOptions,
   agentName,
   detailTab,
@@ -34,7 +35,7 @@ export function WorkflowNodeDetailHead({
         </button>
       </header>
 
-      {isAgent ? <div className="workflow-detail-tabs" role="tablist" aria-label="Node details">
+      {hasRuntimeConfig ? <div className="workflow-detail-tabs" role="tablist" aria-label="Node details">
         {DETAIL_TABS.map((tab) => <button key={tab} type="button" role="tab" id={`${tabId}-${tab}-tab`} aria-controls={`${tabId}-panel`} aria-selected={detailTab === tab} tabIndex={detailTab === tab ? 0 : -1} onClick={() => selectTab(tab)} onKeyDown={(event) => {
           const next = tabNavigationTarget(event.key, DETAIL_TABS, detailTab);
           if (!next) return;

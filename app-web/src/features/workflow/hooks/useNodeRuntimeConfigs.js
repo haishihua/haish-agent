@@ -16,8 +16,9 @@ export function useNodeRuntimeConfigs(storageKey, workflow, savedConfigs, taskId
     setLatest({ key, configs: next });
     try { window.localStorage.setItem(key, JSON.stringify(next)); } catch { /* Session selection remains usable. */ }
   };
-  const restore = (next, workflowId) => {
-    const targetKey = workflowId ? `${storageKey}:nodes:${workflowId}` : key;
+  const restore = (next, workflowId, targetStorageKey = storageKey) => {
+    const targetKey = workflowId ? `${targetStorageKey}:nodes:${workflowId}` : key;
+    setState({ key: '', configs: {} });
     setLatest({ key: targetKey, configs: next });
     try { window.localStorage.setItem(targetKey, JSON.stringify(next)); } catch { /* Selection remains usable. */ }
   };

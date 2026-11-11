@@ -2,6 +2,7 @@ import React from 'react';
 import { conversationContentLoading } from '../../core/conversation-loading.js';
 import { BoundedCache } from '../../shared/lib/bounded-cache.js';
 import { approvalStore } from '../../core/approval-store.js';
+import { inheritedTaskNodeConfigs } from '../../core/node-runtime-config.js';
 import { useNodeRuntimeConfigs } from '../workflow/hooks/useNodeRuntimeConfigs.js';
 import { useConversationAgentSelection } from '../conversations/hooks/useConversationAgentSelection.js';
 import {
@@ -18,6 +19,7 @@ import { useTaskCompletionNoticeStorage } from './hooks/useTaskCompletionNoticeS
 import { useQueuedDeployFlush } from './hooks/useQueuedDeployFlush.js';
 import { useActiveTaskSanityReset } from './hooks/useActiveTaskSanityReset.js';
 import { useConversationPanelActions } from './hooks/useConversationPanelActions.js';
+import { useConversationEventRecovery } from './hooks/useConversationEventRecovery.js';
 import { useContextUsageBridge } from './hooks/useContextUsageBridge.js';
 import { useShellHandlers } from './hooks/useShellHandlers.js';
 import {
@@ -504,7 +506,7 @@ export function AppShell() {
     handleOpenTaskReport, handleRetryTask, handleForkMessage, removeConversationTaskFromWorkspace,
     handleStop, buildDeployRequest, canStartDeployForConversation, failPendingDeploy,
     startDeploy, deployTask, handleSelectWorkflowTask, handleDeleteWorkflowTask,
-    loadEarlierTaskRuntimes,
+    loadEarlierTaskRuntimes, recoverConversationTasks,
   } = useShellHandlers({
     activationApiRef, activeTab, agentContextKey, agentContextKeyRef,
     agentSettingsDraft, applyContextUsage, getContextWindowTokens, beginLlmSettingsWrite, beginToolsSettingsSave,
@@ -651,6 +653,7 @@ export function AppShell() {
     conversationReady, conversationSelectionPending, conversationError,
     currentConversationRunning, uploadActive: uploadState.active, settingsMode,
   });
+  useConversationEventRecovery({ ensureConversationRuntime, recoverConversationTasks });
   useShellTaskRuntimePolling({
     conversationId, conversationIdRef, currentConversationActive, applyContextUsage, getContextWindowTokens, fetchTaskRuntimeDetail,
     fetchTaskRuntimeBatch, getRuntime, notifyTaskComplete, panelWorkspaceState, removeMissingTask,
@@ -812,13 +815,25 @@ export function AppShell() {
   const composerDisabled = Boolean(conversationStopState.error) || uploadState.active
     || settingsMode
     || !!conversationError
-    || (viewMode !== 'chat' && currentConversationRunning);
+    || (viewMode !== 'chat' && currentConversationRunning && (selectedWorkflow?.nodes || []).filter((node) => node.type === 'agent').length !== 1);
 
   // 会话面板那一组动作（含失败 toast / 通知清理）在 hook 里装配，JSX 只拿成型回调。
   const panelActions = useConversationPanelActions({
     workspaceState, viewMode, setConversationPanelCollapsed, setTaskCompletionNotices,
     markConversationTaskCompletionsViewed, showToast, handleAddProject, handleSelectProject,
-    handleToggleProject, handleRemoveProject, handleAddConversation, handleSelectConversation,
+    handleToggleProject, handleRemoveProject,
+    handleAddConversation: async (projectId) => {
+      const inherited = viewMode !== 'chat'
+        ? inheritedTaskNodeConfigs(selectedWorkflow, currentWorkflowTask, botNodeConfigs, llmProviderOptions)
+        : null;
+      const workflowId = selectedWorkflow?.workflow_id || selectedWorkflow?.id;
+      await handleAddConversation(projectId);
+      if (inherited && draftConversationRef.current?.id === conversationIdRef.current) {
+        const targetKey = `${buildRunConfigStorageKey(ownerId, 'chat', conversationIdRef.current)}.bot`;
+        nodeConfigSelection.restore(inherited, workflowId, targetKey);
+      }
+    },
+    handleSelectConversation,
     handleSelectWorkflowTask, handleToggleConversationTasks, handleToggleProjectConversations,
     handleDeleteConversation, handleRenameConversation, handlePinConversation, handlePinProject,
     handleReorderConversations, handleReorderProjects,

@@ -8,6 +8,20 @@ import { GOAL_WORKFLOW_ID } from './workflow-ids.js';
 
 // 工作流事件里的节点 id：四种字段名都能出现（camel/snake × workflowNode/node）。
 // 事件订阅方与尝试投影都读这一份，字段别名加一处就够了。
+export function judgeReasonText(result) {
+  if (result?.error) return detailText(result.error);
+  const raw = result?.summary || result?.text || result?.output;
+  let structured = result?.json || result?.structured;
+  if (typeof structured?.reason !== 'string' && typeof raw === 'string') {
+    try { structured = JSON.parse(raw.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')); } catch { /* Keep malformed output visible for diagnosis. */ }
+  }
+  const reason = typeof structured?.reason === 'string' ? structured.reason : detailText(raw);
+  // Older verdicts are a single wall of text. Preserve every character and
+  // only add paragraph breaks after Chinese sentence endings outside code.
+  if (reason.length < 240 || reason.includes('\n') || reason.includes('`')) return reason;
+  return reason.replace(/([。！？])(?=\S)/g, '$1\n\n');
+}
+
 export function eventNodeId(event) {
   return String(event?.workflowNodeId || event?.workflow_node_id || event?.nodeId || event?.node_id || '');
 }

@@ -63,13 +63,28 @@ export function createTaskRuntimeRestoreHandlers(ctx) {
       error.taskId = taskId;
       throw error;
     }
-    const task = await response.json();
+    let task = await response.json();
+    if (task.truncated) {
+      // A bounded runtime snapshot is not a complete replay. Fetch the durable
+      // log when it overflows, otherwise early workflow nodes and tool calls
+      // disappear permanently after reconnect or a fresh hydration.
+      task = await requestFullTaskRuntime(taskId, signal);
+    }
     if (signal.aborted) throw new DOMException('Task runtime loading was cancelled', 'AbortError');
+    if (task.truncated) throw new Error('full task restore returned an incomplete task');
     if (task.task_id !== taskId) throw new Error('task runtime response returned a different task');
     if (targetConversationId && task.conversation_id !== targetConversationId) {
       throw new Error(`task ${taskId} does not belong to conversation ${targetConversationId}`);
     }
     return normalizeFetchedTaskRuntime(task);
+  }
+
+  async function requestFullTaskRuntime(taskId, signal) {
+    const response = await apiFetch(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}?event_view=full`, {
+      method: 'GET', signal,
+    }, { json: false });
+    if (!response.ok) throw new Error(`full task restore failed: ${response.status}`);
+    return response.json();
   }
 
   function normalizeFetchedTaskRuntime(task) {
@@ -152,7 +167,15 @@ export function createTaskRuntimeRestoreHandlers(ctx) {
       || payload.some((task) => !taskIds.includes(task.task_id) || task.conversation_id !== targetConversationId)) {
       throw new Error(`task batch does not belong to conversation ${targetConversationId}`);
     }
-    const details = payload.map(normalizeFetchedTaskRuntime);
+    const complete = await Promise.all(payload.map((task) => task.truncated
+      ? requestFullTaskRuntime(task.task_id, signal)
+      : task));
+    if (signal.aborted) throw new DOMException('Task runtime loading was cancelled', 'AbortError');
+    if (complete.some((task, index) => task.task_id !== payload[index].task_id
+      || task.conversation_id !== targetConversationId || task.truncated)) {
+      throw new Error('full task restore returned an incomplete or unrelated task');
+    }
+    const details = complete.map(normalizeFetchedTaskRuntime);
     for (const { normalizedTask } of details) {
       if (normalizedTask.conversation_id !== targetConversationId) {
         throw new Error(`task ${normalizedTask.task_id} does not belong to conversation ${targetConversationId}`);

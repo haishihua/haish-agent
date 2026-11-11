@@ -41,7 +41,8 @@ export function createGoalCommandHandler(ctx) {
     if (!sourceConfig.llm_config_id) delete sourceConfig.model_id;
     const sourceAgentId = runConfig.agent_id || 'preset.general';
     const nodeRuntimeConfigs = nodeRuntimeConfigsForWorkflow(workflow, Object.fromEntries(
-      (workflow.nodes || []).map((node) => [node.id, { ...sourceConfig, agent_id: sourceAgentId }]),
+      (workflow.nodes || []).filter((node) => node.type === 'agent')
+        .map((node) => [node.id, { ...sourceConfig, agent_id: sourceAgentId }]),
     ), ctx.providerOptions || []);
     const hasTask = Boolean(String(prompt || '').trim());
     if (hasTask) {

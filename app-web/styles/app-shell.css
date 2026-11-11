@@ -630,11 +630,13 @@
     color: rgba(246, 248, 255, 0.92);
 }
 
-/* Keep list glyphs crisp: integer stroke + no fractional CSS override. */
+/* Keep list glyphs crisp: integer stroke + no fractional CSS override.
+   尺寸跟在 44px 的列表格子里是 22px；画布节点 / 运行配置那种小槽位用
+   --settings-provider-glyph-size 收窄，不再被写死的 22px 撑出容器。 */
 .settings-provider-icon .settings-provider-glyph,
 .settings-provider-icon .settings-lucide {
-    width: 22px;
-    height: 22px;
+    width: var(--settings-provider-glyph-size, 22px);
+    height: var(--settings-provider-glyph-size, 22px);
     display: block;
     flex: 0 0 auto;
     stroke-width: 2;

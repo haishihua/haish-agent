@@ -54,6 +54,7 @@ export function createDeployHandlers(ctx) {
     setRuntimeActiveTaskId,
     setRuntimeBusy,
     setRuntimeFetchController,
+    setViewedWorkflowTask,
     setWorkspaceState,
     showToast,
     taskUpdatedTimestamp,
@@ -64,6 +65,7 @@ export function createDeployHandlers(ctx) {
     userCancelledTaskIdsRef,
     viewMode,
     viewModeRef,
+    viewedWorkflowTask,
     workflowSettingsDraft,
     workspaceState,
     workspaceStateWithConversationDetail,
@@ -252,11 +254,27 @@ export function createDeployHandlers(ctx) {
   }
 
   function buildDeployRequest(text, attachment, modelId, reasoningEffort, imageAttachments, selectionId, providerRequest, displayText = text, annotations = [], nodeRuntimeConfigs = {}) {
+    const viewedSourceId = viewedWorkflowTask?.projectId === workspaceState?.activeProjectId
+      ? viewedWorkflowTask?.taskId : null;
+    const taskState = getRuntime?.(resolveDeployTargetConversationId({
+      draftConversation: draftConversationRef.current, selectedConversationId,
+      currentConversationId: conversationIdRef.current || conversationId,
+    }))?.taskRuntimeState;
+    const latestId = taskState?.taskOrder?.at(-1);
+    const latestTask = taskState?.tasksById?.[latestId];
+    const sourceId = viewedSourceId || (latestTask?.executionMode === 'bot' ? latestId : null);
+    const sourceTask = sourceId ? taskState?.tasksById?.[sourceId] : null;
+    const sourceWorkflow = sourceTask?.requestedWorkflowId || sourceTask?.workflowSnapshot?.workflow_id
+      || sourceTask?.workflowSnapshot?.id;
+    const canContinue = sourceId && sourceTask && !isTaskActuallyActive(sourceTask)
+      && sourceWorkflow && sourceWorkflow === selectionId;
     return createDeployRequest({
       text,
       displayText,
       annotations,
       nodeRuntimeConfigs,
+      historySourceTaskId: viewModeRef.current !== 'chat' && !draftConversationRef.current
+        ? (canContinue ? sourceId : null) : null,
       // 「以任务产出为上下文」：只带引用（task_id / title / conversation_id），报告正文
       // 由服务端在起跑时取；没挂上下文就是空数组。投影留在工厂里，因为 contextTask 是
       // shell 的输入框状态，只有工厂知道它此刻指向哪一条任务。
@@ -293,6 +311,7 @@ export function createDeployHandlers(ctx) {
     pendingTask.requestText = request.text;
     pendingTask.annotations = request.annotations;
     pendingTask.contextTasks = Array.isArray(request.contextTasks) ? request.contextTasks : [];
+    pendingTask.historySourceTaskId = request.historySourceTaskId;
     pendingTask.displayText = request.displayText;
     pendingTask.requestedModelId = request.modelId || '';
     pendingTask.requestedAgentId = request.executionMode === 'chat'
@@ -383,6 +402,7 @@ export function createDeployHandlers(ctx) {
     }
     const text = request.text;
     const pendingTask = preparePendingTask(request);
+    if (request.historySourceTaskId) setViewedWorkflowTask?.(null);
     pendingTask.conversationId = deployConvId;
     const nextConversationTitle = titleFromTaskText(request.displayText || text);
     const currentConversation = findConversationById(workspaceState, deployConvId)
@@ -550,7 +570,7 @@ export function createDeployHandlers(ctx) {
       || activeRuntime?.fetchController
       || runningTaskId
     );
-    if (runtimeRunning && viewModeRef.current === 'chat') {
+    if (runtimeRunning) {
       if (request.annotations.length) {
         showToast('error', 'Wait for the task to finish or stop it before sending comments.');
         return false;
