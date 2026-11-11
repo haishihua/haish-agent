@@ -17,19 +17,19 @@ export function useSchedulesState({ api = schedulesApi, onRuntimeEvent, onRecove
   const [dialog, setDialog] = React.useState(null);
   const callbacks = React.useRef({ onRuntimeEvent, onRecover });
   callbacks.current = { onRuntimeEvent, onRecover };
+  const revision = React.useRef(0);
   const itemsRef = React.useRef([]);
   React.useEffect(() => {
     let alive = true;
-    let revision = 0;
     let requestNumber = 0;
     const recover = (job) => callbacks.current.onRecover?.(job);
     async function refresh() {
       const number = ++requestNumber;
-      const before = revision;
+      const before = revision.current;
       try {
         const snapshot = await api.list();
         if (!alive || number !== requestNumber) return;
-        if (revision !== before) { refresh(); return; }
+        if (revision.current !== before) { refresh(); return; }
         itemsRef.current = snapshot;
         setItems(snapshot);
         setError('');
@@ -41,10 +41,10 @@ export function useSchedulesState({ api = schedulesApi, onRuntimeEvent, onRecove
     }
     const stop = subscribe((message) => {
       if (!alive) return;
-      if (message.type === 'schedule.resync') { revision += 1; refresh(); return; }
+      if (message.type === 'schedule.resync') { revision.current += 1; refresh(); return; }
       if (message.type === 'schedule.event') {
         // Content deltas still reach the runtime, but cannot invalidate a schedule snapshot.
-        if (message.event.schedule || message.event.run || message.event.action === 'deleted') revision += 1;
+        if (message.event.schedule || message.event.run || message.event.action === 'deleted') revision.current += 1;
         itemsRef.current = applyScheduleEvent(itemsRef.current, message);
         setItems(itemsRef.current);
         // Run metadata may precede the task stream; recover only its terminal receipt.
@@ -58,23 +58,25 @@ export function useSchedulesState({ api = schedulesApi, onRuntimeEvent, onRecove
         }
         catch (failure) { setError(failure.message); }
       } else if (message.type === 'task.end') {
-        revision += 1;
+        revision.current += 1;
         refresh();
       }
     });
     const focus = () => refresh();
     window.addEventListener('focus', focus);
     refresh();
-    return () => { alive = false; stop(); window.removeEventListener('focus', focus); };
+    return () => { alive = false; stop?.(); window.removeEventListener('focus', focus); };
   }, [api, subscribe]);
   // 返回值稳定化：SchedulesProvider 把这份对象放进 context value 的 useMemo 依赖，
   // 各字段引用不变时（items/loading/error/dialog 未变）不能因重渲染而换新对象，
   // 否则每个消费 useSchedules 的会话行都会跟着父组件一起重渲染。
   const upsert = React.useCallback((job) => {
+    revision.current += 1;
     itemsRef.current = applyScheduleEvent(itemsRef.current, { type: 'schedule.event', event: { schedule: job } });
     setItems(itemsRef.current);
   }, []);
   const remove = React.useCallback((id) => {
+    revision.current += 1;
     itemsRef.current = itemsRef.current.filter((item) => item.id !== id); setItems(itemsRef.current);
   }, []);
   const openCreate = React.useCallback((request) => setDialog({ mode: 'create', ...request }), []);

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useReorderDropPosition } from '../hooks/useReorderDropPosition.js';
 import { Clock } from 'lucide-react';
 import { useSchedules } from '../../schedules/hooks/useSchedules.js';
 import { ApprovalGlyph, ConversationAction, ConversationPinAction, WaitingInputGlyph } from './ConversationIcons.jsx';
@@ -136,25 +137,11 @@ export function ConversationNode({
   const waitingTaskId = isRunStateWaiting(runState.state) ? runState.taskId : '';
   const isPinned = Boolean(conversation.pinned);
 
-  const [dropPosition, setDropPosition] = React.useState(null);
+  const { dropPosition, setDropPosition, handleDragOver, handleDragLeave } = useReorderDropPosition();
 
   function handleDragStart(event) {
     event.dataTransfer.setData('text/plain', conversation.id);
     event.dataTransfer.effectAllowed = 'move';
-  }
-
-  function handleDragOver(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    event.dataTransfer.dropEffect = 'move';
-    const rect = event.currentTarget.getBoundingClientRect();
-    const isAfter = (event.clientY - rect.top) > rect.height / 2;
-    setDropPosition(isAfter ? 'after' : 'before');
-  }
-
-  function handleDragLeave(event) {
-    if (event.currentTarget.contains(event.relatedTarget)) return;
-    setDropPosition(null);
   }
 
   function handleDrop(event) {

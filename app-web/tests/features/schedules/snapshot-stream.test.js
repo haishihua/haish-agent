@@ -22,6 +22,56 @@ function fixture() {
 const job = { id: 's', conversation_id: 'owner', last_run: { id: 'r', task_id: 't', status: 'running' } };
 const delta = { type: 'task.event', schedule_id: 's', conversation_id: 'owner', event: { type: 'llm_answer_delta', delta: 'text' } };
 
+for (const operation of ['create', 'update', 'remove']) test(`REST ${operation} invalidates a pending schedule snapshot`, async () => {
+  const f = fixture();
+  f.requests[0].resolve(operation === 'create' ? [] : [job]);
+  await f.hook.settle();
+  f.focus();
+  const latest = operation === 'remove' ? [] : [{ ...job, state: operation === 'update' ? 'paused' : 'active' }];
+  if (operation === 'remove') f.hook.result.remove(job.id);
+  else f.hook.result.upsert(latest[0]);
+  await f.hook.settle();
+  assert.deepEqual(f.hook.result.items, latest);
+  f.requests[1].resolve(operation === 'create' ? [] : [job]);
+  await f.hook.settle();
+  assert.deepEqual(f.hook.result.items, latest);
+  assert.equal(f.requests.length, 3);
+  f.requests[2].resolve(latest);
+  await f.hook.settle();
+  assert.deepEqual(f.hook.result.items, latest);
+  f.hook.unmount();
+});
+
+test('effect replacement isolates old schedule requests and releases the previous subscription', async () => {
+  const f = fixture();
+  f.hook.result.upsert(job);
+  await f.hook.settle();
+  const replacement = deferred();
+  let cleanups = 0;
+  f.hook.update({ api: { list: () => replacement.promise }, subscribe: () => () => { cleanups += 1; } });
+  assert.equal(f.stopped, true);
+  f.requests[0].resolve([]);
+  await f.hook.settle();
+  assert.deepEqual(f.hook.result.items, [job]);
+  const latest = [{ ...job, state: 'paused' }];
+  replacement.resolve(latest);
+  await f.hook.settle();
+  assert.deepEqual(f.hook.result.items, latest);
+  f.hook.unmount();
+  assert.equal(cleanups, 1);
+});
+
+test('missing desktop bridge permits mounting and cleanup', async () => {
+  const listeners = new Set();
+  const hook = scheduleHookHarness('../../../src/features/schedules/hooks/useSchedules.js', 'useSchedulesState', {
+    api: { list: async () => [] },
+  }, { window: { addEventListener: (_, listener) => listeners.add(listener), removeEventListener: (_, listener) => listeners.delete(listener) } });
+  await hook.settle();
+  assert.equal(hook.result.loading, false);
+  hook.unmount();
+  assert.equal(listeners.size, 0);
+});
+
 test('scheduled content stream routes every delta without starving initial or focus list snapshots', async () => {
   const f = fixture();
   for (let i = 0; i < 200; i++) f.emit(delta);

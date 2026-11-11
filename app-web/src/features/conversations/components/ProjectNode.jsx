@@ -1,4 +1,5 @@
 import React from 'react';
+import { useReorderDropPosition } from '../hooks/useReorderDropPosition.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ConversationAction } from './ConversationIcons.jsx';
 import { ConversationNode } from './ConversationNode.jsx';
@@ -88,7 +89,7 @@ export function ProjectNode({
   const hiddenCount = workflowTaskMode ? hiddenWorkflowTaskCount : hiddenConversationCount;
   const mode = workflowTaskMode ? 'bot' : 'chat';
   const registerConversationNode = useConversationOrderAnimation(visibleConversations);
-  const [dropPosition, setDropPosition] = React.useState(null);
+  const { dropPosition, setDropPosition, handleDragOver, handleDragLeave } = useReorderDropPosition();
 
   // Folding the list away — the project icon, or the whole conversation panel —
   // drops the "Show more" expansion, so opening it again falls back to the
@@ -100,20 +101,6 @@ export function ProjectNode({
   function handleDragStart(event) {
     event.dataTransfer.setData('application/x-project-id', project.id);
     event.dataTransfer.effectAllowed = 'move';
-  }
-
-  function handleDragOver(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    event.dataTransfer.dropEffect = 'move';
-    const rect = event.currentTarget.getBoundingClientRect();
-    const isAfter = (event.clientY - rect.top) > rect.height / 2;
-    setDropPosition(isAfter ? 'after' : 'before');
-  }
-
-  function handleDragLeave(event) {
-    if (event.currentTarget.contains(event.relatedTarget)) return;
-    setDropPosition(null);
   }
 
   function handleDrop(event) {
