@@ -1,4 +1,5 @@
 import { API_BASE } from './base.js';
+import { fileUriPath } from '../lib/file-uri.js';
 
 /**
  * One place that turns a stored image reference into something the renderer can
@@ -18,7 +19,8 @@ export function chatImagePreviewUrl(ref, conversationId) {
   if (/^(blob:|data:|https?:)/i.test(path)) return path;
   // `file://` is a display form of the same local path; the endpoint wants the
   // bare absolute path (it resolves it against the conversation's roots).
-  const localPath = path.replace(/^file:\/\//i, '') || path;
+  const localPath = /^file:\/\//i.test(path) ? fileUriPath(path) : path;
+  if (!localPath) return '';
   // 图片始终按“这条消息所属的会话”请求。路径里即使带着别的会话编号，也不能
   // 改变请求范围；服务端会按当前会话的根目录再校验一次。
   const scopeId = String(conversationId || '');

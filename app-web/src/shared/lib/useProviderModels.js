@@ -39,8 +39,8 @@ function normalizeProviderModels(payload) {
 }
 
 function readProviderModelsCache(requestKey) {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
   try {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
     const cache = JSON.parse(window.localStorage.getItem(PROVIDER_MODELS_STORAGE_KEY) || '{}');
     const catalog = cache?.[requestKey];
     if (!catalog) return null;
@@ -51,8 +51,8 @@ function readProviderModelsCache(requestKey) {
 }
 
 function writeProviderModelsCache(requestKey, catalog) {
-  if (typeof window === 'undefined' || !window.localStorage) return;
   try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
     const cache = JSON.parse(window.localStorage.getItem(PROVIDER_MODELS_STORAGE_KEY) || '{}');
     cache[requestKey] = catalog;
     window.localStorage.setItem(PROVIDER_MODELS_STORAGE_KEY, JSON.stringify(cache));

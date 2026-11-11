@@ -3,7 +3,9 @@ import { createRoot } from 'react-dom/client';
 import { WorkflowRuntimeConfig } from '../../src/features/workflow/components/WorkflowRuntimeConfig.jsx';
 import '../../styles.css';
 
-const providers = [{ id: 'profile-a', requestProvider: 'profile-a', provider: 'openai', label: 'Source Provider', defaultModelId: 'gpt-6.1-sol', modelOptions: [{ id: 'gpt-6.1-sol' }] }];
+const providers = [{ id: 'profile-a', requestProvider: 'profile-a', provider: 'openai', label: 'Source Provider', defaultModelId: 'gpt-6.1-sol', modelOptions: [{ id: 'gpt-6.1-sol' }] },
+  // custom 中转站：显示名只写了中转站，真正跑的是 deepseek-v4-flash。
+  { id: 'ai-router-ds', requestProvider: 'ai-router-ds', provider: 'custom', label: 'ai router-ds', defaultModelId: 'deepseek-v4-flash' }];
 let changes = 0;
 window.fetch = async () => new Response(JSON.stringify({ provider: 'openai', models: ['gpt-6.1-sol'] }), { status: 200 });
 function Fixture() {
@@ -15,6 +17,7 @@ function Fixture() {
     <div id="removed-record"><WorkflowRuntimeConfig value={{ llm_config_id: 'removed-profile', model_id: 'custom-model' }} readOnly onChange={() => changes++} /></div>
     <div id="model-only"><WorkflowRuntimeConfig value={{ model_id: 'orphan-model' }} readOnly onChange={() => changes++} /></div>
     <div id="empty"><WorkflowRuntimeConfig /></div>
+    <div id="custom-ds"><WorkflowRuntimeConfig value={{ llm_config_id: 'ai-router-ds', model_id: 'deepseek-v4-flash', reasoning_effort: 'xhigh' }} providerOptions={providers} readOnly onChange={() => changes++} /></div>
   </div>;
 }
 createRoot(document.getElementById('root')).render(<Fixture />);
@@ -36,8 +39,20 @@ const visibleIcon = (element) => {
   }
   check(trigger('snapshot', 'Node model').textContent.includes('gpt-6.1-sol'), 'Historical model stays unchanged');
   check(trigger('record-snapshot', 'Node provider').textContent.trim() === 'Source ProviderAPI' && trigger('record-snapshot', 'Node model').textContent.includes('saved-model'), 'Exact saved record keeps its identity, default API label and historical model outside the current catalog');
-  check(trigger('removed-record', 'Node provider').textContent.trim() === 'removed-profile' && trigger('removed-record', 'Node model').querySelector('.settings-provider-icon-custom'), 'Deleted record retains its identity and generic model icon');
+  check(trigger('removed-record', 'Node provider').textContent.trim().startsWith('RP') && trigger('removed-record', 'Node model').querySelector('.settings-provider-icon-custom'), 'Deleted record keeps its own initials and a generic model icon');
   check(!trigger('model-only', 'Node model').querySelector('.settings-provider-icon'), 'A model without a provider identity does not invent a brand');
+  // 参考图二：路由行还是中转站自己（首字母 AR），只有模型行才是鲸鱼；两处都不套描边圆环。
+  const dsProvider = trigger('custom-ds', 'Node provider');
+  check(dsProvider.textContent.trim().startsWith('AR') && !dsProvider.querySelector('.settings-provider-logo'), 'Custom route keeps its own initials instead of borrowing the vendor brand');
+  check(Boolean(trigger('custom-ds', 'Node model').querySelector('.settings-provider-logo'))
+    && !trigger('custom-ds', 'Node model').querySelector('.settings-provider-icon-custom'), 'Custom route model shows the vendor brand inferred from the model id');
+  const flat = (element) => {
+    const style = getComputedStyle(element);
+    return style.borderTopWidth === '0px' && style.backgroundColor === 'rgba(0, 0, 0, 0)';
+  };
+  check(flat(dsProvider.querySelector('.settings-provider-icon')) && flat(trigger('custom-ds', 'Node model').querySelector('.settings-provider-icon')), 'No bordered tile wraps the marker in either row');
+  const customIcon = trigger('custom-ds', 'Node model').querySelector('.settings-provider-icon');
+  check(customIcon.getBoundingClientRect().width <= 18, 'Vendor mark stays inside the 18px select slot');
   check([...document.querySelectorAll('#snapshot [role="combobox"]')].every((item) => item.disabled), 'Historical fields remain read-only');
   check(!trigger('empty', 'Node provider').querySelector('.settings-provider-icon'), 'Empty provider keeps plain placeholder');
   const provider = trigger('editable', 'Node provider');

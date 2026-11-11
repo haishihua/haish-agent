@@ -572,8 +572,31 @@ export function buildChatTimeline(task, taskStatus) {
   }
 
   const eventToolCallIds = new Set(toolItemsByCallId.keys());
-  // Backfill tool calls that exist in toolCalls but have no matching event yet
-  // (e.g. event still in-flight). Append them in their natural order.
+  // Missing start events must not turn early calls into the newest rows.
+  // Use the next event-backed call in toolCalls order as an insertion anchor,
+  // preserving event-ordered text and existing skill nesting around that anchor.
+  const insertBeforeCall = (rows, callId, item) => {
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      if (row.callId === callId) {
+        rows.splice(index, 0, item);
+        return true;
+      }
+      if (row.children?.length && insertBeforeCall(row.children, callId, item)) return true;
+    }
+    return false;
+  };
+  const nextEventCallIds = new Map();
+  let nextEventCallId = '';
+  for (let index = toolCalls.length - 1; index >= 0; index -= 1) {
+    const call = toolCalls[index];
+    if (!call?.callId) continue;
+    nextEventCallIds.set(call.callId, nextEventCallId);
+    if (eventToolCallIds.has(call.callId)
+      && !TOOL_TERMINAL_INPUT_NAMES.has(normalizeToolName(call.toolName))) {
+      nextEventCallId = call.callId;
+    }
+  }
   for (const call of toolCalls) {
     if (!call?.callId || seenToolIds.has(call.callId)) continue;
     const callToolName = normalizeToolName(call.toolName);
@@ -592,6 +615,8 @@ export function buildChatTimeline(task, taskStatus) {
       mergeTerminalResult(toolItem, call, call.state || 'requested');
     }
     seenToolIds.add(call.callId);
+    const anchorCallId = nextEventCallIds.get(call.callId);
+    if (anchorCallId && insertBeforeCall(items, anchorCallId, toolItem)) continue;
     if (toolItem.category === 'skill') {
       items.push(toolItem);
       currentSkillItem = canNestToolChildren(toolItem) ? toolItem : null;

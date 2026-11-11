@@ -85,6 +85,7 @@ const STORAGE_KEY = 'haish.agent-avatars.v1';
 const listeners = new Set();
 let cachedRaw = null;
 let cachedMap = {};
+let pendingPersistence = false;
 
 function avatarStorage() {
   try {
@@ -135,6 +136,7 @@ function parseAvatarMap(raw) {
 
 // useSyncExternalStore 要求快照引用稳定，所以按原始字符串缓存一次解析结果。
 export function getAgentAvatarMap() {
+  if (pendingPersistence) return cachedMap;
   const storage = avatarStorage();
   let raw = '';
   try {
@@ -162,8 +164,13 @@ export function saveAgentAvatar(agentId, avatarId) {
   if (!isAgentAvatarId(avatarId) || String(avatarId) === DEFAULT_AGENT_AVATAR_ID) delete next[id];
   else next[id] = String(avatarId);
   const raw = JSON.stringify(next);
+  pendingPersistence = true;
   try {
-    avatarStorage()?.setItem(STORAGE_KEY, raw);
+    const storage = avatarStorage();
+    if (storage) {
+      storage.setItem(STORAGE_KEY, raw);
+      pendingPersistence = false;
+    }
   } catch {
     // Private-mode quota failures must not break the settings panel.
   }

@@ -1,6 +1,6 @@
 /** Workflow graph editor constants and pure graph-edit helpers shared by the editor panes. */
 
-import { WORKFLOW_BRANCH_META } from '../../../workflow/components/WorkflowFlowNode.jsx';
+import { isWorkflowEdgeBranch } from '../../../../core/workflow-catalog/nodes.js';
 
 export const WORKFLOW_NODE_DRAG_TYPE = 'application/x-haish-workflow-node';
 
@@ -20,7 +20,7 @@ export function addWorkflowEdge(edges, from, to, branch = '') {
     && edge.to === to
     && (edge.branch || '') === normalizedBranch
   ))) return edges;
-  if (WORKFLOW_BRANCH_META[normalizedBranch]) {
+  if (isWorkflowEdgeBranch(normalizedBranch)) {
     return [
       ...edges.filter((edge) => !(edge.from === from && edge.branch === normalizedBranch)),
       { from, to, branch: normalizedBranch },

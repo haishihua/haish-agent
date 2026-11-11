@@ -4,6 +4,8 @@
 //
 // This module only resolves a link target; it never reads, uploads or rewrites
 // the file, and opening one stays a user click (see MarkdownLink in Markdown.jsx).
+import { fileUriPath } from './file-uri.js';
+
 const FILE_URI = /^file:\/\//i;
 const SANDBOX_PREFIX = /^sandbox:/i;
 const WINDOWS_ABSOLUTE = /^[a-z]:[\\/]/i;
@@ -35,13 +37,7 @@ export function localFilePath(value) {
     if (raw && !raw.startsWith('/')) raw = `/${raw}`;
   }
   if (FILE_URI.test(raw)) {
-    try {
-      const url = new URL(raw);
-      if (url.hostname && url.hostname !== 'localhost') return '';
-      raw = decodeURIComponent(url.pathname);
-      // file:///C:/… carries the drive letter behind a leading slash.
-      if (WINDOWS_ABSOLUTE.test(raw.slice(1))) raw = raw.slice(1);
-    } catch { return ''; }
+    raw = fileUriPath(raw);
   }
   if (!raw || raw.includes('\0') || /[\r\n]/.test(raw)) return '';
   if (raw === '~' || raw.startsWith('~/')) {

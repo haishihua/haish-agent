@@ -89,9 +89,19 @@ function harness(t, initial, cache = new Map()) {
     respond: async (index, payload, status = 200) => { requests[index].resolve({ ok: status >= 200 && status < 300, status, json: async () => payload }); await settle(); },
     reject: async (index, error) => { requests[index].reject(error); await settle(); },
     seed: (value, models) => cache.set(cacheKey, JSON.stringify({ [JSON.stringify(providerModelsRequest(value))]: { options: models.map(id => ({ id, label: id })), defaultModelId: models[0] } })),
+    failStorageGetter: () => Object.defineProperty(window, 'localStorage', { get() { throw new Error('storage denied'); } }),
     failStorage: () => { failStorage = true; },
   };
 }
+
+test('storage getter denial cannot block live provider discovery', async t => {
+  const h = harness(t, provider());
+  h.failStorageGetter();
+  h.render(provider('route-b'));
+  await h.respond(1, response(['live-model']));
+  assert.deepEqual(h.ids, ['live-model']);
+  assert.equal(h.result.refreshing, false);
+});
 
 test('saved default and configured models remain usable while discovery is pending', t => {
   const h = harness(t, provider('route-a', { defaultModelId: 'saved-default', modelOptions: ['configured-model'] }));
