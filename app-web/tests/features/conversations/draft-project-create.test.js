@@ -2,6 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createConversationCrudHandlers } from '../../../src/features/conversations/hooks/conversation-handlers/crud.js';
 
+test('Activity Add Project creates and activates a server conversation', async () => {
+  const requests = [];
+  const opened = [];
+  globalThis.window = { haish: { pickProjectDirectory: async () => ({ project: { name: 'Fresh', rootPath: '/fresh' } }) } };
+  const handlers = createConversationCrudHandlers({
+    API_BASE: '', viewModeRef: { current: 'chat' }, invalidateConversationActivation: () => 1,
+    isConversationActivationCurrent: () => true, buildApiHeaders: () => ({}),
+    apiFetch: async (url) => { requests.push(url); return { ok: true, json: async () => ({ project_id: 'new', conversation_id: 'conversation-new', execution_mode: 'chat', name: 'Fresh', workspace_path: '/fresh' }) }; },
+    setWorkspaceState: (update) => update({ projects: [] }), normalizeWorkspaceOrdering: (value) => value,
+    activateConversationDetail: (detail) => opened.push(detail), showToast: () => {},
+  });
+  await handlers.handleAddProject();
+  assert.deepEqual(requests, ['/api/projects', '/api/conversations']);
+  assert.equal(opened[0].conversation_id, 'conversation-new');
+  assert.equal(opened[0].workspace_path, '/fresh');
+});
+
 test('adding a project for a draft selects it without creating a server conversation', async () => {
   const requests = [];
   const selected = [];

@@ -8,6 +8,18 @@ const { taskSummaryToRuntimeTask } = await import('../../../src/core/task-runtim
 
 const project = (id, mode, tasks) => ({ id, name: id, executionMode: mode, conversations: [{ id: `c-${id}`, name: `Conversation ${id}`, tasks }] });
 
+test('empty server chats stay visible before history loads and after switching conversations', () => {
+  const workspace = [project('fresh', 'chat', []), project('other', 'chat', [])];
+  for (const history of [null, [], workspace]) {
+    for (const activeId of ['c-fresh', 'c-other', null]) {
+      const entries = activityEntries(history, {}, 'chat', workspace, activeId);
+      assert.deepEqual(entries.map((entry) => entry.conversation.id).sort(), ['c-fresh', 'c-other']);
+      assert.ok(entries.every((entry) => entry.task === null));
+    }
+  }
+  assert.deepEqual(activityEntries(null, {}, 'bot', workspace, 'c-fresh'), []);
+});
+
 test('chat activity groups terminal tasks by conversation and puts live work before idle work', () => {
   const projects = [
     project('a', 'chat', [

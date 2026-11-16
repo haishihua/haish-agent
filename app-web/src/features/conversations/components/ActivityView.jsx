@@ -1,5 +1,6 @@
 import React from 'react';
-import { Search, SquarePen, X } from 'lucide-react';
+import { Clock, Search, SquarePen, X } from 'lucide-react';
+import { useSchedules } from '../../schedules/hooks/useSchedules.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
@@ -34,6 +35,7 @@ function formatTime(timestamp) {
 
 export function ActivityView({ projects, workspaceProjects, activeConversationId, activeTaskId, notices, terminalNotices = {}, taskTerminalNotices = {}, mode, onSelect, onPin, onDeleteConversation,
   onDeleteTask, onNewEntry, isDraftSelected = false, loading, error }) {
+  const schedules = useSchedules();
   const [limit, setLimit] = React.useState(ACTIVITY_PAGE_SIZE);
   const [query, setQuery] = React.useState('');
   const entries = React.useMemo(() => activityEntries(loading ? null : projects, notices, mode, workspaceProjects, activeConversationId),
@@ -83,9 +85,12 @@ export function ActivityView({ projects, workspaceProjects, activeConversationId
             const conversation = currentConversations.get(entry.conversation.id) || entry.conversation;
             const terminalStatus = terminalTaskNoticeStatus(mode === 'bot' ? taskTerminalNotices[entry.taskId] : terminalNotices[entry.conversation.id]);
             const active = isActiveEntry(entry);
+            const scheduleCount = mode === 'chat'
+              ? (schedules?.items.filter((job) => job.conversation_id === conversation.id).length || 0)
+              : 0;
             return (
               <div key={mode === 'bot' ? `${entry.conversation.id}:${entry.taskId}` : entry.conversation.id}
-                className={`activity-row conversation-row${active ? ' active' : ''}`} role="button" tabIndex={0}
+                className={`activity-row conversation-row${active ? ' active' : ''}${scheduleCount ? ' has-schedules' : ''}`} role="button" tabIndex={0}
                 aria-current={active ? 'true' : undefined} onClick={() => onSelect(entry)}
                 onKeyDown={(event) => {
                   if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
@@ -95,6 +100,12 @@ export function ActivityView({ projects, workspaceProjects, activeConversationId
                 <PortalTooltip text={tooltip} position="below" multiline alwaysDelay>
                   <span className="conversation-name"><span className="conversation-name-static">{title}</span></span>
                 </PortalTooltip>
+                {scheduleCount > 0 && <button type="button" className="conversation-schedule-icon" aria-label={`Scheduled tasks (${scheduleCount})`} title={`${scheduleCount} scheduled task(s)`}
+                  onClick={(event) => { event.stopPropagation(); schedules.openManage(conversation.id); }}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}>
+                  <Clock size={15} strokeWidth={1.5} aria-hidden="true" />
+                </button>}
                 <ActivityStatus entry={entry} mode={mode} terminalStatus={terminalStatus} />
                 <span className="conversation-actions">
                   {mode === 'chat' ? <>

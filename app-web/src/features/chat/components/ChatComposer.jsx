@@ -111,6 +111,9 @@ export function ChatComposer({
   scheduleNodeRuntimeConfigs,
   onRestoreNodeConfigs,
 }) {
+  const [editorHeight, setEditorHeight] = React.useState(null);
+  const resizeDragRef = React.useRef(null);
+  const clampEditorHeight = (height) => Math.round(Math.max(24, Math.min(height, Math.max(24, window.innerHeight * 0.6))));
   const schedules = useSchedules();
   const resolvedProviderOptions = Array.isArray(providerOptions) && providerOptions.length > 0
     ? providerOptions
@@ -643,7 +646,41 @@ export function ChatComposer({
           onHover={setSkillMenuIndex}
         />
       )}
-      <div className="chat-composer-surface">
+      <div className="chat-composer-surface" style={editorHeight === null ? undefined : { '--composer-editor-height': `${editorHeight}px` }}>
+        <div
+          className="chat-composer-resize-handle"
+          role="separator"
+          aria-label="调整输入框高度"
+          aria-orientation="horizontal"
+          aria-valuemin={24}
+          aria-valuemax={Math.max(24, Math.round(window.innerHeight * 0.6))}
+          aria-valuenow={editorHeight ?? 24}
+          tabIndex={0}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            const editor = event.currentTarget.parentElement.querySelector('.chat-composer-editor');
+            resizeDragRef.current = { y: event.clientY, height: editor.getBoundingClientRect().height };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            const drag = resizeDragRef.current;
+            if (drag) setEditorHeight(clampEditorHeight(drag.height + drag.y - event.clientY));
+          }}
+          onPointerUp={(event) => {
+            resizeDragRef.current = null;
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+          }}
+          onLostPointerCapture={() => { resizeDragRef.current = null; }}
+          onPointerCancel={() => { resizeDragRef.current = null; }}
+          onDoubleClick={() => setEditorHeight(null)}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+            event.preventDefault();
+            const editor = event.currentTarget.parentElement.querySelector('.chat-composer-editor');
+            setEditorHeight(clampEditorHeight(editor.getBoundingClientRect().height + (event.key === 'ArrowUp' ? 20 : -20)));
+          }}
+        />
         <ComposerBorderBeam active={sendBeamActive} />
         {beforeInput ? <div className="chat-composer-before-input">{beforeInput}</div> : null}
         <div className="chat-composer-input-row">

@@ -14,8 +14,7 @@ export function filterActivityEntries(entries, query, mode) {
   ));
 }
 
-export function activityEntries(projects, notices = {}, mode = 'chat', workspaceProjects = [], activeConversationId = null) {
-  const hasHistory = projects !== null;
+export function activityEntries(projects, notices = {}, mode = 'chat', workspaceProjects = [], _activeConversationId = null) {
   const workspaceByProject = new Map((workspaceProjects || []).map((project) => [project.id, project]));
   const byProject = new Map((projects || []).filter((project) => project.executionMode === mode).map((project) => [project.id, project]));
   for (const project of workspaceProjects || []) {
@@ -27,7 +26,7 @@ export function activityEntries(projects, notices = {}, mode = 'chat', workspace
     const conversations = new Map((project.conversations || []).map((conversation) => [conversation.id, conversation]));
     for (const conversation of current.values()) {
       if (!conversations.has(conversation.id) && ((conversation.tasks || []).some(isTaskLive)
-        || (hasHistory && mode === 'chat' && conversation.id === activeConversationId))) conversations.set(conversation.id, conversation);
+        || mode === 'chat')) conversations.set(conversation.id, conversation);
     }
     return [...conversations.values()].flatMap((summary) => {
       const live = current.get(summary.id);
@@ -46,11 +45,11 @@ export function activityEntries(projects, notices = {}, mode = 'chat', workspace
         }];
       }).sort((a, b) => b.sortTime - a.sortTime || String(a.taskId).localeCompare(String(b.taskId)));
       if (mode === 'bot') return tasks;
-      if (!tasks.length) return (conversation.id === activeConversationId || (conversation.tasks || []).some(isTaskLive)) ? [{
+      if (!tasks.length) return [{
         project, conversation, task: null, taskId: '', completedAt: 0,
         sortTime: (conversation.tasks || []).filter(isTaskLive).reduce((latest, task) => Math.max(latest,
           timestampValue(task.createdAt || task.created_at)), 0) || timestampValue(conversation.updatedAt || conversation.createdAt), unread: false,
-      }] : [];
+      }];
       return [{ ...tasks[0], unread: tasks.some((entry) => entry.unread) }];
     });
   }).sort((a, b) => (mode === 'chat' ? compareConversationOrder(a.conversation, b.conversation) : b.sortTime - a.sortTime)
