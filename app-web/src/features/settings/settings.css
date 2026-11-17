@@ -234,6 +234,9 @@
   .settings-skill-errors li { overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
   .settings-skill-errors li > span { color: var(--muted-foreground); font-size: 11px; }
   .settings-inline-success { color: #8fb5a3; background: transparent; border: 0; padding: 0; font-size: 12px; line-height: 1.6; margin-top: 12px; }
+  .workflow-leave-dialog .workflow-discard-action { background: #dc3545; color: #fff; border: 1px solid #ef5261; opacity: 1; }
+  .workflow-leave-dialog .workflow-discard-action:hover { background: #c52838; }
+  .workflow-leave-dialog .workflow-discard-action:active { background: #ae2030; }
   .settings-delete-dialog { width: 420px; max-width: 420px; padding: 24px; }
   .settings-delete-dialog [data-slot="alert-dialog-header"] { text-align: left; place-items: start; }
   .settings-delete-dialog [data-slot="alert-dialog-footer"] { display: flex; flex-direction: row; justify-content: flex-end; }

@@ -326,17 +326,23 @@ export function createSettingsHandlers(ctx) {
 
   async function handleTogglePresetWorkflow(workflowId, enabled) {
     try {
-      const response = await apiFetch(`${API_BASE}/api/settings/workflows/presets/${encodeURIComponent(workflowId)}`, {
-        method: 'PATCH',
+      const current = workflowById(workflowSettingsDraft, workflowId);
+      const isCustom = normalizeWorkflowSettings(workflowSettingsDraft).custom.some(item => item.workflow_id === workflowId);
+      const endpoint = isCustom
+        ? `${API_BASE}/api/settings/workflows/custom/${encodeURIComponent(workflowId)}`
+        : `${API_BASE}/api/settings/workflows/presets/${encodeURIComponent(workflowId)}`;
+      const payload = isCustom ? payloadForCustomWorkflow({ ...current, enabled }) : { enabled };
+      const response = await apiFetch(endpoint, {
+        method: isCustom ? 'PUT' : 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify(payload),
       }, { json: false });
       if (!response.ok) {
         const message = await parseResponseMessage(response, `workflow settings save failed: ${response.status}`);
         throw new Error(message);
       }
       applyWorkflowSettingsPayload(await response.json());
-      showToast('success', 'workflow settings saved');
+      showToast('success', enabled ? 'Workflow enabled' : 'Workflow disabled');
       return true;
     } catch (error) {
       showToast('error', String(error?.message || error));
@@ -354,12 +360,10 @@ export function createSettingsHandlers(ctx) {
   }
 
   async function handleSaveCustomWorkflow(workflowId) {
-    try {
       const current = workflowById(workflowSettingsDraft, workflowId);
       if (!current) throw new Error('custom workflow not found');
       if (!String(current.display_name || '').trim()) {
-        showToast('error', 'Workflow name is required');
-        return false;
+        throw new Error('Workflow name is required');
       }
       const payload = payloadForCustomWorkflow(current);
       const isDraft = Boolean(current.draft);
@@ -378,10 +382,6 @@ export function createSettingsHandlers(ctx) {
       applyWorkflowSettingsPayload(await response.json());
       showToast('success', 'custom workflow saved');
       return true;
-    } catch (error) {
-      showToast('error', String(error?.message || error));
-      return false;
-    }
   }
 
   async function handleDeleteCustomWorkflow(workflowId) {

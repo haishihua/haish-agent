@@ -1,5 +1,5 @@
 import React from 'react';
-import { BaseEdge, EdgeLabelRenderer, Handle, Position } from '@xyflow/react';
+import { BaseEdge, EdgeLabelRenderer, Handle, Position, useConnection } from '@xyflow/react';
 import { agentIconNameForAgentId } from '../../../core/agent-settings.js';
 import { workflowEdgePath } from '../model/workflow-edge-path.js';
 import { workflowEdgePaintState, WORKFLOW_EDGE_ROLES } from '../model/workflow-edge-appearance.js';
@@ -69,7 +69,7 @@ export function workflowEdgeAppearance(edge, {
       // 标签只给回路/支路：主链上是干净的一条线（减视觉噪音），箭头同理。
       label: circuit && branch
         ? (defaultCase && targetType === 'loop' ? 'Need retry' : (WORKFLOW_BRANCH_META[branch]?.edgeLabel || '')) : '',
-      arrow: Boolean(base.arrow),
+      arrow: targetType !== 'output' && Boolean(base.arrow),
       // 颜色来源只有这一份：渐变（源类型色 → 目标类型色）或纯色——具体画法只在 WorkflowCanvasEdge。
       paint: base.gradient
         ? { from: workflowNodeAccent(sourceType), to: workflowNodeAccent(targetType) }
@@ -212,14 +212,20 @@ export function WorkflowCanvasEdge({
           style={{ pointerEvents: 'none' }}
         />
       ) : null}
-      {data?.label ? (
+      {data?.label || data?.onDelete ? (
         <EdgeLabelRenderer>
-          <div
+          {data?.onDelete ? <button type="button" className="workflow-edge-delete nodrag nopan"
+            aria-label="Delete connection"
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+            onPointerDown={event => event.stopPropagation()}
+            onClick={event => { event.stopPropagation(); data.onDelete(); }}>
+            <AppIcon name="close" size={12} />
+          </button> : <div
             className="workflow-edge-label"
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           >
             {data.label}
-          </div>
+          </div>}
         </EdgeLabelRenderer>
       ) : null}
     </>
@@ -227,6 +233,7 @@ export function WorkflowCanvasEdge({
 }
 
 export function WorkflowFlowNode({ data, selected, sourcePosition, targetPosition }) {
+  const connection = useConnection();
   const {
     nodeType, runtimeStatus, nodeTitle, nodeLabel,
   } = workflowNodeCardText(data);
@@ -244,7 +251,6 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
       className={workflowNodeCardClassName({
         nodeType, selected, data, runtimeStatus, runtimeDetailAvailable,
       })}
-      title={nodeLabel}
       aria-label={nodeLabel}
     >
       {nodeType !== 'start' ? <Handle type="target" position={resolvedTargetPosition} /> : null}
@@ -286,7 +292,10 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
         const used = data?.usedSideHandles?.includes(id);
         return <Handle key={id} id={id} type={type} position={side}
           className={`workflow-side-handle${available ? ' is-available' : ''}${used ? ' is-used' : ''}`}
-          isConnectableStart={false} isConnectableEnd={available}
+          isConnectableStart={type === 'source' && nodeType !== 'output' && !WORKFLOW_BRANCHES[nodeType]}
+          isConnectableEnd={available || (type === 'target' && nodeType !== 'start')}
+          style={{ zIndex: type === (connection.inProgress ? 'target' : 'source') ? 4 : 3,
+            pointerEvents: !available && ((type === 'source' && (connection.inProgress || nodeType === 'output' || WORKFLOW_BRANCHES[nodeType])) || (type === 'target' && (!connection.inProgress || nodeType === 'start'))) ? 'none' : 'auto' }}
           aria-label={`${type} ${side}`} />;
       }))}
     </div>

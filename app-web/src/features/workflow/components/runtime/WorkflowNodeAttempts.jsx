@@ -19,6 +19,7 @@ export function WorkflowNodeAttempts({
   attention = null,
   agentName = '',
   agentOptions = [],
+  runtimeConfig = {},
   canRetry = false,
   retryLatest,
   historyOpen,
@@ -50,6 +51,7 @@ export function WorkflowNodeAttempts({
         ) : null}
         <NodeConversation
           node={node}
+          runtimeConfig={runtimeConfig}
           task={task}
           attempt={attempt}
           result={workflowResultForAttempt(attempt, latestResult, isLatestAttempt, attemptNumber)}
@@ -89,7 +91,7 @@ export function WorkflowNodeAttempts({
         </details>
       ) : null}
       {latestAttempt ? renderAttempt(latestAttempt, visibleAttempts.length - 1, true) : attention ? (
-        <NodeConversation node={node} task={task} status={status} running showApproval agentName={agentName} pendingInput={attention.status === 'waiting_input' ? attention.request : null} />
+        <NodeConversation node={node} runtimeConfig={runtimeConfig} task={task} status={status} running showApproval agentName={agentName} pendingInput={attention.status === 'waiting_input' ? attention.request : null} />
       ) : (
         <div className="workflow-detail-empty" role="status">{status === 'running' ? 'Waiting for this node’s first event…' : 'No execution content recorded for this node.'}</div>
       )}

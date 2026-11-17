@@ -90,7 +90,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
   const detailBodyRef = React.useRef(null);
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const live = ['running', 'waiting_input', 'approval'].includes(status);
-  const [detailTab, setDetailTab] = React.useState(() => live || ['agent', 'llm'].includes(node.type) ? 'result' : 'config');
+  const [detailTab, setDetailTab] = React.useState(() => live || run?.nodes?.[node.id] || nodeAttempts(task, node.id).length ? 'result' : 'config');
   const wasLiveRef = React.useRef(live);
   React.useEffect(() => {
     // Follow the transition into execution once, without overriding a user's
@@ -164,6 +164,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
               attention={attention}
               agentName={agentName}
               agentOptions={agentOptions}
+              runtimeConfig={runtimeConfig}
               canRetry={canRetry}
               retryLatest={retryLatest}
               historyOpen={historyOpen}
@@ -243,7 +244,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
   const canOpenNodeDetail = React.useCallback((node) => (
     Boolean(node)
     && (node.type === 'output' || isWorkflowExecutableNode(node.type))
-    && (node.type === 'output' || node.type === 'agent' || executedNodeIds.has(String(node.id)) || String(node.id) === attentionNodeId)
+    && (node.type === 'output' || node.type === 'agent' || node.type === 'llm' || executedNodeIds.has(String(node.id)) || String(node.id) === attentionNodeId)
   ), [attentionNodeId, executedNodeIds]);
   // 回环端口（次级→主链那条边的落点）只有一份判断，和配置页调同一个函数。
   const feedbackTargetIds = React.useMemo(
@@ -275,7 +276,13 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     const id = String(node.id);
     const layoutMeta = layout.meta.get(id);
     const runtimeDetailAvailable = canOpenNodeDetail(node);
-    const config = workflowNodeRuntimeConfig(node, task, configs, configReadOnly, providers);
+    const ownRoute = configs[node.id] || {};
+    const routeSource = node.type === 'llm' && node.runtime_config_from
+      ? workflow.nodes.find((item) => item.id === node.runtime_config_from) : null;
+    const inherited = routeSource && !ownRoute.llm_config_id && !ownRoute.provider
+      ? workflowNodeRuntimeConfig(routeSource, task, configs, configReadOnly, providers) : null;
+    const config = workflowNodeRuntimeConfig(node, task, inherited
+      ? { ...configs, [node.id]: { ...inherited, ...ownRoute, agent_id: undefined } } : configs, configReadOnly, providers);
     const provider = providers.find((item) => item.id === config.llm_config_id)?.provider;
     const runtimeNode = node.type === 'agent' ? { ...node, agent_id: config.agent_id } : node;
     const agentName = workflowAgentName(config.agent_id, task, agentOptions);
@@ -291,7 +298,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
         runtimeStatus: status,
         runtimeStatusLabel: STATUS_COPY[status],
         runtimeDetailAvailable,
-        ...(node.type === 'agent' ? { runtimeModelId: config.model_id, runtimeProvider: provider || config.llm_config_id || config.provider } : {}),
+        ...(['agent', 'llm'].includes(node.type) ? { runtimeModelId: config.model_id, runtimeProvider: provider || config.llm_config_id || config.provider } : {}),
         feedbackTarget: feedbackTargetIds.has(id),
         usedSideHandles: workflowUsedSideHandles(id, workflow?.edges, routes),
         // 端口（含 loop 的 retry 出口）只有一份来源：两页都从 workflowNodePorts 取。

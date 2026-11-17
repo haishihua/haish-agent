@@ -12,22 +12,17 @@ import { isTerminalTaskStatus, normalizeTaskStatus } from '../../../../core/run-
 import {
   attemptTask,
   detailText,
-  goalJudgeInput,
   judgeReasonText,
   nodeConversationInputValue,
   timestampMs,
 } from '../../../../core/node-attempts.js';
 
-export function NodeConversation({ node, task, attempt, result, status, running, showApproval, onRetry, agentName = '', pendingInput = null, annotationAttempt = 0 }) {
+export function NodeConversation({ node, task, attempt, result, status, running, showApproval, onRetry, agentName = '', runtimeConfig = {}, pendingInput = null, annotationAttempt = 0 }) {
   const scopedTask = React.useMemo(() => attemptTask(task, attempt, result), [attempt, result, task]);
   const timelineStatus = running ? 'running' : normalizeTaskStatus(isTerminalTaskStatus(result?.status) ? result.status : status);
   const timeline = React.useMemo(
     () => buildChatTimeline(scopedTask, timelineStatus),
     [scopedTask, timelineStatus],
-  );
-  const timelineItems = React.useMemo(
-    () => (Array.isArray(timeline?.items) ? timeline.items : []),
-    [timeline?.items],
   );
   const isGoalJudge = node.type === 'llm' && node.id === 'judge'
     && (task?.workflowSnapshot?.id || task?.workflowSnapshot?.workflow_id || task?.requestedWorkflowId) === 'workflow.goal-loop';
@@ -44,8 +39,15 @@ export function NodeConversation({ node, task, attempt, result, status, running,
     ? String(rawInputValue.evaluation_feedback || '').trim() : '';
   const inputValue = workflowId === 'workflow.goal-loop' && node.id === 'agent'
     ? (feedback || task?.displayText || task?.requestText || task?.title || '') : rawInputValue;
-  const judgeInput = React.useMemo(() => goalJudgeInput(node, task, inputValue), [node, task, inputValue]);
   const inputText = React.useMemo(() => workflowInputDisplayText(inputValue), [inputValue]);
+  // Keep the normal input bubble above the response. Goal retry feedback may
+  // also be recorded as runtime input; hide only that duplicate inside the trace.
+  const timelineItems = React.useMemo(() => {
+    const items = Array.isArray(timeline?.items) ? timeline.items : [];
+    if (workflowId !== 'workflow.goal-loop' || node.id !== 'agent' || !feedback) return items;
+    return items.filter((item) => !(item.kind === 'user_input'
+      && String(item.text || '').trim() === feedback));
+  }, [timeline?.items, workflowId, node.id, feedback]);
   const createdAt = timestampMs(attempt?.startedAt || result?.started_at || task?.createdAt);
   const completedAt = running
     ? null
@@ -59,6 +61,8 @@ export function NodeConversation({ node, task, attempt, result, status, running,
     createdAt,
     completedAt,
   }), [attempt?.id, completedAt, createdAt, inputText, node.id, timelineStatus]);
+  const modelId = result?.runtime_config?.model_id || runtimeConfig.model_id || '';
+  const modelProvider = result?.runtime_config?.provider || runtimeConfig.provider || runtimeConfig.llm_config_id || '';
   const assistantMessage = React.useMemo(() => ({
     id: `${node.id}-${attempt?.id || 'pending'}-agent`,
     taskId: task?.taskId || '',
@@ -66,7 +70,9 @@ export function NodeConversation({ node, task, attempt, result, status, running,
     messageId: node.type === 'agent' && annotationAttempt && task?.taskId
       ? `workflow:${task.taskId}:${node.id}:${annotationAttempt}` : undefined,
     role: 'agent',
-    agentName: node.type === 'llm' ? 'LLM' : agentName,
+    agentName: node.type === 'llm' ? (modelId || 'LLM') : agentName,
+    modelId: node.type === 'llm' ? modelId : '',
+    modelProvider,
     agentId: node.type === 'agent' ? (node.agent_id || '') : '',
     text: running ? '' : resultText,
     traceTimeline: timelineItems,
@@ -76,7 +82,7 @@ export function NodeConversation({ node, task, attempt, result, status, running,
     createdAt,
     completedAt,
     firstTokenAt: taskFirstStreamTimestamp(scopedTask),
-  }), [agentName, annotationAttempt, attempt?.id, completedAt, createdAt, node.agent_id, node.id, node.type, resultText, running, scopedTask, task?.conversationId, task?.taskId, timeline?.latestTodos, timelineItems, timelineStatus]);
+  }), [modelId, modelProvider, agentName, annotationAttempt, attempt?.id, completedAt, createdAt, node.agent_id, node.id, node.type, resultText, running, scopedTask, task?.conversationId, task?.taskId, timeline?.latestTodos, timelineItems, timelineStatus]);
   const hasAskUser = (items) => items.some((item) => (
     TOOL_AWAITS_USER_NAMES.has(normalizeToolName(item?.toolName))
     || hasAskUser(item.children || item.tools || [])
@@ -112,11 +118,7 @@ export function NodeConversation({ node, task, attempt, result, status, running,
 
   return (
     <>
-      {judgeInput ? (
-        <div className="workflow-judge-input" role="note">
-          {judgeInput.goal ? <p>Goal: {judgeInput.goal}</p> : null}
-        </div>
-      ) : inputText ? <ChatMessageRow message={inputMessage} /> : null}
+      {!isGoalJudge && inputText ? <ChatMessageRow message={inputMessage} /> : null}
       {showAssistant ? <ChatMessageRow message={assistantMessage} onRetry={onRetry} mcpUserInput={!needsFallback} /> : null}
       {needsFallback ? <AskUserInlineForm taskId={task?.taskId} conversationId={task?.conversationId} toolCallId={pendingInput.tool_call_id || ''} active /> : null}
     </>

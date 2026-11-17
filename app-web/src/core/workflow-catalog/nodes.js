@@ -77,7 +77,7 @@ export function normalizeWorkflowRow(item, fallback = DEFAULT_DIRECT_WORKFLOW) {
     : (item?.name != null ? item.name : fallbackName);
   const isBlankDraft = Boolean(item?.draft && !String(resolvedDisplayName || '').trim());
   let nodes = rawNodes
-    .map((node, index) => normalizeWorkflowNode(node, fallback.nodes?.[index] || {}))
+    .map((node) => normalizeWorkflowNode(node, fallback.nodes?.find((candidate) => candidate.id === node.id && candidate.type === node.type && Array.isArray(item?.nodes) === false) || {}))
     .filter((node) => node.id)
     .map((node) => {
       if (

@@ -25,7 +25,7 @@ export function WorkflowNodeHeading({ node, agentOptions = [] }) {
       <div className="workflow-agent-heading-copy">
         <div className="workflow-agent-heading-title">
           <strong>{node.label || node.id}</strong>
-          <span className="workflow-agent-badge">{type}</span>
+          {(node.label || node.id) !== type ? <span className="workflow-agent-badge">{type}</span> : null}
         </div>
         <p>{node.description || agent?.description || fallback}</p>
       </div>
@@ -33,15 +33,15 @@ export function WorkflowNodeHeading({ node, agentOptions = [] }) {
   );
 }
 
-export function WorkflowDetailSelect({ label, icon, value, options, disabled, onChange }) {
+export function WorkflowDetailSelect({ label, icon, value, options, disabled, onChange, placeholder }) {
   const selected = options.find((item) => item.id === value);
   const labelId = React.useId();
   return (
     <div className={`workflow-detail-select settings-field${disabled ? ' is-readonly' : ''}`}>
-      <span className="workflow-detail-select-label" id={labelId}><AppIcon name={icon} size={16} /><span className="workflow-detail-select-text">{label}</span></span>
+      <span className="workflow-detail-select-label" id={labelId}>{icon ? <AppIcon name={icon} size={16} /> : null}<span className="workflow-detail-select-text">{label}</span></span>
       <div className="workflow-detail-select-value" role="group" aria-labelledby={labelId}>
         {disabled ? <span className="workflow-detail-select-static">{selected?.label || value || 'Not set'}</span>
-          : <SettingsMenuSelect className="workflow-menu-select" value={value} options={options} onChange={onChange} />}
+          : <SettingsMenuSelect className="workflow-menu-select" placeholder={placeholder} value={value} options={options} onChange={onChange} />}
       </div>
     </div>
   );

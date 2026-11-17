@@ -7,7 +7,6 @@ import {
   workflowSchemaFields,
   workflowTemplateWithParameterAliases,
 } from '../../../../core/workflow-catalog.js';
-import { FieldRow, SettingsMenuSelect } from '../SettingsPrimitives.jsx';
 import { WorkflowDetailSection, WorkflowDetailSelect } from '../WorkflowNodeDetails.jsx';
 import {
   WorkflowOutputContract,
@@ -63,7 +62,7 @@ export function NodeFields({ selectedNode, workflowInputSchema, agentOptions, to
           {renderInputParameters('prompt', prompt, (
             <WorkflowTemplateTextarea
               title="Prompt"
-              value={workflowTemplateWithParameterAliases(prompt, parameterEntries)}
+              value={workflowArgumentsText(workflowTemplateWithParameterAliases(prompt, parameterEntries))}
               disabled={!isEditable}
               rows={6}
               showVariables={false}
@@ -73,18 +72,15 @@ export function NodeFields({ selectedNode, workflowInputSchema, agentOptions, to
               })}
             />
           ))}
-          <FieldRow label="response format">
-            <SettingsMenuSelect
-              className="workflow-menu-select"
-              value={selectedNode.response_format || 'text'}
-              options={[
-                { id: 'text', label: 'Text' },
-                { id: 'json_object', label: 'JSON object' },
-              ]}
-              onChange={(response_format) => updateNode(selectedNode.id, { response_format })}
-              disabled={!isEditable}
-            />
-          </FieldRow>
+          <WorkflowDetailSelect label="Response type" icon="format"
+            value={selectedNode.response_format || 'text'}
+            options={[
+              { id: 'text', label: 'Text' },
+              { id: 'json_object', label: 'Structured JSON' },
+            ]}
+            onChange={(response_format) => updateNode(selectedNode.id, { response_format })}
+            disabled={!isEditable}
+          />
           <WorkflowOutputContract node={selectedNode} />
         </>
       );
@@ -93,17 +89,14 @@ export function NodeFields({ selectedNode, workflowInputSchema, agentOptions, to
       const argumentsValue = selectedNode.arguments ?? { query: '{{input.message}}' };
       return (
         <>
-          <FieldRow label="tool name">
-            <SettingsMenuSelect
-              className="workflow-menu-select"
-              value={selectedNode.tool_name || ''}
-              options={toolOptions}
-              onChange={(tool_name) => updateNode(selectedNode.id, { tool_name })}
-              disabled={!isEditable}
-              placeholder="Select a tool"
-              header="project tools"
-            />
-          </FieldRow>
+          <WorkflowDetailSelect
+            label="Tool name"
+            value={selectedNode.tool_name || ''}
+            options={toolOptions}
+            onChange={(tool_name) => updateNode(selectedNode.id, { tool_name })}
+            disabled={!isEditable}
+            placeholder="Select a tool"
+          />
           {renderInputParameters('arguments', argumentsValue, (
             <WorkflowTemplateTextarea
               title="Arguments JSON"
@@ -211,7 +204,6 @@ export function NodeFields({ selectedNode, workflowInputSchema, agentOptions, to
               <div className="workflow-detail-select-value">
               {!isEditable ? <span className="workflow-detail-select-static">{selectedNode.max_loops || 3}</span> : <input
                 id={`workflow-max-reruns-${selectedNode.id}`}
-                aria-describedby={`workflow-retry-hint-${selectedNode.id}`}
                 type="number"
                 min="1"
                 step="1"
@@ -225,9 +217,6 @@ export function NodeFields({ selectedNode, workflowInputSchema, agentOptions, to
               </div>
             </div>
           ) : null}
-          <p className="workflow-detail-hint" id={`workflow-retry-hint-${selectedNode.id}`}>
-            {unlimited ? 'Retry until successful or stopped manually.' : 'When the limit is reached, follow Exhausted to End and fail the workflow.'}
-          </p>
           </div>
           </WorkflowDetailSection>
         </>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { ErrorState } from '../../../../shared/ui/agent-elements/ErrorState.jsx';
 import { AppIcon } from '../../../../shared/ui/AppIcon.jsx';
 import {
   buildWorkflowOutputPatch,
@@ -13,7 +14,18 @@ import { WorkflowTemplateTextarea, WorkflowVariableSelect } from '../WorkflowFor
 export function OutputNodeFields({ selectedNode, availableVariables, isEditable, updateNode }) {
   const outputMode = selectedNode.output_mode || (selectedNode.output_mapping ? 'json_object' : 'text');
   const outputEntries = workflowOutputMappingEntries(selectedNode);
-  const updateOutputEntries = (entries) => updateNode(selectedNode.id, buildWorkflowOutputPatch(entries));
+  const [fieldError, setFieldError] = React.useState('');
+  const mappingDrafts = React.useRef(new Map());
+  const updateOutputEntries = (entries) => {
+    const keys = entries.map((entry) => String(entry.key || '').trim());
+    if (keys.some((key) => !key) || new Set(keys).size !== keys.length) {
+      setFieldError('Field names must be non-empty and unique. Existing mappings were preserved.');
+      return;
+    }
+    setFieldError('');
+    mappingDrafts.current.set(selectedNode.id, entries);
+    updateNode(selectedNode.id, buildWorkflowOutputPatch(entries));
+  };
   return (
     <>
         <WorkflowDetailSelect label="Response type" icon="format"
@@ -24,9 +36,10 @@ export function OutputNodeFields({ selectedNode, availableVariables, isEditable,
           ]}
           onChange={(mode) => {
             if (mode === 'json_object') {
-              updateNode(selectedNode.id, buildWorkflowOutputPatch(outputEntries));
+              updateNode(selectedNode.id, buildWorkflowOutputPatch(mappingDrafts.current.get(selectedNode.id) || outputEntries));
               return;
             }
+            mappingDrafts.current.set(selectedNode.id, outputEntries);
             updateNode(selectedNode.id, {
               output_mode: 'text',
               output: selectedNode.output || outputEntries[0]?.value || '{{input.message}}',
@@ -44,12 +57,13 @@ export function OutputNodeFields({ selectedNode, availableVariables, isEditable,
                 className="workflow-json-add"
                 onClick={() => updateOutputEntries([
                   ...outputEntries,
-                  { key: `field_${outputEntries.length + 1}`, value: '', type: 'string' },
+                  { key: (() => { let n = outputEntries.length + 1; while (outputEntries.some((entry) => entry.key === `field_${n}`)) n += 1; return `field_${n}`; })(), value: '', type: 'string' },
                 ])}
               >
                 <AppIcon name="plus" size={14} />Add Field
               </button>
             ) : null}>
+          {fieldError ? <ErrorState variant="inline" detail={fieldError} /> : null}
           <div className="workflow-output-mapping-table" aria-label="output">
             <div className="workflow-output-mapping-row is-header">
               <span>Name</span>

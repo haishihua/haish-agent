@@ -1,3 +1,4 @@
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '../../../shared/ui/settings-elements/ui/alert-dialog.tsx';
 import React from 'react';
 import { ChevronRight, Settings2, Plus, FlaskConical, LoaderCircle } from 'lucide-react';
 import {
@@ -100,6 +101,15 @@ export function SettingsPage({
 }) {
   const [editingSettings, setEditingSettings] = useState(null);
   const [settingsSearch, setSettingsSearch] = useState('');
+  const [leaveConfirm, setLeaveConfirm] = useState(false);
+  const leaveResolver = React.useRef(null);
+  React.useEffect(() => () => leaveResolver.current?.(false), []);
+  const resolveLeave = (leave) => {
+    setLeaveConfirm(false);
+    const resolve = leaveResolver.current;
+    leaveResolver.current = null;
+    resolve?.(leave);
+  };
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [panelBusy, setPanelBusy] = useState('');
   const [panelError, setPanelError] = useState('');
@@ -117,6 +127,13 @@ export function SettingsPage({
   useEffect(() => () => onAutomationExpandedChange?.(false), [onAutomationExpandedChange]);
   // 从运行页「点标题 → 配置页」跳过来时：直接把那个工作流的编辑器打开（和列表里点一行走同一个
   // setEditingSettings 入口）；消费完把请求交回上层清掉，之后关掉抽屉不会被重新打开。
+  const workflowBaselineRef = useRef(null);
+  useEffect(() => {
+    if (editingSettings?.section !== 'workflow') { workflowBaselineRef.current = null; return; }
+    if (workflowBaselineRef.current?.id !== editingSettings.id) {
+      workflowBaselineRef.current = { id: editingSettings.id, value: JSON.stringify(workflowById(workflowSettings, editingSettings.id)) };
+    }
+  }, [editingSettings, workflowSettings]);
   const lastOpenRequestRef = useRef(null);
   useEffect(() => {
     const request = openEditorRequest;
@@ -175,8 +192,8 @@ export function SettingsPage({
       setLlmToggleBusy('');
     }
   };
-  const selectListItem = (id) => {
-    cancelEditor();
+  const selectListItem = async (id) => {
+    if (await cancelEditor() === false) return;
     selectItem(id);
   };
   const openEditor = (section, id, mode = 'edit') => {
@@ -186,7 +203,9 @@ export function SettingsPage({
   };
   const closeEditor = () => setEditingSettings(null);
   const discardNewEditor = (draft = editingSettings) => {
-    if (!draft || draft.mode !== 'new') return;
+    if (!draft) return;
+    const isWorkflowDraft = draft.section === 'workflow' && workflowById(workflowSettings, draft.id)?.draft;
+    if (draft.mode !== 'new' && !isWorkflowDraft) return;
     if (draft.section === 'llm') {
       // Vision 是多条 provider 列表：取消新建时按 id 移除这一条。
       const isVisionDraft = (llmDraft.vision?.providers || []).some((item) => item.id === draft.id);
@@ -274,12 +293,32 @@ export function SettingsPage({
       onSelectionChange((prev) => ({ ...prev, [draft.section]: fallback?.id || '' }));
     }
   };
-  const cancelEditor = () => {
+  const cancelEditor = async () => {
+    const workflowDirty = editingSettings?.section === 'workflow' && (
+      editingSettings.mode === 'new' || workflowBaselineRef.current?.value !== JSON.stringify(workflowById(workflowSettings, editingSettings.id))
+    );
+    if (workflowDirty) {
+      const leave = await new Promise(resolve => {
+        leaveResolver.current?.(false);
+        leaveResolver.current = resolve;
+        setLeaveConfirm(true);
+      });
+      if (!leave) return false;
+    }
+    if (editingSettings?.section === 'workflow' && !workflowById(workflowSettings, editingSettings.id)?.draft && editingSettings.mode !== 'new') {
+      const baseline = workflowBaselineRef.current;
+      if (baseline?.id === editingSettings.id && baseline.value) {
+        const restored = JSON.parse(baseline.value);
+        onWorkflowSettingsChange(previous => ({ ...previous,
+          custom: (previous.custom || []).map(item => item.workflow_id === editingSettings.id ? restored : item) }));
+      }
+    }
     discardNewEditor();
     closeEditor();
+    return true;
   };
-  const selectSubtab = (section, id) => {
-    cancelEditor();
+  const selectSubtab = async (section, id) => {
+    if (await cancelEditor() === false) return;
     setSettingsSearch('');
     setExpandedSettingsSections((prev) => new Set([...prev, section]));
     onSectionChange(section);
@@ -474,7 +513,11 @@ export function SettingsPage({
     try {
       const saved = panelSection === 'agent' ? await onSaveCustomAgent?.(panelSelectedId) : panelSection === 'workflow' ? await onSaveCustomWorkflow?.(panelSelectedId) : await onSave(panelSection);
       if (saved !== false) closeEditor();
-    } catch (error) { setPanelError(String(error?.message || error)); }
+    } catch (error) {
+      const message = String(error?.message || error);
+      setPanelError(message);
+      if (panelSection === 'workflow') onToast?.('error', message);
+    }
     finally { setPanelBusy(''); }
   };
   const testSelectedProvider = async () => {
@@ -538,6 +581,7 @@ export function SettingsPage({
           agentSettings={agentSettings}
           readOnly={readOnly}
           onSave={saveAndClose}
+          validationError={panelError}
           canSave={!readOnly && panelCanSave}
         />
       );
@@ -576,7 +620,7 @@ export function SettingsPage({
             }
             const selected = isGroup ? activeSection === child.id : activeSection === section.id && activeSubtab === child.id;
             const count = navCount(isGroup ? child.id : section.id, child.id);
-            return <Button key={child.id} variant="ghost" className={`settings-nav-item ${selected ? 'is-selected' : ''}`} aria-current={selected ? 'page' : undefined} onClick={() => { if (panelBusy) return; if (isGroup) { cancelEditor(); setSettingsSearch(''); onSectionChange(child.id); } else selectSubtab(section.id, child.id); }}><AppIcon name={child.icon || SETTINGS_SUBTAB_ICONS[child.id] || 'configure'} size={16} /><span>{child.label}</span>{count !== null && <small>{child.id === 'agent' && agentSettingsLoading ? <LoaderCircle size={12} role="status" aria-label="Loading agent count" /> : count}</small>}</Button>;
+            return <Button key={child.id} variant="ghost" className={`settings-nav-item ${selected ? 'is-selected' : ''}`} aria-current={selected ? 'page' : undefined} onClick={async () => { if (panelBusy) return; if (isGroup) { if (await cancelEditor() === false) return; setSettingsSearch(''); onSectionChange(child.id); } else selectSubtab(section.id, child.id); }}><AppIcon name={child.icon || SETTINGS_SUBTAB_ICONS[child.id] || 'configure'} size={16} /><span>{child.label}</span>{count !== null && <small>{child.id === 'agent' && agentSettingsLoading ? <LoaderCircle size={12} role="status" aria-label="Loading agent count" /> : count}</small>}</Button>;
           })}</div></CollapsibleContent>
         </Collapsible>;
       })}
@@ -659,6 +703,18 @@ export function SettingsPage({
     <SettingsSheet open={ordinaryEditorOpen} title={panelSelectedItem?.title || listTitle} onClose={() => { if (!panelBusy) cancelEditor(); }}>
       {ordinaryEditorOpen && <><div className="settings-editor-scroll">{editorBody(panelSection, panelSelectedId, panelMode)}{panelConnectionStatus?.state === 'error' && <ErrorState variant="inline" detail={panelConnectionStatus.message} />}{panelError && <ErrorState variant="inline" detail={panelError} />}</div><SheetFooter><div>{(panelUsesLlmTest || panelIsConnectionSection) && <Button size="sm" variant="outline" onClick={testSelectedProvider} disabled={Boolean(panelBusy) || panelConnectionTesting}>{panelBusy === 'test' || panelConnectionTesting ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button size="sm" variant="ghost" disabled={Boolean(panelBusy)} onClick={cancelEditor}>{panelCanSave ? 'Cancel' : 'Close'}</Button>{panelCanSave && <Button size="sm" onClick={saveAndClose} disabled={Boolean(panelBusy)}>{panelBusy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></>}
     </SettingsSheet>
+    <AlertDialog open={leaveConfirm} onOpenChange={open => { if (!open) resolveLeave(false); }}>
+      <AlertDialogContent className="settings-delete-dialog workflow-leave-dialog">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Leave workflow editor?</AlertDialogTitle>
+          <AlertDialogDescription>Unsaved changes will be lost.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => resolveLeave(false)}>Keep editing</AlertDialogCancel>
+          <AlertDialogAction className="workflow-discard-action" variant="destructive" onClick={() => resolveLeave(true)}>Discard changes</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <SettingsDeleteDialog target={deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={target => performDelete(target.section, target.id)} />
   </div>;
 }

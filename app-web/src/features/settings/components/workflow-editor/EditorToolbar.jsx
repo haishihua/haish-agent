@@ -12,11 +12,9 @@ export function EditorToolbar({
   canSave,
   nodeTypes,
   draggedNodeType,
-  hasSelectedEdge,
   onNodeDragStart,
   onNodeDragEnd,
   onAddNode,
-  onDeleteEdge,
   onSave,
 }) {
   const typeOptions = nodeTypes
@@ -55,10 +53,6 @@ export function EditorToolbar({
               );
             })}
           </div>
-        ) : null}
-        {isEditable && hasSelectedEdge ? (
-          <SettingsTooltipIconButton label="Delete connection" icon="delete" danger iconSize={18}
-            onClick={onDeleteEdge} />
         ) : null}
       </div>
       {canSave ? (

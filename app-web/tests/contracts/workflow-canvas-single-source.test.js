@@ -41,7 +41,7 @@ test('workflow node palette has a single home and the runtime layer only consume
     llm: '#9299ff',
     tool: '#65d4ba',
     condition: '#b570ff',
-    human_approval: '#b494ff',
+    human_approval: '#e8b568',
     loop: '#35deec',
     output: '#bf79ff',
   };
@@ -108,8 +108,9 @@ test('runtime keeps only its status skin and collapsed handles on top of the sha
   // 未运行的节点不再另配灰色皮肤，图标块也不再重写（读的就是 --node-accent，默认就是类型色）。
   assert.doesNotMatch(runtimeStyles, /workflow-flow-node-icon/);
   assert.doesNotMatch(runtimeStyles, /#98a5ba|#a6b3c8|rgba\(164, 178, 203, 0\.08\)/);
-  assert.match(runtimeStyles, /\.is-runtime\.status-running::after \{/);
-  assert.match(runtimeStyles, /animation: workflow-node-live /);
+  assert.match(runtimeStyles, /\.is-runtime\.status-running::before \{/);
+  assert.match(runtimeStyles, /animation: workflow-live-spin 0\.9s linear infinite/);
+  assert.doesNotMatch(runtimeStyles, /workflow-node-live\s|\.status-running::after/);
   // 跑完的节点不再压一层更暗的底/光（只在描边上收一点亮度）：压下去会盖掉 .active 的选中柔光，
   // 也会让同一张图在运行页和配置页长得不一样。
   const doneBlock = runtimeStyles.slice(
@@ -124,20 +125,20 @@ test('runtime keeps only its status skin and collapsed handles on top of the sha
   assert.doesNotMatch(baseStyles, /background: #efbf64/);
 });
 
-test('one handle look for both pages: a solid glowing dot in the node accent', () => {
+test('one handle look for both pages: a compact dot with an expanded hit area', () => {
   // 配置页与运行页的「边的端点」必须是同一套：实心小圆点、颜色跟节点主题色（--node-accent）、
   // 尺寸只写一次、外面一圈暗色细边把点和卡片分开；悬停/选中/拉线时稍微放大、光更强。
-  assert.match(baseStyles, /\.workflow-flow-node \.react-flow__handle \{[^}]*width: 9px;/);
-  assert.match(baseStyles, /\.workflow-flow-node \.react-flow__handle \{[^}]*height: 9px;/);
+  assert.match(baseStyles, /\.workflow-flow-node \.react-flow__handle \{[^}]*width: 6px;/);
+  assert.match(baseStyles, /\.workflow-flow-node \.react-flow__handle \{[^}]*height: 6px;/);
   assert.match(baseStyles, /\.workflow-flow-node \.react-flow__handle \{[^}]*background: var\(--node-accent\);/);
   assert.match(baseStyles, /\.workflow-flow-node \.react-flow__handle \{[^}]*opacity: 1;/);
   assert.match(
     baseStyles,
-    /\.workflow-flow-node \.react-flow__handle \{[^}]*box-shadow:\n {8}inset 0 0 0 1px rgba\(220, 255, 255, 0\.22\),\n {8}0 0 10px color-mix\(in srgb, var\(--node-accent\) 48%, transparent\);/,
+    /\.workflow-flow-node \.react-flow__handle \{[^}]*box-shadow: none;/,
   );
   assert.match(
     baseStyles,
-    /\.workflow-flow-node\.active \.react-flow__handle,\n\.workflow-flow-node \.react-flow__handle\.connectingfrom,\n\.workflow-flow-node \.react-flow__handle\.connectingto,\n\.workflow-flow-node \.react-flow__handle\.clickconnecting \{\n {4}width: 11px;\n {4}height: 11px;/,
+    /\.workflow-flow-node \.react-flow__handle::after \{[^}]*inset: -6px;/,
   );
   // 老的两套都不许回来：配置页 12px 常显大圆点、中性灰点、收起态（拖线时得能看见把手位置）、
   // 各自挪把手位置。

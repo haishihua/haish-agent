@@ -224,7 +224,6 @@ export function WorkflowParameterEditor({
                 disabled={disabled}
                 aria-label="Parameter name"
                 placeholder="arg1"
-                style={{ width: `${Math.max(4, row.name.length + 1)}ch` }}
                 onChange={(event) => updateRow(row.id, {
                   name: sanitizeParameterName(event.target.value),
                 })}

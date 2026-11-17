@@ -1,10 +1,19 @@
 import React from 'react';
+
+function WorkflowConnectionPreview({ fromX, fromY, toX, toY, fromPosition, toPosition, connectionStatus }) {
+  const [path] = getBezierPath({ sourceX: fromX, sourceY: fromY, targetX: toX, targetY: toY,
+    sourcePosition: fromPosition, targetPosition: toPosition });
+  return <path className="react-flow__connection-path" d={path}
+    style={{ strokeDasharray: connectionStatus === 'valid' ? 'none' : '6 6' }} />;
+}
+
 import {
   ReactFlow,
   Background,
   Position,
   ReactFlowProvider,
   applyEdgeChanges,
+  getBezierPath,
   useReactFlow,
 } from '@xyflow/react';
 import {
@@ -91,6 +100,7 @@ export function WorkflowConfigEditor({
   agentSettings,
   readOnly = false,
   onSave,
+  validationError = '',
   canSave = false,
 }) {
   const normalized = normalizeWorkflowSettings(settings);
@@ -121,6 +131,11 @@ export function WorkflowConfigEditor({
   const savedLayout = savedWorkflowLayout(workflowId);
 
   useEffect(() => {
+    const nodeId = validationError.match(/node ['"]([^'"]+)['"]/)?.[1];
+    if (nodeId) { setSelectedNodeId(nodeId); setSelectedEdgeId(''); }
+  }, [validationError]);
+
+  useEffect(() => {
     if (!layoutSavedPulse) return undefined;
     const timer = window.setTimeout(() => setLayoutSavedPulse(0), 1800);
     return () => window.clearTimeout(timer);
@@ -148,7 +163,6 @@ export function WorkflowConfigEditor({
   const nodes = workflow.nodes || [];
   const edges = workflow.edges || [];
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
-  const selectedEdge = edges.find((edge) => workflowEdgeId(edge) === selectedEdgeId) || null;
   const availableVariables = workflowVariableCatalog(workflow, selectedNodeId);
 
   const updateWorkflow = (patch) => {
@@ -216,7 +230,8 @@ export function WorkflowConfigEditor({
       target: edge.to,
       ...appearance,
       ...workflowRouteHandles(edge, routes),
-      data: { ...appearance.data, routeKey: workflowRouteKey(edge) },
+      data: { ...appearance.data, routeKey: workflowRouteKey(edge),
+        onDelete: isEditable && isSelected ? () => deleteEdge(edgeId) : undefined },
       reconnectable: !readOnly,
       selected: isSelected,
     };
@@ -307,8 +322,19 @@ export function WorkflowConfigEditor({
       edges: edges.filter((edge) => updated.some((item) => item.id === workflowEdgeId(edge))),
     });
   };
+  const canCreateConnection = (connection) => {
+    if (!isEditable) return false;
+    const source = nodes.find(node => node.id === connection.source);
+    const target = nodes.find(node => node.id === connection.target);
+    if (!canConnectWorkflowNodes(source, target)) return false;
+    const branches = WORKFLOW_BRANCHES[source.type] || [];
+    if (branches.length && !branches.includes(connection.sourceHandle)) return false;
+    if (source.type === 'loop' && connection.sourceHandle === 'retry' && ['start', 'output', 'loop'].includes(target.type)) return false;
+    if (source.type === 'loop' && connection.sourceHandle === 'exhausted' && target.type !== 'output') return false;
+    return true;
+  };
   const onReactFlowConnect = (connection) => {
-    if (connection?.sourceHandle?.startsWith('visual-') || connection?.targetHandle?.startsWith('visual-')) return;
+    if (!canCreateConnection(connection)) return;
     if (!isEditable || !connection?.source || !connection?.target || connection.source === connection.target) return;
     const source = nodes.find((node) => node.id === connection.source);
     const target = nodes.find((node) => node.id === connection.target);
@@ -318,6 +344,14 @@ export function WorkflowConfigEditor({
     if (allowedBranches.length && !allowedBranches.includes(branch)) return;
     if (source.type === 'loop' && branch === 'retry' && ['start', 'output', 'loop'].includes(target.type)) return;
     if (source.type === 'loop' && branch === 'exhausted' && target.type !== 'output') return;
+    const edge = { from: connection.source, to: connection.target, ...(branch ? { branch } : {}) };
+    const targetSide = connection.targetHandle?.match(/^visual-target-(left|right|top|bottom)$/)?.[1];
+    const nextRoutes = { ...routes };
+    const routeKey = workflowRouteKey(edge);
+    const sourceSide = connection.sourceHandle?.match(/^visual-source-(left|right|top|bottom)$/)?.[1];
+    if (sourceSide || targetSide) nextRoutes[routeKey] = { ...(sourceSide ? { source: sourceSide } : {}), ...(targetSide ? { target: targetSide } : {}) };
+    else delete nextRoutes[routeKey];
+    saveWorkflowCanvasPreferences(workflow.workflow_id, { routes: nextRoutes });
     updateWorkflow({ edges: addWorkflowEdge(edges, connection.source, connection.target, branch) });
   };
   const updateNode = (nodeId, patch) => {
@@ -347,8 +381,8 @@ export function WorkflowConfigEditor({
         },
       } : {}),
       ...(baseType === 'llm' ? { prompt: '{{input.message}}', response_format: 'text' } : {}),
-      ...(baseType === 'tool' ? { tool_name: toolOptions[0]?.id || '', arguments: { query: '{{input.message}}' } } : {}),
-      ...(baseType === 'condition' ? { expression: '{{nodes.agent_1.success}} == true' } : {}),
+      ...(baseType === 'tool' ? { tool_name: toolOptions[0]?.id || '', arguments: {} } : {}),
+      ...(baseType === 'condition' ? { expression: 'true' } : {}),
       ...(baseType === 'human_approval' ? {
         input: {
           title: 'Approval required',
@@ -439,14 +473,12 @@ export function WorkflowConfigEditor({
           canSave={canSave}
           nodeTypes={normalized.node_types}
           draggedNodeType={draggedNodeType}
-          hasSelectedEdge={Boolean(selectedEdge)}
           onNodeDragStart={setDraggedNodeType}
           onNodeDragEnd={() => {
             setDraggedNodeType('');
             setIsCanvasDropTarget(false);
           }}
           onAddNode={addNode}
-          onDeleteEdge={() => deleteEdge(selectedEdgeId)}
           onSave={onSave}
         />
         <div ref={canvasRef} className={`workflow-canvas${isCanvasDropTarget ? ' is-node-drag-over' : ''}`}>
@@ -487,7 +519,7 @@ export function WorkflowConfigEditor({
                 onReconnect={onReconnect}
                 onReconnectEnd={() => { reconnectingRef.current = null; setReconnecting(null); }}
                 isValidConnection={(connection) => reconnecting ? Boolean(reconnectRoute(reconnecting.edge, connection))
-                  : isEditable && !connection.sourceHandle?.startsWith('visual-') && !connection.targetHandle?.startsWith('visual-')}
+                  : canCreateConnection(connection)}
                 edgesReconnectable={!readOnly}
                 reconnectRadius={14}
                 nodesDraggable
@@ -504,7 +536,7 @@ export function WorkflowConfigEditor({
                 minZoom={0.3}
                 maxZoom={1.4}
                 snapToGrid={false}
-                connectionLineType="straight"
+                connectionLineComponent={WorkflowConnectionPreview}
                 defaultEdgeOptions={{
                   type: 'straight',
                   style: { strokeWidth: 2 },

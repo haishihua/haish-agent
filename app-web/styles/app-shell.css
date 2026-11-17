@@ -1113,15 +1113,15 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 26px;
+    flex: 0 0 18px;
     box-sizing: border-box;
-    width: 26px;
-    height: 26px;
-    border: 1px solid rgba(176, 206, 255, 0.14);
-    border-radius: 9px;
-    background: rgba(176, 206, 255, 0.08);
-    color: rgba(176, 206, 255, 0.92);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    width: 18px;
+    height: 18px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--toolbar-node-accent);
+    box-shadow: none;
     transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
@@ -1134,64 +1134,15 @@
     stroke-width: 1.8;
 }
 
-.workflow-toolbar-add.is-agent .workflow-toolbar-add-icon {
-    border-color: rgba(185, 163, 255, 0.22);
-    background: rgba(168, 140, 255, 0.1);
-    color: rgba(206, 188, 255, 0.96);
-}
+.workflow-toolbar-add.is-agent { --toolbar-node-accent: var(--workflow-accent-agent); }
+.workflow-toolbar-add.is-llm { --toolbar-node-accent: var(--workflow-accent-llm); }
+.workflow-toolbar-add.is-tool { --toolbar-node-accent: var(--workflow-accent-tool); }
+.workflow-toolbar-add.is-condition { --toolbar-node-accent: var(--workflow-accent-condition); }
+.workflow-toolbar-add.is-human_approval { --toolbar-node-accent: var(--workflow-accent-human_approval); }
+.workflow-toolbar-add.is-loop { --toolbar-node-accent: var(--workflow-accent-loop); }
 
-.workflow-toolbar-add.is-llm .workflow-toolbar-add-icon {
-    border-color: rgba(124, 211, 250, 0.2);
-    background: rgba(105, 200, 246, 0.09);
-    color: rgba(152, 220, 252, 0.96);
-}
-
-.workflow-toolbar-add.is-tool .workflow-toolbar-add-icon {
-    border-color: rgba(246, 205, 124, 0.2);
-    background: rgba(239, 191, 100, 0.09);
-    color: rgba(246, 210, 140, 0.96);
-}
-
-.workflow-toolbar-add.is-condition .workflow-toolbar-add-icon {
-    border-color: rgba(143, 232, 193, 0.2);
-    background: rgba(120, 220, 180, 0.08);
-    color: rgba(166, 236, 204, 0.96);
-}
-
-.workflow-toolbar-add.is-human_approval .workflow-toolbar-add-icon {
-    border-color: rgba(244, 160, 180, 0.22);
-    background: rgba(232, 126, 157, 0.1);
-    color: rgba(250, 184, 201, 0.96);
-}
-
-.workflow-toolbar-add.is-loop .workflow-toolbar-add-icon {
-    border-color: rgba(239, 191, 100, 0.24);
-    background: rgba(239, 191, 100, 0.1);
-    color: rgba(246, 210, 140, 0.96);
-}
-
-.workflow-toolbar-add.is-agent:hover {
-    background: rgba(168, 140, 255, 0.1);
-}
-
-.workflow-toolbar-add.is-llm:hover {
-    background: rgba(105, 200, 246, 0.1);
-}
-
-.workflow-toolbar-add.is-tool:hover {
-    background: rgba(239, 191, 100, 0.1);
-}
-
-.workflow-toolbar-add.is-condition:hover {
-    background: rgba(120, 220, 180, 0.1);
-}
-
-.workflow-toolbar-add.is-human_approval:hover {
-    background: rgba(232, 126, 157, 0.1);
-}
-
-.workflow-toolbar-add.is-loop:hover {
-    background: rgba(239, 191, 100, 0.1);
+.workflow-toolbar-add:hover {
+    background: color-mix(in srgb, var(--toolbar-node-accent) 10%, transparent);
 }
 
 .workflow-toolbar-end {
@@ -1233,6 +1184,7 @@
 }
 
 .settings-workflow-form,
+.workflow-toolbar,
 .workflow-run-layout,
 .workflow-canvas {
     /* Shared palette for canvas nodes, edges and node details. */
@@ -1242,7 +1194,7 @@
     --workflow-accent-llm: #9299ff;
     --workflow-accent-tool: #65d4ba;
     --workflow-accent-condition: #b570ff;
-    --workflow-accent-human_approval: #b494ff;
+    --workflow-accent-human_approval: #e8b568;
     --workflow-accent-loop: #35deec;
     --workflow-accent-output: #bf79ff;
 }
@@ -1342,6 +1294,29 @@
     .workflow-canvas .workflow-edge-glow {
         transition: none;
     }
+}
+
+.workflow-edge-delete {
+    position: absolute;
+    pointer-events: all;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid #a93648;
+    border-radius: 50%;
+    background: #24151c;
+    color: #ff9da9;
+    cursor: pointer;
+    z-index: 5;
+}
+.workflow-edge-delete:hover,
+.workflow-edge-delete:focus-visible {
+    background: #a93648;
+    color: #fff;
+    outline: 2px solid rgba(255, 157, 169, .35);
+    outline-offset: 2px;
 }
 
 .workflow-canvas .react-flow__connection-path {
@@ -1528,28 +1503,29 @@
    （--node-accent：配置页是类型色，运行页是状态色），外面一圈暗色细边 + 一点 glow；
    悬停/选中该节点（或正在拉线）时稍微放大、光更强。位置用 React Flow 默认（骑在卡片边上）。 */
 .workflow-flow-node .react-flow__handle {
-    width: 9px;
-    height: 9px;
+    width: 6px;
+    height: 6px;
     min-width: 0;
     min-height: 0;
     border: 0;
     background: var(--node-accent);
-    box-shadow:
-        inset 0 0 0 1px rgba(220, 255, 255, 0.22),
-        0 0 10px color-mix(in srgb, var(--node-accent) 48%, transparent);
+    box-shadow: none;
     opacity: 1;
-    transition: width 160ms ease, height 160ms ease, box-shadow 160ms ease;
+    transition: background-color 120ms ease;
 }
 
-.workflow-flow-node.active .react-flow__handle,
+/* Keep the drag target forgiving without enlarging the visible dot. */
+.workflow-flow-node .react-flow__handle::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+}
+
 .workflow-flow-node .react-flow__handle.connectingfrom,
 .workflow-flow-node .react-flow__handle.connectingto,
 .workflow-flow-node .react-flow__handle.clickconnecting {
-    width: 11px;
-    height: 11px;
-    box-shadow:
-        inset 0 0 0 1px rgba(220, 255, 255, 0.35),
-        0 0 16px color-mix(in srgb, var(--node-accent) 70%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-accent) 22%, transparent);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1596,8 +1572,8 @@
 .workflow-snap-guides rect { fill: rgba(104, 174, 255, 0.08); }
 
 .workflow-flow-node .workflow-side-handle {
-    opacity: 0;
-    pointer-events: none;
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .workflow-flow-node .workflow-side-handle.is-used { opacity: 1; }
@@ -1605,9 +1581,9 @@
 .workflow-flow-node .workflow-side-handle.is-available {
     opacity: 1;
     pointer-events: auto;
-    width: 13px;
-    height: 13px;
-    box-shadow: 0 0 0 4px rgba(145, 206, 255, 0.22);
+    width: 6px;
+    height: 6px;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-accent) 22%, transparent);
 }
 
 .workflow-node {
@@ -1780,6 +1756,89 @@
     min-width: 0;
 }
 
+[data-slot="select-trigger"].workflow-menu-select,
+:is(.workflow-agent-detail, .workflow-workbench, .settings-workflow-form) [data-slot="select-trigger"] {
+    background: color-mix(in srgb, var(--workflow-detail-accent, #389dff) 5%, #0c121b);
+    color: var(--workflow-detail-tint, #dce6f5);
+    border: 1px solid var(--workflow-detail-border, #304158);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font: 400 13px/1.4 var(--conversation-font);
+    gap: 8px;
+}
+
+[data-slot="select-trigger"].workflow-menu-select > svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    margin-left: auto;
+}
+
+/* Share the inspector node palette across the Radix portal boundary. */
+[data-slot="select-content"].workflow-select-menu.workflow-select-menu {
+    background: linear-gradient(155deg, color-mix(in srgb, var(--workflow-detail-accent, #389dff) 5%, #0c121b), #090f18);
+    color: #e0e9f8;
+    border: 1px solid var(--workflow-detail-border, #304158);
+    border-radius: 9px;
+    padding: 4px;
+    max-height: min(320px, var(--radix-select-content-available-height));
+    width: var(--radix-select-trigger-width);
+    min-width: 0;
+    max-width: calc(100vw - 24px);
+    box-sizing: border-box;
+    overflow: hidden;
+    font: 400 13px/1.4 var(--conversation-font);
+    z-index: 1000;
+}
+
+.workflow-select-menu.workflow-select-menu [data-radix-select-viewport] {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 0;
+}
+.workflow-select-menu.workflow-select-menu [data-slot="select-item"] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 4px 26px 4px 9px;
+    border-radius: 5px;
+    font: 400 12px/18px var(--conversation-font);
+    cursor: pointer;
+}
+.workflow-select-menu [data-slot="select-item-indicator"] {
+    position: absolute;
+    right: 8px;
+    display: inline-flex;
+    align-items: center;
+}
+.workflow-select-menu [data-slot="select-item-indicator"] svg {
+    width: 12px;
+    height: 12px;
+}
+.workflow-select-menu :is([data-slot="select-scroll-up-button"], [data-slot="select-scroll-down-button"]) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 18px;
+}
+.workflow-select-menu :is([data-slot="select-scroll-up-button"], [data-slot="select-scroll-down-button"]) svg {
+    width: 12px;
+    height: 12px;
+}
+
+.workflow-select-menu.workflow-select-menu [data-highlighted],
+.workflow-select-menu.workflow-select-menu [data-state="checked"] {
+    background: color-mix(in srgb, var(--workflow-detail-accent, #389dff) 10%, transparent);
+    color: var(--workflow-detail-tint, #dce6f5);
+    outline: none;
+}
+
 /* Radix 的 tailwind 工具类在本仓不生效（utilities 只 @scope 在 .haish-markdown 里），
    而 <button> 默认是 inline-block：标签文字会被压到基线上、比左侧 label 低半行。
    所以 workflow 表单里的 trigger 必须显式 flex 居中。 */
@@ -1820,7 +1879,7 @@
     padding: 0 8px;
     border-radius: 7px;
     align-items: center;
-    font: 650 12px/1 var(--content-font);
+    font: 400 12px/1.4 var(--conversation-font);
 }
 .workflow-output-mapping-type [data-slot="select-value"],
 .workflow-output-mapping-value [data-slot="select-value"],
@@ -2397,13 +2456,13 @@
 
 .workflow-io-type,
 .workflow-io-required {
-    height: 18px;
-    padding: 0 6px;
+    height: 16px;
+    padding: 0 5px;
     display: inline-flex;
     align-items: center;
-    border-radius: 999px;
-    font: 740 10px/1 var(--content-font);
-    letter-spacing: 0.01em;
+    border-radius: 4px;
+    font: 400 10px/14px var(--conversation-font);
+    letter-spacing: normal;
     text-transform: lowercase;
 }
 

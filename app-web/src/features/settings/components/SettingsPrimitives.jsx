@@ -25,6 +25,15 @@ export function SecretKeyField({ id, value = '', onChange, configured, disabled,
 }
 
 export function SettingsMenuSelect({ id, value, options, onChange, disabled = false, placeholder = 'Select', header = '', className = '' }) {
+  const triggerRef = React.useRef(null);
+  const [menuTheme, setMenuTheme] = useState(undefined);
+  const isWorkflow = className.includes('workflow-');
+  const syncMenuTheme = (open) => {
+    if (!open || !isWorkflow || !triggerRef.current) return;
+    const styles = getComputedStyle(triggerRef.current);
+    setMenuTheme(Object.fromEntries(['--workflow-detail-accent', '--workflow-detail-tint', '--workflow-detail-border']
+      .map(name => [name, styles.getPropertyValue(name).trim()]).filter(([, value]) => value)));
+  };
   // Radix Select reserves the empty value for its placeholder.
   const choices = options.filter(item => item.id);
   if (value && !choices.some(item => item.id === value)) choices.push({ id: value, label: value });
@@ -33,7 +42,7 @@ export function SettingsMenuSelect({ id, value, options, onChange, disabled = fa
   const body = header
     ? <SelectGroup><SelectLabel>{header}</SelectLabel>{items}</SelectGroup>
     : items;
-  return <Select value={value || ''} onValueChange={onChange} disabled={disabled}><SelectTrigger id={id} className={className ? `w-full ${className}` : 'w-full'}><SelectValue placeholder={placeholder} /></SelectTrigger><SelectContent position="popper">{body}</SelectContent></Select>;
+  return <Select value={value || ''} onValueChange={onChange} onOpenChange={syncMenuTheme} disabled={disabled}><SelectTrigger ref={triggerRef} id={id} className={className ? `w-full ${className}` : 'w-full'}><SelectValue placeholder={placeholder} /></SelectTrigger><SelectContent style={menuTheme} className={isWorkflow ? 'workflow-select-menu' : undefined} position="popper" align="start" sideOffset={4}>{body}</SelectContent></Select>;
 }
 
 export function SettingsSearch({ value, onChange, label }) {
