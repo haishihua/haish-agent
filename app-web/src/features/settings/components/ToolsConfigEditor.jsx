@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { AlertTriangle, ChevronRight, FileJson2, FlaskConical, LoaderCircle, Plus, RefreshCw, Sparkles } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { FileJson2, FlaskConical, LoaderCircle, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import { API_BASE } from '../../../shared/api/base.js';
 import { apiFetch, parseResponseMessage } from '../../../shared/api/client.js';
 import { DEFAULT_MCP_CONFIG_JSON, MCP_CONFIG_TEMPLATE_JSON, WEB_SEARCH_PROVIDER_OPTIONS } from '../model/settings-records.js';
@@ -18,7 +18,6 @@ import { ItemGroup } from '../../../shared/ui/settings-elements/ui/item.tsx';
 import { Textarea } from '../../../shared/ui/settings-elements/ui/textarea.tsx';
 import { WebSearchProviderIcon } from './settings-ui.jsx';
 import { SheetFooter } from '../../../shared/ui/settings-elements/ui/sheet.tsx';
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../../../shared/ui/settings-elements/ui/collapsible.tsx';
 import { SkillUpload } from './SkillUpload.jsx';
 import { BrowserConfigEditor } from './BrowserConfigEditor.jsx';
 import { McpServerPanel } from './McpServerPanel.jsx';
@@ -34,6 +33,19 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
   // MCP 折叠面板：一次只展开一台，展开态不写进记录（纯界面状态）。
   const [expandedServer, setExpandedServer] = useState('');
   const [loadingCatalog, setLoadingCatalog] = useState('');
+  const notifiedSkillErrors = useRef('');
+  const skillErrorKey = isSkillPage(selectedId) && toolsSettingsState.status === 'ready'
+    ? JSON.stringify((records.tools || []).find(item => item.id === 'tools-skills')?.skill_errors || [])
+    : '';
+  useEffect(() => {
+    if (!skillErrorKey) return;
+    const failures = JSON.parse(skillErrorKey);
+    if (!failures.length) { notifiedSkillErrors.current = ''; return; }
+    if (!onToast || notifiedSkillErrors.current === skillErrorKey) return;
+    notifiedSkillErrors.current = skillErrorKey;
+    const details = failures.map(failure => [failure.message || failure.code, failure.origin].filter(Boolean).join(' · ')).join('\n');
+    onToast('warn', `${failures.length} ${failures.length === 1 ? 'skill' : 'skills'} couldn’t be loaded\n${details}`);
+  }, [skillErrorKey, onToast]);
   if (selectedId === 'tools-browser') return <BrowserConfigEditor onToast={onToast} />;
   const current = (records.tools || []).find(item => item.id === (isSkillPage(selectedId) ? 'tools-skills' : selectedId));
   if (!current) return <div className="settings-empty">No configuration available.</div>;
@@ -110,7 +122,6 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
 
   const skillsPane = isSkillPage(selectedId);
   const skills = Array.isArray(current.skills) ? current.skills : [];
-  const skillErrors = current.skill_errors || [];
   const web = normalizeWebSearchDraft(current.web_search);
   const groups = skillGroups(current);
   const tabSkills = groups[skillTab] || [];
@@ -162,10 +173,6 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
       return <SettingsRow key={id} title={item.name || item.label} description={skillsPane && item.shadowed ? `${item.description || ''} · Overridden by the current project.` : skillsPane && skillTab === 'project' && groups.global.some(global => global.name === item.name) ? `${item.description || ''} · Overrides the user-level Codex version.` : item.description} icon={skillsPane ? <Sparkles size={22} /> : <WebSearchProviderIcon provider={id} label={item.label} />} selected={editing === id} onOpen={() => { setEditing(id); setError(''); }} enabled={skillsPane ? item.enabled : isActive} onToggle={skillsPane ? (item.shadowed ? undefined : enabled => onToggleSkill(item.name, enabled)) : () => activateProvider(id)} busy={Boolean(skillActionBusy || busy)} onDelete={skillsPane && item.can_uninstall ? () => setDeleting({ title: item.name }) : undefined} deleteLabel="Uninstall skill" badge={skillsPane ? skillSource : undefined} toggleLabel={skillsPane ? undefined : `${item.label} for web search`} toggleTitle={skillsPane ? undefined : (isActive ? `${item.label} is the active search provider` : `Use ${item.label} for web search`)} />;
     })}{!shown.length && <div className="settings-empty">{query ? 'No matching items.' : skillsPane ? 'No skills in this scope.' : 'No providers available.'}</div>}</ItemGroup>
     </div>
-    {skillsPane && skillErrors.length > 0 && <Collapsible className="settings-skill-errors">
-      <CollapsibleTrigger asChild><Button variant="ghost" size="sm"><AlertTriangle size={14} /><span>{skillErrors.length} {skillErrors.length === 1 ? 'skill' : 'skills'} couldn’t be loaded</span><ChevronRight size={14} className="settings-skill-errors-chevron" /></Button></CollapsibleTrigger>
-      <CollapsibleContent><ul>{skillErrors.map((failure, index) => <li key={index}><p>{failure.message || failure.code}</p>{failure.origin && <span>{failure.origin}</span>}</li>)}</ul></CollapsibleContent>
-    </Collapsible>}
     </div>
     <SettingsSheet open={Boolean(editing)} title={selectedSkill?.name || provider?.label || 'Details'} onClose={() => { if (!busy) setEditing(null); }}><div className="settings-editor-scroll">
       {selectedSkill && <div className="skill-details"><p>{selectedSkill.description}</p>{(selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path) && <dl><dt>Location</dt><dd>{selectedSkill.root || selectedSkill.path || selectedSkill.origin || selectedSkill.source_path}</dd></dl>}</div>}

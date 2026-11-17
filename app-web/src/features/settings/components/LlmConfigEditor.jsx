@@ -353,7 +353,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
             ) : null}
             {!oauthStartError && !oauthFlowPending ? (
               <div className="settings-oauth-message" role="status" aria-live="polite">
-                {config.oauth_configured ? `${provider.label} 已连接` : `${provider.label} 未连接`}
+                {config.oauth_configured ? `Connected to ${provider.label}` : `Not connected to ${provider.label}`}
               </div>
             ) : null}
           </div>
