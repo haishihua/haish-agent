@@ -1,4 +1,5 @@
 import React from 'react';
+import { ConversationMarqueeTitle } from './ConversationMarqueeTitle.jsx';
 import { AnimateDialog } from '../../../shared/ui/AnimateDialog.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
@@ -37,9 +38,9 @@ export function TaskRecordCompact({
       <div className="conversation-task-main">
         {showStatusIcon ? <TaskStatusIcon statusClass={pill.className} /> : null}
         <div className="conversation-task-copy">
-          <PortalTooltip text={task.title || ''} position="above" multiline>
-            <div className="conversation-task-title">{task.title || 'Untitled task'}</div>
-          </PortalTooltip>
+          <div className="conversation-task-title">
+            <ConversationMarqueeTitle name={task.title || 'Untitled task'} />
+          </div>
         </div>
         {terminalNotice ? (
           <span className={`conversation-task-terminal-notice chat-timeline-status status-${terminalNotice}`} aria-hidden="true" />

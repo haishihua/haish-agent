@@ -369,7 +369,8 @@
 }
 
 .project-row,
-.conversation-row {
+.conversation-row,
+.conversation-task-card.selectable {
     position: relative;
     /* 行高 = 32px（13px 标题 + 上下 5px 内边距）：会话标题之间、「会话 → 项目」
        之间、「项目 → 项目」之间的留白都来自这一份，密度由它一个地方说了算。 */
@@ -785,10 +786,6 @@
 
 .conversation-task-card.selectable {
     position: relative;
-    min-height: 42px;
-    display: flex;
-    align-items: center;
-    padding: 9px 11px;
     border-radius: 6px;
     cursor: pointer;
     transition: background .14s, color .14s;
@@ -851,6 +848,11 @@
 .conversation-task-card.done,
 .conversation-task-card.failed {
     border-color: transparent;
+}
+
+.conversation-task-title > .conversation-name {
+    display: block;
+    padding-right: 0;
 }
 
 .conversation-task-main {

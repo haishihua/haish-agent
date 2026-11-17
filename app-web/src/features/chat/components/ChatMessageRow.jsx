@@ -1,5 +1,6 @@
 import React from 'react';
 import { UserRound, Split, Pencil, LoaderCircle } from 'lucide-react';
+import { ProviderIcon } from '../../../shared/ui/ProviderIcon.jsx';
 import { AppIcon } from '../../../shared/ui/AppIcon.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { EditMessage } from '../../../shared/ui/agent-elements/EditMessage.jsx';
@@ -169,7 +170,7 @@ function ChatMessageRowComponent({ message, annotationNumbers, onPreviewImage, o
             <div className="chat-bubble-meta">
               <span className="chat-bubble-meta-main">
                 <span className="chat-speaker-avatar agent-speaker-avatar" aria-hidden="true">
-                  <AgentAvatar agentId={message.agentId || ''} size="meta" />
+                  {message.modelId ? <ProviderIcon provider={message.modelProvider} modelId={message.modelId} /> : <AgentAvatar agentId={message.agentId || ''} size="meta" />}
                 </span>
                 <span>{agentName || 'Assistant'}</span>
               </span>
