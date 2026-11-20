@@ -100,6 +100,14 @@
   .settings-search-modern:focus-within { border-color: var(--ring); }
   .settings-search-modern [data-slot="input"] { min-width: 0; width: 100%; border: 0; background: transparent; outline: none; box-shadow: none; padding: 0; }
   .settings-list-modern { display: flex; flex-direction: column; padding: 3px 5px; border: 1px solid #ffffff10; border-radius: 10px; background: var(--surface); }
+  .settings-swipe-row { position: relative; overflow: hidden; border-radius: 6px; min-width: 0; }
+  .settings-swipe-content { position: relative; display: flex; align-items: center; background: var(--surface); transition: transform 180ms ease; touch-action: pan-y; }
+  .settings-swipe-content.is-dragging { transition: none; user-select: none; }
+  .settings-swipe-content > .settings-row-modern { flex: 1; min-width: 0; }
+  .settings-swipe-action { position: absolute; inset: 0 0 0 auto; width: 104px; height: 100%; border-radius: 0 6px 6px 0; display: flex; flex-direction: column; gap: 4px; font-size: 11px; background: #b93649; color: white; }
+  @media (prefers-reduced-motion: reduce) {
+    .settings-swipe-content { transition: none; }
+  }
   .settings-row-modern { display: flex; align-items: center; padding: 0; gap: 0; flex-wrap: nowrap; border: 0; border-radius: 6px; }
   @media (hover: hover) and (pointer: fine) {
     .settings-row-modern:hover { background: #ffffff05; }
@@ -235,7 +243,9 @@
   .settings-skill-errors li > span { color: var(--muted-foreground); font-size: 11px; }
   .settings-inline-success { color: #8fb5a3; background: transparent; border: 0; padding: 0; font-size: 12px; line-height: 1.6; margin-top: 12px; }
   .workflow-leave-dialog .workflow-discard-action { background: #dc3545; color: #fff; border: 1px solid #ef5261; opacity: 1; }
-  .workflow-leave-dialog .workflow-discard-action:hover { background: #c52838; }
+  @media (hover: hover) and (pointer: fine) {
+    .workflow-leave-dialog .workflow-discard-action:hover { background: #c52838; }
+  }
   .workflow-leave-dialog .workflow-discard-action:active { background: #ae2030; }
   .settings-delete-dialog { width: 420px; max-width: 420px; padding: 24px; }
   .settings-delete-dialog [data-slot="alert-dialog-header"] { text-align: left; place-items: start; }

@@ -12,6 +12,18 @@ test('new task inherits current executed Agent and model, not stale draft defaul
   assert.equal(next.judge, undefined, 'Judge stays inherited, not frozen to an override');
   assert.deepEqual(task, original);
 });
+test('historical Judge actual route wins over newer conversation GLM override', () => {
+  const task = { nodeRuntimeConfigs: { agent: route }, workflowRun: { nodes: {
+    agent: { runtime_config: route },
+    judge: { runtime_config: { llm_config_id: 'gpt-record', model_id: 'gpt-6.1-sol' } },
+  } } };
+  const next = inheritedTaskNodeConfigs(workflow, task, {
+    judge: { llm_config_id: 'glm-record', model_id: 'glm-5.3' },
+  });
+  assert.equal(next.judge.model_id, 'gpt-6.1-sol');
+  assert.equal(next.judge.llm_config_id, 'gpt-record');
+});
+
 test('new task retains unsent selection and independent Judge override', () => {
   const configs = { agent: route, judge: { llm_config_id: 'judge-record', model_id: 'judge-model' } };
   const next = inheritedTaskNodeConfigs(workflow, null, configs);

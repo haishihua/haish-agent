@@ -14,7 +14,9 @@ export function createWorkflowTaskSelectionHandler(ctx) {
       return;
     }
     ctx.setTaskCompletionNotices((current) => clearTaskCompletionNotice(current, targetConversationId, taskId));
-    ctx.setViewedWorkflowTask({ projectId, taskId });
+    const selection = { projectId, taskId, loading: true };
+    ctx.setViewedWorkflowTask(selection);
+    try {
     saveLastLocation(window.localStorage, ctx.ownerIdRef.current, 'workflow', { projectId, taskId });
     await ctx.handleSelectConversation(projectId, targetConversationId);
     if (ctx.conversationIdRef.current !== targetConversationId) return;
@@ -30,6 +32,11 @@ export function createWorkflowTaskSelectionHandler(ctx) {
       if (error?.status !== 404) throw error;
       ctx.removeMissingTask(targetConversationId, taskId);
       ctx.showToast('error', 'Task no longer exists. Removed the stale entry.');
+    }
+    } finally {
+      // An older selection must never clear a newer selection's loader.
+      ctx.setViewedWorkflowTask(current => current === selection
+        ? { projectId, taskId, loading: false } : current);
     }
   };
 }

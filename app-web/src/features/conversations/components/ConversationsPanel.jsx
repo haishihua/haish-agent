@@ -177,6 +177,20 @@ export function ConversationsPanel({
     }
   }
 
+  function requestRenameTask(_project, _conversation, task, onRenamed) {
+    setDialog({
+      kind: 'rename', title: 'Rename task', value: task.title || '', confirmLabel: 'Rename',
+      onConfirm: async (title) => {
+        const taskId = task.taskId || task.task_id || task.id;
+        const response = await apiFetch(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+        });
+        if (!response.ok) throw new Error(await response.text() || 'Could not rename task.');
+        onRenamed?.(title.trim());
+      },
+    });
+  }
+
   function requestRenameConversation(project, conversation) {
     setDialog({
       kind: 'rename',
@@ -318,7 +332,7 @@ export function ConversationsPanel({
             notices={activityNotices} terminalNotices={terminalNotices} taskTerminalNotices={taskTerminalNotices}
             activeConversationId={activeConversationId} activeTaskId={activeTaskId}
             loading={activity.loading} error={activity.error} onSelect={onSelectActivity}
-            onPin={onPinConversation} onDeleteConversation={requestDeleteConversation} onDeleteTask={requestDeleteTask}
+            onRequestRenameTask={requestRenameTask} onPin={onPinConversation} onRequestRenameConversation={requestRenameConversation} onDeleteConversation={requestDeleteConversation} onDeleteTask={requestDeleteTask}
             onOpenReport={openActivityReport} isDraftSelected={isDraftSelected}
             onNewEntry={() => onAddConversation?.(newEntryProjectId)} />
         ) : (<>

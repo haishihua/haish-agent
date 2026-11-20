@@ -1,4 +1,5 @@
 import React from 'react';
+import { workflowVisibleEdges } from '../../../core/workflow-visible-edges.js';
 
 function WorkflowConnectionPreview({ fromX, fromY, toX, toY, fromPosition, toPosition, connectionStatus }) {
   const [path] = getBezierPath({ sourceX: fromX, sourceY: fromY, targetX: toX, targetY: toY,
@@ -100,6 +101,7 @@ export function WorkflowConfigEditor({
   agentSettings,
   readOnly = false,
   onSave,
+  onToast,
   validationError = '',
   canSave = false,
 }) {
@@ -113,13 +115,11 @@ export function WorkflowConfigEditor({
   const [draggedNodeType, setDraggedNodeType] = useState('');
   const [isCanvasDropTarget, setIsCanvasDropTarget] = useState(false);
   // 系统预设拖出来的排布存在本机（workflow-layout-store）：revision 变了就让画布重读一遍，
-  // savedPulse 只负责那句会自己消失的「Layout saved」。
   const [layoutRevision, setLayoutRevision] = useState(0);
   const canvasPreferences = useWorkflowCanvasPreferences(selectedId);
   const routes = canvasPreferences.routes || {};
   const [reconnecting, setReconnecting] = useState(null);
   const reconnectingRef = useRef(null);
-  const [layoutSavedPulse, setLayoutSavedPulse] = useState(0);
   const canvasRef = useRef(null);
   const canvasNodesRef = useRef([]);
   const nodePanelResizeRef = useRef(null);
@@ -134,12 +134,6 @@ export function WorkflowConfigEditor({
     const nodeId = validationError.match(/node ['"]([^'"]+)['"]/)?.[1];
     if (nodeId) { setSelectedNodeId(nodeId); setSelectedEdgeId(''); }
   }, [validationError]);
-
-  useEffect(() => {
-    if (!layoutSavedPulse) return undefined;
-    const timer = window.setTimeout(() => setLayoutSavedPulse(0), 1800);
-    return () => window.clearTimeout(timer);
-  }, [layoutSavedPulse]);
 
   useEffect(() => {
     if (!hasWorkflow) {
@@ -162,6 +156,7 @@ export function WorkflowConfigEditor({
   const isEditable = !readOnly && workflow.custom;
   const nodes = workflow.nodes || [];
   const edges = workflow.edges || [];
+  const visibleEdges = workflowVisibleEdges(workflow);
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
   const availableVariables = workflowVariableCatalog(workflow, selectedNodeId);
 
@@ -180,7 +175,7 @@ export function WorkflowConfigEditor({
   const flow = ReactFlowNS;
   const ReactFlowCanvas = flow.ReactFlow;
   const Background = flow.Background;
-  const layout = layoutRuntimeWorkflow(nodes, edges);
+  const layout = layoutRuntimeWorkflow(nodes, visibleEdges);
   // 排布的唯一来源：本机存的排布（系统预设走这里，见 onCanvasNodeDragStop）+ 定义里保存的位置
   // （可编辑工作流走这里，见 arrangedNodes）。
   const arrangement = workflowArrangementPositions(workflow);
@@ -189,7 +184,7 @@ export function WorkflowConfigEditor({
   const showLayoutTools = !readOnly && !workflow.custom;
   // 节点端口（含 loop 的 retry 出口）与回环端口都只有一份判断：两页都从这两个函数取，
   // 不再各写一套（过去配置页把 retry 画在节点顶部、运行页画在左侧，同一条边两页形状不同）。
-  const feedbackTargetIds = workflowFeedbackTargetIds(edges, layout.meta);
+  const feedbackTargetIds = workflowFeedbackTargetIds(visibleEdges, layout.meta);
   const reactNodes = nodes.map((node) => ({
     id: node.id,
     type: 'workflowNode',
@@ -201,7 +196,7 @@ export function WorkflowConfigEditor({
         ? agentIconNameForAgentId(node.agent_id, agentOptions)
         : undefined,
       feedbackTarget: feedbackTargetIds.has(String(node.id)),
-      usedSideHandles: workflowUsedSideHandles(node.id, edges, routes),
+      usedSideHandles: workflowUsedSideHandles(node.id, visibleEdges, routes),
       reconnectType: reconnecting?.nodeId === node.id ? reconnecting.type : '',
       ...workflowNodePorts(node, layout.meta.get(String(node.id))),
     },
@@ -213,7 +208,7 @@ export function WorkflowConfigEditor({
   // 边要按「两边是什么节点」选角色与颜色：角色看目标类型（收尾那条走源类型色 → End 紫的渐变），
   // 颜色是源类型色 → 目标类型色的渐变，所以两端的类型都跟着传进去。
   const nodeTypeById = new Map(nodes.map((node) => [String(node.id), node.type || '']));
-  const reactEdges = edges.map((edge) => {
+  const reactEdges = visibleEdges.map((edge) => {
     const edgeId = workflowEdgeId(edge);
     const isSelected = edgeId === selectedEdgeId;
     const appearance = workflowEdgeAppearance(edge, {
@@ -275,6 +270,7 @@ export function WorkflowConfigEditor({
     );
     if (isEditable) {
       const nextNodes = arrangedNodes(overrides);
+      saveWorkflowLayout(workflow.workflow_id, capturedLayoutPositions(overrides));
       if (nextNodes.some((item, index) => item !== nodes[index])) updateWorkflow({ nodes: nextNodes });
       return;
     }
@@ -282,8 +278,7 @@ export function WorkflowConfigEditor({
     // 系统预设：拖完就存（本机就是这样一份），不需要第二个「保存」动作。
     const stored = saveWorkflowLayout(workflow.workflow_id, capturedLayoutPositions(overrides));
     setLayoutRevision((value) => value + 1);
-    // 存不下（隐私模式等）就不报「已保存」：宁可不说话，也不说假话。
-    if (stored) setLayoutSavedPulse((value) => value + 1);
+    onToast?.(stored ? 'success' : 'error', stored ? 'Layout saved' : 'Could not save layout locally.');
   };
   const reconnectRoute = (edge, connection) => workflowReconnectRoute(edge, connection, reconnectingRef.current?.type, routes[edge?.data?.routeKey]);
   const onReconnect = (edge, connection) => {
@@ -291,13 +286,15 @@ export function WorkflowConfigEditor({
     const route = reconnectRoute(edge, connection);
     if (!route) return;
     const stored = saveWorkflowCanvasPreferences(workflow.workflow_id, { routes: { ...routes, [edge.data.routeKey]: route } });
-    if (stored) setLayoutSavedPulse((value) => value + 1);
+    onToast?.(stored ? 'success' : 'error', stored ? 'Layout saved' : 'Could not save layout locally.');
   };
   const resetWorkflowLayout = () => {
     if (!workflowId) return;
-    clearWorkflowLayout(workflowId);
-    saveWorkflowCanvasPreferences(workflowId, { routes: {} });
+    const layoutCleared = clearWorkflowLayout(workflowId);
+    const routesCleared = saveWorkflowCanvasPreferences(workflowId, { routes: {} });
     setLayoutRevision((value) => value + 1);
+    const stored = layoutCleared && routesCleared;
+    onToast?.(stored ? 'success' : 'error', stored ? 'Layout reset' : 'Could not reset layout locally.');
   };
   const onReactFlowNodesChange = (changes) => {
     if (!isEditable) return;
@@ -553,12 +550,6 @@ export function WorkflowConfigEditor({
           ) : (
             <div className="settings-empty">React Flow failed to load.</div>
           )}
-          {/* 排布存下来了：拖完在画布右上角闪一下（缩放控件左边），不吃指针。 */}
-          {showLayoutTools ? (
-            <span className={`workflow-layout-status${layoutSavedPulse ? ' is-visible' : ''}`} role="status">
-              {layoutSavedPulse ? 'Layout saved' : ''}
-            </span>
-          ) : null}
         </div>
       </div>
       {showNodePanel ? (

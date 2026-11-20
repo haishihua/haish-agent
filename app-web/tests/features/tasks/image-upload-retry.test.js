@@ -42,8 +42,9 @@ test('image upload failure is model-visible but does not trigger frontend recove
   ], 'agent', 'provider');
   deploy.startDeploy(request, conversationId);
   await setImmediate();
-  const continuedTask = runtime.taskRuntimeState.pendingTask;
-  assert.equal(continuedTask.status, 'queued');
+  assert.equal(runtime.taskRuntimeState.pendingTask, null);
+  const continuedTask = runtime.taskRuntimeState.submission.payload;
+  assert.equal(continuedTask.requestText.includes('test message'), true);
   assert.equal(runtime.busy, false);
   assert.equal(uploads.length, 1);
   assert.equal(uploads[0].file, imageFile);

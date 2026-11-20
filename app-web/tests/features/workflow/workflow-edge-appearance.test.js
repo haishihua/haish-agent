@@ -9,7 +9,7 @@ import {
 } from '../../../src/features/workflow/model/workflow-edge-appearance.js';
 
 test('四条边角色各自的线宽/不透明度/虚线/箭头只定义一份', () => {
-  // 主流程与收尾是渐变线（两端颜色由 workflowEdgeAppearance 按源/目标类型给），不打虚线。
+  // 主流程与收尾使用源节点到目标节点的混合色。
   assert.deepEqual(WORKFLOW_EDGE_ROLES.main, { gradient: true, strokeWidth: 2, opacity: 0.78 });
   assert.deepEqual(WORKFLOW_EDGE_ROLES.end, { gradient: true, strokeWidth: 2, opacity: 0.62, arrow: true });
   // 支路/回环是纯色虚线 + 箭头。
@@ -24,7 +24,6 @@ test('四条边角色各自的线宽/不透明度/虚线/箭头只定义一份',
     Object.entries(WORKFLOW_EDGE_ROLES).filter(([, role]) => role.dash).map(([name]) => name),
     ['detour', 'loopback'],
   );
-  // 收尾比主流程暗一档：进 End 的线不该抢走在跑的那条。
   assert.ok(WORKFLOW_EDGE_ROLES.end.opacity < WORKFLOW_EDGE_ROLES.main.opacity);
 });
 

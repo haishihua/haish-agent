@@ -8,7 +8,7 @@ const chat = readFileSync(new URL('../../styles/chat.css', import.meta.url), 'ut
 test('the project menu caps itself to the space above the trigger', () => {
   // .chat-workspace 是 overflow: clip，菜单超出面板上沿就会被裁掉。
   assert.match(picker, /React\.useLayoutEffect\(\(\) => \{/);
-  assert.match(picker, /rootRef\.current\?\.closest\('\.chat-workspace'\)/);
+  assert.match(picker, /rootRef\.current\?\.closest\('\.chat-workspace, \.workflow-run-canvas'\)/);
   assert.match(picker, /const available = trigger\.getBoundingClientRect\(\)\.top - clipTop - 12;/);
   assert.match(picker, /Math\.max\(180, Math\.min\(360, Math\.round\(available\)\)\)/);
   assert.match(picker, /window\.addEventListener\('resize', measure\)/);

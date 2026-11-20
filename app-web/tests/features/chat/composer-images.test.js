@@ -34,11 +34,12 @@ test('image files upload on send into the captured conversation before task exec
       events.push(['upload', input, target]);
       return { image_id: 'image', path: '/image.png', mime: 'image/png' };
     },
-    executeQuest: async (task, target) => { events.push(['execute', task.imageAttachments, target]); },
+    executeQuest: async (task, target, request) => { request.onAccepted(); events.push(['execute', task.imageAttachments, target]); },
     showToast: () => assert.fail('unexpected error'),
   });
-  assert.equal(handlers.handleDeploy('hello', null, 'model', 'high', [{ file, previewUrl: 'blob:preview' }], 'agent', 'fixture'), true);
+  const acceptance = handlers.handleDeploy('hello', null, 'model', 'high', [{ file, previewUrl: 'blob:preview' }], 'agent', 'fixture');
   conversationIdRef.current = 'other';
+  assert.equal(await acceptance, true);
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(events, [
     ['upload', file, 'original'],
@@ -68,11 +69,11 @@ test('one failed image upload is skipped without a duplicate frontend toast', as
       if (input === bad) throw new Error('corrupt image');
       return { image_id: 'good', path: '/good.png', mime: 'image/png' };
     },
-    executeQuest: async (task) => { executions.push(task); },
+    executeQuest: async (task, _target, request) => { request.onAccepted(); executions.push(task); },
     showToast: (kind, message) => toasts.push([kind, message]),
   });
 
-  assert.equal(handlers.handleDeploy('continue', null, 'model', 'high', [{ file: bad }, { file: good }], 'agent', 'fixture'), true);
+  assert.equal(await handlers.handleDeploy('continue', null, 'model', 'high', [{ file: bad }, { file: good }], 'agent', 'fixture'), true);
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(executions.length, 1);

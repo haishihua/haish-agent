@@ -46,6 +46,35 @@ function harness({ missing = false, defaultProject = false, fail = '', workflow 
   return { ctx, calls, events, notices, preparing, sent, run: createConversationHandlers(ctx).handleGoalCommand };
 }
 
+test('Goal preserves structured Chat annotations and the original user text', async () => {
+  const h = harness();
+  const annotations = [{ id: 'draft', source_message_id: 'old-answer', text: '合同已授权', comment: '这里实际没有授权' }];
+  assert.equal(await h.run({ prompt: '修复识别', annotations }), true);
+  const request = h.sent[0][0];
+  assert.equal(request.text, '修复识别');
+  assert.deepEqual(request.annotations, annotations);
+  const composer = readFileSync(new URL('../../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
+  const goalBranch = composer.slice(composer.indexOf('    if (goal) {'), composer.indexOf('    if (schedules &&'));
+  assert.ok(!goalBranch.includes('Send or remove comment drafts'));
+  assert.ok(goalBranch.includes('prepareSubmit?.(goalPrompt, composerContent)'));
+  assert.ok(goalBranch.includes('if (prepared?.error) return;'));
+  assert.ok(goalBranch.includes('annotations: prepared?.annotations || EMPTY_ANNOTATIONS'));
+});
+
+test('Goal consumes source draft before navigation, but preserves it on preparation failure', async () => {
+  const h = harness();
+  let consumed = 0;
+  await h.run({ prompt: 'task', onAccepted: () => {
+    consumed++;
+    assert.equal(h.ctx.conversationIdRef.current, 'chat-conversation');
+    assert.equal(h.events.includes('activate'), false);
+  } });
+  assert.equal(consumed, 1);
+  const failed = harness({ fail: '/api/projects?execution_mode=bot' });
+  assert.equal(await failed.run({ prompt: 'task', onAccepted: () => consumed++ }), false);
+  assert.equal(consumed, 1);
+});
+
 test('/goal parses only a leading, complete command token and preserves multiline tasks', () => {
   assert.deepEqual(goalInvocation('/goal'), { prompt: '' });
   assert.deepEqual(goalInvocation(' /GOAL  fix\nthen test  '), { prompt: 'fix\nthen test' });

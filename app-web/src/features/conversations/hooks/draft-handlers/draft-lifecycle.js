@@ -234,7 +234,7 @@ export function createDraftLifecycleHandlers(ctx) {
     const draft = draftConversationRef.current;
     const project = typeof projectOrId === 'object' && projectOrId?.id
       ? projectOrId : workspaceState.projects.find((item) => item.id === projectOrId);
-    if (!draft || draft.executionMode !== 'chat' || draft.id !== conversationIdRef.current || !project || project.executionMode !== 'chat'
+    if (!draft || draft.id !== conversationIdRef.current || !project || project.executionMode !== draft.executionMode
       || draft.serverCreated || pendingCreatedDetailRef.current || draftServerCreateRef?.current
       || draftFirstSendRef.current || draftConversationHasSendInFlight(draft.id)) return false;
     if (project.id === draft.projectId) return true;

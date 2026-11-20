@@ -1,11 +1,13 @@
 import React from 'react';
 import { ChatImageThumb } from '../ChatImageThumb.jsx';
+import { QuoteBlock } from '../../../../shared/ui/agent-elements/Quote.jsx';
 import { Markdown } from '../../../../shared/ui/Markdown.jsx';
 
 export function ChatTimelineUserInputNode({ item, onPreviewImage }) {
   const text = String(item.text || '').trim();
   const images = Array.isArray(item.images) ? item.images : [];
-  if (!text && images.length === 0) return null;
+  const annotations = item.annotations || [];
+  if (!text && images.length === 0 && annotations.length === 0) return null;
   // 纠偏/打断指令与用户自己发出的消息完全一样：气泡外观直接与
   // .chat-message-row.user .message-speech-body 共用同一套 CSS 声明，正文也用同一个
   // .chat-bubble-text + Markdown hardBreaks 渲染（换行照原样保留）。不加任何特殊
@@ -22,6 +24,7 @@ export function ChatTimelineUserInputNode({ item, onPreviewImage }) {
             ))}
           </div>
         ) : null}
+        {annotations.map((annotation, index) => <QuoteBlock key={annotation.id} item={annotation} index={index + 1} />)}
         {text ? (
           <div className="chat-bubble-text">
             <Markdown source={text} hardBreaks />

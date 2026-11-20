@@ -1,3 +1,4 @@
+import { createQuestAck } from '../../../core/quest-ack.js';
 import { taskSummaryToRuntimeTask } from '../../../core/task-runtime.js';
 import { activeTaskKeys, latestActiveTaskRecord } from '../model/active-task.js';
 import { createDeployRequest, deployRequestConfigError } from '../model/deploy-request.js';
@@ -29,7 +30,6 @@ export function createDeployHandlers(ctx) {
     conversationSelectionPending,
     contextTask,
     clearContextTask,
-    createPendingTaskDraft,
     defaultAgentId,
     defaultWorkflowId,
     draftConversationRef,
@@ -105,7 +105,11 @@ export function createDeployHandlers(ctx) {
   function handleStop() {
     const queuedRequest = queuedDeploy;
     const hadQueuedDeploy = Boolean(queuedRequest);
-    if (hadQueuedDeploy) setQueuedDeploy(null);
+    if (hadQueuedDeploy) {
+      queuedRequest.resolveSubmission?.(false);
+      failPendingDeploy(queuedRequest);
+      setQueuedDeploy(null);
+    }
     // Stop targets the currently-shown conversation only — other backgrounded
     // conversations continue running. All ref/state reads scope to its runtime.
     const targetConvId = conversationIdRef.current;
@@ -219,6 +223,9 @@ export function createDeployHandlers(ctx) {
       if (targetRuntime) targetRuntime.stopPromise = stopPromise;
     }
     controllerToAbort?.abort?.();
+    if (currentTaskState?.submission) {
+      updateTaskRuntimeState((state) => state.submission ? { ...state, submission: null } : state, targetConvId);
+    }
     if (taskId) {
         // Keep persisted turns even before the first token; edit the user
         // message to resend instead of rolling it back into the composer.
@@ -302,11 +309,12 @@ export function createDeployHandlers(ctx) {
 
   function preparePendingTask(request) {
     if (request.pendingTask) return request.pendingTask;
-    const pendingTask = createPendingTaskDraft(
-      request.displayText || request.text,
-      request.attachment || null,
-      request.imageAttachments,
-    );
+    const pendingTask = {
+      id: crypto.randomUUID(),
+      title: request.displayText || request.text,
+      attachment: request.attachment || null,
+      imageAttachments: request.imageAttachments || [],
+    };
     pendingTask.nodeRuntimeConfigs = request.nodeRuntimeConfigs || {};
     pendingTask.requestText = request.text;
     pendingTask.annotations = request.annotations;
@@ -338,32 +346,19 @@ export function createDeployHandlers(ctx) {
     const pendingTask = preparePendingTask(request);
     pendingTask.conversationId = targetConversationId;
     request.runtimeConversationId = targetConversationId;
-    updateTaskRuntimeState((state) => ({ ...state, pendingTask }), targetConversationId);
+    updateTaskRuntimeState((state) => ({ ...state, submission: { requestId: pendingTask.id, payload: pendingTask } }), targetConversationId);
     return pendingTask;
   }
 
-  function failPendingDeploy(request, error) {
+  function failPendingDeploy(request) {
     const targetConversationId = request?.runtimeConversationId || request?.targetConversationId;
     const pendingTask = request?.pendingTask;
     if (!targetConversationId || !pendingTask) return;
     const pendingKey = pendingTask.taskId || pendingTask.id;
     updateTaskRuntimeState((state) => {
-      const currentKey = state.pendingTask?.taskId || state.pendingTask?.id;
-      if (currentKey !== pendingKey) return state;
-      return {
-        ...state,
-        pendingTask: {
-          ...state.pendingTask,
-          status: 'failed',
-          error: String(error?.message || error),
-          completedAt: Date.now(),
-        },
-      };
+      if (state.submission?.requestId !== pendingKey) return state;
+      return { ...state, submission: null };
     }, targetConversationId);
-    // 这一笔根本没到服务端（建会话 / 传图失败）：本地也别留这条影子任务。它挂在会话行上
-    // 就是一条服务端没有的「已发消息」（侧栏会显示、还会被写进本地存档），而这一笔的
-    // 生命周期只在运行时里（重发 / 编辑仍走时间线上那一行）。
-    if (pendingKey) removeConversationTaskFromWorkspace(targetConversationId, pendingKey);
   }
 
   function canStartDeployForConversation(targetConversationId = null) {
@@ -427,9 +422,7 @@ export function createDeployHandlers(ctx) {
       && (currentConversation.tasks || []).length === 0
     );
     const isSelected = conversationIdRef.current === deployConvId;
-    if (isSelected) setComposerAttachment(null);
-    // 上下文标签和附件一样：任务真的发出去了才消（失败时 pendingTask 自己会标红）。
-    if (isSelected && request.contextTasks?.length) clearContextTask?.();
+    // Keep the original payload available until the server accepts the task.
     setWorkspaceState((state) => {
       let nextState = state;
       // First message on a just-materialized draft may race the previous
@@ -441,7 +434,6 @@ export function createDeployHandlers(ctx) {
         ...deployTaskState.taskOrder
           .map((taskId) => deployTaskState.tasksById[taskId])
           .filter(Boolean),
-        pendingTask,
       ];
       return workspaceStateWithTouchedConversation(nextState, deployConvId, {
         tasks: currentTasks,
@@ -456,8 +448,10 @@ export function createDeployHandlers(ctx) {
     // first-task placeholder; PATCHing here would incorrectly mark a manual title.
     updateTaskRuntimeState((state) => ({
       ...state,
-      pendingTask,
+      submission: { requestId: pendingTask.id, payload: pendingTask },
     }), deployConvId);
+    const acceptance = createQuestAck();
+    let submissionGeneration = getRuntime(deployConvId)?.runGeneration;
     const launch = async () => {
       if (request.imageAttachments.some((image) => image.file)) {
         const controller = new AbortController();
@@ -476,7 +470,7 @@ export function createDeployHandlers(ctx) {
             request.text = [request.text, ...uploadResult.failures].filter(Boolean).join('\n\n');
             pendingTask.requestText = request.text;
           }
-          updateTaskRuntimeState((state) => ({ ...state, pendingTask: { ...pendingTask } }), deployConvId);
+          updateTaskRuntimeState((state) => ({ ...state, submission: { requestId: pendingTask.id, payload: { ...pendingTask } } }), deployConvId);
         } finally {
           const runtime = getRuntime(deployConvId);
           if (runtime?.fetchController === controller) {
@@ -485,13 +479,16 @@ export function createDeployHandlers(ctx) {
           }
         }
       }
-      return executeQuest(pendingTask, deployConvId);
+      const stream = executeQuest(pendingTask, deployConvId, { onAccepted: acceptance.accept });
+      submissionGeneration = getRuntime(deployConvId)?.runGeneration;
+      return stream;
     };
-    launch().catch((error) => {
+    const execution = launch();
+    execution.catch((error) => {
       // The failure belongs to the conversation that owns this pendingTask,
       // not whichever conversation is currently shown.
       const deployRuntime = getRuntime(deployConvId);
-      if (!deployRuntime || deployRuntime.activeRunId !== pendingTask.id) {
+      if (!deployRuntime || deployRuntime.runGeneration !== submissionGeneration || (deployRuntime.activeRunId && deployRuntime.activeRunId !== pendingTask.id)) {
         return;
       }
       if (deployRuntime.abortRequested || error?.name === 'AbortError') {
@@ -514,20 +511,25 @@ export function createDeployHandlers(ctx) {
         updateTaskRuntimeState((state) => ({ ...state, activeTaskId: null }), deployConvId);
       } else {
         const pendingTaskId = pendingTask.taskId || pendingTask.id || null;
-        updateTaskRuntimeState((state) => ({
-          ...state,
-          pendingTask: (state.pendingTask?.taskId || state.pendingTask?.id) === pendingTaskId
-            ? { ...state.pendingTask, status: 'failed', error: errorMessage, completedAt: Date.now() }
-            : state.pendingTask,
-        }), deployConvId);
-        if (pendingTaskId) removeConversationTaskFromWorkspace(deployConvId, pendingTaskId);
+        updateTaskRuntimeState((state) => {
+          if (state.submission?.requestId !== pendingTaskId) return state;
+          return { ...state, submission: null };
+        }, deployConvId);
+        if (pendingTaskId) flushRuntimeTasksToWorkspace(deployConvId);
       }
-      showToast('error', errorMessage);
+      showToast('error', ownedTaskId ? errorMessage : `Failed to create task. ${errorMessage}`);
       setRuntimeBusy(false, deployConvId);
       setRuntimeActiveTaskId(null, deployConvId);
       setRuntimeActiveRunId(null, deployConvId);
       setRuntimeFetchController(null, deployConvId);
     });
+    return acceptance.follow(execution).then(() => {
+      if (conversationIdRef.current === deployConvId) {
+        setComposerAttachment(null);
+        if (request.contextTasks?.length) clearContextTask?.();
+      }
+      return true;
+    }, () => false);
   }
 
   function handleDeploy(text, attachment, modelId, reasoningEffort, imageAttachments, agentId, providerRequest, displayText = text, annotations = [], nodeRuntimeConfigs = {}) {
@@ -571,10 +573,6 @@ export function createDeployHandlers(ctx) {
       || runningTaskId
     );
     if (runtimeRunning) {
-      if (request.annotations.length) {
-        showToast('error', 'Wait for the task to finish or stop it before sending comments.');
-        return false;
-      }
       if (!runningTaskId) {
         showToast('error', 'The task is still starting. Try again in a moment.');
         return false;
@@ -593,6 +591,7 @@ export function createDeployHandlers(ctx) {
             request.imageAttachments,
             request.displayText,
             activeId,
+            request.annotations,
           );
         })
         .then(() => true)
@@ -616,10 +615,12 @@ export function createDeployHandlers(ctx) {
       markDraftFirstSendInFlight(draftConversationId);
       stagePendingDeploy(request, draftConversationId);
       if (!canStartDeployForConversation(request.targetConversationId)) {
-        setQueuedDeploy(request);
-        return true;
+        return new Promise(resolve => {
+          request.resolveSubmission = resolve;
+          setQueuedDeploy(request);
+        });
       }
-      materializeDraftConversationForSend(request)
+      return materializeDraftConversationForSend(request)
         .then((materialized) => {
           const realConversationId = materialized?.id || null;
           if (!realConversationId) return;
@@ -628,17 +629,17 @@ export function createDeployHandlers(ctx) {
           // This send was accepted on its draft before creation began. It now
           // owns a real runtime and may start in the background; navigation
           // must neither steal selection nor queue it behind the viewed chat.
-          startDeploy(request, realConversationId, materialized?.detail || null);
+          return startDeploy(request, realConversationId, materialized?.detail || null);
         })
         .catch((error) => {
           console.error('draft conversation create failed', error);
           failPendingDeploy(request, error);
           showToast('error', String(error?.message || error));
+          return false;
         });
-      return true;
     }
     const deployConvId = activeId;
-    return startDeploy(request, deployConvId) !== false;
+    return startDeploy(request, deployConvId);
   }
 
   return {

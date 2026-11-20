@@ -285,13 +285,13 @@ test('a text-only first send is body-ready before task execution begins', async 
     },
   });
   harness.handlers.openDraftConversation(PROJECT_ID);
-  assert.equal(harness.deployHandlers.handleDeploy('first text', null, 'model', null, [], 'agent-1', 'fixture'), true);
+  assert.ok(harness.deployHandlers.handleDeploy('first text', null, 'model', null, [], 'agent-1', 'fixture') instanceof Promise);
   assert.equal(displayedContentLoading(harness), false);
   await settle();
   assert.deepEqual(loadingAtExecution, [false]);
   assert.equal(harness.draftConversationRef.current, null);
   assert.equal(harness.state.createCalls, 1);
-  assert.equal(harness.runtimeStore.displayed.taskRuntimeState.pendingTask.displayText, 'first text');
+  assert.equal(harness.runtimeStore.displayed.taskRuntimeState.submission.payload.displayText, 'first text');
 });
 
 for (const uploadFails of [false, true]) {
@@ -309,8 +309,8 @@ for (const uploadFails of [false, true]) {
       },
     });
     harness.handlers.openDraftConversation(PROJECT_ID);
-    assert.equal(harness.deployHandlers.handleDeploy('first image', null, 'model', null, [IMAGE], 'agent-1', 'fixture'), true);
-    const pending = harness.runtimeStore.displayed.taskRuntimeState.pendingTask;
+    assert.ok(harness.deployHandlers.handleDeploy('first image', null, 'model', null, [IMAGE], 'agent-1', 'fixture') instanceof Promise);
+    const pending = harness.runtimeStore.displayed.taskRuntimeState.submission.payload;
     assert.equal(pending.displayText, 'first image');
     assert.equal(displayedContentLoading(harness), false, 'server creation cannot hide the staged message');
     assert.equal(harness.state.executions.length, 0);
@@ -319,7 +319,7 @@ for (const uploadFails of [false, true]) {
     await settle();
     assert.deepEqual(uploadTargets, ['server-1']);
     assert.equal(harness.draftConversationRef.current, null);
-    assert.equal(harness.runtimeStore.displayed.taskRuntimeState.pendingTask, pending, 'handoff preserves the exact staged turn');
+    assert.equal(harness.runtimeStore.displayed.taskRuntimeState.submission.payload, pending, 'handoff preserves the exact staged turn');
     assert.equal(harness.runtimeStore.displayed.busy, true, 'upload still uses the normal sending state');
     assert.equal(harness.runtimeStore.getRuntime('server-1').shellSeeded, false);
     assert.equal(harness.runtimeStore.displayed.shellSeeded, false);
@@ -348,11 +348,11 @@ test('a document-created draft reuses its body-ready runtime for the first image
   await harness.handlers.ensureServerConversationForActiveDraft();
   harness.handlers.markDraftConversationKept('server-1');
   assert.equal(harness.runtimeStore.getRuntime('server-1').shellSeeded, false);
-  assert.equal(harness.deployHandlers.handleDeploy('after document', null, 'model', null, [IMAGE], 'agent-1', 'fixture'), true);
+  assert.ok(harness.deployHandlers.handleDeploy('after document', null, 'model', null, [IMAGE], 'agent-1', 'fixture') instanceof Promise);
   await settle();
   assert.equal(harness.state.createCalls, 1, 'document upload already created this conversation');
   assert.equal(harness.draftConversationRef.current, null);
-  assert.equal(harness.runtimeStore.displayed.taskRuntimeState.pendingTask.displayText, 'after document');
+  assert.equal(harness.runtimeStore.displayed.taskRuntimeState.submission.payload.displayText, 'after document');
   assert.equal(displayedContentLoading(harness), false);
   upload.resolve(UPLOADED_IMAGE);
   await settle();
@@ -367,7 +367,7 @@ test('background first-image creation cannot clear a historical conversation loa
     uploadChatImage: () => upload.promise,
   });
   harness.handlers.openDraftConversation(PROJECT_ID);
-  assert.equal(harness.deployHandlers.handleDeploy('background image', null, 'model', null, [IMAGE], 'agent-1', 'fixture'), true);
+  assert.ok(harness.deployHandlers.handleDeploy('background image', null, 'model', null, [IMAGE], 'agent-1', 'fixture') instanceof Promise);
   harness.handlers.clearDraftConversationState();
   harness.handlers.invalidateConversationActivation();
   harness.conversationIdRef.current = 'history';
@@ -495,7 +495,7 @@ test('a second send while the first one materializes keeps its text and sends no
   const draftId = harness.draftConversationRef.current.id;
   assert.equal(draftId, harness.conversationIdRef.current);
 
-  assert.equal(harness.deployHandlers.handleDeploy('first message', null, 'model', null, [], 'agent-1', 'fixture'), true);
+  assert.ok(harness.deployHandlers.handleDeploy('first message', null, 'model', null, [], 'agent-1', 'fixture') instanceof Promise);
   assert.equal(harness.deployHandlers.handleDeploy('second message', null, 'model', null, [], 'agent-1', 'fixture'), false, '文字必须留在输入框');
   assert.equal(harness.state.createCalls, 1, '第二次提交不能再建会话');
   assert.match(String(harness.state.notices.at(-1)[1]), /still being sent/);
@@ -513,7 +513,7 @@ test('a second send while the first one materializes keeps its text and sends no
   assert.equal(harness.state.executions.length, 1, '第一条消息只能发一轮');
   assert.equal(harness.state.executions[0].targetConversationId, 'server-1');
   assert.equal(harness.draftConversationRef.current, null);
-  assert.equal(harness.deployHandlers.handleDeploy('third message', null, 'model', null, [], 'agent-1', 'fixture'), true, '落地后发送恢复正常');
+  assert.ok(harness.deployHandlers.handleDeploy('third message', null, 'model', null, [], 'agent-1', 'fixture') instanceof Promise, '发送等待后端确认');
   await settle();
   assert.equal(harness.state.executions.length, 2);
 });
@@ -522,7 +522,7 @@ test('late first-send creation adds its sidebar row and starts in background wit
   const create = deferred();
   const harness = createDeployHarness({ createConversationInProject: () => create.promise });
   harness.handlers.openDraftConversation(PROJECT_ID);
-  assert.equal(harness.deployHandlers.handleDeploy('first message', null, 'model', null, [], 'agent-1', 'fixture'), true);
+  assert.ok(harness.deployHandlers.handleDeploy('first message', null, 'model', null, [], 'agent-1', 'fixture') instanceof Promise);
   harness.handlers.clearDraftConversationState();
   harness.handlers.invalidateConversationActivation();
   harness.conversationIdRef.current = 'other-conversation';
@@ -551,7 +551,7 @@ test('late first-send creation cannot overwrite a newer draft in the same projec
   const harness = createDeployHarness({ createConversationInProject: () => create.promise });
   harness.handlers.openDraftConversation(PROJECT_ID);
   const oldId = harness.conversationIdRef.current;
-  assert.equal(harness.deployHandlers.handleDeploy('first message', null, 'model', null, [], 'agent-1', 'fixture'), true);
+  assert.ok(harness.deployHandlers.handleDeploy('first message', null, 'model', null, [], 'agent-1', 'fixture') instanceof Promise);
   harness.handlers.openDraftConversation(PROJECT_ID);
   const newDraft = harness.draftConversationRef.current;
   assert.notEqual(newDraft.id, oldId);

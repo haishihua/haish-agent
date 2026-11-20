@@ -77,7 +77,10 @@ export function ProjectNode({
   const isPinned = Boolean(project.pinned);
   const projectCreated = projectCreatedTimestamp(project);
   const allConversations = Array.isArray(project.conversations) ? project.conversations : [];
-  const allWorkflowTasks = workflowTaskMode ? projectWorkflowTasks(project) : [];
+  const allWorkflowTasks = React.useMemo(
+    () => workflowTaskMode ? projectWorkflowTasks(project) : [],
+    [project, workflowTaskMode],
+  );
   const conversationLimit = Math.max(1, Number(conversationPreviewLimit) || PREVIEW_PAGE_SIZE);
   const [extraVisible, setExtraVisible] = React.useState(DEFAULT_PREVIEW);
   const listVisible = Boolean(project.expanded) && !panelCollapsed;

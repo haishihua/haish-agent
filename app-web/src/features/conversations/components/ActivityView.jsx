@@ -1,3 +1,4 @@
+import { ConversationMarqueeTitle } from './ConversationMarqueeTitle.jsx';
 import React from 'react';
 import { Clock, Search, SquarePen, X } from 'lucide-react';
 import { useSchedules } from '../../schedules/hooks/useSchedules.js';
@@ -34,7 +35,8 @@ function formatTime(timestamp) {
 }
 
 export function ActivityView({ projects, workspaceProjects, activeConversationId, activeTaskId, notices, terminalNotices = {}, taskTerminalNotices = {}, mode, onSelect, onPin, onDeleteConversation,
-  onDeleteTask, onNewEntry, isDraftSelected = false, loading, error }) {
+  onRequestRenameConversation, onRequestRenameTask, onDeleteTask, onNewEntry, isDraftSelected = false, loading, error }) {
+  const [renamedTitles, setRenamedTitles] = React.useState({});
   const schedules = useSchedules();
   const [limit, setLimit] = React.useState(ACTIVITY_PAGE_SIZE);
   const [query, setQuery] = React.useState('');
@@ -73,7 +75,7 @@ export function ActivityView({ projects, workspaceProjects, activeConversationId
         : <p className="activity-message">{query.trim() ? 'No matching activity.' : 'No completed activity yet.'}</p>) : (
         <div className="activity-list">
           {visibleEntries.map((entry) => {
-            const title = mode === 'bot' ? (entry.task.title || 'Untitled task') : (entry.conversation.name || 'Untitled conversation');
+            const title = mode === 'bot' ? (renamedTitles[entry.taskId] || entry.task.title || 'Untitled task') : (entry.conversation.name || 'Untitled conversation');
             const time = formatTime(entry.completedAt);
             const tooltip = (
               <span className="project-tooltip-content">
@@ -92,13 +94,20 @@ export function ActivityView({ projects, workspaceProjects, activeConversationId
               <div key={mode === 'bot' ? `${entry.conversation.id}:${entry.taskId}` : entry.conversation.id}
                 className={`activity-row conversation-row${active ? ' active' : ''}${scheduleCount ? ' has-schedules' : ''}`} role="button" tabIndex={0}
                 aria-current={active ? 'true' : undefined} onClick={() => onSelect(entry)}
+                onDoubleClick={(event) => {
+                  if (event.target.closest?.('.conversation-actions, .conversation-schedule-icon')) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (mode === 'bot') onRequestRenameTask?.(entry.project, conversation, { ...entry.task, title }, (next) => setRenamedTitles(current => ({ ...current, [entry.taskId]: next })));
+                  else onRequestRenameConversation?.(entry.project, conversation);
+                }}
                 onKeyDown={(event) => {
                   if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
                     event.preventDefault(); onSelect(entry);
                   }
                 }}>
                 <PortalTooltip text={tooltip} position="below" multiline alwaysDelay>
-                  <span className="conversation-name"><span className="conversation-name-static">{title}</span></span>
+                  <ConversationMarqueeTitle name={title} />
                 </PortalTooltip>
                 {scheduleCount > 0 && <button type="button" className="conversation-schedule-icon" aria-label={`Scheduled tasks (${scheduleCount})`} title={`${scheduleCount} scheduled task(s)`}
                   onClick={(event) => { event.stopPropagation(); schedules.openManage(conversation.id); }}

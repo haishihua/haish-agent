@@ -67,10 +67,10 @@ test('a message that never left the machine cannot lock the picker', () => {
     activeConversationId: CONVERSATION_ID,
     projects: [{
       id: 'project-1',
-      conversations: [{ id: CONVERSATION_ID, tasks: [pendingTask] }],
+      conversations: [{ id: CONVERSATION_ID, tasks: [] }],
     }],
   };
-  let runtimeState = { activeTaskId: null, pendingTask, taskOrder: [], tasksById: {} };
+  let runtimeState = { activeTaskId: null, pendingTask: null, submission: { requestId: pendingTask.taskId, payload: pendingTask }, taskOrder: [], tasksById: {} };
   const handlers = createDeployHandlers({
     getRuntime: () => ({ taskRuntimeState: runtimeState }),
     normalizeWorkspaceOrdering: (next) => next,
@@ -91,7 +91,7 @@ test('a message that never left the machine cannot lock the picker', () => {
   assert.deepEqual(tasks, []);
   // 没有服务端接受的历史时，不展示切换影响提示。
   assert.equal(conversationHasSentMessage({ tasks }), false);
-  // 失败本身照旧留在运行时里（时间线/重试还要用它）。
-  assert.equal(runtimeState.pendingTask.status, 'failed');
-  assert.match(runtimeState.pendingTask.error, /image upload response is incomplete/);
+  assert.equal(runtimeState.submission, null);
+  assert.equal(runtimeState.pendingTask, null);
+  assert.deepEqual(runtimeState.tasksById, {});
 });

@@ -124,6 +124,20 @@ select,
     /* Sits on .app-topbar, whose own backdrop is the opaque shell gradient. */
 }
 
+.topbar-mode-toggle { position: relative; }
+.mode-notification-dot {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #60a5fa;
+    box-shadow: 0 0 0 2px #111827;
+    pointer-events: none;
+}
+.mode-notification-dot.needs-action { background: var(--gold, #efbf64); }
+
 .topbar-icon:disabled {
     opacity: 0.45;
     cursor: not-allowed;

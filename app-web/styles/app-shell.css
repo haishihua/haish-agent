@@ -1189,8 +1189,8 @@
 .workflow-canvas {
     /* Shared palette for canvas nodes, edges and node details. */
     --workflow-canvas-font: var(--conversation-font);
-    --workflow-accent-start: #24dd98;
-    --workflow-accent-agent: #389dff;
+    --workflow-accent-start: #2abc88;
+    --workflow-accent-agent: #4199df;
     --workflow-accent-llm: #9299ff;
     --workflow-accent-tool: #65d4ba;
     --workflow-accent-condition: #b570ff;
@@ -1206,10 +1206,7 @@
     overflow: hidden;
     /* 画布底板：深蓝黑（#07101c → #091321）+ 两团极淡的 radial（左上蓝、右下紫），
        只给空间感、不抢节点；上面的 dot grid 由页面里的 <Background> 画。 */
-    background:
-        radial-gradient(ellipse at 15% 35%, rgba(22, 87, 92, 0.055), transparent 52%),
-        radial-gradient(ellipse at 85% 70%, rgba(84, 49, 136, 0.045), transparent 52%),
-        linear-gradient(180deg, #0a1119, #0b121b);
+    background: #080d14;
 }
 
 .workflow-canvas::after {
@@ -1237,7 +1234,7 @@
 }
 
 .workflow-canvas .react-flow__background {
-    background-color: transparent;
+    display: none;
 }
 
 /* 边的外观只有这一套（配置页 + 运行页）：角色配色（主流程/支路/回环/收尾）与线宽/虚线由
@@ -1252,13 +1249,22 @@
 
 /* 外层 glow：5px 的模糊只作用在这一层上，所以核心线不会被糊掉。 */
 .workflow-canvas .workflow-edge-glow {
-    filter: blur(3px);
-    transition: stroke-opacity 160ms ease;
+    display: none;
 }
 
+.workflow-canvas .workflow-edge-handoff {
+    /* 4px 短划 + 8px 间距；每周期移动一个完整节距，长短边流速一致。 */
+    stroke-dasharray: 4 8;
+    animation: workflow-edge-handoff 0.5s linear infinite;
+}
+@keyframes workflow-edge-handoff {
+    0% { stroke-dashoffset: 0; }
+    100% { stroke-dashoffset: -12; }
+}
 .workflow-canvas .workflow-edge-spark {
-    stroke-dasharray: 24 220;
-    animation: workflow-edge-spark 1.6s linear infinite;
+    stroke-dasharray: 12 38;
+    filter: blur(.45px);
+    animation: workflow-edge-liquid 1.4s linear infinite;
 }
 
 /* 回路/支路上的标签：一枚小 pill（深蓝灰底、1px 半透明描边、轻微阴影），摆在 path 中点那块
@@ -1280,13 +1286,15 @@
     pointer-events: none;
 }
 
-@keyframes workflow-edge-spark {
-    to { stroke-dashoffset: -244; }
+@keyframes workflow-edge-liquid {
+    to { stroke-dashoffset: -50; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .workflow-canvas .react-flow__edge.animated path,
-    .workflow-canvas .workflow-edge-spark {
+    .workflow-canvas .workflow-edge-handoff,
+    .workflow-canvas .workflow-edge-liquid,
+    .workflow-canvas .workflow-edge-spark { display: none; }
+    .workflow-canvas .react-flow__edge.animated path {
         animation: none;
     }
 
@@ -1388,7 +1396,7 @@
 .workflow-flow-node {
     font-family: var(--workflow-canvas-font);
     width: max-content;
-    min-width: 160px;
+    min-width: 212px;
     max-width: 288px;
     box-sizing: border-box;
     height: 64px;
@@ -1398,30 +1406,63 @@
     --node-accent: var(--node-type-accent);
     position: relative;
     display: grid;
-    grid-template-columns: 36px minmax(0, 1fr);
+    grid-template-columns: 32px minmax(0, 1fr);
     align-items: center;
     gap: 12px;
     padding: 10px 14px;
-    /* 深色半透明底 + 蓝黑渐变（左上角带一点主题色），1.5px 主题色描边 + 一圈很轻的外光：
-       默认状态不刺眼，hover/选中再加强。 */
+    /* 实色面板与清晰轮廓：设置、运行与 Goal 共用，不叠加玻璃高光。 */
     border: 1.5px solid var(--node-accent);
     border-radius: 14px;
-    background:
-        radial-gradient(100% 180% at 0% 0%, color-mix(in srgb, var(--node-accent) 10%, transparent), transparent 70%),
-        linear-gradient(180deg, color-mix(in srgb, var(--node-accent) 18%, #0b1220), color-mix(in srgb, var(--node-accent) 7%, #090f19));
+    background: color-mix(in srgb, var(--node-accent) 12%, #101c2b);
     color: rgba(235, 240, 252, 0.92);
     text-align: left;
-    box-shadow:
-        0 8px 20px rgba(0, 0, 0, 0.24),
-        0 0 24px color-mix(in srgb, var(--node-accent) 14%, transparent),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    box-shadow: none;
     transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 /* 节点类型色只有这一份：配置页的描边/图标和运行页的完成态都从这里取色，
    连线渐变（WorkflowFlowNode.workflowEdgeAppearance）也引用同一批变量。 */
+/* 独立状态角标在所有画布一致，避免依赖运行页容器。 */
+.workflow-flow-node.is-runtime .workflow-flow-node-copy { padding-right: 18px; }
+.workflow-node-state {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: #94abc8;
+    pointer-events: none;
+    font: 700 13px/1 sans-serif;
+}
+.workflow-node-state.is-inline { position: static; width: 22px; height: 22px; flex-shrink: 0; }
+.workflow-node-state:is(.is-done, .is-succeeded, .is-approved) { color: #70dda8; background: #20563f; }
+.workflow-node-state:is(.is-failed, .is-rejected) { color: #f390a0; background: #512936; }
+.workflow-node-state:is(.is-approval, .is-waiting_approval, .is-waiting_input) { color: #b494ff; }
+.workflow-node-state.is-cancelled { color: #efc75e; }
+.workflow-node-state > span { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.workflow-node-state i {
+    width: 13px;
+    height: 13px;
+    border: 2px solid #65b4ff;
+    border-top-color: transparent;
+    border-bottom-color: transparent;
+    border-radius: 50%;
+    animation: workflow-node-spin 0.9s linear infinite;
+}
+.workflow-flow-node:is(.status-done, .status-succeeded, .status-approved) .workflow-node-status { color: #7dbb9f; }
+.workflow-flow-node:is(.status-failed, .status-rejected) .workflow-node-status { color: #f390a0; }
+@keyframes workflow-node-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .workflow-node-state i { animation: none; } }
+
 .workflow-flow-node.agent { --node-type-accent: var(--workflow-accent-agent); }
-.workflow-flow-node.start { --node-type-accent: var(--workflow-accent-start); }
+.workflow-flow-node.start { --node-type-accent: var(--workflow-accent-start); background: #132e29; }
+.workflow-flow-node.agent { background: #15253b; }
+.workflow-flow-node.start .workflow-flow-node-icon { background: #196b5b; color: #77ddc1; }
+.workflow-flow-node.agent .workflow-flow-node-icon { background: #285b97; color: #91c3ff; }
 .workflow-flow-node.llm { --node-type-accent: var(--workflow-accent-llm); }
 .workflow-flow-node.tool { --node-type-accent: var(--workflow-accent-tool); }
 .workflow-flow-node.condition { --node-type-accent: var(--workflow-accent-condition); }
@@ -1432,11 +1473,8 @@
 /* 悬停/选中用节点自己的主题色（运行页有状态色的节点仍由状态色优先），只加强这一层：
    描边亮成 accent + 一圈更明显的柔光；默认态保持克制。 */
 .workflow-flow-node.active {
-    border-color: color-mix(in srgb, var(--node-accent) 96%, transparent);
-    box-shadow:
-        0 16px 36px rgba(0, 0, 0, 0.36),
-        0 0 30px color-mix(in srgb, var(--node-accent) 38%, transparent),
-        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    border-color: var(--node-accent);
+    box-shadow: none;
 }
 
 .workflow-flow-node .workflow-flow-node-copy {
@@ -1444,9 +1482,9 @@
 }
 
 .workflow-flow-node-copy small {
-    font-size: 11px;
-    line-height: 1.2;
-    color: color-mix(in srgb, var(--node-accent) 38%, #b7c5e5);
+    font-size: 12px;
+    line-height: 1.35;
+    color: color-mix(in srgb, var(--node-accent) 30%, #9eafc8);
     font-weight: 400;
 }
 
@@ -1462,16 +1500,16 @@
 }
 
 .workflow-flow-node-icon {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border-radius: 10px;
     border: 0;
-    background: linear-gradient(145deg, color-mix(in srgb, var(--node-accent) 54%, #102454), color-mix(in srgb, var(--node-accent) 36%, #102454));
+    background: color-mix(in srgb, var(--node-accent) 46%, #102d4c);
     color: color-mix(in srgb, var(--node-accent) 58%, #d4ffff);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    box-shadow: none;
     flex: 0 0 auto;
     transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
@@ -1485,8 +1523,8 @@
     min-width: 0;
     overflow: hidden;
     color: rgba(246, 248, 255, 0.96);
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 16px;
+    font-weight: 650;
     line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1531,7 +1569,7 @@
 @media (hover: hover) and (pointer: fine) {
     .workflow-flow-node:hover {
         border-color: color-mix(in srgb, var(--node-accent) 80%, white);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28), 0 0 28px color-mix(in srgb, var(--node-accent) 24%, transparent);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-accent) 16%, transparent);
     }
 }
 
@@ -1576,6 +1614,8 @@
     pointer-events: auto;
 }
 
+.workflow-flow-node.is-runtime .workflow-side-handle:not(.is-used):not(.is-available) { opacity: 0; }
+.workflow-flow-node.is-runtime:hover .workflow-side-handle { opacity: 1; }
 .workflow-flow-node .workflow-side-handle.is-used { opacity: 1; }
 .workflow-flow-node.is-reconnecting .react-flow__handle:not(.workflow-side-handle) { pointer-events: none; }
 .workflow-flow-node .workflow-side-handle.is-available {

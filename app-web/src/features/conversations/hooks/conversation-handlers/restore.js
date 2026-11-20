@@ -4,6 +4,8 @@
 // 与 crud 的往返：handleSelectProject 在目标项目没有会话时要新建一个，而新建动作
 // 属于 crud，所以由主文件注入 addConversation（延迟绑定，调用时主文件已经装配完）。
 
+import { defaultWorkflowTask } from '../../model/default-workflow-task.js';
+
 export function createConversationRestoreHandlers(deps) {
   const {
     activateConversationDetail,
@@ -271,6 +273,16 @@ export function createConversationRestoreHandlers(deps) {
     setViewMode(nextViewMode);
     setActiveTab('dashboard');
     if (settingsMode) setSettingsMode(false);
+
+    if (nextViewMode === 'workflow') {
+      const preferred = defaultWorkflowTask(workspaceState, getRuntime, taskUpdatedTimestamp);
+      if (preferred && deps.selectWorkflowTask) {
+        void deps.selectWorkflowTask(preferred.projectId, preferred.conversationId, preferred.task)
+          .catch((error) => showToast('error', String(error?.message || error)));
+        return;
+      }
+      deps.clearViewedWorkflowTask?.();
+    }
 
     const rememberedLocation = modeLocationRef.current[nextViewMode];
     const rememberedConversation = rememberedLocation?.conversationId

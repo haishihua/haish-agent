@@ -87,6 +87,7 @@ import {
   addTaskCompletionNotice,
   clearConversationCompletionNotices,
   clearReadTaskCompletionNotices,
+  clearTaskCompletionNotice,
   mergeConversationReadCursors,
   taskCompletionNoticeKey,
   terminalTaskNoticeStatus,
@@ -403,16 +404,19 @@ export function AppShell() {
   });
 
   function notifyTaskComplete(targetConversationId, taskId, taskOrStatus) {
+    if (taskOrStatus?.localOnly) return;
     const status = terminalTaskNoticeStatus(taskOrStatus);
     const key = taskCompletionNoticeKey(targetConversationId, taskId);
     if (!key || !status || completionReportedTaskIdsRef.current.has(key)) return;
     completionReportedTaskIdsRef.current.add(key);
     const settledAt = taskUpdatedTimestamp(taskOrStatus) || Date.now();
-    const viewedNow = completionViewRef.current.chatVisible && document.hasFocus()
-      && conversationIdRef.current === targetConversationId;
+    const completionView = completionViewRef.current;
+    const viewedNow = document.hasFocus() && conversationIdRef.current === targetConversationId
+      && (completionView.chatVisible || (completionView.workflowVisible && completionView.taskId === taskId));
     const alreadyViewed = Number(conversationReadCursorsRef.current[targetConversationId] || 0) >= settledAt;
     if (viewedNow) {
-      markConversationTaskCompletionsViewed(targetConversationId);
+      if (completionView.chatVisible) markConversationTaskCompletionsViewed(targetConversationId);
+      else setTaskCompletionNotices((current) => clearTaskCompletionNotice(current, targetConversationId, taskId));
       return;
     }
     if (alreadyViewed) return;
@@ -700,9 +704,16 @@ export function AppShell() {
     setSettingsMode(true);
   }, []);
   const currentWorkflowTask = currentTask?.executionMode === 'bot' ? currentTask : null;
-  completionViewRef.current.chatVisible = activeTab === 'dashboard' && !settingsMode && viewMode === 'chat' && conversationReady;
+  completionViewRef.current = {
+    chatVisible: activeTab === 'dashboard' && !settingsMode && viewMode === 'chat' && conversationReady,
+    workflowVisible: activeTab === 'dashboard' && !settingsMode && viewMode !== 'chat' && conversationReady,
+    taskId: currentWorkflowTask?.taskId || currentWorkflowTask?.task_id || currentWorkflowTask?.id,
+  };
   useViewedTaskCompletionNotice({ task: currentWorkflowTask, conversationId, visible: activeTab === 'dashboard' && !settingsMode && viewMode !== 'chat' && conversationReady, windowFocused, notices: taskCompletionNotices, setNotices: setTaskCompletionNotices });
-  const nodeConfigSelection = useNodeRuntimeConfigs(botRunConfigStorageKey, selectedWorkflow, currentWorkflowTask?.nodeRuntimeConfigs, currentWorkflowTask?.taskId, llmProviderOptions);
+  const viewedNodeConfigs = useMemo(() => currentWorkflowTask
+    ? inheritedTaskNodeConfigs(selectedWorkflow, currentWorkflowTask, currentWorkflowTask.nodeRuntimeConfigs || {}, llmProviderOptions)
+    : undefined, [selectedWorkflow, currentWorkflowTask, llmProviderOptions]);
+  const nodeConfigSelection = useNodeRuntimeConfigs(botRunConfigStorageKey, selectedWorkflow, viewedNodeConfigs, currentWorkflowTask?.taskId, llmProviderOptions);
   const botNodeConfigs = nodeConfigSelection.configs;
   useActiveTaskSanityReset({
     busy, currentConversationActive, runtimeCurrentTask,
@@ -810,7 +821,7 @@ export function AppShell() {
     conversation: currentConversation, options: agentOptions, messages: chatMessages,
     pendingTask: taskRuntimeState.pendingTask, running: currentConversationRunning, queued: queuedDeploy, setWorkspaceState,
   });
-  const submitPending = Boolean(queuedDeploy || conversationStopState.pending || conversationRetryPending);
+  const submitPending = Boolean(taskRuntimeState.submission || taskRuntimeState.pendingTask || queuedDeploy || conversationStopState.pending || conversationRetryPending);
 
   const composerDisabled = Boolean(conversationStopState.error) || uploadState.active
     || settingsMode
@@ -851,7 +862,12 @@ export function AppShell() {
       }}
       chrome={{
         viewMode, settingsMode, goalPreparing, activeTab, conversationPanelCollapsed, handleToggleViewMode, handleToggleSettings,
-        showToast, setActiveTab, windowFocused, toasts, hollow, setHollow, contextTask, setContextTask,
+        showToast, dismissToast: (id) => {
+          for (const [key, entry] of toastTimerRef.current) {
+            if (entry.id === id) { clearTimeout(entry.timerId); toastTimerRef.current.delete(key); }
+          }
+          setToasts(items => items.filter(item => item.id !== id));
+        }, setActiveTab, windowFocused, toasts, hollow, setHollow, contextTask, setContextTask,
       }}
       settings={{
         settingsSection, setSettingsSection, settingsSelection, setSettingsSelection,
@@ -867,7 +883,7 @@ export function AppShell() {
         skillActionBusy, pendingSettingsEditor, setPendingSettingsEditor,
       }}
       sidebar={{
-        panelActions, visiblePanelWorkspaceState, taskCompletionNotices, currentWorkflowTask, ownerId, activityOpen, setActivityOpen,
+        panelActions, panelWorkspaceState, visiblePanelWorkspaceState, taskCompletionNotices, currentWorkflowTask, ownerId, activityOpen, setActivityOpen,
         markConversationTaskCompletionsViewed, handleDeleteWorkflowTask, handleRenameProject,
         handleOpenTaskReport, handleRetryTask,
       }}
@@ -883,6 +899,7 @@ export function AppShell() {
             switchDraftProject: (project) => draftApiRef.current.switchDraftProject?.(project) })
             .catch((error) => showToast('error', String(error?.message || error)));
         },
+        viewedWorkflowTask,
         getRuntime, conversationLoading, currentConversationRunning, currentConversationRunState, petTask, composerDisabled, submitPending,
         handleDeploy, handleGoalCommand, handleStop, handleAttachmentSelect, handleAttachmentClear,
         composerImageDraftsRef, composerAttachment, uploadState, contextUsage, localWorkspace, activeTaskText,

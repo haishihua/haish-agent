@@ -58,6 +58,18 @@ test('switching to a project with a remembered draft never overwrites its regist
   assert.equal(ctx.draftConversationIdsRef.current.get('b'), 'draft-other');
 });
 
+test('task drafts can switch bot projects without changing composer identity or allowing chat projects', () => {
+  const { ctx, handlers, workspace, localWorkspace } = setup();
+  ctx.draftConversationRef.current.executionMode = 'bot';
+  assert.equal(handlers.switchDraftProject('bot'), true);
+  assert.equal(ctx.draftConversationRef.current.id, 'draft-1');
+  assert.equal(ctx.draftConversationRef.current.composerScopeId, 'draft-project:a');
+  assert.equal(workspace().activeProjectId, 'bot');
+  assert.equal(localWorkspace().label, 'Bot');
+  assert.equal(handlers.switchDraftProject('b'), false);
+  assert.equal(ctx.draftConversationRef.current.projectId, 'bot');
+});
+
 test('keeping an uploaded draft does not forget another draft in the same project', () => {
   const { ctx, handlers } = setup();
   ctx.draftConversationRef.current = { id: 'real', localDraftId: 'draft-1', projectId: 'b', keepServerConversation: true };

@@ -306,6 +306,7 @@ export function taskSummaryToRuntimeTask(task, fallbackImageAttachments = []) {
     userMessageId: task.user_message_id || null,
     annotations: task.annotations || [],
     displayText: task.display_text ?? null,
+    requestText: task.request_message ?? task.requestText,
     inherited: Boolean(task.inherited),
     assistantMessageId: task.assistant_message_id || null,
     requestedReasoningEffort: task.reasoning_effort || null,

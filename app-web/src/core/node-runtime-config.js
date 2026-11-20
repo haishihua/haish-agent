@@ -55,11 +55,12 @@ export function workflowNodeRuntimeConfig(node, task, configs = {}, readOnly = f
 }
 
 export function inheritedTaskNodeConfigs(workflow, task, configs = {}, providerOptions = []) {
+  const saved = task ? (task.nodeRuntimeConfigs || {}) : configs;
   const effective = Object.fromEntries((workflow?.nodes || [])
-    .filter((node) => node.type === 'agent' || (node.type === 'llm' && configs[node.id]))
-    .map((node) => [node.id, node.type === 'agent'
-      ? workflowNodeRuntimeConfig(node, task, configs, true, providerOptions)
-      : configs[node.id]]));
+    .filter((node) => node.type === 'agent' || (node.type === 'llm' && (saved[node.id] || task?.workflowRun?.nodes?.[node.id]?.runtime_config)))
+    // Explicit requested configs (including a cleared route) take precedence
+    // over historical execution snapshots for both reruns and new input.
+    .map((node) => [node.id, workflowNodeRuntimeConfig(node, task, saved, !Object.hasOwn(saved, node.id), providerOptions)]));
   return nodeRuntimeConfigsForWorkflow(workflow, effective, providerOptions);
 }
 

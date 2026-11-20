@@ -57,7 +57,7 @@ const PROVIDER_OPTIONS = [
 ];
 const AGENT_OPTIONS = [{ id: 'simple-agent', label: 'Simple Agent' }];
 const SCOPE_ID = 'steering-image';
-let savedConfig = { execution_mode: 'chat', agent_id: 'simple-agent', provider: 'openai', model_id: 'gpt-4o-mini', reasoning_effort: null, use_history: true };
+let savedConfig = { execution_mode: 'chat', agent_id: 'simple-agent', llm_config_id: 'openai-dev', model_id: 'gpt-4o-mini', reasoning_effort: null, use_history: true };
 const configSync = createRunConfigSync({
   get: async () => savedConfig,
   save: async (_id, config) => { savedConfig = structuredClone(config); },
@@ -69,6 +69,7 @@ const imageStore = new Map();
 const sentPayloads = [];
 // 下一笔发送服务端接不接受（false = 走 handleDeploy 里 queueTaskInput 报错那条路）。
 let acceptNextSend = true;
+let annotationAccepted = 0;
 
 function steeringPng(name) {
   // 一个最小的 PNG 头字节：夹具只关心「这是一张 image/png 的 File」。
@@ -96,9 +97,11 @@ function Harness() {
   return (
     <ChatComposer
       scopeId={SCOPE_ID}
+      conversationId={SCOPE_ID}
       draft={draft}
       onDraftChange={setDraft}
       onSend={onSend}
+      prepareSubmit={() => ({ annotations: [{ id: 'fixture-comment', text: 'quote', comment: 'feedback' }], onAccepted: () => { annotationAccepted++; } })}
       onStop={() => {}}
       running={running}
       imageStore={imageStore}
@@ -223,8 +226,17 @@ async function runChecks() {
     Boolean(send) && !send.disabled,
     `disabled=${send?.disabled}`,
   );
+  acceptNextSend = false;
+  const annotationCountBeforeReject = annotationAccepted;
   send.click();
   await tick();
+  check('a rejected normal send preserves text and image', chips().length === 1 && window.__steeringImage.getDraft() === '普通发送也要清图片');
+  check('rejection keeps annotation draft unconsumed', annotationAccepted === annotationCountBeforeReject);
+  check('a rejected normal send ends button loading', !document.querySelector('button[aria-label="Submitting"]'));
+  acceptNextSend = true;
+  submitButton('Send').click();
+  await tick();
+  check('acceptance consumes annotation draft exactly once', annotationAccepted === annotationCountBeforeReject + 1);
   check(
     'a normal send clears the image drafts the same way',
     chips().length === 0 && !imageStore.has(SCOPE_ID),

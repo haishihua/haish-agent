@@ -1,3 +1,5 @@
+import { API_BASE } from '../../../shared/api/base.js';
+import { apiFetch } from '../../../shared/api/client.js';
 import { useEffect } from 'react';
 import {
   loadTaskCompletionNotices,
@@ -28,8 +30,26 @@ export function useTaskCompletionNoticeStorage({
     );
     setNotices(loaded);
     setNoticesOwner(ownerId);
+    // Reconcile only explicit 404s; offline/server failures must retain notices.
+    let cancelled = false;
+    void Promise.all(Object.entries(loaded).map(async ([key, notice]) => {
+      try {
+        const response = await apiFetch(`${API_BASE}/api/tasks/${encodeURIComponent(notice.taskId)}?event_view=runtime&max_events=1`);
+        return response.status === 404 ? [key, notice] : null;
+      } catch { return null; }
+    })).then((missing) => {
+      if (cancelled) return;
+      setNotices(current => {
+        const next = { ...current };
+        for (const item of missing) {
+          if (item && current[item[0]] === item[1]) delete next[item[0]];
+        }
+        return next;
+      });
+    });
     window.haish?.setTaskCompletionBadgeCount?.(Object.keys(loaded).length)
       .catch(() => undefined);
+    return () => { cancelled = true; };
   }, [ownerId, reportedTaskIdsRef, setNotices, setNoticesOwner]);
 
   useEffect(() => {

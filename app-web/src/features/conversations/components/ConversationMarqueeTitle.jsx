@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function ConversationMarqueeTitle({ name }) {
+export function ConversationMarqueeTitle({ name, ref, ...props }) {
   const containerRef = React.useRef(null);
   const [seconds, setSeconds] = React.useState(0);
   React.useLayoutEffect(() => {
@@ -23,7 +23,11 @@ export function ConversationMarqueeTitle({ name }) {
     };
   }, [name]);
   return (
-    <span ref={containerRef} className={`conversation-name${seconds ? ' marquee' : ''}`}
+    <span {...props} ref={(element) => {
+      containerRef.current = element;
+      if (typeof ref === 'function') ref(element);
+      else if (ref) ref.current = element;
+    }} className={`conversation-name${seconds ? ' marquee' : ''}`}
       style={seconds ? { '--marquee-duration': `${seconds}s` } : undefined}>
       <span className="conversation-name-static">{name}</span>
       {seconds ? <span className="conversation-name-track" aria-hidden="true"><span>{name}</span><span>{name}</span></span> : null}

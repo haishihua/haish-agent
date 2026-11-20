@@ -52,7 +52,8 @@ export function activityEntries(projects, notices = {}, mode = 'chat', workspace
       }];
       return [{ ...tasks[0], unread: tasks.some((entry) => entry.unread) }];
     });
-  }).sort((a, b) => (mode === 'chat' ? compareConversationOrder(a.conversation, b.conversation) : b.sortTime - a.sortTime)
+  }).sort((a, b) => (mode === 'chat' ? compareConversationOrder(a.conversation, b.conversation)
+    : Number(isTaskLive(b.task)) - Number(isTaskLive(a.task)) || b.sortTime - a.sortTime)
     || String(a.conversation.id).localeCompare(String(b.conversation.id))
     || String(a.taskId).localeCompare(String(b.taskId)));
 }

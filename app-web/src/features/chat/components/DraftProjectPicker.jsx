@@ -23,7 +23,7 @@ export function DraftProjectPicker({ projects = [], selectedId, onSelect, onAddP
     function measure() {
       const trigger = rootRef.current?.querySelector('.draft-project-trigger');
       if (!trigger) return;
-      const clip = rootRef.current?.closest('.chat-workspace');
+      const clip = rootRef.current?.closest('.chat-workspace, .workflow-run-canvas');
       const clipTop = clip ? clip.getBoundingClientRect().top : 0;
       const available = trigger.getBoundingClientRect().top - clipTop - 12;
       // 默认跟 model 菜单同高（360）；窗口/面板矮时再向下收敛，保证顶边不越界。

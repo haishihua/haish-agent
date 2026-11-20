@@ -121,8 +121,8 @@ test('both pages arrange the same graph identically, no matter the pane width', 
   assert.match(layoutSource, /const BRANCH_OFFSET_Y = 192;/);
   assert.match(layoutSource, /const BRANCH_ROW_GAP = BRANCH_OFFSET_Y \+ 72 \+ 24;/);
   assert.doesNotMatch(layoutSource, /viewportWidth/);
-  assert.match(editorSource, /layoutRuntimeWorkflow\(nodes, edges\)/);
-  assert.match(runtimeSource, /layoutRuntimeWorkflow\(workflow\?\.nodes, workflow\?\.edges\)/);
+  assert.match(editorSource, /layoutRuntimeWorkflow\(nodes, visibleEdges\)/);
+  assert.match(runtimeSource, /layoutRuntimeWorkflow\(workflow\?\.nodes, visibleEdges\)/);
 
   // 照抄系统预设 Goal Loop 的形状（core/workflow/model.py 的 goal_loop_workflow）：判定过了走
   // End，没过回 Worker，超限才落到 End——用户截图里就是这张图。
@@ -190,7 +190,7 @@ test('runtime feedback edges keep routed ports and align every rework edge on on
 
 test('workflow editor reuses the runtime snake layout and routed ports', () => {
   // 排布是两页共用的一份，连宽度参数都没有（列数常数）：配置页不再按自己的画布宽度重排。
-  assert.match(editorSource, /layoutRuntimeWorkflow\(nodes, edges\)/);
+  assert.match(editorSource, /layoutRuntimeWorkflow\(nodes, visibleEdges\)/);
   assert.doesNotMatch(editorSource, /layoutRuntimeWorkflow\([^)]*canvasWidth/);
   assert.match(editorSource, /position: arrangement\.get\(String\(node\.id\)\) \|\| layout\.positions\.get/);
   assert.match(editorSource, /workflowEdgeAppearance\(edge, \{\s*active: isSelected,/);
@@ -203,8 +203,8 @@ test('the editor keeps edges attached while nodes are dragged and the runtime st
   assert.match(runtimeSource, /useNodesState\(layoutNodes\)/);
   assert.match(runtimeSource, /onNodesChange=\{onNodesChange\}/);
   // 改图（拖排布）只在配置页发生：运行页不可拖，也不写回位置。
-  assert.match(runtimeSource, /nodesDraggable=\{false\}/);
-  assert.doesNotMatch(runtimeSource, /onNodeDragStop/);
+  assert.match(runtimeSource, /\n\s*nodesDraggable\n/);
+  assert.match(runtimeSource, /onNodeDragStop/);
   assert.match(dropCanvasSource, /useNodesState\(nodes\)/);
   assert.match(dropCanvasSource, /draggedNodePositionsRef\.current\.get\(node\.id\)/);
   assert.doesNotMatch(editorSource, /currentById/);
@@ -224,7 +224,7 @@ test('runtime selection and detail share one type accent and clear together', ()
   assert.match(runtimeSource, /nodes=\{displayNodes\}/);
   assert.match(runtimeSource, /'--workflow-detail-accent': workflowNodeAccent\(selectedNode.type\)/);
   assert.match(runtimeSource, /key=\{`\$\{task\?\.taskId \|\| ''\}:\$\{selectedNode.id\}`\}/);
-  assert.match(runtimeSource, /RuntimeSelectionLink nodeId=\{selectedNodeId\}/);
+  assert.match(runtimeSource, /RuntimeSelectionLink key=\{selectedNodeId\} nodeId=\{selectedNodeId\}/);
   assert.match(runtimeStyles, /\.workflow-selection-link \{[^}]*pointer-events: none/);
   assert.doesNotMatch(runtimeStyles, /239, 191, 100/);
   assert.match(runtimeStyles, /\.workflow-detail-status-dot\.is-running \{ animation: none; \}/);
@@ -412,10 +412,8 @@ test('current approval waiting state wins over an older rejected decision', () =
   const decisionCheck = statusSource.lastIndexOf('if (approvalDecision) return approvalDecision;');
   assert.ok(settledCheck >= 0 && settledCheck < waitingCheck);
   assert.ok(waitingCheck >= 0 && waitingCheck < decisionCheck);
-  assert.match(runtimeSource, /className="workflow-detail-history"/);
-  assert.match(runtimeSource, /className="workflow-detail-attempt-label workflow-detail-history-summary"/);
-  assert.match(runtimeSource, /Previous attempts \(\{historicalAttempts\.length\}\)/);
-  assert.match(runtimeSource, /<ChatTimelineChevron open=\{historyOpen\} \/>/);
+  assert.match(runtimeSource, /className="workflow-attempt-picker"/);
+  assert.match(runtimeSource, /setChosenAttempt/);
   assert.doesNotMatch(runtimeStyles, /workflow-detail-history-summary > \.chat-timeline-chevron/);
 });
 
@@ -482,7 +480,7 @@ test('terminal workflow tasks can rerun an executed business node', () => {
   assert.match(taskStreamSource, /rerunningNode \? 'rerun_node' : 'start'/);
   assert.match(taskStreamSource, /node_id: streamRequest\.rerunNodeId/);
   assert.match(taskStreamSource, /const runId = \(rerunningNode \|\| fullAttempt\) \? generateHexId\(\)/);
-  assert.match(appShellSource, /nodeRuntimeConfigRequest\(botNodeConfigs\[nodeId\], llmProviderOptions\) : null/);
+  assert.match(appShellSource, /nodeConfigActions\.retry\(nodeId\)/);
   assert.doesNotMatch(appShellSource, /botRunConfigRef/);
   assert.match(taskStreamSource, /llm_config_id: streamRequest\.runConfig\.provider/);
   assert.match(taskStreamSource, /model_id: streamRequest\.runConfig\.modelId/);

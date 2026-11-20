@@ -485,6 +485,8 @@ export function useShellHandlers({
     handleForkMessage,
   } = createConversationHandlers({
     executeQuest, recoverConversationTasks, workflowById, workflowSettingsDraft, setSelectedWorkflowId, configSync, providerOptions: llmProviderOptions,
+    selectWorkflowTask: (...args) => handleSelectWorkflowTask(...args),
+    clearViewedWorkflowTask: () => setViewedWorkflowTask(null),
     API_BASE,
     DEFAULT_SESSION_NAME,
     activateConversationDetail,

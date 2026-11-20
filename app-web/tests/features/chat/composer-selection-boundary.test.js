@@ -6,8 +6,9 @@ const inputSource = readFileSync(new URL('../../../src/features/chat/components/
 const composerSource = readFileSync(new URL('../../../src/features/chat/components/ChatComposer.jsx', import.meta.url), 'utf8');
 const boundarySource = inputSource.slice(inputSource.indexOf('function selectionAtBoundary('), inputSource.indexOf('function ComposerController('));
 const selectionAtBoundary = new Function(`${boundarySource}; return selectionAtBoundary;`)();
-const binding = composerSource.slice(composerSource.indexOf('onKeyDown={(event) => {'), composerSource.indexOf('          placeholder={placeholder}'));
-const keyboardSource = binding.slice(binding.indexOf('(event) => {'), binding.lastIndexOf('}'));
+const bindingStart = composerSource.lastIndexOf('onKeyDown={(event) => {');
+const binding = composerSource.slice(bindingStart, composerSource.indexOf('placeholder={placeholder}', bindingStart));
+const keyboardSource = binding.slice(binding.indexOf('(event) => {'), binding.lastIndexOf('}}') + 1);
 
 function harness({ contentBefore = '', contentAfter = '', breakBefore = false, breakAfter = false } = {}) {
   const node = {}, outside = {};

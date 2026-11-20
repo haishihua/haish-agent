@@ -36,7 +36,6 @@ const ERRORSTATE_CONSUMERS = [
   'shared/ui/ErrorBoundary.jsx',
   'features/chat/components/ChatMessageRow.jsx',
   'features/settings/components/SettingsPage.jsx',
-  'features/settings/components/SettingsPrimitives.jsx',
   'features/settings/components/LlmConfigEditor.jsx',
   'features/settings/components/ToolsConfigEditor.jsx',
   'features/settings/components/AgentConfigEditor.jsx',

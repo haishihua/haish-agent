@@ -156,11 +156,9 @@ export function createQuestExecutor({
     });
     updateTaskRuntimeState((state) => ({
       ...state,
-      pendingTask: {
-        ...pendingTask,
-        status: 'running',
-        stage: 'assigned',
-      },
+      ...(!rerunningNode && !fullAttempt
+        ? { submission: { requestId: runId, payload: pendingTask } }
+        : { pendingTask: { ...pendingTask, status: 'running', stage: 'assigned' } }),
     }), runConversationId);
     if (rerunningNode || fullAttempt) {
       setRuntimeActiveTaskId(runId, runConversationId);
@@ -179,6 +177,7 @@ export function createQuestExecutor({
           tasksById,
           taskOrder: (state.taskOrder || []).filter((taskId) => taskId !== runId),
           activeTaskId: state.activeTaskId === runId ? null : state.activeTaskId,
+          submission: state.submission?.requestId === runId ? null : state.submission,
           pendingTask: (state.pendingTask?.taskId || state.pendingTask?.id) === runId
             ? null
             : state.pendingTask,
@@ -349,6 +348,7 @@ export function createQuestExecutor({
       // if run_started was dropped. Do this before content deduplication: REST
       // may already contain that event, but not the pending identity handoff.
       ensureTaskForEvent(event, runConversationId);
+      updateTaskRuntimeState(state => state.submission?.requestId === runId ? { ...state, submission: null } : state, runConversationId);
       settleIdentity(confirmedTaskId);
       streamRequest?.onAccepted?.();
     };

@@ -43,10 +43,10 @@ const SHARED_NODES = [
   { id: 'start', type: 'start', label: 'Start', at: [20, 20] },
   { id: 'agent', type: 'agent', label: '需求澄清', agent_id: 'agent-a', at: [20, 112] },
   { id: 'tool', type: 'tool', label: '调用工具', at: [20, 204] },
-  { id: 'condition', type: 'condition', label: '验收通过？', at: [200, 20] },
-  { id: 'approval', type: 'human_approval', label: '人工确认', at: [200, 112] },
-  { id: 'loop', type: 'loop', label: '返工', at: [200, 204] },
-  { id: 'output', type: 'output', label: 'End', at: [380, 20] },
+  { id: 'condition', type: 'condition', label: '验收通过？', at: [260, 20] },
+  { id: 'approval', type: 'human_approval', label: '人工确认', at: [260, 112] },
+  { id: 'loop', type: 'loop', label: '返工', at: [260, 204] },
+  { id: 'output', type: 'output', label: 'End', at: [500, 20] },
 ];
 const RUNTIME_STATUS = { start: 'done', agent: 'done', tool: 'done', condition: 'done', approval: 'approval', loop: 'done', output: 'done' };
 const STATUS_LABEL = { done: 'Completed', approval: 'Awaiting approval', pending: 'Waiting', running: 'Running' };
@@ -86,8 +86,8 @@ function runtimeNodes() {
     draggable: true,
   }));
   const demos = [
-    { id: 'rt-demo-pending', label: '未运行的节点', at: [380, 112], status: 'pending' },
-    { id: 'rt-demo-running', label: '运行中的节点', at: [380, 204], status: 'running' },
+    { id: 'rt-demo-pending', label: '未运行的节点', at: [500, 112], status: 'pending' },
+    { id: 'rt-demo-running', label: '运行中的节点', at: [500, 204], status: 'running' },
   ].map((node) => ({
     id: node.id,
     type: 'workflowNode',
@@ -107,7 +107,7 @@ function runtimeNodes() {
 function mountPane(rootId, nodes) {
   createRoot(document.getElementById(rootId)).render(
     <ReactFlowProvider>
-      <ReactFlow nodes={nodes} edges={[]} nodeTypes={NODE_TYPES} nodesConnectable={false} deleteKeyCode={null}
+      <ReactFlow nodes={nodes} edges={[]} nodeTypes={NODE_TYPES} nodesConnectable={false} deleteKeyCode={null} fitView fitViewOptions={{ padding: 0.08 }}
         minZoom={0.3} maxZoom={1.4} proOptions={{ hideAttribution: true }}>
         <Background gap={22} size={1.1} color="rgba(150, 184, 240, 0.06)" />
       </ReactFlow>

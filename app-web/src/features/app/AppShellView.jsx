@@ -1,3 +1,5 @@
+import { apiFetch } from '../../shared/api/client.js';
+import { API_BASE } from '../../shared/api/base.js';
 import React from 'react';
 import { LoadingState } from '../../shared/ui/agent-elements/LoadingState.jsx';
 import { MetalFxRuntimeKeeper } from '../../shared/ui/MotionEffects.jsx';
@@ -13,7 +15,7 @@ import { annotationError } from '../chat/model/message-annotations.js';
 import { QuoteBlock } from '../../shared/ui/agent-elements/Quote.jsx';
 import { petActivityFromWorkflow } from '../../core/pet-state.js';
 import { WorkflowRuntimeEntry as WorkflowRuntimePage } from '../workflow/components/WorkflowRuntimeEntry.jsx';
-import { nodeRuntimeConfigRequest } from '../../core/node-runtime-config.js';
+import { createNodeConfigActions } from '../workflow/model/node-config-actions.js';
 import { conversationNoticesFromTasks, taskNoticesByTaskId } from '../../core/task-completion-notices.js';
 import { TopBar } from './components/TopBar.jsx';
 import { BottomNav, TabPlaceholder } from './components/Shell.jsx';
@@ -36,7 +38,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
   } = schedules;
   const {
     viewMode, settingsMode, goalPreparing, activeTab, conversationPanelCollapsed, handleToggleViewMode, handleToggleSettings,
-    showToast, setActiveTab, windowFocused, toasts, hollow, setHollow, contextTask, setContextTask,
+    showToast, dismissToast, setActiveTab, windowFocused, toasts, hollow, setHollow, contextTask, setContextTask,
   } = chrome;
   const {
     settingsSection, setSettingsSection, settingsSelection, setSettingsSelection,
@@ -52,13 +54,14 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
     skillActionBusy, pendingSettingsEditor, setPendingSettingsEditor,
   } = settings;
   const {
-    panelActions, visiblePanelWorkspaceState, taskCompletionNotices, currentWorkflowTask, ownerId, activityOpen, setActivityOpen,
+    panelActions, panelWorkspaceState, visiblePanelWorkspaceState, taskCompletionNotices, currentWorkflowTask, ownerId, activityOpen, setActivityOpen,
     markConversationTaskCompletionsViewed, handleDeleteWorkflowTask, handleRenameProject,
     handleOpenTaskReport, handleRetryTask,
   } = sidebar;
   const {
     ensureServerConversationForActiveDraft, draftConversationRef, pendingEarlierTaskRuntimeIds, switchDraftProject, onAddDraftProject, draftProjectSelectable,
     loadEarlierTaskRuntimes, chatMessages, taskRuntimeState, conversationStopState, conversationRetryPending,
+    viewedWorkflowTask,
     getRuntime, conversationLoading, currentConversationRunning, currentConversationRunState, petTask, composerDisabled, submitPending,
     handleDeploy, handleGoalCommand, handleStop, handleAttachmentSelect, handleAttachmentClear,
     composerImageDraftsRef, composerAttachment, uploadState, contextUsage, localWorkspace, activeTaskText,
@@ -75,7 +78,16 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
   const acknowledgedWorkflowAnnotations = React.useMemo(() => Object.values(taskRuntimeState?.tasksById || {})
     .filter((task) => task?.runtimeHydrated && task?.annotations?.length)
     .map((task) => ({ role: 'user', messageId: task.taskId, annotations: task.annotations })), [taskRuntimeState]);
-  const { items: workflowAnnotations, update: updateWorkflowAnnotations } = useAnnotationDraft(workflowAnnotationScope, acknowledgedWorkflowAnnotations);
+  const nodeConfigActions = createNodeConfigActions({ selection: nodeConfigSelection, task: currentWorkflowTask,
+    workflow: selectedWorkflow, providers: llmProviderOptions, rerun: executeWorkflowNodeRerun, deploy: handleDeploy,
+    saveNode: async (nodeId, config) => {
+      if (!currentWorkflowTask?.taskId) return;
+      const response = await apiFetch(`${API_BASE}/api/tasks/${encodeURIComponent(currentWorkflowTask.taskId)}/node-configs/${encodeURIComponent(nodeId)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+      if (!response.ok) throw new Error(await response.text());
+    },
+  });
+  const workflowAnnotationController = React.useRef(null);
+  const { items: workflowAnnotations, update: updateWorkflowAnnotations, storageError: workflowAnnotationStorageError } = useAnnotationDraft(workflowAnnotationScope, acknowledgedWorkflowAnnotations);
   const saveWorkflowAnnotation = (item) => {
     const error = annotationError([...workflowAnnotations.filter((draft) => draft.id !== item.id), item]);
     if (error) { showToast?.('warn', error); return false; }
@@ -85,7 +97,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
 
   const draftProjectSelector = activityOpen && draftConversationRef.current?.id === conversationId
     && !draftConversationRef.current?.serverCreated ? <DraftProjectPicker
-      projects={visiblePanelWorkspaceState.projects.filter((project) => project.executionMode === 'chat')}
+      projects={visiblePanelWorkspaceState.projects.filter((project) => project.executionMode === (viewMode === 'chat' ? 'chat' : 'bot'))}
       selectedId={draftConversationRef.current.projectId} onSelect={switchDraftProject}
       onAddProject={onAddDraftProject} disabled={!draftProjectSelectable || submitPending || uploadState.active} /> : null;
 
@@ -95,9 +107,12 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
       <MetalFxRuntimeKeeper />
       <TopBar
         viewMode={viewMode}
+        projects={panelWorkspaceState.projects}
+        notices={taskCompletionNotices}
         onToggleViewMode={() => {
           try {
             handleToggleViewMode();
+            setActivityOpen(true);
           } catch (error) {
             showToast('error', String(error?.message || error));
           }
@@ -239,41 +254,58 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
 	            ) : (
 	              <div className="app-workflow-stage">
                   <WorkflowRuntimePage
-                    loading={conversationLoading}
+                    loading={conversationLoading || Boolean(viewedWorkflowTask?.loading)}
                     workflow={selectedWorkflow}
                     task={currentWorkflowTask}
                     agentOptions={agentOptions}
                     onOpenConfig={openWorkflowConfig}
+                    annotationControllerRef={workflowAnnotationController}
                     annotationDrafts={workflowAnnotations}
                     onSaveAnnotation={saveWorkflowAnnotation}
                     onAnnotationError={(error) => { if (error) showToast?.('warn', error); }}
-                    {...{ providerOptions: llmProviderOptions, nodeRuntimeConfigs: currentConversationRunning ? (currentWorkflowTask?.nodeRuntimeConfigs || {}) : botNodeConfigs, onNodeRuntimeConfigChange: nodeConfigSelection.change, configReadOnly: currentConversationRunning || submitPending }}
+                    {...{ providerOptions: llmProviderOptions, nodeRuntimeConfigs: botNodeConfigs, onNodeRuntimeConfigChange: async (nodeId, config) => {
+                      try { await nodeConfigActions.change(nodeId, config); }
+                      catch (error) { showToast('error', `Could not update node configuration. ${error.message}`); }
+                    }, configReadOnly: currentConversationRunning || submitPending }}
                     onRetry={(nodeId) => {
                       if (!currentWorkflowTask) return;
                       setViewedWorkflowTask(null);
-                      executeWorkflowNodeRerun(currentWorkflowTask, nodeId, ['agent', 'llm'].includes(selectedWorkflow?.nodes?.find((node) => node.id === nodeId)?.type) ? nodeRuntimeConfigRequest(botNodeConfigs[nodeId], llmProviderOptions) : null).catch((error) => {
+                      nodeConfigActions.retry(nodeId).catch((error) => {
                         console.error('workflow node rerun failed', error);
                         showToast('error', String(error?.message || error));
                       });
                     }}
-                    composer={<ChatComposer
+                    composer={<>{draftProjectSelector}<ChatComposer
                       conversationId={conversationId}
                       approvalDraft={Boolean(draftConversationRef.current && !draftConversationRef.current.serverCreated)}
                       ensureApprovalConversation={ensureServerConversationForActiveDraft}
                       executionMode="bot"
                       onToast={showToast}
-                      scheduleNodeRuntimeConfigs={nodeConfigSelection.conversationConfigs} onRestoreNodeConfigs={nodeConfigSelection.restore}
+                      scheduleNodeRuntimeConfigs={botNodeConfigs} onRestoreNodeConfigs={nodeConfigSelection.restore}
                       scopeId={draftConversationRef.current?.id === conversationId ? draftConversationRef.current.composerScopeId : conversationId}
-                      onSend={(...args) => handleDeploy(...args.slice(0, 9), args[9] ?? botNodeConfigs)}
+                      onSend={async (text, attachment, modelId, effort, images, agentId, provider, displayText, annotations = []) => {
+                        try {
+                          return await nodeConfigActions.send(text, attachment, modelId, effort, images, agentId, provider, displayText, annotations);
+                        } catch (error) { showToast('error', error.message); return false; }
+                      }}
                       pendingCommentCount={workflowAnnotations.length}
-                      prepareSubmit={(text) => ({ error: annotationError(workflowAnnotations, text), annotations: workflowAnnotations })}
-                      beforeInput={workflowAnnotations.length ? <div className="haish-annotation-drafts" aria-label="Comment drafts">
+                      prepareSubmit={(text) => {
+                        const error = annotationError(workflowAnnotations, text);
+                        if (error) showToast('warn', error);
+                        return { error, annotations: workflowAnnotations, onAccepted: () => updateWorkflowAnnotations((drafts) => drafts.filter((item) => !workflowAnnotations.some((sent) => sent.id === item.id))) };
+                      }}
+                      beforeInput={<>
+                        {workflowAnnotationStorageError && <p className="haish-annotation-notice" role="status">{workflowAnnotationStorageError}</p>}
+                        {workflowAnnotations.length ? <div className="haish-annotation-drafts" aria-label="Comment drafts">
                         {workflowAnnotations.map((item, index) => <QuoteBlock key={item.id} item={item} index={index + 1} preview
+                          onEdit={(item) => workflowAnnotationController.current?.edit(item)}
+                          onJump={(item) => workflowAnnotationController.current?.jump(item)}
                           onRemove={() => updateWorkflowAnnotations((drafts) => drafts.filter((draft) => draft.id !== item.id))} />)}
-                      </div> : null}
+                      </div> : null}</>}
                       onStop={handleStop}
                       activeTaskText={activeTaskText}
                       petRunState={currentConversationRunState.state}
+                      petProjectObstacle={Boolean(draftProjectSelector)}
                       petActivityState={petActivityFromWorkflow(petTask, currentConversationRunState.state)}
                       petTask={petTask}
                       running={currentConversationRunning}
@@ -296,7 +328,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                       selectionStorageKey={botRunConfigStorageKey}
                       onAgentChange={setSelectedWorkflowId}
                       contextUsage={contextUsage}
-                    />}
+                    /></>}
                   />
 	              </div>
             )}
@@ -311,7 +343,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
         )}
       </div>
 
-      <AppToastStack toasts={toasts} />
+      <AppToastStack toasts={toasts} onDismiss={dismissToast} />
 
       <ResultDialog open={!!hollow} title={hollow?.title} result={hollow?.result} onClose={() => setHollow(null)}
         onUseAsContext={hollow?.contextSource

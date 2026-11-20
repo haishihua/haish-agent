@@ -25,21 +25,20 @@ const BRANCH_PRIORITY = {
 };
 
 /**
- * 画布排布的唯一来源（两页共用）：先放本机存的排布（workflow-layout-store——系统预设的排布只能
- * 存这里，core 里它没有保存路径），可编辑（custom）工作流再用定义里的 `nodes[].position` 覆盖
- * （那是它的保存处）。都没存过就落到 layoutRuntimeWorkflow 算出的排布。
+ * 画布排布的唯一来源（两页共用）：定义提供默认位置，本机保存的排布优先。
+ * 系统工作流只读本机排布；都没存过就落到 layoutRuntimeWorkflow 算出的排布。
  */
 export function workflowArrangementPositions(workflow) {
   const positions = new Map();
   if (!workflow) return positions;
-  for (const [nodeId, position] of savedWorkflowLayout(workflow.workflow_id || workflow.id)) {
-    positions.set(String(nodeId), position);
-  }
-  if (workflow.system) return positions;
-  for (const node of workflow.nodes || []) {
+  if (!workflow.system) for (const node of workflow.nodes || []) {
     const x = Number(node?.position?.x);
     const y = Number(node?.position?.y);
     if (Number.isFinite(x) && Number.isFinite(y)) positions.set(String(node.id), { x, y });
+  }
+  // A saved canvas arrangement is shared by Settings and runtime, including custom workflows.
+  for (const [nodeId, position] of savedWorkflowLayout(workflow.workflow_id || workflow.id)) {
+    positions.set(String(nodeId), position);
   }
   return positions;
 }

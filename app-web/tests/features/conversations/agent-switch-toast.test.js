@@ -36,7 +36,8 @@ test('Agent-switch failures use the shared error toast while retaining the guard
 
 test('both composer entry points pass the existing app toast through explicit props', () => {
   const chatPanel = shell.slice(shell.indexOf('<ChatPanel'), shell.indexOf('/>', shell.indexOf('<ChatPanel')));
-  const botComposer = shell.slice(shell.indexOf('composer={<ChatComposer'), shell.indexOf('/>}', shell.indexOf('composer={<ChatComposer')));
+  const botStart = shell.indexOf('<ChatComposer', shell.indexOf('composer='));
+  const botComposer = shell.slice(botStart, shell.indexOf('/>', botStart));
   assert.match(chatPanel, /onToast=\{showToast\}/);
   assert.match(botComposer, /onToast=\{showToast\}/);
   assert.match(panel.slice(panel.indexOf('<ChatComposer')), /onToast=\{onToast\}/);

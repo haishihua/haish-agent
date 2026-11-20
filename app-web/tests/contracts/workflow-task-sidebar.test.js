@@ -293,14 +293,14 @@ test('every raw terminal alias normalizes to one of the canonical statuses', () 
 test('failed task creation cannot leave a restorable local-only task', () => {
   assert.match(deployHandlersSource, /activeTaskIdBeforeDeploy/);
   assert.match(deployHandlersSource, /currentActiveTaskId !== activeTaskIdBeforeDeploy/);
-  assert.match(deployHandlersSource, /removeConversationTaskFromWorkspace\(deployConvId, pendingTaskId\)/);
-  assert.match(deployHandlersSource, /showToast\('error', errorMessage\)/);
+  assert.match(deployHandlersSource, /submission: null/);
+  assert.match(deployHandlersSource, /Failed to create task\./);
 });
 
 test('first draft send is visible before server conversation materialization', () => {
   assert.match(deployHandlersSource, /stagePendingDeploy\(request, draftConversationId\)/);
   assert.match(deployHandlersSource, /pendingTask\.requestText = request\.text/);
-  assert.match(deployHandlersSource, /function failPendingDeploy\(request, error\)/);
+  assert.match(deployHandlersSource, /function failPendingDeploy\(request\)/);
   // An annotation-only turn intentionally has an empty requestText.
   assert.match(streamHandlersSource, /message: pendingTask\.requestText \?\? pendingTask\.title/);
 });

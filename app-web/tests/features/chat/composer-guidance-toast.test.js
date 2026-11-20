@@ -26,8 +26,6 @@ test('every composer guard rail reports itself through a warn toast', () => {
     "onToast?.('warn', PATH_LIMIT_NOTICE)",
     // 只选了 skill 却没写内容就按回车
     "onToast?.('warn', 'Type a message after the skill, then press Enter.')",
-    // /goal 还挂着批注草稿
-    "onToast?.('warn', 'Send or remove comment drafts before starting Goal Loop.')",
     // /goal 没有正文却带了附件 / 引用
     "onToast?.('warn', 'Add a task description after /goal before sending attachments or references.')",
     // /schedule 缺 provider 或具体 model
@@ -38,9 +36,9 @@ test('every composer guard rail reports itself through a warn toast', () => {
   for (const call of guardRails) assert.ok(composer.includes(call), `missing warn toast: ${call}`);
   // onPathLimit 也是同一条路：输入框自己的上限回调不能再走内联通道。
   assert.match(composer, /onPathLimit=\{\(\) => onToast\?\.\('warn', PATH_LIMIT_NOTICE\)\}/);
-  // 8 个触发点 + 两条图片被拒，全部是 warn：被拦下的动作没有一条落回 error。
+  // Goal annotations are accepted; the remaining guards still report warnings.
   const warnCalls = composer.match(/onToast\?\.\('warn'/g) || [];
-  assert.equal(warnCalls.length, 10, `expected exactly 10 warn toasts, saw ${warnCalls.length}`);
+  assert.equal(warnCalls.length, 9, `expected exactly 9 warn toasts, saw ${warnCalls.length}`);
   // 真正的失败面不动：stopError 仍是带重试的 inline ErrorState。
   assert.match(composer, /<ErrorState variant="inline" title="Stop not verified" detail=\{stopError\}/);
   assert.match(composer, /retryLabel="Stop again"/);
@@ -65,8 +63,8 @@ test('annotation feedback is a warn toast while background states stay inline', 
   assert.match(panel, /onError=\{\(message\) => \{ if \(message\) onToast\?\.\('warn', message\); \}\}/);
   // localStorage 写失败是后台状态，必须常驻可见，不走会自己消失的 toast。
   assert.match(panel, /\{storageError && <p className="haish-annotation-notice" role="status">\{storageError\}<\/p>\}/);
-  // 任务在跑、批注草稿只能存着等：同样是常驻状态。
-  assert.match(panel, /\{running && annotationDrafts\.length > 0 && <p className="haish-annotation-notice">Comments are saved as a draft\./);
+  // Running tasks accept comments as steering input rather than requiring a wait.
+  assert.doesNotMatch(panel, /Comments are saved as a draft\./);
   // 样式留着给这两条状态用。
   assert.match(annotationsCss, /\.haish-annotation-notice \{/);
 });

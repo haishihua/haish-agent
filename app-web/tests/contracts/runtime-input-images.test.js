@@ -46,7 +46,7 @@ test('an accepted steering send consumes the composer image drafts', () => {
   // 两条发送路径共用这一个出口，谁都不许再自己清一遍图片。
   assert.equal((composerSource.match(/previous\.filter\(\(image\) => !composerImages\.some/g) || []).length, 1, '图片草稿的消费只有一份实现');
   assert.match(composerSource, /if \(accepted !== false\) clearComposerAfterSend\(\);/);
-  assert.match(composerSource, /clearComposerAfterSend\(\);\n\s+onClearFile\?\.\(\);/);
+  assert.match(composerSource, /clearComposerAfterSend\(\);\n\s+prepared\?\.onAccepted\?\.\(\);\n\s+onClearFile\?\.\(\);/);
   // 清空只丢 store 里的条目：刚发出的那条消息的缩略图还要用同一个 blob URL，不能 revoke。
   const clearStart = composerSource.indexOf('const clearComposerAfterSend');
   assert.ok(clearStart > 0, 'clearComposerAfterSend 还在');

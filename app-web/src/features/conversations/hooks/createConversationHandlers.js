@@ -61,6 +61,8 @@ export function createConversationHandlers(ctx) {
   const addConversation = (projectId) => crudHandlers.handleAddConversation(projectId);
 
   const restoreHandlers = createConversationRestoreHandlers({
+    selectWorkflowTask: ctx.selectWorkflowTask,
+    clearViewedWorkflowTask: ctx.clearViewedWorkflowTask,
     activateConversationDetail,
     activateConversationShell,
     clearDraftConversationState,

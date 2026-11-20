@@ -124,6 +124,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
       }
     } catch (error) {
       setOauthStartError(String(error?.message || error));
+      onToast?.('error', String(error?.message || error));
     } finally {
       oauthStartInFlightRef.current = false;
       setOauthStartPending(false);
@@ -175,6 +176,7 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
         if (cancelled) return;
         setOauthFlowStatus('error');
         setOauthStartError(String(error?.message || error));
+        onToast?.('error', String(error?.message || error));
       }
     };
     timer = window.setTimeout(poll, 500);
@@ -343,9 +345,6 @@ export function LlmConfigEditor({ selectedId, draft, onDraftChange, readOnly = f
                 ? 'Waiting for sign-in...'
                 : (config.oauth_configured ? `Reconnect ${provider.label}` : `Connect ${provider.label}`)}
             </Button>
-            {oauthStartError ? (
-              <ErrorState variant="inline" detail={oauthStartError} />
-            ) : null}
             {!oauthStartError && oauthFlowPending ? (
               <div className="settings-oauth-message" role="status" aria-live="polite">
                 {oauthFlowMessage || 'Waiting for browser authorization.'}

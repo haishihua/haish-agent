@@ -1,6 +1,5 @@
 import React, { useId, useState } from 'react';
-import { Check, ChevronRight, Ellipsis, Eye, EyeOff, Search, ShieldCheck, Trash2, X } from 'lucide-react';
-import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
+import { Check, ChevronRight, Eye, EyeOff, Search, ShieldCheck, X } from 'lucide-react';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
 import { Input } from '../../../shared/ui/settings-elements/ui/input.tsx';
 import { Field, FieldLabel, FieldDescription } from '../../../shared/ui/settings-elements/ui/field.tsx';
@@ -9,7 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from '../../
 import { Item, ItemContent, ItemDescription, ItemTitle, ItemMedia, ItemActions } from '../../../shared/ui/settings-elements/ui/item.tsx';
 import { Switch } from '../../../shared/ui/settings-elements/ui/switch.tsx';
 import { Badge } from '../../../shared/ui/settings-elements/ui/badge.tsx';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../../shared/ui/settings-elements/ui/dropdown-menu.tsx';
+import { SettingsSwipeRow } from './SettingsSwipeRow.jsx';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '../../../shared/ui/settings-elements/ui/alert-dialog.tsx';
 
 
@@ -56,22 +55,22 @@ export function SettingsToggleRow({ label, checked, onCheckedChange, disabled = 
 export function SettingsRow({ title, description, icon, selected, onOpen, readOnly, badge, enabled, onToggle, busy, onDelete, deleteLabel = 'Delete', status, toggleLabel, toggleTitle }) {
   // 同一节里可能有两行同名 Provider（OpenAI API / OpenAI OAuth）：徽标就是无障碍名的区分位。
   const detail = badge ? ` ${badge}` : '';
-  return <Item className={`settings-row-modern ${selected ? 'is-selected' : ''}`}>
+  const row = <Item className={`settings-row-modern ${selected ? 'is-selected' : ''}`}>
     <Button variant="ghost" className="settings-row-main" onClick={onOpen} aria-label={`${readOnly ? 'View' : 'Edit'} ${title}${detail}`} aria-expanded={selected}>
       <ItemMedia>{icon}</ItemMedia><ItemContent><ItemTitle>{title}{readOnly && <Badge variant="secondary">Built-in</Badge>}{badge && <Badge variant="secondary">{badge}</Badge>}</ItemTitle>{description && <ItemDescription>{description}</ItemDescription>}</ItemContent>
       {status && <span className={`settings-row-status ${status.className || ''}`}>{status.className === 'success' && <Check size={12} />}{status.label}</span>}
       {!onToggle && <ChevronRight size={14} className="settings-row-chevron" />}
     </Button>
-    {(onToggle || onDelete) && <ItemActions>{onToggle && <Switch aria-label={toggleLabel || `Enable ${title}${detail}`} title={toggleTitle} checked={enabled !== false} onCheckedChange={onToggle} disabled={busy} />}{onDelete && <DropdownMenu modal={false}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`More actions for ${title}${detail}`} disabled={busy}><Ellipsis /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem variant="destructive" onSelect={onDelete}><Trash2 />{deleteLabel}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}</ItemActions>}
+    {onToggle && <ItemActions><Switch aria-label={toggleLabel || `Enable ${title}${detail}`} title={toggleTitle} checked={enabled !== false} onCheckedChange={onToggle} disabled={busy} /></ItemActions>}
   </Item>;
+  return onDelete ? <SettingsSwipeRow onDelete={onDelete} label={`${deleteLabel} ${title}${detail}`} busy={busy}>{row}</SettingsSwipeRow> : row;
 }
 
 export function SettingsSheet({ open, title, onClose, children }) {
   return <Sheet open={open} modal={false} onOpenChange={value => { if (!value) onClose(); }}><SheetContent className="settings-new-editor" aria-describedby={undefined} showCloseButton={false} onInteractOutside={event => event.preventDefault()}><SheetHeader><SheetTitle>{title}</SheetTitle><SheetClose asChild><Button variant="ghost" size="icon-sm" aria-label="Close editor"><X /></Button></SheetClose></SheetHeader>{children}</SheetContent></Sheet>;
 }
 
-export function SettingsDeleteDialog({ target, onClose, onConfirm, label = 'Delete' }) {
+export function SettingsDeleteDialog({ target, onClose, onConfirm, onToast, label = 'Delete' }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  return <AlertDialog open={Boolean(target)} onOpenChange={open => { if (!open && !busy) { setError(''); onClose(); } }}><AlertDialogContent className="settings-delete-dialog"><AlertDialogHeader><AlertDialogTitle>{label} {target?.title}?</AlertDialogTitle><AlertDialogDescription>This item will be removed from your settings.</AlertDialogDescription></AlertDialogHeader>{error && <ErrorState variant="inline" detail={error} />}<AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={busy} onClick={async event => { event.preventDefault(); setBusy(true); setError(''); try { if (await onConfirm(target) !== false) onClose(); } catch (failure) { setError(String(failure?.message || failure)); } finally { setBusy(false); } }}>{busy ? 'Removing…' : label}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>;
+  return <AlertDialog open={Boolean(target)} onOpenChange={open => { if (!open && !busy) { onClose(); } }}><AlertDialogContent className="settings-delete-dialog"><AlertDialogHeader><AlertDialogTitle>{label} {target?.title}?</AlertDialogTitle><AlertDialogDescription>This item will be removed from your settings.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={busy} onClick={async event => { event.preventDefault(); setBusy(true); try { if (await onConfirm(target) !== false) onClose(); } catch (failure) { onToast?.('error', String(failure?.message || failure)); } finally { setBusy(false); } }}>{busy ? 'Removing…' : label}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>;
 }

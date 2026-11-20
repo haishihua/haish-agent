@@ -1,0 +1,49 @@
+.workflow-run-layout .workflow-detail-panel {
+  transform-origin: left 64px;
+  animation: workflow-detail-haul 480ms both;
+}
+.workflow-run-layout .workflow-selection-link {
+  overflow: visible;
+  pointer-events: none;
+  animation: workflow-cable-taut 480ms both;
+}
+.workflow-run-layout .react-flow__node.selected .workflow-flow-node {
+  animation: workflow-node-tug 480ms both;
+}
+@keyframes workflow-detail-haul {
+  0% { transform: translateX(100%) rotate(1deg); opacity: 1; }
+  58% { transform: translateX(-10px) rotate(-.5deg); }
+  80% { transform: translateX(4px) rotate(.2deg); }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes workflow-node-tug {
+  0%, 100% { translate: 0; }
+  22% { translate: -8px 0; }
+  38% { translate: 4px 0; }
+  65% { translate: -3px 0; }
+}
+@keyframes workflow-cable-taut {
+  0% { opacity: 0; }
+  20% { opacity: .6; }
+  40% { opacity: 1; filter: drop-shadow(0 0 4px var(--workflow-detail-accent)); }
+  100% { opacity: 1; filter: none; }
+}
+.workflow-run-layout.has-detail { transition: none; container-type: inline-size; }
+.workflow-run-layout.has-detail .workflow-run-canvas {
+  z-index: 1;
+  animation: workflow-canvas-yield 480ms both;
+}
+@keyframes workflow-canvas-yield {
+  0% { margin-right: calc(-1 * min(var(--workflow-detail-width, 520px), calc(100cqw - 360px))); }
+  58% { margin-right: 10px; }
+  80% { margin-right: -4px; }
+  100% { margin-right: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workflow-run-layout.has-detail .workflow-run-canvas,
+  .workflow-run-layout .workflow-detail-panel,
+  .workflow-run-layout .workflow-selection-link,
+  .workflow-run-layout .react-flow__node.selected .workflow-flow-node {
+    animation: none;
+  }
+}

@@ -37,7 +37,7 @@ function render() {
   ));
 }
 
-const tick = () => new Promise((resolve) => setTimeout(resolve, 120));
+const tick = () => new Promise((resolve) => setTimeout(resolve, 650));
 const stack = () => document.querySelector('.toast-fixture .app-toast-stack');
 const toasts = () => [...document.querySelectorAll('.toast-fixture .app-toast-stack .app-toast')];
 const icon = (index) => toasts()[index].querySelector('.app-toast-icon');
@@ -49,10 +49,6 @@ const checks = [];
 function check(condition, message) {
   if (!condition) throw new Error(message);
   checks.push(`PASS ${message}`);
-}
-
-function rgb(value) {
-  return value.replace(/\s+/g, '');
 }
 
 async function run() {
@@ -67,54 +63,21 @@ async function run() {
     'The stack adds no second live region around the polite status toasts');
   check(document.querySelectorAll('[role="alert"]').length === 0,
     'No toast escalates to an alert region');
-  check(icon(0).getAttribute('aria-hidden') === 'true' && toasts()[0].getAttribute('role') === 'status',
+  check(icon(0).getAttribute('aria-hidden') === 'true' && toasts()[0].querySelector('.app-toast-message').getAttribute('role') === 'status',
     'Icon stays decorative inside the polite status region');
   check(toasts().map((toast) => toast.querySelector('.app-toast-message').textContent).join('|')
     === KINDS.map(({ message }) => message).join('|'), 'Toast shows the message verbatim');
 
-  const glyphs = KINDS.map((_, index) => icon(index).querySelector('svg'));
-  check(glyphs.every(Boolean) && KINDS.every((_, index) => icon(index).querySelectorAll('svg').length === 1),
-    'Every icon is a single vector glyph');
-  check(document.querySelectorAll('.app-toast img').length === 0
-    && KINDS.every((_, index) => getComputedStyle(icon(index)).backgroundImage === 'none'),
-    'Icons no longer depend on any raster asset');
-
-  check(KINDS.every((_, index) => getComputedStyle(icon(index)).imageRendering === 'auto'),
-    'Icon opts out of the inherited image-rendering: pixelated');
-  check(glyphs.every((svg) => getComputedStyle(svg).imageRendering === 'auto'),
-    'Glyph SVG renders with antialiasing on the dark shell');
-
-  // 图标是细描边向量，不是实心圆底贴纸：底色透明、颜色跟着 tone 走。
-  check(KINDS.every((_, index) => getComputedStyle(icon(index)).backgroundColor === 'rgba(0, 0, 0, 0)'),
-    'The glyph sits on no tinted chip of its own');
-  check(new Set(TONES.map((kind) => getComputedStyle(icon(kindIndex(kind))).color)).size === 4,
-    'Success, error, warn and info keep four distinct icon colors');
-  check(new Set(TONES.map((kind) => rgb(getComputedStyle(toasts()[kindIndex(kind)]).borderTopColor))).size === 4,
-    'Each tone keeps its own border tint');
-  const amber = getComputedStyle(icon(kindIndex('warn'))).color.match(/\d+/g).map(Number);
-  check(amber[0] > amber[1] && amber[1] > amber[2], 'Warn icon sits in the amber range, not red or blue');
-  check(icon(kindIndex('warn')).querySelector('svg').innerHTML !== icon(kindIndex('error')).querySelector('svg').innerHTML
-    && icon(kindIndex('warn')).querySelector('svg').innerHTML !== icon(kindIndex('info')).querySelector('svg').innerHTML,
-    'Warn draws its own triangle glyph instead of reusing the error X');
-
-  // 15px、2px 描边：比实心徽标小一圈，跟 ErrorState 的行内图标同一个尺码。
-  check(KINDS.every((_, index) => {
-    const glyphBox = box(glyphs[index]);
-    return Math.round(glyphBox.width) === 15 && Math.round(glyphBox.height) === 15
-      && getComputedStyle(glyphs[index]).strokeWidth === '2px'
-      && getComputedStyle(icon(index)).borderRadius !== '999px';
-  }), 'The icon stays a small 15px 2px-stroke glyph, not a coin');
-
-  check(KINDS.every((_, index) => {
-    const badge = box(icon(index));
-    const glyphBox = box(glyphs[index]);
-    return Math.abs((badge.left + badge.width / 2) - (glyphBox.left + glyphBox.width / 2)) <= 1
-      && Math.abs((badge.top + badge.height / 2) - (glyphBox.top + glyphBox.height / 2)) <= 1;
-  }), 'Glyph is optically centered in its slot');
-
-  check(icon(kindIndex('unmapped-kind')).querySelector('svg').innerHTML
-    === icon(kindIndex('info')).querySelector('svg').innerHTML,
-  'Unknown kind falls back to the info glyph instead of rendering nothing');
+  check(KINDS.every((_, index) => Math.round(box(icon(index)).width) === 7),
+    'Dissolve tone indicators are compact dots');
+  check(new Set(TONES.map(kind => getComputedStyle(icon(kindIndex(kind))).backgroundColor)).size === 4,
+    'All four notification meanings retain distinct dots');
+  check(getComputedStyle(icon(kindIndex('unmapped-kind'))).backgroundColor === getComputedStyle(icon(kindIndex('info'))).backgroundColor,
+    'Unknown kind falls back to info');
+  check(toasts().every(toast => !toast.querySelector('.app-toast-particle-layer')),
+    'Card-content particle layers are released after entrance');
+  check(toasts().every(toast => toast.querySelector('button[aria-label="Dismiss notification"]')),
+    'Every toast has a keyboard-accessible dismiss control');
 
   // 固定定位从气泡搬到了容器上：容器顶部居中 22px、层级 520、不吃点击。
   const stackStyle = getComputedStyle(stack());

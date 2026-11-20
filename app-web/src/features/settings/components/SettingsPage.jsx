@@ -39,6 +39,7 @@ import { AgentConfigEditor } from './AgentConfigEditor.jsx';
 import { WorkflowConfigEditor } from './WorkflowConfigEditor.jsx';
 import { ToolsConfigEditor } from './ToolsConfigEditor.jsx';
 
+import { AnimatePresence, MotionConfig } from 'motion/react';
 import { SettingsRow, SettingsSearch, SettingsSheet, SettingsDeleteDialog } from './SettingsPrimitives.jsx';
 import { ProviderBrandMark } from '../../../shared/ui/ProviderIcon.jsx';
 import { Button } from '../../../shared/ui/settings-elements/ui/button.tsx';
@@ -193,13 +194,15 @@ export function SettingsPage({
     }
   };
   const selectListItem = async (id) => {
-    if (await cancelEditor() === false) return;
+    if (editingSettings?.section === activeSection && editingSettings.id === id) return true;
+    if (await cancelEditor() === false) return false;
     selectItem(id);
+    return true;
   };
   const openEditor = (section, id, mode = 'edit') => {
     if (!id) return;
     setPanelError('');
-    setEditingSettings({ section, id, mode });
+    setEditingSettings(previous => ({ section, id, mode: previous?.section === section && previous.id === id && previous.mode === 'new' ? 'new' : mode }));
   };
   const closeEditor = () => setEditingSettings(null);
   const discardNewEditor = (draft = editingSettings) => {
@@ -492,7 +495,12 @@ export function SettingsPage({
     }
     if (editingSettings?.section === section && editingSettings?.id === id) closeEditor();
   };
+  const isUnsavedListItem = (section, id) => (
+    (editingSettings?.section === section && editingSettings.id === id && editingSettings.mode === 'new')
+    || (section === 'workflow' && Boolean(workflowById(workflowSettings, id)?.draft))
+  );
   const requestDelete = (section, id) => {
+    if (isUnsavedListItem(section, id)) return;
     const sectionItems = section === activeSection ? displayItems : configItemsForSection(section, llmDraft, records, activeSubtab, agentSettings, workflowSettings);
     const target = sectionItems.find((item) => item.id === id);
     if (!target || (target.protected && !target.canDelete)) return;
@@ -516,7 +524,7 @@ export function SettingsPage({
     } catch (error) {
       const message = String(error?.message || error);
       setPanelError(message);
-      if (panelSection === 'workflow') onToast?.('error', message);
+      onToast?.('error', message);
     }
     finally { setPanelBusy(''); }
   };
@@ -581,6 +589,7 @@ export function SettingsPage({
           agentSettings={agentSettings}
           readOnly={readOnly}
           onSave={saveAndClose}
+          onToast={onToast}
           validationError={panelError}
           canSave={!readOnly && panelCanSave}
         />
@@ -696,7 +705,7 @@ export function SettingsPage({
           <SettingsSearch label={activeSection === 'llm' ? 'Search providers or models' : `Search ${listTitle.toLowerCase()}`} value={settingsSearch} onChange={setSettingsSearch} />
           {activeSection === 'llm' && addButton}
         </div>}
-        <ItemGroup className="settings-list-modern">{filteredItems.map(item => <SettingsRow key={item.id} className={activeSection === 'agent' ? 'settings-agent-row' : ''} title={item.title} description={item.summary} badge={item.badge} readOnly={item.readonly} selected={editingSettings?.id === item.id} icon={isLlmProviderSection(activeSection) ? <ProviderBrandMark provider={item.provider} name={item.title} /> : activeSection === 'agent' ? <AgentListIcon item={item} /> : activeSection === 'workflow' ? <WorkflowListIcon item={item} /> : <ConnectionBrandIcon itemId={item.id} title={item.title} />} onOpen={() => { if (panelBusy) return; selectListItem(item.id); openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit'); }} enabled={item.enabled} onToggle={item.canToggle ? enabled => (activeSection === 'agent' ? onTogglePresetAgent : activeSection === 'workflow' ? onTogglePresetWorkflow : toggleLlmProvider)?.(item.id, enabled) : undefined} busy={Boolean(panelBusy) || Boolean(llmToggleBusy)} onDelete={item.canDelete || item.custom ? () => requestDelete(activeSection, item.id) : undefined} status={activeSection === 'memory' ? connectionBadgeMeta(settingsConnectionStatus?.[activeSection]?.[item.id] || storedMemoryConnectionStatus(records, activeSection, item.id)) : undefined} />)}{!filteredItems.length && <div className="settings-empty">{settingsSearch ? 'No matching configuration.' : 'No configuration yet.'}</div>}</ItemGroup>
+        <ItemGroup className="settings-list-modern"><MotionConfig reducedMotion="user"><AnimatePresence key={`${activeSection}:${activeSubtab}`} initial={false}>{filteredItems.map(item => <SettingsRow key={item.id} className={activeSection === 'agent' ? 'settings-agent-row' : ''} title={item.title} description={item.summary} badge={item.badge} readOnly={item.readonly} selected={editingSettings?.id === item.id} icon={isLlmProviderSection(activeSection) ? <ProviderBrandMark provider={item.provider} name={item.title} /> : activeSection === 'agent' ? <AgentListIcon item={item} /> : activeSection === 'workflow' ? <WorkflowListIcon item={item} /> : <ConnectionBrandIcon itemId={item.id} title={item.title} />} onOpen={async () => { if (panelBusy) return; if (await selectListItem(item.id) === false) return; openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit'); }} enabled={item.enabled} onToggle={item.canToggle ? enabled => (activeSection === 'agent' ? onTogglePresetAgent : activeSection === 'workflow' ? onTogglePresetWorkflow : toggleLlmProvider)?.(item.id, enabled) : undefined} busy={Boolean(panelBusy) || Boolean(llmToggleBusy)} onDelete={(item.canDelete || item.custom) && !isUnsavedListItem(activeSection, item.id) ? () => requestDelete(activeSection, item.id) : undefined} status={activeSection === 'memory' ? connectionBadgeMeta(settingsConnectionStatus?.[activeSection]?.[item.id] || storedMemoryConnectionStatus(records, activeSection, item.id)) : undefined} />)}</AnimatePresence></MotionConfig>{!filteredItems.length && <div className="settings-empty">{settingsSearch ? 'No matching configuration.' : 'No configuration yet.'}</div>}</ItemGroup>
       </div> : editorBody(activeSection, selectedId, 'edit')}
     </main>
     <div data-settings-portal="" />
@@ -715,6 +724,6 @@ export function SettingsPage({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-    <SettingsDeleteDialog target={deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={target => performDelete(target.section, target.id)} />
+    <SettingsDeleteDialog onToast={onToast} target={deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={target => performDelete(target.section, target.id)} />
   </div>;
 }

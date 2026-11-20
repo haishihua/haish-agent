@@ -1,5 +1,6 @@
 import { useProviderModels } from '../../../shared/lib/useProviderModels.js';
 import React from 'react';
+import { ImagePreviewOverlay } from '../../../shared/ui/ImagePreviewOverlay.jsx';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { ErrorState } from '../../../shared/ui/agent-elements/ErrorState.jsx';
 import { firstPastedDocument } from '../model/document-paste.js';
@@ -267,6 +268,13 @@ export function ChatComposer({
     }
   }, [resolvedSkills, selectedSkillName, setSelectedSkillName]);
 
+  const [localPreviewImage, setLocalPreviewImage] = React.useState(null);
+  const closeLocalPreview = React.useCallback(() => setLocalPreviewImage(null), []);
+  const previewComposerImage = React.useCallback((image) => {
+    if (onPreviewImage) { onPreviewImage(image); return; }
+    const src = image?.src || image?.previewUrl || image?.path || '';
+    if (src) setLocalPreviewImage({ src, title: image?.title || image?.name || image?.path || 'image' });
+  }, [onPreviewImage]);
   const [, refreshImages] = React.useReducer((value) => value + 1, 0);
   const localImageDrafts = React.useRef(new Map());
   const imageStoreRef = imageStore || localImageDrafts.current;
@@ -385,7 +393,7 @@ export function ChatComposer({
     }));
   const hasComposerPayload = Boolean(selectedCommand || draft.trim() || composerImages.length > 0 || pendingCommentCount);
   const canSubmitPayload = Boolean((selectedCommand || draft.trim() || readyImages.length > 0 || pendingCommentCount)
-    && !imagesUploading && !(running && pendingCommentCount));
+    && !imagesUploading);
 
   const usedTokens = Math.max(0, Math.round(Number(contextUsage?.usedTokens) || 0));
   const totalTokens = Math.max(0, Math.round(Number(contextUsage?.totalTokens) || 0));
@@ -509,20 +517,30 @@ export function ChatComposer({
     const text = draft.trim();
     if (goal) {
       if (disabled || submitPending || runtimeInputPending || goalPendingRef.current || uploading || imagesUploading) return;
-      if (pendingCommentCount) { onToast?.('warn', 'Send or remove comment drafts before starting Goal Loop.'); return; }
       if (!goal.prompt && (attachment || readyImages.length || composerContent.references.length)) {
         onToast?.('warn', 'Add a task description after /goal before sending attachments or references.'); return;
       }
+      const goalPrompt = composePathReferenceDraft(goal.prompt, composerContent.references);
+      const prepared = prepareSubmit?.(goalPrompt, composerContent) || null;
+      if (prepared?.error) return;
       goalPendingRef.current = true;
       setGoalPending(true);
       try {
+        let consumed = false;
+        const consume = () => {
+          if (consumed) return;
+          consumed = true;
+          clearComposerAfterSend();
+          prepared?.onAccepted?.();
+          onClearFile?.();
+        };
         const accepted = await onGoalCommand({
-          prompt: composePathReferenceDraft(goal.prompt, composerContent.references), attachment, images: readyImages,
+          onAccepted: consume,
+          prompt: goalPrompt, attachment, images: readyImages, annotations: prepared?.annotations || EMPTY_ANNOTATIONS,
           runConfig: { ...(savedConfig || { llm_config_id: providerRequest, model_id: sendModelId, reasoning_effort: reasoningEffort }), agent_id: effectiveAgentId },
         });
         if (accepted !== false && submissionMountedRef.current && submissionOwnerRef.current === owner) {
-          clearComposerAfterSend();
-          onClearFile?.();
+          consume();
         }
       } finally { goalPendingRef.current = false; setGoalPending(false); }
       return;
@@ -532,7 +550,7 @@ export function ChatComposer({
       return;
     }
     if ((!text && readyImages.length === 0 && !pendingCommentCount) || imagesUploading || disabled || submitPending || runtimeInputPending) return;
-    if (running && (!allowRuntimeInput || pendingCommentCount)) return;
+    if (running && !allowRuntimeInput) return;
     const skillInvocation = selectedSkill || !text ? null : extractAgentSkillInvocation(composerContent.text, resolvedSkills);
     const submittedText = selectedSkill
       ? withSelectedSkillInstruction(text, selectedSkill)
@@ -545,8 +563,9 @@ export function ChatComposer({
     if (running) {
       setRuntimeInputPending(true);
       try {
-        const accepted = await onSend?.(submittedText, null, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text);
+        const accepted = await onSend?.(submittedText, null, sendModelId, reasoningEffort, readyImages, effectiveAgentId, providerRequest, text, prepared?.annotations || EMPTY_ANNOTATIONS);
         if (accepted !== false) clearComposerAfterSend();
+        if (accepted !== false) prepared?.onAccepted?.();
       } finally {
         setRuntimeInputPending(false);
       }
@@ -562,8 +581,16 @@ export function ChatComposer({
     // Local acceptance is synchronous: clear the composer in the same render as
     // its optimistic message. Only async send handlers need a separate wait.
     const accepted = sendResult && typeof sendResult.then === 'function' ? await sendResult : sendResult;
-    if (accepted === false || !submissionMountedRef.current || submissionOwnerRef.current !== owner) return;
+    if (accepted === false) return;
+    // The captured setter belongs to the sending conversation. Its draft-store
+    // alias follows New Task materialization even after the composer scope moves.
+    // Do not erase text entered after this submission or another conversation.
+    if (draftProp === undefined) composerDraft.onDraftChange((current) => current === draft ? '' : current);
+    // These callbacks capture the submitted image scope and annotation owner;
+    // consume that payload even when New Task has become a real conversation.
     clearComposerAfterSend();
+    prepared?.onAccepted?.();
+    if (!submissionMountedRef.current || submissionOwnerRef.current !== owner) return;
     onClearFile?.();
   }
 
@@ -709,7 +736,7 @@ export function ChatComposer({
               onClearFile={clearFile}
               images={composerImages}
               onRemoveImage={removeComposerImage}
-              onPreviewImage={onPreviewImage}
+              onPreviewImage={previewComposerImage}
             />
           )}
           onRemoveSkill={() => {
@@ -870,6 +897,7 @@ export function ChatComposer({
         </div>
       </div>
       </div>
+      <ImagePreviewOverlay image={localPreviewImage} onClose={closeLocalPreview} />
       {onAddProvider && <button type="button" className="chat-add-provider" onClick={onAddProvider}>
         <span aria-hidden="true">＋</span> Add a model provider
       </button>}

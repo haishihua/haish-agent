@@ -26,7 +26,24 @@ export function eventNodeId(event) {
   return String(event?.workflowNodeId || event?.workflow_node_id || event?.nodeId || event?.node_id || '');
 }
 
+const attemptProjectionCache = new WeakMap();
+const EMPTY_ATTEMPT_EVENTS = [];
+
 export function nodeAttempts(task, nodeId) {
+  const events = Array.isArray(task?.eventLog) ? task.eventLog : EMPTY_ATTEMPT_EVENTS;
+  const result = task?.workflowRun?.nodes?.[nodeId] || null;
+  const persisted = task?.workflowRun?.node_attempts?.[nodeId];
+  const cacheKey = events === EMPTY_ATTEMPT_EVENTS ? (task || events) : events;
+  let byNode = attemptProjectionCache.get(cacheKey);
+  if (!byNode) { byNode = new Map(); attemptProjectionCache.set(cacheKey, byNode); }
+  const cached = byNode.get(nodeId);
+  if (cached && cached.result === result && cached.persisted === persisted) return cached.value;
+  const value = projectNodeAttempts(task, nodeId);
+  byNode.set(nodeId, { result, persisted, value });
+  return value;
+}
+
+function projectNodeAttempts(task, nodeId) {
   const attempts = [];
   let active = null;
   for (const event of Array.isArray(task?.eventLog) ? task.eventLog : []) {

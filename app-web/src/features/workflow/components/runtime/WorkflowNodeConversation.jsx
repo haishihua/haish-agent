@@ -37,8 +37,15 @@ export function NodeConversation({ node, task, attempt, result, status, running,
   const workflowId = task?.workflowSnapshot?.id || task?.workflowSnapshot?.workflow_id || task?.requestedWorkflowId;
   const feedback = rawInputValue && typeof rawInputValue === 'object'
     ? String(rawInputValue.evaluation_feedback || '').trim() : '';
-  const inputValue = workflowId === 'workflow.goal-loop' && node.id === 'agent'
-    ? (feedback || task?.displayText || task?.requestText || task?.title || '') : rawInputValue;
+  // Mirror AgentExecutor's default input mapping, not node array order.
+  const definition = task?.workflowSnapshot?.nodes?.find(candidate => candidate.id === node.id) || node;
+  const data = definition.data || definition;
+  const mapping = data.input_mapping;
+  const messageTemplate = data.input ?? (mapping && typeof mapping === 'object' ? mapping.message : '{{input.message}}');
+  const usesUserInput = node.type === 'agent' && (messageTemplate === '{{input.message}}'
+    || (workflowId === 'workflow.goal-loop' && node.id === 'agent'));
+  const inputValue = usesUserInput
+    ? (feedback || (task?.displayText ?? task?.requestText ?? (task?.annotations?.length ? '' : task?.title)) || '') : rawInputValue;
   const inputText = React.useMemo(() => workflowInputDisplayText(inputValue), [inputValue]);
   // Keep the normal input bubble above the response. Goal retry feedback may
   // also be recorded as runtime input; hide only that duplicate inside the trace.
@@ -56,11 +63,16 @@ export function NodeConversation({ node, task, attempt, result, status, running,
     id: `${node.id}-${attempt?.id || 'pending'}-user`,
     role: 'user',
     text: inputText,
+    annotations: !feedback && usesUserInput ? (task?.annotations || []) : [],
+    images: !feedback && usesUserInput && Array.isArray(task?.imageAttachments) ? task.imageAttachments : [],
+    taskId: task?.taskId || '',
+    conversationId: task?.conversationId || '',
+    messageId: task?.userMessageId,
     markdown: true,
     status: timelineStatus,
     createdAt,
     completedAt,
-  }), [attempt?.id, completedAt, createdAt, inputText, node.id, timelineStatus]);
+  }), [usesUserInput, task?.imageAttachments, task?.taskId, task?.conversationId, task?.userMessageId, task?.annotations, feedback, attempt?.id, completedAt, createdAt, inputText, node.id, timelineStatus]);
   const modelId = result?.runtime_config?.model_id || runtimeConfig.model_id || '';
   const modelProvider = result?.runtime_config?.provider || runtimeConfig.provider || runtimeConfig.llm_config_id || '';
   const assistantMessage = React.useMemo(() => ({
@@ -118,7 +130,7 @@ export function NodeConversation({ node, task, attempt, result, status, running,
 
   return (
     <>
-      {!isGoalJudge && inputText ? <ChatMessageRow message={inputMessage} /> : null}
+      {!isGoalJudge && (inputText || inputMessage.annotations.length || inputMessage.images.length) ? <ChatMessageRow message={inputMessage} /> : null}
       {showAssistant ? <ChatMessageRow message={assistantMessage} onRetry={onRetry} mcpUserInput={!needsFallback} /> : null}
       {needsFallback ? <AskUserInlineForm taskId={task?.taskId} conversationId={task?.conversationId} toolCallId={pendingInput.tool_call_id || ''} active /> : null}
     </>

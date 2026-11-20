@@ -1,3 +1,4 @@
+import { isTerminalTaskStatus } from '../../../core/run-status.js';
 import React from 'react';
 import { LoadingState } from '../../../shared/ui/agent-elements/LoadingState.jsx';
 
@@ -10,6 +11,9 @@ function WorkflowRuntimeLoading() {
 // Both the first Bot-mode chunk load and conversation restoration use the same
 // shared loader as Chat and Settings, rather than showing an incomplete graph.
 export function WorkflowRuntimeEntry({ loading = false, ...props }) {
-  if (loading) return <WorkflowRuntimeLoading />;
+  const task = props.task;
+  const awaitingRun = task && isTerminalTaskStatus(task.status)
+    && !task.workflowRun && task.runtimeHydrated === false;
+  if (loading || awaitingRun) return <WorkflowRuntimeLoading />;
   return <React.Suspense fallback={<WorkflowRuntimeLoading />}><LazyWorkflowRuntimePage {...props} /></React.Suspense>;
 }

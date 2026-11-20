@@ -6,7 +6,7 @@ import { nodeRuntimeConfigsForWorkflow } from '../../../core/node-runtime-config
 // Explicit routing: never infer the destination from the currently displayed
 // mode after an await, or let /goal become a chat steering instruction.
 export function createGoalCommandHandler(ctx) {
-  return async function handleGoalCommand({ prompt, attachment = null, images = [], runConfig = {} }) {
+  return async function handleGoalCommand({ prompt, attachment = null, images = [], annotations = [], runConfig = {}, onAccepted }) {
     const {
       API_BASE, apiFetch, buildApiHeaders, workspaceState, conversationIdRef,
       viewModeRef, draftConversationRef, workflowSettingsDraft, workflowById,
@@ -44,12 +44,12 @@ export function createGoalCommandHandler(ctx) {
       (workflow.nodes || []).filter((node) => node.type === 'agent')
         .map((node) => [node.id, { ...sourceConfig, agent_id: sourceAgentId }]),
     ), ctx.providerOptions || []);
-    const hasTask = Boolean(String(prompt || '').trim());
+    const hasTask = Boolean(String(prompt || '').trim() || annotations.length);
     if (hasTask) {
       const error = executionConfigError({ executionMode: 'bot', workflow, nodeRuntimeConfigs, providerOptions: ctx.providerOptions || [] });
       if (error) { showToast('error', error); return false; }
     }
-    const request = buildDeployRequest(prompt, workflowAttachment, null, null, images, GOAL_WORKFLOW_ID, null, prompt, [], nodeRuntimeConfigs);
+    const request = buildDeployRequest(prompt, workflowAttachment, null, null, images, GOAL_WORKFLOW_ID, null, prompt, annotations, nodeRuntimeConfigs);
     Object.assign(request, { executionMode: 'bot', workflowId: GOAL_WORKFLOW_ID, agentId: null, contextTasks: [] });
     const activationSeq = invalidateConversationActivation();
     const isCurrent = () => isConversationActivationCurrent(activationSeq)
@@ -93,6 +93,7 @@ export function createGoalCommandHandler(ctx) {
       if (!isCurrent()) return false;
       modeLocationRef.current.chat = { projectId: source.id, conversationId: sourceId };
       modeLocationRef.current.workflow = { projectId: target.project_id, conversationId: detail.conversation_id };
+      // Keep the source draft until the server confirms task creation.
       await activateConversationDetail(detail, { restoreLatest: false, activationSeq });
       if (!isConversationActivationCurrent(activationSeq)) return false;
       viewModeRef.current = 'workflow';
@@ -104,7 +105,9 @@ export function createGoalCommandHandler(ctx) {
       }));
       if (hasTask) {
         request.targetConversationId = detail.conversation_id;
-        startDeploy(request, detail.conversation_id, detail);
+        const accepted = await startDeploy(request, detail.conversation_id, detail);
+        if (accepted === false) return false;
+        onAccepted?.();
       }
       return true;
     } catch (error) {

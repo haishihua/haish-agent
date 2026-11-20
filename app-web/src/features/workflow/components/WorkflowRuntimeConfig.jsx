@@ -52,7 +52,7 @@ export function WorkflowRuntimeConfig({ value = {}, providerOptions = [], agentO
       <div className="workflow-runtime-config-heading">
         <span className="workflow-runtime-config-icon" aria-hidden="true"><AppIcon name="settings" size={18} /></span>
         <div><h3>Model Configuration</h3><p>{nodeType === 'llm' ? (inherited ? 'Inherited from the agent; select a model to override' : 'Configure the model used by this node') : 'Configure the model used by this agent'}</p></div>
-        {readOnly ? <small className="workflow-runtime-readonly">Read only</small> : clearable ? <button type="button" className="workflow-runtime-clear" aria-label="Clear node configuration" title="Clear node configuration" onClick={clearRoute}><AppIcon name="close" size={13} /></button> : null}
+        {!readOnly && clearable ? <button type="button" className="workflow-runtime-clear" aria-label="Clear node configuration" title="Clear node configuration" onClick={clearRoute}><AppIcon name="close" size={13} /></button> : null}
       </div>
       {nodeType === 'agent' ? <ConfigSelect label="Agent" value={selectedAgentId} disabled={readOnly} onChange={(agent_id) => onChange?.({ ...value, agent_id })}
         options={{ ariaLabel: 'Node agent', placeholder: 'Select agent', items: agentItems }} /> : null}

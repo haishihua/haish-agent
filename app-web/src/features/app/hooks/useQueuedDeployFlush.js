@@ -32,14 +32,16 @@ export function useQueuedDeployFlush({
       draftApiRef.current.materializeDraftConversationForSend(request)
         .then((materialized) => {
           const realConversationId = materialized?.id || null;
-          if (!realConversationId) return;
+          if (!realConversationId) { request.resolveSubmission?.(false); return; }
           request.targetConversationId = realConversationId;
           request.runtimeConversationId = realConversationId;
           // Creation may finish after navigation. The accepted send belongs
           // to its own runtime and must continue without selecting that chat.
-          deployApiRef.current.startDeploy?.(request, realConversationId, materialized?.detail || null);
+          return deployApiRef.current.startDeploy?.(request, realConversationId, materialized?.detail || null);
         })
+        .then(accepted => request.resolveSubmission?.(accepted !== false))
         .catch((error) => {
+          request.resolveSubmission?.(false);
           console.error('draft conversation create failed', error);
           deployApiRef.current.failPendingDeploy?.(request, error);
           runtimeApiRef.current.showToast?.('error', String(error?.message || error));
@@ -49,7 +51,8 @@ export function useQueuedDeployFlush({
     const deployConvId = request.targetConversationId || conversationIdRef.current || conversationId;
     if (!deployConvId || String(deployConvId).startsWith('draft-')) return;
     setQueuedDeploy(null);
-    deployApiRef.current.startDeploy?.(request, deployConvId);
+    Promise.resolve(deployApiRef.current.startDeploy?.(request, deployConvId))
+      .then(accepted => request.resolveSubmission?.(accepted !== false), () => request.resolveSubmission?.(false));
   }, [
     queuedDeploy,
     conversationReady,

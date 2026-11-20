@@ -1,3 +1,4 @@
+import { AnimatePresence, MotionConfig } from 'motion/react';
 import React, { useEffect, useRef, useState } from 'react';
 import { FileJson2, FlaskConical, LoaderCircle, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import { API_BASE } from '../../../shared/api/base.js';
@@ -165,13 +166,13 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
     {skillsPane && toolsSettingsState.error && <div className="settings-skill-refresh-error"><ErrorState variant="inline" detail={toolsSettingsState.error} /><Button variant="outline" size="sm" onClick={onRefreshTools}>Retry</Button></div>}
     <div id={skillsPane ? 'skill-list-panel' : undefined}>
     <SettingsSearch value={query} onChange={setQuery} label={skillsPane ? 'Search skills' : 'Search providers'} />
-    <ItemGroup className="settings-list-modern">{shown.map(item => {
+    <ItemGroup className="settings-list-modern"><MotionConfig reducedMotion="user"><AnimatePresence key={`${skillsPane}:${skillTab}`} initial={false}>{shown.map(item => {
       const id = skillsPane ? item.id || item.name : item.id;
       const providerState = skillsPane ? undefined : webSearchProviderState(web, id);
       const isActive = Boolean(providerState?.active);
       const skillSource = skillSourceLabel(item.source);
       return <SettingsRow key={id} title={item.name || item.label} description={skillsPane && item.shadowed ? `${item.description || ''} · Overridden by the current project.` : skillsPane && skillTab === 'project' && groups.global.some(global => global.name === item.name) ? `${item.description || ''} · Overrides the user-level Codex version.` : item.description} icon={skillsPane ? <Sparkles size={22} /> : <WebSearchProviderIcon provider={id} label={item.label} />} selected={editing === id} onOpen={() => { setEditing(id); setError(''); }} enabled={skillsPane ? item.enabled : isActive} onToggle={skillsPane ? (item.shadowed ? undefined : enabled => onToggleSkill(item.name, enabled)) : () => activateProvider(id)} busy={Boolean(skillActionBusy || busy)} onDelete={skillsPane && item.can_uninstall ? () => setDeleting({ title: item.name }) : undefined} deleteLabel="Uninstall skill" badge={skillsPane ? skillSource : undefined} toggleLabel={skillsPane ? undefined : `${item.label} for web search`} toggleTitle={skillsPane ? undefined : (isActive ? `${item.label} is the active search provider` : `Use ${item.label} for web search`)} />;
-    })}{!shown.length && <div className="settings-empty">{query ? 'No matching items.' : skillsPane ? 'No skills in this scope.' : 'No providers available.'}</div>}</ItemGroup>
+    })}</AnimatePresence></MotionConfig>{!shown.length && <div className="settings-empty">{query ? 'No matching items.' : skillsPane ? 'No skills in this scope.' : 'No providers available.'}</div>}</ItemGroup>
     </div>
     </div>
     <SettingsSheet open={Boolean(editing)} title={selectedSkill?.name || provider?.label || 'Details'} onClose={() => { if (!busy) setEditing(null); }}><div className="settings-editor-scroll">
@@ -179,7 +180,7 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
       {provider && <FieldRow label="API key"><SecretKeyField value={providerDraft.api_key || ''} configured={providerDraft.api_key_configured} onChange={event => patchProvider({ api_key: event.target.value })} disabled={Boolean(busy)} /></FieldRow>}
       {error && <ErrorState variant="inline" detail={error} />}
     </div><SheetFooter><div>{provider && <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => run('test', () => onTestWebProvider?.(provider.id, providerDraft.api_key || ''))}>{busy === 'test' ? <LoaderCircle size={15} className="settings-spin" /> : <FlaskConical size={15} />}Test connection</Button>}</div><div><Button variant="ghost" size="sm" disabled={Boolean(busy)} onClick={() => setEditing(null)}>{skillsPane ? 'Close' : 'Cancel'}</Button>{provider && <Button size="sm" disabled={Boolean(busy)} onClick={() => run('save', saveProvider)}>{busy === 'save' ? 'Saving…' : 'Save'}</Button>}</div></SheetFooter></SettingsSheet>
-    {installing && <SkillUpload installedSkills={skills} destination={skillTab === 'project' ? `Project · ${current.skill_workspace || 'Current workspace'}` : 'Global · All projects'} onClose={() => setInstalling(false)} onInstall={(_skill, file) => onInstallSkill(file, skillTab)} />}
-    <SettingsDeleteDialog target={deleting} label="Uninstall skill" onClose={() => setDeleting(null)} onConfirm={async target => { const success = await onUninstallSkill(target.title, skillTab); if (success !== false && selectedSkill?.name === target.title) setEditing(null); return success; }} />
+    {installing && <SkillUpload onToast={onToast} installedSkills={skills} destination={skillTab === 'project' ? `Project · ${current.skill_workspace || 'Current workspace'}` : 'Global · All projects'} onClose={() => setInstalling(false)} onInstall={(_skill, file) => onInstallSkill(file, skillTab)} />}
+    <SettingsDeleteDialog onToast={onToast} target={deleting} label="Uninstall skill" onClose={() => setDeleting(null)} onConfirm={async target => { const success = await onUninstallSkill(target.title, skillTab); if (success !== false && selectedSkill?.name === target.title) setEditing(null); return success; }} />
   </div>;
 }

@@ -280,6 +280,7 @@ export function buildChatTimeline(task, taskStatus) {
       const item = {
         kind: 'user_input',
         id: inputId,
+        annotations: event.annotations || [],
         text: stripInjectedSkillInstruction(event.message),
         images: normalizeChatImageRefs(event.imageAttachments || event.image_attachments, conversationId),
         status: 'pending',
@@ -298,6 +299,7 @@ export function buildChatTimeline(task, taskStatus) {
         const inputId = input?.input_id || input?.inputId || `task-input-${items.length}`;
         const existing = runtimeInputItemsById.get(inputId);
         if (existing) {
+          existing.annotations = input?.annotations || existing.annotations || [];
           existing.status = 'applied';
           existing.text = existing.text || stripInjectedSkillInstruction(input?.message);
           existing.images = normalizeChatImageRefs(
@@ -309,6 +311,7 @@ export function buildChatTimeline(task, taskStatus) {
         const item = {
           kind: 'user_input',
           id: inputId,
+          annotations: input?.annotations || [],
           text: stripInjectedSkillInstruction(input?.message),
           images: normalizeChatImageRefs(input?.image_attachments || input?.imageAttachments, conversationId),
           status: 'applied',

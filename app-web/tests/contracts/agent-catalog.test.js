@@ -40,7 +40,7 @@ test('welcome area uses the new headline and the shared composer', () => {
   assert.match(chatPanelSource, /<ChatComposer/);
   assert.match(composerSource, /className="chat-composer-surface"/);
   assert.match(chatStyles, /\.chat-composer-surface\s*\{[^}]*border:\s*0;[^}]*background:\s*#303030;[^}]*box-shadow:\s*none/s);
-  assert.match(chatStyles, /\.chat-composer-editor\s*\{[^}]*min-height:\s*24px;[^}]*max-height:\s*120px/s);
+  assert.match(chatStyles, /\.chat-composer-editor\s*\{[^}]*min-height:\s*24px;[^}]*max-height:\s*var\(--composer-editor-height, 120px\)/s);
   // 空态输入框保持原横向宽度，并为向上展开的审批图标预留纵向空间。
   assert.match(chatStyles, /\.chat-workspace\.is-empty \.chat-composer\s*\{[^}]*width:\s*min\(850px,/s);
   assert.match(chatStyles, /\.chat-composer-actions\s*\{[^}]*margin-top:\s*18px;/s);
@@ -56,7 +56,7 @@ test('empty state project picker aligns with the centered composer', () => {
 });
 
 test('quoted comments live inside the composer box', () => {
-  const surfaceIndex = composerSource.indexOf('<div className="chat-composer-surface">');
+  const surfaceIndex = composerSource.indexOf('<div className="chat-composer-surface"');
   const beforeInputIndex = composerSource.indexOf('className="chat-composer-before-input"');
   const inputRowIndex = composerSource.indexOf('className="chat-composer-input-row"');
   assert.ok(surfaceIndex > -1, 'composer keeps its surface');
@@ -255,7 +255,7 @@ test('the shared MetalFx context survives chat and workflow mode switches', () =
 
 test('composer keeps the colorful beam on its outer edge', () => {
   // 五色流光放在输入框表面内，避免被不透明背景挡住。
-  const surfaceIndex = composerSource.indexOf('<div className="chat-composer-surface">');
+  const surfaceIndex = composerSource.indexOf('<div className="chat-composer-surface"');
   const beamIndex = composerSource.indexOf('<ComposerBorderBeam active={sendBeamActive} />');
   assert.ok(beamIndex > surfaceIndex, 'the beam belongs to the composer surface');
   assert.match(chatStyles, /\.composer-border-beam\s*\{[^}]*position:\s*absolute !important;[^}]*z-index:\s*2;/s);

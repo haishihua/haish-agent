@@ -20,7 +20,7 @@ export function createTaskControlHandlers(ctx) {
     });
   }
 
-  async function queueTaskInput(taskId, message, imageAttachments = [], displayMessage = message, ownerConversationId) {
+  async function queueTaskInput(taskId, message, imageAttachments = [], displayMessage = message, ownerConversationId, annotations = []) {
     if (!ownerConversationId) throw new Error('task input requires a conversation owner');
     const images = Array.isArray(imageAttachments) ? imageAttachments : [];
     const response = await apiFetch(`${API_BASE}/api/tasks/${taskId}/inputs`, {
@@ -28,6 +28,7 @@ export function createTaskControlHandlers(ctx) {
       headers: buildApiHeaders(),
       body: JSON.stringify({
         message,
+        annotations,
         image_attachments: images.map((image) => ({
           image_id: image.image_id,
           path: image.path,
@@ -85,6 +86,7 @@ export function createTaskControlHandlers(ctx) {
                   timestamp: queuedEvent.created_at || new Date().toISOString(),
                   inputId: queuedInputId,
                   message: queuedMessage,
+                  annotations,
                   imageAttachments: queuedImages,
                   status: 'pending',
                   taskId,

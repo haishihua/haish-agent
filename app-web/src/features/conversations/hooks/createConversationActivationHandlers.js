@@ -502,7 +502,7 @@ export function createConversationActivationHandlers(ctx) {
       return null;
     }
 
-    const promotesPending = Boolean(ownerRuntime.taskRuntimeState.pendingTask
+    const promotesPending = Boolean((ownerRuntime.taskRuntimeState.pendingTask || ownerRuntime.taskRuntimeState.submission)
       && (!ownerRuntime.taskRuntimeState.tasksById[taskId] || ownerRuntime.pendingRun?.taskId === taskId));
     updateTaskRuntimeState((state) => {
       const existingTask = state.tasksById[taskId];
@@ -510,11 +510,23 @@ export function createConversationActivationHandlers(ctx) {
         // Only a promoted pending turn changes identity or clears the local draft.
         // Any other repeat receipt for the same row is already fully expressed.
         if (!promotesPending && state.activeTaskId === taskId) return state;
+        const submitted = promotesPending ? (state.submission?.payload || state.pendingTask) : null;
+        const completeInput = submitted ? buildTaskRuntimeRecord(event, submitted) : null;
         return { ...state, activeTaskId: taskId,
           latestTaskId: promotesPending ? taskId : state.latestTaskId,
-          pendingTask: promotesPending ? null : state.pendingTask };
+          pendingTask: promotesPending ? null : state.pendingTask,
+          submission: promotesPending ? null : state.submission,
+          tasksById: completeInput ? { ...state.tasksById, [taskId]: {
+            ...existingTask,
+            requestText: completeInput.requestText,
+            displayText: completeInput.displayText,
+            imageAttachments: completeInput.imageAttachments,
+            annotations: completeInput.annotations,
+            attachment: completeInput.attachment,
+          } } : state.tasksById,
+        };
       }
-      const pendingTask = state.pendingTask;
+      const pendingTask = state.pendingTask || state.submission?.payload;
       const baseTask = buildTaskRuntimeRecord(event, pendingTask);
       const updatedAt = timestampValue(event.created_at) || timestampValue(event.timestamp) || Date.now();
       return {
@@ -522,6 +534,7 @@ export function createConversationActivationHandlers(ctx) {
         activeTaskId: taskId,
         latestTaskId: taskId,
         pendingTask: null,
+        submission: null,
         taskOrder: [...state.taskOrder, taskId],
         tasksById: {
           ...state.tasksById,

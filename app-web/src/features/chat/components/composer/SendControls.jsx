@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowUp, Square } from 'lucide-react';
+import './submission-loading.css';
+import { ArrowUp, LoaderCircle, Square } from 'lucide-react';
 import { PortalTooltip } from '../../../../shared/ui/PortalTooltip.jsx';
 import { MetalActionEffect } from '../../../../shared/ui/MotionEffects.jsx';
 import { resolveSendGate } from '../../model/send-gate.js';
@@ -38,10 +39,10 @@ export function SendControls({ sendState, onStopPress, onStopKey }) {
   });
   return (
     <>
-      {submitPending ? (
+      {submitPending || waitingForSend || goalPending || runtimeInputPending ? (
         <MetalActionEffect active={sendBeamActive}>
-          <button type="button" className="chat-send stop" onMouseDown={onStopPress} onKeyDown={onStopKey} aria-label="Cancel pending request">
-            <Square className="chat-send-icon chat-stop-icon" fill="currentColor" strokeWidth={0} aria-hidden="true" />
+          <button type="button" className="chat-send is-submitting" disabled aria-busy="true" aria-label="Submitting">
+            <LoaderCircle className="chat-send-icon submission-icon-loading" strokeWidth={2} aria-hidden="true" />
           </button>
         </MetalActionEffect>
       ) : stopError ? (

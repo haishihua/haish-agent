@@ -165,6 +165,8 @@ function ComposerController({ value, selectedSkill, selectedCommand, disabled, m
     });
     if (!shouldSync) return;
 
+    const rootElement = editor.getRootElement();
+    const restoreSelection = rootElement?.contains(document.activeElement);
     editor.update(() => {
       const root = $getRoot();
       root.clear();
@@ -174,6 +176,9 @@ function ComposerController({ value, selectedSkill, selectedCommand, disabled, m
       if (nextSkillName) paragraph.append($createSkillTokenNode(nextSkillName, nextCommand));
       appendPlainText(paragraph, text);
       root.append(paragraph);
+      // Skill and Goal share the same controlled token replacement. Keep the
+      // caret in this update rather than racing the caller's animation frame.
+      if (restoreSelection) root.selectEnd();
       lastEmittedValueRef.current = $composerValue();
       lastEmittedTokenRef.current = { name: nextSkillName, command: nextCommand };
     }, { tag: 'composer-controlled-value' });

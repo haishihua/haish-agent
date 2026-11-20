@@ -57,27 +57,29 @@ for (const background of [false, true]) {
     };
     Object.assign(ctx, createConversationRuntime(ctx));
     const activation = createConversationActivationHandlers(ctx);
-    ctx.executeQuest = async () => {
+    ctx.executeQuest = async (_payload, _conversationId, options) => {
       launches++;
       ctx.getRuntime(detail.conversation_id, { create: true }).activeRunId = 'local-run';
       await new Promise((resolve) => { confirm = resolve; });
       activation.ensureTaskForEvent({ task_id: 'server-task', conversation_id: detail.conversation_id }, detail.conversation_id);
+      options.onAccepted();
     };
     Object.assign(ctx, createDeployHandlers(ctx));
     const runConfig = { llm_config_id: 'source-provider', model_id: 'source-model', reasoning_effort: 'high' };
     const expectedConfigs = Object.fromEntries(['clarify', 'goal_worker', 'goal_verifier'].map((id) => [id, { ...runConfig, agent_id: 'preset.general' }]));
-    const accepted = await createGoalCommandHandler(ctx)({ prompt: 'Goal', runConfig });
-    assert.equal(accepted, true);
+    const accepting = createGoalCommandHandler(ctx)({ prompt: 'Goal', runConfig });
+    await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(calls.map((call) => call.method), ['GET', 'POST', 'POST', 'PUT']);
     const project = () => workspace.projects.find((item) => item.id === target.project_id);
     const runtime = ctx.getRuntime(detail.conversation_id);
-    const placeholder = runtime.taskRuntimeState.pendingTask;
+    const placeholder = runtime.taskRuntimeState.submission.payload;
     assert.equal(project().conversations.length, 1);
-    assert.equal(projectWorkflowTasks(project()).length, 1);
+    assert.equal(projectWorkflowTasks(project()).length, 0);
     assert.notEqual(placeholder.id, 'server-task');
     assert.deepEqual(placeholder.nodeRuntimeConfigs, expectedConfigs);
     if (background) ctx.conversationIdRef.current = 'another-conversation';
     confirm();
+    assert.equal(await accepting, true);
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(runtime.taskRuntimeState.pendingTask, null);
     const rows = projectWorkflowTasks(project());

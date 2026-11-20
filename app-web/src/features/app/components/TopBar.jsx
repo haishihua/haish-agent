@@ -3,15 +3,28 @@ import { MetalText } from 'metal-fx-text';
 
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
 import { REDUCED_MOTION_QUERY, prefersReducedMotion } from '../../../shared/lib/reduced-motion.js';
+import { approvalStore } from '../../../core/approval-store.js';
+import { modeNotification } from '../model/mode-notifications.js';
 import { RemoteControlDialog } from '../../remote/components/RemoteControlDialog.jsx';
 export function TopBar({
   viewMode = 'workflow',
+  projects = [],
+  notices = {},
   onToggleViewMode,
   settingsActive = false,
   settingsDisabled = false,
   onToggleSettings,
 }) {
   const chatMode = viewMode === 'chat';
+  const [pending, setPending] = useState({ inputs: [], approvals: [] });
+  useEffect(() => {
+    const stopInputs = approvalStore.subscribeInputs((inputs) => setPending((state) => ({ ...state, inputs })));
+    const stopApprovals = approvalStore.subscribe((approvals) => setPending((state) => ({ ...state, approvals })));
+    return () => { stopInputs(); stopApprovals(); };
+  }, []);
+  const notification = modeNotification(projects, notices, chatMode ? 'bot' : 'chat', pending.inputs, pending.approvals);
+  const modeName = chatMode ? 'Workflow' : 'Agent';
+  const modeHint = notification.count ? `${modeName}: ${notification.count} ${notification.needsAction ? 'conversations need attention' : 'conversations with unread results'}` : modeName;
   const [reducedMotion, setReducedMotion] = useState(prefersReducedMotion);
   useEffect(() => {
     const media = window.matchMedia(REDUCED_MOTION_QUERY);
@@ -47,15 +60,16 @@ export function TopBar({
               <span className="ico ico-tv-monitor" aria-hidden="true" />
             </button>
           </PortalTooltip>
-          <PortalTooltip text={chatMode ? 'Workflow' : 'Agent'} position="below">
+          <PortalTooltip text={modeHint} position="below">
             <button
               type="button"
               className={`topbar-icon topbar-mode-toggle ${chatMode ? 'active' : ''}`}
-              aria-label={chatMode ? 'Switch to Workflow' : 'Switch to Agent'}
+              aria-label={notification.count ? `Switch to ${modeHint}` : `Switch to ${modeName}`}
               aria-pressed={chatMode}
               onClick={onToggleViewMode}
             >
               <span className={`ico ${chatMode ? 'ico-robot' : 'ico-bubble-chat'}`} aria-hidden="true" />
+              {notification.count > 0 ? <span className={`mode-notification-dot${notification.needsAction ? ' needs-action' : ''}`} aria-hidden="true" /> : null}
             </button>
           </PortalTooltip>
           <PortalTooltip text={settingsActive ? 'Close settings' : 'Settings'} position="below">

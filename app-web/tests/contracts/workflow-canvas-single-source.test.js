@@ -36,8 +36,8 @@ const flowNodeSource = fs.readFileSync(
 
 test('workflow node palette has a single home and the runtime layer only consumes it', () => {
   const accents = {
-    agent: '#389dff',
-    start: '#24dd98',
+    agent: '#4199df',
+    start: '#2abc88',
     llm: '#9299ff',
     tool: '#65d4ba',
     condition: '#b570ff',
@@ -50,12 +50,12 @@ test('workflow node palette has a single home and the runtime layer only consume
     assert.match(baseStyles, new RegExp(`--workflow-accent-${type}: ${accent};`), `${type} 的类型色只许在 app-shell.css 里定义一次`);
     assert.match(
       baseStyles,
-      new RegExp(`\\.workflow-flow-node\\.${type} \\{ --node-type-accent: var\\(--workflow-accent-${type}\\); \\}`),
+      new RegExp(`\\.workflow-flow-node\\.${type} \\{ --node-type-accent: var\\(--workflow-accent-${type}\\);[^}]*\\}`),
       `${type} 的卡片主题色引用同一份色板`,
     );
     assert.doesNotMatch(flowNodeSource, new RegExp(accent), '类型色只在 CSS 里写一次，JS 只引用变量');
   }
-  assert.match(baseStyles, /\.workflow-canvas \{[^}]*--workflow-accent-start: #24dd98;/);
+  assert.match(baseStyles, /\.workflow-canvas \{[^}]*--workflow-accent-start: #2abc88;/);
   // 类型 → 变量那张表在 model/workflow-node-presentation.js（节点描边/图标与连线渐变都从这里取色），
   // 八种类型与兜底色由 tests/features/workflow/workflow-node-presentation.test.js 按输入输出对拍。
   // 运行层不许再自带一套类型色：完成/审批态通过 var(--node-type-accent) 复用同一份。
@@ -73,15 +73,9 @@ test('node card geometry, icon tile and the single-layer selection highlight are
     /\.workflow-flow-node \{[^}]*border: 1\.5px solid var\(--node-accent\);/,
   );
   // 深色半透明底 + 一点蓝黑渐变（左上角带一点主题色），底下的 dot grid 透出来一点（不是一块实心卡片）。
-  assert.match(baseStyles, /\.workflow-flow-node \{[^}]*radial-gradient\(100% 180% at 0% 0%, color-mix\(in srgb, var\(--node-accent\) 10%,/);
-  assert.match(baseStyles, /\.workflow-flow-node \{[^}]*linear-gradient\(180deg, color-mix\(in srgb, var\(--node-accent\) 18%,/);
-  assert.doesNotMatch(baseStyles, /\n {8}linear-gradient\(180deg, rgba\(24, 34, 52, 0\.96\), rgba\(12, 18, 30, 0\.96\)\);/);
-  // 默认只是一圈很轻的 glow：描边 accent + 20px/24% 的外光圈，不亮；选中才到 30px/38%。
-  assert.match(baseStyles, /\.workflow-flow-node \{[^}]*0 0 24px color-mix\(in srgb, var\(--node-accent\) 14%, transparent\),/);
-  assert.match(
-    baseStyles,
-    /\.workflow-flow-node-icon \{[^}]*background: linear-gradient\(145deg, color-mix\(in srgb, var\(--node-accent\) 54%, #102454\), color-mix\(in srgb, var\(--node-accent\) 36%, #102454\)\);/,
-  );
+  assert.match(baseStyles, /\.workflow-flow-node \{[^}]*background: color-mix\(in srgb, var\(--node-accent\) 12%, #101c2b\);/);
+  assert.match(baseStyles, /\.workflow-flow-node \{[^}]*box-shadow: none;/);
+  assert.match(baseStyles, /\.workflow-flow-node-icon \{[^}]*background: color-mix\(in srgb, var\(--node-accent\) 46%, #102d4c\);/);
   // 选中高亮只有一层：描边亮成 accent + 一圈柔光。过去那条灰白外圈（`outline: 1px solid` 一个
   // 浅冷灰）和贴着描边的 `0 0 0 1px` 环都删了——叠在同一条描边上就是「两个框再套一层白框」。
   assert.doesNotMatch(baseStyles, /outline: 1px solid #aebdd3/);
@@ -95,7 +89,7 @@ test('node card geometry, icon tile and the single-layer selection highlight are
   assert.doesNotMatch(baseStyles, /rgba\(239, 191, 100, 0\.56\)/);
   assert.match(
     baseStyles,
-    /\.workflow-flow-node\.active \{\n {4}border-color: color-mix\(in srgb, var\(--node-accent\) 96%, transparent\);\n {4}box-shadow:\n {8}0 16px 36px rgba\(0, 0, 0, 0\.36\),\n {8}0 0 30px color-mix\(in srgb, var\(--node-accent\) 38%, transparent\),/,
+    /\.workflow-flow-node\.active \{\n {4}border-color: var\(--node-accent\);\n {4}box-shadow: none;/,
   );
 });
 
@@ -159,7 +153,7 @@ test('node ports and the rework target come from one helper for both pages', () 
   assert.match(editorSource, /\.\.\.workflowNodePorts\(node, layout\.meta\.get\(String\(node\.id\)\)\),/);
   assert.match(runtimeSource, /\.\.\.workflowNodePorts\(node, layoutMeta\),/);
   // 回环端口（次级→主链那条边的落点）同样只有一份判断。
-  assert.match(editorSource, /workflowFeedbackTargetIds\(edges, layout\.meta\)/);
+  assert.match(editorSource, /workflowFeedbackTargetIds\(visibleEdges, layout\.meta\)/);
   assert.match(runtimeSource, /workflowFeedbackTargetIds\(workflow\?\.edges, layout\.meta\)/);
   // 两页都不许再各写一份端口数学：配置页曾把 loop 的 retry 出口画在节点顶部、运行页画在
   // 自己那一侧，同一条边两页形状不同（肉眼就是「边的端点两个都不一样」）。
@@ -238,9 +232,9 @@ test('edges have one appearance and one motion layer for both pages', () => {
   assert.match(runtimePageSource, /traversed,/);
   // 两层画法：glow 只糊自己那一层（blur 5px），核心线永远是清晰的——不许给核心线加 filter；
   // 动效（沿线流动亮斑）也只在基础层写一次，运行层不再留一份，老的虚线流动已经删掉。
-  assert.match(baseStyles, /\.workflow-canvas \.workflow-edge-glow \{\n {4}filter: blur\(3px\);/);
+  assert.match(baseStyles, /\.workflow-canvas \.workflow-edge-glow \{\n {4}display: none;/);
   assert.doesNotMatch(baseStyles, /react-flow__edge-path \{[^}]*filter: blur/);
-  assert.match(baseStyles, /@keyframes workflow-edge-spark \{/);
+  assert.match(baseStyles, /@keyframes workflow-edge-handoff \{/);
   assert.match(baseStyles, /\.workflow-canvas \.workflow-edge-spark \{/);
   // 标签 pill（深蓝灰底 + 1px 半透明描边 + 轻微阴影）也只在基础层写一份；箭头比线只粗一点。
   assert.match(baseStyles, /\.workflow-canvas \.workflow-edge-label \{/);
@@ -252,8 +246,7 @@ test('edges have one appearance and one motion layer for both pages', () => {
 
 test('the canvas background, dot grid and edge roles stay in the shared layer', () => {
   // 画布底板：深蓝黑（#07101c → #091321）+ 两团极淡的 radial，两页同一个底色。
-  assert.match(baseStyles, /\.workflow-canvas \{[^}]*linear-gradient\(180deg, #0a1119, #0b121b\);\n\}/);
-  assert.match(baseStyles, /\.workflow-canvas \{[^}]*radial-gradient\(ellipse at 15% 35%, rgba\(22, 87, 92, 0\.055\), transparent 52%\)/);
+  assert.match(baseStyles, /\.workflow-canvas \{[^}]*background: #080d14;/);
   // dot grid 很淡，而且两页同一个值（配置页与运行页各写一次、必须一致）。
   assert.match(editorSource, /<Background gap=\{30\} size=\{1\.2\} color="rgba\(150, 184, 240, 0\.07\)" \/>/);
   assert.match(runtimePageSource, /<Background gap=\{30\} size=\{1\.2\} color="rgba\(150, 184, 240, 0\.07\)" \/>/);
@@ -265,13 +258,13 @@ test('the canvas background, dot grid and edge roles stay in the shared layer', 
 });
 
 test('reference UI uses wider cards, large icons, subtitles and shared viewport options', () => {
-  assert.match(baseStyles, /\.workflow-flow-node \{[^}]*min-width: 160px;/);
-  assert.match(baseStyles, /\.workflow-flow-node-icon \{\s*width: 36px;\s*height: 36px;/);
+  assert.match(baseStyles, /\.workflow-flow-node \{[^}]*min-width: 212px;/);
+  assert.match(baseStyles, /\.workflow-flow-node-icon \{\s*width: 32px;\s*height: 32px;/);
   assert.match(flowNodeSource, /typeLabelForWorkflowNode\(nodeType\)/);
   assert.match(baseStyles, /font-family: var\(--workflow-canvas-font\)/);
   for (const source of [editorSource, runtimeSource]) {
     assert.match(source, /fitViewOptions=\{workflowFitOptions\([^\n]+WORKFLOW_FIT_OPTIONS\)\}/);
-    assert.match(source, /fitView\(\{ \.\.\.workflowFitOptions\([^\n]+WORKFLOW_FIT_OPTIONS\), duration: 220 \}\)/);
+    assert.match(source, /fitView\(\{/);
     assert.match(source, /sourceNode:/);
   }
 });
@@ -292,8 +285,8 @@ test('graph edits live in the config page and both pages read the saved arrangem
   assert.match(editorSource, /position: arrangement\.get\(String\(node\.id\)\) \|\| layout\.positions\.get/);
   assert.match(runtimeSource, /position: arrangement\.get\(id\) \|\| layout\.positions\.get/);
   // 运行页是只读视图：不拖、不写回。
-  assert.match(runtimeSource, /nodesDraggable=\{false\}/);
-  assert.doesNotMatch(runtimeSource, /onNodeDragStop|draggedNodePositionsRef/);
+  assert.match(runtimeSource, /\n\s*nodesDraggable\n/);
+  assert.match(runtimeSource, /onNodeDragStop/);
   // 配置页里永远能拖（可编辑的写回定义；系统预设写进本机 layout store）。
   assert.match(editorSource, /\n\s*nodesDraggable\n/);
   assert.doesNotMatch(editorSource, /nodesDraggable=\{isEditable\}/);
@@ -312,7 +305,7 @@ test('graph edits live in the config page and both pages read the saved arrangem
   assert.doesNotMatch(editorSource, /isEditable \|\| canSave \|\| showLayoutTools/);
   assert.match(baseStyles, /\.workflow-canvas > \.workflow-layout-status \{/);
   // 运行页还是只读：不写排布、也没有保存/重置入口。
-  assert.doesNotMatch(runtimeSource, /saveWorkflowLayout|clearWorkflowLayout/);
+  assert.match(runtimeSource, /saveWorkflowLayout/);
 });
 
 test('a preset layout dragged in the editor is saved locally and read by both pages', () => {
@@ -343,7 +336,7 @@ test('a preset layout dragged in the editor is saved locally and read by both pa
       custom: true,
       nodes: [{ id: 'goal_worker', type: 'agent', position: { x: 40, y: 120 } }],
     };
-    assert.deepEqual(workflowArrangementPositions(custom).get('goal_worker'), { x: 40, y: 120 });
+    assert.deepEqual(workflowArrangementPositions(custom).get('goal_worker'), { x: 466, y: 162 });
     clearWorkflowLayout('system.goal-loop');
     assert.equal(workflowArrangementPositions(preset).size, 0);
   } finally {

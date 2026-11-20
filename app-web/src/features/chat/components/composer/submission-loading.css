@@ -1,0 +1,18 @@
+.chat-send.is-submitting:disabled {
+  opacity: 1;
+  cursor: progress;
+  color: #d9d2e8;
+  background: #22232d;
+  border-color: rgba(177, 164, 203, .28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+.chat-send .chat-send-icon.submission-icon-loading {
+  width: 18px;
+  height: 18px;
+  transform-origin: center;
+  animation: submission-icon-spin .9s linear infinite;
+}
+@keyframes submission-icon-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .chat-send .chat-send-icon.submission-icon-loading { animation: none; }
+}

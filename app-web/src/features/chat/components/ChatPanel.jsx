@@ -2,12 +2,13 @@ import React from 'react';
 import welcomeSlogan from '../../../../assets/ui/empty-state/welcome-slogan.png';
 import { ConversationSearch } from './ConversationSearch.jsx';
 import { ConversationMap } from './ConversationMap.jsx';
+import { HistoryLoadIndicator } from './HistoryLoadIndicator.jsx';
 import { conversationMapEntries } from '../model/conversation-map.js';
 import { chatImagePreviewUrl } from '../../../shared/api/chat-image.js';
 import { MessageAnnotations } from './MessageAnnotations.jsx';
 import { QuoteBlock } from '../../../shared/ui/agent-elements/Quote.jsx';
 import { useAnnotationDraft } from '../hooks/useAnnotationDraft.js';
-import { annotationError, createAnnotationMessageSelector, isSubmittedAnnotationMessage, numberAnnotations, visibleAnnotationDrafts } from '../model/message-annotations.js';
+import { annotationError, createAnnotationMessageSelector, isSubmittedAnnotationMessage, numberAnnotations, visibleAnnotationDrafts, writeAnnotationDraft } from '../model/message-annotations.js';
 import { ApprovalInline } from '../../approvals/components/ApprovalOverlay.jsx';
 import { ChatMessageRow } from './ChatMessageRow.jsx';
 import { ImagePreviewOverlay } from '../../../shared/ui/ImagePreviewOverlay.jsx';
@@ -289,7 +290,15 @@ export function ChatPanel({
   const prepareSubmit = (submittedText) => {
     const commentsError = annotationDrafts.length ? annotationError(annotationDrafts, submittedText) : '';
     if (commentsError) onToast?.('warn', commentsError);
-    return { error: commentsError, annotations: annotationDrafts };
+    return { error: commentsError, annotations: annotationDrafts,
+      onAccepted: () => {
+        const withoutSubmitted = (items) => items.filter((item) => !annotationDrafts.some((sent) => sent.id === item.id));
+        const remaining = withoutSubmitted(annotationSnapshots);
+        // Goal navigates away immediately; persist before the panel unmounts.
+        writeAnnotationDraft(window.localStorage, conversationId, remaining);
+        updateAnnotations(withoutSubmitted);
+      },
+    };
   };
 
   const [previewImage, setPreviewImage] = React.useState(null);
@@ -488,6 +497,15 @@ export function ChatPanel({
   return (
     <section className={`chat-workspace${!loading && messages.length === 0 ? ' is-empty' : ''}`} aria-label="Chat">
       <div className="chat-message-region">
+        <HistoryLoadIndicator key={`history:${conversationId || 'draft'}`} scrollRef={listRef}
+          resetKey={conversationId} enabled={!loading && messages.length > 0}
+          onRefresh={async () => {
+            if (hasEarlierRows) growEarlierRows();
+            const element = listRef.current;
+            if (!element) return;
+            const ids = visiblePendingTaskIdsIn(element, element.getBoundingClientRect(), taskIdByRowIdRef.current);
+            if (ids.length) await loadEarlierTasks(ids);
+          }} />
         {/* key 在本层兄弟之间必须唯一：搜索面板和导轨都按会话重置，但同一个
             会话 id 会撞成同一个 key，React 的 key 映射会漏删旧节点——切换会话后
             搜索面板会留下一个没有事件处理器的僵尸 DOM（看着开着，却点不动、打不了字）。 */}
@@ -558,7 +576,6 @@ export function ChatPanel({
               onRemove={() => updateAnnotations((previous) => previous.filter((draft) => draft.id !== item.id))} />)}
           </div>}
           {storageError && <p className="haish-annotation-notice" role="status">{storageError}</p>}
-          {running && annotationDrafts.length > 0 && <p className="haish-annotation-notice">Comments are saved as a draft. Send after the task finishes or stops.</p>}
         </>}
         attachment={attachment}
         uploading={uploading}

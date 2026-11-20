@@ -1,44 +1,73 @@
-import React from 'react';
-import { AlertTriangle, Check, Info, X } from 'lucide-react';
+import { REDUCED_MOTION_QUERY } from '../../../shared/lib/reduced-motion.js';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { animateToastParticles } from './toast-particles.js';
+import { X } from 'lucide-react';
+import './dissolve-toast.css';
 
-/** lucide glyph per toast kind, drawn as a bare 14px stroke like every other
- *  status icon in the shell (ErrorState, sidebar lamps). `warn` sits between
- *  success and info: an action that was blocked or a precondition that still
- *  needs a decision, not a failure. */
-const TOAST_GLYPHS = {
-  success: Check,
-  error: X,
-  warn: AlertTriangle,
-  info: Info,
-};
+const EXIT_MS = 1150;
 
-export function AppToast({ kind = 'info', message }) {
-  if (!message) return null;
-  const Glyph = TOAST_GLYPHS[kind] || TOAST_GLYPHS.info;
+/** Actual card-content tiles gather and dissolve; the original owns semantics. */
+export function AppToast({ kind = 'info', message, title, description, id, leaving = false, onDismiss }) {
+  const card = useRef(null);
+  useLayoutEffect(() => card.current ? animateToastParticles(card.current, leaving) : undefined, [leaving, kind, message, title, description]);
+  if (!message && !title) return null;
+  const text = String(title || message);
+  const [heading, ...details] = text.split('\n');
+  const subtitle = description || details.join('\n') || (title ? message : '');
+  const tone = ['success', 'error', 'warn', 'info'].includes(kind) ? kind : 'info';
   return (
-    <div className={`app-toast app-toast-${kind}`} role="status" aria-live="polite">
-      <span className="app-toast-icon" aria-hidden="true">
-        <Glyph size={15} strokeWidth={2} />
-      </span>
-      <span className="app-toast-message">{message}</span>
+    <div ref={card} data-toast-id={id} className={`app-toast app-toast-${tone}${leaving ? ' is-leaving' : ''}`}>
+      <span className="app-toast-icon" aria-hidden="true" />
+      <span className="app-toast-message" role="status" aria-live="polite" aria-atomic="true"><span className="app-toast-title">{heading}</span>{subtitle ? <span className="app-toast-description">{subtitle}</span> : null}</span>
+      <button type="button" className="app-toast-close" aria-label="Dismiss notification" onClick={onDismiss} disabled={leaving}><X size={14} /></button>
     </div>
   );
 }
 
-/**
- * 堆叠容器：固定定位（顶部居中 22px）挂在容器上，气泡本体只做普通块。
- * 这样 N 条提示依次向上排开、互不覆盖，也不会每条都自己 translateX(-50%)。
- * 容器本身不挂 role / aria-live：每条 AppToast 已经是 polite 状态区，
- * 再包一层只会让读屏重复播报。
- */
-export function AppToastStack({ toasts = [] }) {
-  const visible = Array.isArray(toasts) ? toasts.filter((toast) => toast?.message) : [];
-  if (visible.length === 0) return null;
-  return (
-    <div className="app-toast-stack">
-      {visible.map((toast) => (
-        <AppToast key={toast.id} kind={toast.kind} message={toast.message} />
-      ))}
-    </div>
-  );
+/** Keep removed cards mounted briefly so timeout and overflow can dissolve. */
+export function AppToastStack({ toasts = [], onDismiss }) {
+  const stack = useRef(null);
+  const positions = useRef(new Map());
+  useLayoutEffect(() => {
+    const next = new Map();
+    for (const element of stack.current?.children || []) {
+      const id = element.dataset.toastId;
+      const y = element.offsetTop;
+      const before = positions.current.get(id);
+      next.set(id, y);
+      if (before !== undefined && before !== y && !window.matchMedia(REDUCED_MOTION_QUERY).matches) {
+        element.getAnimations().forEach(animation => animation.cancel());
+        element.animate([{ transform: `translateY(${before - y}px)` }, { transform: 'translateY(0)' }], { duration: 320, easing: 'cubic-bezier(.2,0,0,1)' });
+      }
+    }
+    positions.current = next;
+  });
+  const [retained, setRetained] = useState([]);
+  const previous = useRef([]);
+  const timers = useRef(new Map());
+  const current = Array.isArray(toasts) ? toasts.filter(toast => (toast?.message || toast?.title)) : [];
+  const signature = current.map(toast => toast.id).join('\u0000');
+  useEffect(() => {
+    const live = new Set(current.map(toast => toast.id));
+    for (const toast of previous.current) {
+      if (live.has(toast.id) || timers.current.has(toast.id)) continue;
+      setRetained(items => [...items.filter(item => item.id !== toast.id), toast].slice(-3));
+      timers.current.set(toast.id, setTimeout(() => {
+        timers.current.delete(toast.id);
+        setRetained(items => items.filter(item => item.id !== toast.id));
+      }, EXIT_MS));
+    }
+    previous.current = current;
+  // Content updates refresh the card snapshot without restarting the exit clock.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+  useEffect(() => {
+    const pending = timers.current;
+    return () => { for (const timer of pending.values()) clearTimeout(timer); pending.clear(); };
+  }, []);
+  const exiting = [...new Map([...retained, ...previous.current].filter(toast => !current.some(item => item.id === toast.id)).map(toast => [toast.id, toast])).values()].slice(-3);
+  if (!current.length && !exiting.length) return null;
+  return <div ref={stack} className="app-toast-stack">
+    {[...exiting, ...current].map(toast => <AppToast key={toast.id} {...toast} leaving={exiting.some(item => item.id === toast.id)} onDismiss={() => onDismiss?.(toast.id)} />)}
+  </div>;
 }

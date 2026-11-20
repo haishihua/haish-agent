@@ -1028,6 +1028,9 @@ const stateWorkerPosition = () => {
         fireMouse(bottom, 'mouseup', bp, 0);
         await tick(180);
         check(Boolean(document.querySelector('#pane-runtime-system .is-used[data-handleid="visual-source-bottom"]')), '源端点换到底部后同步运行页');
+        const configPorts = edgeAnchors('#pane-config-system')['goal_verifier->goal_gate'];
+        const runtimePorts = edgeAnchors('#pane-runtime-system')['goal_verifier->goal_gate'];
+        check(JSON.stringify(configPorts) === JSON.stringify(runtimePorts), `换接后实际连线端点两页一致（${JSON.stringify(configPorts)} / ${JSON.stringify(runtimePorts)}）`);
         check(Boolean(document.querySelector('#pane-runtime-system .is-used[data-handleid="visual-target-top"]')), '改源端点不丢失目标端点设置');
       }
     }

@@ -1,3 +1,4 @@
+import { WorkflowStatusIcon } from './WorkflowStatusIcon.jsx';
 import React from 'react';
 import { BaseEdge, EdgeLabelRenderer, Handle, Position, useConnection } from '@xyflow/react';
 import { agentIconNameForAgentId } from '../../../core/agent-settings.js';
@@ -140,8 +141,8 @@ export function WorkflowCanvasEdge({
     paint, gradient, stroke: activeStroke, coreOpacity, coreWidth, arrowFill,
   } = workflowEdgePaintState({ data, style, active, traversed });
   const roleStroke = gradient ? `url(#${paintUid})` : paint.solid;
-  const stroke = activeStroke || roleStroke;
-  const dash = style?.strokeDasharray;
+  const stroke = active ? roleStroke : (activeStroke || roleStroke);
+  const dash = active ? undefined : style?.strokeDasharray;
   const arrow = Boolean(data?.arrow);
   return (
     <>
@@ -195,22 +196,19 @@ export function WorkflowCanvasEdge({
         style={{
           ...style,
           stroke,
-          strokeOpacity: coreOpacity,
-          strokeWidth: coreWidth,
+          strokeOpacity: active ? (data?.opacity ?? 1) : coreOpacity,
+          strokeWidth: active ? (style?.strokeWidth || 2) : coreWidth,
+          strokeDasharray: dash,
           strokeLinecap: 'round',
         }}
       />
       {active ? (
-        <path
-          className="workflow-edge-spark"
-          d={path}
-          fill="none"
-          stroke="#eaf4ff"
-          strokeWidth={2}
-          strokeOpacity={0.72}
-          strokeLinecap="round"
-          style={{ pointerEvents: 'none' }}
-        />
+        <>
+          {/* 在原连线上叠加等距短虚线，仅表达当前传递方向，不改变底线配色。 */}
+          <path className="workflow-edge-handoff" d={path} fill="none"
+            stroke="white" strokeOpacity={0.9} strokeWidth={2} strokeLinecap="round"
+            style={{ pointerEvents: 'none' }} />
+        </>
       ) : null}
       {data?.label || data?.onDelete ? (
         <EdgeLabelRenderer>
@@ -270,6 +268,7 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
         <strong>{nodeTitle}</strong>
         {typeLabelForWorkflowNode(nodeType) ? <small className={data?.runtimeModelId ? 'workflow-node-model' : undefined}>{data?.runtimeModelId ? <><ProviderIcon provider={data.runtimeProvider} modelId={data.runtimeModelId} /><span>{data.runtimeModelId}</span></> : typeLabelForWorkflowNode(nodeType)}</small> : null}
       </span>
+      {runtimeStatus ? <WorkflowStatusIcon status={runtimeStatus} /> : null}
       {WORKFLOW_BRANCHES[nodeType]
         ? WORKFLOW_BRANCHES[nodeType].map((branch, index) => (
           <Handle
@@ -294,8 +293,8 @@ export function WorkflowFlowNode({ data, selected, sourcePosition, targetPositio
           className={`workflow-side-handle${available ? ' is-available' : ''}${used ? ' is-used' : ''}`}
           isConnectableStart={type === 'source' && nodeType !== 'output' && !WORKFLOW_BRANCHES[nodeType]}
           isConnectableEnd={available || (type === 'target' && nodeType !== 'start')}
-          style={{ zIndex: type === (connection.inProgress ? 'target' : 'source') ? 4 : 3,
-            pointerEvents: !available && ((type === 'source' && (connection.inProgress || nodeType === 'output' || WORKFLOW_BRANCHES[nodeType])) || (type === 'target' && (!connection.inProgress || nodeType === 'start'))) ? 'none' : 'auto' }}
+          style={{ zIndex: available ? 6 : (type === (connection.inProgress ? 'target' : 'source') ? 4 : 3),
+            pointerEvents: data?.reconnectType && !available ? 'none' : !available && ((type === 'source' && (connection.inProgress || nodeType === 'output' || WORKFLOW_BRANCHES[nodeType])) || (type === 'target' && (!connection.inProgress || nodeType === 'start'))) ? 'none' : 'auto' }}
           aria-label={`${type} ${side}`} />;
       }))}
     </div>

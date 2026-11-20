@@ -1,6 +1,10 @@
+import { isRuntimeDetailLive, runtimeDetailTarget } from '../model/runtime-detail-target.js';
+import './runtime/workflow-detail-pull.css';
+import { saveWorkflowLayout } from '../../../core/workflow-layout-store.js';
+import { workflowDisplayConfig } from '../model/workflow-display-config.js';
 import React from 'react';
+import { workflowVisibleEdges } from '../../../core/workflow-visible-edges.js';
 import { WorkflowRuntimeConfig } from './WorkflowRuntimeConfig.jsx';
-import { workflowNodeRuntimeConfig } from '../../../core/node-runtime-config.js';
 import { approvalStore } from '../../../core/approval-store.js';
 import { workflowAttentionRequest } from '../model/workflow-attention.js';
 import { workflowControlEvents } from '../model/workflow-control-events.js';
@@ -12,7 +16,7 @@ import {
   useNodesState,
 } from '@xyflow/react';
 import { workflowAgentName } from '../../../core/assistant-name.js';
-import { normalizeTaskStatus } from '../../../core/run-status.js';
+import { isTerminalTaskStatus } from '../../../core/run-status.js';
 import { workflowRuntimeDisplayStatus, workflowRuntimeNodeStatus } from '../model/runtime-status.js';
 import {
   layoutRuntimeWorkflow,
@@ -88,8 +92,7 @@ function activeNodeIdsFromEvents(eventLog) {
 // （WorkflowDetailResizer）。这里只留页签/折叠/滚动这些必须跨子组件存活的状态。
 function NodeDetail({ node, task, run, status, attention = null, onClose, onResize, onResizeBy, onRetry, agentName = '', agentOptions = [], providerOptions = [], runtimeConfig = {}, inheritedConfig = false, onRuntimeConfigChange, configReadOnly = false, annotationDrafts = [], onSaveAnnotation, onAnnotationError }) {
   const detailBodyRef = React.useRef(null);
-  const [historyOpen, setHistoryOpen] = React.useState(false);
-  const live = ['running', 'waiting_input', 'approval'].includes(status);
+  const live = isRuntimeDetailLive(status);
   const [detailTab, setDetailTab] = React.useState(() => live || run?.nodes?.[node.id] || nodeAttempts(task, node.id).length ? 'result' : 'config');
   const wasLiveRef = React.useRef(live);
   React.useEffect(() => {
@@ -130,7 +133,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
   const visibleAttempts = visibleNodeAttempts(attempts, latestResult, node.id);
   const latestAttempt = visibleAttempts.at(-1) || null;
   const canRetry = onRetry
-    && ['done', 'failed', 'cancelled'].includes(normalizeTaskStatus(task?.status))
+    && isTerminalTaskStatus(task?.status)
     && visibleAttempts.length > 0
     && isWorkflowExecutableNode(node.type);
   const retryLatest = React.useCallback(() => onRetry?.(node.id), [node.id, onRetry]);
@@ -167,8 +170,6 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
               runtimeConfig={runtimeConfig}
               canRetry={canRetry}
               retryLatest={retryLatest}
-              historyOpen={historyOpen}
-              onHistoryToggle={setHistoryOpen}
             />
           ) : null}
         </div>
@@ -186,7 +187,7 @@ function NodeDetail({ node, task, run, status, attention = null, onClose, onResi
   );
 }
 
-function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPTY_OPTIONS, onOpenConfig = null, providerOptions = [], nodeRuntimeConfigs = {}, onNodeRuntimeConfigChange, configReadOnly = false, annotationDrafts = [], onSaveAnnotation, onAnnotationError }) {
+function WorkflowCanvas({ workflow, task, composer, annotationControllerRef, onRetry, agentOptions = EMPTY_OPTIONS, onOpenConfig = null, providerOptions = [], nodeRuntimeConfigs = {}, onNodeRuntimeConfigChange, configReadOnly = false, annotationDrafts = [], onSaveAnnotation, onAnnotationError }) {
   const controlEvents = workflowControlEvents(task?.eventLog);
   const [pendingInputs, setPendingInputs] = React.useState([]);
   const [pendingApprovals, setPendingApprovals] = React.useState([]);
@@ -198,6 +199,8 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
   const attentionKey = attention?.key || '';
   const previousAttentionRef = React.useRef('');
   const [selectedNodeId, setSelectedNodeId] = React.useState('');
+  const manualDetailRef = React.useRef(false);
+  const chooseDetail = (id) => { manualDetailRef.current = true; setSelectedNodeId(id); };
   const previousSelectionRef = React.useRef({ nodeId: '', status: 'pending' });
   const followApprovalBranchRef = React.useRef('');
   const [detailWidth, setDetailWidth] = React.useState(520);
@@ -223,15 +226,21 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
   );
   const workflowKey = `${displayWorkflowId}:${workflow?.version || ''}`;
   // 排布与画布宽度无关（列数是常数）：同一张图在配置页和运行页永远排出同一个形状。
+  const visibleEdges = React.useMemo(() => workflowVisibleEdges(workflow), [workflow]);
   const layout = React.useMemo(
-    () => layoutRuntimeWorkflow(workflow?.nodes, workflow?.edges),
-    [workflow?.edges, workflow?.nodes],
+    () => layoutRuntimeWorkflow(workflow?.nodes, visibleEdges),
+    [visibleEdges, workflow?.nodes],
   );
   // 排布只从配置页保存的位置来（见 workflowArrangementPositions）；这里是只读视图，
   // 节点不可拖：改图一律在配置页做，运行页只负责显示。
   const canvasPreferences = useWorkflowCanvasPreferences(workflow?.workflow_id || workflow?.id);
   const routes = React.useMemo(() => canvasPreferences.routes || {}, [canvasPreferences.routes]);
-  const arrangement = React.useMemo(() => workflowArrangementPositions(workflow), [workflow]);
+  const [arrangementRevision, setArrangementRevision] = React.useState(0);
+  const arrangement = React.useMemo(() => {
+    // Dragging changes local storage without changing the workflow definition.
+    void arrangementRevision;
+    return workflowArrangementPositions(workflow);
+  }, [workflow, arrangementRevision]);
   const layoutKey = `${layout.columns}:${layout.rowCount}:${canvasWidth}`;
   const executedNodeIds = React.useMemo(() => new Set([
     ...Object.keys(run?.nodes || {}),
@@ -252,7 +261,8 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     [layout, workflow?.edges],
   );
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
+    manualDetailRef.current = false;
     setSelectedNodeId('');
     followApprovalBranchRef.current = '';
     previousSelectionRef.current = { nodeId: '', status: 'pending' };
@@ -276,13 +286,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     const id = String(node.id);
     const layoutMeta = layout.meta.get(id);
     const runtimeDetailAvailable = canOpenNodeDetail(node);
-    const ownRoute = configs[node.id] || {};
-    const routeSource = node.type === 'llm' && node.runtime_config_from
-      ? workflow.nodes.find((item) => item.id === node.runtime_config_from) : null;
-    const inherited = routeSource && !ownRoute.llm_config_id && !ownRoute.provider
-      ? workflowNodeRuntimeConfig(routeSource, task, configs, configReadOnly, providers) : null;
-    const config = workflowNodeRuntimeConfig(node, task, inherited
-      ? { ...configs, [node.id]: { ...inherited, ...ownRoute, agent_id: undefined } } : configs, configReadOnly, providers);
+    const config = workflowDisplayConfig(node, { nodes: workflow?.nodes || [] }, task, configs, configReadOnly, providers);
     const provider = providers.find((item) => item.id === config.llm_config_id)?.provider;
     const runtimeNode = node.type === 'agent' ? { ...node, agent_id: config.agent_id } : node;
     const agentName = workflowAgentName(config.agent_id, task, agentOptions);
@@ -315,6 +319,17 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     () => new Map((workflow?.nodes || []).map((node) => [String(node.id), workflowRuntimeNodeStatus(node, run, task, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)])),
     [activeEventNodeIds, eventNodeOutcomes, run, task, traversedLoopNodeIds, workflow?.nodes],
   );
+  const autoDetailTarget = runtimeDetailTarget({
+    status: workflowRuntimeDisplayStatus(task),
+    // A terminal summary already identifies End; do not wait for run hydration.
+    nodes: taskWorkflowId === displayWorkflowId ? workflow?.nodes : [],
+    statuses: statusById, currentNodeId: run?.current_node_id, canOpen: canOpenNodeDetail,
+  });
+  React.useLayoutEffect(() => {
+    if (autoDetailTarget && !attentionKey && !manualDetailRef.current) {
+      setSelectedNodeId(autoDetailTarget);
+    }
+  }, [autoDetailTarget, attentionKey, workflowKey, task?.taskId]);
   const selectedTransitions = React.useMemo(() => controlEvents
     .filter((event) => event.type === 'workflow_edge_selected')
     .map((event) => ({
@@ -327,7 +342,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
     [selectedTransitions],
   );
   const latestTransition = selectedTransitions.at(-1) || null;
-  const edges = React.useMemo(() => (workflow?.edges || []).map((edge, index) => {
+  const edges = React.useMemo(() => visibleEdges.map((edge, index) => {
     const source = String(edge.from || edge.source || '');
     const target = String(edge.to || edge.target || '');
     const targetStatus = statusById.get(target);
@@ -359,7 +374,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
       ...appearance,
       ...workflowRouteHandles(edge, routes),
     };
-  }), [routes, latestTransition, layout, nodeById, statusById, traversedEdgeKeys, workflow?.edges]);
+  }), [routes, latestTransition, layout, nodeById, statusById, traversedEdgeKeys, visibleEdges]);
   // React Flow's transient selection must not diverge from the detail panel on stream updates/close.
   const displayNodes = React.useMemo(() => nodes.map((node) => ({
     ...node,
@@ -368,12 +383,11 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
   const selectedNodeCandidate = selectedNodeId ? nodeById.get(selectedNodeId) || null : null;
   const sourceNode = selectedNodeCandidate?.type === 'llm' && selectedNodeCandidate.runtime_config_from
     ? nodeById.get(selectedNodeCandidate.runtime_config_from) : null;
+  const selectedConfigReadOnly = statusById.get(selectedNodeId) === 'running';
   const ownConfig = nodeRuntimeConfigs[selectedNodeId] || {};
   const inheritsRoute = Boolean(sourceNode && !ownConfig.llm_config_id && !ownConfig.provider);
-  const inheritedRoute = inheritsRoute ? workflowNodeRuntimeConfig(sourceNode, task, nodeRuntimeConfigs, configReadOnly, providerOptions) : {};
   const selectedRuntimeConfig = selectedNodeCandidate
-    ? workflowNodeRuntimeConfig(selectedNodeCandidate, task, { ...nodeRuntimeConfigs,
-      ...(inheritsRoute ? { [selectedNodeId]: { ...inheritedRoute, ...ownConfig, agent_id: undefined } } : {}) }, configReadOnly, providerOptions) : {};
+    ? workflowDisplayConfig(selectedNodeCandidate, workflow, task, nodeRuntimeConfigs, selectedConfigReadOnly, providerOptions) : {};
   const selectedNode = canOpenNodeDetail(selectedNodeCandidate)
     ? selectedNodeCandidate.type === 'agent' ? { ...selectedNodeCandidate, agent_id: selectedRuntimeConfig.agent_id } : selectedNodeCandidate
     : null;
@@ -487,7 +501,14 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
           onNodesChange={onNodesChange}
           minZoom={0.3}
           maxZoom={1.4}
-          nodesDraggable={false}
+          nodesDraggable
+          onNodeDragStop={(_, node, draggedNodes) => {
+            const moved = new Map([node, ...(draggedNodes || [])].map(item => [String(item.id), item.position]));
+            const positions = nodes.map(item => ({ id: item.id, position: moved.get(String(item.id)) || item.position }));
+            saveWorkflowLayout(workflow?.workflow_id || workflow?.id, Object.fromEntries(positions.map(item => [item.id, item.position])));
+            setArrangementRevision(value => value + 1);
+            setNodes(current => current.map(item => ({ ...item, position: moved.get(String(item.id)) || item.position })));
+          }}
           nodesConnectable={false}
           deleteKeyCode={null}
           fitView
@@ -497,18 +518,21 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
           }}
           onNodeClick={(_, flowNode) => {
             const node = nodeById.get(flowNode.id);
-            setSelectedNodeId(canOpenNodeDetail(node) ? flowNode.id : '');
+            chooseDetail(canOpenNodeDetail(node) ? flowNode.id : '');
           }}
-          onPaneClick={() => setSelectedNodeId('')}
+          onPaneClick={() => chooseDetail('')}
           proOptions={{ hideAttribution: true }}
         >
-          {selectedNode ? <RuntimeSelectionLink nodeId={selectedNodeId} /> : null}
+          {selectedNode ? <RuntimeSelectionLink key={selectedNodeId} nodeId={selectedNodeId} /> : null}
           <Background gap={30} size={1.2} color="rgba(150, 184, 240, 0.07)" />
           <WorkflowCanvasControls workflowId={workflow?.workflow_id || workflow?.id} />
           <FitWorkflow workflowKey={workflowKey} detailOpen={Boolean(selectedNode)} layoutKey={layoutKey} />
         </ReactFlow>
         <div className="workflow-composer-dock">{composer}</div>
       </main>
+      {onSaveAnnotation ? <MessageAnnotations ref={annotationControllerRef} listRef={layoutRef}
+        drafts={annotationDrafts} items={annotationDrafts.map((item, index) => ({ item, index: index + 1, key: item.id }))}
+        onSave={onSaveAnnotation} onError={onAnnotationError || (() => {})} /> : null}
       {selectedNode ? (
         <NodeDetail
           key={`${task?.taskId || ''}:${selectedNode.id}`}
@@ -517,7 +541,7 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
           run={run}
           status={selectedStatus}
           attention={selectedNodeId === attentionNodeId ? attention : null}
-          onClose={() => setSelectedNodeId('')}
+          onClose={() => chooseDetail('')}
           onResize={resizeDetail}
           onResizeBy={resizeDetailBy}
           onRetry={task ? onRetry : null}
@@ -528,9 +552,9 @@ function WorkflowCanvas({ workflow, task, composer, onRetry, agentOptions = EMPT
           inheritedConfig={inheritsRoute}
           onRuntimeConfigChange={(config) => onNodeRuntimeConfigChange?.(selectedNode.id, config)}
           annotationDrafts={annotationDrafts}
-          onSaveAnnotation={onSaveAnnotation}
+          onSaveAnnotation={undefined}
           onAnnotationError={onAnnotationError}
-          configReadOnly={configReadOnly || !onNodeRuntimeConfigChange}
+          configReadOnly={selectedStatus === 'running' || !onNodeRuntimeConfigChange}
         />
       ) : null}
     </div>
