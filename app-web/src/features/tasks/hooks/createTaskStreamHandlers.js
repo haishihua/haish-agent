@@ -321,11 +321,11 @@ export function createTaskStreamHandlers(ctx) {
       });
     },
     executeQuest,
-    executeWorkflowNodeRerun: (task, nodeId, runConfig) => {
+    executeWorkflowNodeRerun: (task, nodeId, runConfig, onAccepted) => {
       return executeQuest(
         { ...task, id: task?.taskId || task?.id },
         task?.conversationId || task?.conversation_id,
-        { rerunNodeId: nodeId, runConfig },
+        { rerunNodeId: nodeId, runConfig, onAccepted },
       );
     },
   };

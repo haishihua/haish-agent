@@ -16,9 +16,9 @@ import { usePerConversationDraft } from './usePerConversationDraft.js';
  * 是多余的（值不从这里取），保持与改动前一致的多一次订阅，不引入行为差异。
  */
 export function useComposerDraft({
-  conversationId, scopeId, draftProp, onDraftChangeProp,
+  conversationId, draftScopeId, scopeId, draftProp, onDraftChangeProp,
 }) {
-  const store = usePerConversationDraft(conversationId || scopeId);
+  const store = usePerConversationDraft(draftScopeId || conversationId || scopeId);
   // 以 draftProp 是否存在判定受控，而不是以「值是否为空」：传空串是合法的受控值。
   const controlled = draftProp !== undefined;
   return {

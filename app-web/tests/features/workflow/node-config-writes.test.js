@@ -15,11 +15,11 @@ test('immediate execution waits for saves and sees the newest multi-node selecti
   assert.deepEqual(await execution, { a: { agent_id: 'new' }, b: { model_id: 'model' } });
   assert.deepEqual(calls, ['a', 'b']);
 });
-test('a failed node blocks execution even after another node saves, correction unblocks it', async () => {
-  const queue = createNodeConfigWrites({});
-  await assert.rejects(queue.change('a', {}, () => { throw Error('save failed'); }));
+test('a failed edit restores the confirmed model and does not permanently block execution', async () => {
+  const queue = createNodeConfigWrites({ a: { model_id: 'confirmed' } });
+  await assert.rejects(queue.change('a', { model_id: 'rejected' }, () => { throw Error('save failed'); }));
   await queue.change('b', {}, () => {});
-  await assert.rejects(queue.flush(), /save failed/);
+  assert.equal((await queue.flush()).a.model_id, 'confirmed');
   await queue.change('a', { agent_id: 'corrected' }, () => {});
   assert.equal((await queue.flush()).a.agent_id, 'corrected');
 });

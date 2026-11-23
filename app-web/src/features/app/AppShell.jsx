@@ -717,19 +717,20 @@ export function AppShell() {
   const botNodeConfigs = nodeConfigSelection.configs;
   useActiveTaskSanityReset({
     busy, currentConversationActive, runtimeCurrentTask,
-    activeTaskId: taskRuntimeState.activeTaskId, runtimeApiRef,
+    activeTaskId: taskRuntimeState.activeTaskId, submission: taskRuntimeState.submission, runtimeApiRef,
   });
   useEffect(() => {
     if (!busy || currentConversationActive) return;
     const activeTaskId = taskRuntimeState.activeTaskId;
     if (activeTaskId) return;
+    if (taskRuntimeState.submission) return;
     if (taskRuntimeState.pendingTask && isTaskActuallyActive(taskRuntimeState.pendingTask)) return;
     // Stale local runtime guard: if no task is actually active in the current
     // conversation, a leftover `busy` flag should not keep the composer locked.
     runtimeApiRef.current.setRuntimeBusy?.(false);
     runtimeApiRef.current.setRuntimeFetchController?.(null);
     runtimeApiRef.current.setRuntimeActiveTaskId?.(null);
-  }, [busy, currentConversationActive, taskRuntimeState.activeTaskId, taskRuntimeState.pendingTask]);
+  }, [busy, currentConversationActive, taskRuntimeState.activeTaskId, taskRuntimeState.pendingTask, taskRuntimeState.submission]);
   const activeTaskText = useMemo(() => activeTaskTextFor(taskRuntimeState), [taskRuntimeState]);
   // Older turns keep their summary until the user scrolls up to them, so the
   // conversation no longer replays every task event log on open.

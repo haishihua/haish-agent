@@ -79,7 +79,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
     .filter((task) => task?.runtimeHydrated && task?.annotations?.length)
     .map((task) => ({ role: 'user', messageId: task.taskId, annotations: task.annotations })), [taskRuntimeState]);
   const nodeConfigActions = createNodeConfigActions({ selection: nodeConfigSelection, task: currentWorkflowTask,
-    workflow: selectedWorkflow, providers: llmProviderOptions, rerun: executeWorkflowNodeRerun, deploy: handleDeploy,
+    workflow: selectedWorkflow, providers: llmProviderOptions, rerun: (task, nodeId, config) => executeWorkflowNodeRerun(task, nodeId, config, () => setViewedWorkflowTask(null)), deploy: handleDeploy,
     saveNode: async (nodeId, config) => {
       if (!currentWorkflowTask?.taskId) return;
       const response = await apiFetch(`${API_BASE}/api/tasks/${encodeURIComponent(currentWorkflowTask.taskId)}/node-configs/${encodeURIComponent(nodeId)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
@@ -269,7 +269,6 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                     }, configReadOnly: currentConversationRunning || submitPending }}
                     onRetry={(nodeId) => {
                       if (!currentWorkflowTask) return;
-                      setViewedWorkflowTask(null);
                       nodeConfigActions.retry(nodeId).catch((error) => {
                         console.error('workflow node rerun failed', error);
                         showToast('error', String(error?.message || error));
@@ -277,6 +276,7 @@ export function AppShellView({ schedules, chrome, settings, sidebar, chat, workf
                     }}
                     composer={<>{draftProjectSelector}<ChatComposer
                       conversationId={conversationId}
+                      draftScopeId={currentWorkflowTask?.taskId ? `workflow:${currentWorkflowTask.taskId}` : undefined}
                       approvalDraft={Boolean(draftConversationRef.current && !draftConversationRef.current.serverCreated)}
                       ensureApprovalConversation={ensureServerConversationForActiveDraft}
                       executionMode="bot"

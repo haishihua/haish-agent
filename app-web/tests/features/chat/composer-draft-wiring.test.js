@@ -52,6 +52,19 @@ test('未受控：切会话各持一份，互换后不串写', () => {
   assert.equal(h.useComposerDraft({ conversationId: 'b', scopeId: 'b' }).draft, 'from B');
 });
 
+test('Workflow：同一会话里的任务各自保存草稿，不影响会话草稿', () => {
+  const h = createHarness();
+  const chat = () => h.useComposerDraft({ conversationId: 'shared', scopeId: 'shared' });
+  const workflow = (taskId) => h.useComposerDraft({ conversationId: 'shared', scopeId: 'shared', draftScopeId: `workflow:${taskId}` });
+  chat().onDraftChange('chat draft');
+  workflow('a').onDraftChange('task A');
+  assert.equal(workflow('b').draft, '');
+  workflow('b').onDraftChange('task B');
+  assert.equal(workflow('a').draft, 'task A');
+  assert.equal(workflow('b').draft, 'task B');
+  assert.equal(chat().draft, 'chat draft');
+});
+
 test('未受控：conversationId 为空时用 scopeId 当键', () => {
   const h = createHarness();
   h.useComposerDraft({ conversationId: '', scopeId: 'project-1' }).onDraftChange('scoped');

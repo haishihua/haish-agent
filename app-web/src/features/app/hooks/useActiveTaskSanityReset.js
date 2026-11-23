@@ -12,12 +12,15 @@ export function useActiveTaskSanityReset({
   currentConversationActive,
   runtimeCurrentTask,
   activeTaskId,
+  submission,
   runtimeApiRef,
 }) {
   useEffect(() => {
+    if (submission) return;
     if (!activeTaskId || !runtimeCurrentTask) return;
     if (isTaskActuallyActive(runtimeCurrentTask)) return;
     if (!busy && !currentConversationActive) return;
+    runtimeApiRef.current.setRuntimeActiveRunId?.(null);
     runtimeApiRef.current.setRuntimeBusy?.(false);
     runtimeApiRef.current.setRuntimeActiveTaskId?.(null);
     runtimeApiRef.current.setRuntimeFetchController?.(null);
@@ -26,5 +29,5 @@ export function useActiveTaskSanityReset({
         ? { ...state, activeTaskId: null }
         : state
     ));
-  }, [busy, currentConversationActive, runtimeCurrentTask, activeTaskId, runtimeApiRef]);
+  }, [busy, currentConversationActive, runtimeCurrentTask, activeTaskId, submission, runtimeApiRef]);
 }

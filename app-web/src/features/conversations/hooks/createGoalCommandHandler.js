@@ -91,10 +91,18 @@ export function createGoalCommandHandler(ctx) {
         }),
       });
       if (!isCurrent()) return false;
+      if (hasTask) {
+        request.targetConversationId = detail.conversation_id;
+        const accepted = await startDeploy(request, detail.conversation_id, detail);
+        if (accepted === false) return false;
+        onAccepted?.();
+        if (!isCurrent()) return true;
+      }
       modeLocationRef.current.chat = { projectId: source.id, conversationId: sourceId };
       modeLocationRef.current.workflow = { projectId: target.project_id, conversationId: detail.conversation_id };
       // Keep the source draft until the server confirms task creation.
-      await activateConversationDetail(detail, { restoreLatest: false, activationSeq });
+      await activateConversationDetail(detail, { restoreLatest: hasTask, activationSeq });
+      ctx.flushRuntimeTasksToWorkspace?.(detail.conversation_id);
       if (!isConversationActivationCurrent(activationSeq)) return false;
       viewModeRef.current = 'workflow';
       setViewMode('workflow');
@@ -103,12 +111,6 @@ export function createGoalCommandHandler(ctx) {
         ...state, projects: state.projects.map((project) => project.id === target.project_id
           ? { ...project, userExpanded: true, workflowTasksExpanded: true } : project),
       }));
-      if (hasTask) {
-        request.targetConversationId = detail.conversation_id;
-        const accepted = await startDeploy(request, detail.conversation_id, detail);
-        if (accepted === false) return false;
-        onAccepted?.();
-      }
       return true;
     } catch (error) {
       showToast('error', String(error?.message || error));

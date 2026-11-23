@@ -21,7 +21,13 @@ export function useNodeRuntimeConfigs(storageKey, workflow, savedConfigs, taskId
     setState({ key: scope, configs: next });
     setLatest({ key, configs: next });
     try { window.localStorage.setItem(key, JSON.stringify(next)); } catch { /* Session selection remains usable. */ }
-    return operation;
+    return operation.catch(error => {
+      const reverted = nodeRuntimeConfigsForWorkflow(workflow, writes.read(), providerOptions);
+      setState(current => current.key === scope ? { key: scope, configs: reverted } : current);
+      setLatest(current => current.key === key ? { key, configs: reverted } : current);
+      try { window.localStorage.setItem(key, JSON.stringify(reverted)); } catch { /* Keep session state. */ }
+      throw error;
+    });
   };
   const restore = (next, workflowId, targetStorageKey = storageKey) => {
     const targetKey = workflowId ? `${targetStorageKey}:nodes:${workflowId}` : key;

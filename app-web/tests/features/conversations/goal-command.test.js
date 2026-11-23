@@ -106,7 +106,7 @@ test('existing Workflow project is matched by path, not its renamed title, and r
   assert.equal(request.targetConversationId, id);
   assert.equal(id, detail.conversation_id);
   assert.deepEqual(request.contextTasks, [], 'native Chat context is captured on the server, not replaced by a task report');
-  assert.deepEqual(h.events, ['activate', 'workflow', GOAL_WORKFLOW_ID, 'deploy']);
+  assert.deepEqual(h.events, ['deploy', 'activate', 'workflow', GOAL_WORKFLOW_ID]);
   assert.deepEqual(h.preparing, [true, false], 'the loading page is shown for preparation and cleared after the task handoff');
   assert.equal(h.ctx.modeLocationRef.current.chat.projectId, 'chat-project');
   const config = h.calls.find((call) => call.method === 'PUT').body;

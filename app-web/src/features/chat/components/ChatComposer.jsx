@@ -58,6 +58,7 @@ const CHAT_IMAGE_ACCEPTED_MIME = new Set([
 
 export function ChatComposer({
   scopeId,
+  draftScopeId,
   draft: draftProp,
   onDraftChange: onDraftChangeProp,
   onSend,
@@ -122,10 +123,9 @@ export function ChatComposer({
   const resolvedAgentOptions = Array.isArray(agentOptions) && agentOptions.length > 0 ? agentOptions : DEFAULT_AGENT_OPTIONS;
   const resolvedDefaultAgentId = defaultAgentId || resolvedAgentOptions[0]?.id || DEFAULT_AGENT_OPTIONS[0].id;
   // 未受控时（调用方不传 draft）直接订阅草稿 store：击键只重渲染 composer，
-  // 不再沿着 AppShell 的 React state 一路重渲染整个 shell。键与 skillScopeId
-  // 同构——draft 会话的 scope 按项目固定，但草稿文本跟着会话 id 走（materialize
-  // 时 rekey），所以订阅键优先 conversationId。
-  const composerDraft = useComposerDraft({ conversationId, scopeId, draftProp, onDraftChangeProp });
+  // Chat 草稿跟会话走（materialize 时 rekey），Workflow 草稿优先跟任务走。
+  const inputScopeId = draftScopeId || scopeId;
+  const composerDraft = useComposerDraft({ conversationId, draftScopeId, scopeId, draftProp, onDraftChangeProp });
   const [runtimeInputPending, setRuntimeInputPending] = React.useState(false);
   const [goalPending, setGoalPending] = React.useState(false);
   const goalPendingRef = React.useRef(false);
@@ -153,7 +153,7 @@ export function ChatComposer({
   const selectedSkillNameRef = React.useRef('');
   const skillSelectionPendingRef = React.useRef(false);
   const { draft, setDraft, navigate: navigateHistory, restore: restoreHistory } = useComposerHistory({
-    scopeId, draft: composerDraft.draft,
+    scopeId: inputScopeId, draft: composerDraft.draft,
     onDraftChange: composerDraft.onDraftChange, history,
   });
   const currentDraftRef = React.useRef(draft);
@@ -161,8 +161,8 @@ export function ChatComposer({
   const localInputRef = React.useRef(null);
   const inputRef = inputRefProp || localInputRef;
   const suppressSubmitUntilRef = React.useRef(0);
-  const submissionOwnerRef = React.useRef({ scopeId });
-  if (submissionOwnerRef.current.scopeId !== scopeId) submissionOwnerRef.current = { scopeId };
+  const submissionOwnerRef = React.useRef({ scopeId: inputScopeId });
+  if (submissionOwnerRef.current.scopeId !== inputScopeId) submissionOwnerRef.current = { scopeId: inputScopeId };
   const submissionOwner = submissionOwnerRef.current;
   const submissionRef = React.useRef(null);
   const [waitingOwner, setWaitingOwner] = React.useState(null);
@@ -712,7 +712,7 @@ export function ChatComposer({
         {beforeInput ? <div className="chat-composer-before-input">{beforeInput}</div> : null}
         <div className="chat-composer-input-row">
         <LexicalComposerInput
-          key={scopeId}
+          key={inputScopeId}
           ref={inputRef}
           value={draft}
           selectedSkill={selectedSkill}
