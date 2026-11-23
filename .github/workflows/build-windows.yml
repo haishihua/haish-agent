@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: haishihua/haish-agent-core
-          ref: 13b841b61d51d36a72c19cea3205902468fe05ea # Matched by prepare-windows-core.py
+          ref: 09ecf0ae893a9f54c10d01d08e070a618b95943b # Matched by prepare-windows-core.py
           path: core-runtime
           token: ${{ secrets.HAISH_PAT }}
           persist-credentials: false

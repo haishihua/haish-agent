@@ -5,7 +5,7 @@ import subprocess
 import tarfile
 import sys
 
-CORE_REF = '13b841b61d51d36a72c19cea3205902468fe05ea'
+CORE_REF = '09ecf0ae893a9f54c10d01d08e070a618b95943b'
 
 LOCK_MODULE = '''from contextlib import contextmanager
 import os
@@ -74,7 +74,7 @@ def prepare(source: Path, staged: Path) -> None:
     # fsync and atomic replace, and retain directory fsync where supported.
     for target in ('path.parent', 'root'):
         opening = f'os.open(str({target}), os.O_DIRECTORY)'
-        replace('app/session_store.py', opening,
+        replace('app/session_parts/core.py', opening,
                 f'{opening} if hasattr(os, "O_DIRECTORY") else None')
     # The existing shell approval parser is Bash-specific. Do not route its
     # approvals into cmd.exe or PowerShell; disable execution for this preview.
