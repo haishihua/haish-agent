@@ -70,6 +70,12 @@ def prepare(source: Path, staged: Path) -> None:
 ''', '''        with lock_path.open("a+b") as handle, file_lock(handle, shared=shared):
             yield
 ''')
+    # Windows cannot open a directory for fsync via os.open. Keep the file
+    # fsync and atomic replace, and retain directory fsync where supported.
+    for target in ('path.parent', 'root'):
+        opening = f'os.open(str({target}), os.O_DIRECTORY)'
+        replace('app/session_store.py', opening,
+                f'{opening} if hasattr(os, "O_DIRECTORY") else None')
     # The existing shell approval parser is Bash-specific. Do not route its
     # approvals into cmd.exe or PowerShell; disable execution for this preview.
     replace('tool/terminal.py', 'import pty\n', '')
