@@ -64,7 +64,7 @@ export async function smokeRuntime(executable, { timeoutMs = 120_000, logPath } 
       const response = await fetch(`http://127.0.0.1:${port}${url}`, {
         signal: AbortSignal.timeout(Math.max(1, Math.min(3_000, deadline - Date.now()))),
       });
-      if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}: ${(await response.text()).slice(0, 2000)}`);
       return response.json();
     };
     let ready = false;
