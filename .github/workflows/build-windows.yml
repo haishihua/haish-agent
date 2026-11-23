@@ -1,0 +1,53 @@
+name: Build Windows preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/windows-client]
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      HAISH_RUNTIME_SOURCE: ${{ github.workspace }}/core-runtime
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          architecture: x64
+      - uses: actions/checkout@v5
+        with:
+          repository: haishihua/haish-agent-core
+          ref: 13b841b61d51d36a72c19cea3205902468fe05ea # Matched by prepare-windows-core.py
+          path: core-runtime
+          token: ${{ secrets.HAISH_PAT }}
+          persist-credentials: false
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Build unsigned NSIS preview (includes local runtime smoke check)
+        run: npm run dist:win
+      - name: Smoke-check the bundled runtime (no installer or UI E2E)
+        run: node scripts/smoke-runtime.mjs release/win-unpacked/resources/haish-agent-core/bin/haish-runtime/haish-runtime.exe build/runtime/packaged-smoke.log
+      - name: Upload Windows installer to this run only
+        uses: actions/upload-artifact@v4
+        with:
+          name: Haish-windows-x64-preview
+          path: release/Haish-*-win-x64-setup.exe
+          if-no-files-found: error
+      - name: Upload runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Haish-windows-runtime-log
+          path: build/runtime/*-smoke.log
+          if-no-files-found: ignore

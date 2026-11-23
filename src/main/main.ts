@@ -211,6 +211,7 @@ function registerWebProtocol(): void {
 }
 
 async function remoteAdapterJson<T>(pathname: string, init?: RequestInit): Promise<T> {
+  if (process.platform === 'win32') throw new Error('Remote Control is not available in the Windows preview.');
   await ensureRemoteAdapter(runtimePaths());
   let response: Response;
   try {
@@ -299,8 +300,10 @@ function createWindow(): void {
     transparent: false,
     hasShadow: true,
     roundedCorners: true,
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 22, y: 22 },
+    ...(process.platform === 'darwin' ? {
+      titleBarStyle: 'hiddenInset' as const,
+      trafficLightPosition: { x: 22, y: 22 },
+    } : {}),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -522,6 +525,7 @@ ipcMain.handle('remote-control:get-settings', (): RemoteSettings | null => {
   return readRemoteSettings(app.getPath('userData'));
 });
 ipcMain.handle('remote-control:save-settings', async (_event, settings: RemoteSettings): Promise<RemoteAdapterState> => {
+  if (process.platform === 'win32') throw new Error('Remote Control is not available in the Windows preview.');
   const saved = writeRemoteSettings(app.getPath('userData'), settings);
   return restartRemoteAdapter(runtimePaths(), saved);
 });
@@ -631,9 +635,11 @@ app
       console.error('Failed to connect to local Haish runtime:', error);
       scheduleRealtimeReconnect();
     });
-    ensureRemoteAdapter(runtimePaths()).catch((error) => {
-      console.error('Failed to start the remote adapter:', error);
-    });
+    if (process.platform !== 'win32') {
+      ensureRemoteAdapter(runtimePaths()).catch((error) => {
+        console.error('Failed to start the remote adapter:', error);
+      });
+    }
     registerWebProtocol();
     createWindow();
     app.on('activate', () => {

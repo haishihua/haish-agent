@@ -115,7 +115,7 @@ export default defineConfig(({ mode }) => {
     // Open desktop windows may still import chunks from an earlier local build.
     // Only clean the isolated release output, never the live renderer directory.
     emptyOutDir: releaseBuild,
-    sourcemap: process.env.HAISH_DEV_WEB_WATCH === '1',
+    sourcemap: mode === 'desktop-watch' || process.env.HAISH_DEV_WEB_WATCH === '1',
     target: 'es2022',
     cssCodeSplit: false,
     assetsInlineLimit: 0,

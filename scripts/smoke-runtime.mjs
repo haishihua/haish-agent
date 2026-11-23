@@ -37,6 +37,7 @@ export async function smokeRuntime(executable, { timeoutMs = 120_000, logPath } 
       '--cors-origin', 'haish://app',
     ], {
       cwd: temp,
+      windowsHide: true,
       // No developer credentials, PYTHONPATH, runtime overrides or real user state.
       env: {
         PATH: process.env.PATH || '/usr/bin:/bin', HOME: home, TMPDIR: temp,
@@ -44,6 +45,10 @@ export async function smokeRuntime(executable, { timeoutMs = 120_000, logPath } 
         HAISH_APP_HOME: temp, HAISH_APP_WORKDIR: temp,
         HAISH_ENV_PATH: envFile, HAISH_MCP_CONFIG: mcpFile,
         XDG_CONFIG_HOME: home, XDG_CACHE_HOME: home, XDG_DATA_HOME: home,
+        ...(process.platform === 'win32' ? {
+          SystemRoot: process.env.SystemRoot,
+          USERPROFILE: home, APPDATA: home, LOCALAPPDATA: home, TEMP: temp, TMP: temp,
+        } : {}),
       },
     });
     child.stdout.on('data', capture);

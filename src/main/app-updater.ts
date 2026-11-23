@@ -21,6 +21,10 @@ const INSTALL_WATCHDOG_MS = 20_000;
  * (e.g. Electron.app → Haish.app for a custom dock icon). That still lives under
  * `node_modules/electron/dist` and is not a real release install.
  */
+function supportsAppUpdates(): boolean {
+  return process.platform !== 'win32' && isRealPackagedBuild();
+}
+
 function isRealPackagedBuild(): boolean {
   if (!app.isPackaged) return false;
   if (process.env.HAISH_DEV_MODE === '1') return false;
@@ -87,7 +91,7 @@ function describeError(error: unknown): string {
 function unsupportedState(): AppUpdateState {
   return setState({
     status: 'unsupported',
-    message: 'Only in installed builds',
+    message: process.platform === 'win32' ? 'Updates disabled in Windows preview' : 'Only in installed builds',
     canInstall: false,
   });
 }
@@ -102,7 +106,7 @@ export function setupAppUpdater(): void {
 
   currentState = createIdleState();
 
-  if (!isRealPackagedBuild()) {
+  if (!supportsAppUpdates()) {
     unsupportedState();
     return;
   }
@@ -191,7 +195,7 @@ export function setupAppUpdater(): void {
 }
 
 export async function checkForAppUpdates(): Promise<AppUpdateState> {
-  if (!isRealPackagedBuild()) {
+  if (!supportsAppUpdates()) {
     return unsupportedState();
   }
 
@@ -222,7 +226,7 @@ export async function checkForAppUpdates(): Promise<AppUpdateState> {
 }
 
 export async function downloadAppUpdate(): Promise<AppUpdateState> {
-  if (!isRealPackagedBuild()) {
+  if (!supportsAppUpdates()) {
     return unsupportedState();
   }
 
@@ -267,7 +271,7 @@ export async function downloadAppUpdate(): Promise<AppUpdateState> {
  * Same-version releases are intentionally ignored by electron-updater.
  */
 export async function applyLatestAppUpdate(): Promise<AppUpdateState> {
-  if (!isRealPackagedBuild()) {
+  if (!supportsAppUpdates()) {
     return unsupportedState();
   }
 
@@ -498,6 +502,7 @@ function manualInstallAndRelaunch(): void {
 }
 
 export function installAppUpdate(): AppUpdateState {
+  if (process.platform === 'win32') return unsupportedState();
   if (!currentState.canInstall && currentState.status !== 'downloaded') {
     return currentState;
   }

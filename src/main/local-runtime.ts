@@ -28,7 +28,8 @@ const PROJECT_ROOT = path.resolve(__dirname, '../..');
 
 const DEFAULT_RUNTIME_REPO = '/Users/zhanruitao/py-project/haish-agent-core';
 const BUNDLED_RUNTIME_DIR = 'haish-agent-core';
-const BUNDLED_RUNTIME_EXECUTABLE = path.join('bin', 'haish-runtime', 'haish-runtime');
+const WINDOWS = process.platform === 'win32';
+const BUNDLED_RUNTIME_EXECUTABLE = path.join('bin', 'haish-runtime', WINDOWS ? 'haish-runtime.exe' : 'haish-runtime');
 // Local runtime startup measured 30-40s on a clean machine (heavy Python
 // import graph + session/state deserialization from the workdir). Doubled
 // from 60s to give headroom under load / large saved state, so we don't
@@ -62,6 +63,10 @@ function choosePython(runtimeRepo: string): string {
   if (process.env.HAISH_LOCAL_RUNTIME_PYTHON) {
     return process.env.HAISH_LOCAL_RUNTIME_PYTHON;
   }
+  if (WINDOWS) {
+    const venvPython = path.join(runtimeRepo, '.venv', 'Scripts', 'python.exe');
+    return fs.existsSync(venvPython) ? venvPython : 'python';
+  }
   const candidates = [
     path.join(runtimeRepo, '.venv/bin/python3'),
     path.join(runtimeRepo, '.venv/bin/python'),
@@ -77,11 +82,12 @@ function choosePython(runtimeRepo: string): string {
   return 'python3';
 }
 
-function chooseRuntimeCommand(runtimeRepo: string): { command: string; argsPrefix: string[] } {
+function chooseRuntimeCommand(runtimeRepo: string, isPackaged: boolean): { command: string; argsPrefix: string[] } {
   const bundledRuntimeExecutable = path.join(runtimeRepo, BUNDLED_RUNTIME_EXECUTABLE);
   if (fs.existsSync(bundledRuntimeExecutable)) {
     return { command: bundledRuntimeExecutable, argsPrefix: [] };
   }
+  if (isPackaged) throw new Error(`Bundled runtime executable missing: ${bundledRuntimeExecutable}`);
   return { command: choosePython(runtimeRepo), argsPrefix: ['-m', 'haish_agent_core.app.web'] };
 }
 
@@ -91,9 +97,7 @@ function runtimeRepoPath(paths: RuntimePaths): string {
     return process.env.HAISH_LOCAL_RUNTIME_CWD;
   }
   const bundledRuntime = path.join(paths.resourcesPath, BUNDLED_RUNTIME_DIR);
-  if (paths.isPackaged && fs.existsSync(bundledRuntime)) {
-    return bundledRuntime;
-  }
+  if (paths.isPackaged) return bundledRuntime;
   for (const candidate of DEV_RUNTIME_REPO_CANDIDATES) {
     if (
       fs.existsSync(path.join(candidate, 'pyproject.toml'))
@@ -365,7 +369,7 @@ export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRunti
 
   startPromise = (async () => {
     const runtimeRepo = runtimeRepoPath(paths);
-    const runtimeCommand = chooseRuntimeCommand(runtimeRepo);
+    const runtimeCommand = chooseRuntimeCommand(runtimeRepo, paths.isPackaged);
     const port = Number(process.env.HAISH_LOCAL_RUNTIME_PORT || await findFreePort());
     const workdir = runtimeWorkdir(paths.userDataPath);
     const baseUrl = `http://127.0.0.1:${port}`;
@@ -393,6 +397,7 @@ export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRunti
       {
         cwd: workdir,
         env: runtimeEnv(paths, runtimeRepo, workdir),
+        windowsHide: true,
       },
     );
 
@@ -437,7 +442,8 @@ export async function startLocalRuntime(paths: RuntimePaths): Promise<LocalRunti
       return state;
     } catch (error) {
       const message = String((error as Error)?.message || error);
-      child?.kill();
+      if (WINDOWS && child?.pid && child.exitCode === null) await stopWindowsRuntimeTree(child);
+      else child?.kill();
       if (currentWorkdir) {
         removePidRecord(currentWorkdir);
       }
@@ -461,7 +467,7 @@ export async function ensureLocalRuntime(paths: RuntimePaths): Promise<LocalRunt
   }
   // Packaged apps must start the backend bundled with their own version.
   // Reusing a healthy orphan from an older .app makes the new UI run against old code.
-  if (!paths.isPackaged) {
+  if (!paths.isPackaged && !WINDOWS) {
     const reused = await tryReuseExistingRuntime(paths);
     if (reused) {
       return reused;
@@ -474,13 +480,32 @@ export function getLocalRuntimeState(): LocalRuntimeState {
   return state;
 }
 
+async function stopWindowsRuntimeTree(proc: ChildProcessWithoutNullStreams): Promise<void> {
+  const pid = proc.pid;
+  if (!pid || proc.exitCode !== null || proc.signalCode !== null) return;
+  try {
+    const { execFile } = await import('node:child_process');
+    await new Promise<void>((resolve, reject) => {
+      execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, timeout: 5_000 },
+        (error) => error ? reject(error) : resolve());
+    });
+  } catch (error) {
+    if (!processAlive(pid)) return;
+    console.error('[local-runtime] Failed to stop Windows runtime process tree:', error);
+    proc.kill();
+  }
+}
+
 export async function stopLocalRuntime(): Promise<void> {
-  const runtimePid = child?.pid ?? state.pid;
+  const ownedChild = child;
+  const runtimePid = ownedChild?.pid ?? state.pid;
   const workdir = currentWorkdir;
   state = { ...state, status: 'stopped' };
   child = null;
   startPromise = null;
-  if (runtimePid && processAlive(runtimePid)) {
+  if (WINDOWS) {
+    if (ownedChild) await stopWindowsRuntimeTree(ownedChild);
+  } else if (runtimePid && processAlive(runtimePid)) {
     const trackedPids = runtimeProcessTree(runtimePid);
     signalProcesses(trackedPids, 'SIGTERM');
     if (!await waitForProcessTreeExit(trackedPids, SHUTDOWN_GRACE_MS)) {

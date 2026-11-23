@@ -49,17 +49,19 @@ export function TopBar({
           </div>
         </div>
         <div className="topbar-actions">
-          <PortalTooltip text="Remote Control" position="below">
-            <button
-              type="button"
-              className={`topbar-icon ${remoteControlOpen ? 'active' : ''}`}
-              aria-label="Remote Control"
-              aria-pressed={remoteControlOpen}
-              onClick={() => setRemoteControlOpen(true)}
-            >
-              <span className="ico ico-tv-monitor" aria-hidden="true" />
-            </button>
-          </PortalTooltip>
+          {window.haish?.platform !== 'win32' && (
+            <PortalTooltip text="Remote Control" position="below">
+              <button
+                type="button"
+                className={`topbar-icon ${remoteControlOpen ? 'active' : ''}`}
+                aria-label="Remote Control"
+                aria-pressed={remoteControlOpen}
+                onClick={() => setRemoteControlOpen(true)}
+              >
+                <span className="ico ico-tv-monitor" aria-hidden="true" />
+              </button>
+            </PortalTooltip>
+          )}
           <PortalTooltip text={modeHint} position="below">
             <button
               type="button"

@@ -6,10 +6,12 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const appRoot = path.resolve(__dirname, '..');
-const sourceRoot = process.env.HAISH_RUNTIME_SOURCE
+const coreCheckout = process.env.HAISH_RUNTIME_SOURCE
   ? path.resolve(process.env.HAISH_RUNTIME_SOURCE)
   : path.resolve(appRoot, '../../py-project/haish-agent-core');
 const buildRoot = path.join(appRoot, 'build', 'runtime');
+const windows = process.platform === 'win32';
+const sourceRoot = windows ? path.join(buildRoot, 'windows-core-source') : coreCheckout;
 const runtimeRoot = path.join(buildRoot, 'haish-agent-core');
 const buildVenvPath = path.join(buildRoot, '.pyinstaller-venv');
 const pyinstallerWorkPath = path.join(buildRoot, 'pyinstaller-work');
@@ -155,6 +157,11 @@ function removeSourceBuildArtifacts() {
 }
 
 function main() {
+  const python = process.env.HAISH_RUNTIME_BUILD_PYTHON || (windows ? 'python' : 'python3');
+  if (windows) {
+    fs.rmSync(sourceRoot, { recursive: true, force: true });
+    run(python, [path.join(__dirname, 'patches', 'prepare-windows-core.py'), coreCheckout, sourceRoot]);
+  }
   if (!fs.existsSync(path.join(sourceRoot, 'pyproject.toml'))) {
     throw new Error(`Runtime source is missing pyproject.toml: ${sourceRoot}`);
   }
@@ -177,12 +184,13 @@ function main() {
   // Presets are copied from the installed distribution below, so the source
   // package selected by --paths has the same reviewed data as the wheel.
 
-  const python = process.env.HAISH_RUNTIME_BUILD_PYTHON || 'python3';
   fs.rmSync(buildVenvPath, { recursive: true, force: true });
   fs.rmSync(pyinstallerWorkPath, { recursive: true, force: true });
   fs.rmSync(pyinstallerSpecPath, { recursive: true, force: true });
   run(python, ['-m', 'venv', '--copies', buildVenvPath]);
-  const venvPython = path.join(buildVenvPath, 'bin', 'python');
+  const venvPython = windows
+    ? path.join(buildVenvPath, 'Scripts', 'python.exe')
+    : path.join(buildVenvPath, 'bin', 'python');
   run(venvPython, ['-m', 'pip', 'install', '--upgrade', `pip==${runtimePipVersion}`]);
   run(venvPython, [
     '-m',
@@ -198,6 +206,10 @@ function main() {
   removeInstalledRuntimePackage(venvPython);
   run(venvPython, ['-m', 'pip', 'install', '--no-cache-dir', '--force-reinstall', '--no-deps', sourceRoot]);
   run(venvPython, ['-m', 'pip', 'check']);
+  if (windows) {
+    // Fail before freezing if the pinned core still imports Unix-only modules.
+    run(venvPython, ['-I', '-c', 'from haish_agent_core.app.web import main']);
+  }
   // --paths points PyInstaller at the copied source package, not site-packages.
   // Copy its preset data from the installed wheel (built by core's build_py).
   const installedSkillsPath = spawnSync(venvPython, ['-I', '-c',
@@ -278,7 +290,7 @@ function main() {
   }
   run(process.execPath, [
     path.join(__dirname, 'smoke-runtime.mjs'),
-    path.join(runtimeRoot, 'bin', 'haish-runtime', 'haish-runtime'),
+    path.join(runtimeRoot, 'bin', 'haish-runtime', windows ? 'haish-runtime.exe' : 'haish-runtime'),
     path.join(buildRoot, 'frozen-smoke.log'),
   ]);
   console.log(`Built and smoke-tested runtime at ${runtimeRoot}`);

@@ -10,7 +10,7 @@ from packaging.utils import canonicalize_name
 
 
 def check_dependencies(source_root: Path) -> list[str]:
-    project = tomllib.loads((source_root / "pyproject.toml").read_text())["project"]
+    project = tomllib.loads((source_root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     pending = [(raw, "app") for raw in project.get("dependencies", [])]
     pending += [(raw, "app") for raw in project["optional-dependencies"]["app"]]
     visited = set()

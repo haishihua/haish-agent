@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "npm run build:web && tsc -p tsconfig.electron.json && concurrently -k -n web,electron -c cyan,magenta \"npm:dev:web\" \"electron .\"",
     "predev": "npm run prepare:dev-bundle",
-    "dev:web": "HAISH_DEV_WEB_WATCH=1 vite build --config vite.app-web.config.ts --watch",
+    "dev:web": "vite build --config vite.app-web.config.ts --mode desktop-watch --watch",
     "dev:electron": "npm run build:web && tsc -p tsconfig.electron.json && electron .",
     "predev:electron": "npm run prepare:dev-bundle",
     "build:web": "vite build --config vite.app-web.config.ts",
@@ -27,6 +27,7 @@
     "dist:mac": "npm run check:mac-icon && npm run fetch:remote-adapter && npm run build:release && npm run build:runtime && electron-builder --mac dmg zip",
     "check:mac-release": "node scripts/check-mac-release.mjs",
     "dist:mac:release": "npm run check:mac-icon && npm run check:mac-release && npm run fetch:remote-adapter && npm run build:release && npm run build:runtime && electron-builder --mac dmg zip --config.forceCodeSigning=true",
+    "dist:win": "node -e \"if (process.platform !== 'win32' || process.arch !== 'x64') { console.error('dist:win requires Windows x64'); process.exit(1) }\" && npm run build:release && npm run build:runtime && electron-builder --win nsis --x64 --publish never",
     "release:mac": "node scripts/release-mac.mjs",
     "release:mac:unsigned": "node scripts/release-mac.mjs --unsigned",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
@@ -79,16 +80,23 @@
           "!**/*.p12",
           "!**/*.pfx"
         ]
-      },
-      {
-        "from": "build/remote-adapter",
-        "to": "remote-adapter",
-        "filter": [
-          "**/*"
-        ]
       }
     ],
+    "win": {
+      "icon": "build/icon.png",
+      "target": ["nsis"],
+      "artifactName": "Haish-${version}-win-${arch}-setup.${ext}"
+    },
+    "nsis": {
+      "perMachine": false
+    },
     "mac": {
+      "extraResources": [
+        {
+          "from": "build/remote-adapter",
+          "to": "remote-adapter"
+        }
+      ],
       "category": "public.app-category.productivity",
       "electronLanguages": [
         "en",
