@@ -26,10 +26,9 @@ on:
         type: boolean
         default: false
       runtime_ref:
-        description: "Exact macOS core commit SHA (Windows uses its compatibility pin)"
+        description: "Exact core commit SHA for both platforms"
         type: string
         required: true
-        default: "09ecf0ae893a9f54c10d01d08e070a618b95943b"
 
 permissions:
   contents: read
@@ -41,6 +40,8 @@ concurrency:
 jobs:
   windows:
     uses: ./.github/workflows/build-windows.yml
+    with:
+      runtime_ref: ${{ inputs.runtime_ref }}
     secrets:
       HAISH_PAT: ${{ secrets.HAISH_PAT }}
   macos:

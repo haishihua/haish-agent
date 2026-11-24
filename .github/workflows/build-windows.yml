@@ -1,20 +1,26 @@
-name: Build Windows preview
+name: Build Windows desktop
 
 on:
   workflow_dispatch:
+    inputs:
+      runtime_ref:
+        required: true
+        type: string
   workflow_call:
+    inputs:
+      runtime_ref:
+        required: true
+        type: string
     secrets:
       HAISH_PAT:
         required: true
-  push:
-    branches: [feat/windows-client]
 
 permissions:
   contents: read
 
 jobs:
   windows-x64:
-    runs-on: windows-2022
+    runs-on: windows-2025
     timeout-minutes: 90
     env:
       HAISH_RUNTIME_SOURCE: ${{ github.workspace }}/core-runtime
@@ -32,10 +38,15 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: haishihua/haish-agent-core
-          ref: 09ecf0ae893a9f54c10d01d08e070a618b95943b # Matched by prepare-windows-core.py
+          ref: ${{ inputs.runtime_ref }}
           path: core-runtime
           token: ${{ secrets.HAISH_PAT }}
           persist-credentials: false
+      - name: Run Windows native runtime contracts
+        working-directory: core-runtime
+        run: |
+          python -m pip install ".[app]" pytest
+          python -m pytest -q tests/test_windows_job.py tests/test_workspace_windows_paths.py tests/test_terminal_backend.py
       - run: npm ci
       - run: npm run typecheck
       - name: Build unsigned NSIS preview (includes local runtime smoke check)
