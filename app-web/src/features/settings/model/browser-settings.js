@@ -4,7 +4,10 @@ export function browserDependencyAction(state) {
   const managed = state?.managed_dependency_status;
   if (state?.initial_import_error) return { label: 'Keep existing logins', action: 'keep_existing_logins', consent: true };
   if (state && !state.initial_import_complete) {
-    return { label: cli === 'compatible' && managed === 'compatible' ? 'Set up and enable' : 'Install and enable', action: 'install', consent: true };
+    if (cli === 'compatible' && managed === 'compatible' && state.error_code !== 'managed_browser_missing') {
+      return { label: 'Import Chrome logins', action: 'import_logins', consent: true };
+    }
+    return { label: 'Install browser', action: 'repair', consent: true };
   }
   if (state?.error_code === 'managed_browser_check_failed') {
     return { label: 'Check browser', action: 'check', issue: 'Dependency check failed. Try again.' };

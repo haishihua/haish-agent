@@ -46,7 +46,7 @@ export function BrowserConfigEditor({ onToast }) {
   const action = async (name) => {
     setBusy(true); setPendingAction(name);
     try {
-      const needsConsent = ['install', 'repair', 'keep_existing_logins'].includes(name);
+      const needsConsent = ['repair', 'import_logins', 'keep_existing_logins'].includes(name);
       // Replacement is confirmed in the UI right before dispatch, so it carries its own confirmation.
       const confirmed = name === 'replace_logins' || (needsConsent && consent);
       const response = await apiFetch(`${API_BASE}/api/settings/tools/browser`, {
@@ -88,13 +88,14 @@ export function BrowserConfigEditor({ onToast }) {
         <div className="browser-connection" aria-label="One-time local login import">
           <span><Monitor size={16} /><strong>Personal Chrome</strong></span><ArrowRight size={16} aria-hidden="true" /><span><PanelsTopLeft size={16} /><strong>Haish browser</strong><Badge variant="outline">Local only</Badge></span>
         </div>
+        {state && <p>Browser dependencies: {state.dependency_status === 'compatible' && state.managed_dependency_status === 'compatible' ? 'Ready' : 'Not ready'} · Chrome login import: {hasBrowserImportSummary(state) ? 'Imported' : state.initial_import_complete ? 'Closed' : state.initial_import_error ? 'Interrupted' : 'Not imported'}</p>}
         {runtimeIssue && !running && !state.message && <p className="browser-runtime-issue" role="status"><Info size={14} />{runtimeIssue}{dependency.action === 'check' ? ' Use Check browser in Details.' : ''}</p>}
       </div>
       {(running || state?.message) && <div className={`browser-setup-status ${running || !state?.error_code ? '' : 'needs-attention'}`} role="status">{running ? <LoaderCircle size={16} className="settings-spin" /> : <Info size={16} />}<div><strong>{browserSetupHeading(state)}</strong><p>{state.message || 'Preparing dependencies and browser configuration…'}</p></div></div>}
       {showConsent && <div className="browser-setup-fields">
         <Field orientation="horizontal" className="browser-consent" data-disabled={blocked}>
           <Checkbox id="browser-sync-consent" checked={consent} onCheckedChange={value => setConsent(value === true)} disabled={blocked} aria-describedby="browser-sync-consent-description" />
-          <FieldContent><FieldLabel htmlFor="browser-sync-consent">{state.initial_import_error ? 'Keep existing logins' : state.initial_import_complete ? 'Allow dependency repair' : 'Allow setup & initial import'}</FieldLabel><FieldDescription id="browser-sync-consent-description">{state.initial_import_error ? 'Skip remaining import. Sign in manually in Haish Browser.' : state.initial_import_complete ? 'Install or update required tools. Logins and browser selection stay unchanged.' : 'Install browser-use and Playwright as needed. Stable Chrome must already be installed. Import logins once.'}</FieldDescription></FieldContent>
+          <FieldContent><FieldLabel htmlFor="browser-sync-consent">{state.initial_import_error ? 'Keep existing logins' : dependency.action === 'import_logins' ? 'Allow one-time Chrome login import' : 'Allow browser dependency installation'}</FieldLabel><FieldDescription id="browser-sync-consent-description">{state.initial_import_error ? 'Skip remaining import. Sign in manually in Haish Browser.' : dependency.action === 'import_logins' ? 'Copy Chrome Cookies once, after you authorize the connection in Chrome.' : 'Install browser-use and Playwright as needed. Stable Chrome must already be installed. This does not import logins.'}</FieldDescription></FieldContent>
         </Field>
         {mismatch && !state.initial_import_error && <Field orientation="horizontal" className="browser-consent browser-replace-consent" data-disabled={blocked}>
           <Checkbox id="browser-runtime-replace" checked={replace} onCheckedChange={value => setReplace(value === true)} disabled={blocked} aria-describedby="browser-runtime-replace-description" />

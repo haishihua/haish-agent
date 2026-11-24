@@ -180,7 +180,7 @@ test('dependency actions reflect installation, not the browser toggle', () => {
     assert.equal(browserDependencyAction({ ...installed, enabled, error_code: 'managed_browser_install_failed' }).label, 'Retry repair');
   }
   assert.deepEqual(browserDependencyAction({ ...installed, enabled: false }), { label: 'Enable', action: 'enable' });
-  assert.equal(browserDependencyAction({ ...installed, initial_import_complete: false }).label, 'Set up and enable');
+  assert.equal(browserDependencyAction({ ...installed, initial_import_complete: false }).label, 'Import Chrome logins');
   assert.equal(browserDependencyAction({ ...installed, initial_import_error: true }).action, 'keep_existing_logins');
   assert.equal(browserStatusMeta({ ...installed, status: 'ready', enabled: true, managed_dependency_status: 'missing' }).label, 'Not installed');
   assert.equal(browserStatusMeta({ ...installed, setup_running: true, step: 'dependencies' }).label, 'Installing');
@@ -195,7 +195,7 @@ test('existing runtime without a completion record uses Check browser, not a mis
   });
   assert.deepEqual(browserStatusMeta(state), { label: 'Needs check', tone: 'warning' });
   assert.equal(browserDependencyAction({ ...state, enabled: false }).action, 'check');
-  assert.equal(browserDependencyAction({ ...state, initial_import_complete: false }).action, 'install');
+  assert.equal(browserDependencyAction({ ...state, initial_import_complete: false }).action, 'repair');
   assert.equal(browserDependencyAction({ ...state, managed_dependency_status: 'missing' }).label, 'Repair dependencies');
   assert.equal(browserDependencyAction({ ...state, dependency_status: 'missing' }).label, 'Repair dependencies');
   assert.match(editor, /Check verifies tools without installing/);
@@ -239,7 +239,7 @@ test('Check lives only in Details; selection never re-enters setup consent', () 
 
 test('first setup labels and maintenance status do not conflate installation, selection and checking', () => {
   const first = { enabled: false, status: 'disabled', initial_import_complete: false, dependency_status: 'missing', managed_dependency_status: 'missing' };
-  assert.deepEqual(browserDependencyAction(first), { label: 'Install and enable', action: 'install', consent: true });
+  assert.deepEqual(browserDependencyAction(first), { label: 'Install browser', action: 'repair', consent: true });
   assert.equal(browserStatusMeta(first).label, 'Not installed');
   assert.equal(browserStatusMeta({ ...first, managed_dependency_status: 'unverified', dependency_status: 'compatible' }).label, 'Needs check');
   assert.equal(browserStatusMeta({ ...first, dependency_status: 'compatible', managed_dependency_status: 'compatible' }).label, 'Not set up');
@@ -254,11 +254,11 @@ test('first setup labels and maintenance status do not conflate installation, se
 test('Check and Enable do not inherit checked installation consent in their request', async () => {
   const actionBody = editor.slice(editor.indexOf('const action = async (name) => {') + 'const action = async (name) => {'.length, editor.indexOf('\n  const mismatch'));
   const makeAction = new Function('apiFetch', 'API_BASE', 'parseResponseMessage', 'consent', 'replace', 'setBusy', 'setPendingAction', 'setState', 'setConsent', 'setReplace', 'setConfirmReplace', 'onToast', 'state', `return async (name) => {${actionBody}`);
-  for (const name of ['check', 'enable', 'disable', 'repair', 'install']) {
+  for (const name of ['check', 'enable', 'disable', 'repair', 'import_logins']) {
     let payload;
     const action = makeAction(async (url, options) => { payload = JSON.parse(options.body); return { ok: true, json: async () => ({}) }; }, '', () => {}, true, true, () => {}, () => {}, () => {}, () => {}, () => {}, () => {}, () => {});
     await action(name);
-    const needsConsent = ['install', 'repair'].includes(name);
+    const needsConsent = ['import_logins', 'repair'].includes(name);
     assert.deepEqual(payload, { action: name, confirmed: needsConsent, allow_replace: needsConsent });
   }
 });

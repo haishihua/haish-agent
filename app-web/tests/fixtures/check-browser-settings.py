@@ -50,7 +50,7 @@ with sync_playwright() as p:
                     assert info['icon']['w'] == info['icon']['h'] == 12, info
                 if info['setup']:
                     assert abs(info['setup']['text']['cy'] - info['setup']['icon']['cy']) < 0.5, info
-                labels = {'first': 'Install and enable', 'prepared': 'Set up and enable',
+                labels = {'first': 'Install browser', 'prepared': 'Import Chrome logins',
                           'missing': 'Repair dependencies', 'update': 'Update dependencies',
                           'mismatch': 'Update dependencies', 'retry': 'Retry repair',
                           'disabled': 'Enable', 'stopped': 'Keep existing logins'}
@@ -136,8 +136,8 @@ with sync_playwright() as p:
         page.get_by_role('button', name='Disable', exact=True).wait_for()
         assert page.get_by_role('checkbox').count() == 0
         print('PASS one-click enable')
-        for state, label, action in [('first', 'Install and enable', 'install'),
-                                     ('prepared', 'Set up and enable', 'install'),
+        for state, label, action in [('first', 'Install browser', 'repair'),
+                                     ('prepared', 'Import Chrome logins', 'import_logins'),
                                      ('missing', 'Repair dependencies', 'repair'),
                                      ('stopped', 'Keep existing logins', 'keep_existing_logins')]:
             open_state(state)
