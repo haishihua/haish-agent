@@ -2,6 +2,10 @@ name: Build Windows preview
 
 on:
   workflow_dispatch:
+  workflow_call:
+    secrets:
+      HAISH_PAT:
+        required: true
   push:
     branches: [feat/windows-client]
 

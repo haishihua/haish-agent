@@ -193,14 +193,13 @@ overwrite the app when a **newer semver** is published.
 
 ### Release flow (GitHub Actions default)
 
-**Maintainers and coding agents: default to GitHub Actions for macOS packaging
-and publishing. Do not build locally and then upload unless explicitly requested.**
-The [Release macOS workflow](.github/workflows/release-macos.yml) uses `macos-26`
+**Use GitHub Actions for desktop releases. Each release must include both macOS ARM64 and Windows x64.**
+The macOS job in [Release desktop (macOS + Windows)](.github/workflows/release-macos.yml) uses `macos-26`
 (arm64, Xcode 26+), Node.js 24, and Python 3.13. It checks the icon toolchain,
 installs dependencies, checks out the private runtime source, downloads and verifies
-the pinned adapter, builds the app, and uploads all release assets directly from
-the runner. The current workflow uses the unsigned channel (ad-hoc signed, no
-Developer ID signing or notarization). Version 0.0.24 was released through this flow.
+the pinned adapter, and builds the app. The Windows job uses its own pinned
+compatible core and builds an NSIS installer. Only after both jobs succeed does
+one publish job create the shared release. Windows updates remain manual.
 
 #### Credentials (one-time setup)
 
@@ -239,9 +238,8 @@ git push origin master
 ```
 
 Confirm the intended app commit is on remote `master` before dispatching. No local
-release tag or manual asset upload is needed. If `vX.Y.Z` already exists, the
-release script **replaces its assets** (`--clobber`); only do this when the user
-explicitly requests a same-version overwrite.
+release tag or manual asset upload is needed. The combined workflow creates a new
+release and does not overwrite an existing version.
 
 #### 2. Dispatch and watch the GitHub build
 
@@ -253,7 +251,7 @@ gh run view RUN_ID -R haishihua/haish-agent --json headSha,status,conclusion,url
 gh run watch RUN_ID -R haishihua/haish-agent --exit-status
 ```
 
-Alternatively: repository **Actions → Release macOS → Run workflow → master**, with
+Alternatively: repository **Actions → Release desktop (macOS + Windows) → Run workflow → master**, with
 `dry_run` disabled. A push alone does not trigger this manual workflow. Optional
 `dry_run=true` builds without creating/uploading a release. Installers and smoke
 logs are retained as downloadable Actions artifacts. Do not routinely run a dry
@@ -276,13 +274,14 @@ gh release view vX.Y.Z -R haishihua/haish-agent --json url,tagName,isDraft,isPre
 ```
 
 Require a successful matching Actions run, a public non-draft/non-prerelease
-release, and exactly these five assets in `uploaded` state:
+release, and these six assets in `uploaded` state:
 
 - `Haish-X.Y.Z-arm64.dmg`
 - `Haish-X.Y.Z-arm64.dmg.blockmap`
 - `Haish-X.Y.Z-arm64.zip`
 - `Haish-X.Y.Z-arm64.zip.blockmap`
 - `latest-mac.yml`
+- `Haish-X.Y.Z-win-x64-setup.exe`
 
 Check the run's release summary for `latest-mac.yml` version, filenames, sizes,
 and SHA-512 values. The build also checks the compiled icon assets and packaged
@@ -295,7 +294,7 @@ Slow local downloads must not delay reporting an already published release or
 be described as a build/upload still in progress. Prefer runner-side verification
 when extending the pipeline; the current workflow does not automate every extra check.
 
-#### Local fallback (only when explicitly requested)
+#### Legacy macOS-only tooling (not for normal desktop releases)
 
 Requires full Xcode 26+, access to the correct core source, and authenticated `gh`.
 Unlike the workflow, `release-mac.mjs` does not fetch the adapter itself:

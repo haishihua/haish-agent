@@ -1,6 +1,6 @@
-name: Release macOS
+name: Release desktop (macOS + Windows)
 
-# Manual macOS release build on a GitHub-hosted runner.
+# Manual desktop release: build both platforms, then publish once.
 #
 # Why CI: the app icon is an Icon Composer bundle (build/Haish.icon) that needs
 # full Xcode 26+ (actool) to compile, and scripts/release-mac.mjs hard-gates on
@@ -16,8 +16,7 @@ name: Release macOS
 #     The release itself is published with the workflow's own GITHUB_TOKEN.
 #   * Commit the target version in package.json before dispatching.
 #
-# Publish or replace: scripts/release-mac.mjs creates the release for the
-# package.json version, or replaces its assets when the release already exists.
+# The macOS helper builds only; the publish job creates a new shared release.
 
 on:
   workflow_dispatch:
@@ -27,21 +26,25 @@ on:
         type: boolean
         default: false
       runtime_ref:
-        description: "Exact core commit SHA for reproducible builds"
+        description: "Exact macOS core commit SHA (Windows uses its compatibility pin)"
         type: string
         required: true
-        default: "13b841b61d51d36a72c19cea3205902468fe05ea"
+        default: "09ecf0ae893a9f54c10d01d08e070a618b95943b"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: release-macos
+  group: release-desktop
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Build and publish unsigned arm64 build
+  windows:
+    uses: ./.github/workflows/build-windows.yml
+    secrets:
+      HAISH_PAT: ${{ secrets.HAISH_PAT }}
+  macos:
+    name: Build unsigned macOS arm64
     runs-on: macos-26
     timeout-minutes: 120
     env:
@@ -114,15 +117,10 @@ jobs:
           GH_TOKEN: ${{ secrets.HAISH_PAT }}
         run: npm run fetch:remote-adapter
 
-      - name: Build and publish the release
+      - name: Build and verify macOS release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          args=(--unsigned)
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            args+=(--dry-run)
-          fi
-          node scripts/release-mac.mjs "${args[@]}"
+        run: node scripts/release-mac.mjs --unsigned --dry-run
 
       - name: List the built artifacts (dry run)
         if: ${{ inputs.dry_run }}
@@ -145,22 +143,41 @@ jobs:
             build/runtime/pyinstaller-work/haish-runtime/warn-haish-runtime.txt
             release/Haish-*.dmg
             release/Haish-*.zip
+            release/Haish-*.blockmap
             release/latest-mac.yml
 
-      - name: Summarize the release
-        if: ${{ !inputs.dry_run }}
+  publish:
+    if: ${{ !inputs.dry_run && github.ref == 'refs/heads/master' }}
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-release-${{ github.run_id }}
+          path: artifacts/mac
+      - uses: actions/download-artifact@v4
+        with:
+          name: Haish-windows-x64-preview
+          path: artifacts/win
+      - name: Publish both installers to one release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="$(node -p "require('./package.json').version")"
-          {
-            echo "## Haish ${version} — macOS arm64, unsigned"
-            echo
-            gh release view "v${version}" --json url,isDraft,isPrerelease,assets \
-              --jq '"URL: \(.url)\nDraft: \(.isDraft)  Prerelease: \(.isPrerelease)\n" + (.assets | map("- \(.name) — \(.size) bytes") | join("\n"))'
-            echo
-            echo "### latest-mac.yml"
-            echo '```yaml'
-            cat release/latest-mac.yml
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          mac_dir=$(find artifacts/mac -type f -name latest-mac.yml -exec dirname {} \;)
+          test -d "$mac_dir"
+          mac="$mac_dir/Haish-$version-arm64"
+          win="artifacts/win/Haish-$version-win-x64-setup.exe"
+          assets=("$mac.dmg" "$mac.dmg.blockmap" "$mac.zip" "$mac.zip.blockmap" "$mac_dir/latest-mac.yml" "$win")
+          for asset in "${assets[@]}"; do test -s "$asset" || { echo "Missing $asset"; exit 1; }; done
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "Release v$version already exists; use a new version."
+            exit 1
+          fi
+          gh release create "v$version" "${assets[@]}" --target "$GITHUB_SHA" --title "Haish $version" \
+            --notes 'macOS ARM64: install from the DMG. Windows x64: run the NSIS installer; updates are manual.' \
+            | tee -a "$GITHUB_STEP_SUMMARY"
