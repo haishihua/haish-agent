@@ -1,6 +1,6 @@
 {
   "name": "haish-agent",
-  "version": "0.0.40",
+  "version": "0.0.41",
   "private": true,
   "description": "Haish desktop app with a local agent runtime.",
   "main": "dist-electron/main/main.js",
@@ -84,7 +84,9 @@
     ],
     "win": {
       "icon": "build/icon-win.ico",
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "artifactName": "Haish-${version}-win-${arch}-setup.${ext}"
     },
     "nsis": {

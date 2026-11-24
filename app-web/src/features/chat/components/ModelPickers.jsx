@@ -167,17 +167,19 @@ export function ModelPicker({
   const current = options.find((o) => o.id === value) || (value ? { id: value, label: value } : null);
   const currentProvider = providerOptions.find((o) => o.id === providerValue) || null;
   // A restored model ID is not selectable without its configured provider.
-  const empty = !currentProvider || (!current && options.length === 0 && !loading);
+  const needsProviderSelection = !currentProvider && providerOptions.length > 0;
+  const empty = providerOptions.length === 0;
+  const providerSelectionLabel = providerValue ? 'Provider unavailable — select a provider' : 'Select a provider';
   const reasoningOptions = suppliedReasoningOptions;
   const currentReasoning = reasoningOptions.find((o) => o.id === (reasoningEffort ?? null)) || { id: reasoningEffort, label: reasoningEffort };
   const currentReasoningIndex = reasoningOptions.findIndex((o) => o.id === currentReasoning?.id);
   const reasoningRatio = Math.max(0, currentReasoningIndex) / Math.max(1, reasoningOptions.length - 1);
   const reasoningProgressOffset = 12 - (24 * reasoningRatio);
   const reasoningProgress = `calc(${reasoningRatio * 100}% ${reasoningProgressOffset < 0 ? '-' : '+'} ${Math.abs(reasoningProgressOffset)}px)`;
-  const gaugeRotation = empty ? null : reasoningGaugeRotation(reasoningEffort, suppliedReasoningOptions);
-  const modelLabel = current ? current.label : (currentProvider ? (loading ? 'loading' : 'unavailable') : 'No model');
-  const runConfigLabel = empty ? 'No model' : `${value || modelLabel} · ${currentReasoning?.label || 'Unspecified'}`;
-  const providerLabel = currentProvider ? currentProvider.label : 'No provider';
+  const gaugeRotation = empty || needsProviderSelection ? null : reasoningGaugeRotation(reasoningEffort, suppliedReasoningOptions);
+  const modelLabel = !currentProvider ? 'No model' : current?.label || (loading ? 'loading' : 'unavailable');
+  const runConfigLabel = empty ? 'No model' : needsProviderSelection ? providerSelectionLabel : `${value || modelLabel} · ${currentReasoning?.label || 'Unspecified'}`;
+  const providerLabel = currentProvider ? currentProvider.label : providerSelectionLabel;
 
   React.useEffect(() => {
     if (!open) return undefined;
@@ -210,12 +212,12 @@ export function ModelPicker({
   const triggerButton = (
     <button
       type="button"
-      className="model-picker-trigger"
+      className={`model-picker-trigger${needsProviderSelection ? ' is-provider-recovery' : ''}`}
       onClick={() => {
         if (disabled) return;
         setOpen((o) => {
-          setMenuOpen(false);
-          setActiveSubmenu(null);
+          setMenuOpen(!o && needsProviderSelection);
+          setActiveSubmenu(!o && needsProviderSelection ? 'provider' : null);
           return !o;
         });
       }}
@@ -226,7 +228,7 @@ export function ModelPicker({
       aria-expanded={open}
       aria-label={`Run configuration, ${runConfigLabel}`}
     >
-      <svg className={`model-picker-gauge ${gaugeRotation === null ? 'is-unspecified' : ''}`} style={{ '--gauge-rotation': gaugeRotation === null ? undefined : `${gaugeRotation}deg` }} viewBox="0 0 24 24" aria-hidden="true">
+      {needsProviderSelection ? <span>Select provider</span> : <svg className={`model-picker-gauge ${gaugeRotation === null ? 'is-unspecified' : ''}`} style={{ '--gauge-rotation': gaugeRotation === null ? undefined : `${gaugeRotation}deg` }} viewBox="0 0 24 24" aria-hidden="true">
         <path className="model-picker-gauge-arc" d="M3.34 19a10 10 0 1 1 17.32 0" />
         {gaugeRotation === null ? <circle cx="12" cy="14" r="1.8" fill="currentColor" /> : (
           <g className="model-picker-gauge-needle">
@@ -234,7 +236,7 @@ export function ModelPicker({
             <circle cx="12" cy="14" r="1.8" />
           </g>
         )}
-      </svg>
+      </svg>}
     </button>
   );
 
@@ -246,7 +248,7 @@ export function ModelPicker({
       <PortalTooltip text={open ? '' : runConfigLabel} position="above">
         {triggerButton}
       </PortalTooltip>
-      {open && !menuOpen ? (
+      {open && !menuOpen && !needsProviderSelection ? (
         <div className={`model-picker-quick thinking-${currentReasoning?.id || 'unknown'}`} role="dialog" aria-label="Thinking level">
           <button
             type="button"
@@ -277,7 +279,7 @@ export function ModelPicker({
           </div>
         </div>
       ) : null}
-      {open && menuOpen ? (
+      {open && (menuOpen || needsProviderSelection) ? (
         <div className={`model-picker-menu ${activeSubmenu ? 'has-flyout' : ''}`} role="menu">
           <div className="model-picker-submenu">
             {/* Agent 选择已经拆到输入框左侧的 AgentPicker；这里只留 provider 和 model。 */}
@@ -300,7 +302,8 @@ export function ModelPicker({
               type="button"
               role="menuitem"
               className={`model-picker-option model-picker-submenu-entry ${activeSubmenu === 'model' ? 'is-active' : ''}`}
-              onMouseEnter={() => setActiveSubmenu('model')}
+              disabled={needsProviderSelection}
+              onMouseEnter={() => { if (!needsProviderSelection) setActiveSubmenu('model'); }}
               onFocus={() => setActiveSubmenu('model')}
               onClick={() => setActiveSubmenu((currentOpen) => currentOpen === 'model' ? null : 'model')}
               aria-haspopup="listbox"
@@ -346,7 +349,7 @@ export function ModelPicker({
                 </div>
               </div>
             ) : null}
-            {activeSubmenu === 'model' ? (
+            {activeSubmenu === 'model' && !needsProviderSelection ? (
               <div className="model-picker-flyout model-picker-flyout-model" role="listbox" aria-label="model">
                 <div className="model-picker-header">Model</div>
                 <div className="model-picker-list">

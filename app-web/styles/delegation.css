@@ -251,6 +251,12 @@
     box-shadow: none;
 }
 
+.chat-composer .model-picker-trigger.is-provider-recovery {
+    width: auto;
+    padding: 0 8px;
+    white-space: nowrap;
+}
+
 .chat-composer .model-picker-trigger:hover, .chat-composer .model-picker.is-open .model-picker-trigger {
     border-color: transparent;
     background: rgba(74, 140, 255, 0.1);

@@ -2,6 +2,7 @@ import { isRuntimeDetailLive, runtimeDetailTarget } from '../model/runtime-detai
 import './runtime/workflow-detail-pull.css';
 import { saveWorkflowLayout } from '../../../core/workflow-layout-store.js';
 import { workflowDisplayConfig } from '../model/workflow-display-config.js';
+import { traceWorkflow } from '../../../core/workflow-diagnostics.js';
 import React from 'react';
 import { workflowVisibleEdges } from '../../../core/workflow-visible-edges.js';
 import { WorkflowRuntimeConfig } from './WorkflowRuntimeConfig.jsx';
@@ -419,6 +420,15 @@ function WorkflowCanvas({ workflow, task, composer, annotationControllerRef, onR
   const selectedStatus = selectedNodeId === attentionNodeId && attentionStatus ? attentionStatus : selectedNode
     ? workflowRuntimeNodeStatus(selectedNode, run, task, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)
     : 'pending';
+  const lastControl = controlEvents.at(-1);
+  React.useEffect(() => {
+    traceWorkflow('canvas-committed', lastControl, {
+      taskId: task?.taskId || null,
+      currentNodeId: run?.current_node_id || null,
+      selectedNodeId,
+      selectedStatus,
+    });
+  }, [lastControl, task?.taskId, run?.current_node_id, selectedNodeId, selectedStatus]);
   React.useEffect(() => {
     const previous = previousSelectionRef.current;
     if (

@@ -7,6 +7,8 @@
 //   本地正在写的内容，所以直播中的补事件走增量摄取。
 //
 // 补齐逻辑本身一个字都不改，只是把依赖从工厂闭包改成显式传入。
+import { traceWorkflow } from '../../../../core/workflow-diagnostics.js';
+
 export const RESYNC_REQUIRED_TYPE = 'resync_required';
 
 export function createBackpressureRecovery({
@@ -21,9 +23,16 @@ export function createBackpressureRecovery({
   const resyncTaskRuntimeAfterBackpressure = (message, ownerConvId, { flushPending = null } = {}) => {
     const taskId = String(message?.task_id || '');
     const targetConvId = message?.conversation_id || ownerConvId || null;
-    if (!taskId || !targetConvId) return Promise.resolve(null);
+    traceWorkflow('resync-start', message);
+    if (!taskId || !targetConvId) {
+      traceWorkflow('resync-skipped', message, { reason: 'missing-identity' });
+      return Promise.resolve(null);
+    }
     const runtime = getRuntime(targetConvId);
-    if (!runtime) return Promise.resolve(null);
+    if (!runtime) {
+      traceWorkflow('resync-skipped', message, { reason: 'missing-runtime' });
+      return Promise.resolve(null);
+    }
     const isCurrentRuntime = () => getRuntime(targetConvId) === runtime;
     const refill = async () => {
       if (!getTaskById(taskId, targetConvId)) {
@@ -34,6 +43,7 @@ export function createBackpressureRecovery({
       }
       const detail = await fetchTaskRuntimeDetail(taskId, targetConvId);
       const events = Array.isArray(detail?.events) ? detail.events : [];
+      traceWorkflow('resync-fetched', message, { eventCount: events.length, currentRuntime: isCurrentRuntime() });
       if (!events.length || !isCurrentRuntime()) return null;
       // 先把已经收到但还在批次队列里的直播事件落下去，再把漏掉的那几条接在后面：
       // 直播管线是按 32ms 批次应用事件的，不先 flush 会把补回来的文本插到前面去。
@@ -48,7 +58,11 @@ export function createBackpressureRecovery({
     };
     // 补事件失败只是“这一次没补上”：任务在服务端继续跑，留给轮询/下一次重连继续补，
     // 绝对不能变成时间线上的失败或错误弹窗。
-    return Promise.resolve().then(refill).catch((error) => {
+    return Promise.resolve().then(refill).then((result) => {
+      traceWorkflow('resync-end', message);
+      return result;
+    }).catch((error) => {
+      traceWorkflow('resync-failed', message);
       console.warn('[runtime] resync after backpressure failed', error);
       return null;
     });

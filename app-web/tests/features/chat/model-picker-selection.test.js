@@ -5,7 +5,7 @@ import fs from 'node:fs';
 const source = fs.readFileSync(new URL('../../../src/features/chat/components/ModelPickers.jsx', import.meta.url), 'utf8');
 
 test('trigger tooltip shows the selected model id and thinking value', () => {
-  assert.ok(source.includes("const runConfigLabel = empty ? 'No model' : `${value || modelLabel} · ${currentReasoning?.label || 'Unspecified'}`;"));
+  assert.ok(source.includes("const runConfigLabel = empty ? 'No model' : needsProviderSelection ? providerSelectionLabel : `${value || modelLabel} · ${currentReasoning?.label || 'Unspecified'}`;"));
   assert.match(source, /if \(empty\) \{\s*return <span className="model-picker-empty-chip">[^\n]*No model<\/span>;\s*\}[^]*const triggerButton/);
   assert.match(source, /const reasoningOptions = suppliedReasoningOptions;/);
   assert.doesNotMatch(source, /id: null, label: 'Unspecified'/);
@@ -15,13 +15,16 @@ test('trigger tooltip shows the selected model id and thinking value', () => {
   assert.doesNotMatch(source, /Thinking ·/);
 });
 
-test('a saved model without its configured provider still renders the empty state', () => {
-  const expression = source.match(/const empty = ([^;]+);/)[1];
-  const isEmpty = new Function('currentProvider', 'current', 'options', 'loading', `return ${expression};`);
-  const savedModel = { id: 'gpt-6.2-sol' };
-  assert.equal(isEmpty(null, savedModel, [], false), true);
-  assert.equal(isEmpty(null, savedModel, [savedModel], true), true);
-  assert.equal(isEmpty({ id: 'configured' }, savedModel, [savedModel], false), false);
+test('a missing saved provider can be explicitly replaced when alternatives exist', () => {
+  const empty = source.match(/const empty = ([^;]+);/)[1];
+  const recovery = source.match(/const needsProviderSelection = ([^;]+);/)[1];
+  const state = new Function('currentProvider', 'providerOptions', `return [${empty}, ${recovery}];`);
+  const replacement = { id: 'configured' };
+  assert.deepEqual(state(null, []), [true, false]);
+  assert.deepEqual(state(null, [replacement]), [false, true]);
+  assert.deepEqual(state(replacement, [replacement]), [false, false]);
+  assert.match(source, /setActiveSubmenu\(!o && needsProviderSelection \? 'provider' : null\)/);
+  assert.match(source, /needsProviderSelection \? <span>Select provider<\/span>/);
 });
 
 test('provider and model selection do not dismiss the settings menu', () => {

@@ -1,5 +1,6 @@
 import { appendStreamEvent, mergeAdjacentStreamEvent } from '../../../core/stream-events.js';
 import { createRuntimeEventIngest } from '../../../core/event-identity.js';
+import { traceWorkflow } from '../../../core/workflow-diagnostics.js';
 import { runtimeEventToLog } from '../../../core/runtime-events.js';
 import { contextUsageFromRuntimeEvent } from '../../../core/context-usage.js';
 import { admitRuntimeEvent, dispatchRuntimeEvent } from './task-stream/event-dispatch.js';
@@ -221,7 +222,10 @@ export function createTaskStreamHandlers(ctx) {
       chatFinalFollowUpEventTypes: CHAT_FINAL_FOLLOWUP_EVENT_TYPES,
       updateTaskRuntimeState,
     });
-    if (!taskId) return;
+    if (!taskId) {
+      traceWorkflow('not-admitted', event);
+      return;
+    }
     appendTaskEvent(taskId, event, ownerConvId);
     const nextContextUsage = contextUsageFromRuntimeEvent(event, ownerConvId || conversationId, getContextWindowTokens());
     if (nextContextUsage) {
@@ -249,6 +253,7 @@ export function createTaskStreamHandlers(ctx) {
       readRuntimeAnswerBuffer,
       setRuntimeAnswerBuffer,
     });
+    traceWorkflow('applied', event);
   }
 
   const resyncTaskRuntimeAfterBackpressure = createBackpressureRecovery({

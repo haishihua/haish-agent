@@ -102,7 +102,7 @@ export function BrowserConfigEditor({ onToast }) {
         </Field>}
       </div>}
       <div className="browser-settings-actions">
-        <span className="browser-action-hint"><ShieldCheck size={14} />{running ? (syncing ? (state?.sync_mode === 'replace' ? 'Replacing logins' : 'Importing logins once') : maintenance ? 'Logins and browser selection stay unchanged' : state?.step === 'waiting_allow' ? 'Click Allow in Chrome' : 'Keep Haish open during setup') : state?.enabled ? 'Account sessions stay on this device' : state?.initial_import_complete ? 'Saved logins stay in Haish Browser' : 'macOS only'}</span>
+        <span className="browser-action-hint"><ShieldCheck size={14} />{running ? (syncing ? (state?.sync_mode === 'replace' ? 'Replacing logins' : 'Importing logins once') : maintenance ? 'Logins and browser selection stay unchanged' : state?.step === 'waiting_allow' ? 'Click Allow in Chrome' : 'Keep Haish open during setup') : state?.enabled ? 'Account sessions stay on this device' : state?.initial_import_complete ? 'Saved logins stay in Haish Browser' : 'Import only after you authorize Chrome'}</span>
         <div className={`browser-action-buttons${state?.enabled && !running && !showConsent ? ' browser-maintenance-actions' : ''}`}>
           {running ? <Button variant="outline" size="sm" disabled={busy} onClick={() => action('cancel')}>{pendingAction === 'cancel' ? 'Cancelling…' : maintenance ? 'Cancel' : syncing ? (state?.sync_mode === 'replace' ? 'Cancel replacement' : 'Cancel import') : 'Cancel setup'}</Button> : <>
             {state?.enabled && <PortalTooltip text="Use original Chrome connection for new calls" position="above" multiline>

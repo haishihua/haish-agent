@@ -6,6 +6,7 @@ import { executionConfigError } from '../../../../core/execution-config.js';
 import { normalizeReasoningEffort } from '../../../../core/run-catalog.js';
 import { nodeRuntimeConfigsForWorkflow, nodeRuntimeConfigRequest } from '../../../../core/node-runtime-config.js';
 import { waitForAttemptConfigOperation } from '../../../../shared/lib/attempt-run-config.js';
+import { traceWorkflow } from '../../../../core/workflow-diagnostics.js';
 import { RESYNC_REQUIRED_TYPE } from './recovery.js';
 
 const realtimeRequestId = () => globalThis.crypto?.randomUUID?.()
@@ -419,6 +420,7 @@ export function createQuestExecutor({
         try {
           if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
           await runTaskStream(command, (event) => {
+            traceWorkflow('received', event, { requestId: command.request_id });
             // 背压丢事件：控制面提示，不是任务事件（更不是失败）。按游标补一次，
             // 下面的归一化/应用管线不认识它。
             if (event?.type === RESYNC_REQUIRED_TYPE) {
