@@ -8,12 +8,11 @@ import '../../styles.css';
 
 const errors = [];
 window.addEventListener('error', event => errors.push(event.message));
-let emit;
-window.haish = { onApprovalEvent: callback => { emit = callback; return () => {}; } };
+window.haish = { onApprovalEvent: () => () => {} };
 approvalStore.start();
 const nativeFetch = window.fetch;
 const posts = [];
-const modes = new Map([['fixture-conversation', 'full'], ['other-conversation', 'full']]);
+const modes = new Map([['fixture-conversation', 'full'], ['other-conversation', 'full'], ['left-edge-conversation', 'strict']]);
 let failNext = false;
 let ensureCalls = 0;
 window.fetch = async (url, options) => {
@@ -47,90 +46,41 @@ const render = (width, readOnly = false, workflow = false, conversationId = 'fix
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const results = [];
 const check = (ok, label) => results.push(`${ok ? 'PASS' : 'FAIL'} ${label}`);
-const trigger = () => document.querySelector('.approval-mode-trigger');
-const options = () => [...document.querySelectorAll('.approval-mode-option')];
-function inside() {
-  const workspace = document.querySelector('.fixture-workspace').getBoundingClientRect();
-  return options().length === 2 && options().every(button => {
-    const box = button.getBoundingClientRect();
-    return box.left >= workspace.left && box.right <= workspace.right && box.top >= workspace.top && box.bottom <= workspace.bottom;
-  });
-}
-function reachable() {
-  return options().every(button => {
-    const box = button.getBoundingClientRect();
-    return [0.2, 0.5, 0.8].every(fraction => button.contains(document.elementFromPoint(box.left + box.width * fraction, box.top + box.height / 2)));
-  });
-}
+const options = () => [...document.querySelectorAll('.approval-mode-segments [role="tab"]')];
+const selected = () => options().find(button => button.getAttribute('aria-selected') === 'true')?.ariaLabel;
+const icon = () => options()[2]?.querySelector(options()[2].ariaSelected === 'true' ? '.dissolve-segmented-on [data-approval-icon]' : '.dissolve-segmented-off [data-approval-icon]')?.dataset.approvalIcon;
 async function run() {
-  render(360);
-  emit({ type: 'approval_mode_changed', conversation_id: 'fixture-conversation', mode: 'full' });
-  await sleep(50);
   for (const workflow of [false, true]) {
     for (const width of [240, 360, 640]) {
       render(width, false, workflow);
-      const closed = trigger().getBoundingClientRect();
-      const tools = document.querySelector('.chat-composer-tools').getBoundingClientRect();
-      check(Math.abs(closed.left - tools.left) < 1, 'Closed picker has no extra left-side empty slot');
-      trigger().click();
-      await sleep(60);
-      check(inside(), `${workflow ? 'Workflow' : 'Chat'} ${width}px: opening animation remains inside workspace`);
-      await sleep(260);
-      check(inside() && reachable(), `${width}px: both option circles fully visible and not covered by sidebar`);
-      const a = trigger().getBoundingClientRect();
-      check(Math.abs(a.left - closed.left) < 0.5 && Math.abs(a.top - closed.top) < 0.5, 'Opening the fan never moves the trigger out from under the pointer');
-      const [left, right] = options().map(button => button.getBoundingClientRect());
-      const center = box => box.left + box.width / 2;
-      check(Math.abs(center(a) - (center(left) + center(right)) / 2) <= 8.5 && center(left) < center(a) && center(a) < center(right), 'Full Access stays between the two upper circles (menu nudged 8px right)');
-      check(Math.abs(left.top - right.top) < 1, 'Upper options retain the same height');
-      // 两个上排圆是一对：贴得太近会连成一颗，离得太远又会散成两个卫星。
-      const seam = right.left - (left.left + left.width);
-      check(seam >= 5 && seam <= 12, `${width}px: the two upper circles stay a snug pair (seam ${seam.toFixed(1)}px)`);
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      await sleep(30);
-      check(options().length === 0, 'Escape closes menu');
+      await sleep(70);
+      const workspace = document.querySelector('.fixture-workspace').getBoundingClientRect();
+      const boxes = options().map(button => button.getBoundingClientRect());
+      check(boxes.length === 3 && boxes.every(box => box.left >= workspace.left && box.right <= workspace.right && Math.abs(box.top - boxes[0].top) < 1), `${workflow ? 'Workflow' : 'Chat'} ${width}px: three segments in one row`);
     }
   }
-  render(360, true);
-  trigger().click();
-  await sleep(280);
-  check(trigger().disabled && posts.length === 0 && options().length === 0, 'Read-only picker is visibly disabled, not a clickable no-op');
-  render(360);
-  trigger().click();
-  await sleep(280);
-  options()[0].click();
-  await sleep(30);
-  check(posts.length === 1 && posts[0].mode === 'strict' && posts[0].conversation_id === 'fixture-conversation', 'Selecting Request Approval sends the owning conversation');
-  trigger().click();
-  await sleep(280);
-  check(inside() && reachable(), 'Menu remains bounded after changing current mode');
-  document.querySelector('.fixture-sidebar').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-  await sleep(30);
-  check(options().length === 0, 'Clicking outside closes menu');
-  trigger().click();
-  await sleep(280);
-  options().find(button => button.getAttribute('aria-label').startsWith('Auto Approve')).click();
-  await sleep(30);
-  check(posts.at(-1).mode === 'smart' && trigger().getAttribute('aria-label').startsWith('Auto Approve'), 'Smart button updates current mode');
-  render(360, false, false, 'other-conversation');
-  await sleep(50);
-  check(trigger().getAttribute('aria-label').startsWith('Full Access'), 'Other conversation remains Full Access');
-  render(360);
-  await sleep(50);
-  check(trigger().getAttribute('aria-label').startsWith('Auto Approve'), 'Switching back restores this conversation mode');
+  const edgeGap = (side) => {
+    const host = document.querySelector('.approval-mode-segments');
+    const pill = host.querySelectorAll('.dissolve-segmented-pill')[1];
+    return Math.abs(host.getBoundingClientRect()[side] - pill.getBoundingClientRect()[side]);
+  };
+  check(selected() === 'Full Access' && icon() === 'unlocked', 'Selected Full Access is unlocked');
+  check(Math.abs(edgeGap('right') - 2) < .1, 'Full Access uses the original 2px right inset');
+  render(640, false, true, 'left-edge-conversation'); await sleep(70);
+  check(selected() === 'Request Approval' && Math.abs(edgeGap('left') - 2) < .1, 'Request Approval uses the original 2px left inset');
+  render(640, false, true); await sleep(70);
+  options()[1].click(); await sleep(50);
+  check(posts.at(-1).mode === 'smart' && selected() === 'Auto Approve' && icon() === 'locked', 'Auto Approve saves and Full Access locks');
   failNext = true;
-  trigger().click();
-  await sleep(280);
-  options()[0].click();
-  await sleep(30);
-  check(trigger().getAttribute('aria-label').startsWith('Auto Approve') && Boolean(document.querySelector('[role="alert"]')), 'Failure is visible and selection rolls back');
-  render(360, false, false, 'draft-local', true);
-  await sleep(50);
-  trigger().click();
-  await sleep(280);
-  options()[0].click();
-  await sleep(30);
-  check(ensureCalls === 1 && posts.at(-1).conversation_id === 'created-conversation', 'New chat creates its own conversation before saving mode');
+  options()[2].click(); await sleep(50);
+  check(selected() === 'Auto Approve' && icon() === 'locked' && document.querySelector('[role="alert"]'), 'Failed change rolls back with an error');
+  render(360, true);
+  check(options().every(button => button.disabled), 'Read-only disables all segments');
+  render(360, false, true, 'other-conversation'); await sleep(70);
+  check(selected() === 'Full Access', 'Other conversation remains Full Access');
+  render(360, false, false, 'draft-conversation', true); await sleep(70);
+  options()[0].click(); await sleep(50);
+  check(ensureCalls === 1 && posts.at(-1).conversation_id === 'created-conversation', 'Draft creates its own conversation before saving');
   check(errors.length === 0, 'No page errors');
 }
 run().catch(error => check(false, error.message)).finally(() => {

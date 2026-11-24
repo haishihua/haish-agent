@@ -23,6 +23,15 @@ for (const [status, expected] of [['failed', 'failed'], ['error', 'failed'], ['c
   });
 }
 
+test('node retry shows Running over the source failure until fresh execution state arrives', () => {
+  const source = { run_id: 'source', status: 'failed', nodes: { active: { status: 'failed', success: false } } };
+  const retry = { status: 'running', rerunFromNodeId: node.id, sourceRunId: 'source' };
+  assert.equal(workflowRuntimeNodeStatus(node, source, retry), 'running');
+  assert.equal(workflowRuntimeNodeStatus(node, source, retry, new Set(), new Map([[node.id, 'done']])), 'done');
+  assert.equal(workflowRuntimeNodeStatus(node, { ...source, run_id: 'retry' }, retry), 'failed');
+  assert.equal(workflowRuntimeNodeStatus(node, source, { ...retry, status: 'failed', serverFinished: true }), 'failed');
+});
+
 test('persisted cancellation receipt keeps Cancelled despite success:false', () => {
   const ended = applyTerminalTaskState(task, 'cancelled');
   assert.equal(workflowRuntimeDisplayStatus(ended), 'cancelled');

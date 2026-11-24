@@ -17,6 +17,24 @@ import { taskFinalOutputText } from '../../../../core/runtime-events.js';
 import { Markdown } from '../../../../shared/ui/Markdown.jsx';
 import { visibleNodeAttempts } from '../../../../core/node-attempts.js';
 
+// The picker shows one line, but these summaries can contain an entire report.
+// Reuse parsed previews across stream updates, with a bounded cache.
+const attemptPreviewCache = new Map();
+function attemptPreview(markdown) {
+  if (!markdown) return '';
+  const source = markdown.slice(0, 2048);
+  const cached = attemptPreviewCache.get(source);
+  if (cached !== undefined) {
+    attemptPreviewCache.delete(source);
+    attemptPreviewCache.set(source, cached);
+    return cached;
+  }
+  const text = fromMarkdown(source).children.map(block => toString(block)).join(' ').replace(/\s+/g, ' ').trim();
+  if (attemptPreviewCache.size >= 32) attemptPreviewCache.delete(attemptPreviewCache.keys().next().value);
+  attemptPreviewCache.set(source, text.slice(0, 240));
+  return text.slice(0, 240);
+}
+
 export function WorkflowNodeAttempts({
   node,
   task,
@@ -106,8 +124,7 @@ export function WorkflowNodeAttempts({
             const cardResult = workflowResultForAttempt(attempt, latestResult, last, result.attempt || index + 1) || result;
             const selected = index === displayIndex;
             const finalAnswer = [cardResult.summary, cardResult.text, finishedEvent?.summary].find(value => typeof value === 'string' && value.trim()) || '';
-            // Parse Markdown into its syntax tree and read rendered text, not raw markers.
-            const summary = finalAnswer ? fromMarkdown(finalAnswer).children.map(block => toString(block)).join(' ').replace(/\s+/g, ' ').trim() : '';
+            const summary = attemptPreview(finalAnswer);
             const start = timestampValue(attempt.startedAt || result.started_at);
             const end = timestampValue(attempt.finishedAt || result.finished_at);
             const seconds = start && end && end >= start ? Math.max(1, Math.round((end - start) / 1000)) : null;

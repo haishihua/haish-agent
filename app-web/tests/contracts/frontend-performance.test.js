@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { BoundedCache } from '../../src/shared/lib/bounded-cache.js';
 import { startPolling } from '../../src/shared/lib/polling.js';
 import { appendStreamEvent } from '../../src/core/stream-events.js';
@@ -31,6 +32,32 @@ test('streamed text and reasoning reuse historical timeline items without replay
   }
 });
 
+test('workflow node detail streams long logs without reading historical event payloads', async () => {
+  const { nodeAttempts, attemptTask } = await import('../../src/core/node-attempts.js');
+  let reads = 0;
+  const history = Array.from({ length: 1500 }, (_, i) => ({
+    get type() { reads += 1; return 'agent_progress_delta'; }, message: `History ${i}`,
+  }));
+  let task = { status: 'running', toolCalls: [], eventLog: [
+    { type: 'workflow_node_started', nodeId: 'a' }, ...history, { type: 'llm_answer_delta', delta: 'Start ' },
+  ] };
+  const render = (input) => buildChatTimeline(attemptTask(input, nodeAttempts(input, 'a').at(-1)));
+  const initial = render(task);
+  reads = 0;
+  let latest;
+  for (let i = 0; i < 100; i += 1) {
+    task = { ...task, eventLog: appendStreamEvent(task.eventLog, { type: 'llm_answer_delta', delta: `${i} ` }) };
+    latest = render(task);
+    assert.equal(latest.items[0], initial.items[0]);
+  }
+  assert.equal(reads, 0);
+  assert.match(latest.items.at(-1).text, /98 99$/);
+  assert.deepEqual(latest, render({ ...task, eventLog: task.eventLog.slice() }));
+  const finished = { ...task, status: 'done', eventLog: appendStreamEvent(task.eventLog,
+    { type: 'workflow_node_finished', nodeId: 'a', timestamp: '2026-11-24T00:00:00Z' }) };
+  assert.equal(render(finished).items.at(-1).streaming, false);
+});
+
 test('workflow status inputs remain stable through text deltas, but update on transitions', () => {
   let events = [{ type: 'workflow_node_started', nodeId: 'a' }];
   const controls = workflowControlEvents(events);
@@ -40,6 +67,15 @@ test('workflow status inputs remain stable through text deltas, but update on tr
   assert.equal(workflowControlEvents(events), controls);
   events = appendStreamEvent(events, { type: 'workflow_edge_selected', fromNodeId: 'a', toNodeId: 'b' });
   assert.equal(workflowControlEvents(events).length, 2);
+});
+
+test('workflow canvas node and status projections do not depend on the streaming task object', () => {
+  const source = readFileSync(new URL('../../src/features/workflow/components/WorkflowRuntimePage.jsx', import.meta.url), 'utf8');
+  for (const [start, end] of [['const layoutNodes', 'const [nodes'], ['const statusById', 'const autoDetailTarget']]) {
+    const projection = source.slice(source.indexOf(start), source.indexOf(end));
+    assert.match(projection, /\bcanvasTask\b/);
+    assert.doesNotMatch(projection, /\btask\b/);
+  }
 });
 
 test('reloadable caches evict least recently used values and active runtimes survive', () => {

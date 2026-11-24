@@ -490,27 +490,19 @@
 }
 
 /* ===== Approval Mode Picker (next to attach icon in composer) ===== */
-.approval-mode-picker {
-    position: relative;
-    width: 38px;
-    height: 38px;
-    flex-shrink: 0;
-    /* 保持按钮原来的位置，避免展开时触发器移动。 */
-    margin-left: -8.5px;
+/* Shared by the Chat and Workflow composer. */
+.approval-mode-picker { position: relative; flex: 0 0 auto; }
+.approval-mode-segments {
+    width: 132px;
+    --dissolve-muted: #e4ded3;
+    --dissolve-foreground: #242322;
 }
-
-/* A click must never move the button out from under the pointer, so the trigger keeps its
-   resting position and only the two upper options are nudged right as a group. Composer
-   padding no longer has to absorb the left circle, and no toolbar space is reserved. */
-.approval-mode-picker.is-open {
-    z-index: 32;
-}
-
-/* 两个备选图标以当前图标为中心扇形展开，随它一起左移；
-   不再额外向右偏移（旧偏移是为旧的按钮位置预留的）。 */
-.approval-mode-picker.is-open .approval-mode-menu {
-    transform: none;
-}
+.approval-mode-segments .dissolve-segmented-icon { width: 21px !important; height: 21px !important; }
+.approval-mode-segments .dissolve-segmented-icon svg { image-rendering: auto; shape-rendering: geometricPrecision; }
+/* Keep the native SVG stroke widths when shrinking the icon viewport. */
+.approval-mode-segments .dissolve-segmented-icon svg :is(path, rect):not([stroke="none"]) { vector-effect: non-scaling-stroke; }
+.approval-mode-segments canvas { image-rendering: auto; }
+.approval-mode-error { position: absolute; bottom: calc(100% + 8px); left: 0; width: max-content; max-width: 220px; z-index: 32; }
 
 /* Agent 选择器跟在审批图标右边：按钮只露当前头像，菜单向上展开。 */
 .agent-picker {
@@ -707,168 +699,4 @@
     color: rgba(220, 227, 244, 0.58);
     font-size: 12px;
     font-weight: 600;
-}
-
-.approval-mode-trigger {
-    position: relative;
-    z-index: 31;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 38px;
-    height: 38px;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: transparent;
-    color: #fff;
-    cursor: pointer;
-    outline: none;
-    box-shadow: none;
-    transition: transform 180ms ease, color 180ms ease, opacity 180ms ease;
-}
-
-.approval-mode-picker.is-open .approval-mode-trigger {
-    color: #fff;
-}
-
-.approval-mode-trigger:focus-visible {
-    box-shadow: 0 0 0 2px rgba(116, 148, 209, 0.34);
-}
-
-.approval-mode-trigger:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.approval-mode-icon {
-    display: inline-block;
-    flex-shrink: 0;
-    width: 25px;
-    height: 25px;
-    background-color: currentColor;
-    -webkit-mask-repeat: no-repeat;
-    mask-repeat: no-repeat;
-    -webkit-mask-position: center;
-    mask-position: center;
-    -webkit-mask-size: contain;
-    mask-size: contain;
-    image-rendering: auto;
-    vertical-align: middle;
-    transition: color 180ms ease;
-}
-
-.approval-mode-picker.is-open .approval-mode-icon {
-    color: #fff;
-}
-
-/* Keep the current mode centered between the two symmetric upper options. */
-.approval-mode-menu {
-    position: absolute;
-    left: 50%;
-    bottom: 50%;
-    width: 1px;
-    height: 1px;
-    z-index: 30;
-    pointer-events: none;
-}
-
-/* 图标保持透明背景，不使用覆盖层。 */
-.approval-mode-menu::before { content: none; }
-
-.approval-mode-option {
-    position: absolute;
-    left: 0;
-    top: 0;
-    z-index: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 38px;
-    height: 38px;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: transparent;
-    color: #fff;
-    cursor: pointer;
-    outline: none;
-    pointer-events: auto;
-    box-shadow: none;
-    transform: translate(-50%, -50%);
-    transition: color 160ms ease, opacity 160ms ease;
-    animation: approval-mode-fade-in 140ms ease-out;
-}
-
-/* 备选图标在当前图标上方紧凑对称展开：再往上 4px，与提示文字之间留出余量。 */
-.approval-mode-option-1 {
-    transform: translate(calc(-50% - 18px), calc(-50% - 30px));
-}
-
-.approval-mode-option-2 {
-    transform: translate(calc(-50% + 18px), calc(-50% - 30px));
-}
-
-@media (hover: hover) and (pointer: fine) {
-    .approval-mode-trigger:hover {
-        color: #fff;
-    }
-    .approval-mode-trigger:hover .approval-mode-icon { color: #fff; }
-    .approval-mode-option:hover {
-        color: #fff;
-    }
-}
-
-.approval-mode-trigger:active,
-.approval-mode-option:active { opacity: 0.62; }
-
-.approval-mode-option-icon {
-    display: inline-block;
-    flex-shrink: 0;
-    width: 25px;
-    height: 25px;
-    background-color: currentColor;
-    -webkit-mask-repeat: no-repeat;
-    mask-repeat: no-repeat;
-    -webkit-mask-position: center;
-    mask-position: center;
-    -webkit-mask-size: contain;
-    mask-size: contain;
-    image-rendering: auto;
-    vertical-align: middle;
-}
-
-/* 素材自带不同的透明边：逐模式抹平，使可见轮廓左边缘都落在文字左边缘上。 */
-.approval-mode-icon[data-approval-mode='smart'],
-.approval-mode-option-icon[data-approval-mode='smart'] {
-    transform: translateX(-3px);
-}
-
-.approval-mode-icon[data-approval-mode='full'],
-.approval-mode-option-icon[data-approval-mode='full'] {
-    transform: translateX(-2px);
-}
-
-.approval-mode-option:focus-visible {
-    box-shadow: 0 0 0 2px rgba(116, 148, 209, 0.34);
-}
-
-.approval-mode-option.is-readonly {
-    opacity: 0.46;
-    cursor: default;
-}
-
-@keyframes approval-mode-fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .approval-mode-trigger,
-    .approval-mode-icon,
-    .approval-mode-option { transition: none; }
-    .approval-mode-menu::before,
-    .approval-mode-option {
-        animation-duration: 1ms;
-    }
 }

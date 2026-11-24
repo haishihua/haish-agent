@@ -211,12 +211,12 @@ test('run configuration progressively reveals thinking before agent and model se
   assert.match(delegationStyles, /font-family: var\(--conversation-font\)/);
 });
 
-test('approval mode uses a compact icon orbit with copy moved to tooltips', () => {
-  assert.match(modelPickersSource, /const alternateModes = APPROVAL_MODE_OPTIONS\.filter/);
-  assert.match(modelPickersSource, /text=\{approvalHint\(opt\)\}/);
-  assert.match(modelPickersSource, /approval-mode-option-\$\{index \+ 1\}/);
-  assert.doesNotMatch(modelPickersSource, /className="approval-mode-label"/);
-  assert.match(fs.readFileSync(new URL('../../styles/modals.css', import.meta.url), 'utf8'), /@keyframes approval-mode-fade-in/);
+test('approval mode uses three persistent segments and a selection-dependent Full Access icon', () => {
+  assert.match(modelPickersSource, /APPROVAL_MODE_OPTIONS\.map/);
+  assert.match(modelPickersSource, /createSegmentedControl\(host.current/);
+  assert.match(modelPickersSource, /clickOnly: true/);
+  assert.match(modelPickersSource, /selected \? 'unlocked' : 'locked'/);
+  assert.doesNotMatch(modelPickersSource, /approval-mode-menu/);
 });
 
 test('send and stop actions share the chromatic metal circle effect', () => {

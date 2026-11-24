@@ -5,6 +5,7 @@ import {
 } from './runtime-workflow-layout.js';
 import { workflowArgumentsText } from './workflow-catalog.js';
 import { GOAL_WORKFLOW_ID } from './workflow-ids.js';
+import { recordStreamEventUpdate, streamEventUpdate } from './stream-events.js';
 
 // 工作流事件里的节点 id：四种字段名都能出现（camel/snake × workflowNode/node）。
 // 事件订阅方与尝试投影都读这一份，字段别名加一处就够了。
@@ -38,7 +39,22 @@ export function nodeAttempts(task, nodeId) {
   if (!byNode) { byNode = new Map(); attemptProjectionCache.set(cacheKey, byNode); }
   const cached = byNode.get(nodeId);
   if (cached && cached.result === result && cached.persisted === persisted) return cached.value;
-  const value = projectNodeAttempts(task, nodeId);
+  const update = streamEventUpdate(events);
+  const previous = update?.previous.deref();
+  const base = previous && attemptProjectionCache.get(previous)?.get(nodeId);
+  const tail = events.at(-1);
+  const lastAttempt = base?.value.at(-1);
+  const canUpdateTail = base && base.result === result && base.persisted === persisted
+    && previous.length === events.length && update.prefixLength === events.length - 1
+    && ['llm_answer_delta', 'llm_thinking_delta'].includes(tail?.type)
+    && previous.at(-1)?.type === tail.type
+    && eventNodeId(previous.at(-1)) === eventNodeId(tail)
+    && lastAttempt?.events.at(-1) === previous.at(-1);
+  const value = canUpdateTail
+    ? [...base.value.slice(0, -1), { ...lastAttempt, events: recordStreamEventUpdate(
+      [...lastAttempt.events.slice(0, -1), tail], lastAttempt.events, lastAttempt.events.length - 1,
+    ) }]
+    : projectNodeAttempts(task, nodeId);
   byNode.set(nodeId, { result, persisted, value });
   return value;
 }
@@ -87,12 +103,29 @@ export function visibleNodeAttempts(attempts, latestResult, nodeId) {
   }] : [];
 }
 
+const scopedAttemptCache = new WeakMap();
+
 export function attemptTask(task, attempt, result) {
-  const events = attempt?.events || [];
+  const events = attempt?.events || EMPTY_ATTEMPT_EVENTS;
+  let scope = scopedAttemptCache.get(events);
+  if (!scope || scope.sourceCalls !== task?.toolCalls) {
+    const update = streamEventUpdate(events);
+    const previous = update?.previous.deref();
+    const base = previous && scopedAttemptCache.get(previous);
+    const tail = events.at(-1);
+    // Only nodeAttempts' text-tail fast path records ancestry on attempt arrays.
+    const eventLog = base ? recordStreamEventUpdate(
+      [...base.eventLog.slice(0, -1), tail], base.eventLog, base.eventLog.length - 1,
+    ) : events.filter((event) => !event.type?.startsWith('workflow_'));
+    scope = { eventLog, sourceCalls: task?.toolCalls, toolCalls: base && base.sourceCalls === task?.toolCalls
+      && previous.at(-1)?.callId === tail?.callId
+      ? base.toolCalls : workflowToolCallsForAttempt(task?.toolCalls, events) };
+    scopedAttemptCache.set(events, scope);
+  }
   return {
     ...task,
-    eventLog: events.filter((event) => !event.type?.startsWith('workflow_')),
-    toolCalls: workflowToolCallsForAttempt(task?.toolCalls, events),
+    eventLog: scope.eventLog,
+    toolCalls: scope.toolCalls,
     answerText: result?.summary || '',
   };
 }

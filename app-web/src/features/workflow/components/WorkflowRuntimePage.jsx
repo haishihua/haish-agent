@@ -261,13 +261,24 @@ function WorkflowCanvas({ workflow, task, composer, annotationControllerRef, onR
     [layout, workflow?.edges],
   );
 
+  const previousDetailScope = React.useRef(null);
   React.useLayoutEffect(() => {
+    const previous = previousDetailScope.current;
+    const taskId = task?.taskId;
+    previousDetailScope.current = { workflowKey, taskId };
+    const retryHandoff = previous?.workflowKey === workflowKey && previous.taskId
+      && task?.sourceTaskId === previous.taskId && task?.rerunFromNodeId;
+    if (retryHandoff) {
+      manualDetailRef.current = true;
+      setSelectedNodeId(String(task.rerunFromNodeId));
+      return;
+    }
     manualDetailRef.current = false;
     setSelectedNodeId('');
     followApprovalBranchRef.current = '';
     previousSelectionRef.current = { nodeId: '', status: 'pending' };
     previousAttentionRef.current = '';
-  }, [workflowKey, task?.taskId]);
+  }, [workflowKey, task?.taskId, task?.sourceTaskId, task?.rerunFromNodeId]);
   React.useEffect(() => {
     if (attentionKey && attentionKey !== previousAttentionRef.current) {
       followApprovalBranchRef.current = '';
@@ -276,20 +287,30 @@ function WorkflowCanvas({ workflow, task, composer, annotationControllerRef, onR
     previousAttentionRef.current = attentionKey;
   }, [attentionKey, attentionNodeId, workflowKey, task?.taskId]);
 
+  // Token updates replace the task object, but do not change canvas state.
+  const { status, completedAt, completed_at, serverFinished, rerunFromNodeId, sourceRunId,
+    workflowRun, requestedProvider, requestedModelId, requestedReasoningEffort,
+    profileId, profileDisplayName } = task || {};
+  const providerModel = task?.providerState?.model;
+  const canvasTask = React.useMemo(() => ({ status, completedAt, completed_at, serverFinished,
+    rerunFromNodeId, sourceRunId, workflowRun, requestedProvider, requestedModelId,
+    requestedReasoningEffort, providerState: { model: providerModel }, profileId, profileDisplayName,
+  }), [status, completedAt, completed_at, serverFinished, rerunFromNodeId, sourceRunId,
+    workflowRun, requestedProvider, requestedModelId, requestedReasoningEffort, providerModel, profileId, profileDisplayName]);
   const nodeConfigKey = JSON.stringify(nodeRuntimeConfigs);
   const providerCatalogKey = JSON.stringify(providerOptions.map((item) => ({ id: item.id, provider: item.provider, legacySelectors: item.legacySelectors })));
   const layoutNodes = React.useMemo(() => {
     const configs = JSON.parse(nodeConfigKey);
     const providers = JSON.parse(providerCatalogKey);
     return (workflow?.nodes || []).map((node) => {
-    const status = String(node.id) === attentionNodeId ? attentionStatus : workflowRuntimeNodeStatus(node, run, task, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds);
+    const status = String(node.id) === attentionNodeId ? attentionStatus : workflowRuntimeNodeStatus(node, run, canvasTask, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds);
     const id = String(node.id);
     const layoutMeta = layout.meta.get(id);
     const runtimeDetailAvailable = canOpenNodeDetail(node);
-    const config = workflowDisplayConfig(node, { nodes: workflow?.nodes || [] }, task, configs, configReadOnly, providers);
+    const config = workflowDisplayConfig(node, { nodes: workflow?.nodes || [] }, canvasTask, configs, configReadOnly, providers);
     const provider = providers.find((item) => item.id === config.llm_config_id)?.provider;
     const runtimeNode = node.type === 'agent' ? { ...node, agent_id: config.agent_id } : node;
-    const agentName = workflowAgentName(config.agent_id, task, agentOptions);
+    const agentName = workflowAgentName(config.agent_id, canvasTask, agentOptions);
     return {
       // ponytail: reuse the editor node renderer; runtime only supplies status/config data.
       id,
@@ -311,13 +332,13 @@ function WorkflowCanvas({ workflow, task, composer, annotationControllerRef, onR
       connectable: false,
     };
     });
-  }, [attentionNodeId, attentionStatus, activeEventNodeIds, agentOptions, arrangement, canOpenNodeDetail, eventNodeOutcomes, feedbackTargetIds, layout, run, task, configReadOnly, traversedLoopNodeIds, workflow?.nodes, workflow?.edges, routes, nodeConfigKey, providerCatalogKey]);
+  }, [attentionNodeId, attentionStatus, activeEventNodeIds, agentOptions, arrangement, canOpenNodeDetail, eventNodeOutcomes, feedbackTargetIds, layout, run, canvasTask, configReadOnly, traversedLoopNodeIds, workflow?.nodes, workflow?.edges, routes, nodeConfigKey, providerCatalogKey]);
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes);
   React.useEffect(() => { setNodes((current) => reconcileRuntimeFlowNodes(current, layoutNodes)); }, [layoutNodes, setNodes]);
   const nodeById = React.useMemo(() => new Map((workflow?.nodes || []).map((node) => [String(node.id), node])), [workflow?.nodes]);
   const statusById = React.useMemo(
-    () => new Map((workflow?.nodes || []).map((node) => [String(node.id), workflowRuntimeNodeStatus(node, run, task, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)])),
-    [activeEventNodeIds, eventNodeOutcomes, run, task, traversedLoopNodeIds, workflow?.nodes],
+    () => new Map((workflow?.nodes || []).map((node) => [String(node.id), workflowRuntimeNodeStatus(node, run, canvasTask, activeEventNodeIds, eventNodeOutcomes, traversedLoopNodeIds)])),
+    [activeEventNodeIds, eventNodeOutcomes, run, canvasTask, traversedLoopNodeIds, workflow?.nodes],
   );
   const autoDetailTarget = runtimeDetailTarget({
     status: workflowRuntimeDisplayStatus(task),
@@ -535,7 +556,7 @@ function WorkflowCanvas({ workflow, task, composer, annotationControllerRef, onR
         onSave={onSaveAnnotation} onError={onAnnotationError || (() => {})} /> : null}
       {selectedNode ? (
         <NodeDetail
-          key={`${task?.taskId || ''}:${selectedNode.id}`}
+          key={`${workflowKey}:${selectedNode.id}`}
           node={selectedNode}
           task={task}
           run={run}

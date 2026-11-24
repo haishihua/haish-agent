@@ -1,4 +1,9 @@
 import React from 'react';
+import { createSegmentedControl } from '../../../shared/ui/vendor/dissolve/segmented-control.core';
+import requestApprovalIcon from '../assets/permission-icons/request-approval.svg?raw';
+import autoApprovalIcon from '../assets/permission-icons/auto-approval.svg?raw';
+import fullAccessLockedIcon from '../assets/permission-icons/full-access-locked.svg?raw';
+import fullAccessUnlockedIcon from '../assets/permission-icons/full-access-unlocked.svg?raw';
 import { resolveApiBase } from '../../../shared/api/base.js';
 import { approvalStore } from '../../../core/approval-store.js';
 import { PortalTooltip } from '../../../shared/ui/PortalTooltip.jsx';
@@ -36,18 +41,16 @@ function ModelGlyph({ modelId, className = '' }) {
 }
 
 export const APPROVAL_MODE_OPTIONS = [
-  { id: 'strict', label: 'Request Approval', icon: 'approval-strict-bold.png', desc: 'Ask before every write or network op' },
-  { id: 'smart',  label: 'Auto Approve',     icon: 'generative.png',           desc: 'Allow safe ops, ask on risk' },
-  { id: 'full',   label: 'Full Access',      icon: 'approval-full-bold.png',   desc: 'Allow everything without prompting' },
+  { id: 'strict', label: 'Request Approval', desc: 'Ask before every write or network op' },
+  { id: 'smart',  label: 'Auto Approve',     desc: 'Allow safe ops, ask on risk' },
+  { id: 'full',   label: 'Full Access',      desc: 'Allow everything without prompting' },
 ];
 
 export function ApprovalModePicker({ conversationId, draft = false, ensureConversation, disabled = false, readOnly = false }) {
-  const [open, setOpen] = React.useState(false);
   const [mode, setMode] = React.useState('smart');
   const [loaded, setLoaded] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
-  const rootRef = React.useRef(null);
   const API = React.useMemo(() => resolveApiBase(), []);
 
   React.useEffect(() => {
@@ -73,30 +76,11 @@ export function ApprovalModePicker({ conversationId, draft = false, ensureConver
     return () => { controller.abort(); unsubscribe(); };
   }, [API, conversationId, draft]);
 
-  React.useEffect(() => {
-    if (!open) return undefined;
-    function handleDocMouseDown(event) {
-      if (rootRef.current && !rootRef.current.contains(event.target)) {
-        setOpen(false);
-      }
-    }
-    function handleKey(event) {
-      if (event.key === 'Escape') setOpen(false);
-    }
-    document.addEventListener('mousedown', handleDocMouseDown);
-    document.addEventListener('keydown', handleKey);
-    return () => {
-      document.removeEventListener('mousedown', handleDocMouseDown);
-      document.removeEventListener('keydown', handleKey);
-    };
-  }, [open]);
-
   async function changeMode(next) {
-    if (!loaded || readOnly || disabled || next === mode || busy) { setOpen(false); return; }
+    if (!conversationId || !loaded || readOnly || disabled || next === mode || busy) return;
     const prev = mode;
     setError('');
     setMode(next);
-    setOpen(false);
     setBusy(true);
     try {
       const targetId = draft ? (await ensureConversation()).conversation_id : conversationId;
@@ -115,66 +99,53 @@ export function ApprovalModePicker({ conversationId, draft = false, ensureConver
     }
   }
 
-  const current = APPROVAL_MODE_OPTIONS.find((o) => o.id === mode) || APPROVAL_MODE_OPTIONS[1];
-  const alternateModes = APPROVAL_MODE_OPTIONS.filter((option) => option.id !== current.id);
-  const approvalHint = (option) => `${option.label}\n${option.desc}`;
-
   return (
-    <div className={`approval-mode-picker ${open ? 'is-open' : ''} ${loaded ? '' : 'is-loading'} ${readOnly ? 'is-readonly' : ''}`} ref={rootRef}>
-      <PortalTooltip text={open ? '' : approvalHint(current)} position="above" multiline>
-        <button
-          type="button"
-          className="approval-mode-trigger"
-          onClick={() => setOpen((o) => !o)}
-          disabled={disabled || readOnly || busy || !loaded || !conversationId}
-          aria-disabled={disabled ? 'true' : undefined}
-          aria-readonly={readOnly ? 'true' : undefined}
-          aria-haspopup="menu"
-          aria-expanded={open}
-          aria-label={approvalHint(current)}
-        >
-          <span
-            className="approval-mode-icon"
-            data-approval-mode={current.id}
-            style={{
-              WebkitMaskImage: `url("assets/ui/icons/${current.icon}")`,
-              maskImage: `url("assets/ui/icons/${current.icon}")`,
-            }}
-            aria-hidden="true"
-          />
-        </button>
-      </PortalTooltip>
-      {error ? <ErrorState variant="inline" detail={error} /> : null}
-      {open ? (
-        <div className="approval-mode-menu" role="menu" aria-label="Approval mode">
-          {alternateModes.map((opt, index) => (
-            <PortalTooltip key={opt.id} text={approvalHint(opt)} position="above" multiline>
-                <button
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked="false"
-                  className={`approval-mode-option approval-mode-option-${index + 1} ${readOnly ? 'is-readonly' : ''}`}
-                  disabled={disabled || readOnly || busy}
-                  aria-label={approvalHint(opt)}
-                  onClick={() => changeMode(opt.id)}
-                >
-                  <span
-                    className="approval-mode-option-icon"
-                    data-approval-mode={opt.id}
-                    style={{
-                      WebkitMaskImage: `url("assets/ui/icons/${opt.icon}")`,
-                      maskImage: `url("assets/ui/icons/${opt.icon}")`,
-                    }}
-                    aria-hidden="true"
-                  />
-                </button>
-            </PortalTooltip>
-          ))}
-        </div>
-      ) : null}
+    <div className="approval-mode-picker">
+      {loaded ? <ApprovalModeControl mode={mode} busy={busy}
+        disabled={disabled || readOnly || busy || !conversationId} onChange={changeMode} />
+        : <div className="approval-mode-segments" style={{ height: 30 }} aria-label="Loading approval mode" aria-busy="true" />}
+      {error ? <div className="approval-mode-error"><ErrorState variant="inline" detail={error} /></div> : null}
     </div>
   );
 }
+
+function ApprovalModeControl({ mode, disabled, busy, onChange }) {
+  const host = React.useRef(null);
+  const instance = React.useRef(null);
+  const latest = React.useRef(null);
+  React.useLayoutEffect(() => {
+    latest.current = { mode, disabled, onChange };
+    instance.current?.update({ value: mode, disabled });
+  }, [mode, disabled, onChange]);
+  React.useLayoutEffect(() => {
+    const control = createSegmentedControl(host.current, {
+      segments: APPROVAL_MODE_OPTIONS.map(({ id, label }) => ({ value: id, label: '', ariaLabel: label })),
+      size: 'sm', value: latest.current.mode, disabled: latest.current.disabled,
+      clickOnly: true, haptics: false, onChange: (next) => latest.current.onChange(next),
+      trackColor: 'rgba(228, 222, 211, .12)', indicatorColor: '#eee3d5',
+    });
+    APPROVAL_MODE_OPTIONS.forEach(({ id }, index) => {
+      for (const selected of [false, true]) {
+        const icon = id === 'full' ? (selected ? 'unlocked' : 'locked') : id;
+        const slot = control.icon(index, selected);
+        slot.dataset.approvalIcon = icon;
+        // Only bundled, reviewed SVG assets are rendered here.
+        slot.innerHTML = APPROVAL_ICONS[icon];
+      }
+    });
+    instance.current = control;
+    return () => { instance.current = null; control.destroy(); };
+  }, []);
+  return <div className="approval-mode-segments" ref={host} aria-label="Approval mode" aria-busy={busy} />;
+}
+
+const APPROVAL_ICONS = {
+  strict: requestApprovalIcon,
+  smart: autoApprovalIcon,
+  locked: fullAccessLockedIcon,
+  unlocked: fullAccessUnlockedIcon,
+};
+
 export function ModelPicker({
   value,
   reasoningEffort,

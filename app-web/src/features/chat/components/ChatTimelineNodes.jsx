@@ -139,6 +139,15 @@ function ChatTimelineMetaNode({ item }) {
 
 const metaActivityIcon = (status) => (isActiveToolStatus(status) ? LoaderCircle : undefined);
 
+const TimelineText = React.memo(function TimelineText({ text, streaming }) {
+  return (
+    <div className={`chat-timeline-text ${streaming ? 'streaming' : ''}`}>
+      {streaming ? <IncrementalText text={text} streaming /> : <Markdown source={text} />}
+      {streaming ? <span className="chat-timeline-text-cursor" aria-hidden="true" /> : null}
+    </div>
+  );
+});
+
 export function ChatAgentTimeline({
   items = [],
   streaming = false,
@@ -176,16 +185,7 @@ export function ChatAgentTimeline({
     <div className={`chat-timeline ${streaming ? 'streaming' : 'done'}`}>
       {safeItems.map((item) => {
         if (item.kind === 'text') {
-          return (
-            <div key={item.id} className={`chat-timeline-text ${item.streaming ? 'streaming' : ''}`}>
-              {/* 流式期间走 IncrementalText（逐块淡入、纯文本）；一旦这段定稿再交给
-                  Markdown 渲染——否则中间叙述里的 ## / ** / - 会一直裸着显示。 */}
-              {item.streaming
-                ? <IncrementalText text={item.text} streaming />
-                : <Markdown source={item.text} />}
-              {item.streaming ? <span className="chat-timeline-text-cursor" aria-hidden="true" /> : null}
-            </div>
-          );
+          return <TimelineText key={item.id} text={item.text} streaming={item.streaming} />;
         }
         if (item.kind === 'tool') {
           return (

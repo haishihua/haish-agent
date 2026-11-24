@@ -44,6 +44,10 @@ export function workflowRuntimeNodeStatus(
     if (node.type === 'human_approval' && (runStatus === 'approval' || runStatus === 'waiting_approval')) return 'approval';
     if (isTaskLive(task)) return 'running';
   }
+  // A node retry initially carries the source run's failed result. Show the
+  // new execution until the first node event or the new run snapshot arrives.
+  if (!eventOutcome && String(task?.rerunFromNodeId || '') === String(node.id) && isTaskLive(task)
+    && (!run?.run_id || run.run_id === task.sourceRunId)) return 'running';
   if (approvalDecision) return approvalDecision;
   if (eventOutcome && eventOutcome !== 'running') return eventOutcome;
   if (normalized === 'cancelled') return 'cancelled';
