@@ -635,7 +635,10 @@ app
     appSleepGuard.start();
     app.setName('Haish');
     applyDockIcon();
-    setupAppUpdater();
+    setupAppUpdater(async () => {
+      stopRealtimeClient();
+      await Promise.all([stopLocalRuntime(), stopRemoteAdapter()]);
+    });
     ensureRealtimeSocket().catch((error) => {
       console.error('Failed to connect to local Haish runtime:', error);
       scheduleRealtimeReconnect();

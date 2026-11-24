@@ -50,11 +50,21 @@ jobs:
           name: Haish-windows-window
           path: build/runtime/windows-preview.png
           if-no-files-found: error
-      - name: Upload Windows installer to this run only
+      - name: Verify Windows update metadata
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          foreach ($file in @("Haish-$version-win-x64-setup.exe", "Haish-$version-win-x64-setup.exe.blockmap", "latest.yml")) {
+            if (!(Test-Path "release/$file" -PathType Leaf) -or (Get-Item "release/$file").Length -eq 0) { throw "Missing update asset: $file" }
+          }
+      - name: Upload Windows installer and update assets to this run only
         uses: actions/upload-artifact@v4
         with:
           name: Haish-windows-x64-preview
-          path: release/Haish-*-win-x64-setup.exe
+          path: |
+            release/Haish-*-win-x64-setup.exe
+            release/Haish-*-win-x64-setup.exe.blockmap
+            release/latest.yml
           if-no-files-found: error
       - name: Upload runtime diagnostics
         if: always()

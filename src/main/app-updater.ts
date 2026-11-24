@@ -22,7 +22,7 @@ const INSTALL_WATCHDOG_MS = 20_000;
  * `node_modules/electron/dist` and is not a real release install.
  */
 function supportsAppUpdates(): boolean {
-  return process.platform !== 'win32' && isRealPackagedBuild();
+  return (process.platform === 'darwin' || process.platform === 'win32') && isRealPackagedBuild();
 }
 
 function isRealPackagedBuild(): boolean {
@@ -91,7 +91,7 @@ function describeError(error: unknown): string {
 function unsupportedState(): AppUpdateState {
   return setState({
     status: 'unsupported',
-    message: process.platform === 'win32' ? 'Updates disabled in Windows preview' : 'Only in installed builds',
+    message: 'Updates unavailable on this build',
     canInstall: false,
   });
 }
@@ -100,9 +100,12 @@ export function getAppUpdateState(): AppUpdateState {
   return currentState;
 }
 
-export function setupAppUpdater(): void {
+let prepareWindowsUpdate: () => Promise<void>;
+
+export function setupAppUpdater(prepareWindowsInstall: () => Promise<void>): void {
   if (initialized) return;
   initialized = true;
+  prepareWindowsUpdate = prepareWindowsInstall;
 
   currentState = createIdleState();
 
@@ -502,7 +505,7 @@ function manualInstallAndRelaunch(): void {
 }
 
 export function installAppUpdate(): AppUpdateState {
-  if (process.platform === 'win32') return unsupportedState();
+  if (!supportsAppUpdates()) return unsupportedState();
   if (!currentState.canInstall && currentState.status !== 'downloaded') {
     return currentState;
   }
@@ -512,7 +515,7 @@ export function installAppUpdate(): AppUpdateState {
 
   // Allow retry from a previous install failure when the package is still ready.
   if (currentState.status === 'error') {
-    if (!findDownloadedUpdateZip()) {
+    if (process.platform === 'darwin' && !findDownloadedUpdateZip()) {
       return setState({
         status: 'error',
         message: currentState.message || 'Update file not found',
@@ -534,9 +537,12 @@ export function installAppUpdate(): AppUpdateState {
   });
   armInstallWatchdog();
 
-  setImmediate(() => {
+  setImmediate(async () => {
     try {
-      if (isProperlyCodeSigned()) {
+      if (process.platform === 'win32') {
+        await prepareWindowsUpdate();
+        autoUpdater.quitAndInstall(false, true);
+      } else if (isProperlyCodeSigned()) {
         // Native Squirrel.Mac path — only for Developer ID / notarised builds.
         autoUpdater.quitAndInstall(false, true);
       } else {

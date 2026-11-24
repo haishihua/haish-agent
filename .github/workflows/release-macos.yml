@@ -172,12 +172,12 @@ jobs:
           test -d "$mac_dir"
           mac="$mac_dir/Haish-$version-arm64"
           win="artifacts/win/Haish-$version-win-x64-setup.exe"
-          assets=("$mac.dmg" "$mac.dmg.blockmap" "$mac.zip" "$mac.zip.blockmap" "$mac_dir/latest-mac.yml" "$win")
+          assets=("$mac.dmg" "$mac.dmg.blockmap" "$mac.zip" "$mac.zip.blockmap" "$mac_dir/latest-mac.yml" "$win" "$win.blockmap" "artifacts/win/latest.yml")
           for asset in "${assets[@]}"; do test -s "$asset" || { echo "Missing $asset"; exit 1; }; done
           if gh release view "v$version" >/dev/null 2>&1; then
             echo "Release v$version already exists; use a new version."
             exit 1
           fi
           gh release create "v$version" "${assets[@]}" --target "$GITHUB_SHA" --title "Haish $version" \
-            --notes 'macOS ARM64: install from the DMG. Windows x64: run the NSIS installer; updates are manual.' \
+            --notes 'macOS ARM64: install from the DMG. Windows x64: run the NSIS installer; installed builds support in-app updates.' \
             | tee -a "$GITHUB_STEP_SUMMARY"
