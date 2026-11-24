@@ -11,6 +11,19 @@
     image-rendering: auto;
 }
 
+.chat-composer .model-picker-empty-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 26px;
+    padding: 0 8px;
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-radius: 7px;
+    color: var(--muted-foreground, #94a3b8);
+    font: 500 12px/1 var(--conversation-font, inherit);
+    white-space: nowrap;
+}
+
 .chat-composer .model-picker-trigger {
     font-size: 12px;
     font-weight: 600;

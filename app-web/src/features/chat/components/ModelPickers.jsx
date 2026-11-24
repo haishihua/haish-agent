@@ -195,7 +195,8 @@ export function ModelPicker({
   const rootRef = React.useRef(null);
   const current = options.find((o) => o.id === value) || (value ? { id: value, label: value } : null);
   const currentProvider = providerOptions.find((o) => o.id === providerValue) || null;
-  const empty = !current && options.length === 0 && !loading;
+  // A restored model ID is not selectable without its configured provider.
+  const empty = !currentProvider || (!current && options.length === 0 && !loading);
   const reasoningOptions = suppliedReasoningOptions;
   const currentReasoning = reasoningOptions.find((o) => o.id === (reasoningEffort ?? null)) || { id: reasoningEffort, label: reasoningEffort };
   const currentReasoningIndex = reasoningOptions.findIndex((o) => o.id === currentReasoning?.id);
@@ -230,6 +231,10 @@ export function ModelPicker({
       document.removeEventListener('keydown', handleKey);
     };
   }, [open]);
+
+  if (empty) {
+    return <span className="model-picker-empty-chip"><AppIcon name="box" size={13} />No model</span>;
+  }
 
   const triggerButton = (
     <button
@@ -270,8 +275,7 @@ export function ModelPicker({
       <PortalTooltip text={open ? '' : runConfigLabel} position="above">
         {triggerButton}
       </PortalTooltip>
-      {open && empty && <div className="model-picker-quick" role="dialog" aria-label="Model selection"><div className="model-picker-empty">No model</div></div>}
-      {open && !empty && !menuOpen ? (
+      {open && !menuOpen ? (
         <div className={`model-picker-quick thinking-${currentReasoning?.id || 'unknown'}`} role="dialog" aria-label="Thinking level">
           <button
             type="button"
@@ -302,7 +306,7 @@ export function ModelPicker({
           </div>
         </div>
       ) : null}
-      {open && !empty && menuOpen ? (
+      {open && menuOpen ? (
         <div className={`model-picker-menu ${activeSubmenu ? 'has-flyout' : ''}`} role="menu">
           <div className="model-picker-submenu">
             {/* Agent 选择已经拆到输入框左侧的 AgentPicker；这里只留 provider 和 model。 */}

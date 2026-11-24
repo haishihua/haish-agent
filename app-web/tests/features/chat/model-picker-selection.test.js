@@ -6,15 +6,22 @@ const source = fs.readFileSync(new URL('../../../src/features/chat/components/Mo
 
 test('trigger tooltip shows the selected model id and thinking value', () => {
   assert.ok(source.includes("const runConfigLabel = empty ? 'No model' : `${value || modelLabel} · ${currentReasoning?.label || 'Unspecified'}`;"));
-  assert.match(source, /open && empty .*No model/);
-  assert.match(source, /open && !empty && !menuOpen/);
-  assert.match(source, /open && !empty && menuOpen/);
+  assert.match(source, /if \(empty\) \{\s*return <span className="model-picker-empty-chip">[^\n]*No model<\/span>;\s*\}[^]*const triggerButton/);
   assert.match(source, /const reasoningOptions = suppliedReasoningOptions;/);
   assert.doesNotMatch(source, /id: null, label: 'Unspecified'/);
   assert.doesNotMatch(source, /DEFAULT_REASONING_EFFORT/);
   assert.match(source, /<PortalTooltip text=\{open \? '' : runConfigLabel\}/);
   assert.ok(source.includes('aria-label={`Run configuration, ${runConfigLabel}`}'));
   assert.doesNotMatch(source, /Thinking ·/);
+});
+
+test('a saved model without its configured provider still renders the empty state', () => {
+  const expression = source.match(/const empty = ([^;]+);/)[1];
+  const isEmpty = new Function('currentProvider', 'current', 'options', 'loading', `return ${expression};`);
+  const savedModel = { id: 'gpt-6.2-sol' };
+  assert.equal(isEmpty(null, savedModel, [], false), true);
+  assert.equal(isEmpty(null, savedModel, [savedModel], true), true);
+  assert.equal(isEmpty({ id: 'configured' }, savedModel, [savedModel], false), false);
 });
 
 test('provider and model selection do not dismiss the settings menu', () => {
