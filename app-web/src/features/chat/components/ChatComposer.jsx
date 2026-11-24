@@ -180,7 +180,7 @@ export function ChatComposer({
     agentOptions: resolvedAgentOptions,
     defaultAgentId: resolvedDefaultAgentId,
   });
-  const { providerId, legacyProvider, modelId, agentId, reasoningEffort, restoreConfig } = runConfig;
+  const { providerId, legacyProvider, modelId: selectedModelId, agentId, reasoningEffort, restoreConfig } = runConfig;
   const effectiveAgentId = agentId;
   const currentSelection = resolvedAgentOptions.find((item) => item.id === effectiveAgentId);
   const resolvedSkills = currentSelection?.skills || EMPTY_SKILLS;
@@ -202,6 +202,7 @@ export function ChatComposer({
   const canUploadDocuments = currentSelection?.canUploadDocuments === true;
   const currentProvider = resolvedProviderOptions.find((item) => item.id === providerId);
   const providerModels = useProviderModels(executionMode === 'bot' ? null : currentProvider);
+  const modelId = selectedModelId || (!runConfig.serverSelection ? providerModels.defaultModelId : '') || '';
   const modelLoading = providerModels.loading;
   const providerRequest = currentProvider?.id || '';
   const providerConfigured = Boolean(currentProvider && providerRequest);
@@ -873,7 +874,7 @@ export function ChatComposer({
           <div className="chat-config-control">
             <ComposerToolbar
               executionMode={executionMode}
-              runConfig={runConfig}
+              runConfig={{ ...runConfig, modelId }}
               providerModels={providerModels}
               providerOptions={resolvedProviderOptions}
               agent={{

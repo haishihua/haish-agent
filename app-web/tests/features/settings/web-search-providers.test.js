@@ -30,8 +30,16 @@ test('legacy drafts keep their keys, drop mode and gain the new providers', () =
   assert.equal(draft.providers.parallel.enabled, true);
 });
 
+test('the core Tavily default is not active without a key or when disabled', () => {
+  const draft = normalizeWebSearchDraft({ provider: 'tavily' });
+  assert.equal(webSearchProviderState(draft, 'tavily').active, false);
+  const configured = patchWebSearchProvider(draft, 'tavily', { api_key_configured: true });
+  assert.equal(webSearchProviderState(configured, 'tavily').active, true);
+  assert.equal(webSearchProviderState(patchWebSearchProvider(configured, 'tavily', { enabled: false }), 'tavily').active, false);
+});
+
 test('activating a provider moves the single active slot and keeps other keys', () => {
-  const before = normalizeWebSearchDraft({ provider: 'tavily', providers: { tavily: { api_key_configured: true } } });
+  const before = normalizeWebSearchDraft({ provider: 'tavily', providers: { tavily: { api_key_configured: true }, exa: { api_key_configured: true } } });
   const after = activateWebSearchProvider(before, 'exa');
   assert.equal(after.provider, 'exa');
   assert.equal(after.providers.exa.enabled, true);
@@ -56,7 +64,7 @@ test('unknown providers are ignored instead of being written', () => {
 });
 
 test('the row switch is on exactly for the active provider', () => {
-  const web = activateWebSearchProvider(normalizeWebSearchDraft({ provider: 'tavily' }), 'firecrawl');
+  const web = activateWebSearchProvider(normalizeWebSearchDraft({ provider: 'tavily', providers: { firecrawl: { api_key_configured: true, enabled: false } } }), 'firecrawl');
   const checked = WEB_SEARCH_PROVIDER_OPTIONS.filter(({ id }) => webSearchProviderState(web, id).active).map(({ id }) => id);
   assert.deepEqual(checked, ['firecrawl'], 'only one switch may be on at a time');
   assert.equal(webSearchProviderState(web, 'firecrawl').enabled, true, 'activating also clears the per-provider enabled flag');

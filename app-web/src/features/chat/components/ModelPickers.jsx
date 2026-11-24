@@ -195,15 +195,16 @@ export function ModelPicker({
   const rootRef = React.useRef(null);
   const current = options.find((o) => o.id === value) || (value ? { id: value, label: value } : null);
   const currentProvider = providerOptions.find((o) => o.id === providerValue) || null;
+  const empty = !current && options.length === 0 && !loading;
   const reasoningOptions = suppliedReasoningOptions;
   const currentReasoning = reasoningOptions.find((o) => o.id === (reasoningEffort ?? null)) || { id: reasoningEffort, label: reasoningEffort };
   const currentReasoningIndex = reasoningOptions.findIndex((o) => o.id === currentReasoning?.id);
   const reasoningRatio = Math.max(0, currentReasoningIndex) / Math.max(1, reasoningOptions.length - 1);
   const reasoningProgressOffset = 12 - (24 * reasoningRatio);
   const reasoningProgress = `calc(${reasoningRatio * 100}% ${reasoningProgressOffset < 0 ? '-' : '+'} ${Math.abs(reasoningProgressOffset)}px)`;
-  const gaugeRotation = reasoningGaugeRotation(reasoningEffort, suppliedReasoningOptions);
+  const gaugeRotation = empty ? null : reasoningGaugeRotation(reasoningEffort, suppliedReasoningOptions);
   const modelLabel = current ? current.label : (currentProvider ? (loading ? 'loading' : 'unavailable') : 'No model');
-  const runConfigLabel = `${value || 'No model'} · ${currentReasoning?.label || 'Unspecified'}`;
+  const runConfigLabel = empty ? 'No model' : `${value || modelLabel} · ${currentReasoning?.label || 'Unspecified'}`;
   const providerLabel = currentProvider ? currentProvider.label : 'No provider';
 
   React.useEffect(() => {
@@ -269,7 +270,8 @@ export function ModelPicker({
       <PortalTooltip text={open ? '' : runConfigLabel} position="above">
         {triggerButton}
       </PortalTooltip>
-      {open && !menuOpen ? (
+      {open && empty && <div className="model-picker-quick" role="dialog" aria-label="Model selection"><div className="model-picker-empty">No model</div></div>}
+      {open && !empty && !menuOpen ? (
         <div className={`model-picker-quick thinking-${currentReasoning?.id || 'unknown'}`} role="dialog" aria-label="Thinking level">
           <button
             type="button"
@@ -300,7 +302,7 @@ export function ModelPicker({
           </div>
         </div>
       ) : null}
-      {open && menuOpen ? (
+      {open && !empty && menuOpen ? (
         <div className={`model-picker-menu ${activeSubmenu ? 'has-flyout' : ''}`} role="menu">
           <div className="model-picker-submenu">
             {/* Agent 选择已经拆到输入框左侧的 AgentPicker；这里只留 provider 和 model。 */}

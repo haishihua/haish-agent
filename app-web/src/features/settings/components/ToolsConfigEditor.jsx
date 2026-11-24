@@ -133,6 +133,11 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
   // 开关＝“用这一家”：点一下就写回后端，失败回滚。单选没“全关”，点当前那家给一句提示。
   const activateProvider = async id => {
     const label = WEB_SEARCH_PROVIDER_OPTIONS.find(item => item.id === id)?.label || id;
+    if (!webSearchProviderState(web, id).configured) {
+      setEditing(id);
+      setError('');
+      return;
+    }
     const next = activateWebSearchProvider(web, id);
     if (next === web) { onToast?.('info', `${label} is already the active search provider.`); return; }
     update({ web_search: next });
@@ -162,10 +167,12 @@ export function ToolsConfigEditor({ selectedId, records, onRecordsChange, onSave
     </div>;
   }
   return <div className={`settings-tools-modern ${editing ? 'with-editor' : ''}`}><div className={`settings-content-modern ${skillsPane ? 'settings-skills-content' : ''}`}>
-    <div className="settings-page-heading"><h1>{skillsPane ? `Skills · ${skillTab === 'builtin' ? 'Built-in' : skillTab === 'global' ? 'Global' : 'Project'}` : 'Search providers'}</h1>{skillsPane && <div className="settings-skill-actions">{onRefreshTools && <Button variant="ghost" size="sm" className="settings-heading-action" disabled={Boolean(skillActionBusy || toolsSettingsState.refreshing)} onClick={onRefreshTools}><RefreshCw size={14} aria-hidden="true" className={toolsSettingsState.refreshing ? 'settings-spin' : undefined} />Refresh</Button>}{skillTab !== 'builtin' && current.skill_can_install !== false && <Button size="sm" disabled={Boolean(skillActionBusy)} onClick={() => { setEditing(null); setInstalling(true); }}><Plus size={16} />Install skill</Button>}</div>}</div>
+    <div className="settings-page-heading"><h1>{skillsPane ? `Skills · ${skillTab === 'builtin' ? 'Built-in' : skillTab === 'global' ? 'Global' : 'Project'}` : 'Search providers'}</h1></div>
     {skillsPane && toolsSettingsState.error && <div className="settings-skill-refresh-error"><ErrorState variant="inline" detail={toolsSettingsState.error} /><Button variant="outline" size="sm" onClick={onRefreshTools}>Retry</Button></div>}
     <div id={skillsPane ? 'skill-list-panel' : undefined}>
+    <div className="settings-provider-toolbar">
     <SettingsSearch value={query} onChange={setQuery} label={skillsPane ? 'Search skills' : 'Search providers'} />
+    {skillsPane && <div className="settings-toolbar-actions">{onRefreshTools && <Button variant="ghost" size="sm" className="settings-heading-action" disabled={Boolean(skillActionBusy || toolsSettingsState.refreshing)} onClick={onRefreshTools}><RefreshCw size={14} aria-hidden="true" className={toolsSettingsState.refreshing ? 'settings-spin' : undefined} />Refresh</Button>}{skillTab !== 'builtin' && current.skill_can_install !== false && <Button size="sm" disabled={Boolean(skillActionBusy)} onClick={() => { setEditing(null); setInstalling(true); }}><Plus size={16} />Install skill</Button>}</div>}</div>
     <ItemGroup className="settings-list-modern"><MotionConfig reducedMotion="user"><AnimatePresence key={`${skillsPane}:${skillTab}`} initial={false}>{shown.map(item => {
       const id = skillsPane ? item.id || item.name : item.id;
       const providerState = skillsPane ? undefined : webSearchProviderState(web, id);

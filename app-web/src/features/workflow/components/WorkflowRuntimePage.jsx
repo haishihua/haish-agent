@@ -479,7 +479,7 @@ function WorkflowCanvas({ workflow, task, composer, annotationControllerRef, onR
         '--workflow-detail-accent': workflowNodeAccent(selectedNode.type),
       } : undefined}
     >
-      <main ref={canvasRef} className="workflow-run-canvas workflow-canvas" aria-label="Workflow execution graph">
+      <main ref={canvasRef} className="workflow-run-canvas workflow-canvas" data-platform={window.haish?.platform} aria-label="Workflow execution graph">
         {onOpenConfig ? (
           <button
             type="button"

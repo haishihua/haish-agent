@@ -102,7 +102,7 @@ test('production UI separates skill scopes without description copy', () => {
   assert.match(page, /settings-skill-nav-children/);
   assert.doesNotMatch(source, /role="tablist"/);
   assert.match(source, /skillTab !== 'builtin' && current.skill_can_install/);
-  assert.match(source, /settings-skill-actions/);
+  assert.match(source, /settings-provider-toolbar[\s\S]*settings-toolbar-actions/);
   assert.match(source, /onInstallSkill\(file, skillTab\)/);
   // 标题下的两行说明（项目路径 / 共享启用规则）已经去掉。
   assert.doesNotMatch(source, /settings-skill-context/);

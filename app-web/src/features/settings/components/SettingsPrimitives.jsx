@@ -45,7 +45,7 @@ export function SettingsMenuSelect({ id, value, options, onChange, disabled = fa
 }
 
 export function SettingsSearch({ value, onChange, label }) {
-  return <div className="settings-search-modern"><Search size={15} /><Input type="search" aria-label={label} placeholder={`${label}…`} value={value} onChange={e => onChange(e.target.value)} />{value && <Button variant="ghost" size="icon-sm" aria-label="Clear search" onClick={() => onChange('')}><X /></Button>}</div>;
+  return <div className="settings-search-modern"><Search size={15} aria-hidden="true" /><input className="settings-search-input" type="search" aria-label={label} placeholder={`${label}…`} value={value} onChange={e => onChange(e.target.value)} />{value && <Button type="button" variant="ghost" size="icon-sm" aria-label="Clear search" onClick={() => onChange('')}><X /></Button>}</div>;
 }
 
 export function SettingsToggleRow({ label, checked, onCheckedChange, disabled = false }) {

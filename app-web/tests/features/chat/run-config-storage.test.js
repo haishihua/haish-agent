@@ -48,12 +48,20 @@ test('run config keys require owner, mode, and conversation', () => {
   assert.equal(buildRunConfigStorageKey('owner', 'chat', ''), '');
 });
 
-test('brand-new conversations do not invent a provider or model and start at high', () => {
+test('brand-new conversations stay empty without providers and start at high', () => {
   values.clear();
-  const selection = resolveRunConfigSelection('fresh', providers, agents, 'agent-default');
+  const selection = resolveRunConfigSelection('fresh', [], agents, 'agent-default');
   assert.equal(selection.providerId, '');
   assert.equal(selection.modelId, '');
   assert.equal(selection.reasoningEffort, 'high');
+});
+
+test('an unconfigured conversation picks the first provider and its default model once available', () => {
+  values.clear();
+  safeWriteRunConfigSelection('fresh', { providerId: '', modelId: '' });
+  const selection = resolveRunConfigSelection('fresh', providers, agents, 'agent-default');
+  assert.equal(selection.providerId, 'ai-router');
+  assert.equal(selection.modelId, 'gpt-5.6-sol');
 });
 
 test('removed conversation provider is kept visible instead of replaced by preferred or first provider', () => {

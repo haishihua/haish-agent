@@ -5,7 +5,10 @@ import fs from 'node:fs';
 const source = fs.readFileSync(new URL('../../../src/features/chat/components/ModelPickers.jsx', import.meta.url), 'utf8');
 
 test('trigger tooltip shows the selected model id and thinking value', () => {
-  assert.ok(source.includes("const runConfigLabel = `${value || 'No model'} · ${currentReasoning?.label || 'Unspecified'}`;"));
+  assert.ok(source.includes("const runConfigLabel = empty ? 'No model' : `${value || modelLabel} · ${currentReasoning?.label || 'Unspecified'}`;"));
+  assert.match(source, /open && empty .*No model/);
+  assert.match(source, /open && !empty && !menuOpen/);
+  assert.match(source, /open && !empty && menuOpen/);
   assert.match(source, /const reasoningOptions = suppliedReasoningOptions;/);
   assert.doesNotMatch(source, /id: null, label: 'Unspecified'/);
   assert.doesNotMatch(source, /DEFAULT_REASONING_EFFORT/);

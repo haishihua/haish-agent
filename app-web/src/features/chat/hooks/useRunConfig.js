@@ -61,12 +61,12 @@ export function resolveRunConfigSelection(storageKey, providerOptions, agentOpti
     ? stored
     : (optionHasId(agentOptions, preferred?.agentId) ? preferred : null);
   const providerSource = stored || (savedExecutionConfigId(preferred?.providerId, providerOptions, true) ? preferred : null);
-  const providerId = savedExecutionConfigId(providerSource?.providerId, providerOptions, true) || providerSource?.providerId || '';
+  const providerId = savedExecutionConfigId(providerSource?.providerId, providerOptions, true) || providerSource?.providerId || providerOptions?.[0]?.id || '';
   const provider = (providerOptions || []).find((item) => item.id === providerId);
   const providerDefaultModelId = String(provider?.defaultModelId || '').trim();
   return {
     providerId,
-    modelId: providerSource?.modelId || '',
+    modelId: (providerSource?.providerId && providerSource.modelId) || providerDefaultModelId || provider?.modelOptions?.[0]?.id || '',
     providerDefaultModelId,
     agentId: agentSource?.agentId || defaultAgentId,
     reasoningEffort: normalizeReasoningEffort(providerSource?.reasoningEffort, provider?.defaultReasoningEffort),
@@ -95,7 +95,7 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
       defaultAgentId,
     );
     setSelection((current) => {
-      if (!keyChanged && current.serverKey === nextKey) {
+      if (!keyChanged && current.serverKey === nextKey && (current.providerId || current.modelId || current.legacyProvider)) {
         if (current.legacyProvider || !Object.hasOwn(current, 'pendingReasoningEffort')) return current;
         const configId = savedExecutionConfigId(current.providerId, providerOptions, current.pendingLegacyIdentity === true);
         const provider = (providerOptions || []).find((item) => item.id === configId);
@@ -110,9 +110,9 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
       const provider = (providerOptions || []).find((item) => item.id === providerId);
       const providerDefaultModelId = String(provider?.defaultModelId || '').trim();
       const defaultModelChanged = providerDefaultModelId !== current.providerDefaultModelId;
-      const modelId = keyChanged || providerId !== current.providerId || defaultModelChanged
+      const modelId = keyChanged || providerId !== current.providerId
         ? nextSelection.modelId
-        : current.modelId;
+        : current.modelId || providerDefaultModelId || provider?.modelOptions?.[0]?.id || '';
       const agentId = keyChanged || !optionHasId(agentOptions, current.agentId)
         ? nextSelection.agentId
         : current.agentId;
@@ -151,6 +151,13 @@ export function usePersistentRunConfig({ selectionStorageKey, providerOptions, a
   return {
     restoreConfig: (config) => {
       config = migrateExecutionRoute(config, providerOptions);
+      if (!config.llm_config_id && !config.provider && !config.model_id) {
+        setSelection((current) => ({
+          ...resolveRunConfigSelection(selectionStorageKey, providerOptions, agentOptions, defaultAgentId),
+          agentId: config.workflow_id || config.agent_id || current.agentId,
+        }));
+        return;
+      }
       const provider = providerOptions.find((item) => item.id === (config.llm_config_id || config.provider));
       setSelection((current) => {
         const { pendingReasoningEffort: _pending, pendingLegacyIdentity: _legacy, legacyProvider: _provider, ...rest } = current;

@@ -9,11 +9,9 @@ const isProvider = (id) => WEB_SEARCH_PROVIDER_OPTIONS.some((provider) => provid
 
 export function webSearchProviderState(web, id) {
   const draft = web?.providers?.[id] || {};
-  return {
-    enabled: draft.enabled !== false,
-    configured: Boolean(draft.api_key_configured || String(draft.api_key || '').trim()),
-    active: web?.provider === id,
-  };
+  const enabled = draft.enabled !== false;
+  const configured = Boolean(draft.api_key_configured || String(draft.api_key || '').trim());
+  return { enabled, configured, active: web?.provider === id && enabled && configured };
 }
 
 // 右侧只留一个开关：开关开着就是当前生效的 provider（与 core 的单选 `provider` 一致）。
