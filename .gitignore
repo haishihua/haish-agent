@@ -9,6 +9,7 @@ app-web/dist-release/
 !/build/Haish.icon/
 !/build/icon.icns
 !/build/icon.png
+!/build/icon-win.ico
 release/
 tmp/
 # Local verification runs build the app into here; never commit the output.

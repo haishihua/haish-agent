@@ -20,6 +20,25 @@ body.window-chrome-free .app-topbar {
     --topbar-left-space: 27px;
 }
 
+.app-topbar.app-topbar--windows {
+    --topbar-left-space: 16px;
+    /* Reserve the native caption buttons' actual width, including on high-DPI displays. */
+    padding-right: calc(16px + max(0px, 100% - env(titlebar-area-width, calc(100% - 150px))));
+}
+
+body.window-chrome-free .app-topbar.app-topbar--windows {
+    padding-right: 16px;
+}
+
+.app-topbar--windows .topbar-logo {
+    /* Match the reference's ~42px visible artwork (the PNG has transparent margins). */
+    width: 52px;
+    height: 52px;
+    flex-basis: 52px;
+    object-position: center;
+    transform: translateY(-2px);
+}
+
 .topbar-brand,
 .topbar-actions,
 .topbar-icon,

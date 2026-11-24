@@ -303,6 +303,9 @@ function createWindow(): void {
     ...(process.platform === 'darwin' ? {
       titleBarStyle: 'hiddenInset' as const,
       trafficLightPosition: { x: 22, y: 22 },
+    } : process.platform === 'win32' ? {
+      titleBarStyle: 'hidden' as const,
+      titleBarOverlay: { color: '#0b0f18', symbolColor: '#aeb7cb', height: 56 },
     } : {}),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
@@ -311,6 +314,8 @@ function createWindow(): void {
       sandbox: false,
     },
   });
+
+  if (process.platform === 'win32') window.removeMenu();
 
   window.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url).catch(() => undefined);

@@ -36,7 +36,7 @@ export function TopBar({
   const [remoteControlOpen, setRemoteControlOpen] = useState(false);
   return (
     <>
-      <div className="app-topbar">
+      <div className={`app-topbar${window.haish?.platform === 'win32' ? ' app-topbar--windows' : ''}`}>
         <div className="topbar-brand">
           <img className="topbar-logo" src="assets/ui/penguin_logo_user.png" alt="" draggable={false} />
           <div className="topbar-title">

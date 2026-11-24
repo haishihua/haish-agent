@@ -83,7 +83,7 @@
       }
     ],
     "win": {
-      "icon": "build/icon.png",
+      "icon": "build/icon-win.ico",
       "target": ["nsis"],
       "artifactName": "Haish-${version}-win-${arch}-setup.${ext}"
     },
