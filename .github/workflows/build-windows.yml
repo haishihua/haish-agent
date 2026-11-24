@@ -38,6 +38,14 @@ jobs:
         run: npm run dist:win
       - name: Smoke-check the bundled runtime (no installer or UI E2E)
         run: node scripts/smoke-runtime.mjs release/win-unpacked/resources/haish-agent-core/bin/haish-runtime/haish-runtime.exe build/runtime/packaged-smoke.log
+      - name: Capture packaged Windows window
+        run: ./scripts/capture-windows-preview.ps1
+      - name: Upload Windows window screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: Haish-windows-window
+          path: build/runtime/windows-preview.png
+          if-no-files-found: error
       - name: Upload Windows installer to this run only
         uses: actions/upload-artifact@v4
         with:
