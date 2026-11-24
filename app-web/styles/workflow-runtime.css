@@ -440,6 +440,16 @@
 .workflow-attempt-picker { display: grid; gap: 8px; margin: 4px 0 24px; }
 .workflow-attempt-picker-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 14px; font-weight: 600; color: #dbe5f5; }
 .workflow-attempt-picker-heading span { border-radius: 12px; padding: 1px 8px; background: #8095bd33; font-size: 12px; }
+/* Avoid grab/grabbing cursor rendering issues on Windows without changing panning. */
+.workflow-run-canvas[data-platform='win32'] :is(
+    .react-flow__pane.draggable:not(.selection),
+    .react-flow__pane.dragging:not(.selection),
+    .react-flow__node.draggable,
+    .react-flow__nodesselection-rect
+) {
+    cursor: move;
+}
+
 .workflow-attempt-choice { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 44px; padding: 7px 14px; border: 1px solid #8199bf38; border-radius: 10px; background: #91a9cf06; color: #c7d3e8; text-align: left; cursor: pointer; font: inherit; }
 .workflow-attempt-choice:hover { background: #91a9cf10; }
 .workflow-attempt-choice.is-selected { border-color: #8bc6ff; background: linear-gradient(100deg, #87baff30, #87baff0a); box-shadow: inset 0 0 0 1px #8bc6ff35, 0 0 12px #73afff0b; }

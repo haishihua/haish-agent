@@ -23,6 +23,9 @@
 }
 .composer-pet-hit.is-dragging { cursor: grabbing; }
 
+/* Use the system move cursor when Windows fails to render the grab cursor. */
+.composer-pet[data-platform='win32'] .composer-pet-hit { cursor: move; }
+
 .composer-pet-sprite {
   position: relative;
   display: block;

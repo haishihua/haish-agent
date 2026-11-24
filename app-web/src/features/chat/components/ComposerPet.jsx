@@ -429,5 +429,5 @@ export function ComposerPet({ conversationId, runState, activityState, running, 
     };
   }, [conversationId, taskId, taskStatus, active, target, reducedMotion, projectObstacle]);
 
-  return <span className="composer-pet" ref={holder} aria-hidden="true"><span className="composer-pet-sprite" ref={sprite}><span className="composer-pet-thinking-dots"><i /><i /><i /></span></span><span className="composer-pet-sprite composer-pet-jump is-hidden" ref={jumpSprite} /><span className="composer-pet-hit" ref={hit} /></span>;
+  return <span className="composer-pet" data-platform={window.haish?.platform} ref={holder} aria-hidden="true"><span className="composer-pet-sprite" ref={sprite}><span className="composer-pet-thinking-dots"><i /><i /><i /></span></span><span className="composer-pet-sprite composer-pet-jump is-hidden" ref={jumpSprite} /><span className="composer-pet-hit" ref={hit} /></span>;
 }
