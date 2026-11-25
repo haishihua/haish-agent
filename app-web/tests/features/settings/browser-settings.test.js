@@ -55,7 +55,7 @@ test('Browser has a window icon distinct from Web Search and concise primary cop
   assert.ok(!primary.includes('browser-page-description'));
   assert.ok(!primary.includes('Latest applied export'));
   assert.ok(!primary.includes('Setup prepares missing dependencies'));
-  assert.match(primary, /Install browser-use and Playwright/);
+  assert.match(primary, /Install browser-use and the browser runtime/);
   assert.match(primary, /Stable Chrome must already be installed/);
   assert.match(primary, /Import once, replace manually/);
 });
@@ -195,7 +195,7 @@ test('existing runtime without a completion record uses Check browser, not a mis
   });
   assert.deepEqual(browserStatusMeta(state), { label: 'Needs check', tone: 'warning' });
   assert.equal(browserDependencyAction({ ...state, enabled: false }).action, 'check');
-  assert.equal(browserDependencyAction({ ...state, initial_import_complete: false }).action, 'repair');
+  assert.equal(browserDependencyAction({ ...state, initial_import_complete: false }).action, 'check');
   assert.equal(browserDependencyAction({ ...state, managed_dependency_status: 'missing' }).label, 'Repair dependencies');
   assert.equal(browserDependencyAction({ ...state, dependency_status: 'missing' }).label, 'Repair dependencies');
   assert.match(editor, /Check verifies tools without installing/);

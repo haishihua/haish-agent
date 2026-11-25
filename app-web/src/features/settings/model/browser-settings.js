@@ -3,12 +3,6 @@ export function browserDependencyAction(state) {
   const cli = state?.dependency_status;
   const managed = state?.managed_dependency_status;
   if (state?.initial_import_error) return { label: 'Keep existing logins', action: 'keep_existing_logins', consent: true };
-  if (state && !state.initial_import_complete) {
-    if (cli === 'compatible' && managed === 'compatible' && state.error_code !== 'managed_browser_missing') {
-      return { label: 'Import Chrome logins', action: 'import_logins', consent: true };
-    }
-    return { label: 'Install browser', action: 'repair', consent: true };
-  }
   if (state?.error_code === 'managed_browser_check_failed') {
     return { label: 'Check browser', action: 'check', issue: 'Dependency check failed. Try again.' };
   }
@@ -21,6 +15,12 @@ export function browserDependencyAction(state) {
   if (cli === 'invalid') return { label: 'Repair dependencies', action: 'repair', consent: true, issue: 'Dependencies need reinstalling.' };
   if (cli === 'compatible' && managed === 'unverified') {
     return { label: 'Check browser', action: 'check', issue: 'Verify existing browser dependencies.' };
+  }
+  if (state && !state.initial_import_complete) {
+    if (cli === 'compatible' && managed === 'compatible' && state.error_code !== 'managed_browser_missing') {
+      return { label: 'Import Chrome logins', action: 'import_logins', consent: true };
+    }
+    return { label: 'Install browser', action: 'repair', consent: true };
   }
   if (cli !== 'compatible' || managed !== 'compatible' || state?.error_code === 'managed_browser_missing') {
     return { label: 'Repair dependencies', action: 'repair', consent: true, issue: 'Browser dependencies are missing.' };
