@@ -88,7 +88,6 @@ export function BrowserConfigEditor({ onToast }) {
         <div className="browser-connection" aria-label="One-time local login import">
           <span><Monitor size={16} /><strong>Personal Chrome</strong></span><ArrowRight size={16} aria-hidden="true" /><span><PanelsTopLeft size={16} /><strong>Haish browser</strong><Badge variant="outline">Local only</Badge></span>
         </div>
-        {state && <p>Browser dependencies: {state.dependency_status === 'compatible' && state.managed_dependency_status === 'compatible' ? 'Ready' : 'Not ready'} · Chrome login import: {hasBrowserImportSummary(state) ? 'Imported' : state.initial_import_complete ? 'Closed' : state.initial_import_error ? 'Interrupted' : 'Not imported'}</p>}
         {runtimeIssue && !running && !state.message && <p className="browser-runtime-issue" role="status"><Info size={14} />{runtimeIssue}{dependency.action === 'check' ? ' Use Check browser in Details.' : ''}</p>}
       </div>
       {(running || state?.message) && <div className={`browser-setup-status ${running || !state?.error_code ? '' : 'needs-attention'}`} role="status">{running ? <LoaderCircle size={16} className="settings-spin" /> : <Info size={16} />}<div><strong>{browserSetupHeading(state)}</strong><p>{state.message || 'Preparing dependencies and browser configuration…'}</p></div></div>}

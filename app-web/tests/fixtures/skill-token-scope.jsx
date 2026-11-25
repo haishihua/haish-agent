@@ -57,6 +57,7 @@ function Harness() {
     defaultAgentId="agent"
     onToast={(kind, message) => setToast({ kind, message })}
     onSend={() => { sends.count += 1; return true; }}
+    onGoalCommand={() => true}
     onStop={() => {}}
   />
     {toast && <AppToast kind={toast.kind} message={toast.message} />}
@@ -167,6 +168,32 @@ async function run() {
   submit();
   await sleep(300);
   check(sends.count === 2, 'the new draft can still send');
+
+  api.open({ scope: 'draft-project:P', conv: 'draft-1' });
+  await sleep(250);
+  await focusEnd();
+  key('Backspace');
+  await sleep(200);
+  api.setDraft('/goal');
+  await sleep(250);
+  [...document.querySelectorAll('[role="option"]')].find((item) => /goal/i.test(item.textContent))?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  await sleep(250);
+  const hasGoal = () => tokens().some((token) => /goal/i.test(token.textContent));
+  check(hasGoal(), 'selecting Goal renders its token');
+  api.open({ scope: 'draft-project:P', conv: 'draft-2' });
+  await sleep(250);
+  check(!hasGoal(), 'Goal does not leak to another conversation sharing the draft scope');
+  api.open({ scope: 'draft-project:P', conv: 'draft-1' });
+  await sleep(250);
+  check(hasGoal(), 'returning to the original conversation restores Goal');
+  await focusEnd();
+  key('Backspace');
+  await sleep(200);
+  api.open({ scope: 'draft-project:P', conv: 'draft-2' });
+  await sleep(200);
+  api.open({ scope: 'draft-project:P', conv: 'draft-1' });
+  await sleep(250);
+  check(!hasGoal(), 'explicitly removing Goal does not restore it on return');
 
   check(errors.length === 0, `no page errors (${errors.join(' | ')})`);
 }

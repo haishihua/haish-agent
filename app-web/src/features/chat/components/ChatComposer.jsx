@@ -147,7 +147,17 @@ export function ChatComposer({
     else skillByConversationRef.current.delete(scope);
     setSkillSelection({ scope, name });
   }, []);
-  const [goalSelected, setGoalSelected] = React.useState(false);
+  const [goalSelection, setGoalSelection] = React.useState(null);
+  const goalByConversationRef = React.useRef(null);
+  if (!goalByConversationRef.current) goalByConversationRef.current = new BoundedCache(50);
+  const goalSelected = goalSelection?.scope === skillScopeId
+    ? goalSelection.selected
+    : goalByConversationRef.current.get(skillScopeId) === true;
+  const setGoalSelected = React.useCallback((selected) => {
+    if (selected) goalByConversationRef.current.set(skillScopeId, true);
+    else goalByConversationRef.current.delete(skillScopeId);
+    setGoalSelection({ scope: skillScopeId, selected });
+  }, [skillScopeId]);
   const [skillMenuIndex, setSkillMenuIndex] = React.useState(0);
   const [skillMenuDismissed, setSkillMenuDismissed] = React.useState(false);
   const selectedSkillNameRef = React.useRef('');
@@ -250,12 +260,7 @@ export function ChatComposer({
     selectedSkillNameRef.current = selectedSkillName;
     skillSelectionPendingRef.current = false;
     setSkillMenuDismissed(false);
-    setGoalSelected(false);
   }, [skillScopeId, selectedSkillName]);
-
-  React.useEffect(() => {
-    if (executionMode !== 'chat' || !onGoalCommand) setGoalSelected(false);
-  }, [executionMode, onGoalCommand]);
 
   React.useEffect(() => {
     // 后台重读 agent 目录时 skills 会短暂为空，刷新失败也会为空；这两种情况都不能把用户
