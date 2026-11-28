@@ -85,7 +85,7 @@ test('workflow approval nodes reuse the approval card without a duplicate assist
   assert.match(overlaySource, /resolved=\{!activeRequest\}/);
   assert.match(overlaySource, /key=\{displayRequest\.request_id\}/);
   assert.match(overlaySource, /setBusy\(''\);\s*approvalStore\.remove\(requestId\)/);
-  assert.match(runtimeSource, /workflowRuntimeNodeStatus\(node, run, task,/);
+  assert.match(runtimeSource, /workflowRuntimeNodeStatus\(node, run, canvasTask,/);
   assert.equal(workflowRuntimeNodeStatus(
     { id: 'review', type: 'human_approval' },
     { status: 'waiting_approval', current_node_id: 'review', nodes: {} },

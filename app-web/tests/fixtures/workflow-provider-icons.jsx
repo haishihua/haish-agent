@@ -54,7 +54,8 @@ const visibleIcon = (element) => {
   const customIcon = trigger('custom-ds', 'Node model').querySelector('.settings-provider-icon');
   check(customIcon.getBoundingClientRect().width <= 18, 'Vendor mark stays inside the 18px select slot');
   check([...document.querySelectorAll('#snapshot [role="combobox"]')].every((item) => item.disabled), 'Historical fields remain read-only');
-  check(!trigger('empty', 'Node provider').querySelector('.settings-provider-icon'), 'Empty provider keeps plain placeholder');
+  check([...document.querySelectorAll('#empty .workflow-runtime-select-empty')].map((item) => item.textContent).join('|') === 'No provider|No model'
+    && !trigger('empty', 'Node provider') && !trigger('empty', 'Node model'), 'Empty provider and model are plain statuses, not dropdowns');
   const provider = trigger('editable', 'Node provider');
   provider.focus(); provider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await tick();
   check(visibleIcon(document.querySelector('[role="option"]')), 'Provider menu has icon');
@@ -62,6 +63,8 @@ const visibleIcon = (element) => {
   const model = trigger('editable', 'Node model');
   model.focus(); model.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await tick();
   check(visibleIcon(document.querySelector('[role="option"]')), 'Model menu has icon');
+  const selectedModel = document.querySelector('.workflow-runtime-select-menu [data-state="checked"]');
+  check(Boolean(selectedModel) && getComputedStyle(selectedModel.querySelector('[data-slot="select-item-indicator"]')).display === 'none', 'Selected model keeps its row highlight without a checkmark');
   document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await tick();
   check(changes === 0, 'Rendering icons never rewrites configuration');
   checks.dataset.result = failed ? 'FAIL' : 'PASS';

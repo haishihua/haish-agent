@@ -89,7 +89,7 @@ function makeHarness({ fetchDetail = async () => Response.json(detail()),
 
 function runActualAppShellSanityEffect(h) {
   const source = readFileSync(new URL('../../../src/features/app/AppShell.jsx', import.meta.url), 'utf8');
-  const effect = source.match(/useEffect\(\(\) => \{\n {4}if \(!busy \|\| currentConversationActive\) return;([\s\S]*?)\n {2}\}, \[busy, currentConversationActive, taskRuntimeState.activeTaskId, taskRuntimeState.pendingTask\]\);/);
+  const effect = source.match(/useEffect\(\(\) => \{\n {4}if \(!busy \|\| currentConversationActive\) return;([\s\S]*?)\n {2}\}, \[busy, currentConversationActive, taskRuntimeState.activeTaskId, taskRuntimeState.pendingTask, taskRuntimeState.submission\]\);/);
   assert.ok(effect, 'execute the actual page guard, not a second implementation');
   const execute = new Function('busy', 'currentConversationActive', 'taskRuntimeState', 'runtimeApiRef',
     'isTaskActuallyActive', `if (!busy || currentConversationActive) return;${effect[1]}`);

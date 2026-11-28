@@ -13,14 +13,10 @@ test('composer agent avatars have complete geometry outside Settings scope', () 
   assert.match(picker, /<AgentAvatar agentId=\{option\.id\}/);
 });
 
-test('agent menu uses a neutral border and sits near the enlarged approval icon', () => {
+test('agent menu uses a neutral border beside the permission control', () => {
   const menu = css.match(/\.agent-picker-menu\s*\{([^}]*)\}/)[1];
   assert.match(menu, /border:\s*1px solid var\(--line/);
   assert.doesNotMatch(menu, /239,\s*191,\s*100/);
   assert.match(chatCss, /\.chat-composer-tools\s*\{[^}]*gap:\s*4px;/);
-  for (const name of ['approval-mode-icon', 'approval-mode-option-icon']) {
-    const block = css.match(new RegExp(`\\.${name}\\s*\\{([^}]*)\\}`))[1];
-    assert.match(block, /width:\s*25px;/);
-    assert.match(block, /height:\s*25px;/);
-  }
+  assert.match(css, /\.approval-mode-segments \.dissolve-segmented-icon\s*\{[^}]*width:\s*21px[^}]*height:\s*21px/);
 });

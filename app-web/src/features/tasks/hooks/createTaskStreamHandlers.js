@@ -48,6 +48,7 @@ export function workflowNodeFinishedState(event, currentNode = {}, savedAttempts
       ?? ''
     ).trim() || currentNode.summary || '',
     error: event.error || '',
+    json: event.json ?? null,
     decision: event.decision || currentNode.decision || '',
     feedback: event.feedback ?? currentNode.feedback ?? '',
     attempt: event.attempt ?? currentNode.attempt ?? attempts.length + 1,

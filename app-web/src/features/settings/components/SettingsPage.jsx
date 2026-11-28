@@ -164,10 +164,11 @@ export function SettingsPage({
   const listTitle = activeSection === 'llm'
     ? (activeSubtab === 'vision' ? 'Vision' : (activeSubtab === 'image' ? 'Image' : 'Chat'))
     : sectionMeta.label;
-  // 单条目段（Memory / Embedding）不需要搜索框。
-  const hideSettingsSearch = activeSection === 'memory' || activeSection === 'embedding';
-  const filteredItems = !hideSettingsSearch && settingsSearch.trim()
-    ? items.filter((item) => `${item.title} ${item.kind || ''} ${item.summary || ''}`.toLowerCase().includes(settingsSearch.trim().toLowerCase()))
+  // Memory is the only single-backend section without list search.
+  const hideSettingsSearch = activeSection === 'memory';
+  const searchQuery = hideSettingsSearch ? '' : settingsSearch.trim();
+  const filteredItems = searchQuery
+    ? items.filter((item) => `${item.title} ${item.kind || ''} ${item.summary || ''}`.toLowerCase().includes(searchQuery.toLowerCase()))
     : items;
   // Memory 是单后端配置，隐藏添加；Embedding 已配置时同样隐藏（点条目即打开配置）；
   // 其他段始终显示添加入口。
@@ -705,7 +706,7 @@ export function SettingsPage({
           {!hideSettingsSearch && <SettingsSearch label={activeSection === 'llm' ? 'Search providers or models' : `Search ${listTitle.toLowerCase()}`} value={settingsSearch} onChange={setSettingsSearch} />}
           {addButton && <div className="settings-toolbar-actions">{addButton}</div>}
         </div>}
-        <ItemGroup className="settings-list-modern"><MotionConfig reducedMotion="user"><AnimatePresence key={`${activeSection}:${activeSubtab}`} initial={false}>{filteredItems.map(item => <SettingsRow key={item.id} className={activeSection === 'agent' ? 'settings-agent-row' : ''} title={item.title} description={item.summary} badge={item.badge} readOnly={item.readonly} selected={editingSettings?.id === item.id} icon={isLlmProviderSection(activeSection) ? <ProviderBrandMark provider={item.provider} name={item.title} /> : activeSection === 'agent' ? <AgentListIcon item={item} /> : activeSection === 'workflow' ? <WorkflowListIcon item={item} /> : <ConnectionBrandIcon itemId={item.id} title={item.title} />} onOpen={async () => { if (panelBusy) return; if (await selectListItem(item.id) === false) return; openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit'); }} enabled={item.enabled} onToggle={item.canToggle ? enabled => (activeSection === 'agent' ? onTogglePresetAgent : activeSection === 'workflow' ? onTogglePresetWorkflow : toggleLlmProvider)?.(item.id, enabled) : undefined} busy={Boolean(panelBusy) || Boolean(llmToggleBusy)} onDelete={(item.canDelete || item.custom) && !isUnsavedListItem(activeSection, item.id) ? () => requestDelete(activeSection, item.id) : undefined} status={activeSection === 'memory' ? connectionBadgeMeta(settingsConnectionStatus?.[activeSection]?.[item.id] || storedMemoryConnectionStatus(records, activeSection, item.id)) : undefined} />)}</AnimatePresence></MotionConfig>{!filteredItems.length && <div className="settings-empty">{settingsSearch ? 'No matching configuration.' : 'No configuration yet.'}</div>}</ItemGroup>
+        <ItemGroup className="settings-list-modern"><MotionConfig reducedMotion="user"><AnimatePresence key={`${activeSection}:${activeSubtab}`} initial={false}>{filteredItems.map(item => <SettingsRow key={item.id} className={activeSection === 'agent' ? 'settings-agent-row' : ''} title={item.title} description={item.summary} badge={item.badge} readOnly={item.readonly} selected={editingSettings?.id === item.id} icon={isLlmProviderSection(activeSection) ? <ProviderBrandMark provider={item.provider} name={item.title} /> : activeSection === 'agent' ? <AgentListIcon item={item} /> : activeSection === 'workflow' ? <WorkflowListIcon item={item} /> : <ConnectionBrandIcon itemId={item.id} title={item.title} />} onOpen={async () => { if (panelBusy) return; if (await selectListItem(item.id) === false) return; openEditor(activeSection, item.id, item.readonly ? 'detail' : 'edit'); }} enabled={item.enabled} onToggle={item.canToggle ? enabled => (activeSection === 'agent' ? onTogglePresetAgent : activeSection === 'workflow' ? onTogglePresetWorkflow : toggleLlmProvider)?.(item.id, enabled) : undefined} busy={Boolean(panelBusy) || Boolean(llmToggleBusy)} onDelete={(item.canDelete || item.custom) && !isUnsavedListItem(activeSection, item.id) ? () => requestDelete(activeSection, item.id) : undefined} status={activeSection === 'memory' ? connectionBadgeMeta(settingsConnectionStatus?.[activeSection]?.[item.id] || storedMemoryConnectionStatus(records, activeSection, item.id)) : undefined} />)}</AnimatePresence></MotionConfig>{!filteredItems.length && <div className="settings-empty">{searchQuery ? 'No matching configuration.' : 'No configuration yet.'}</div>}</ItemGroup>
       </div> : editorBody(activeSection, selectedId, 'edit')}
     </main>
     <div data-settings-portal="" />

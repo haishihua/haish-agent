@@ -15,15 +15,15 @@ function ConfigSelect({ label, value, options, disabled, onChange }) {
   const id = React.useId();
   const selected = options.items.find((item) => item.id === value);
   return <div className="workflow-runtime-field">
-    <label htmlFor={id}>{label}</label>
-    <Select value={value ? `value:${value}` : ''} disabled={disabled} onValueChange={(next) => onChange(next.slice(6))}>
+    {options.emptyLabel ? <span>{label}</span> : <label htmlFor={id}>{label}</label>}
+    {options.emptyLabel ? <span id={id} className="workflow-runtime-select-empty">{options.emptyLabel}</span> : <Select value={value ? `value:${value}` : ''} disabled={disabled} onValueChange={(next) => onChange(next.slice(6))}>
       <SelectTrigger id={id} aria-label={options.ariaLabel} aria-description={selected?.badge ? `Authentication: ${selected.badge}` : undefined} className="workflow-runtime-select"><SelectValue placeholder={options.placeholder}>{selected ? <>{selected.provider ? <ProviderIcon provider={selected.provider} modelId={selected.modelId} name={selected.name} /> : null}<span>{selected.label || selected.id}</span><ProviderAuthBadge label={selected.badge} /></> : null}</SelectValue></SelectTrigger>
       <SelectContent container={document.body} position="popper" align="start" sideOffset={4} collisionPadding={12} className="workflow-runtime-select-menu">
         {options.items.map((item) => <SelectItem key={item.id} disabled={item.disabled} value={`value:${item.id}`} data-value={`value:${item.id}`} className="workflow-runtime-select-option" textValue={`${item.label || item.id}${item.badge ? ` ${item.badge}` : ''}`}>
           {item.provider ? <ProviderIcon provider={item.provider} modelId={item.modelId} name={item.name} /> : null}<span>{item.label || item.id}</span><ProviderAuthBadge label={item.badge} />
         </SelectItem>)}
       </SelectContent>
-    </Select>
+    </Select>}
   </div>;
 }
 
@@ -59,11 +59,11 @@ export function WorkflowRuntimeConfig({ value = {}, providerOptions = [], agentO
       <ConfigSelect label="Model Provider" value={routeId} disabled={readOnly} onChange={(next) => {
         const selected = providerOptions.find((item) => item.id === next);
         onChange?.(selected ? { ...agentOnly, llm_config_id: next, model_id: selected.defaultModelId || '', reasoning_effort: normalizeReasoningEffort(selected.defaultReasoningEffort) } : agentOnly);
-      }} options={{ ariaLabel: 'Node provider', placeholder: 'Select provider', items: [
+      }} options={{ ariaLabel: 'Node provider', placeholder: 'Select provider', emptyLabel: !providerOptions.length && !(readOnly && routeId) ? 'No provider' : '', items: [
         ...((routeId && !provider) ? [{ id: routeId, label: display.label, provider: display.provider, name: display.label }] : []),
         ...providerOptions.map((item) => ({ id: item.id, label: item.label || item.id, provider: item.provider || 'custom', name: item.label || item.id, badge: providerAuthBadge(item.provider, item.authMode) })),
       ] }} />
-      <ConfigSelect label="Model" value={value.model_id || ''} disabled={readOnly || !provider} onChange={(next) => patch({ model_id: next })} options={{ ariaLabel: 'Node model', placeholder: 'Select model', items: [
+      <ConfigSelect label="Model" value={value.model_id || ''} disabled={readOnly || !provider} onChange={(next) => patch({ model_id: next })} options={{ ariaLabel: 'Node model', placeholder: 'Select model', emptyLabel: !(readOnly && value.model_id) && (!provider || (!value.model_id && !models.options.length)) ? (provider && models.loading ? 'Loading models…' : 'No model') : '', items: [
         ...(value.model_id && !models.options.some((item) => item.id === value.model_id) ? [{ id: value.model_id, label: value.model_id, provider: routeId ? display.provider : null, modelId: value.model_id }] : []),
         ...models.options.map((item) => ({ id: item.id, label: item.label || item.id, provider: display.provider, modelId: item.id })),
       ] }} />

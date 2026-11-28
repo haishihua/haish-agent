@@ -125,7 +125,7 @@ test('an explicit valid replacement is saved after recovery and preserves model/
   assert.deepEqual(JSON.parse(JSON.stringify(await state.harness.result.ensureSaved())), replacement);
 });
 
-test('conflicting restored identities block all saves until an explicit provider selection', async () => {
+test('conflicting restored identities block config saves until an explicit provider selection', async () => {
   const options = ['record-a', 'record-b'].map(id => ({ id, defaultModelId: 'synthetic-model' }));
   const conflict = { ...route, llm_config_id: 'record-a', provider: 'record-b', model_id: 'synthetic-model' };
   const writes = [];
@@ -164,7 +164,9 @@ test('conflicting restored identities block all saves until an explicit provider
   assert.equal(harness.result.config.provider, 'record-b');
   assert.equal(writes.length, 0);
   assert.equal(observed.length, 0);
-  assert.equal(storageWrites.length, 0);
+  // Local defaults can be cached on mount before the asynchronous restore returns.
+  // Once the conflicting server route is restored, it must not replace those defaults.
+  const initialStorageWrites = structuredClone(storageWrites);
   await assert.rejects(harness.result.saved.ensureSaved(), /conflicting/);
   harness.result.selection.setModelId('another-model');
   harness.result.selection.setReasoningEffort('low');
@@ -177,6 +179,7 @@ test('conflicting restored identities block all saves until an explicit provider
   await harness.settle();
   assert.match(harness.result.guard, /conflicting/);
   assert.equal(harness.result.config.provider, 'record-b');
+  assert.deepEqual(storageWrites, initialStorageWrites);
   harness.result.selection.setProviderId('record-b');
   await harness.settle();
   assert.equal(harness.result.guard, '');

@@ -223,7 +223,7 @@ test('runtime selection and detail share one type accent and clear together', ()
   assert.match(runtimeSource, /selected: node.id === selectedNodeId && node.data.runtimeDetailAvailable/);
   assert.match(runtimeSource, /nodes=\{displayNodes\}/);
   assert.match(runtimeSource, /'--workflow-detail-accent': workflowNodeAccent\(selectedNode.type\)/);
-  assert.match(runtimeSource, /key=\{`\$\{task\?\.taskId \|\| ''\}:\$\{selectedNode.id\}`\}/);
+  assert.match(runtimeSource, /key=\{`\$\{workflowKey\}:\$\{selectedNode\.id\}`\}/);
   assert.match(runtimeSource, /RuntimeSelectionLink key=\{selectedNodeId\} nodeId=\{selectedNodeId\}/);
   assert.match(runtimeStyles, /\.workflow-selection-link \{[^}]*pointer-events: none/);
   assert.doesNotMatch(runtimeStyles, /239, 191, 100/);

@@ -30,7 +30,7 @@ test('one quit request closes the UI before runtime shutdown', () => {
 
 test('runtime shutdown owns both spawned and reused backend processes', () => {
   assert.match(runtimeSource, /currentWorkdir = workdir;\s*state = \{ status: 'ready', baseUrl, pid: record\.pid \}/);
-  assert.match(runtimeSource, /const runtimePid = child\?\.pid \?\? state\.pid/);
+  assert.match(runtimeSource, /const ownedChild = child;\s*const runtimePid = ownedChild\?\.pid \?\? state\.pid/);
   assert.match(runtimeSource, /const trackedPids = runtimeProcessTree\(runtimePid\)/);
   assert.match(runtimeSource, /signalProcesses\(trackedPids, 'SIGTERM'\)/);
   assert.match(runtimeSource, /signalProcesses\(forceTargets, 'SIGKILL'\)/);

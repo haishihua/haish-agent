@@ -148,6 +148,7 @@ export function handleWorkflowFinished(scope, event) {
     workflowRun: {
       ...(run.workflowRun || {}),
       status: event.type === 'workflow_failed' ? 'failed' : 'done',
+      failure: event.type === 'workflow_failed' ? (event.failure ?? null) : null,
       current_node_id: null,
     },
   }));

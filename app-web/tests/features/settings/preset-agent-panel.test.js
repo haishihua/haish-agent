@@ -53,8 +53,9 @@ test('the read-only preset panel shows capabilities, never the raw tool identifi
   assert.match(editor, /className="preset-tool-group-icon"/);
   assert.match(editor, /className="preset-tool-group-label">\{section\.label\}/);
   assert.match(editor, /className="preset-tool-group-desc">\{section\.description \|\| 'Enabled for this preset\.'\}/);
-  assert.match(editor, /className="preset-tool-group-count">\{section\.tools\.length\}/);
-  // 工具名不暴露给用户：只留分组标题 + 描述 + 数量。
+  assert.match(editor, /className="preset-caps-count">\{effectiveTools\.length\}/);
+  assert.doesNotMatch(editor, /Grouped by capability|preset-caps-aside|preset-tool-group-count|section\.tools\.length/);
+  // 工具名不暴露给用户：分组只展示图标、标题和描述。
   assert.doesNotMatch(editor, /section\.tools\.map/);
   assert.doesNotMatch(editor, /preset-chip/);
   assert.doesNotMatch(editor, /renderReadOnlyList/);
@@ -76,7 +77,7 @@ test('the read-only preset panel shows capabilities, never the raw tool identifi
 
 test('preset capability styles keep the grouped list readable inside the 390px editor', () => {
   assert.match(css, /\.preset-tool-groups \{ border: 1px solid #ffffff0c; border-radius: 9px; background: var\(--control\); overflow: hidden; \}/);
-  assert.match(css, /\.preset-tool-group \{ display: grid; grid-template-columns: 20px minmax\(0, 1fr\) auto;[^}]*padding: 11px 12px;/);
+  assert.match(css, /\.preset-tool-group \{ display: grid; grid-template-columns: 20px minmax\(0, 1fr\);[^}]*padding: 11px 12px;/);
   assert.match(css, /\.preset-tool-group \+ \.preset-tool-group \{ border-top: 1px solid #ffffff08; \}/);
   assert.match(css, /\.preset-tool-group-desc \{[^}]*font-size: 11px;[^}]*line-height: 1\.5;/);
   assert.match(css, /\.preset-skill-chip \{[^}]*font-size: 11px;[^}]*overflow-wrap: anywhere;/);

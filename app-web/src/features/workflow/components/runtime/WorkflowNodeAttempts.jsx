@@ -62,6 +62,17 @@ export function WorkflowNodeAttempts({
     const terminalStatus = normalizeTaskStatus(task?.status);
     const failed = terminalStatus === 'failed';
     const processing = !isTaskSettled(task);
+    const failure = task?.workflowRun?.failure;
+    const judgment = task?.workflowRun?.nodes?.judge?.json;
+    if (failed && failure?.reason === 'goal_not_completed') {
+      const explanation = judgment?.reason || failure.message;
+      return (
+        <div className="workflow-final-output chat-bubble-text" role="status">
+          <h3>{judgment?.blocked === true ? 'User Action Required' : 'Goal Not Completed'}</h3>
+          {explanation ? <Markdown source={explanation} pathImages={false} /> : <p>The goal did not pass verification.</p>}
+        </div>
+      );
+    }
     if (terminalStatus === 'cancelled' || failed || processing) return (
       <div className="workflow-cancelled-empty" role="status">
         <div className={`workflow-result-state-icon${failed ? ' is-failed' : ''}`}>
@@ -69,6 +80,9 @@ export function WorkflowNodeAttempts({
         </div>
         <h3>{processing ? 'Task in progress' : failed ? 'Task failed' : 'Task cancelled'}</h3>
         <p>{processing ? 'The final result will appear here when ready.' : failed ? 'Execution failed. No final result was generated.' : 'Execution was cancelled. No final result was generated.'}</p>
+        {failed && (failure?.message || task?.error) ? (
+          <Markdown source={failure?.message || task.error} pathImages={false} />
+        ) : null}
       </div>
     );
     const text = taskFinalOutputText(task, task?.answerText || latestResult?.summary || task?.error || '');

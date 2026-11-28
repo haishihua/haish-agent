@@ -100,7 +100,6 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
           <header className="preset-caps-head">
             <h3 className="preset-caps-title">Tools</h3>
             <span className="preset-caps-count">{effectiveTools.length}</span>
-            <span className="preset-caps-aside">Grouped by capability</span>
           </header>
           {sections.length ? (
             <div className="preset-tool-groups">
@@ -111,7 +110,6 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
                     <span className="preset-tool-group-label">{section.label}</span>
                     <span className="preset-tool-group-desc">{section.description || 'Enabled for this preset.'}</span>
                   </span>
-                  <span className="preset-tool-group-count">{section.tools.length}</span>
                 </div>
               ))}
             </div>
@@ -121,7 +119,6 @@ export function AgentConfigEditor({ selectedId, settings, onSettingsChange, read
           <header className="preset-caps-head">
             <h3 className="preset-caps-title">Skills</h3>
             <span className="preset-caps-count">{effectiveSkills.length}</span>
-            <span className="preset-caps-aside">Enabled for this preset</span>
           </header>
           {effectiveSkills.length ? (
             <>

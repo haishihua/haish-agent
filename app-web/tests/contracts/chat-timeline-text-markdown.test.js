@@ -34,7 +34,8 @@ test('mid-turn commentary is settled as soon as the next tool call starts', () =
 });
 
 test('settled timeline text renders as Markdown, live text stays incremental', () => {
-  assert.match(editor, /item\.streaming\s*\n?\s*\? <IncrementalText text=\{item\.text\} streaming \/>\s*\n?\s*: <Markdown source=\{item\.text\} \/>/);
+  assert.match(editor, /<TimelineText key=\{item\.id\} text=\{item\.text\} streaming=\{item\.streaming\}/);
+  assert.match(editor, /streaming \? <IncrementalText text=\{text\} streaming \/> : <Markdown source=\{text\} \/>/);
   // 定稿分支不能再把纯文本塞进时间轴。
   assert.doesNotMatch(editor, /<IncrementalText text=\{item\.text\} streaming=\{item\.streaming\} \/>/);
 });

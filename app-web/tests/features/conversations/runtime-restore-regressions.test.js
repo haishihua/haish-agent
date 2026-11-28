@@ -107,7 +107,9 @@ function harness(records = [task('history'), task('latest', 'running')]) {
   };
   const sanityStart = shell.indexOf('  useEffect(() => {\n    if (!busy || currentConversationActive) return;');
   assert.ok(sanityStart >= 0);
-  const sanitySource = shell.slice(sanityStart, shell.indexOf('  }, [busy, currentConversationActive, taskRuntimeState.activeTaskId, taskRuntimeState.pendingTask]);', sanityStart));
+  const sanityEnd = shell.indexOf('\n  }, [', sanityStart);
+  assert.ok(sanityEnd > sanityStart, 'locate the end of the actual page guard');
+  const sanitySource = shell.slice(sanityStart, sanityEnd);
   const settleDisplayed = () => {
     const runtime = ctx.getRuntime('c');
     new Function('taskRuntimeState', 'busy', 'currentConversationActive', 'runtimeApiRef', 'isTaskActuallyActive',

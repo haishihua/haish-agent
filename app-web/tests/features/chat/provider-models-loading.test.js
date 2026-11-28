@@ -343,6 +343,7 @@ test('background model refresh failures stay silent and keep the last known cata
   assert.doesNotMatch(workflow, /models\.error|models\.retry/);
   assert.match(picker, /\{options\.length === 0 \? \(/);
   assert.doesNotMatch(picker, /LoadingState label="Loading models"/);
-  assert.doesNotMatch(workflow, /Loading models…/);
+  // An empty workflow model picker may indicate initial loading; background refreshes keep existing options.
+  assert.match(workflow, /!value\.model_id && !models\.options\.length\)\) \? \(provider && models\.loading \? 'Loading models…' : 'No model'\)/);
   assert.doesNotMatch(source, /setProviderId\(.*defaultModelId|setModelId\(.*defaultModelId/);
 });

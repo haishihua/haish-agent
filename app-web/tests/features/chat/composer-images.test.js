@@ -90,7 +90,8 @@ test('composer uses scoped unlimited image storage and native Lexical undo histo
   assert.match(composer, /imageStoreRef\.get\(scopeId\)/);
   assert.match(composer, /imageStoreRef\.set\(scopeId, next\)/);
   assert.doesNotMatch(composer, /onUploadImage/);
-  assert.match(composer, /key=\{scopeId\}/);
+  assert.match(composer, /const inputScopeId = draftScopeId \|\| scopeId;/);
+  assert.match(composer, /key=\{inputScopeId\}/);
   assert.match(composer, /CHAT_IMAGE_MAX_BYTES = 20 \* 1024 \* 1024/);
   assert.doesNotMatch(composer, /CHAT_IMAGE_MAX_COUNT|Image limit reached/);
   assert.match(composer, /Unsupported image type\. Use PNG, JPEG, WebP, or GIF\./);
